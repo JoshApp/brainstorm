@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CONFIG } from '../config';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
 import type { WalkableRegion } from '../level/walkable';
@@ -21,8 +22,11 @@ export interface BodyAnimator {
    *  ~FLINCH_DUR. `mag` is the peak backward lean in radians. A brief shudder
    *  rides the decay so the parry reads as a violent jolt, not a slow bow. */
   flinch(mag: number): void;
-  /** Tip the head toward the player when `aware`. */
-  tickHeadCrane(dt: number, distance: number, aware: boolean): void;
+  /** Tip the head toward the player when `aware` (pitch), and — DOOM-style focus
+   *  tracking — twist it in YAW toward the player so it keeps watching you while
+   *  the body's root faces its movement. `yawToPlayer` = signed angle from the
+   *  root's facing to the player (radians). */
+  tickHeadCrane(dt: number, distance: number, aware: boolean, yawToPlayer?: number): void;
   /** Integrate + decay the recoil impulse, clamped against walls. */
   tickKnockback(dt: number, walkable: WalkableRegion): void;
   /** Play the parry-recoil pitch overlay while it's active (owns rotation.x). */
@@ -44,6 +48,7 @@ export function createBodyAnimator(
   const hipBaseRX = hipR ? hipR.rotation.x : 0;
   const neck = built.slots.get('neck');
   const neckBaseX = neck ? neck.rotation.x : 0;
+  const neckBaseY = neck ? neck.rotation.y : 0;
   // Quadruped legs (trot gait). Present only on quadruped creatures; the gait
   // swings diagonal pairs. Base rotations captured so we offset, not overwrite.
   const frontL = built.slots.get('frontL');
@@ -83,6 +88,7 @@ export function createBodyAnimator(
   const GAIT_SWING = 0.5;      // peak hip rotation (rad) at full gait
 
   let headPitch = 0;
+  let headYaw = 0;
   let knockVX = 0;
   let knockVZ = 0;
   let prevX = container.position.x;
@@ -124,12 +130,21 @@ export function createBodyAnimator(
     built.group.rotation.x = flinchMag * (ease + shudder);
   }
 
-  function tickHeadCrane(dt: number, distance: number, aware: boolean) {
+  function tickHeadCrane(dt: number, distance: number, aware: boolean, yawToPlayer = 0) {
     if (!neck) return;
     const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
     const targetPitch = aware ? -0.45 * prox : 0;
     headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
     neck.rotation.x = neckBaseX + headPitch;
+    // FOCUS TRACKING (DOOM-style): twist the head in YAW toward the player so it
+    // keeps WATCHING you while the body's root faces its movement — a strafing /
+    // circling mob eyes you instead of looking wherever its feet carry it, which
+    // is what makes decoupled locomotion read coherently instead of "facing a
+    // random direction." Clamped to a predator's swivel (not an owl-spin); eased.
+    const MAX = CONFIG.ENEMY_AI.HEAD_TRACK_MAX;
+    const targetYaw = aware ? Math.max(-MAX, Math.min(MAX, yawToPlayer)) : 0;
+    headYaw += (targetYaw - headYaw) * Math.min(1, dt * 8);
+    neck.rotation.y = neckBaseY + headYaw;
   }
 
   function tickKnockback(dt: number, walkable: WalkableRegion) {

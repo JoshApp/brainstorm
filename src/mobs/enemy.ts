@@ -2586,7 +2586,12 @@ export function createEnemy(
         }
       }
     }
-    bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning');
+    // Focus tracking: the signed yaw from the body's CURRENT facing to the player
+    // (this frame's root yaw is already set above), so the head twists to keep
+    // watching you while the body faces its movement (DOOM-style — see enemy-animation).
+    const _pYaw = Math.atan2(playerPos.x - container.position.x, playerPos.z - container.position.z) + Math.PI;
+    const yawToPlayer = Math.atan2(Math.sin(_pYaw - container.rotation.y), Math.cos(_pYaw - container.rotation.y));
+    bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning', yawToPlayer);
     bodyAnim.tickKnockback(dt, walkable);
     bodyAnim.tickLocomotion(dt);
     bodyAnim.tickPresence(dt);
