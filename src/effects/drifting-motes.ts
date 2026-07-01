@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getTexture } from '../style/procedural-textures';
 import type { WalkableRect } from '../level/types';
-import { isWebGPU } from '../scene/renderer-mode';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { attribute, uniform as tslUniform, texture as tslTexture, time, hash, float, vec3 } from 'three/tsl';
 
@@ -82,53 +81,7 @@ export function initDriftingMotes(
   if (walkableRects.length === 0) return;
   rects = walkableRects;
 
-  if (isWebGPU()) { initMotesWebGPU(scene, tint); return; }
-
-  material = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
-    color: tint,
-    transparent: true,
-    opacity: 0.55,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    // Fog catches the motes naturally — far ones fade out which
-    // is exactly the volumetric feel we want.
-    fog: true,
-    side: THREE.DoubleSide,
-  });
-
-  // One quad per mote: 4 verts, 2 tris. UVs + indices are static; only
-  // the corner POSITIONS are rewritten each frame (billboarded).
-  positions = new Float32Array(MOTE_COUNT * 4 * 3);
-  const uvs = new Float32Array(MOTE_COUNT * 4 * 2);
-  const index = new Uint16Array(MOTE_COUNT * 6);
-  for (let i = 0; i < MOTE_COUNT; i++) {
-    const v = i * 4;
-    uvs.set([0, 0, 1, 0, 1, 1, 0, 1], i * 8);
-    index.set([v, v + 1, v + 2, v, v + 2, v + 3], i * 6);
-  }
-  geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  geometry.setIndex(new THREE.BufferAttribute(index, 1));
-  // Motes blanket the whole level; per-batch frustum culling would either
-  // pop the entire pool or never cull. Leave it on always — it's one draw.
-  mesh = new THREE.Mesh(geometry, material);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 2;   // additive ambient — after opaque, before the held viewmodel
-  mesh.userData.dbgKind = 'fx';
-  scene.add(mesh);
-
-  for (let i = 0; i < MOTE_COUNT; i++) {
-    const m: Mote = {
-      px: 0, py: 0, pz: 0,
-      vx: 0, vy: 0, vz: 0,
-      life: 0, age: 0, size: 0,
-      rect: rects[0],
-    };
-    respawn(m, /*ageJitter*/ true);
-    motes.push(m);
-  }
+  initMotesWebGPU(scene, tint);
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

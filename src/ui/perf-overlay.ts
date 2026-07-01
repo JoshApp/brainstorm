@@ -12,7 +12,6 @@
 // overlay still works for non-Three.js contexts later.
 
 import type * as THREE from 'three';
-import { isWebGPU } from '../scene/renderer-mode';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getNativeHz, pacerEffectiveFps } from '../scene/frame-pacer';
@@ -172,14 +171,12 @@ export function tickPerfOverlay(nowMs: number): void {
   // node RenderPipeline renders async across multiple passes, so the counters
   // can't be reset cleanly per frame). Show them as n/a rather than a misleading
   // runaway — real WebGPU stats need timestamp queries (the Phase-3 cockpit port).
-  const drawsLine = isWebGPU()
-    ? `draws n/a · tris n/a  (webgpu — see Phase 3)`
-    : `${lastCalls} draws · ${lastTris.toLocaleString()} tris`;
+  const drawsLine = `draws n/a · tris n/a  (webgpu — see Phase 3)`;
   secondaryEl.textContent =
     `${lastMs.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms\n` +
     `panel ${getNativeHz()}Hz · cap ${capLabel}\n` +
     `${drawsLine}\n` +
-    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${isWebGPU() ? 'n/a' : lastGeo} · tex ${isWebGPU() ? 'n/a' : lastTex}\n` +
+    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo n/a · tex n/a\n` +
     `pool ${getGeometryPoolSize()}${heap !== null ? ` · heap ${heap}MB` : ''}`;
   // Preserve the newline for the secondary block.
   secondaryEl.style.whiteSpace = 'pre';

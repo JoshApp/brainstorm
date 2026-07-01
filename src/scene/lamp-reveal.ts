@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
-import { isWebGPU } from './renderer-mode';
 import { getDarkAdaptation } from './dark-adaptation';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { uniform as tslUniform, texture as tslTexture, positionWorld, vec3, float, smoothstep as tslSmoothstep } from 'three/tsl';
@@ -58,16 +57,14 @@ const ADAPT_BASE_BOOST = 0.6;   // dark-adapted eye lifts the base hint (0.12 â†
 export function updateLampReveal(playerPos: THREE.Vector3, lookDir: THREE.Vector3): void {
   uLampPos.value.copy(playerPos);
   uLampDir.value.copy(lookDir).normalize();
-  if (isWebGPU()) {
-    nLampPos.value.copy(uLampPos.value);
-    nLampDir.value.copy(uLampDir.value);
-    nRevealInner.value = uRevealInner.value;
-    nRevealOuter.value = uRevealOuter.value;
-    nConeInner.value = uConeInner.value;
-    nConeOuter.value = uConeOuter.value;
-    nRevealBase.value = uRevealBase.value;
-    nDarkAdapt.value = getDarkAdaptation();
-  }
+  nLampPos.value.copy(uLampPos.value);
+  nLampDir.value.copy(uLampDir.value);
+  nRevealInner.value = uRevealInner.value;
+  nRevealOuter.value = uRevealOuter.value;
+  nConeInner.value = uConeInner.value;
+  nConeOuter.value = uConeOuter.value;
+  nRevealBase.value = uRevealBase.value;
+  nDarkAdapt.value = getDarkAdaptation();
 }
 
 export interface RevealOpts {
@@ -88,65 +85,7 @@ export interface RevealOpts {
  * distance. depthWrite off: a glow decal, never occludes, never z-fights.
  */
 export function makeRevealMaterial(opts: RevealOpts): THREE.MeshBasicMaterial {
-  if (isWebGPU()) return makeRevealMaterialWebGPU(opts);
-  const mat = new THREE.MeshBasicMaterial({
-    map: getTexture(opts.texture),
-    color: opts.color ?? 0x8fd8ff,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: true,
-    side: THREE.DoubleSide,
-  });
-  const uIntensity = { value: opts.intensity ?? 1 };
-  // Expose for runtime modulation (e.g. a wall-rune's arcane pulse).
-  mat.userData.uRevealIntensity = uIntensity;
-
-  // Every reveal material runs the same injected GLSL, so they share one
-  // compiled program regardless of map/color/intensity (those are uniforms).
-  mat.customProgramCacheKey = () => 'lamp-reveal-gaze';
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uLampPos = uLampPos;
-    shader.uniforms.uLampDir = uLampDir;
-    shader.uniforms.uRevealInner = uRevealInner;
-    shader.uniforms.uRevealOuter = uRevealOuter;
-    shader.uniforms.uConeInner = uConeInner;
-    shader.uniforms.uConeOuter = uConeOuter;
-    shader.uniforms.uRevealBase = uRevealBase;
-    shader.uniforms.uRevealIntensity = uIntensity;
-
-    // Vertex: world position of the fragment (reveal is measured in world
-    // space, stable as the camera moves).
-    shader.vertexShader = `varying vec3 vRevealWorld;\n${shader.vertexShader}`.replace(
-      '#include <begin_vertex>',
-      '#include <begin_vertex>\nvRevealWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;',
-    );
-
-    // Fragment: radial falloff Ã— gaze cone (with a base hint floor), applied to
-    // the additive colour just before dithering.
-    shader.fragmentShader = `varying vec3 vRevealWorld;
-uniform vec3 uLampPos;
-uniform vec3 uLampDir;
-uniform float uRevealInner;
-uniform float uRevealOuter;
-uniform float uConeInner;
-uniform float uConeOuter;
-uniform float uRevealBase;
-uniform float uRevealIntensity;
-${shader.fragmentShader}`.replace(
-      '#include <dithering_fragment>',
-      `vec3 _lampToFrag = vRevealWorld - uLampPos;
-float _rd = length(_lampToFrag);
-float _radial = 1.0 - smoothstep(uRevealInner, uRevealOuter, _rd);
-vec3 _dir = _lampToFrag / max(_rd, 0.001);
-float _cosA = dot(_dir, uLampDir);
-float _cone = smoothstep(uConeOuter, uConeInner, _cosA);
-float _reveal = _radial * (uRevealBase + (1.0 - uRevealBase) * _cone);
-gl_FragColor.rgb *= _reveal * uRevealIntensity;
-#include <dithering_fragment>`,
-    );
-  };
-  return mat;
+  return makeRevealMaterialWebGPU(opts);
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

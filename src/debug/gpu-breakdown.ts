@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { setGradeBypass, setSceneOnly } from '../style/render-webgpu';
 import { setBloomEnabled, getBloomEnabled } from '../style/render-target';
 import { setShadowMode, getShadowMode } from '../scene/light-pool';
-import { isWebGPU } from '../scene/renderer-mode';
 import { currentGpuMs } from './frame-timing';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 
@@ -40,23 +39,17 @@ async function median(frames = 16, warm = 12): Promise<number> {
 }
 
 // Override materials: unlit = pure rasterization; plain-standard = geometry + PBR
-// lighting (no surface-detail/banded/reveal nodes). Node materials on WebGPU,
-// classic on WebGL.
+// lighting (no surface-detail/banded/reveal nodes). Node materials on WebGPU.
 function basicMat(): THREE.Material {
-  return isWebGPU()
-    ? new (MeshBasicNodeMaterial as any)({ color: 0x808080 })
-    : new THREE.MeshBasicMaterial({ color: 0x808080 });
+  return new (MeshBasicNodeMaterial as any)({ color: 0x808080 });
 }
 function stdMat(): THREE.Material {
-  return isWebGPU()
-    ? new (MeshStandardNodeMaterial as any)({ color: 0x808080, roughness: 0.9 })
-    : new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9 });
+  return new (MeshStandardNodeMaterial as any)({ color: 0x808080, roughness: 0.9 });
 }
 
 /** Run the stage sweep and return a labelled GPU-ms breakdown. ~6-10s (it warms +
- *  samples each configuration). Restores every toggle. Works on WebGPU and WebGL. */
+ *  samples each configuration). Restores every toggle. */
 export async function gpuBreakdown(renderer: any, scene?: THREE.Scene): Promise<Record<string, any>> {
-  const wgpu = isWebGPU();
   const round = (x: number): number => Math.round(x * 100) / 100;
 
   const full = await median();
@@ -70,15 +63,11 @@ export async function gpuBreakdown(renderer: any, scene?: THREE.Scene): Promise<
 
   // Post split only exists on the WebGPU node pipeline (sceneOnly / gradeBypass).
   let sceneOnly: number | null = null, grade = 0;
-  if (wgpu) {
-    setGradeBypass(true); const noGrade = await median(); setGradeBypass(false);
-    setSceneOnly(true); sceneOnly = await median();
-    grade = Math.max(0, full - noGrade);
-  }
+  setGradeBypass(true); const noGrade = await median(); setGradeBypass(false);
+  setSceneOnly(true); sceneOnly = await median();
+  grade = Math.max(0, full - noGrade);
 
-  // Scene split via material override (both renderers). Measured in scene-only mode
-  // on WebGPU; on WebGL the post (blit) rides along in both, so the raster/lit
-  // DELTA still cancels it cleanly.
+  // Scene split via material override. Measured in scene-only mode.
   let raster = 0, litPlain = 0;
   if (scene) {
     const prev = scene.overrideMaterial;
@@ -86,11 +75,11 @@ export async function gpuBreakdown(renderer: any, scene?: THREE.Scene): Promise<
     scene.overrideMaterial = stdMat(); litPlain = await median();
     scene.overrideMaterial = prev ?? null;
   }
-  if (wgpu) { setSceneOnly(false); await median(2, 8); }
+  setSceneOnly(false); await median(2, 8);
 
-  const sceneRef = sceneOnly ?? full;   // WebGL has no sceneOnly; use full (post cancels in deltas)
+  const sceneRef = sceneOnly ?? full;
   const out: Record<string, any> = {
-    renderer: wgpu ? 'webgpu' : 'webgl',
+    renderer: 'webgpu',
     fullMs: round(full),
     bloomMs: round(Math.max(0, full - noBloom)),
     shadowMs: round(Math.max(0, full - noShadow)),

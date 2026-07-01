@@ -51,7 +51,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
+import { renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -369,10 +369,12 @@ if (import.meta.env.DEV) {
   };
 }
 const materials = buildMaterials(renderer);
-// WebGL context-loss recovery — preventDefault + rebuild the custom render
-// targets on restore, so a GPU context drop (mobile memory pressure / a
-// backgrounded tab) is a brief veil, not a black screen or a false crash.
-installContextRecovery({ canvas, onRestore: () => initRenderPipeline(renderer) });
+// Context-loss recovery — preventDefault the webglcontextlost event + offer a
+// reload, so a GPU context drop (memory pressure / a backgrounded tab) is a
+// veil, not a false crash. There's no classic render pipeline to rebuild under
+// WebGPU (the node renderer owns its own targets), so onRestore is a no-op;
+// WebGPU device-loss recovery (device.lost) is a separate, TODO concern.
+installContextRecovery({ canvas, onRestore: () => {} });
 // Encounter feedback orchestrator — subscribes to gate/encounter lifecycle
 // events and fires their sound + shake + dust stingers (dust attaches to the
 // persistent scene root, cleared per level alongside the other effect pools).

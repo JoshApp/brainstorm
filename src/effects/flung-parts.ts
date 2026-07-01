@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { isPooledGeometry } from '../scene/geometry-pool';
-import { isWebGPU } from '../scene/renderer-mode';
 import { spawnDustPuff } from './dust-puff';
 import { getDeathSink } from '../debug/death-debug';
 import { groundYAt } from '../level/elevation';
@@ -50,13 +49,7 @@ function disposeNonPooled(obj: THREE.Object3D): void {
   // that frame's draws (collapses the species, same as the vase/death-dispose bug). GC
   // reclaims the part's geometry once it leaves the scene. (Flung parts also REUSE the
   // corpse's merged/pooled geometry, so disposing here is doubly unsafe.)
-  if (isWebGPU()) return;
-  obj.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (mesh.isMesh && mesh.geometry && !isPooledGeometry(mesh.geometry)) {
-      mesh.geometry.dispose();
-    }
-  });
+  void obj;
 }
 
 /** Max dissolve progress (0..1) across the part's dissolvable materials, or 0 if

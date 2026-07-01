@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { uniform as tslUniform, positionLocal, normalLocal, modelViewMatrix, vec4 } from 'three/tsl';
-import { isWebGPU } from '../scene/renderer-mode';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
 
@@ -49,36 +48,6 @@ const OUTLINE_SCALE_DEFAULT = 1.07;
 // on a chest it's a hairline. Pixel-space is the only honest unit for
 // a line.
 const RIM_PX = 4.5;             // target rim width, device pixels (phone-tuned)
-function makeOutlineMaterialWebGL(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(COLOR_ARMED) },
-      uOpacity: { value: 0 },
-      uPxScale: { value: 0.002 },   // world-units-per-pixel at z=1; set per frame
-    },
-    vertexShader: `
-      uniform float uPxScale;
-      void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        // World push per pixel grows linearly with view depth — the
-        // projected rim width stays constant on screen.
-        float push = uPxScale * -mv.z;
-        vec3 displaced = position + normal * push;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uColor;
-      uniform float uOpacity;
-      void main() { gl_FragColor = vec4(uColor, uOpacity); }
-    `,
-    side: THREE.BackSide,
-    transparent: true,
-    fog: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-}
 
 // WEBGPU port of the outline to TSL: the identical inverted-hull rim — same screen-constant push
 // (position += normal · uPxScale · −viewZ in the vertex stage), same additive colour·opacity fragment —
@@ -102,7 +71,7 @@ function makeOutlineMaterialWebGPU(): THREE.Material {
 }
 
 function makeOutlineMaterial(): THREE.Material {
-  return isWebGPU() ? makeOutlineMaterialWebGPU() : makeOutlineMaterialWebGL();
+  return makeOutlineMaterialWebGPU();
 }
 
 /** Per-frame px→world scale at unit depth: worldPerPx(z) = z * 2·tan(fov/2)/H. */
@@ -203,9 +172,8 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     shell.computeVertexNormals();
 
     const mat = makeOutlineMaterial();
-    // WebGL shares one px-scale uniform across hulls; the WebGPU node material reads the shared
-    // pxScaleWG uniform directly inside its positionNode, so no per-material wiring is needed.
-    if (!isWebGPU()) (mat as any).uniforms.uPxScale = pxScaleShared;
+    // The WebGPU node material reads the shared pxScaleWG uniform directly inside
+    // its positionNode, so no per-material wiring is needed.
     void scaleFactor;
     const clone = new THREE.Mesh(shell, mat);
     clone.renderOrder = 999;

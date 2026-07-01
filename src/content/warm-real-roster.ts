@@ -10,7 +10,6 @@ import { registeredFloorMaterials, stdMat } from '../style/material-registry';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { getTexture } from '../style/procedural-textures';
 import { getWarmupHooks } from './warmup-registry';
-import { isWebGPU } from '../scene/renderer-mode';
 import { DEV } from '../debug/dev';
 
 // ── REAL-ROSTER WARM — warm through the REAL build path, not a dummy ──────────────────────────────
@@ -49,7 +48,7 @@ export async function warmRealRoster(
   camera: THREE.Camera,
   onProgress?: (frac: number) => void,
 ): Promise<void> {
-  if (done || !isWebGPU()) return;
+  if (done) return;
   done = true;
 
   const subjects: THREE.Object3D[] = [];

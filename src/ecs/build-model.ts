@@ -8,7 +8,6 @@ import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
-import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
 import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
@@ -271,7 +270,7 @@ export function mergeRigidSegments(built: BuiltModel, opts?: { ignoreNames?: boo
       if (!merged) continue;   // attribute mismatch — leave the originals intact
       // Single-material merge → one reveal colour for the whole merged mesh. Re-stamp it (the inputs
       // carried it from makeMesh, but this is explicit + survives a future input that lacked it).
-      if (isWebGPU()) setRevealAttributes(merged, revealOf(mat));
+      setRevealAttributes(merged, revealOf(mat));
       const mesh = new THREE.Mesh(merged, mat);
       mesh.castShadow = meshes[0].castShadow;
       mesh.receiveShadow = meshes[0].receiveShadow;
@@ -368,204 +367,37 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   // (the core "forms emerge from black" identity) as a TSL emissive node. The
   // situational effects — dissolve (death crumble), gore creep, chroma (PAINTED
   // over-saturation) — still need their own node ports; see WEBGPU-MIGRATION.md.
-  if (isWebGPU()) {
-    installRevealWebGPU(mat, def);
-    // SHARE the program across structurally-identical instances — 9 ghouls -> 1 pipeline, not 9, AND
-    // every COLOUR variant onto that same pipeline (a red ghoul + a green wraith were ~30 pipelines
-    // because their colours were baked into the shader; now colour rides on vertex attributes, see
-    // installRevealWebGPU). The species-leak the OLD unique-key guarded against is handled per-object
-    // (dissolve/flash via objectScalar reading mesh.userData) and per-vertex (the reveal colours), so
-    // a SHARED program is safe. The key below is STRUCTURAL — only what shapes the WGSL: render state
-    // + feature PRESENCE (rim/dissolve/chroma/gore) + still-baked situational values (chroma amount,
-    // gore, detail). The COLOURS (base color/emissive, rim colour/power/intensity) are STRIPPED — they
-    // are per-vertex now, identical WGSL regardless. This is what makes the boot/descent warm cover
-    // EVERY enemy from a handful of warmed representatives. customProgramCacheKey feeds the node
-    // cacheKey -> the stage WGSL cache (Pipelines.js). DO NOT put colour back in the key, and do not
-    // bake a colour into the shader — either re-explodes the pipeline set.
-    let defSig: string;
-    try {
-      // STRUCTURAL projection of the def: drop the now-per-vertex colours; keep rim PRESENCE (rim vs
-      // no-rim IS a different shader). Canonical (recursively key-sorted) for order independence (the
-      // boot warm's `{ ...def, dissolvable: true }` spread can reorder keys vs the live def).
-      const structural: Record<string, unknown> = {};
-      for (const key of Object.keys(def)) {
-        if (key === 'color' || key === 'emissive' || key === 'emissiveIntensity') continue;
-        if (key === 'rim') { structural.rim = def.rim ? 1 : 0; continue; }   // presence only
-        structural[key] = (def as Record<string, unknown>)[key];
-      }
-      defSig = JSON.stringify(structural, (_k, v) =>
-        (v && typeof v === 'object' && !Array.isArray(v))
-          ? Object.keys(v as object).sort().reduce((s: Record<string, unknown>, key) => { s[key] = (v as Record<string, unknown>)[key]; return s; }, {})
-          : v);
-    } catch { defSig = 'mat' + (webgpuMatSeq++); }
-    const matKey = `delve|fs:${mat.flatShading}|tr:${mat.transparent}|bl:${mat.blending}|vc:${mat.vertexColors}|${defSig}`;
-    (mat as unknown as { customProgramCacheKey: () => string }).customProgramCacheKey = () => matKey;
-    return;
-  }
-
-  const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
-  const uRimPower   = { value: def.rim?.power ?? 2.5 };
-  const uRimIntens  = { value: def.rim?.intensity ?? 1.0 };
-  const uRimDark    = { value: def.rim?.darkReactive ?? 0 };
-  const uChroma     = { value: def.chroma ?? 1 };
-  const uDissolve   = { value: 0 };
-
-  // Expose for external mutation. Death sequence reads userData.uDissolve.
-  mat.userData.uDissolve = uDissolve;
-
-  // Stable cache key so two wraiths (different instances, same def shape)
-  // hit the same compiled program. Different shapes get different keys.
-  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}|${hasChroma ? '1' : '0'}|${hasGore ? '1' : '0'}`;
-  mat.customProgramCacheKey = () => cacheKey;
-
-  mat.onBeforeCompile = (shader) => {
-    if (hasRim) {
-      shader.uniforms.uRimColor  = uRimColor;
-      shader.uniforms.uRimPower  = uRimPower;
-      shader.uniforms.uRimIntens = uRimIntens;
-      shader.uniforms.uRimDark   = uRimDark;
+  installRevealWebGPU(mat, def);
+  // SHARE the program across structurally-identical instances — 9 ghouls -> 1 pipeline, not 9, AND
+  // every COLOUR variant onto that same pipeline (a red ghoul + a green wraith were ~30 pipelines
+  // because their colours were baked into the shader; now colour rides on vertex attributes, see
+  // installRevealWebGPU). The species-leak the OLD unique-key guarded against is handled per-object
+  // (dissolve/flash via objectScalar reading mesh.userData) and per-vertex (the reveal colours), so
+  // a SHARED program is safe. The key below is STRUCTURAL — only what shapes the WGSL: render state
+  // + feature PRESENCE (rim/dissolve/chroma/gore) + still-baked situational values (chroma amount,
+  // gore, detail). The COLOURS (base color/emissive, rim colour/power/intensity) are STRIPPED — they
+  // are per-vertex now, identical WGSL regardless. This is what makes the boot/descent warm cover
+  // EVERY enemy from a handful of warmed representatives. customProgramCacheKey feeds the node
+  // cacheKey -> the stage WGSL cache (Pipelines.js). DO NOT put colour back in the key, and do not
+  // bake a colour into the shader — either re-explodes the pipeline set.
+  let defSig: string;
+  try {
+    // STRUCTURAL projection of the def: drop the now-per-vertex colours; keep rim PRESENCE (rim vs
+    // no-rim IS a different shader). Canonical (recursively key-sorted) for order independence (the
+    // boot warm's `{ ...def, dissolvable: true }` spread can reorder keys vs the live def).
+    const structural: Record<string, unknown> = {};
+    for (const key of Object.keys(def)) {
+      if (key === 'color' || key === 'emissive' || key === 'emissiveIntensity') continue;
+      if (key === 'rim') { structural.rim = def.rim ? 1 : 0; continue; }   // presence only
+      structural[key] = (def as Record<string, unknown>)[key];
     }
-    if (hasChroma) {
-      shader.uniforms.uChroma    = uChroma;
-    }
-    if (hasDissolve) {
-      shader.uniforms.uDissolve  = uDissolve;
-    }
-    if (hasGore) {
-      // Distinct names from surface-detail's uSplat* — a material can
-      // carry BOTH injections (dressed archways), and duplicate GLSL
-      // uniform declarations are a compile error (invisible meshes).
-      shader.uniforms.uGoreT = uSplatTex as unknown as THREE.IUniform;
-      shader.uniforms.uGoreB = uSplatBounds as unknown as THREE.IUniform;
-      shader.uniforms.uGoreO = uSplatOn as unknown as THREE.IUniform;
-    }
-
-    // Vertex: capture local position so the dissolve noise is stable in
-    // world (doesn't shift as the camera moves). `transformed` is the
-    // canonical "post-vertex-shader local position" variable in
-    // three.js's shader chunks.
-    if (hasDissolve) {
-      shader.vertexShader = `varying vec3 vLocalPos;\n${shader.vertexShader}`.replace(
-        '#include <begin_vertex>',
-        '#include <begin_vertex>\nvLocalPos = transformed;',
-      );
-    }
-    if (hasGore) {
-      // Instancing-aware world position (the batched creatures are
-      // InstancedMeshes — modelMatrix alone would park them at origin).
-      shader.vertexShader = `varying vec3 vGoreWorld;\n${shader.vertexShader}`.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-{
-  vec4 gw = vec4(transformed, 1.0);
-  #ifdef USE_INSTANCING
-    gw = instanceMatrix * gw;
-  #endif
-  vGoreWorld = (modelMatrix * gw).xyz;
-}`,
-      );
-    }
-
-    // Fragment: declare uniforms + varyings, then inject the rim +
-    // dissolve passes just before the final dithering chunk. This
-    // ordering ensures lighting is fully applied first, and our
-    // additive contributions get the same dither treatment as the
-    // base color.
-    let frag = '';
-    if (hasDissolve) {
-      frag += 'varying vec3 vLocalPos;\nuniform float uDissolve;\n';
-    }
-    if (hasRim) {
-      frag += 'uniform vec3 uRimColor;\nuniform float uRimPower;\nuniform float uRimIntens;\nuniform float uRimDark;\n';
-    }
-    if (hasChroma) {
-      frag += 'uniform float uChroma;\n';
-    }
-    if (hasGore) {
-      frag += 'varying vec3 vGoreWorld;\nuniform sampler2D uGoreT;\nuniform vec4 uGoreB;\nuniform float uGoreO;\n';
-    }
-    shader.fragmentShader = frag + shader.fragmentShader;
-
-    const injection = `
-      ${hasGore ? `
-      // Gore creep — same composite-stage recolour as the floors
-      // (albedo math dies under the PSX quantize on dark surfaces).
-      {
-        vec2 gUv = (vGoreWorld.xz - uGoreB.xy) / uGoreB.zw;
-        if (gUv.x > 0.0 && gUv.x < 1.0 && gUv.y > 0.0 && gUv.y < 1.0) {
-          vec4 gs = texture2D(uGoreT, gUv) * uGoreO;
-          float gw = clamp(gs.a, 0.0, 1.0) * clamp(1.0 - vGoreWorld.y / 0.55, 0.0, 1.0);
-          if (gw > 0.004) {
-            float glum = dot(gl_FragColor.rgb, vec3(0.45, 0.35, 0.2));
-            float gmaxc = max(gs.r, max(gs.g, gs.b));
-            float gminc = min(gs.r, min(gs.g, gs.b));
-            float gfresh = smoothstep(0.08, 0.40, gmaxc - gminc);
-            vec3 ghue = gs.rgb / max(gmaxc, 0.10);
-            gl_FragColor.rgb = mix(gl_FragColor.rgb, glum * ghue * mix(0.55, 1.45, gfresh), gw * 0.8);
-          }
-        }
-      }
-      ` : ''}
-      ${hasChroma ? `
-      // PAINTED mode — push the fully-lit colour away from its own luma to
-      // over-saturate whatever coloured light the room cast onto this pale
-      // matte surface (a faint red room → vividly red bone). Runs first so the
-      // rim (if any) adds on top of the saturated base. max() guards the
-      // extrapolation from going negative.
-      {
-        float pl = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-        gl_FragColor.rgb = max(mix(vec3(pl), gl_FragColor.rgb, uChroma), 0.0);
-      }
-      ` : ''}
-      ${hasDissolve ? `
-      if (uDissolve > 0.0) {
-        // GRIMDARK CRUMBLE. Discard is driven by a hash QUANTIZED into coarse
-        // cells (floor of local pos), so the body breaks into chunky flakes —
-        // not the per-pixel "TV static" a raw per-fragment hash gives — which
-        // suits the blocky PS1 look. Spread across 0..1 so it erodes
-        // progressively over the whole ramp (the per-joint meshes have a tiny
-        // local-Y span, so a Y sweep alone would plop the whole body at once);
-        // a faint top-down lean rides on top for direction.
-        float n = fract(sin(dot(floor(vLocalPos * 13.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-        float thresh = n * 0.85 + (vLocalPos.y * 0.5 + 0.5) * 0.15;
-        if (thresh < uDissolve) discard;
-        float front = thresh - uDissolve;   // 0 at the erosion edge, grows inward
-        // HEAT — flakes glow HOT before they crumble. A wide additive band, so
-        // the smoldering front READS regardless of base albedo: on a pale skeleton
-        // the char alone read fine, but on a near-black ghoul darkening did
-        // nothing and chunks just flickered out. Heating them makes a dark mob
-        // show a sweeping ember front too.
-        float heat = 1.0 - smoothstep(0.0, 0.16, front);
-        gl_FragColor.rgb += vec3(1.0, 0.40, 0.10) * (heat * heat) * (0.5 + 0.9 * uDissolve);
-        // CHAR — a thin black scorch right at the crumble edge (the flake burning
-        // through), so the front has a dark lip under the glow.
-        gl_FragColor.rgb *= mix(0.45, 1.0, smoothstep(0.0, 0.045, front));
-        // CORE — the hottest sliver at the very edge.
-        float core = 1.0 - smoothstep(0.0, 0.02, front);
-        gl_FragColor.rgb += vec3(1.0, 0.72, 0.34) * core * uDissolve;
-      }
-      ` : ''}
-      ${hasRim ? `
-      // Fresnel rim — brightest where surface normal grazes the view ray.
-      // pow() controls falloff (high power = thin rim, low power = soft).
-      vec3 viewDir = normalize(vViewPosition);
-      float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
-      rim = pow(rim, uRimPower);
-      // DARKNESS-REACTIVE (uRimDark): the rim carries the form where scene
-      // light doesn't. gl_FragColor is the fully-lit colour here, so its
-      // luma tells us how lit this fragment already is — scale the rim up in
-      // shadow, down in light. uRimDark 0 = constant rim (unchanged).
-      float litLuma = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float darkGate = mix(1.0, mix(1.0, 0.22, clamp(litLuma, 0.0, 1.0)), uRimDark);
-      gl_FragColor.rgb += uRimColor * rim * uRimIntens * darkGate;
-      ` : ''}
-    `;
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <dithering_fragment>',
-      `${injection}\n#include <dithering_fragment>`,
-    );
-  };
+    defSig = JSON.stringify(structural, (_k, v) =>
+      (v && typeof v === 'object' && !Array.isArray(v))
+        ? Object.keys(v as object).sort().reduce((s: Record<string, unknown>, key) => { s[key] = (v as Record<string, unknown>)[key]; return s; }, {})
+        : v);
+  } catch { defSig = 'mat' + (webgpuMatSeq++); }
+  const matKey = `delve|fs:${mat.flatShading}|tr:${mat.transparent}|bl:${mat.blending}|vc:${mat.vertexColors}|${defSig}`;
+  (mat as unknown as { customProgramCacheKey: () => string }).customProgramCacheKey = () => matKey;
 }
 
 // PER-OBJECT scalar uniform node (the fix for the WebGPU "kill one mob → whole
@@ -926,8 +758,8 @@ function revealOf(mat: THREE.Material): Record<string, number[]> | undefined {
 function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec): THREE.Mesh {
   // A reveal material reads the per-vertex aReveal* attributes; a pooled/shared geometry can't carry
   // them (different materials share it), so CLONE before baking. Non-reveal materials keep the pooled
-  // geometry untouched. (WebGPU only — revealOf is empty on the GLSL path.)
-  const reveal = isWebGPU() ? revealOf(mat) : undefined;
+  // geometry untouched.
+  const reveal = revealOf(mat);
   const meshGeo = reveal ? geo.clone() : geo;
   if (reveal) setRevealAttributes(meshGeo, reveal);
   const mesh = new THREE.Mesh(meshGeo, mat);

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { groundYAt } from './elevation';
-import { isWebGPU } from '../scene/renderer-mode';
 import { buildModel } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase';
 import { COBWEB_BARRIER } from '../content/cobweb';
@@ -177,14 +176,6 @@ export function spawnVase(
       //      (same class as the warmup-dispose bug). So on WebGPU we DON'T dispose
       //      synchronously at all; the per-vase geometry is tiny, GC reclaims it once
       //      the group is out of the scene. (Pooled geo must never be disposed here.)
-      if (!isWebGPU()) {
-        group.traverse((o) => {
-          const mesh = o as THREE.Mesh;
-          if (mesh.isMesh && mesh.geometry && mesh.geometry.userData.pooled !== true) {
-            mesh.geometry.dispose();
-          }
-        });
-      }
       return applied;
     },
   };

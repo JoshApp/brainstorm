@@ -17,7 +17,6 @@ import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { installRenderProbe, setRenderGpuProbe, renderGpuProbeOn, installGpuPassHooks, type GpuPassHooks } from './render-probe';
 import { setProfSpans } from './prof-span';
-import { isWebGPU } from '../scene/renderer-mode';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -134,9 +133,8 @@ let passProbeT0 = 0;
 const passProbePhases = new Map<string, number>();  // sticky last measurement per pass
 
 function syncGpu(): void {
-  if (!renderer || isWebGPU()) return;   // getContext()/readPixels are WebGL-only
-  const gl = renderer.getContext();
-  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
+  // getContext()/readPixels are WebGL-only; no-op under WebGPU (GPU timing comes
+  // from native timestamp queries instead).
 }
 
 const passHooks: GpuPassHooks = {
@@ -179,12 +177,11 @@ export function gpuPassDiag(): Record<string, unknown> {
 export function initFrameTiming(r: THREE.WebGLRenderer): void {
   if (renderer) return;
   renderer = r;
-  // WEBGPU SPIKE: GpuTimer + the readPixels probe use renderer.getContext() and
-  // the WebGL2 timer-query extension — neither exists under WebGPU, and calling
-  // getContext() there crashes profiler boot (?profile=1). Leave gpu null; all
-  // gpu?.* calls are already null-safe, and CPU/per-system timing + renderer.info
-  // counts still work. Real WebGPU GPU timing (timestamp queries) is Phase 3.
-  gpu = isWebGPU() ? null : new GpuTimer(r.getContext());
+  // GpuTimer + the readPixels probe use renderer.getContext() and the WebGL2
+  // timer-query extension — neither exists under WebGPU. Leave gpu null; all
+  // gpu?.* calls are already null-safe, and CPU/per-system timing works. WebGPU
+  // GPU timing comes from native timestamp queries (webgpuGpuMs).
+  gpu = null;
 }
 
 /** GPU time is recorded by the passive timer-query extension (WebGL) or native
@@ -274,28 +271,11 @@ export function frameEnd(): void {
   const info = renderer?.info;
   sample.dt = lastEnd ? now - lastEnd : 0;
   sample.cpuMs = now - frameStart;
-  // Prefer the finish() probe (works on devices without the timer-query ext);
-  // fall back to the passive timer query. probedGpu sticks between samples so a
-  // probe that fires every Nth frame still reads on the frames in between.
-  if (isWebGPU()) {
-    // WebGPU: native timestamp queries give the real render + compute GPU ms.
-    // Kick the async resolve (caches), then read the latest values.
-    tickWebGPUTimestamps(renderer);
-    sample.gpuMs = webgpuGpuMs();
-    sample.gpuPhases = webgpuGpuPhases();
-  } else if (passTiming) {
-    // Per-pass mode: the frame's GPU time is the sum of its pass spans (the
-    // spans cover every GL command renderWithStyle issues).
-    const phases = gpu?.supported ? gpu.lastByLabel : passProbePhases;
-    let sum = 0;
-    let any = false;
-    for (const ms of phases.values()) { sum += ms; any = true; }
-    sample.gpuMs = any ? sum : null;
-    sample.gpuPhases = any ? phases : null;
-  } else {
-    sample.gpuMs = probedGpu !== null ? probedGpu : (gpu?.supported ? (gpu.lastMs ?? null) : null);
-    sample.gpuPhases = null;
-  }
+  // WebGPU: native timestamp queries give the real render + compute GPU ms.
+  // Kick the async resolve (caches), then read the latest values.
+  tickWebGPUTimestamps(renderer);
+  sample.gpuMs = webgpuGpuMs();
+  sample.gpuPhases = webgpuGpuPhases();
   sample.draws = info ? info.render.calls : 0;
   sample.tris = info ? info.render.triangles : 0;
   sample.programs = info?.programs?.length ?? 0;
@@ -312,23 +292,4 @@ export function frameEnd(): void {
 
   lastEnd = now;
   for (const l of listeners) l(sample);
-
-  // GPU PROBE — runs HERE, after the frame's cpu/dt are already captured and
-  // listeners fired, so its synchronous stall pollutes neither. On devices
-  // without the WebGL2 timer-query extension (most Android Chrome) a 1×1
-  // readback is the only reliable GPU read: it forces a round-trip that waits
-  // for the GPU to finish the frame (gl.finish() returns early behind Chrome's
-  // out-of-process GPU). Sampled every Nth frame; the value feeds NEXT frame's
-  // sample (probedGpu is sticky). We then restart the dt clock past the stall
-  // so it's excluded from the following frame's dt too — the probe costs real
-  // fps but never shows up as a fake "dropped frame" in the recording.
-  if (renderGpuProbeOn() && renderer && !isWebGPU() && (gpuProbeCount++ % GPU_PROBE_EVERY === 0)) {
-    const gl = renderer.getContext();
-    renderer.setRenderTarget(null);
-    const t0 = performance.now();
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
-    const ms = performance.now() - t0;
-    if (Number.isFinite(ms) && ms >= 0 && ms < 1000) probedGpu = ms;
-    lastEnd = performance.now();
-  }
 }

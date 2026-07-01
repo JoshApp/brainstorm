@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
-import { isWebGPU } from './renderer-mode';
 import { stampGoreWebGPU, stampWallGoreWebGPU, resetGoreWebGPU } from './gore-webgpu';
 
 // ── SPLAT MAP — the floor remembers its violence ─────────────────────
@@ -281,18 +280,7 @@ export function stampSplat(
   // (scene/gore-webgpu.ts). emitGoreSplash/stampSpray route through here, so this
   // one hook covers all floor blood. (Wall arcs still go to the texture path,
   // which is a WebGL-only no-op on WebGPU for now.)
-  if (isWebGPU()) { stampGoreWebGPU(x, z, radius, colorHex, alpha); return; }
-  if (!rt) return;
-  const b = uSplatBounds.value;
-  const u = (x - b.x) / b.z;
-  const v = (z - b.y) / b.w;
-  if (u < 0 || u > 1 || v < 0 || v > 1) return;
-  let d: { x: number; z: number } | null = null;
-  if (dir) {
-    const len = Math.hypot(dir.x, dir.z);
-    if (len > 0.001) d = { x: dir.x / len, z: dir.z / len };
-  }
-  queue.push({ x: x - b.x, z: z - b.y, r: radius, color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d, surface: 'floor' });
+  stampGoreWebGPU(x, z, radius, colorHex, alpha);
 }
 
 /** THE GORE EMITTER — pseudo-physics splash from a weapon impact.
@@ -387,29 +375,7 @@ export function stampWallArc(
 
 function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number, size: number): void {
   // WebGPU: feed the per-fragment wall-arc buffer (scene/gore-webgpu.ts).
-  if (isWebGPU()) { stampWallGoreWebGPU(hit.axis, hit.plane, hit.along, y, size, colorHex, alpha); return; }
-  if (!rt) return;
-  const b = uSplatBounds.value;
-  // Mirror of the wall-shader mapping (surface-detail.ts): X-facing
-  // walls key by Z in the left half; Z-facing by X in the right.
-  const along = hit.axis === 'x' ? (hit.along - b.y) / b.w : (hit.along - b.x) / b.z;
-  const pc = hit.axis === 'x' ? (hit.plane - b.x) / b.z : (hit.plane - b.y) / b.w;
-  if (along < 0 || along > 1) return;
-  const u = hit.axis === 'x' ? along * 0.5 : 0.5 + along * 0.5;
-  const v = Math.max(0, Math.min(1, (y + size * 0.35 - WALL_Y_MIN) / WALL_Y_SPAN));
-  queue.push({
-    x: u, z: v,
-    r: size,
-    color: new THREE.Color(colorHex),   // full species colour (pc lives in the ID buffer)
-    pc,
-    a: alpha,
-    seed: Math.random(),
-    dir: null,
-    surface: 'wall',
-    rot: (Math.random() - 0.5) * 0.22,
-    scaleX: (size * 2.0) / (hit.axis === 'x' ? b.w : b.z) * 0.5,
-    scaleY: (size * 2.2) / WALL_Y_SPAN,
-  });
+  stampWallGoreWebGPU(hit.axis, hit.plane, hit.along, y, size, colorHex, alpha);
 }
 
 /** Directional spray: a stretched streak stamp plus satellite droplets
@@ -463,109 +429,8 @@ export function stampBleedOut(x: number, z: number, color: number, gore: number)
   }
 }
 
-export function flushSplats(renderer: THREE.WebGLRenderer): void {
-  // WEBGPU SPIKE: gore stamping renders GLSL ShaderMaterials into WebGL targets
-  // every frame — WebGL-only. Skip under WebGPU until ported (no blood decals
-  // there yet). See WEBGPU-MIGRATION.md.
-  if (isWebGPU()) return;
-  // Release due bleed-out pulses into the stamp queue first, so the
-  // early-return below sees them.
-  if (pendingBleeds.length > 0) {
-    const now = performance.now() / 1000;
-    for (let i = pendingBleeds.length - 1; i >= 0; i--) {
-      const p = pendingBleeds[i];
-      if (now >= p.at) {
-        stampSplat(p.x, p.z, p.r, p.color, p.a);
-        pendingBleeds.splice(i, 1);
-      }
-    }
-  }
-  if (!rt || !stampScene || !stampCam || !stampMat || !stampMesh) return;
-  const dryDue = performance.now() / 1000 - lastDryAt >= DRY_INTERVAL_S;
-  if (!needsClear && queue.length === 0 && !dryDue) return;
-  const prevTarget = renderer.getRenderTarget();
-  const prevAutoClear = renderer.autoClear;
-  renderer.setRenderTarget(rt);
-  if (needsClear) {
-    renderer.setClearColor(0x000000, 0);
-    renderer.clear(true, false, false);
-    if (wallRt) {
-      renderer.setRenderTarget(wallRt);
-      renderer.clear(true, false, false);
-    }
-    if (wallIdRt) {
-      renderer.setRenderTarget(wallIdRt);
-      renderer.setClearColor(0xffffff, 1);   // id 1.0 = "no wall" (real ids are 0..0.9)
-      renderer.clear(true, false, false);
-      renderer.setClearColor(0x000000, 0);
-    }
-    renderer.setRenderTarget(rt);
-    needsClear = false;
-  }
-  renderer.autoClear = false;
-  for (const s of queue.splice(0)) {
-    // Quad sized (and for streaks: rotated + stretched) to the splat —
-    // fragment work proportional to the stain, not the map.
-    renderer.setRenderTarget(s.surface === 'wall' && wallRt ? wallRt : rt);
-    const bb = uSplatBounds.value;
-    if (s.surface === 'wall') {
-      // Wall stamps address the arc map directly in UV.
-      stampSpace!.scale.set(1, 1, 1);
-      stampMesh.position.set(s.x, s.z, 0);
-      stampMesh.rotation.z = s.rot ?? 0;
-      stampMesh.scale.set(s.scaleX ?? 0.05, s.scaleY ?? 0.05, 1);
-      stampMat.uniforms.uStreak.value = 2;   // wall mode: splotch + drips
-    } else {
-      // Floor stamps: world metres inside the aniso group.
-      stampSpace!.scale.set(1 / bb.z, 1 / bb.w, 1);
-      stampMesh.position.set(s.x, s.z, 0);
-      if (s.dir) {
-        stampMesh.rotation.z = Math.atan2(s.dir.z, s.dir.x);
-        stampMesh.scale.set(s.r * 2 * 2.1, s.r * 2 * 0.75, 1);
-        stampMat.uniforms.uStreak.value = 1;
-      } else {
-        stampMesh.rotation.z = 0;
-        stampMesh.scale.set(s.r * 2, s.r * 2, 1);
-        stampMat.uniforms.uStreak.value = 0;
-      }
-    }
-    (stampMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
-    stampMat.uniforms.uRadius.value = s.r;
-    (stampMat.uniforms.uColor.value as THREE.Color).copy(s.color);
-    stampMat.uniforms.uAlpha.value = s.a;
-    stampMat.uniforms.uSeed.value = s.seed;
-    renderer.render(stampScene, stampCam);
-    // Wall stamps: second pass into the plane-ID buffer (replace, no
-    // blend) with the identical mask, so the coordinate stays exact.
-    if (s.surface === 'wall' && wallIdRt && stampIdMat) {
-      stampIdMat.uniforms.uPc.value = (s.pc ?? 0) * 0.9;
-      stampIdMat.uniforms.uStreak.value = 2;
-      stampIdMat.uniforms.uAlpha.value = s.a;
-      stampIdMat.uniforms.uSeed.value = s.seed;
-      (stampIdMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
-      stampIdMat.uniforms.uRadius.value = s.r;
-      stampMesh.material = stampIdMat;
-      renderer.setRenderTarget(wallIdRt);
-      renderer.render(stampScene, stampCam);
-      stampMesh.material = stampMat;
-    }
-  }
-  // Drying tick — piggybacks on any flush; also runs when only the
-  // clock demands it (see the early-return above, which lets us in
-  // when due).
-  const nowS = performance.now() / 1000;
-  if (nowS - lastDryAt >= DRY_INTERVAL_S) {
-    lastDryAt = nowS;
-    if (dryMesh && dryMat) {
-      stampMesh.visible = false;
-      dryMesh.visible = true;
-      dryMat.uniforms.uK.value = DRY_INTERVAL_S / DRY_FULL_S;
-      renderer.setRenderTarget(rt);
-      renderer.render(stampScene, stampCam);
-      dryMesh.visible = false;
-      stampMesh.visible = true;
-    }
-  }
-  renderer.autoClear = prevAutoClear;
-  renderer.setRenderTarget(prevTarget);
+export function flushSplats(_renderer: THREE.WebGLRenderer): void {
+  // Gore stamping rendered GLSL ShaderMaterials into WebGL targets each frame —
+  // WebGL-only. No-op under WebGPU (floor/wall blood feeds the per-fragment gore
+  // buffer instead; see scene/gore-webgpu.ts). See WEBGPU-MIGRATION.md.
 }

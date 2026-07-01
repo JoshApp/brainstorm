@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
 import { CONFIG } from '../config';
-import { isWebGPU } from '../scene/renderer-mode';
 
 // Enemy visual presentation, extracted from enemy.ts. Two small controllers
 // the factory builds once and the update loop drives:
@@ -150,7 +149,6 @@ export function createCoreReactor(
 ): CoreReactor {
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
-  const webgpu = isWebGPU();   // fixed at boot — per-object emissive flash vs WebGL color-lerp
   // Base emissive intensity so the damage pulse can boost it (for materials
   // with bright emissive — e.g. the king-slime's core orb — base-color
   // lerping alone is invisible because the emissive overwhelms diffuse).
@@ -217,8 +215,8 @@ export function createCoreReactor(
       // Plain mobs — brief flash across the WHOLE body on hit.
       flashTimer -= dt;
       const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
-      if (webgpu && flashTarget) {
-        // WebGPU: PER-OBJECT additive emissive flash (build-model reads
+      if (flashTarget) {
+        // PER-OBJECT additive emissive flash (build-model reads
         // mesh.userData.flash) — can't leak across the species, and can't wash the
         // albedo at rest (that was the reverted colorNode bug). 0 when the flash ends.
         flashTarget.userData.flash = flashTimer <= 0 ? 0 : t;

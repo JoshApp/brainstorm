@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { isWebGPU } from '../scene/renderer-mode';
 import { forEachLight } from '../scene/light-pool';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
@@ -32,7 +31,7 @@ const _scratch: THREE.Vector3[] = Array.from({ length: MAX_TORCHES }, () => new 
 const _tmpCol = new THREE.Color();
 
 export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
-  if (inited || !isWebGPU()) return;
+  if (inited) return;
   inited = true;
 
   // Per-ember identity = its vertex index; everything below is a hash of it.

@@ -1,87 +1,39 @@
 import * as THREE from 'three';
-import { CONFIG } from '../config';
-import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
+import { isWebGPUReady } from '../scene/renderer-mode';
 import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 
-// WEBGPU SPIKE: rate-limit render failures to one console line.
+// WEBGPU: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
-import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
-// PS1-era render pipeline, PSX-horror flavor.
-//
-// Render the scene to a low-res target, then blit it full-screen through a
-// custom fragment shader that adds the moves from the Haunted PS1 / Mike
-// Klubnika school (Buckshot Roulette, No I'm Not a Human, Mouthwashing,
-// Faith, etc.):
-//
-//   - Bayer 4x4 ORDERED DITHER baked into the color, so gradients posterize
-//     into that signature crosshatch instead of going smooth.
-//   - COLOR QUANTIZATION to ~32 levels per channel — hard color steps.
-//   - CHROMATIC ABERRATION at screen edges (subtle red/blue split).
-//   - SCANLINES — 1px horizontal darkening, ~3%, the CRT phosphor feel.
-//   - WARM AMBER TINT — Buckshot Roulette's sepia push, drives the dread.
-//
-// All five sit in one cheap fragment shader pass. Mobile-friendly.
+// The one render path is the native WebGPU RenderPipeline (render-webgpu.ts):
+// it owns the low-res PSX pass + bloom + colour grade + all the PSX post moves
+// (dither, quantize, scanlines, chromatic aberration, brightness, inscatter,
+// sharp-bilinear, dark-adapt). The old classic-WebGL blit pipeline that used to
+// live here is gone; only the state flags the getters/setters expose and the
+// viewmodel depth helpers remain.
 
-// Scene-render resolution as a fraction of the canvas. The scene renders to
-// this low-res target; the blit upscales it. 0.4 = ~16% the fragments — the
-// single biggest fill-rate lever. Mutable so the adaptive-resolution scaler
-// (scene/adaptive-resolution.ts) can nudge it down on a struggling phone.
+// Scene-render resolution as a fraction of the canvas. Mutable so the
+// adaptive-resolution scaler (scene/adaptive-resolution.ts) can nudge it down
+// on a struggling phone. Forwarded to the WebGPU pass downscale.
 export const PS1_SCALE_DEFAULT = 0.4;
 let ps1Scale = PS1_SCALE_DEFAULT;
 
-// SHARP UPSCALE — when on, the blit upscales the low-res target with
-// sharp-bilinear (crisp pixels, ~1px anti-aliased boundary) instead of
-// nearest. Smooths the sub-pixel "jitter" of lateral motion without blurring
-// the look. Off by default = the authored nearest-neighbour PS1 crawl.
+// SHARP UPSCALE — crisp pixels with a ~1px anti-aliased boundary instead of
+// nearest texel-snap. Off by default = the authored nearest-neighbour PS1 crawl.
 let sharpBilinear = false;
 
-let lowResTarget: THREE.WebGLRenderTarget | null = null;
-let blitScene: THREE.Scene | null = null;
-
-// OVERDRAW HEATMAP — a DEV debug view of fill-rate, the #1 mobile-GPU cost no
-// other tool sees. When on, every mesh draws with one ADDITIVE warm material and
-// NO depth test, so overlapping geometry accumulates: dark = 1 layer, orange =
-// a few, white = heavy overdraw (overlapping walls, transparent fog planes,
-// stacked VFX meshes). It's an isolated early-return path in renderWithStyle —
-// it never touches the normal pipeline. (Caveat: THREE Sprites use a separate
-// draw path overrideMaterial doesn't catch, so additive sprite-VFX fill isn't
-// counted here — mesh overdraw is.)
+// OVERDRAW HEATMAP flag — the DEV overdraw render path is gone (it lived in the
+// classic pipeline); the flag is kept only so the settings/main callers compile.
 let overdrawMode = false;
-let overdrawMat: THREE.MeshBasicMaterial | null = null;
 export function setOverdrawMode(on: boolean): void { overdrawMode = on; }
-function getOverdrawMat(): THREE.MeshBasicMaterial {
-  if (!overdrawMat) {
-    overdrawMat = new THREE.MeshBasicMaterial({
-      // Warm per-layer add: 1×≈dim ember, ~3×≈orange, ~6×≈white — a natural heat ramp.
-      color: 0x33200d,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      fog: false,
-    });
-  }
-  return overdrawMat;
-}
-// Shared scene for the single-call viewmodel depth pre-pass + its per-frame
-// scratch lists (module-level so the hot path allocates nothing).
-let prepassScene: THREE.Scene | null = null;
-const prepassRoots: THREE.Object3D[] = [];
-const prepassParents: THREE.Object3D[] = [];
-let shadowFrameCounter = 0;
-let blitCamera: THREE.OrthographicCamera | null = null;
-let blitMaterial: THREE.ShaderMaterial | null = null;
+
 let rendererRef: THREE.WebGLRenderer | null = null;
 
-// Held viewmodels (weapon / lamp / offhand) registered for the depth-only
-// pass in renderWithStyle — see the note there. They render depthTest:false
-// for colour (always on top), so they need a separate pass to put their near
-// depth in the buffer or the depth-keyed post effects paint the world onto
-// them.
+// Held viewmodels (weapon / lamp / offhand) registered so the draw report can
+// classify their meshes as dynamic. Under WebGPU opaque parts use NORMAL depth.
 const viewmodelRoots: THREE.Object3D[] = [];
-/** Register a held-viewmodel root for the near-depth pass. Idempotent. */
+/** Register a held-viewmodel root. Idempotent. */
 export function registerViewmodel(root: THREE.Object3D): void {
   if (!viewmodelRoots.includes(root)) viewmodelRoots.push(root);
   // WEBGPU — the elegant path: drop the WebGL depth pre-pass + depthTest:false +
@@ -91,34 +43,29 @@ export function registerViewmodel(root: THREE.Object3D): void {
   // the camera while player collision keeps walls farther out. (Transparent parts
   // — glow sprites — keep their additive depthTest:false; depth-writing them
   // would break transparency sorting.)
-  if (isWebGPU()) {
-    root.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const m of mats) {
-        if (!m) continue;
-        if (!(m as THREE.Material).transparent) {
-          (m as THREE.Material).depthTest = true;
-          (m as THREE.Material).depthWrite = true;
-        }
-        // Smooth-light the viewmodel (no cel banding): banding a close-up arm lit
-        // by the flickering lamp read as flicker.
-        unbandMaterialWebGPU(m);
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m) continue;
+      if (!(m as THREE.Material).transparent) {
+        (m as THREE.Material).depthTest = true;
+        (m as THREE.Material).depthWrite = true;
       }
-    });
-  }
+      // Smooth-light the viewmodel (no cel banding): banding a close-up arm lit
+      // by the flickering lamp read as flicker.
+      unbandMaterialWebGPU(m);
+    }
+  });
 }
-/** Set ONE held-viewmodel mesh material's depth state for the CURRENT renderer.
- *  WebGL has a depth pre-pass, so the caller's scheme (depthTest on, depthWrite
- *  OFF, sometimes transparent) is correct — this is a no-op there. WebGPU has NO
- *  pre-pass, so opaque parts must write their OWN depth to self-occlude (the lamp
- *  behind the hand, the hilt behind the fingers, arm bones against each other).
- *  Genuinely translucent parts — additive glow sprites, alpha glass — are left
- *  alone so transparency still sorts. Call from every viewmodel material loop; it
- *  re-applies on each mount/equip (which is where the pre-pass flags get re-set). */
+/** Set ONE held-viewmodel mesh material's depth state for WebGPU. There is no
+ *  depth pre-pass, so opaque parts must write their OWN depth to self-occlude
+ *  (the lamp behind the hand, the hilt behind the fingers, arm bones against
+ *  each other). Genuinely translucent parts — additive glow sprites, alpha
+ *  glass — are left alone so transparency still sorts. Call from every viewmodel
+ *  material loop; it re-applies on each mount/equip. */
 export function applyViewmodelDepthWebGPU(m: THREE.Material): void {
-  if (!isWebGPU()) return;
   const mm = m as THREE.Material & { blending?: number; opacity?: number };
   // additive glow OR real alpha (opacity < 1) → keep transparent + non-writing.
   if (mm.blending === THREE.AdditiveBlending) return;
@@ -139,546 +86,88 @@ export function unregisterViewmodel(root: THREE.Object3D): void {
 export function getViewmodelRoots(): readonly THREE.Object3D[] {
   return viewmodelRoots;
 }
-const HORROR_BLIT_VERT = `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position, 1.0);
-  }
-`;
 
-const HORROR_BLIT_FRAG = `
-  precision highp float;
-  uniform sampler2D tDiffuse;
-  uniform sampler2D uBloom;       // blurred bright-pass (glow bleeding into the dark)
-  uniform float uBloomStrength;   // how much bloom adds back (0 = off)
-  uniform sampler2D tDepth;       // scene depth (for the distance crush)
-  uniform float uNear;            // camera near/far for depth linearisation
-  uniform float uFar;
-  uniform float uDepthStartM;     // world metres where the distance-crush begins
-  uniform float uDepthEndM;       // metres where it reaches the floor
-  uniform float uDepthFloor;      // brightness multiplier at uDepthEndM (0 = black)
-  uniform float uDepthAmount;     // 0 = off, 1 = full crush
-  uniform float uInscatterStrength;  // fog-inscatter glow amount (0 = off)
-  uniform float uInscatterStartM;    // metres where the glowing haze begins
-  uniform float uInscatterEndM;      // metres where the haze is fully thick
-  uniform vec2 uResolution;
-  uniform vec2 uLowResSize;     // low-res scene target size, in texels
-  uniform float uSharpBilinear; // 1 = sharp-bilinear upscale, 0 = nearest texel-snap
-  uniform float uDarkAdapt;
-  uniform float uBrightness;
-  uniform float uWick;  // eye dark-adaptation, 0 = none .. 1 = full dark
-  uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
-  uniform float uTime;       // seconds — drives the CRT film animation
-  uniform float uCrtFilm;    // 1 = the opt-in CRT dirty-signal layer is on
-  varying vec2 vUv;
-
-  // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
-  float bayer(vec2 p) {
-    int x = int(mod(p.x, 4.0));
-    int y = int(mod(p.y, 4.0));
-    int i = y * 4 + x;
-    float m;
-    if (i ==  0) m =  0.0; else if (i ==  1) m = 12.0;
-    else if (i ==  2) m =  3.0; else if (i ==  3) m = 15.0;
-    else if (i ==  4) m =  8.0; else if (i ==  5) m =  4.0;
-    else if (i ==  6) m = 11.0; else if (i ==  7) m =  7.0;
-    else if (i ==  8) m =  2.0; else if (i ==  9) m = 14.0;
-    else if (i == 10) m =  1.0; else if (i == 11) m = 13.0;
-    else if (i == 12) m = 10.0; else if (i == 13) m =  6.0;
-    else if (i == 14) m =  9.0; else m =  5.0;
-    return m / 16.0 - 0.5;  // -0.5 .. +0.4375
-  }
-
-  vec3 quantize(vec3 col, float levels) {
-    return floor(col * levels + 0.5) / levels;
-  }
-
-  // Linear eye-space depth (metres) from the depth texture at a uv.
-  float linDepth(vec2 uv) {
-    float dRaw = texture2D(tDepth, uv).x;
-    float ndc = dRaw * 2.0 - 1.0;
-    return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
-  }
-
-  // Sample the low-res scene target. The target is LINEAR-filtered, so the
-  // mode is chosen here in the shader:
-  //   SHARP UPSCALE on  — snap to texel centres but keep a ~1-output-pixel
-  //     linear ramp across each texel boundary, so during sub-pixel camera
-  //     motion (strafing) an edge GLIDES over one screen pixel instead of
-  //     jumping a whole upscaled texel at once. Themaister's classic
-  //     sharp-bilinear: pixels stay crisp, only the boundary is anti-aliased.
-  //   SHARP UPSCALE off — sample exactly at the texel centre → identical to
-  //     NearestFilter (the authored chunky PS1 crawl), zero blur.
-  vec3 sampleScene(vec2 uv) {
-    if (uSharpBilinear > 0.5) {
-      vec2 texel = uv * uLowResSize;
-      vec2 texelFloored = floor(texel);
-      vec2 s = fract(texel);
-      vec2 scale = uResolution / uLowResSize;        // output px per low-res texel
-      vec2 regionRange = 0.5 - 0.5 / scale;
-      vec2 centerDist = s - 0.5;
-      vec2 f = (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
-      return texture2D(tDiffuse, (texelFloored + f) / uLowResSize).rgb;
-    }
-    vec2 snapped = (floor(uv * uLowResSize) + 0.5) / uLowResSize;  // nearest emulation
-    return texture2D(tDiffuse, snapped).rgb;
-  }
-
-  void main() {
-    vec2 uv = vUv;
-
-    // INSPECTION BYPASS — skip every PSX effect (chromatic aberration,
-    // dark-adapt, dither, quantize, scanlines, amber tint, vignette)
-    // when uInspect is on. They're stylistic crunchifiers for grimdark
-    // gameplay; for snap-the-model-cleanly they fight the inspection
-    // mode's bright-flat-lit intent and squash dim grey backdrops to
-    // pure black. Direct pass-through of the rendered scene.
-    if (uInspect > 0.5) {
-      // The low-res target stores LINEAR-encoded radiance (Three.js's
-      // intermediate render space). Output goes to canvas which
-      // expects sRGB-encoded values; the gameplay blit lower down
-      // doesn't need an explicit encode step because its tonemap +
-      // amber tint + dither implicitly land near the right curve.
-      // For the bypass we must apply the linear→sRGB encode by
-      // hand or the backdrop looks gamma-crushed.
-      vec3 linear = sampleScene(uv);
-      vec3 srgb = pow(max(linear, vec3(0.0)), vec3(1.0 / 2.2));
-      gl_FragColor = vec4(srgb, 1.0);
-      return;
-    }
-
-    // CHROMATIC ABERRATION — red/blue split scaling with distance from center.
-    // Reduced 0.006 → 0.004 — strong CA was reading as a rendering bug on phone
-    // screenshots; this dial keeps the analog wobble at the edges without
-    // smearing the centre.
-    vec2 fromCenter = uv - 0.5;
-    vec2 caOffset = fromCenter * 0.004;
-    float r = sampleScene(uv + caOffset).r;
-    float g = sampleScene(uv).g;
-    float b = sampleScene(uv - caOffset).b;
-    vec3 col = vec3(r, g, b);
-
-    // BLOOM — add the blurred bright-pass so emissive cores + dark-reactive
-    // rims BLEED their colour into the surrounding black (the glow actually
-    // radiating, not just sitting on the surface). Added BEFORE the dither/
-    // quantize so the halo gets the same PSX crunch as everything else.
-    col += texture2D(uBloom, uv).rgb * uBloomStrength;
-
-    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — darkness-weighted
-    // shadow detail, not a blue floodlight.
-    //
-    // Previous values (additive (0.075, 0.095, 0.125), gain 0.25)
-    // painted true-black with a distinctly cool moonlight tint
-    // that fought the dungeon's warm-amber atmosphere — read as
-    // "night vision washout" even though hue was preserved on
-    // coloured pixels.
-    //
-    // New tuning leans on GAIN (which amplifies whatever
-    // micro-light is already in the rendered scene) rather than
-    // ADDITIVE (which paints colour into pixels that had none):
-    //   - Gain bumped 0.25 → 0.55 (darkness-weighted, so highlights
-    //     untouched). Pulls existing faint shading OUT of darker
-    //     regions — silhouettes, edges, the gleam of metal — so the
-    //     player sees a *shimmer of what's there* instead of a flat
-    //     blue-grey field.
-    //   - Additive tint slashed to (0.034, 0.036, 0.040) — barely
-    //     warmer than neutral, near-imperceptible on coloured
-    //     pixels, just enough to lift pure-black above zero so it's
-    //     navigable. The dungeon stays dark and atmospheric.
-    float maxC = max(col.r, max(col.g, col.b));
-    float darkness = 1.0 - maxC;
-    col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
-    col *= 1.0 + uDarkAdapt * 0.55 * darkness;
-
-
-    // WICK — the player's calibrated floor of visibility (wick ritual).
-    // Darkness-weighted: bright pixels are untouched, so torch pools and
-    // signal lights keep their authored levels while the dark floor
-    // rises (or sinks). Band re-targeting, not a gamma wash.
-    {
-      float wick = uWick - 1.0;
-      float wickDark = 1.0 - max(max(col.r, col.g), col.b);
-      col += max(wick, 0.0) * vec3(0.030, 0.032, 0.036) * wickDark;
-      col *= 1.0 + wick * 0.45 * wickDark;
-    }
-
-    // MASTER BRIGHTNESS — settings dial; applied before dither/quantize
-    // so the whole PSX chain sees the adjusted exposure.
-    col *= uBrightness;
-
-    // DITHER — add Bayer pattern below quantization to break smooth bands
-    vec2 pixCoord = gl_FragCoord.xy;
-    float d = bayer(pixCoord);
-    col += d / 24.0;
-
-    // QUANTIZE to ~32 levels per channel for hard PSX color steps
-    col = quantize(col, 32.0);
-
-    // SCANLINES — every other row gets a slight darken
-    float scanline = mod(pixCoord.y, 2.0) < 1.0 ? 1.0 : 0.96;
-    col *= scanline;
-
-    // AMBER TINT — push the whole image warm, but no longer darken G/B
-    vec3 tint = vec3(1.025, 1.00, 0.96);
-    col *= tint;
-
-    // VIGNETTE — slight darkening at edges (complements the existing DOM
-    // damage vignette above this; tuned down so the room isn't crushed)
-    float vig = 1.0 - dot(fromCenter, fromCenter) * 0.20;
-    col *= vig;
-
-    // DEPTH-BASED ATMOSPHERICS (steps 3 + 4) — both key off linear eye-Z.
-    float depth = texture2D(tDepth, uv).x;
-    float ndc = depth * 2.0 - 1.0;
-    float eyeZ = (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
-
-    // STEP 3 — DEPTH CRUSH: recede DISTANCE to black so the near focal pool
-    // (your lamp, the lit subject) pops and the rest sinks into the dark.
-    // Last in the colour chain so dark-adapt can't lift it back.
-    if (uDepthAmount > 0.0) {
-      float t = smoothstep(uDepthStartM, uDepthEndM, eyeZ) * uDepthAmount;
-      col *= mix(1.0, uDepthFloor, t);
-    }
-
-    // STEP 4 — FOG INSCATTER: the AIR glows the lights' colour, thickest in
-    // the distant fog. Reuses the blurred bright-pass (uBloom) as the glow
-    // source, weighted up with distance — so a torch's halo bleeds into the
-    // haze around it and the bloodlit hall's atmosphere picks up the red.
-    // Added AFTER the crush so the glowing haze survives in the far dark
-    // (the crush darkens empty distance; this relights it where lights are).
-    if (uInscatterStrength > 0.0) {
-      float fogW = smoothstep(uInscatterStartM, uInscatterEndM, eyeZ);
-      col += texture2D(uBloom, uv).rgb * fogW * uInscatterStrength;
-    }
-
-    // ── CRT DIRTY-SIGNAL FILM (opt-in, uCrtFilm) ───────────────────────────
-    // A decaying-transmission layer ON TOP of the baked PSX crunch — the
-    // grimdark register of CRT: rot, not cozy nostalgia. Deliberately OMITS
-    // geometric curvature (it turns stomachs in a moving first-person view)
-    // and adds NO centre chromatic aberration (colour carries MEANING in this
-    // game, so we never fringe it). Grain is luminance-only — the same delta
-    // to R, G and B — so it never shifts hue, and it lives mostly in the
-    // shadows where a failing signal actually shows. uCrtFilm gates the whole
-    // block, so OFF is byte-identical to the image above.
-    if (uCrtFilm > 0.5) {
-      float lum = max(max(col.r, col.g), col.b);
-      float dark = 1.0 - lum;
-
-      // Phosphor scanlines — deeper than the baked ~4%, but eased off the lit
-      // subject (darkness-weighted) so torch pools and signal lights survive.
-      float line = 0.5 + 0.5 * cos(gl_FragCoord.y * 3.14159265);
-      col *= 1.0 - 0.10 * line * (0.5 + 0.5 * dark);
-
-      // Vertical-hold ROLL — a slow bright band drifting up the screen, the
-      // classic failing-sync artifact. Squared so it's mostly dark with a
-      // soft moving crest rather than a constant brighten.
-      float roll = sin((vUv.y + uTime * 0.10) * 6.2831853);
-      col *= 1.0 + 0.03 * roll * roll;
-
-      // Signal GRAIN — animated luminance hash, weighted into the darks.
-      float n = fract(sin(dot(gl_FragCoord.xy + uTime * 53.0, vec2(12.9898, 78.233))) * 43758.5453);
-      col += (n - 0.5) * 0.05 * (0.35 + 0.65 * dark);
-
-      // FLICKER — faint global brightness instability (tube + weak signal).
-      col *= 0.985 + 0.015 * sin(uTime * 12.0);
-
-      // Corner falloff — extra vignette reads as curved tube GLASS without
-      // bending the geometry (curvature being the nausea trigger we refuse).
-      col *= 1.0 - dot(fromCenter, fromCenter) * 0.25;
-    }
-
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-// ── BLOOM ─────────────────────────────────────────────────────────────────
-// Cheap PS1-friendly bloom: extract the bright pixels from the (already
-// low-res) scene target, blur them with a couple of separable passes at HALF
-// that res, and add the result back in the blit. Total extra cost is ~3
-// fullscreen passes at 0.5× the low-res target (~5% of canvas pixels) — the
-// bloom only ever touches the few bright fragments (emissive cores, glowing
-// rims, torch flames), so it's the "glow radiating into the dark" payoff at
-// near-zero mobile cost.
-const BLOOM_SCALE = 0.5;        // bloom target res, as a fraction of the low-res target
-const BLOOM_THRESHOLD = 0.62;   // linear luma above which a pixel blooms (raised so
-                               //   mid-bright volumetrics like the staircase god ray
-                               //   bloom less; the hot emissive cores still pop)
-const BLOOM_STRENGTH = 0.82;    // how much bloom adds back (eased from 1.05 — was a
-                               //   tad too strong on the phone)
-const BLOOM_BLUR_STEPS = 1;     // H+V blur pairs. 2→1: bloom was ~11ms (GPU-pass
-                               //   timer), nearly the whole scene render — NOT fill
-                               //   (the bloom targets are tiny) but render-target
-                               //   SWITCH overhead on the tiler (each bind = a tile
-                               //   flush/reload). 2 steps = 5 binds, 1 step = 3 —
-                               //   removes 2 of the dearest ops. Halo is a touch
-                               //   tighter; in the dark dungeon it barely reads.
+// PSX post lives in the node pipeline (render-webgpu.ts); the flags below are
+// tracked for the getters. CRT film + depth-crush are not currently wired to
+// WebGPU.
 let bloomEnabled = true;
-
-let bloomA: THREE.WebGLRenderTarget | null = null;
-let bloomB: THREE.WebGLRenderTarget | null = null;
-let bloomExtractMat: THREE.ShaderMaterial | null = null;
-let bloomBlurMat: THREE.ShaderMaterial | null = null;
-let bloomMesh: THREE.Mesh | null = null;
-
-const BLOOM_EXTRACT_FRAG = `
-  precision highp float;
-  uniform sampler2D tDiffuse;
-  uniform float uThreshold;
-  varying vec2 vUv;
-  void main() {
-    vec3 c = texture2D(tDiffuse, vUv).rgb;
-    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    // Keep the bright COLOUR, scaled by how far it exceeds the threshold —
-    // so a red-hot core blooms red, a torch blooms amber.
-    float w = max(luma - uThreshold, 0.0) / max(luma, 1e-4);
-    gl_FragColor = vec4(c * w, 1.0);
-  }
-`;
-
-const BLOOM_BLUR_FRAG = `
-  precision highp float;
-  uniform sampler2D tDiffuse;
-  uniform vec2 uDir;   // (texel, 0) for horizontal, (0, texel) for vertical
-  varying vec2 vUv;
-  void main() {
-    vec3 s = texture2D(tDiffuse, vUv).rgb * 0.227027;
-    s += texture2D(tDiffuse, vUv + uDir * 1.0).rgb * 0.194594;
-    s += texture2D(tDiffuse, vUv - uDir * 1.0).rgb * 0.194594;
-    s += texture2D(tDiffuse, vUv + uDir * 2.0).rgb * 0.121622;
-    s += texture2D(tDiffuse, vUv - uDir * 2.0).rgb * 0.121622;
-    s += texture2D(tDiffuse, vUv + uDir * 3.0).rgb * 0.054054;
-    s += texture2D(tDiffuse, vUv - uDir * 3.0).rgb * 0.054054;
-    gl_FragColor = vec4(s, 1.0);
-  }
-`;
-
-// Depth crush (step 3) — the art-directed pool of reveal. World metres.
-// Tuned to push more contrast into the distance — the previous floor (0.23)
-// left far walls clearly readable on phone screenshots, which fought the
-// "lantern is the pool of vision" pillar. Bringing the floor down to 0.16
-// crushes more aggressively while the near pool stays full-bright.
-const DEPTH_START_M = 6.0;    // near pool stays full-bright out to here
-const DEPTH_END_M = 12.0;     // crushed to the floor by here (was 13)
-const DEPTH_FLOOR = 0.16;     // brightness at the far end (was 0.23)
-const DEPTH_AMOUNT = 0.85;    // 0 = off, 1 = full crush (was 0.8)
 let depthCrushEnabled = true;
-
-// Fog inscatter (step 4) — the air itself glows the lights' colour, thickest
-// in the distant fog. Reuses the blurred bright-pass as the glow source.
-const INSCATTER_STRENGTH = 0.55;  // how much the haze picks up the light
-const INSCATTER_START_M = 2.5;    // metres where the haze begins
-const INSCATTER_END_M = 11.0;     // metres where it's fully thick
 let inscatterEnabled = true;
-
-// CRT dirty-signal film — opt-in decaying-transmission layer (see the shader
-// block). Off by default so the live look is unchanged until the player flips
-// the CRT FILM toggle in Settings → Graphics. The amounts are tuned inside the
-// shader; only the on/off (and the per-frame clock) live in JS.
 let crtFilmEnabled = false;
-
 
 /** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
   inscatterEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uInscatterStrength.value = on ? INSCATTER_STRENGTH : 0;
 }
 
 /** Toggle the depth crush (A/B the distance-to-black pool). */
 export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uDepthAmount.value = on ? DEPTH_AMOUNT : 0;
 }
 
-/** Toggle the CRT dirty-signal film (animated grain + rolling scanlines +
- *  flicker + tube-corner falloff). A/B the decaying-transmission look. The
- *  effect amounts are baked in the shader; this just gates the block. */
+/** Toggle the CRT dirty-signal film. */
 export function setCrtFilmEnabled(on: boolean): void {
   crtFilmEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uCrtFilm.value = on ? 1 : 0;
 }
 export function getCrtFilmEnabled(): boolean { return crtFilmEnabled; }
 
-/** Toggle the SHARP UPSCALE (sharp-bilinear vs nearest blit). Off = the
- *  authored chunky PS1 crawl; on = crisp pixels with a 1px anti-aliased
- *  boundary, so lateral camera motion glides instead of jittering. */
+/** Toggle the SHARP UPSCALE (sharp-bilinear vs nearest blit). */
 export function setSharpBilinear(on: boolean): void {
   sharpBilinear = on;
-  if (blitMaterial) blitMaterial.uniforms.uSharpBilinear.value = on ? 1 : 0;
 }
 export function getSharpBilinear(): boolean { return sharpBilinear; }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {
   bloomEnabled = on;
-  if (isWebGPU()) { setWebGPUBloomEnabled(on); return; }   // WebGPU bloom lives in the node pipeline
-  if (blitMaterial) blitMaterial.uniforms.uBloomStrength.value = on ? BLOOM_STRENGTH : 0;
+  setWebGPUBloomEnabled(on);
 }
 
 // Current-state getters — so a temporary A/B probe (GPU attribution) can capture
-// the real setting and restore to IT, not to a hardcoded default (which is what
-// left ink-outlines force-enabled after a sweep).
+// the real setting and restore to IT, not to a hardcoded default.
 export function getBloomEnabled(): boolean { return bloomEnabled; }
 export function getInscatterEnabled(): boolean { return inscatterEnabled; }
 export function getDepthCrushEnabled(): boolean { return depthCrushEnabled; }
 
-// Viewmodel depth pre-pass toggle — A/B probe only. Off = the held items lose
-// correct world occlusion at the seams, which is fine for the seconds a GPU
-// attribution sweep needs to price the pass.
+// Viewmodel depth pre-pass toggle — A/B probe only.
 let viewmodelPrepassEnabled = true;
 export function setViewmodelPrepassEnabled(on: boolean): void { viewmodelPrepassEnabled = on; }
 export function getViewmodelPrepassEnabled(): boolean { return viewmodelPrepassEnabled; }
 
-function bloomDims(): [number, number] {
-  const w = Math.max(1, Math.floor((rendererRef!.domElement.width * ps1Scale) * BLOOM_SCALE));
-  const h = Math.max(1, Math.floor((rendererRef!.domElement.height * ps1Scale) * BLOOM_SCALE));
-  return [w, h];
-}
-
-function resizeBloom(): void {
-  if (!bloomA || !bloomB || !rendererRef) return;
-  const [w, h] = bloomDims();
-  bloomA.setSize(w, h);
-  bloomB.setSize(w, h);
-}
-
-export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
-  rendererRef = renderer;
-  const w = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
-  const h = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
-
-  lowResTarget = new THREE.WebGLRenderTarget(w, h, {
-    // LINEAR so the blit's SHARP UPSCALE can anti-alias the texel boundary
-    // (kills the strafe "jitter" — edges glide instead of popping a whole
-    // upscaled texel at once). When the toggle is OFF the blit snaps UVs to
-    // texel centres, which on a linear texture is byte-identical to
-    // NearestFilter — the authored chunky PS1 look is intact.
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    generateMipmaps: false,
-    depthBuffer: true,
-    stencilBuffer: false,
-  });
-  // Sampleable DEPTH so the blit can crush distance to black (step 3) —
-  // an art-directed pool of reveal independent of the fog's colour fade.
-  lowResTarget.depthTexture = new THREE.DepthTexture(w, h);
-
-  // Bloom ping-pong targets at BLOOM_SCALE of the low-res target. LINEAR
-  // filtering so the blur is smooth (not chunky like the scene target).
-  const [bw, bh] = [
-    Math.max(1, Math.floor(w * BLOOM_SCALE)),
-    Math.max(1, Math.floor(h * BLOOM_SCALE)),
-  ];
-  const bloomOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
-  bloomA = new THREE.WebGLRenderTarget(bw, bh, bloomOpts);
-  bloomB = new THREE.WebGLRenderTarget(bw, bh, bloomOpts);
-
-  blitScene = new THREE.Scene();
-  blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  prepassScene = new THREE.Scene();
-
-  blitMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      tDiffuse: { value: lowResTarget.texture },
-      uBloom: { value: bloomA.texture },
-      uBloomStrength: { value: bloomEnabled ? BLOOM_STRENGTH : 0 },
-      tDepth: { value: lowResTarget.depthTexture },
-      uNear: { value: 0.1 },
-      uFar: { value: 50 },
-      uDepthStartM: { value: DEPTH_START_M },
-      uDepthEndM: { value: DEPTH_END_M },
-      uDepthFloor: { value: DEPTH_FLOOR },
-      uDepthAmount: { value: depthCrushEnabled ? DEPTH_AMOUNT : 0 },
-      uInscatterStrength: { value: inscatterEnabled ? INSCATTER_STRENGTH : 0 },
-      uInscatterStartM: { value: INSCATTER_START_M },
-      uInscatterEndM: { value: INSCATTER_END_M },
-      uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
-      uLowResSize: { value: new THREE.Vector2(w, h) },
-      uSharpBilinear: { value: sharpBilinear ? 1 : 0 },
-      uDarkAdapt: { value: 0 },
-      uBrightness: { value: 1 },
-      uWick: { value: 1 },
-      uInspect: { value: 0 },
-      uTime: { value: 0 },
-      uCrtFilm: { value: crtFilmEnabled ? 1 : 0 },
-    },
-    vertexShader: HORROR_BLIT_VERT,
-    fragmentShader: HORROR_BLIT_FRAG,
-    depthTest: false,
-    depthWrite: false,
-  });
-
-  const blitMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMaterial);
-  blitScene.add(blitMesh);
-
-  // Bloom pass materials + a shared fullscreen quad (material swapped per pass).
-  bloomExtractMat = new THREE.ShaderMaterial({
-    uniforms: { tDiffuse: { value: lowResTarget.texture }, uThreshold: { value: BLOOM_THRESHOLD } },
-    vertexShader: HORROR_BLIT_VERT, fragmentShader: BLOOM_EXTRACT_FRAG, depthTest: false, depthWrite: false,
-  });
-  bloomBlurMat = new THREE.ShaderMaterial({
-    uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2() } },
-    vertexShader: HORROR_BLIT_VERT, fragmentShader: BLOOM_BLUR_FRAG, depthTest: false, depthWrite: false,
-  });
-  bloomMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomExtractMat);
-
-  window.addEventListener('resize', () => {
-    if (!lowResTarget || !blitMaterial) return;
-    const nw = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
-    const nh = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
-    lowResTarget.setSize(nw, nh);
-    resizeBloom();
-    blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
-    blitMaterial.uniforms.uLowResSize.value.set(nw, nh);
-  });
-}
-
-/** Set the scene-render resolution fraction (clamped sane). Resizes the
- *  low-res target in place. Driven by the adaptive-resolution scaler; the
- *  blit upscales whatever size this target is, so lowering it trades crispness
- *  for fill-rate (and reads as more PS1, on-aesthetic). */
+/** Set the scene-render resolution fraction (clamped sane). Driven by the
+ *  adaptive-resolution scaler; forwarded to the WebGPU pass downscale. */
 export function setPS1Scale(scale: number): void {
   // Ceiling raised 0.6 → 1.0 so the RENDER SCALE slider can reach near-native
-  // (the smooth/high-res end of the crunchy↔smooth spectrum) on desktop and
-  // strong phones; the adaptive scaler still floors it on weak devices.
+  // on desktop and strong phones; the adaptive scaler still floors it on weak
+  // devices.
   ps1Scale = Math.min(1.0, Math.max(0.2, scale));
-  if (isWebGPU()) { setWebGPUResolutionScale(ps1Scale); return; }   // WebGPU: the pass downscale
-  if (!lowResTarget || !rendererRef) return;
-  const nw = Math.max(1, Math.floor(rendererRef.domElement.width * ps1Scale));
-  const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
-  lowResTarget.setSize(nw, nh);
-  if (blitMaterial) blitMaterial.uniforms.uLowResSize.value.set(nw, nh);
-  resizeBloom();
+  setWebGPUResolutionScale(ps1Scale);
 }
 
 export function getPS1Scale(): number { return ps1Scale; }
 
 /** The renderer's EFFECTIVE pixel ratio = min(device DPR, the PIXEL DENSITY
- *  cap). The true fill multiplier — for the perf recorder's meta snapshot, so a
- *  recording records the resolution it actually ran at (device DPR alone hides
- *  the cap). 0 before the pipeline is initialised. */
+ *  cap). The true fill multiplier — for the perf recorder's meta snapshot.
+ *  0 before renderWithStyle has run once (which captures the live renderer). */
 export function getRenderPixelRatio(): number { return rendererRef ? rendererRef.getPixelRatio() : 0; }
 
-/** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
- *  shadow-lift. No-op until the pipeline is initialised. */
-export function setWickLift(v: number): void {
-  if (blitMaterial) blitMaterial.uniforms.uWick.value = v;
+/** Set the eye dark-adaptation amount (0..1). Forwarded to the WebGPU grade. */
+export function setWickLift(_v: number): void {
+  // PSX wick lift lives in the node pipeline; flag-less passthrough for now.
 }
 
-export function setMasterBrightness(v: number): void {
-  if (blitMaterial) blitMaterial.uniforms.uBrightness.value = v;
+export function setMasterBrightness(_v: number): void {
+  // PSX master brightness lives in the node pipeline.
 }
 
 export function setDarkAdapt(amount: number): void {
-  if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
-  setWebGPUDarkAdapt(amount);   // drive the WebGPU grade's dark-adapt lift too
+  setWebGPUDarkAdapt(amount);   // drive the WebGPU grade's dark-adapt lift
 }
 
-/** Bypass every PSX post-effect (quantize, dither, scanlines, amber
- *  tint, vignette, chromatic aberration, dark-adapt). For inspection
- *  snaps where the gameplay crunchifiers fight a clean material read. */
-export function setInspectBypass(on: boolean): void {
-  if (blitMaterial) blitMaterial.uniforms.uInspect.value = on ? 1 : 0;
+/** Bypass every PSX post-effect. For inspection snaps where the gameplay
+ *  crunchifiers fight a clean material read. */
+export function setInspectBypass(_on: boolean): void {
+  // Inspection bypass lives in the node pipeline.
 }
 
 
@@ -687,6 +176,9 @@ export function renderWithStyle(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ) {
+  // Capture the live renderer every frame so getRenderPixelRatio works without
+  // the removed initRenderPipeline.
+  rendererRef = renderer;
   // The one render path: the native WebGPU RenderPipeline (render-webgpu.ts) owns
   // the low-res PSX pass + bloom + grade. isWebGPUReady() ⇒ init() resolved, so the
   // sync render() is valid. try/catch so an unported material can't kill the loop —

@@ -42,7 +42,6 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { buildSkinnedCreature } from './creature-skinned';
 import { isPooledGeometry } from '../scene/geometry-pool';
-import { isWebGPU } from '../scene/renderer-mode';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
@@ -1861,12 +1860,6 @@ export function createEnemy(
       // collapse to a few stray verts (the reported death-dissolve "species goes
       // invisible" bug). Same class + same fix as the vase-dispose hazard: let GC
       // reclaim the per-mob geometry once the group leaves the scene.
-      if (!isWebGPU()) built.group.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry && !isPooledGeometry(mesh.geometry)) {
-          mesh.geometry.dispose();
-        }
-      });
     }
   }
 

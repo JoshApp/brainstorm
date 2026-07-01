@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { isWebGPU } from '../scene/renderer-mode';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -314,42 +313,9 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   return tex;
 }
 
-export function bakeSurfaceTexture(renderer: THREE.WebGLRenderer, kind: SurfaceKind): THREE.DataTexture {
-  // WEBGPU: the GLSL bake (ShaderMaterial + readRenderTargetPixels) is WebGL-only
-  // and runs at module-boot, so it can't run here. Generate the SAME patterns on
-  // the CPU instead (bakeSurfaceCPU) — faithful, one-time, no GL/readback. Also
-  // the future direction for both backends (removes the readback hack).
-  if (isWebGPU()) return bakeSurfaceCPU(kind);
-  const tile = SURFACE_TILE[kind];
-  const mode = kind === 'wall' ? 0 : kind === 'floor' ? 1 : kind === 'ceiling' ? 2 : kind === 'dressed' ? 3 : 4;
-  const { scene, cam, mat } = ensureQuad();
-  mat.uniforms.uMode.value = mode;
-  mat.uniforms.uTile.value.set(tile[0], tile[1]);
-
-  const rt = new THREE.WebGLRenderTarget(TEX, TEX, {
-    format: THREE.RGBAFormat,
-    type: THREE.UnsignedByteType,
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    depthBuffer: false,
-    stencilBuffer: false,
-    colorSpace: THREE.LinearSRGBColorSpace,
-  });
-  const prevRT = renderer.getRenderTarget();
-  renderer.setRenderTarget(rt);
-  renderer.render(scene, cam);
-  const buf = new Uint8Array(TEX * TEX * 4);
-  renderer.readRenderTargetPixels(rt, 0, 0, TEX, TEX, buf);
-  renderer.setRenderTarget(prevRT);
-  rt.dispose();
-
-  const tex = new THREE.DataTexture(buf, TEX, TEX, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = true;
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  tex.colorSpace = THREE.LinearSRGBColorSpace;   // detail/height data, not sRGB colour
-  tex.needsUpdate = true;
-  return tex;
+export function bakeSurfaceTexture(_renderer: THREE.WebGLRenderer, kind: SurfaceKind): THREE.DataTexture {
+  // The GLSL bake (ShaderMaterial + readRenderTargetPixels) was WebGL-only; the
+  // sole (WebGPU) path generates the SAME patterns on the CPU (bakeSurfaceCPU) —
+  // faithful, one-time, no GL/readback.
+  return bakeSurfaceCPU(kind);
 }

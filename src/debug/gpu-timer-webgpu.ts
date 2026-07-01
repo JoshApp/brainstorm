@@ -1,4 +1,3 @@
-import { isWebGPU } from '../scene/renderer-mode';
 
 // Native WebGPU GPU timing via timestamp queries — the WebGPU replacement for the
 // WebGL2 EXT_disjoint_timer_query path (gpu-timer.ts). The renderer is created
@@ -19,7 +18,7 @@ let inFlight = false;
  *  latest ms. Call once per frame AFTER the render is submitted. Self-throttles
  *  (skips if a previous resolve is still in flight). */
 export function tickWebGPUTimestamps(renderer: unknown): void {
-  if (!isWebGPU() || inFlight) return;
+  if (inFlight) return;
   const r = renderer as { resolveTimestampsAsync?: (type: string) => Promise<number> };
   if (typeof r?.resolveTimestampsAsync !== 'function') return;
   inFlight = true;

@@ -1,5 +1,4 @@
 import type * as THREE from 'three';
-import { isWebGPU } from '../scene/renderer-mode';
 import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform, materialColor } from 'three/tsl';
 
 // Live control of the baked surface AO (the wall/floor vertex colours, which
@@ -51,29 +50,7 @@ const PROP_AO_OCC = 0.65;    // max occlusion right at the base
  * existing onBeforeCompile so it won't clobber a prop's own shader work.
  */
 export function installPropHeightAO(material: THREE.Material): void {
-  if (isWebGPU()) { installPropHeightAOWebGPU(material as THREE.MeshStandardMaterial); return; }
-  const prev = material.onBeforeCompile;
-  material.onBeforeCompile = function (shader, renderer) {
-    if (prev) prev.call(this, shader, renderer);
-    shader.uniforms.uAOStrength = uAOStrength;
-    shader.vertexShader =
-      'varying float vWorldY;\n' +
-      shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        '#include <begin_vertex>\n  vWorldY = (modelMatrix * vec4(transformed, 1.0)).y;',
-      );
-    shader.fragmentShader =
-      'uniform float uAOStrength;\nvarying float vWorldY;\n' +
-      shader.fragmentShader.replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
-  {
-    float occ = clamp((1.0 - smoothstep(0.0, ${PROP_AO_FADE.toFixed(2)}, vWorldY)) * ${PROP_AO_OCC.toFixed(2)} * uAOStrength, 0.0, 1.0);
-    diffuseColor.rgb *= mix(vec3(1.0), ${SHADOW_TINT_GLSL}, occ);
-  }`,
-      );
-  };
-  material.needsUpdate = true;
+  installPropHeightAOWebGPU(material as THREE.MeshStandardMaterial);
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
