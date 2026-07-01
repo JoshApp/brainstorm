@@ -317,7 +317,12 @@ export function populateTemplate(
           // gets the next pack slot in order.
         } else {
           const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
-          spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
+          // The boss ARENA is boss-only by default: the fight is the boss, not the
+          // boss plus a room of trash. We still ROLL (so the rng sequence — and thus
+          // the rest of the floor's layout — stays identical) but DON'T place the
+          // rolled mob when this is the boss-arena vault (allowBossExpansion). The
+          // approach floor's combat vaults are unaffected. `B` (the boss) still spawns.
+          if (!allowBossExpansion) spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
           out += '.';
         }
       } else if (ch === 'B') {
