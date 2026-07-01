@@ -286,7 +286,11 @@ export class NavGrid {
           n = cameFrom.get(n)!;
         }
         path.reverse();
-        return this.funnel(path, startX, startZ);
+        // STRING-PULL first (taut the blocky cell path — clearance-aware, so it can
+        // never skip through less space than the cells guaranteed), THEN funnel so
+        // the gate alignment/centre points land on the smoothed path.
+        const pulled = this.stringPull(path, startX, startZ, radius);
+        return this.funnel(pulled, startX, startZ);
       }
       // Pop
       open[bestI] = open[open.length - 1];
@@ -382,6 +386,44 @@ export class NavGrid {
       prev = wp;
     }
     return out;
+  }
+
+  /** String-pull (funnel/taut) the blocky cell path: keep only the CORNERS where
+   *  the straight line would leave walkable space, drop the rest. Clearance-aware —
+   *  a segment is only "clear" if every sample along it is walkable at the agent
+   *  radius (movement truth via region.contains), so the taut path can never hug a
+   *  wall/pillar tighter than the original cell path did. Returns waypoints EXCLUDING
+   *  the start (matching findPath's contract). */
+  private stringPull(path: Waypoint[], startX: number, startZ: number, radius: number): Waypoint[] {
+    if (path.length <= 1) return path;
+    const pts: Waypoint[] = [{ x: startX, z: startZ }, ...path];
+    const out: Waypoint[] = [];
+    let anchor = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      // If the anchor can't see PAST pts[i] (to pts[i+1]) with clearance, then
+      // pts[i] is a genuine corner we must keep; re-anchor there.
+      if (!this.clearLine(pts[anchor].x, pts[anchor].z, pts[i + 1].x, pts[i + 1].z, radius)) {
+        out.push(pts[i]);
+        anchor = i;
+      }
+    }
+    out.push(pts[pts.length - 1]);
+    return out;
+  }
+
+  /** Is the straight segment A→B walkable for a body of `radius` the whole way?
+   *  Samples region.contains at ~half-cell spacing — the same collision test
+   *  movement uses, so it's honest about walls AND obstacles (pillars). */
+  private clearLine(ax: number, az: number, bx: number, bz: number, radius: number): boolean {
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    const steps = Math.max(1, Math.ceil(len / (CELL_SIZE * 0.5)));
+    const opts = { ignoreObstacles: this.ignoreObstacles };
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      if (!this.region.contains(ax + dx * t, az + dz * t, radius, opts)) return false;
+    }
+    return true;
   }
 
   /** True when the straight segment A→B would pass a gate too close to

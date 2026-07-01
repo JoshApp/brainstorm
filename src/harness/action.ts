@@ -77,6 +77,7 @@ async function dispatch(
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   switch (action.kind) {
     case 'move':   return moveAction(ctx, action.dir, action.seconds, action.look);
+    case 'steer':  return steerAction(ctx, action.to, action.seconds, action.look);
     case 'turn':   return turnAction(ctx, action.angle);
     case 'face':   return faceAction(ctx, action.target);
     case 'attack': return attackAction(ctx);
@@ -135,6 +136,42 @@ async function moveAction(
   const end = await requestTickBudget({
     maxSeconds: seconds ?? MOVE_SECONDS_DEFAULT,
   });
+  return { ok: true, budgetEnd: end.reason };
+}
+
+/** Continuous steering toward a WORLD POINT (not an 8-way compass) — follows a
+ *  smoothed path exactly instead of quantizing the heading (which drifted the bot
+ *  off the line + caused the doorway clip / oscillation). The move direction is
+ *  recomputed each frame from the live camera position, so the bot curves toward the
+ *  target as it advances. Look eases toward `look` (the focus) if given, else toward
+ *  the point we're steering at; pitch eases back to level. */
+async function steerAction(
+  ctx: HarnessContext,
+  to: { x: number; z: number },
+  seconds?: number,
+  look?: { x: number; z: number },
+): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
+  setInputOverride((state: InputState) => {
+    const cam = ctx.camera.position;
+    const wx = to.x - cam.x, wz = to.z - cam.z;
+    const len = Math.hypot(wx, wz) || 1;
+    const mx = wx / len, mz = wz / len;                 // unit world move dir
+    const lookAt = look ?? to;
+    const desiredYaw = yawForWorldDirection(lookAt.x - cam.x, lookAt.z - cam.z);
+    let d = desiredYaw - ctx.camera.rotation.y;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    const yaw = ctx.camera.rotation.y + Math.max(-0.08, Math.min(0.08, d));
+    setCameraYaw(yaw);
+    const p = getCameraPitch();
+    setCameraPitch(p + Math.max(-0.05, Math.min(0.05, -p)));
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    state.moveX = mx * cy - mz * sy;
+    state.moveY = mx * sy + mz * cy;
+    state.lookDx = 0;
+    state.lookDy = 0;
+  });
+  const end = await requestTickBudget({ maxSeconds: seconds ?? MOVE_SECONDS_DEFAULT });
   return { ok: true, budgetEnd: end.reason };
 }
 

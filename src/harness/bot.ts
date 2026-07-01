@@ -137,9 +137,9 @@ export function step(obs: Observation, nav?: Nav): Action {
     e.distance < 10 && !isDeadOrDying(e) && !memory.blacklist.has(e.id),
   );
   if (nearHostile && nearHostile.distance > STRIKE_REACH) {
-    // Focused on the foe: MOVE along the route but keep the gaze locked on it.
-    const dir = nav?.dirToward(obs.player.pos, nearHostile.pos);
-    if (dir) return { kind: 'move', dir, seconds: 0.3, look: nearHostile.pos };
+    // Focused on the foe: STEER along the smoothed route, gaze locked on it.
+    const wp = nav?.waypoint(obs.player.pos, nearHostile.pos);
+    if (wp) return { kind: 'steer', to: wp, seconds: 0.3, look: nearHostile.pos };
     // Greedy fallback (no nav / no route): face if off-axis, else step forward.
     if (nearHostile.inSight && Math.abs(nearHostile.bearing) > Math.PI / 6) {
       return { kind: 'face', target: { id: nearHostile.id } };
@@ -171,9 +171,10 @@ export function step(obs: Observation, nav?: Nav): Action {
       && !memory.usedInteractableIds.has(i.id) && !memory.blacklist.has(i.id),
   );
   if (sightedUseful) {
-    // Focused on the loot: route to it but keep the gaze on it.
-    const dir = nav?.dirToward(obs.player.pos, sightedUseful.pos) ?? sightedUseful.compass;
-    return { kind: 'move', dir, seconds: 0.4, look: sightedUseful.pos };
+    // Focused on the loot: steer to it, gaze on it.
+    const wp = nav?.waypoint(obs.player.pos, sightedUseful.pos);
+    if (wp) return { kind: 'steer', to: wp, seconds: 0.4, look: sightedUseful.pos };
+    return { kind: 'move', dir: sightedUseful.compass, seconds: 0.4, look: sightedUseful.pos };
   }
 
   // 5.5 BOSS GATE — the fog wall (kind 'boss', from the 'boss-mist' id) SEALS the
@@ -190,8 +191,9 @@ export function step(obs: Observation, nav?: Nav): Action {
       memory.usedInteractableIds.add(bossGate.id);
       return { kind: 'interact' };
     }
-    const dir = nav?.dirToward(obs.player.pos, bossGate.pos) ?? avoidWalls(bossGate.compass, obs.geometry.walls8);
-    return { kind: 'move', dir, seconds: 0.4 };
+    const wp = nav?.waypoint(obs.player.pos, bossGate.pos);
+    if (wp) return { kind: 'steer', to: wp, seconds: 0.4, look: bossGate.pos };
+    return { kind: 'move', dir: avoidWalls(bossGate.compass, obs.geometry.walls8), seconds: 0.4 };
   }
 
   // 6. Nothing left to loot → head for the stairs. In range → face + descend.
@@ -213,8 +215,8 @@ export function step(obs: Observation, nav?: Nav): Action {
   const allStairs = obs.visible.interactables.filter((i) => i.kind === 'stairs');
   if (allStairs.length) {
     for (const s of allStairs) {
-      const dir = nav?.dirToward(obs.player.pos, s.pos);
-      if (dir) return { kind: 'move', dir, seconds: 0.4 };
+      const wp = nav?.waypoint(obs.player.pos, s.pos);
+      if (wp) return { kind: 'steer', to: wp, seconds: 0.4 };
     }
     // None nav-reachable (or no grid) → greedy toward the nearest.
     return { kind: 'move', dir: avoidWalls(allStairs[0].compass, obs.geometry.walls8), seconds: 0.4 };
