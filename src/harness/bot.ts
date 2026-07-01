@@ -170,6 +170,24 @@ export function step(obs: Observation, nav?: Nav): Action {
     return { kind: 'move', dir, seconds: 0.4 };
   }
 
+  // 5.5 BOSS GATE — the fog wall (kind 'boss', from the 'boss-mist' id) SEALS the
+  //     arena as a wall segment, so the boss reads as unreachable until you commit.
+  //     It only opens on an explicit INTERACT ('enter the mist'). Approach it and
+  //     enter; the combat rules (1-3) take over the instant the boss activates. Mark
+  //     it used so we fight the boss instead of re-triggering the now-open gate.
+  const bossGate = obs.visible.interactables.find(
+    (i) => i.kind === 'boss' && !memory.usedInteractableIds.has(i.id) && !memory.blacklist.has(i.id),
+  );
+  if (bossGate) {
+    if (bossGate.inRange) {
+      if (Math.abs(bossGate.bearing) > Math.PI / 6) return { kind: 'face', target: { id: bossGate.id } };
+      memory.usedInteractableIds.add(bossGate.id);
+      return { kind: 'interact' };
+    }
+    const dir = nav?.dirToward(obs.player.pos, bossGate.pos) ?? avoidWalls(bossGate.compass, obs.geometry.walls8);
+    return { kind: 'move', dir, seconds: 0.4 };
+  }
+
   // 6. Nothing left to loot → head for the stairs. In range → face + descend.
   //    interactables.system needs the stair in the forward cone (not just radius),
   //    so face first; inRange in the obs is distance-only.
