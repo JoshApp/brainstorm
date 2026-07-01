@@ -87,29 +87,21 @@ export function getViewmodelRoots(): readonly THREE.Object3D[] {
   return viewmodelRoots;
 }
 
-// PSX post lives in the node pipeline (render-webgpu.ts); the flags below are
-// tracked for the getters. CRT film + depth-crush are not currently wired to
-// WebGPU.
+// PSX post (dither/quantize/scanlines/chromatic/depth-crush/inscatter/bloom)
+// lives in the node pipeline (render-webgpu.ts) and is always on. These flags +
+// setters are legacy A/B toggles that no longer drive anything under WebGPU;
+// kept only for their getters until the callers are cleaned up.
 let bloomEnabled = true;
 let depthCrushEnabled = true;
 let inscatterEnabled = true;
-let crtFilmEnabled = false;
 
-/** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
   inscatterEnabled = on;
 }
 
-/** Toggle the depth crush (A/B the distance-to-black pool). */
 export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
 }
-
-/** Toggle the CRT dirty-signal film. */
-export function setCrtFilmEnabled(on: boolean): void {
-  crtFilmEnabled = on;
-}
-export function getCrtFilmEnabled(): boolean { return crtFilmEnabled; }
 
 /** Toggle the SHARP UPSCALE (sharp-bilinear vs nearest blit). */
 export function setSharpBilinear(on: boolean): void {

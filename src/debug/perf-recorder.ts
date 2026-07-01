@@ -198,7 +198,6 @@ function graphicsSnapshot(): Record<string, unknown> {
     portalCulling: s.portalCulling,
     surfaceDetail: s.surfaceDetail,
     bandedLighting: s.bandedLighting,
-    crtFilm: s.crtFilm,
     aoStrength: s.aoStrength,
     brightness: s.brightness,
     wick: s.wick,
