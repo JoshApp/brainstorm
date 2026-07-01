@@ -12,6 +12,7 @@ import type { InputState } from '../controls/input';
 import { setInputOverride } from '../controls/input';
 import { setCameraYaw, setCameraPitch, getCameraPitch } from '../controls/camera';
 import { dismissTopScreen } from '../ui/screen-manager';
+import { autoPickFirstCard } from '../ui/card-reading';
 import { triggerAttack } from '../controls/attack-input';
 import { useFirstConsumable } from '../controls/consumable-bar';
 import { getInRangeInteractable, getAllInteractables } from '../interactables/system';
@@ -337,9 +338,15 @@ function useAction(slot: number): Omit<ActionResult, 'observation' | 'elapsed'> 
  *  bot could only wait for a human. Real-time delay (not a tick budget) so it can't
  *  hang on a still-paused world — the frame after dismiss resumes it. */
 async function dismissAction(): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
-  const dismissed = dismissTopScreen();
-  await new Promise((r) => setTimeout(r, 60));
-  return { ok: dismissed, reason: dismissed ? undefined : 'no-screen' };
+  // A fate DRAW (card-reading) must be RESOLVED by PICKING — dismissing it leaves the
+  // fate gate armed and the safe-room stairs sealed, so the bot could never advance.
+  // Pick the first card if a reading is open; otherwise dismiss the top screen.
+  const picked = autoPickFirstCard();
+  const done = picked || dismissTopScreen();
+  // The card claim animates ~560ms before onDone fires (grants the card + clears the
+  // gate); give it room. A plain dismiss just needs a frame.
+  await new Promise((r) => setTimeout(r, picked ? 750 : 60));
+  return { ok: done, reason: done ? undefined : 'no-screen' };
 }
 
 async function waitAction(seconds: number): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {

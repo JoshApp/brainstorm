@@ -221,6 +221,25 @@ export function step(obs: Observation, nav?: Nav): Action {
     return { kind: 'move', dir: avoidWalls(bossGate.compass, obs.geometry.walls8), seconds: 0.4 };
   }
 
+  // 5.7 SAFE ROOM FATE GATE — the down-stairs stay SEALED until a fate card is drawn
+  //     at the big fire (state.fate-gate). If a stair reads 'SEALED', REST at the
+  //     bonfire first: interacting it opens the dealt-3-pick-1, and the screen handler
+  //     (dismissAction → autoPickFirstCard) picks a card → grants it → clears the gate
+  //     → the stair flips to 'DESCEND'. Without this the bot paces a locked door.
+  const sealedStair = obs.visible.interactables.find((i) => i.kind === 'stairs' && i.state === 'SEALED');
+  if (sealedStair) {
+    const fire = obs.visible.interactables.find((i) => i.kind === 'bonfire');
+    if (fire) {
+      if (fire.inRange) {
+        if (Math.abs(fire.bearing) > Math.PI / 6) return { kind: 'face', target: { id: fire.id } };
+        return { kind: 'interact' };
+      }
+      const wp = nav?.waypoint(obs.player.pos, fire.pos);
+      if (wp) return { kind: 'steer', to: wp, seconds: 0.4, look: fire.pos };
+      return { kind: 'move', dir: avoidWalls(fire.compass, obs.geometry.walls8), seconds: 0.4 };
+    }
+  }
+
   // 6. Nothing left to loot → head for the stairs. In range → face + descend.
   //    interactables.system needs the stair in the forward cone (not just radius),
   //    so face first; inRange in the obs is distance-only.

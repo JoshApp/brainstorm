@@ -20,6 +20,19 @@ import { BUFFS } from '../content/buffs';
 
 const SCREEN_ID = 'card-reading';
 const BASE = import.meta.env.BASE_URL;
+
+// Harness hook: while a reading is open, this selects+claims card `i`. Cleared on
+// close. Lets the bot RESOLVE the draw (a fate draw must be PICKED, not dismissed —
+// dismissing leaves the fate gate armed + the safe-room stairs sealed).
+let activePick: ((i: number) => void) | null = null;
+
+/** DEV/harness: auto-pick the first dealt card of an open reading (grants it +
+ *  clears the fate gate). No-op returning false if no reading is open. */
+export function autoPickFirstCard(): boolean {
+  if (!activePick) return false;
+  activePick(0);
+  return true;
+}
 const CARD_ASPECT = '768 / 1312';
 // Card height bounded by BOTH viewport height (60vh) AND width (46vw — so three
 // + gaps always fit across), floored + capped. Fills the screen without a fragile
@@ -172,10 +185,14 @@ export function openCardReading(
 
   function close(): void {
     if (!root.isConnected) return;
+    activePick = null;
     root.remove();
     closeScreen(SCREEN_ID);
     opts.onDone?.(picked);
   }
+
+  // Expose select+claim for the harness bot (resolve the draw by picking).
+  activePick = (i: number) => { if (!picked && dealt[i]) { select(i); claimCard(i); } };
 
   for (const { img, id } of fronts) img.src = `${BASE}cards/${id}.webp`;
   document.body.appendChild(root);
