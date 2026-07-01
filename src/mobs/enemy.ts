@@ -1324,6 +1324,39 @@ export function createEnemy(
     container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
   }
 
+  // Smoothed velocity for movement-facing. Face where the mob is ACTUALLY moving
+  // (real per-frame displacement, low-passed), so a chaser turns to RUN where it
+  // goes instead of crab-walking / moonwalking with its body facing elsewhere.
+  // When it's essentially stationary (watching, blocked, arrived) it faces the
+  // player instead. The smoothing + the min-speed gate filter the per-frame noise
+  // from pack separation + pathfinding that made facing a raw target jitter.
+  let smoothVelX = 0, smoothVelZ = 0;
+  const _faceMove = new THREE.Vector3();
+  function faceMovement(dispX: number, dispZ: number, playerPos: THREE.Vector3, dt: number) {
+    if (dt > 0) {
+      const a = 1 - Math.exp(-dt / 0.12);   // ~0.12s heading smoothing
+      smoothVelX += (dispX / dt - smoothVelX) * a;
+      smoothVelZ += (dispZ / dt - smoothVelZ) * a;
+    }
+    const speed = Math.hypot(smoothVelX, smoothVelZ);
+    // Smooth BLEND between "face the player" (stationary) and "face travel"
+    // (moving) — a hard speed threshold would flip-flop the facing frame to frame
+    // right at the cutoff (jitter). w ramps 0→1 across a band around FACE_MOVE_MIN.
+    const lo = CONFIG.ENEMY_AI.FACE_MOVE_MIN * 0.55;
+    const hi = CONFIG.ENEMY_AI.FACE_MOVE_MIN * 1.7;
+    const w = Math.max(0, Math.min(1, (speed - lo) / (hi - lo)));
+    if (w <= 0) { faceTarget(playerPos, dt); return; }
+    let px = playerPos.x - container.position.x, pz = playerPos.z - container.position.z;
+    const pl = Math.hypot(px, pz) || 1; px /= pl; pz /= pl;
+    const vx = smoothVelX / (speed || 1), vz = smoothVelZ / (speed || 1);
+    _faceMove.set(
+      container.position.x + px * (1 - w) + vx * w,
+      0,
+      container.position.z + pz * (1 - w) + vz * w,
+    );
+    faceTarget(_faceMove, dt);
+  }
+
   /** Is the player looking roughly AT this enemy? A parry only catches a strike
    *  from in front of you (CONFIG.DEFLECT.FACING_DOT cone) — you can't deflect a
    *  blow you aren't facing. Uses the camera yaw (player forward) vs the
@@ -2391,37 +2424,25 @@ export function createEnemy(
             // a ranged enemy.
             faceTarget(playerPos, dt);
           } else if (useIntent && currentIntent.moveMode === 'hold') {
-            // WATCH — the lull. Hold ground and stare the player down. Menacing
-            // stillness is the setup for the burst; it also grants breathing room
-            // so the pack doesn't read as a constant shove.
-            faceTarget(playerPos, dt);
+            // WATCH — the lull. Hold ground; not moving, so faceMovement settles
+            // on the player: a menacing stare, the setup for the burst.
+            faceMovement(0, 0, playerPos, dt);
           } else if (distance > 0.1) {
-            // CLOSE / CIRCLE / press — move to the PACK target: a slot on the ring
-            // at strike distance along this mob's bearing (+ separation), so a
-            // crowd surrounds the player instead of stacking on one point. Speed
-            // scales with the intent (press rushes, circle prowls). Falls back to
-            // the player's position if unregistered.
+            // CLOSE / CIRCLE / press — move to the PACK ring slot (surrounds the
+            // player; speed scales with the intent — press rushes, circle prowls),
+            // then face the mob's ACTUAL travel this frame. Charging in → it faces
+            // you; prowling the ring → it faces along its arc (circles, showing its
+            // flank) rather than crab-walking sideways; blocked/arrived → it faces
+            // you, poised. The windup's aim-ramp snaps the final aim on the strike.
             const spd = useIntent ? currentIntent.speedMul : 1;
             const ringTarget = packMoveTarget(entityId, playerPos, packScratch());
             const tx = ringTarget ? ringTarget.x : playerPos.x;
             const tz = ringTarget ? ringTarget.z : playerPos.z;
+            const bx = container.position.x, bz = container.position.z;
             moveTowards(tx, tz, moveSpeed * spd, dt, walkable, nav);
-            // FACE THE TRAVEL, not the player. From afar the ring slot is dead
-            // ahead, so it faces you as it charges in; up close where the ring
-            // turns tangential it faces along its path → it CIRCLES (shows its
-            // flank) instead of crab-walking sideways while staring at you. Once
-            // it has all but arrived (no meaningful travel left), face the player
-            // — poised on the ring, ready to commit. The windup's aim-ramp snaps
-            // the final aim onto you when it actually strikes.
-            const tdx = tx - container.position.x, tdz = tz - container.position.z;
-            if (tdx * tdx + tdz * tdz > 0.09) {   // >0.3m to travel → look where you're going
-              tmpTarget.set(tx, 0, tz);
-              faceTarget(tmpTarget, dt);
-            } else {
-              faceTarget(playerPos, dt);
-            }
+            faceMovement(container.position.x - bx, container.position.z - bz, playerPos, dt);
           } else {
-            faceTarget(playerPos, dt);   // basically on top of the player — face them
+            faceMovement(0, 0, playerPos, dt);   // on top of the player — face them
           }
         }
         setEyeFlare(0);

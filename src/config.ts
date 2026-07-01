@@ -569,6 +569,7 @@ export const CONFIG = {
     IDLE_SCAN_STEP: 0.20,             // rad — ±11° gentle step per gaze change (was ±20°)
     IDLE_SCAN_HOLD_CHANCE: 0.62,      // fraction of changes that just pause (was 0.4 — now mostly holds)
     NAV_STUCK_TIME: 0.2,              // s pinned against geometry before a chasing mob sidesteps to flow around it
+    FACE_MOVE_MIN: 0.5,              // m/s — below this SMOOTHED speed a chaser faces the PLAYER (standing / blocked / arrived); above it, it faces its ACTUAL travel so it never crab-walks or moonwalks. Smoothed heading kills the per-frame facing jitter that aiming at a noisy pack target caused.
     // Peripheral awareness — within this range the mob notices a player in ANY
     // direction (LOS required), not just its sight cone. Fixes "only aggros when
     // I'm right on top of it": you can still sneak up from FAR (outside the
