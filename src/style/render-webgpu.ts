@@ -192,6 +192,16 @@ if (ADAPT_PIN != null) (darkAdaptNode as any).value = ADAPT_PIN;
 export function setWebGPUDarkAdapt(v: number): void {
   if (ADAPT_PIN == null) (darkAdaptNode as any).value = v;
 }
+
+// MASTER BRIGHTNESS — the GRAPHICS "BRIGHTNESS" slider. A live multiplier on the
+// expose step (1.0 = authored exposure). A uniform, so the slider works with no
+// pipeline rebuild. (Replaces the old WebGL blitMaterial uBrightness path that
+// went dead in the WebGL removal.)
+const brightnessNode = (uniform as any)(1);
+/** Drive master output brightness (1 = authored). Called from setMasterBrightness(). */
+export function setWebGPUBrightness(v: number): void {
+  (brightnessNode as any).value = v;
+}
 // The reveal is the GATED DEEP-DARK gain we tuned earlier — surgical: only the
 // truly near-black gets amplified (a high multiply that pulls faint form out of
 // the void), so it CAN'T wash the mid-dark like the broad WebGL darkness-weighted
@@ -290,7 +300,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // in a desaturated white haze. Exposing first means only the genuinely-bright
   // sources (flames) clear the threshold → tight, subtle bloom.
   //
-  const exposed: any = sceneCA.mul(float(EXPOSURE));
+  const exposed: any = sceneCA.mul(float(EXPOSURE)).mul(brightnessNode);
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.

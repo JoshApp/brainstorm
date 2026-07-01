@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isWebGPUReady } from '../scene/renderer-mode';
-import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 
 // WEBGPU: rate-limit render failures to one console line.
@@ -143,13 +143,15 @@ export function getPS1Scale(): number { return ps1Scale; }
  *  0 before renderWithStyle has run once (which captures the live renderer). */
 export function getRenderPixelRatio(): number { return rendererRef ? rendererRef.getPixelRatio() : 0; }
 
-/** Set the eye dark-adaptation amount (0..1). Forwarded to the WebGPU grade. */
-export function setWickLift(_v: number): void {
-  // PSX wick lift lives in the node pipeline; flag-less passthrough for now.
-}
+/** WICK grade-lift — the node pipeline has no separate wick-lift uniform; the
+ *  wick's visible effect is the ambient FILL scale (setWickFillMul in
+ *  light-pool, driven from applyVideoSettings). No-op here. */
+export function setWickLift(_v: number): void {}
 
-export function setMasterBrightness(_v: number): void {
-  // PSX master brightness lives in the node pipeline.
+/** Master output brightness (1 = authored exposure) — the GRAPHICS BRIGHTNESS
+ *  slider. Forwarded to the WebGPU grade's expose multiplier. */
+export function setMasterBrightness(v: number): void {
+  setWebGPUBrightness(v);
 }
 
 export function setDarkAdapt(amount: number): void {
