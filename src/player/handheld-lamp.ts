@@ -27,7 +27,7 @@ import * as THREE from 'three';
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
-import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
+import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import { getLanternSwing, getBobOffset } from './viewmodel-bob';
 import { getLampSway, getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback, getViewmodelPullbackFrac } from './viewmodel-pullback';

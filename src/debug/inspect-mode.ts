@@ -12,7 +12,7 @@
 // gameplay code only ever has to ask one question: isInspectActive().
 
 import * as THREE from 'three';
-import { setInspectBypass } from '../style/render-target';
+import { setInspectBypass } from '../style/render-frame';
 
 // Ambient fill intensity while inspecting (pure white, flat). Bright enough
 // that a near-black mob's shadow side stays readable without blowing out metal.

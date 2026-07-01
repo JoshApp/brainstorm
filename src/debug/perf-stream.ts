@@ -21,7 +21,7 @@
 
 import { addFrameListener, removeFrameListener, gpuActive, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
-import { getRenderPixelRatio } from '../style/render-target';
+import { getRenderPixelRatio } from '../style/render-frame';
 import { getSettings } from '../settings/settings';
 
 export const PERF_CHANNEL = 'delve-perf';

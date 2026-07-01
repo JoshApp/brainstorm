@@ -6,12 +6,16 @@ import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 // WEBGPU: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
 
-// The one render path is the native WebGPU RenderPipeline (render-webgpu.ts):
-// it owns the low-res PSX pass + bloom + colour grade + all the PSX post moves
-// (dither, quantize, scanlines, chromatic aberration, brightness, inscatter,
-// sharp-bilinear, dark-adapt). The old classic-WebGL blit pipeline that used to
-// live here is gone; only the state flags the getters/setters expose and the
-// viewmodel depth helpers remain.
+// render-frame — the per-frame render entry (renderWithStyle) + the held-
+// viewmodel registry + the display-setting facade (bloom/brightness/scale/…).
+//
+// The actual render path is the native WebGPU RenderPipeline (render-webgpu.ts):
+// it owns the low-res chunky-PSX pass + bloom + colour grade + all the PSX post
+// moves (dither, quantize, scanlines, chromatic aberration, brightness,
+// inscatter, dark-adapt). The old classic-WebGL blit pipeline + its render
+// targets that used to live in this file are gone (hence the rename from
+// render-target); only the setting flags the getters/setters expose and the
+// viewmodel depth helpers remain here.
 
 // Scene-render resolution as a fraction of the canvas. Mutable so the
 // adaptive-resolution scaler (scene/adaptive-resolution.ts) can nudge it down

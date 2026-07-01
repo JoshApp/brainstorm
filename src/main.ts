@@ -51,7 +51,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
+import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-frame';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';

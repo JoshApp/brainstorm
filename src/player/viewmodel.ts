@@ -6,7 +6,7 @@ import { getViewmodelPullback } from './viewmodel-pullback';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
 import { computeWeaponPose, shoulderPivot, STANDARD_IDLE, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
-import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
+import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';

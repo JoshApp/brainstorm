@@ -1,4 +1,4 @@
-import { setPS1Scale, PS1_SCALE_DEFAULT } from '../style/render-target';
+import { setPS1Scale, PS1_SCALE_DEFAULT } from '../style/render-frame';
 
 // Adaptive resolution — the highest-leverage knob for covering the spread of
 // phones. Watches real frame time and nudges the scene-render scale (the

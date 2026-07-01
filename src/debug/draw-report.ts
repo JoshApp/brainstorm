@@ -16,7 +16,7 @@ import type * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
 import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
-import { getViewmodelRoots } from '../style/render-target';
+import { getViewmodelRoots } from '../style/render-frame';
 
 let scene: THREE.Scene | null = null;
 let renderer: THREE.WebGLRenderer | null = null;

@@ -7,7 +7,7 @@ import {
   getBloomEnabled, getInscatterEnabled, getDepthCrushEnabled,
   setViewmodelPrepassEnabled, getViewmodelPrepassEnabled,
   setPS1Scale, getPS1Scale,
-} from '../style/render-target';
+} from '../style/render-frame';
 import { setShadowMode, getShadowMode, setLightBudgetTrim, getLightSlotTotals } from '../scene/light-pool';
 import { setMotesHidden } from '../effects/drifting-motes';
 import { setSurfaceDetailEnabled, getSurfaceDetailEnabled } from '../style/surface-detail';

@@ -24,7 +24,7 @@
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, getCompiledProgramKeys, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
-import { getRenderPixelRatio } from '../style/render-target';
+import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
 
 // Scene-audit provider — main.ts registers a closure over the live scene so a

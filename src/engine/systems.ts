@@ -18,7 +18,7 @@ import { tickViewmodelPullback } from '../player/viewmodel-pullback';
 import { updateLampReveal } from '../scene/lamp-reveal';
 import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
-import { renderWithStyle, setDarkAdapt } from '../style/render-target';
+import { renderWithStyle, setDarkAdapt } from '../style/render-frame';
 import { flushLux, luxPending } from '../debug/lux';
 import { tickSurfaceSeep } from '../style/surface-detail';
 import { flushSplats } from '../scene/splat-map';

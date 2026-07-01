@@ -7,7 +7,7 @@ import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-po
 import { WristAim } from '../anim/wrist-solver';
 import { DEV } from '../debug/dev';
 import { ArmIK } from '../anim/arm-ik';
-import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
+import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import { mergeRigidViewmodel } from './viewmodel-merge';
 import { getLampRingAnchorWorldPosition } from './handheld-lamp';
 

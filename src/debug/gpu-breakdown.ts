@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setGradeBypass, setSceneOnly } from '../style/render-webgpu';
-import { setBloomEnabled, getBloomEnabled } from '../style/render-target';
+import { setBloomEnabled, getBloomEnabled } from '../style/render-frame';
 import { setShadowMode, getShadowMode } from '../scene/light-pool';
 import { currentGpuMs } from './frame-timing';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
 import { getOffhandSway } from './viewmodel-sway';
-import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
+import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import type { ModelSpec } from '../ecs/model-types';
 
 // Generic offhand viewmodel — a model parented to the camera at the
