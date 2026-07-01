@@ -722,8 +722,20 @@ export const CONFIG = {
                             //   your riposte/execute at leisure, THEN it shakes it
                             //   off (poise already reset full) and the fight goes on.
     REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
-    REGEN_RATE: 4,          // poise points / s once regen kicks in
+    REGEN_RATE: 4,          // poise points / s once regen kicks in (at FULL HP)
     CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)
+    // HP-scaled recovery (posture economy, docs/ENEMY-AI-ROADMAP.md 1A): REGEN_RATE
+    // is multiplied by max(RECOVER_HP_FLOOR, hpFrac²) — full-HP enemies shrug
+    // posture off fast, wounded ones barely recover, so posture damage STICKS once
+    // you've bled them down. Teaches "whittle HP, THEN break & execute."
+    RECOVER_HP_FLOOR: 0.12, // recovery never drops below 12% of REGEN_RATE (a break still shakes off eventually)
+    // FALTER — the middle ladder rung: a heavy-enough single hit that lands while
+    // the enemy is COMMITTED to an attack interrupts it (no full break). The
+    // reward for burying a heavy in a telegraph. Reuses the flinch-lock beat.
+    FALTER_THRESHOLD: 2.0,  // poise-damage a single hit must deal to falter (a charged sword/hammer/countered blow clears it; a light tap doesn't)
+    FALTER_CD: 0.9,         // s before the same enemy can be faltered again (no permastun-via-heavy-spam)
+    FALTER_LOCK_S: 0.4,     // s of flinch-lock (can't start a new attack) after a falter
+    FALTER_FLINCH: 0.35,    // rad — the backward stumble pose (reuses bodyAnim.flinch)
   },
 
   // === PLAYER HEALTH ===

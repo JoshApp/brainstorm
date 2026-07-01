@@ -605,6 +605,7 @@ export function createEnemy(
   const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
+  let falterCd = 0;         // cooldown after a FALTER so heavy hits can't chain-lock a windup forever
   // Action-layer authority — owns the interrupt beats (stagger + parry
   // flinch-lock) and the cancel table. The mob mirror of the player FSM;
   // see enemy-action.ts. The big EnemyState machine below still drives
@@ -1212,6 +1213,28 @@ export function createEnemy(
     poiseLeft -= amount;
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
     if (poiseLeft <= 0) { triggerStagger(); return true; }
+    // FALTER — the middle rung of the ladder. A heavy-enough single hit
+    // (charged / hammer / a countered or deflect-empowered blow — light taps fall
+    // under the threshold) that lands WHILE the enemy is committed to an attack
+    // INTERRUPTS that attack, without a full break. This is the reward for
+    // committing during a telegraph: bury a heavy in its wind-up and cancel the
+    // swing. The poise damage still stands (it accumulates toward the real break)
+    // and a cooldown stops you chain-faltering a windup forever. Reuses the
+    // existing flinch-lock beat + parry-recoil stumble — no new interrupt system.
+    if (amount >= CONFIG.POISE.FALTER_THRESHOLD
+        && (state === 'winding' || state === 'striking')
+        && falterCd <= 0) {
+      falterCd = CONFIG.POISE.FALTER_CD;
+      currentAbility = null;
+      clearAoeTelegraph();
+      clearLashTendril();
+      reconcileThreat(false, false);   // its threat flash is spent — the attack died
+      setEyeFlare(0);
+      actionFsm.enterFlinchLock(CONFIG.POISE.FALTER_LOCK_S);
+      bodyAnim.flinch(CONFIG.POISE.FALTER_FLINCH);   // a visible backward stumble
+      state = 'chasing';
+      phaseTimer = 0;
+    }
     return false;
   }
 
@@ -2129,10 +2152,19 @@ export function createEnemy(
     // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
     // pool is already reset for the next break).
     actionFsm.tick(dt);   // advance interrupt beats (stagger + parry flinch-lock)
+    if (falterCd > 0) falterCd = Math.max(0, falterCd - dt);
     if (state !== 'staggered') {
       if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
       else if (poiseLeft < poiseMax) {
-        poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * dt);
+        // HP-SCALED recovery (the two-gauge coupling): a healthy enemy shrugs
+        // posture off fast, so you can't just chip-and-deflect it to a break at
+        // full HP; as its HP drops the recovery slows toward a floor, so posture
+        // damage STICKS on a wounded foe. This teaches "whittle its health, THEN
+        // break and execute" with no tutorial — the FromSoft coupling.
+        const ent = getEntity(entityId);
+        const hpFrac = ent?.hp && currentMaxHp > 0 ? ent.hp.current / currentMaxHp : 1;
+        const recoverMul = Math.max(CONFIG.POISE.RECOVER_HP_FLOOR, hpFrac * hpFrac);
+        poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * recoverMul * dt);
       }
     }
 
