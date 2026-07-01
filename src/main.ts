@@ -1864,6 +1864,24 @@ function handleAutostart(): boolean {
     console.warn(`?vault=${vaultId} not found in the vault library`);
   }
 
+  // SAFE-ROOM preview entry — `?saferoom=N` loads the act-N checkpoint safe room
+  // directly (as if you'd just beaten the depth-N boss), so it can be inspected
+  // without a 3-minute boss fight. DEV-only, gated like ?depth.
+  const safeParam = url.get('saferoom');
+  if (import.meta.env.DEV && safeParam && (HARNESS_ENABLED || url.get('dev') === '1')) {
+    const prevDepth = Number(safeParam) || 3;
+    const spec = generateSafeRoom(prevDepth);
+    clearSave();
+    LEVELS[spec.id] = spec;
+    startNewRun(spec.id, { depth: prevDepth });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    setSlot('weapon', ITEMS['rusted-sword']);
+    startRun(spec.id, prevDepth);
+    return true;
+  }
+
   // DESCEND path. Accept ?seed=N and (gated) ?depth=N.
   const seedParam = url.get('seed');
   const seed = seedParam != null && seedParam !== '' ? Number(seedParam) : undefined;

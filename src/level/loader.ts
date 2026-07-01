@@ -235,7 +235,12 @@ export function tickPendingLoad() {
   // card instead — a longer in-world beat with stats from the act
   // the player just survived. The descent-title's brief flash would
   // step on the transition card's slower entry, so we skip it.
-  if (isSafeRoom) {
+  // The safe-room transition card is a ~6s near-opaque black overlay. It's a
+  // dramatic beat for a HUMAN, but the harness bot can't dismiss it (it manages its
+  // own input, not a screen-manager dismiss handler), so under ?harness it just
+  // blacks a bot run / recording for 6s. Skip it when the harness is driving.
+  const harnessDriving = new URLSearchParams(location.search).get('harness') === '1';
+  if (isSafeRoom && !harnessDriving) {
     const act = actForDepth(currentDepth);
     const stats = getActStats();
     // Show the card AFTER the world fades in — the player lands in
