@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { uniform as tslUniform, positionLocal, normalLocal, modelViewMatrix, vec4 } from 'three/tsl';
+import { MeshBasicNodeMaterial, Node as TSLNode, NodeUpdateType } from 'three/webgpu';
+import { uniform as tslUniform, positionLocal, normalLocal, modelViewMatrix, vec4, nodeObject } from 'three/tsl';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
 
@@ -49,29 +49,47 @@ const OUTLINE_SCALE_DEFAULT = 1.07;
 // a line.
 const RIM_PX = 4.5;             // target rim width, device pixels (phone-tuned)
 
-// WEBGPU port of the outline to TSL: the identical inverted-hull rim — same screen-constant push
-// (position += normal · uPxScale · −viewZ in the vertex stage), same additive colour·opacity fragment —
-// but as a NODE material the WebGPU renderer can actually compile. The old GLSL ShaderMaterial threw on
-// the node renderer every frame near an interactable, which is why the outline was disabled on WebGPU.
-// A `.uniforms`-shaped facade (TSL uniforms expose `.value` like ShaderMaterial uniforms) lets
-// updateOutline() drive uColor/uOpacity identically across both backends.
-function makeOutlineMaterialWebGPU(): THREE.Material {
-  const uColor = (tslUniform as any)(new THREE.Color(COLOR_ARMED));
-  const uOpacity = (tslUniform as any)(0);
+// PER-OBJECT uniform node (the objectScalar pattern from build-model): reads
+// `frame.object.userData[key]` once per object-draw, so ONE shared material shows
+// each hull's own colour/opacity — no per-hull material, so no per-instance
+// NodeBuffer → one pipeline for every outline instead of a fresh compile per hull
+// (the unlit-material churn the compile guard flagged). kind 'color' → vec3 from a
+// THREE.Color in userData; 'float' → a number.
+class OutlineObjUniform extends (TSLNode as any) {
+  key: string; uni: any; kind: 'color' | 'float';
+  constructor(key: string, kind: 'color' | 'float') {
+    super(kind === 'color' ? 'vec3' : 'float');
+    this.key = key; this.kind = kind;
+    this.uni = kind === 'color' ? (tslUniform as any)(new THREE.Color(1, 1, 1)) : (tslUniform as any)(0);
+    this.updateType = (NodeUpdateType as any).OBJECT;
+  }
+  update(frame: any): void {
+    const v = frame.object?.userData?.[this.key];
+    if (this.kind === 'color') { if (v) this.uni.value.copy(v); }
+    else this.uni.value = typeof v === 'number' ? v : 0;
+  }
+  setup(): any { return this.uni; }
+}
+const objColor = (key: string): any => (nodeObject as any)(new OutlineObjUniform(key, 'color'));
+const objFloat = (key: string): any => (nodeObject as any)(new OutlineObjUniform(key, 'float'));
+
+// ONE shared inverted-hull rim material (TSL node): same screen-constant push
+// (position += normal · pxScale · −viewZ) + additive colour·opacity, but colour +
+// opacity ride PER-OBJECT userData (`_olColor` / `_olOpacity`) so every hull shares
+// this single instance → one compiled pipeline. Built lazily once.
+let sharedOutlineMat: THREE.Material | null = null;
+function makeOutlineMaterial(): THREE.Material {
+  if (sharedOutlineMat) return sharedOutlineMat;
   const mat: any = new (MeshBasicNodeMaterial as any)({
     side: THREE.BackSide, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const mv = (modelViewMatrix as any).mul((vec4 as any)(positionLocal, 1.0));
-  const push = (pxScaleWG as any).mul(mv.z.negate());   // uPxScale · −mvz → screen-constant width
+  const push = (pxScaleWG as any).mul(mv.z.negate());   // pxScale · −mvz → screen-constant width
   mat.positionNode = (positionLocal as any).add((normalLocal as any).mul(push));
-  mat.colorNode = uColor;
-  mat.opacityNode = uOpacity;
-  mat.uniforms = { uColor, uOpacity };
+  mat.colorNode = objColor('_olColor');
+  mat.opacityNode = objFloat('_olOpacity');
+  sharedOutlineMat = mat;
   return mat;
-}
-
-function makeOutlineMaterial(): THREE.Material {
-  return makeOutlineMaterialWebGPU();
 }
 
 /** Per-frame px→world scale at unit depth: worldPerPx(z) = z * 2·tan(fov/2)/H. */
@@ -93,9 +111,9 @@ const SEALED_BASE_OPACITY = 0.45;
 
 interface OutlineRef {
   clone: THREE.Mesh;
-  /** Per-target material so opacity + color can differ by tier/distance. ShaderMaterial (WebGL) or a
-   *  MeshBasicNodeMaterial with a `.uniforms` facade (WebGPU) — both expose uColor/uOpacity `.value`. */
-  mat: any;
+  /** Per-hull colour, mutated in place each frame; the shared material's per-object
+   *  colour node reads it from clone.userData._olColor at this hull's draw. */
+  col: THREE.Color;
 }
 
 // One entry per interactable currently showing an outline.
@@ -171,16 +189,19 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     if (shell !== merged) merged.dispose();
     shell.computeVertexNormals();
 
-    const mat = makeOutlineMaterial();
-    // The WebGPU node material reads the shared pxScaleWG uniform directly inside
-    // its positionNode, so no per-material wiring is needed.
+    // Shared material; per-hull colour/opacity ride userData (read per object-draw
+    // by the material's object-uniform nodes). pxScale is a shared uniform in the
+    // positionNode, so no per-material wiring is needed.
     void scaleFactor;
-    const clone = new THREE.Mesh(shell, mat);
+    const clone = new THREE.Mesh(shell, makeOutlineMaterial());
     clone.renderOrder = 999;
     clone.userData.outline = true;
+    const col = new THREE.Color(COLOR_ARMED);
+    clone.userData._olColor = col;      // read by objColor('_olColor')
+    clone.userData._olOpacity = 0;      // read by objFloat('_olOpacity')
     clone.frustumCulled = false;   // its source may be tiny; avoid pop at the edge
     parent.add(clone);
-    refs.push({ clone, mat });
+    refs.push({ clone, col });
   }
   return refs;
 }
@@ -191,7 +212,7 @@ function removeOutline(target: Interactable) {
   for (const r of refs) {
     r.clone.parent?.remove(r.clone);
     r.clone.geometry.dispose();   // merged geometry is owned by this hull
-    r.mat.dispose();
+    // NB: the material is SHARED (sharedOutlineMat) — never dispose it here.
   }
   outlines.delete(target);
 }
@@ -251,8 +272,8 @@ export function updateOutline(
     // parent and baked in that frame, so it rides the parent's animation. Only
     // the tier-driven opacity/color change per frame.
     for (const r of refs) {
-      r.mat.uniforms.uOpacity.value = opacity;
-      (r.mat.uniforms.uColor.value as THREE.Color).copy(tmpColor);
+      r.clone.userData._olOpacity = opacity;
+      r.col.copy(tmpColor);   // userData._olColor === r.col; read per object-draw
     }
   }
 }
@@ -273,6 +294,8 @@ registerWarmup({
   spawn: (scene: THREE.Object3D) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), makeOutlineMaterial());
     mesh.userData.outline = true;
+    mesh.userData._olColor = new THREE.Color(COLOR_ARMED);   // per-object uniforms → visible warm draw
+    mesh.userData._olOpacity = 1;
     mesh.frustumCulled = false;
     scene.add(mesh);
     warmOutlineMesh = mesh;
