@@ -122,6 +122,7 @@ export interface AiDebug {
   moveMode: string;
   release: boolean;
   yaw: number;          // body yaw, radians (the readout differentiates it → jitter)
+  faceX: number; faceZ: number;   // the world point faceTarget last aimed at (blue gizmo)
   poise: number;        // 0..1 (poiseLeft / poiseMax)
   aggression: number;   // 0..1 mood
   boldness: number;
@@ -1386,6 +1387,7 @@ export function createEnemy(
   }
 
   function faceTarget(target: THREE.Vector3, dt: number) {
+    _dbgFaceX = target.x; _dbgFaceZ = target.z;   // DEV gizmo: what it's TRYING to face this frame
     const dx = target.x - container.position.x;
     const dz = target.z - container.position.z;
     if (dx * dx + dz * dz < 1e-8) return;
@@ -1427,6 +1429,7 @@ export function createEnemy(
   // player instead. The smoothing + the min-speed gate filter the per-frame noise
   // from pack separation + pathfinding that made facing a raw target jitter.
   let smoothVelX = 0, smoothVelZ = 0;
+  let _dbgFaceX = 0, _dbgFaceZ = 0;   // DEV: the point faceTarget last aimed at (blue gizmo)
   const _faceMove = new THREE.Vector3();
   function faceMovement(dispX: number, dispZ: number, playerPos: THREE.Vector3, dt: number) {
     if (dt > 0) {
@@ -3005,6 +3008,7 @@ export function createEnemy(
       return {
         kind: spec.id, state, intent: currentIntent.intent, moveMode: currentIntent.moveMode,
         release: currentIntent.releaseAttack, yaw: container.rotation.y,
+        faceX: _dbgFaceX, faceZ: _dbgFaceZ,
         poise: poiseMax > 0 ? Math.max(0, poiseLeft / poiseMax) : 1, aggression,
         boldness: personality.boldness, patience: personality.patience,
         feint: feintT >= 0, decisionIn: decisionTimer, cower: cowerTimer, broke: brokenOnce,

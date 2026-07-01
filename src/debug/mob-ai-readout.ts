@@ -15,10 +15,11 @@ let prevYaw = 0, prevDyaw = 0, prevNow = 0, haveYaw = false;
 const flips: number[] = [];   // ms timestamps of recent yaw-direction reversals
 let peakRate = 0, peakAt = 0;
 
-/** Is the readout requested (?aidebug=1)? DEV only. */
+/** Is the readout requested (?aidebug=1, or the AI lab)? DEV only. */
 export function mobAiReadoutEnabled(): boolean {
-  return DEV && typeof location !== 'undefined'
-    && new URLSearchParams(location.search).get('aidebug') === '1';
+  if (!DEV || typeof location === 'undefined') return false;
+  const q = new URLSearchParams(location.search);
+  return q.get('aidebug') === '1' || q.get('scenario') === 'ai-lab';
 }
 
 function ensurePanel(): HTMLDivElement {

@@ -112,6 +112,7 @@ import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
 import { tickMobAiReadout, mobAiReadoutEnabled } from './debug/mob-ai-readout';
+import { initAiGizmos, tickAiGizmos } from './debug/ai-gizmos';
 import type { Enemy } from './mobs/enemy';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
@@ -395,6 +396,7 @@ setWickFillMul(Math.pow(getSettings().wick, 1.5));
 // --- Camera ---
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
+if (import.meta.env.DEV) initAiGizmos(scene);   // DEV facing gizmos (?aigizmos=1 / ai-lab)
 // LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
 // frame. Wired early so the render system's flushLux has its refs.
 initLux(camera, () => currentLevel?.spec ?? null);
@@ -1718,6 +1720,7 @@ function tickInner() {
     }
     tickMobAiReadout(near, Math.sqrt(nearD), performance.now());
   }
+  if (import.meta.env.DEV) tickAiGizmos(currentLevel?.enemies);   // in-world facing gizmos (self-gates)
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone). The
   // rAF interval can't see GPU load (skip-pacing pins it to vsync), so feed the
   // real GPU-timestamp ms.

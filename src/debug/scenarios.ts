@@ -295,10 +295,49 @@ function buildThreatScenario(params: URLSearchParams): Scenario {
   };
 }
 
+// ?scenario=ai-lab[&mob=rat][&count=3] — the AI dissection bench. A clean, evenly
+// lit open arena: player centred + INVULNERABLE, mobs INVINCIBLE (endless
+// observation), the mob-AI readout + in-world facing gizmos auto-on (red=facing,
+// green=velocity, blue=desired-face → see jitter spatially). Freeze + frame-step
+// via window.__sim to inspect a tick at a time. DEV-only.
+function buildAiLabScenario(params: URLSearchParams): Scenario {
+  const mob = params.get('mob') ?? 'rat';
+  const count = Math.max(1, Math.min(12, parseInt(params.get('count') ?? '1', 10) || 1));
+  const spawns: EnemySpawnSpec[] = [];
+  for (let i = 0; i < count; i++) {
+    // Fan them in an arc in front so they read individually as they close in.
+    const a = count > 1 ? (i / (count - 1) - 0.5) * 1.7 : 0;
+    const r = 4.5;
+    spawns.push({ enemyId: mob, x: Math.sin(a) * r, z: -Math.cos(a) * r, roomId: 'lab' });
+  }
+  // Even perimeter light so the bodies read (the gizmos draw over everything).
+  const spots: Array<[number, number, TorchSpec['wall']]> = [
+    [-9, 0, 'W'], [9, 0, 'E'], [0, -9, 'N'], [0, 9, 'S'],
+    [-9, -6, 'W'], [9, -6, 'E'], [-9, 6, 'W'], [9, 6, 'E'],
+  ];
+  const torches: TorchSpec[] = spots.map(([x, z, wall]) => ({
+    x, z, wall, height: 2.6, colorTint: 0xffc27a, intensityMul: 1.15,
+  }));
+  return {
+    level: {
+      id: 'ai-lab', depth: 2, displayName: 'AI LAB', fogColor: 0x0e0e14,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [{ id: 'lab', rect: { x: 0, z: 0, w: 20, d: 20 }, height: 5 }],
+      corridors: [], props: [],
+      torches,
+      spawns, doors: [], stairs: [],
+    },
+    godMode: true,
+    enemiesInvincible: true,
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -4, y: 1.2 } },
+  };
+}
+
 const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
   'perf-creatures': buildCreaturesScenario,
   'perf-items': buildItemsScenario,
   'threat': buildThreatScenario,
+  'ai-lab': buildAiLabScenario,
 };
 
 export const SCENARIOS: Record<string, Scenario> = {
