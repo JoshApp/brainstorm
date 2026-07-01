@@ -396,16 +396,6 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       format: (v) => v.toFixed(2) + '×',
     }),
     makeToggle({
-      label: 'SHARP UPSCALE',
-      description:
-        'Upscale the low-res render with sharp-bilinear instead of raw blocky ' +
-        'pixels — crisp edges with a 1px softened boundary. Smooths the ' +
-        'sub-pixel jitter you feel when strafing, without blurring the look. ' +
-        'Off keeps the authored chunky PS1 crawl.',
-      get: () => getSettings().sharpUpscale,
-      set: (v) => updateSettings({ sharpUpscale: v }),
-    }),
-    makeToggle({
       label: 'ADAPTIVE RESOLUTION',
       description:
         'Auto-lower the render resolution when the phone struggles, and raise ' +

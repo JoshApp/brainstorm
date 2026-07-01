@@ -51,7 +51,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { renderWithStyle, setPS1Scale, setBloomEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
+import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -1084,7 +1084,6 @@ function applyVideoSettings(s = getSettings()): void {
   if (!adaptiveOn) setPS1Scale(s.renderScale);
   setBloomEnabled(s.bloom);
   setWebGPULeanBloom(s.leanBloom);   // WebGPU-only; no-op on WebGL
-  setSharpBilinear(s.sharpUpscale);
   scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
 }
 
@@ -1119,13 +1118,6 @@ applyVideoSettings();
 if (import.meta.env.DEV) {
   const ps1 = Number(new URLSearchParams(window.location.search).get('ps1'));
   if (ps1 > 0) setPS1Scale(ps1);
-}
-// DEV-only: ?sharp=1|0 forces the sharp-bilinear upscale for snap/compare
-// without touching the saved setting. Stripped from prod by the literal guard.
-if (import.meta.env.DEV) {
-  const sharp = new URLSearchParams(window.location.search).get('sharp');
-  if (sharp === '1') setSharpBilinear(true);
-  else if (sharp === '0') setSharpBilinear(false);
 }
 // DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
 // without touching the saved setting. Stripped from prod by the literal guard.

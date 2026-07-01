@@ -251,10 +251,9 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 
   // CHUNKY PS1 UPSCALE — the low-res pass target defaults to LinearFilter, so the
   // upscale to screen is SMOOTH: soft walls, soft edges, washed-out PS1 pixels.
-  // WebGL upscales its low-res target with NEAREST (sharpBilinear off by default)
-  // → hard chunky texels, the pronounced PS1 look. Match it: nearest-filter the
-  // pass output so the upscale snaps to texel centres. (Re-applied every rebuild —
-  // a resize rebuilds the pipeline — so it survives resolution-scale changes.)
+  // We NEAREST-filter the pass output so the upscale snaps to texel centres →
+  // hard chunky texels, the pronounced PS1 look. (Re-applied every rebuild — a
+  // resize rebuilds the pipeline — so it survives resolution-scale changes.)
   const rt: any = (scenePass as any).renderTarget;
   if (rt?.texture) {
     rt.texture.magFilter = THREE.NearestFilter;

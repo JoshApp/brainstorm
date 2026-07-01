@@ -108,13 +108,6 @@ export interface Settings {
    *  CEILING adaptive resolution scales down FROM on mobile, and the fixed scale
    *  when adaptive is off / on desktop. Default 0.4 (the authored look). */
   renderScale: number;
-  /** Sharp upscale — blit the low-res scene target with sharp-bilinear (crisp
-   *  pixels, a ~1px anti-aliased boundary) instead of raw nearest-neighbour.
-   *  Smooths the sub-pixel "jitter" of lateral camera motion (strafing) that
-   *  the low-res PS1 buffer otherwise crawls with, WITHOUT softening the look.
-   *  On by default — the motion win clearly beats the negligible look change;
-   *  toggle off for the raw chunky nearest crawl. */
-  sharpUpscale: boolean;
   /** Pixel-density cap (DPR) for the 3D view — the single biggest GPU-fill
    *  lever, because it scales EVERY pass including the full-res PSX blit that
    *  render-scale can't touch. Effective ratio = min(device DPR, this). Lower =
@@ -174,10 +167,6 @@ export interface Settings {
    *  culling flipped to default-on, so existing saves that carried the old
    *  explicit `false` get force-enabled exactly once — see load(). */
   migratedPortalCulling?: boolean;
-  /** Internal one-time-migration marker (not a user toggle). Set once SHARP
-   *  UPSCALE flipped to default-on, so a tester who toggled it off during the
-   *  A/B window gets force-enabled exactly once — see load(). */
-  migratedSharpUpscale?: boolean;
   /** Internal one-shot flag (not a user toggle): set true once the player
    *  has been shown the first-run "calibrate the dark" nudge, so it never
    *  fires twice. See src/ui/calibrate-hint.ts. */
@@ -246,7 +235,6 @@ const DEFAULTS: Settings = {
   shadows: 'hero',
   adaptiveResolution: true,
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
-  sharpUpscale: true,  // on = smooth lateral motion; toggle off for the nearest crawl
   pixelRatioCap: CONFIG.PIXEL_RATIO_CAP_MOBILE,  // mobile DPR cap; live slider in GRAPHICS
   frameCap: '60',      // deliberate battery/thermal default (NOT a judder workaround):
                        // render-interp smooths the 60Hz sim at any draw-rate, so >60 is
@@ -269,7 +257,6 @@ const DEFAULTS: Settings = {
   torchRangeMul: 1.0,
   hudStyle: 'minimal',
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
-  migratedSharpUpscale: true,    // fresh installs are already on (no migration needed)
 };
 
 let current: Settings = load();
@@ -290,13 +277,6 @@ function load(): Settings {
     if (parsed.migratedPortalCulling !== true) {
       merged.portalCulling = true;
       merged.migratedPortalCulling = true;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
-    }
-    // Same one-time force-on for SHARP UPSCALE — a tester who flipped it off
-    // during the A/B window otherwise shadows the new default forever.
-    if (parsed.migratedSharpUpscale !== true) {
-      merged.sharpUpscale = true;
-      merged.migratedSharpUpscale = true;
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
     }
     return merged;

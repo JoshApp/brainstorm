@@ -19,10 +19,6 @@ let webgpuRenderErrored = false;
 export const PS1_SCALE_DEFAULT = 0.4;
 let ps1Scale = PS1_SCALE_DEFAULT;
 
-// SHARP UPSCALE — crisp pixels with a ~1px anti-aliased boundary instead of
-// nearest texel-snap. Off by default = the authored nearest-neighbour PS1 crawl.
-let sharpBilinear = false;
-
 // OVERDRAW HEATMAP flag — the DEV overdraw render path is gone (it lived in the
 // classic pipeline); the flag is kept only so the settings/main callers compile.
 let overdrawMode = false;
@@ -102,12 +98,6 @@ export function setInscatterEnabled(on: boolean): void {
 export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
 }
-
-/** Toggle the SHARP UPSCALE (sharp-bilinear vs nearest blit). */
-export function setSharpBilinear(on: boolean): void {
-  sharpBilinear = on;
-}
-export function getSharpBilinear(): boolean { return sharpBilinear; }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {

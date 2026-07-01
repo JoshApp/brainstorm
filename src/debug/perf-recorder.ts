@@ -190,7 +190,6 @@ function graphicsSnapshot(): Record<string, unknown> {
   return {
     pixelRatioCap: s.pixelRatioCap,
     renderScale: s.renderScale,
-    sharpUpscale: s.sharpUpscale,
     frameCap: s.frameCap,
     shadows: s.shadows,
     bloom: s.bloom,
