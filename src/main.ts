@@ -1151,12 +1151,12 @@ if (import.meta.env.DEV) {
   // enemy (or a given world point), returning the chosen dir + the raw grid path.
   (window as unknown as Record<string, unknown>).__navTest = async (to?: { x: number; z: number }) => {
     if (!currentLevel) return { error: 'no level' };
-    const { createNav } = await import('./harness/pathfind');
-    const nav = createNav(currentLevel as unknown as Parameters<typeof createNav>[0]);
+    const { makeNav } = await import('./harness/pathfind');
+    const nav = makeNav(currentLevel.nav);
     const from = { x: camera.position.x, z: camera.position.z };
     const e = (currentLevel as { enemies?: Array<{ group: THREE.Object3D; alive: boolean }> }).enemies?.find((x) => x.alive);
     const target = to ?? (e ? { x: e.group.position.x, z: e.group.position.z } : from);
-    return { from, target, dir: nav.dirToward(from, target), path: (nav as unknown as { _debugPath?: unknown })._debugPath };
+    return { from, target, dir: nav.dirToward(from, target), path: nav._debugPath };
   };
   (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
   // DEV: shader-warmup forensics. __progDiff() seeds a baseline of the CURRENT

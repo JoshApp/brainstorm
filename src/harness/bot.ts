@@ -17,7 +17,7 @@
 
 import { applyAction } from './action';
 import { buildObservation } from './observation';
-import { createNav, type Nav } from './pathfind';
+import { makeNav, type Nav } from './pathfind';
 import type { HarnessContext } from './state';
 import type {
   Action, ActionResult, Observation, ObservedEnemy, ObservedInteractable,
@@ -303,15 +303,16 @@ export async function run(
   const transcript: ActionResult[] = [];
   let stopReason = 'max-turns';
 
-  // Pathfinding grid, rebuilt when the level changes (descent). createNav is cheap
-  // (bounds + refs); the BFS runs lazily inside dirToward, cached per target cell.
+  // Nav adapter over the level's real NavGrid (same obstacle/gate/void-aware A* the
+  // mobs use). Rebuilt when the level changes (descent) — the grid itself lives on
+  // the level and rebuilds lazily on collision-version changes.
   let nav: Nav | undefined;
   let navLevel: unknown;
 
   for (let t = 0; t < maxTurns; t++) {
     const level = ctx.getLevel();
     if (!level) { stopReason = 'no-level'; break; }
-    if (level !== navLevel) { nav = createNav(level as Parameters<typeof createNav>[0]); navLevel = level; }
+    if (level !== navLevel) { nav = level.nav ? makeNav(level.nav) : undefined; navLevel = level; }
     const obs = buildObservation(ctx.camera, level);
     const action = step(obs, nav);
     let result: ActionResult;

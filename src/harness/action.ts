@@ -10,7 +10,7 @@
 
 import type { InputState } from '../controls/input';
 import { setInputOverride } from '../controls/input';
-import { setCameraYaw, setCameraPitch } from '../controls/camera';
+import { setCameraYaw, setCameraPitch, getCameraPitch } from '../controls/camera';
 import { dismissTopScreen } from '../ui/screen-manager';
 import { triggerAttack } from '../controls/attack-input';
 import { useFirstConsumable } from '../controls/consumable-bar';
@@ -106,8 +106,20 @@ async function moveAction(
   // Translate world-direction → camera-relative moveX/moveY so the
   // existing updateCamera path can consume it. See math derivation in
   // observation.ts notes.
+  //
+  // Also LOOK toward where we walk (legible recordings): ease the camera yaw to the
+  // travel direction and the pitch back toward level (a prior attack may have aimed
+  // it down at a foe's feet). Capped per-frame so it reads as a smooth turn, and
+  // moveX/moveY use the eased yaw so movement stays true while the view swings.
+  const desiredYaw = yawForWorldDirection(target.wx, target.wz);
   setInputOverride((state: InputState) => {
-    const yaw = ctx.camera.rotation.y;
+    let d = desiredYaw - ctx.camera.rotation.y;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    const yaw = ctx.camera.rotation.y + Math.max(-0.08, Math.min(0.08, d));
+    setCameraYaw(yaw);
+    const p = getCameraPitch();
+    setCameraPitch(p + Math.max(-0.05, Math.min(0.05, -p)));   // ease toward level
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
     state.moveX =  target.wx * cy - target.wz * sy;
