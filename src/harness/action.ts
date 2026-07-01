@@ -11,6 +11,7 @@
 import type { InputState } from '../controls/input';
 import { setInputOverride } from '../controls/input';
 import { setCameraYaw, setCameraPitch } from '../controls/camera';
+import { dismissTopScreen } from '../ui/screen-manager';
 import { triggerAttack } from '../controls/attack-input';
 import { useFirstConsumable } from '../controls/consumable-bar';
 import { getInRangeInteractable, getAllInteractables } from '../interactables/system';
@@ -82,6 +83,7 @@ async function dispatch(
     case 'interact': return interactAction();
     case 'use':    return useAction(action.slot);
     case 'wait':   return waitAction(action.seconds);
+    case 'dismiss': return dismissAction();
     case 'inspect': return inspectAction(ctx, action.id);
     default: {
       const exhaustive: never = action;
@@ -262,6 +264,16 @@ function useAction(slot: number): Omit<ActionResult, 'observation' | 'elapsed'> 
 }
 
 // ── Wait ─────────────────────────────────────────────────────────────
+
+/** Close the top-most UI screen (corpse note, loot card, etc.). Some interactables
+ *  open a screen that PAUSES the world (obs.pausedReason='screen'); without this the
+ *  bot could only wait for a human. Real-time delay (not a tick budget) so it can't
+ *  hang on a still-paused world — the frame after dismiss resumes it. */
+async function dismissAction(): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
+  const dismissed = dismissTopScreen();
+  await new Promise((r) => setTimeout(r, 60));
+  return { ok: dismissed, reason: dismissed ? undefined : 'no-screen' };
+}
 
 async function waitAction(seconds: number): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   if (!Number.isFinite(seconds) || seconds <= 0) {

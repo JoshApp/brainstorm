@@ -108,6 +108,7 @@ export type Action =
   | { kind: 'interact' }
   | { kind: 'use'; slot: number }
   | { kind: 'wait'; seconds: number }
+  | { kind: 'dismiss' }                                   // close the top UI screen
   | { kind: 'inspect'; id: string };
 
 export interface ActionResult {
