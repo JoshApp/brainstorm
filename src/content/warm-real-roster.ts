@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resetGoreWebGPU } from '../scene/gore-webgpu';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
 import { WARM_MODELS } from './warmup-models';
@@ -178,6 +179,10 @@ export async function warmRealRoster(
     holder.clear();
   }
   liveScene.remove(holder);
+  // The blood-burst warm-up stamps a gore splat into the per-fragment gore buffer
+  // (separate from the effect pool the hook clears) — wipe it so the player doesn't
+  // spawn into warm-up bloodstains.
+  resetGoreWebGPU();
 
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
   for (const g of geometries) g.dispose();

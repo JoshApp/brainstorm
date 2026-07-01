@@ -66,11 +66,14 @@ function ensureMats() {
 /** Fire a burst at the given world position. Typical use: blood
  *  altar take. Defaults read as a chest-height splatter ~0.7m above
  *  the floor (call site can override Y for higher offerings). */
-export function spawnBloodBurst(scene: THREE.Object3D, x: number, y: number, z: number) {
+export function spawnBloodBurst(scene: THREE.Object3D, x: number, y: number, z: number, noGore = false) {
   ensureMats();
   // The floor remembers: every burst stamps the splat map. Hits leave
-  // spatter; repeated combat in one spot pools (alpha accumulates).
-  stampSplat(
+  // spatter; repeated combat in one spot pools (alpha accumulates). The WARMUP
+  // spawns this to compile the droplet pipeline — it passes noGore so it doesn't
+  // leave a persistent stain at the warm-up position (you spawned into two of
+  // them; the gore SHADER compiles from the floor material regardless).
+  if (!noGore) stampSplat(
     x + (Math.random() - 0.5) * 0.3,
     z + (Math.random() - 0.5) * 0.3,
     0.45 + Math.random() * 0.35,
@@ -197,4 +200,4 @@ export function clearBloodBurst() {
 
 // Warm the gore material so the FIRST hit/death of a fight doesn't compile it
 // in-frame (a first-use shader hitch). noCull renders it regardless of position.
-registerWarmup({ label: 'blood-burst', spawn: (s) => spawnBloodBurst(s, 0, 0.3, -0.6), clear: clearBloodBurst });
+registerWarmup({ label: 'blood-burst', spawn: (s) => spawnBloodBurst(s, 0, 0.3, -0.6, true), clear: clearBloodBurst });

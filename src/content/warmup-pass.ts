@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resetGoreWebGPU } from '../scene/gore-webgpu';
 import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
 import { essentialWarmupHooks } from './warmup-registry';
 import { warmRenderWebGPU } from '../style/render-webgpu';
@@ -133,6 +134,10 @@ export async function runWarmupPassWebGPU(
     onProgress?.(1);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
+    // The blood-burst warm-up stamps a gore splat into the per-fragment gore
+    // buffer (a separate store from the effect pool h.clear() drops) — wipe it, or
+    // you spawn into two warm-up bloodstains at your feet.
+    resetGoreWebGPU();
     scene.remove(warmGroup);   // pipelines retained via materials; don't dispose geometry
     endLoading();   // game resumes — renders the ready world for the reveal fade
   }
