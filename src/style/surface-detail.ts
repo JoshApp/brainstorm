@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
@@ -40,10 +40,23 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   } else {
     sU = pos.x; sV = pos.z;
   }
-  const uv: any = (vec2 as any)(sU.div(cfg.tile[0]), sV.div(cfg.tile[1]));
+  // Tile / tint / seam-scale ride PER-MATERIAL UNIFORMS, not baked literals: a
+  // `cfg.tile[0]` divisor or `vec3(cfg.tint)` inlined into the WGSL forks a fresh
+  // shader per config value (the `nodeVar0 / 1.5` vs `/ 4.8` churn the forensics
+  // caught after the colour fix). As uniforms the generated code is invariant
+  // across configs → configs sharing the same STRUCTURE (proj + flags) collapse
+  // onto one pipeline. Only the structural flag branches below stay distinct
+  // (bounded + warmable). See surface-ao.ts for the same lesson on base colour.
+  const uTile: any = (tslUniform as any)(new THREE.Vector2(cfg.tile[0], cfg.tile[1]));
+  const uv: any = (vec2 as any)(sU.div(uTile.x), sV.div(uTile.y));
   const sampled: any = (tslTexture as any)(cfg.tex, uv);
-  const base = (vec3 as any)(mat.color.r, mat.color.g, mat.color.b);
-  const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
+  // UNIFORM-backed base colour (materialColor), NOT vec3(mat.color.*): a vec3(...)
+  // literal bakes the wall/floor tint into the WGSL, forking a fresh shader per
+  // distinct shell colour (per-floor pipeline churn). materialColor reads the
+  // colour from a per-material uniform → identical WGSL across tints → one shared
+  // pipeline. See the note in surface-ao.ts installPropHeightAOWebGPU.
+  const base: any = materialColor;
+  const tint: any = (tslUniform as any)(new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]));
   let albedo: any = base.mul(sampled.rgb).mul(tint);
 
   // WORLD MOTTLE — non-tiling value noise (~3m) modulating shade ±6%. The baked
@@ -68,18 +81,19 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
 
   // ── SEAM SHADOW + GLOW (opt-in; scaled by relief so flat patches are spared) ──
   const reliefScale = Math.min(1, cfg.relief / 0.30);
-  const scale = reliefScale * (cfg.seamGlowScale ?? 1);
+  // Per-material uniform, not a baked literal — see the tile/tint note above.
+  const uScale: any = (tslUniform as any)(reliefScale * (cfg.seamGlowScale ?? 1));
   // (a) SHADOW only — darken the recessed seams/panels for depth. Safe on broad
   // recesses (ceiling coffer panels) where a plain shadow reads as relief, not a
   // weird colour blotch. So this is the contrast knob for the ceiling too.
   if (cfg.seamShadow || cfg.seamGlow) {
-    albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seam.mul(scale)));
+    albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seam.mul(uScale)));
   }
   // (b)+(c) COLOURED GLOW — thin-crack surfaces ONLY (brick walls + flagstone
   // floors). Lift the deep channel toward bone-pale (matte hue pickup) and over-
   // saturate its LIT colour toward the light's hue (subtle, the skeleton trick).
   if (cfg.seamGlow) {
-    const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(scale);
+    const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(uScale);
     albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
     setMaterialSeamChromaWebGPU(mat, float(1.0).add(core.mul(SEAM_CHROMA)));
   }
@@ -88,7 +102,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
   const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
   albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
-  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(SEAM_ROUGH), wetMask);
+  (mat as any).roughnessNode = (tslMix as any)((tslUniform as any)(mat.roughness), float(SEAM_ROUGH), wetMask);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
@@ -108,7 +122,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // light-catch (the groove walls tilt into/out of the torchlight). Tune to taste.
   const RELIEF_BOOST = 26;
   const h: any = sampled.a;
-  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief * RELIEF_BOOST));
+  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul((tslUniform as any)(cfg.relief * RELIEF_BOOST));
   const sp: any = positionView;
   const sx: any = sp.dFdx().normalize();
   const sy: any = sp.dFdy().normalize();

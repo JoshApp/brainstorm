@@ -1,6 +1,6 @@
 import type * as THREE from 'three';
 import { isWebGPU } from '../scene/renderer-mode';
-import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform } from 'three/tsl';
+import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform, materialColor } from 'three/tsl';
 
 // Live control of the baked surface AO (the wall/floor vertex colours, which
 // carry the corner/base darkening from geometry-prims.ts). The AO is baked
@@ -84,8 +84,16 @@ export function installPropHeightAO(material: THREE.Material): void {
 // surface-detail's albedo colorNode if present, else the material's base colour.
 function installPropHeightAOWebGPU(mat: THREE.MeshStandardMaterial): void {
   const existing: any = (mat as any).colorNode;
-  const c = mat.color;
-  const base: any = existing ?? (vec3 as any)(c.r, c.g, c.b);
+  // Base albedo as the UNIFORM-backed materialColor node, NOT vec3(c.r,c.g,c.b):
+  // a vec3(...) literal inlines the colour into the WGSL, so every distinctly-
+  // coloured prop minted its OWN shader/pipeline — the per-floor pipeline churn
+  // the warmup forensics pinned (each floor's props recompiling on reveal, ~10
+  // pipelines/floor). materialColor reads mat.color from a per-material uniform,
+  // so the generated WGSL is byte-identical across every colour → ONE shared
+  // pipeline, warmed once, covering every prop tint. (Same lesson the reveal path
+  // already applied to emissive+rim via per-vertex attributes; props group by
+  // colour in the static merge, so a per-material uniform suffices here.)
+  const base: any = existing ?? materialColor;
   const occ: any = (float as any)(1)
     .sub((tslSmoothstep as any)(0.0, PROP_AO_FADE, (positionWorld as any).y))
     .mul(PROP_AO_OCC).mul(uAOStrengthNode).clamp(0, 1);
