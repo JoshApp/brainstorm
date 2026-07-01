@@ -17,6 +17,14 @@ is Pillar #1.
 - **Everything is a data surface.** Roles, postures, personalities, recovery
   windows, menace — authored in `config.ts` / `enemies.ts` so the content layer
   (and a future LLM) can tune without touching engine code.
+- **REWRITE, don't duplicate — one source of truth.** These systems already exist
+  in some form (poise/stagger, the deflect/just-dodge/riposte counters, Might /
+  heavy-weapon / charged scaling, the enemy action FSM, alerts). We *absorb and
+  rewrite* them into the new economy, wiring the existing counters in as its
+  inputs — never a second parallel system beside the old one. If a sub-step would
+  add a gauge/flag/path that overlaps something we have, the correct move is to
+  extend/replace the existing one. (Per the "architecture vs iteration" note: fix
+  root causes, keep one clean seam.)
 
 ## The four layers (the mental model)
 
