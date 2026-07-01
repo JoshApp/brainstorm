@@ -369,16 +369,25 @@ export class NavGrid {
         const hit = gateCrossing(prev, wp, g, g.halfBand + 0.6);
         if (hit !== null) {
           // Square up BEFORE the gate: insert an alignment point offset from the
-          // centre along the gate NORMAL on the approach side, then the centre. The
-          // agent then crosses perpendicular (approach → centre is head-on) instead
-          // of cutting in diagonally and grazing a doorframe column. Helps mobs and
-          // the harness bot alike — both showed the sharp-angle clip.
+          // centre along the gate NORMAL on the approach side, then the centre, so
+          // the agent crosses perpendicular instead of cutting in diagonally and
+          // grazing a doorframe column.
+          //
+          // CRITICAL: only pre-align while `prev` is still BEYOND the approach zone
+          // (|da| >= APPROACH). Once prev is within it — or straddling the gate — the
+          // side sign is ill-defined and the alignment point lands BEHIND the agent,
+          // yanking it backward; combined with re-querying every step that produced
+          // the "paces at a clear entrance / rams back and forth" oscillation. Inside
+          // the zone we just aim the centre, which is straight ahead.
           const nx = Math.sin(g.rotY), nz = Math.cos(g.rotY);
-          const side = Math.sign((prev.x - g.x) * nx + (prev.z - g.z) * nz) || 1;
+          const da = (prev.x - g.x) * nx + (prev.z - g.z) * nz;
           const APPROACH = 0.75;
-          const ap = { x: g.x + nx * side * APPROACH, z: g.z + nz * side * APPROACH };
-          const last = out[out.length - 1];
-          if (!last || Math.hypot(last.x - ap.x, last.z - ap.z) > 0.1) out.push(ap);
+          if (Math.abs(da) >= APPROACH) {
+            const side = Math.sign(da) || 1;
+            const ap = { x: g.x + nx * side * APPROACH, z: g.z + nz * side * APPROACH };
+            const last = out[out.length - 1];
+            if (!last || Math.hypot(last.x - ap.x, last.z - ap.z) > 0.1) out.push(ap);
+          }
           out.push({ x: g.x, z: g.z });
         }
       }
