@@ -67,11 +67,13 @@ export function createNav(level: LevelLike): Nav {
   const walk = (cx: number, cz: number) => inGrid(cx, cz) && W.contains(wx(cx), wz(cz), R);
 
   // Nearest walkable cell to a world point (targets/starts can sit in a wall —
-  // an enemy pressed against masonry, the bot clipping an edge). Spiral out.
+  // an enemy pressed against masonry, the bot clipping an edge, OR a stair that
+  // sits over a carved floor VOID like a boss-arena stairwell). Spiral out far
+  // enough to clear a stairwell void and reach its walkable rim (~6.4m).
   function nearestWalkable(x: number, z: number): [number, number] | null {
-    let cx = toCol(x), cz = toRow(z);
+    const cx = toCol(x), cz = toRow(z);
     if (walk(cx, cz)) return [cx, cz];
-    for (let ring = 1; ring <= 6; ring++) {
+    for (let ring = 1; ring <= 16; ring++) {
       for (let dz = -ring; dz <= ring; dz++) {
         for (let dx = -ring; dx <= ring; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;

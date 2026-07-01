@@ -1142,6 +1142,11 @@ if (import.meta.env.DEV) {
     return next ?? null;
   };
   (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
+  // DEV: live sim fast-forward for bot/headless testing — window.__turbo(3) etc.
+  (window as unknown as Record<string, unknown>).__turbo = (n: number) => {
+    simTurbo = Math.max(1, Math.min(8, Math.floor(n) || 1));
+    return simTurbo;
+  };
   // DEV: harness-bot pathfinding forensics — route from the player to the nearest
   // enemy (or a given world point), returning the chosen dir + the raw grid path.
   (window as unknown as Record<string, unknown>).__navTest = async (to?: { x: number; z: number }) => {
@@ -1454,6 +1459,17 @@ if (import.meta.env.DEV) {
 // present-pass (the inherent shape of fixed-step) — feel-test before defaulting.
 const FIXED_DT = 1 / 60;
 const MAX_SUBSTEPS = 6; // realDt is capped at 0.1s, so ≤6 fixed steps/frame
+
+// SIM TURBO (DEV only): fast-forward the world by running N× the fixed steps per
+// frame — for headless/bot testing where waiting real-time through a boss fight is
+// the bottleneck. CPU-bound (N× the sim work per frame), so the real speedup is
+// min(N, whatever the frame can sustain). Strips from prod (DEV gate). Set via
+// ?turbo=N at boot or window.__turbo(N) live. Clamped 1..8.
+let simTurbo = 1;
+if (import.meta.env.DEV) {
+  const t = Number(new URLSearchParams(location.search).get('turbo'));
+  if (Number.isFinite(t) && t >= 1) simTurbo = Math.min(8, Math.floor(t));
+}
 const SIM_SYSTEMS = SYSTEMS.filter((s) => s.kind === 'sim');
 const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
 // Fixed-step is now the DEFAULT: a 60Hz deterministic sim, decoupled from the
@@ -1589,9 +1605,9 @@ function tickInner() {
     // start lets the drawn pose + shake survive the async render, while still being clean before this
     // frame's sim integrates.
     if (USE_INTERP) interpRestore(interpTargets);
-    simAccumulator += realDt;
+    simAccumulator += realDt * simTurbo;   // DEV fast-forward (default ×1)
     let steps = 0;
-    while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+    while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS * simTurbo) {
       if (USE_INTERP) { fillInterpTargets(); interpStepBegin(interpTargets); }
       advanceSimStep(FIXED_DT);
       if (USE_INTERP) { fillInterpTargets(); interpStepEnd(interpTargets); }

@@ -199,12 +199,19 @@ export function step(obs: Observation, nav?: Nav): Action {
     return { kind: 'interact' };
   }
 
-  // 7. Any stairs anywhere → route to them (nav path around walls/pillars; greedy
-  //    wall-avoidance only as a fallback when no route is found).
-  const anyStairs = obs.visible.interactables.find((i) => i.kind === 'stairs');
-  if (anyStairs) {
-    const dir = nav?.dirToward(obs.player.pos, anyStairs.pos) ?? avoidWalls(anyStairs.compass, obs.geometry.walls8);
-    return { kind: 'move', dir, seconds: 0.4 };
+  // 7. Any stairs anywhere → route to them. Prefer the nearest stairs we can
+  //    actually PATH to: a boss arena can surface a disconnected safe-room stair
+  //    beside its own, and the arena's down-stair sits over a carved void, so the
+  //    naive nearest pick could be the wrong/unreachable one. (enemies/interactables
+  //    are distance-sorted, so this walks nearest→farthest.)
+  const allStairs = obs.visible.interactables.filter((i) => i.kind === 'stairs');
+  if (allStairs.length) {
+    for (const s of allStairs) {
+      const dir = nav?.dirToward(obs.player.pos, s.pos);
+      if (dir) return { kind: 'move', dir, seconds: 0.4 };
+    }
+    // None nav-reachable (or no grid) → greedy toward the nearest.
+    return { kind: 'move', dir: avoidWalls(allStairs[0].compass, obs.geometry.walls8), seconds: 0.4 };
   }
 
   // 8. Explore: walk in the most open direction.
