@@ -44,8 +44,11 @@ interface BotMemory {
   breakout: number;
   /** Consecutive steps a screen has held the world paused (dismiss-loop guard). */
   screenSteps: number;
+  /** Committed explore heading — hysteresis so a straight hallway (both ends ~open)
+   *  doesn't flip-flop the "most open" pick every step (the look-left-right stall). */
+  exploreDir: Direction8 | null;
 }
-const memory: BotMemory = { usedInteractableIds: new Set(), blacklist: new Set(), lastPos: null, stuckSteps: 0, breakout: 0, screenSteps: 0 };
+const memory: BotMemory = { usedInteractableIds: new Set(), blacklist: new Set(), lastPos: null, stuckSteps: 0, breakout: 0, screenSteps: 0, exploreDir: null };
 
 /** Reset bot memory. Call between episodes. */
 export function resetMemory(): void {
@@ -55,6 +58,7 @@ export function resetMemory(): void {
   memory.stuckSteps = 0;
   memory.breakout = 0;
   memory.screenSteps = 0;
+  memory.exploreDir = null;
 }
 
 /** Pick the single best action given the current observation. Reads
@@ -133,13 +137,14 @@ export function step(obs: Observation, nav?: Nav): Action {
     e.distance < 10 && !isDeadOrDying(e) && !memory.blacklist.has(e.id),
   );
   if (nearHostile && nearHostile.distance > STRIKE_REACH) {
+    // Focused on the foe: MOVE along the route but keep the gaze locked on it.
     const dir = nav?.dirToward(obs.player.pos, nearHostile.pos);
-    if (dir) return { kind: 'move', dir, seconds: 0.3 };
+    if (dir) return { kind: 'move', dir, seconds: 0.3, look: nearHostile.pos };
     // Greedy fallback (no nav / no route): face if off-axis, else step forward.
     if (nearHostile.inSight && Math.abs(nearHostile.bearing) > Math.PI / 6) {
       return { kind: 'face', target: { id: nearHostile.id } };
     }
-    if (nearHostile.inSight) return { kind: 'move', dir: nearHostile.compass, seconds: 0.3 };
+    if (nearHostile.inSight) return { kind: 'move', dir: nearHostile.compass, seconds: 0.3, look: nearHostile.pos };
   }
 
   // 4. LOOT FIRST — chest / pickup / corpse / fountain in range → face + interact.
@@ -166,8 +171,9 @@ export function step(obs: Observation, nav?: Nav): Action {
       && !memory.usedInteractableIds.has(i.id) && !memory.blacklist.has(i.id),
   );
   if (sightedUseful) {
+    // Focused on the loot: route to it but keep the gaze on it.
     const dir = nav?.dirToward(obs.player.pos, sightedUseful.pos) ?? sightedUseful.compass;
-    return { kind: 'move', dir, seconds: 0.4 };
+    return { kind: 'move', dir, seconds: 0.4, look: sightedUseful.pos };
   }
 
   // 5.5 BOSS GATE — the fog wall (kind 'boss', from the 'boss-mist' id) SEALS the
@@ -214,8 +220,11 @@ export function step(obs: Observation, nav?: Nav): Action {
     return { kind: 'move', dir: avoidWalls(allStairs[0].compass, obs.geometry.walls8), seconds: 0.4 };
   }
 
-  // 8. Explore: walk in the most open direction.
-  return exploreMove(obs.geometry.walls8, 0);
+  // 8. Explore: walk in the most open direction, COMMITTING to a heading (hysteresis)
+  //    so a straight hallway doesn't flip-flop the pick and stall looking left-right.
+  const mv = exploreMove(obs.geometry.walls8, 0, memory.exploreDir);
+  memory.exploreDir = mv.kind === 'move' ? mv.dir : null;
+  return mv;
 }
 
 function isDeadOrDying(e: ObservedEnemy): boolean {
@@ -257,8 +266,15 @@ function avoidWalls(goal: Direction8, walls: Record<Direction8, number>): Direct
 
 /** Walk toward open space. `rot` rotates the choice among the most-open directions
  *  so a break-out (called repeatedly with a changing rot) tries VARIED escapes
- *  instead of re-picking the same wall. rot=0 → the single most-open direction. */
-function exploreMove(walls: Record<Direction8, number>, rot: number): Action {
+ *  instead of re-picking the same wall. rot=0 → the single most-open direction.
+ *  `prefer` (only honoured at rot=0) adds HYSTERESIS: keep the committed heading
+ *  while it's still decently open, so a straight hallway whose two ends are both
+ *  "most open" doesn't flip-flop the pick every step (the look-left-right stall). */
+function exploreMove(walls: Record<Direction8, number>, rot: number, prefer?: Direction8 | null): Action {
+  if (rot === 0 && prefer) {
+    const pw = Number.isFinite(walls[prefer]) ? walls[prefer] : 99;
+    if (pw >= 1.5) return { kind: 'move', dir: prefer, seconds: 0.4 };
+  }
   const ranked = [...CARDINALS].sort((a, b) => {
     const wa = Number.isFinite(walls[a]) ? walls[a] : 99;
     const wb = Number.isFinite(walls[b]) ? walls[b] : 99;

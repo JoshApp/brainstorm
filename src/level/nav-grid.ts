@@ -364,10 +364,18 @@ export class NavGrid {
       for (const g of this.gates) {
         const hit = gateCrossing(prev, wp, g, g.halfBand + 0.6);
         if (hit !== null) {
+          // Square up BEFORE the gate: insert an alignment point offset from the
+          // centre along the gate NORMAL on the approach side, then the centre. The
+          // agent then crosses perpendicular (approach → centre is head-on) instead
+          // of cutting in diagonally and grazing a doorframe column. Helps mobs and
+          // the harness bot alike — both showed the sharp-angle clip.
+          const nx = Math.sin(g.rotY), nz = Math.cos(g.rotY);
+          const side = Math.sign((prev.x - g.x) * nx + (prev.z - g.z) * nz) || 1;
+          const APPROACH = 0.75;
+          const ap = { x: g.x + nx * side * APPROACH, z: g.z + nz * side * APPROACH };
           const last = out[out.length - 1];
-          if (!last || Math.hypot(last.x - g.x, last.z - g.z) > 0.05) {
-            out.push({ x: g.x, z: g.z });
-          }
+          if (!last || Math.hypot(last.x - ap.x, last.z - ap.z) > 0.1) out.push(ap);
+          out.push({ x: g.x, z: g.z });
         }
       }
       out.push(wp);

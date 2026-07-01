@@ -101,7 +101,7 @@ export interface Observation {
 // ── Action ────────────────────────────────────────────────────────────
 
 export type Action =
-  | { kind: 'move'; dir: Direction8; seconds?: number }
+  | { kind: 'move'; dir: Direction8; seconds?: number; look?: { x: number; z: number } }
   | { kind: 'turn'; angle: number }                       // relative radians
   | { kind: 'face'; target: Direction8 | { id: string } }
   | { kind: 'attack' }

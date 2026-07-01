@@ -76,7 +76,7 @@ async function dispatch(
   action: Action,
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   switch (action.kind) {
-    case 'move':   return moveAction(ctx, action.dir, action.seconds);
+    case 'move':   return moveAction(ctx, action.dir, action.seconds, action.look);
     case 'turn':   return turnAction(ctx, action.angle);
     case 'face':   return faceAction(ctx, action.target);
     case 'attack': return attackAction(ctx);
@@ -99,6 +99,7 @@ async function moveAction(
   ctx: HarnessContext,
   dir: Direction8,
   seconds?: number,
+  look?: { x: number; z: number },
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   const target = DIRS[dir];
   if (!target) return { ok: false, reason: 'unknown-direction' };
@@ -107,11 +108,14 @@ async function moveAction(
   // existing updateCamera path can consume it. See math derivation in
   // observation.ts notes.
   //
-  // Also LOOK toward where we walk (legible recordings): ease the camera yaw to the
-  // travel direction and the pitch back toward level (a prior attack may have aimed
-  // it down at a foe's feet). Capped per-frame so it reads as a smooth turn, and
-  // moveX/moveY use the eased yaw so movement stays true while the view swings.
-  const desiredYaw = yawForWorldDirection(target.wx, target.wz);
+  // Where to LOOK while moving: at the FOCUS target (an enemy we're closing on, a
+  // pickup we're heading for) if the caller named one — so the bot commits its gaze
+  // to the task — otherwise toward the travel direction (legible exploration). Either
+  // way ease the yaw (capped per-frame) and the pitch back toward level. moveX/moveY
+  // use the eased yaw so movement stays true while the view swings.
+  const desiredYaw = look
+    ? yawForWorldDirection(look.x - ctx.camera.position.x, look.z - ctx.camera.position.z)
+    : yawForWorldDirection(target.wx, target.wz);
   setInputOverride((state: InputState) => {
     let d = desiredYaw - ctx.camera.rotation.y;
     while (d > Math.PI) d -= 2 * Math.PI;
