@@ -142,6 +142,12 @@ export interface Scenario {
   openCharacterScreen?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
+  /** RAW PointLights added straight to the scene, BYPASSING the light pool —
+   *  the lighting-node benchmark's tool: the pool caps bound lights at its
+   *  slot budget, but perf-lights needs the lighting node itself to see N
+   *  lights. DEV-scenario only; never use for real content (the pool is the
+   *  director for a reason). */
+  rawPointLights?: Array<{ x: number; y: number; z: number; color: number; intensity: number; distance: number; decay: number }>;
   /** Spawn fate-card drops on the floor near the camera (major-from-corpse). */
   spawnCards?: Array<{ cardId: string; x: number; z: number }>;
   /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
@@ -268,6 +274,42 @@ function buildItemsScenario(params: URLSearchParams): Scenario {
   };
 }
 
+/** perf-lights: the LIGHTING-NODE benchmark. One big room, N raw PointLights
+ *  in a ceiling grid (BYPASSING the pool's slot cap — the node must see all N),
+ *  frozen world, camera overlooking the floor. Compare configs by URL:
+ *    ?scenario=perf-lights&n=30            (default lean loop)
+ *    ?scenario=perf-lights&n=30&unrolled=1 (stock per-light nodes)
+ *    ?scenario=perf-lights&n=30&tiled=1    (Forward+ tiled)
+ *  Measure the median render+compute GPU ms (window.__renderer +
+ *  resolveTimestampsAsync, or scripts driving real Chrome). */
+function buildLightBenchScenario(params: URLSearchParams): Scenario {
+  const n = Math.max(1, Math.min(64, Number(params.get('n') ?? '14') || 14));
+  const half = 10;   // 20×20 room — several fog-lengths of lit floor
+  const lights: NonNullable<Scenario['rawPointLights']> = [];
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const span = cols > 1 ? cols - 1 : 1;
+  for (let i = 0; i < n; i++) {
+    const x = ((i % cols) / span - 0.5) * 2 * (half - 1);
+    const z = (Math.floor(i / cols) / span - 0.5) * 2 * (half - 1);
+    // Torch-like: same color/intensity/falloff as CONFIG's torch pools.
+    lights.push({ x, y: 2.2, z, color: 0xffaa55, intensity: 48, distance: 11, decay: 2 });
+  }
+  return {
+    level: {
+      id: 'perf-lights', depth: 5, displayName: 'PERF lights', fogColor: 0x000000,
+      startPos: { x: 0, z: half - 1.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: half * 2, d: half * 2 }, height: 4.0 }],
+      corridors: [], props: [], torches: [], spawns: [], doors: [], stairs: [],
+    },
+    // Explicit yaw 0 = face −Z (into the room), slight down-pitch for more lit
+    // floor in frame. (lookAt lost a fight with startPos yaw here — explicit
+    // angles are unambiguous.)
+    playerPos: { x: 0, z: half - 1.5, yaw: 0, pitch: -0.14 },
+    freeze: true,   // deterministic: no flicker/AI — the light count is the only variable
+    rawPointLights: lights,
+  };
+}
+
 /** Perf scenarios that need the live URL params (a count, a kind) to build.
  *  getScenarioFromUrl resolves these before the static SCENARIOS map. */
 // ?scenario=threat&enemy=<id> — a single killable foe dead ahead, no god/no
@@ -337,6 +379,7 @@ function buildAiLabScenario(params: URLSearchParams): Scenario {
 const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
   'perf-creatures': buildCreaturesScenario,
   'perf-items': buildItemsScenario,
+  'perf-lights': buildLightBenchScenario,
   'threat': buildThreatScenario,
   'ai-lab': buildAiLabScenario,
 };
@@ -2064,6 +2107,15 @@ export function applyScenario(
       const item = ITEMS[p.itemId];
       if (!item) continue;
       createPickup(scene, new THREE.Vector3(p.x, 0, p.z), item);
+    }
+  }
+
+  if (scenario.rawPointLights) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    for (const l of scenario.rawPointLights) {
+      const light = new THREE.PointLight(l.color, l.intensity, l.distance, l.decay);
+      light.position.set(l.x, l.y, l.z);
+      scene.add(light);
     }
   }
 
