@@ -1,4 +1,4 @@
-import { waitForPresentedFrames } from '../style/render-webgpu';
+import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
 // frame — without a transition the camera angle and surroundings
@@ -193,12 +193,28 @@ let progressBar: HTMLDivElement | null = null;
 let progressFill: HTMLDivElement | null = null;
 
 /** Drive the descent loading bar, 0..1 (the warmup reports its batch progress).
- *  No-op until the loading mark exists — fast floors never show it. */
+ *  No-op until the loading mark exists — fast floors never show it. Progress is
+ *  also the cover watchdog's heartbeat: a warm that reports is a warm that's
+ *  alive, so the strand-guard must not reveal over it. */
 export function setDescentProgress(t: number): void {
+  descentWorkHeartbeat();
   if (!progressFill || !progressBar) return;
   progressBar.style.opacity = '0.8';
   progressFill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
 }
+
+// ── Cover watchdog heartbeat ────────────────────────────────────────────────
+// revealWhenReady's strand-guard used to be a FIXED 15s timer — but the first
+// descent's full warm (roster + real roster + deferred drain + whole-floor
+// compile) legitimately runs longer on slow machines. The timer fired mid-warm,
+// the cover dropped, and the player got a frozen "game" for the remaining warm
+// seconds (renderWebGPU skips submits while warmingUp — the measured 8s
+// post-reveal freeze). The guard is now a WATCHDOG: warm work pets it (progress
+// reports above, per-subject drain steps, the live warmingUp flag), and it only
+// reveals after true silence — a genuinely stranded promise still can't hold
+// the black forever.
+let lastWorkAlive = 0;
+export function descentWorkHeartbeat(): void { lastWorkAlive = performance.now(); }
 
 function showLoadingMark(): void {
   const el = ensureLoadingMark();
@@ -260,9 +276,23 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
   cover.style.transition = 'opacity 0ms';
   cover.style.opacity = '1';
   pulseTimer = window.setTimeout(showLoadingMark, 320);   // only show the mark for noticeable waits
-  safetyTimer = window.setTimeout(finish, 15000);          // never strand on black
+  // Strand-guard WATCHDOG (see descentWorkHeartbeat): reveal only after 15s of
+  // NO warm activity — heartbeats and the live warmingUp flag both count as
+  // alive. A legit long first-descent warm holds the black to completion; a
+  // genuinely stranded promise still gets cut loose 15s after its last sign of
+  // life.
+  const QUIET_MS = 15000;
+  descentWorkHeartbeat();
   let revealed = false;
   const once = (): void => { if (revealed) return; revealed = true; finish(); };
+  const safetyCheck = (): void => {
+    if (revealed) return;
+    if (isWarmingUp()) descentWorkHeartbeat();
+    const quiet = performance.now() - lastWorkAlive;
+    if (quiet >= QUIET_MS) { once(); return; }
+    safetyTimer = window.setTimeout(safetyCheck, Math.min(1000, QUIET_MS - quiet + 50));
+  };
+  safetyTimer = window.setTimeout(safetyCheck, 1000);
   (ready as Promise<unknown>).then(once, once);
 }
 

@@ -51,6 +51,17 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
   // DEV: latest native GPU frame ms (timer-query where supported) — the number the
   // adaptive scaler feeds on. For quick A/B costing from the console/CDP.
   (window as any).__gpuMs = () => lastWebGPUGpuMs();
+  // DEV: submit-skip tally ring — who is holding the canvas still (warmingUp vs
+  // inFlight backpressure), with second-resolution timestamps. __skipStats() reads.
+  (window as any).__skipStats = () => skipLog.slice();
+}
+const skipLog: Array<{ atMs: number; reason: string; n: number }> = [];
+function tallySkip(reason: string): void {
+  const atMs = Math.round(performance.now() / 1000) * 1000;   // bucket per second
+  const last = skipLog[skipLog.length - 1];
+  if (last && last.atMs === atMs && last.reason === reason) { last.n++; return; }
+  skipLog.push({ atMs, reason, n: 1 });
+  if (skipLog.length > 400) skipLog.shift();
 }
 
 let pipeline: RenderPipeline | null = null;
@@ -544,8 +555,8 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   // While the warm pass is driving its own renders (warmRenderWebGPU), the main loop
   // must NOT also submit — two concurrent renderAsync on one pipeline race. The warm
   // runs behind the load cover, so skipping here just holds the covered frame.
-  if (warmingUp) return;
-  if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) return;   // GPU behind — drop this submit
+  if (warmingUp) { if (import.meta.env.DEV) tallySkip('warmingUp'); return; }
+  if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) { if (import.meta.env.DEV) tallySkip('inFlight'); return; }   // GPU behind — drop this submit
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.
   renderer.info.reset();

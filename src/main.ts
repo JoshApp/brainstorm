@@ -118,7 +118,7 @@ import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { warmSceneCompile, waitForPresentedFrames } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
 import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
-import { startWarmupStream } from './scene/warmup-stream';
+import { drainWarmupStream } from './scene/warmup-stream';
 import { markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
@@ -431,15 +431,15 @@ initLevelLoader({
     // it can draw, and with the warmup disabled the node renderer was compiling
     // them lazily mid-render (the ~89ms-for-25k-tris symptom). compileAsync warms
     // every pipeline up front (it awaits backend init internally).
-    // PRE-WARM → `prewarm`. The loader gates the reveal on this promise
-    // (revealWhenReady). We gate ONLY the heavy combat-roster warm — it spawns
-    // representative effects (blood/coins/wisps/shatter) into the scene to compile
-    // them, and those would FLASH if revealed mid-compile (the "loading bleeding
-    // into the game" artifact). It runs once, on the first REAL floor, behind the
-    // descent black. We do NOT run it on the title vignette (combat effects must
-    // never flash on the title) and we do NOT gate the per-floor compile (it only
-    // causes a minor first-reveal hitch, never a flash, and gating the whole-scene
-    // compile held the descent black for seconds).
+    // PRE-WARM → `prewarm`. The loader gates the reveal on this WHOLE promise
+    // (revealWhenReady): roster warm, real-roster warm, the deferred drain, the
+    // per-floor compile AND the shadow-depth warm all finish behind the black.
+    // The rule (2026-07-02): ALL loading behind a load screen — any warm work
+    // that leaks past the reveal runs in live frames and freezes gameplay
+    // (renderWebGPU skips submits while warmingUp). The cover's strand-guard is
+    // a watchdog (descent-fade.ts) that holds while warm work heartbeats, so
+    // gating everything can't strand the black either. We do NOT run any of it
+    // on the title vignette (combat effects must never flash on the title).
     const isTitleVignette = level.spec.id === 'title-vignette';
     let prewarm: Promise<void> | undefined;
     if (new URLSearchParams(location.search).get('nowarm') === '1') {
@@ -482,7 +482,12 @@ initLevelLoader({
           // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
           // real tail). Once, behind the first descent's cover. See warm-real-roster.ts.
           try { await warmRealRoster(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
-          startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
+          // Drain the DEFERRED roster HERE, still behind the cover — it used to
+          // stream during play after the reveal, which compiled its pipelines in
+          // live frames: the "game freezes for seconds right after the first
+          // descent" report. All loading behind the load screen, always.
+          try { await drainWarmupStream(scene); } catch { /* best-effort */ }
+          markWarmupComplete(); markWebGPUWarmupComplete();
         }
         await warmSceneCompile(renderer, scene, camera);
       })();
