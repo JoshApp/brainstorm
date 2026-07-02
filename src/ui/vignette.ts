@@ -105,6 +105,37 @@ export function flashPickupGlow(rarityIndex: number) {
   pickupEl.style.opacity = '0';
 }
 
+// ─── Flask heal glow ─────────────────────────────────────────────────
+// The sip landing — a warm GOLD swell from the screen edges (Elden Ring's
+// liquid-light register), unmistakably not the damage red and softer than
+// the pickup bloom. Slow ease-in, slower fade: relief, not celebration.
+
+let healEl: HTMLDivElement | null = null;
+
+function ensureHeal() {
+  if (healEl) return;
+  ensureElements();
+  healEl = document.createElement('div');
+  healEl.id = 'vignette-heal'; healEl.classList.add('game-hud');
+  Object.assign(healEl.style, baseStyle());
+  healEl.style.background =
+    'radial-gradient(ellipse at center, rgba(255, 190, 90, 0.10) 0%, transparent 40%, rgba(255, 170, 60, 0.30) 82%, rgba(200, 120, 30, 0.5) 100%)';
+  document.body.appendChild(healEl);
+}
+
+/** The flask's sip — golden warmth blooms and drains away. */
+export function flashHealGlow() {
+  ensureHeal();
+  if (!healEl) return;
+  healEl.style.transition = 'opacity 160ms ease-in';
+  healEl.style.opacity = '0.85';
+  setTimeout(() => {
+    if (!healEl) return;
+    healEl.style.transition = 'opacity 900ms ease-out';
+    healEl.style.opacity = '0';
+  }, 200);
+}
+
 // ─── Low-HP pulse overlay ────────────────────────────────────────────
 // A third layer, independent of flash + persistent. When the player's
 // HP drops below the threshold, a soft red breathing pulse appears at

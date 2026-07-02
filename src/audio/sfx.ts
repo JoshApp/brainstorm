@@ -1610,6 +1610,81 @@ export function playHealSlurp() {
   ck.start(now + dur); ck.stop(now + dur + 0.2);
 }
 
+/** Uncorking the flask — a soft cork pop + a low glass slosh. The audible
+ *  START of the drink channel, so the commitment reads before the sip lands. */
+export function playFlaskUncork() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Cork pop — a tight filtered-noise tick with a fast pitch-down body.
+  const popDur = 0.06;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * popDur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = c.createBufferSource(); s.buffer = b;
+  const filt = c.createBiquadFilter();
+  filt.type = 'bandpass'; filt.frequency.value = 950; filt.Q.value = 3;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.28, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + popDur);
+  s.connect(filt).connect(g).connect(master);
+  s.start(now); s.stop(now + popDur);
+
+  const body = c.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(320, now);
+  body.frequency.exponentialRampToValueAtTime(120, now + 0.07);
+  const bg = c.createGain();
+  bg.gain.setValueAtTime(0.14, now);
+  bg.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+  body.connect(bg).connect(master);
+  body.start(now); body.stop(now + 0.1);
+
+  // Liquid slosh as the flask rises — slow filtered-noise swell.
+  const slDur = 0.28;
+  const sb = c.createBuffer(1, Math.floor(c.sampleRate * slDur), c.sampleRate);
+  const sd = sb.getChannelData(0);
+  for (let i = 0; i < sd.length; i++) {
+    const wave = 0.5 + 0.5 * Math.sin(i / c.sampleRate * 14);
+    sd[i] = (Math.random() * 2 - 1) * 0.3 * wave;
+  }
+  const ss = c.createBufferSource(); ss.buffer = sb;
+  const sf = c.createBiquadFilter();
+  sf.type = 'lowpass'; sf.frequency.value = 600; sf.Q.value = 1.5;
+  const sg = c.createGain();
+  sg.gain.setValueAtTime(0.0001, now + 0.04);
+  sg.gain.exponentialRampToValueAtTime(0.16, now + 0.12);
+  sg.gain.exponentialRampToValueAtTime(0.001, now + 0.04 + slDur);
+  ss.connect(sf).connect(sg).connect(master);
+  ss.start(now + 0.04); ss.stop(now + 0.04 + slDur);
+}
+
+/** Lowering the flask undrunk — a short damp slosh, the sound of a cancel.
+ *  Quieter than the uncork; nothing was gained, nothing was lost. */
+export function playFlaskLower() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+  const dur = 0.16;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const wave = 0.5 + 0.5 * Math.sin(i / c.sampleRate * 20);
+    d[i] = (Math.random() * 2 - 1) * 0.35 * wave * (1 - i / d.length);
+  }
+  const s = c.createBufferSource(); s.buffer = b;
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass'; filt.frequency.value = 500; filt.Q.value = 1.2;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.14, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  s.connect(filt).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+}
+
 /** Buff activating — magical shimmer up-glide. Distinct from heal. */
 export function playBuffApply() {
   const c = ensureCtx();

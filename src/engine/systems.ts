@@ -12,6 +12,9 @@ import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
+import { tickFlaskDrink } from '../player/flask-drink';
+import { tickFlaskViewmodel } from '../player/flask-viewmodel';
+import { tickFlaskDrinkUi } from '../controls/consumable-bar';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
 import { updateViewSway } from '../player/viewmodel-sway';
 import { tickViewmodelPullback } from '../player/viewmodel-pullback';
@@ -326,6 +329,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.
     { name: 'stamina', kind: 'sim', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
 
+    // The flask drink channel (raise→sip→lower). playerDt: freezes with
+    // hit-pause but is NOT slowed by reactive-defense bullet-time — the slow
+    // world after a clean dodge is exactly the moment the drink is for.
+    { name: 'flask-drink', kind: 'sim', phase: 'unpaused', tick(ctx) { tickFlaskDrink(ctx.playerDt); } },
+
     // TRANSFORM out-of-combat bleed (Red Thirst): while a held fate drains HP
     // and you're NOT fighting, you bleed (floored at 1 — pressure, not death).
     // 'unpaused' + scaledDt so it stops in menus / hit-pause like everything else.
@@ -357,6 +365,14 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'lamp-arm', phase: 'always', tick(ctx) { tickLampArm(ctx.realDt); } },
 
     { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
+
+    // The drink's first-person pose + gold glow — presentation over the
+    // flask-drink sim channel. realDt so the raise stays smooth through
+    // slow-mo; 'unpaused' so a menu freezes the flask mid-raise.
+    { name: 'flask-viewmodel', phase: 'unpaused', tick(ctx) { tickFlaskViewmodel(camera, ctx.realDt); } },
+    // The flask button's drink-progress ring — early-outs to one boolean when
+    // no drink is in flight.
+    { name: 'flask-hud', phase: 'always', tick() { tickFlaskDrinkUi(); } },
 
     // Enemy sleep: skip update() for enemies far from the player — they can't
     // influence gameplay outside perception range. Threshold 25m, past the

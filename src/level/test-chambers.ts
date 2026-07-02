@@ -409,7 +409,7 @@ export const TEST_CHAMBERS: TestChamber[] = [
     loadout: {
       weapon: 'scimitar',
       offhand: 'oil-lamp',
-      consumables: ['healing-potion', 'healing-potion', 'healing-potion'],
+      consumables: ['flask-draught', 'flask-draught'],
     },
   },
   {
@@ -424,7 +424,7 @@ export const TEST_CHAMBERS: TestChamber[] = [
       offhand: 'oil-lamp',
       // Three potions for the fight — generous enough that a first-try
       // attempt isn't gated on perfect dodging.
-      consumables: ['healing-potion', 'healing-potion', 'healing-potion'],
+      consumables: ['flask-draught', 'flask-draught'],
     },
   },
   {

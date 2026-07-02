@@ -79,7 +79,28 @@ trash → diluted payoff; too much stuff → no clarity). The fixes:
      consumable bar bound to it, **refill on bonfire REST** (`fate-fire.ts`, once
      per fire), and per-run persistence in `run-state` (reset on new run, restored
      on continue). flask.ts stays health-free so `run-state → flask` doesn't cycle.
-   - **Stage 2 (next)** — retire `healing-potion` from the ~12 enemy drop tables:
-     convert it into the refill-draught, add the flask shards (rare/gated), route
-     common heal slots to currency. Then the loot-density + trash→sink pass (#2).
+   - **Stage 2 DONE (2026-07-02)** — `healing-potion` retired from EVERY drop
+     source (enemy tables, vases, chest pool, rollLoot fallbacks); definition
+     kept drop-less for old saves. Solid-fight pools → `flask-draught`
+     (uncommon, +1 charge, weight halved vs the old potion); act bosses'
+     guaranteed heal → `flask-shard` (rare, +1 capacity, filled); chaff
+     potion-only pools removed (their gold stays). Draught keeps a small world
+     `drop.weight` so bronze chests still promise heals.
+   - **Stage 3 (same pass)** — the drink is a CHANNEL (`player/flask-drink.ts`):
+     ~1.25s raise→sip→lower, heal + charge land at the sip (62%), cancelable
+     before it (attack/dodge/parry/re-tap; damage does NOT interrupt — the
+     Elden Ring rule), slow walk while drinking. Gold-light identity: viewmodel
+     drink animation (`player/flask-viewmodel.ts`), golden HUD flask with
+     charge PIPS + progress ring, gold heal-vignette.
    Deepens the push-vs-bank-at-the-fire tension from `THE-DUNGEON-NOTICES.md`.
+4. **Loot SOURCES as one authored system** (proposed 2026-07-02, next branch) —
+   drops are still per-object logic: enemies carry inline `drops:{}`, chests
+   call `rollLoot` with params, challenge/tithe/reliquary each hand-roll a
+   `rollLoot(...) ?? fallback`. Unify behind ONE data seam:
+   `content/loot-sources.ts` — `LOOT_SOURCES: Record<sourceId, LootSourceSpec>`
+   (`enemy:ghoul`, `vase`, `chest:gold`, `altar:challenge`, …), each entry =
+   `guaranteed[] + gold range + rolls[{chance, pool: 'world'|inline, bias,
+   minRarity, category, fallback}]`, resolved by one `resolveLoot(sourceId,
+   ctx)`. Call sites become one-liners; the content layer retunes the whole
+   economy in one file; add `delve loot <sourceId>` (simulate N rolls, print
+   the distribution) for instrument-don't-guess tuning.

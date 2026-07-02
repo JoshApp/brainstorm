@@ -1,6 +1,7 @@
 import { equipFromInventory, unequipSlot, getEquipment, getSlotAffixes } from '../player/equipment';
 import { addItemSilently, removeItem } from '../player/inventory';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
+import { getFlask, addCharges, addCapacity } from '../player/flask';
 import { RARITY_COLORS, type ItemSpec, type WeaponClass } from '../content/items';
 import type { AffixInstance } from '../content/affixes';
 import { SETS } from '../content/sets';
@@ -8,7 +9,7 @@ import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
-import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
+import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getCharacter, proficiencyTier } from '../state/character';
@@ -161,7 +162,20 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
       label = 'USE';
       onClick = () => {
         const item = sel.item;
-        if (item.consumableHeal != null) {
+        if (item.consumableFlaskCharges != null) {
+          // Draught — pours into the flask; withheld when it's already full.
+          const { charges, capacity } = getFlask();
+          if (charges < capacity) {
+            addCharges(item.consumableFlaskCharges);
+            playFlaskUncork();
+            removeItem(item.id);
+          }
+        } else if (item.consumableFlaskCapacity != null) {
+          // Shard — fused into the flask, the new charge arrives filled.
+          addCapacity(item.consumableFlaskCapacity, true);
+          playBuffApply();
+          removeItem(item.id);
+        } else if (item.consumableHeal != null) {
           if (getPlayerHp() < getPlayerMaxHp()) {
             healPlayer(item.consumableHeal, 'passive');   // item heal — a TRANSFORM may suppress it
             playHealSlurp();
@@ -272,6 +286,12 @@ function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): H
   }
   if (item.consumableHeal != null) {
     lines.push(detailLine(`Restores ${item.consumableHeal} HP`));
+  }
+  if (item.consumableFlaskCharges != null) {
+    lines.push(detailLine(`Refills ${item.consumableFlaskCharges} flask charge${item.consumableFlaskCharges > 1 ? 's' : ''}`));
+  }
+  if (item.consumableFlaskCapacity != null) {
+    lines.push(detailLine(`The flask holds ${item.consumableFlaskCapacity} more, forever`));
   }
   if (item.consumableBuff) {
     const spec = BUFFS[item.consumableBuff.buffId];

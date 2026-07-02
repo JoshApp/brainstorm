@@ -775,6 +775,12 @@ export const CONFIG = {
   FLASK: {
     START_CAPACITY: 3,     // charges at run start + after a full bonfire refill
     HEAL_PER_CHARGE: 3,    // HP restored per charge (of PLAYER_HP_MAX 8 → ~⅜ bar; the primary heal)
+    // The DRINK is a channel, not an instant tap (player/flask-drink.ts): raise,
+    // sip, lower. Committing to it under pressure is the whole Souls tension.
+    DRINK_S: 1.25,         // full raise→sip→lower duration (player clock)
+    SIP_AT: 0.62,          // fraction of the drink where the heal LANDS + the charge is spent;
+                           // cancelling before this refunds implicitly (the charge never left)
+    DRINK_MOVE_MUL: 0.45,  // walk speed while the flask is up — reposition, don't escape
   },
   PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake

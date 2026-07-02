@@ -7,6 +7,7 @@ import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
 import { getMoveMul, getTurnMul } from '../combat/swing-agency';
+import { getDrinkMoveMul } from '../player/flask-drink';
 import { getExhaustionHeave } from '../combat/exhaustion-feedback';
 import { getStumbleOffset } from '../combat/camera-stumble';
 import type { WalkableRegion } from '../level/walkable';
@@ -114,7 +115,7 @@ export function updateCamera(
       // Aura-driven slow (e.g. inside the boiling king's body) × attack
       // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0). Both
       // multiplicative so they compose uniformly on MOVE_SPEED.
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * dt);
+      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
       // First pass: static collision (walls, pillars, altar, chest).

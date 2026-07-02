@@ -1,14 +1,15 @@
 import { getCount, removeItem, onInventoryChanged } from '../player/inventory';
 import { recordConsumableUse } from '../state/character';
 import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
-import { getFlask, spendCharge, onFlaskChanged } from '../player/flask';
+import { getFlask, addCharges, addCapacity, onFlaskChanged } from '../player/flask';
+import { requestFlaskDrink, isDrinkingFlask, getDrinkProgress, hasSipLanded } from '../player/flask-drink';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
 import { phialMutationId } from '../state/phial-identities';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
 import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
-import { playHealSlurp, playBuffApply, playDenied } from '../audio/sfx';
+import { playHealSlurp, playBuffApply, playDenied, playFlaskUncork } from '../audio/sfx';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { FONT_UI } from '../ui/hud';
 import { isDesktopLike } from './platform';
@@ -48,14 +49,22 @@ const SEC_SIZE = 50;      // smaller secondary consumables
 const GAP = 8;
 
 const HEAL_TINT_FALLBACK = 0xff2233;
+// The flask is GOLD — liquid light in the Elden Ring register, not medicine-red.
+// Satellite potions keep their elixir tints (legacy heal red, berserk orange);
+// the flask alone owns the warm gold so it reads as THE heal at a glance.
+const ESTUS_GOLD = 0xffb43c;
 
 const FLASK_ID = '__flask__';   // synthetic id for the always-present flask button
 
 let container: HTMLDivElement | null = null;
 const buttons = new Map<string, ButtonHandle>();
 let flaskEl: HTMLButtonElement | null = null;
-let flaskCount: HTMLSpanElement | null = null;
+let flaskPips: HTMLDivElement | null = null;   // charge pips — one per capacity, lit while held
 let flaskIcon: HTMLDivElement | null = null;   // re-rendered on charge change (liquid level)
+let ringEl: SVGCircleElement | null = null;    // drink-progress ring (tickFlaskDrinkUi)
+let ringCircumference = 0;
+let ringWasDrinking = false;
+let ringSawSip = false;
 // Slot order for hotkeys + badges: [flask, ...secondaries]. Flask = slot 1.
 let order: string[] = [];
 
@@ -226,7 +235,7 @@ function createButton(item: ItemSpec, isHeal: boolean): ButtonHandle {
 // ── The Flask — always-present primary heal (Estus), bound to player/flask.ts ──
 function ensureFlaskButton(): void {
   if (flaskEl || !container) return;
-  const tint = HEAL_TINT_FALLBACK;
+  const tint = ESTUS_GOLD;
   const el = document.createElement('button');
   el.setAttribute('aria-label', 'drink healing flask');
   Object.assign(el.style, {
@@ -243,14 +252,34 @@ function ensureFlaskButton(): void {
   el.appendChild(icon);
   flaskIcon = icon;
 
-  const countLabel = document.createElement('span');
-  countLabel.textContent = String(getFlask().charges);
-  Object.assign(countLabel.style, {
-    position: 'absolute', bottom: '-2px', right: '2px', fontFamily: FONT_UI,
-    fontSize: '13px', fontWeight: '700', letterSpacing: '0.04em',
-    color: 'rgba(255, 220, 200, 0.92)', textShadow: '0 0 5px rgba(0,0,0,0.95)', pointerEvents: 'none',
+  // Drink-progress ring — an SVG circle riding the button rim, revealed only
+  // while the channel runs. Gold before the sip (still cancelable/refundable),
+  // brightening once the sip lands. Driven per-frame by tickFlaskDrinkUi().
+  const R = HEAL_SIZE / 2 - 3;
+  const C = 2 * Math.PI * R;
+  const ringWrap = document.createElement('div');
+  ringWrap.innerHTML = `<svg viewBox="0 0 ${HEAL_SIZE} ${HEAL_SIZE}" width="${HEAL_SIZE}" height="${HEAL_SIZE}" aria-hidden="true" style="transform: rotate(-90deg)">
+    <circle cx="${HEAL_SIZE / 2}" cy="${HEAL_SIZE / 2}" r="${R}" fill="none"
+      stroke="${hexRgba(ESTUS_GOLD, 0.95)}" stroke-width="3" stroke-linecap="round"
+      stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}"/>
+  </svg>`;
+  Object.assign(ringWrap.style, {
+    position: 'absolute', inset: '0', pointerEvents: 'none', opacity: '0', lineHeight: '0',
   } as Partial<CSSStyleDeclaration>);
-  el.appendChild(countLabel);
+  el.appendChild(ringWrap);
+  ringEl = ringWrap.querySelector('circle');
+  ringCircumference = C;
+
+  // Charge PIPS instead of a number — one ember per charge, dark when spent.
+  // Reads at a glance like the Souls HUD, and capacity growth (shards) is
+  // visible as the row itself growing.
+  const pips = document.createElement('div');
+  Object.assign(pips.style, {
+    position: 'absolute', bottom: '6px', left: '0', right: '0',
+    display: 'flex', justifyContent: 'center', gap: '4px',
+    pointerEvents: 'none', lineHeight: '0',
+  } as Partial<CSSStyleDeclaration>);
+  el.appendChild(pips);
 
   if (isDesktopLike()) {
     const badge = document.createElement('div');
@@ -282,46 +311,75 @@ function ensureFlaskButton(): void {
 
   container.appendChild(el);
   flaskEl = el;
-  flaskCount = countLabel;
+  flaskPips = pips;
   updateFlaskButton();
 }
 
 /** Redraw the flask — the LIQUID LEVEL tracks charges/capacity (drains as you
- *  drink, a stateful read only vector UI can do), plus the count + rim state. */
+ *  drink, a stateful read only vector UI can do), plus the pips + rim state. */
 function updateFlaskButton(): void {
-  if (!flaskEl || !flaskCount) return;
+  if (!flaskEl || !flaskPips) return;
   const { charges, capacity } = getFlask();
   const frac = capacity > 0 ? charges / capacity : 0;
   if (flaskIcon) flaskIcon.innerHTML = estusFlaskSvg(frac, 42);
-  flaskCount.textContent = String(charges);
+  // One pip per capacity: a lit gold ember while the charge is held, a dark
+  // hollow once it's spent. Shards growing capacity grow the row.
+  const lit = `background:${hexCss(ESTUS_GOLD)};box-shadow:0 0 4px ${hexRgba(ESTUS_GOLD, 0.9)};border:1px solid rgba(255,224,150,0.9)`;
+  const spent = 'background:rgba(20,16,12,0.75);border:1px solid rgba(190,150,110,0.45)';
+  let html = '';
+  for (let i = 0; i < capacity; i++) {
+    html += `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;${i < charges ? lit : spent}"></span>`;
+  }
+  flaskPips.innerHTML = html;
   const empty = charges <= 0;
   const full = charges >= capacity;
   flaskEl.style.opacity = empty ? '0.5' : '1';
-  // The flask glows warmer the fuller it is — a lit ember when charged, cold glass when spent.
-  flaskEl.style.boxShadow = `0 0 ${(8 + frac * 16).toFixed(0)}px ${hexRgba(HEAL_TINT_FALLBACK, 0.15 + frac * 0.35)}`;
-  flaskEl.style.borderColor = full ? 'rgba(255, 210, 120, 0.9)' : tintBorder(HEAL_TINT_FALLBACK);
-  flaskCount.style.color = full
-    ? 'rgba(255, 224, 150, 0.95)'
-    : empty ? 'rgba(210, 160, 160, 0.7)' : 'rgba(255, 220, 200, 0.92)';
+  // The flask glows warmer the fuller it is — lit gold when charged, cold glass when spent.
+  flaskEl.style.boxShadow = `0 0 ${(8 + frac * 18).toFixed(0)}px ${hexRgba(ESTUS_GOLD, 0.15 + frac * 0.4)}`;
+  flaskEl.style.borderColor = full ? 'rgba(255, 224, 150, 0.95)' : tintBorder(ESTUS_GOLD);
 }
 
-/** Drink a flask charge with the right feedback. The heal is applied HERE (the
- *  bar owns the health/transform imports; flask.ts stays pure state). A charge is
- *  spent only when it actually heals — a withheld drink costs nothing. */
+/** Tap the flask: start the DRINK CHANNEL (player/flask-drink.ts), or lower it
+ *  if one is already running. The heal itself lands mid-channel at the sip —
+ *  this function only maps the request result to button feedback. */
 function drinkFlaskWithFeedback(): void {
-  const { healPerCharge } = getFlask();
-  if (!getFlask().charges) { denyFlask('The flask runs dry.'); return; }
-  if (getPlayerHp() >= getPlayerMaxHp()) { denyFlask('Already whole.'); return; }
-  // 'passive' kind so a healing-suppressing transform (Red Thirst) can still deny
-  // it — healPlayer returns 0 when suppressed, and we keep the charge.
-  const healed = healPlayer(healPerCharge, 'passive');
-  if (healed <= 0) { denyFlask('The thirst refuses it.'); return; }
-  spendCharge();
-  playHealSlurp(); hapticVibrate(12);
-  flaskEl?.animate(
-    [{ filter: 'brightness(1.8)', transform: 'scale(1.06)' }, { filter: 'brightness(1)', transform: 'scale(1)' }],
-    { duration: 240, easing: 'ease-out' },
-  );
+  switch (requestFlaskDrink()) {
+    case 'started':    hapticVibrate(8); break;   // the uncork sound carries it
+    case 'lowered':    hapticVibrate(8); break;   // deliberate cancel — quiet
+    case 'empty':      denyFlask('The flask runs dry.'); break;
+    case 'full':       denyFlask('Already whole.'); break;
+    case 'suppressed': denyFlask('The thirst refuses it.'); break;
+    case 'busy':       denyFlask('Your hands are full.'); break;
+  }
+}
+
+/** Per-frame HUD tick for the drink channel: reveal + fill the progress ring,
+ *  and fire the button's bright pulse the moment the sip lands. Early-outs to
+ *  a single boolean check while no drink is in flight. */
+export function tickFlaskDrinkUi(): void {
+  const drinking = isDrinkingFlask();
+  if (!drinking && !ringWasDrinking) return;
+  const wrap = ringEl?.parentElement?.parentElement ?? null;   // svg → wrapper div
+  if (drinking) {
+    const p = getDrinkProgress();
+    if (ringEl) {
+      ringEl.style.strokeDashoffset = String(ringCircumference * (1 - p));
+      ringEl.style.stroke = hexRgba(ESTUS_GOLD, hasSipLanded() ? 1 : 0.8);
+    }
+    if (wrap) wrap.style.opacity = '1';
+    if (!ringSawSip && hasSipLanded()) {
+      ringSawSip = true;
+      flaskEl?.animate(
+        [{ filter: 'brightness(2.0)', transform: 'scale(1.08)' }, { filter: 'brightness(1)', transform: 'scale(1)' }],
+        { duration: 320, easing: 'ease-out' },
+      );
+    }
+  } else {
+    if (wrap) wrap.style.opacity = '0';
+    if (ringEl) ringEl.style.strokeDashoffset = String(ringCircumference);
+    ringSawSip = false;
+  }
+  ringWasDrinking = drinking;
 }
 
 /** Shake the flask + murmur a line so a withheld drink reads as withheld, not
@@ -360,6 +418,33 @@ export function useConsumableSlot(slot: number) {
 
 function useConsumable(item: ItemSpec) {
   if (getCount(item.id) <= 0) return;
+
+  // Flask draught — poured INTO the flask (+charges), never drunk directly.
+  // At a full flask it's withheld: the pour would spill.
+  if (item.consumableFlaskCharges != null) {
+    const { charges, capacity } = getFlask();
+    if (charges >= capacity) { denyFlask('The flask is full.'); return; }
+    addCharges(item.consumableFlaskCharges);
+    playFlaskUncork();
+    hapticVibrate(12);
+    drainPulse(item.id);
+    removeItem(item.id);
+    recordConsumableUse();
+    return;
+  }
+
+  // Flask shard — fused into the flask: +capacity, and the new charge arrives
+  // filled so the find is immediately felt.
+  if (item.consumableFlaskCapacity != null) {
+    addCapacity(item.consumableFlaskCapacity, true);
+    showInWorldMessage('The flask grows deeper.');
+    playBuffApply();
+    hapticVibrate(16);
+    drainPulse(item.id);
+    removeItem(item.id);
+    recordConsumableUse();
+    return;
+  }
 
   // Healing — at full HP, don't burn a scarce potion. Give clear feedback
   // (the silent no-op read as a broken button) instead.
@@ -453,27 +538,45 @@ function flaskSvg(tint: number, px: number): string {
 }
 
 // ── The Estus flask icon — a round-bottomed apothecary flask with an IRON
-// collar, its glowing liquid filling to the charge level. `fillFrac` (0..1 =
+// collar, filled with GOLDEN LIGHT to the charge level (the Elden Ring
+// register: the liquid IS light, not medicine). `fillFrac` (0..1 =
 // charges/capacity) sets the liquid surface height, so drinking visibly drops
-// the level and an empty flask reads as bare glass. This dynamic, per-state
-// render is exactly what a raster/AI-art icon can't do — the case for keeping
-// functional UI procedural (see the UI-pipeline note).
+// the level and an empty flask reads as bare glass. A radial glow blooms from
+// the liquid and dims with it. This dynamic, per-state render is exactly what
+// a raster/AI-art icon can't do — the case for keeping functional UI
+// procedural (see the UI-pipeline note).
 function estusFlaskSvg(fillFrac: number, px: number): string {
   const f = Math.max(0, Math.min(1, fillFrac));
-  const liquid = hexCss(HEAL_TINT_FALLBACK);
+  const liquid = hexCss(ESTUS_GOLD);
+  const liquidBright = '#ffd98a';
   const glass = 'rgba(220,226,236,0.50)';
   const glassFill = 'rgba(220,226,236,0.07)';
   // Round-bottomed bulb; the clip keeps liquid + iron band inside the glass.
   const bulb = 'M9.6 8 L14.4 8 C16 11 20 13 20 18.5 C20 23 16.4 26.5 12 26.5 C7.6 26.5 4 23 4 18.5 C4 13 8 11 9.6 8 Z';
   const surfaceY = 26 - f * 15;   // liquid top: y=11 (full) → y=26 (empty)
   const uid = 'estus-clip';
+  const gid = 'estus-glow';
+  const lid = 'estus-liquid';
   return `<svg viewBox="0 0 24 28" width="${px}" height="${(px * 28) / 24}" aria-hidden="true">
-    <defs><clipPath id="${uid}"><path d="${bulb}"/></clipPath></defs>
+    <defs>
+      <clipPath id="${uid}"><path d="${bulb}"/></clipPath>
+      <radialGradient id="${gid}" cx="50%" cy="68%" r="55%">
+        <stop offset="0%" stop-color="${liquidBright}" stop-opacity="${(0.85 * f).toFixed(2)}"/>
+        <stop offset="55%" stop-color="${liquid}" stop-opacity="${(0.35 * f).toFixed(2)}"/>
+        <stop offset="100%" stop-color="${liquid}" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="${lid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${liquidBright}"/>
+        <stop offset="100%" stop-color="${liquid}"/>
+      </linearGradient>
+    </defs>
+    ${f > 0 ? `<circle cx="12" cy="19" r="11" fill="url(#${gid})"/>` : ''}
     <rect x="9" y="0.5" width="6" height="3.2" rx="0.8" fill="#5a3d22" stroke="#3a2614" stroke-width="0.4"/>
     <rect x="9.7" y="3.4" width="4.6" height="4.8" fill="${glassFill}" stroke="${glass}" stroke-width="0.7"/>
     <path d="${bulb}" fill="${glassFill}" stroke="${glass}" stroke-width="0.9"/>
-    ${f > 0 ? `<rect x="0" y="${surfaceY.toFixed(1)}" width="24" height="28" fill="${liquid}" opacity="0.9" clip-path="url(#${uid})"/>
-    <ellipse cx="12" cy="${surfaceY.toFixed(1)}" rx="7.5" ry="0.9" fill="${liquid}" clip-path="url(#${uid})"/>` : ''}
+    ${f > 0 ? `<rect x="0" y="${surfaceY.toFixed(1)}" width="24" height="28" fill="url(#${lid})" opacity="0.92" clip-path="url(#${uid})"/>
+    <ellipse cx="12" cy="${surfaceY.toFixed(1)}" rx="7.5" ry="0.9" fill="${liquidBright}" clip-path="url(#${uid})"/>
+    <circle cx="12" cy="${Math.min(24, surfaceY + 4).toFixed(1)}" r="2.2" fill="${liquidBright}" opacity="0.55" clip-path="url(#${uid})"/>` : ''}
     <rect x="3.5" y="16.6" width="17" height="2.6" fill="rgba(28,24,22,0.92)" clip-path="url(#${uid})"/>
     <circle cx="6.6" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
     <circle cx="17.4" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>

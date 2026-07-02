@@ -45,6 +45,93 @@ export const HEALING_POTION: ModelSpec = {
   ],
 };
 
+// ── The Estus flask — the player's healing flask, GOLD light in dark glass.
+// Elden Ring register: the liquid is warm light, not medicine. Used as the
+// drink viewmodel (player/flask-viewmodel.ts) and by flask-economy drops.
+// The `elixir` material is looked up by id at runtime (glow pulses at the sip),
+// so keep the material key stable.
+export const ESTUS_FLASK: ModelSpec = {
+  id: 'estus-flask',
+  materials: {
+    glass: {
+      color: 0x1b1a15,
+      roughness: 0.22,
+      metalness: 0.12,
+      fog: false,
+      flatShading: 'auto',
+    },
+    elixir: {
+      // Black base + amber-gold emissive — liquid sunlight in a dark bulb.
+      color: 0x000000,
+      emissive: 0xffb43c,
+      emissiveIntensity: 2.0,
+      roughness: 0.3,
+      fog: false,
+    },
+    iron: {
+      color: 0x2c2823,
+      roughness: 0.55,
+      metalness: 0.8,
+      fog: false,
+      flatShading: 'auto',
+    },
+    cork: {
+      color: 0x4a3a26,
+      roughness: 0.95,
+      metalness: 0.0,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    // Round-bottomed bulb — the apothecary silhouette the HUD icon echoes.
+    { kind: 'sphere', name: 'bulb', pos: [0, 0.07, 0], radius: 0.062, segments: [14, 12], mat: 'glass' },
+    // The light inside — slightly smaller sphere so glass rims it.
+    { kind: 'sphere', name: 'elixir', pos: [0, 0.066, 0], radius: 0.052, segments: [12, 10], mat: 'elixir' },
+    // Iron collar where neck meets bulb (the HUD icon's band).
+    { kind: 'cylinder', name: 'collar', pos: [0, 0.126, 0], radius: 0.027, height: 0.02, segments: 10, mat: 'iron' },
+    // Neck + cork.
+    { kind: 'cylinder', name: 'neck', pos: [0, 0.152, 0], radius: 0.019, height: 0.05, segments: 10, mat: 'glass' },
+    { kind: 'cylinder', name: 'cork', pos: [0, 0.188, 0], radius: 0.017, height: 0.024, segments: 8, mat: 'cork' },
+  ],
+};
+
+// Refill draught — a stoppered measure of the same gold light, smaller and
+// meaner. Poured into the flask on use (+1 charge), never drunk directly.
+export const FLASK_DRAUGHT: ModelSpec = {
+  id: 'flask-draught',
+  materials: {
+    glass: { color: 0x1b1a15, roughness: 0.25, metalness: 0.1, fog: false, flatShading: 'auto' },
+    elixir: { color: 0x000000, emissive: 0xffb43c, emissiveIntensity: 1.6, roughness: 0.4, fog: false },
+    cork: { color: 0x4a3a26, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'cylinder', pos: [0, 0.055, 0], radius: 0.038, height: 0.09, segments: 10, mat: 'glass' },
+    { kind: 'cylinder', pos: [0, 0.05, 0], radius: 0.031, height: 0.07, segments: 10, mat: 'elixir' },
+    { kind: 'cylinder', pos: [0, 0.12, 0], radius: 0.017, height: 0.04, segments: 8, mat: 'glass' },
+    { kind: 'cylinder', pos: [0, 0.15, 0], radius: 0.016, height: 0.02, segments: 8, mat: 'cork' },
+  ],
+};
+
+// Flask shard — a curve of golden glass that remembers the vessel it was.
+// Fused into the flask on use (+1 capacity).
+export const FLASK_SHARD: ModelSpec = {
+  id: 'flask-shard',
+  materials: {
+    shard: { color: 0x201c12, roughness: 0.2, metalness: 0.15, fog: false, flatShading: 'auto' },
+    gleam: { color: 0x000000, emissive: 0xffc860, emissiveIntensity: 1.4, roughness: 0.3, fog: false },
+  },
+  parts: [
+    // A broken curve of bulb-glass — three thin plates fanned along an arc
+    // read as one curved fragment at pickup distance.
+    { kind: 'box', pos: [-0.03, 0.045, 0], rot: [0.15, 0.0, 0.55], size: [0.045, 0.008, 0.035], mat: 'shard' },
+    { kind: 'box', pos: [0, 0.06, 0], rot: [0.1, 0.3, 0.0], size: [0.05, 0.008, 0.038], mat: 'shard' },
+    { kind: 'box', pos: [0.03, 0.045, 0.005], rot: [0.12, 0.6, -0.55], size: [0.045, 0.008, 0.035], mat: 'shard' },
+    // A gleam of the old light caught along the break.
+    { kind: 'sphere', pos: [0.005, 0.058, 0.008], radius: 0.014, segments: [8, 6], mat: 'gleam' },
+  ],
+};
+
 // Ring of vigor — green-stoned torus ring.
 function ringModel(id: string, jewelColor: number, jewelEmissive: number): ModelSpec {
   return {

@@ -593,7 +593,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
       spawns: [], doors: [], stairs: [],
     },
-    giveItems: ['healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'berserk-potion', 'berserk-potion'],
+    giveItems: ['flask-draught', 'flask-draught', 'berserk-potion', 'berserk-potion'],
   },
 
   // Boss (the wraith, now scaled + named) up close — for size/silhouette
@@ -1095,7 +1095,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       'ring-of-vigor', 'ring-of-predation',
       'ring-of-bloodthirst', 'ring-of-frenzy',
       'scimitar',
-      'healing-potion', 'healing-potion', 'berserk-potion',
+      'flask-draught', 'flask-draught', 'berserk-potion',
     ],
     openInventoryPanel: true,
     enemyOverrides: [
@@ -1149,7 +1149,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       'ring-of-vigor', 'ring-of-predation',
       'ring-of-bloodthirst', 'ring-of-frenzy',
       'scimitar',
-      'healing-potion', 'healing-potion', 'berserk-potion',
+      'flask-draught', 'flask-draught', 'berserk-potion',
     ],
     openInventoryPanel: true,
   },
@@ -1161,12 +1161,12 @@ export const SCENARIOS: Record<string, Scenario> = {
     hudOnly: true,
     damagePlayerBy: 7,
   },
-  // Consumable hotbar with a healthy stack of potions — slot icons +
-  // count badges + selected-slot indicator visible.
+  // Consumable hotbar with a healthy stack of consumables — the flask +
+  // satellite icons + count badges visible.
   'hud-hotbar': {
     freeze: true,
     hudOnly: true,
-    giveItems: ['healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'berserk-potion', 'berserk-potion'],
+    giveItems: ['flask-draught', 'flask-draught', 'berserk-potion', 'berserk-potion'],
   },
   // Boss bar mid-fight. Spawns a boss in chasing state so the boss-
   // bar engagement check fires; doesn't damage it (the bar starts
@@ -1195,7 +1195,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       'worn-boots', 'wooden-shield',
       'ring-of-vigor', 'ring-of-predation',
       'ring-of-bloodthirst', 'ring-of-frenzy',
-      'scimitar', 'healing-potion', 'healing-potion', 'berserk-potion',
+      'scimitar', 'flask-draught', 'flask-draught', 'berserk-potion',
     ],
     openInventoryPanel: true,
     selectItemId: 'ring-of-bloodthirst',
@@ -1332,6 +1332,28 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Traces of the lost — fallen-delver bodies + lamp-revealed wall-runes.
   // Player stands close so the runes bloom + a corpse glint reads. Walk closer
   // on a phone to watch them brighten; ?scenario=traces.
+  // Estus flask drink — hurt player + draughts in the bag, world LIVE so the
+  // drink channel runs, in a bare safe room (no mobs — the channel is the
+  // subject). Tap the flask (or press 1) and watch the raise → sip → lower;
+  // attack/dodge mid-drink to test the cancel.
+  flask: {
+    freeze: false,
+    damagePlayerBy: 5,
+    giveItems: ['flask-draught', 'flask-draught'],
+    level: {
+      id: 'dbg-flask',
+      depth: 1,
+      displayName: 'The Flask',
+      fogColor: 0x0a0a0c,
+      startPos: { x: 0, z: -0.6, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 8, d: 8 }, height: 3.2 }],
+      corridors: [],
+      props: [],
+      torches: [{ x: 0, z: 3.8, height: 2.2, wall: 'N' }],
+      spawns: [], doors: [], stairs: [],
+    },
+  },
+
   traces: {
     // Walkable — sweep your lamp along the walls to bloom the runes, walk up to
     // the bodies to SEARCH. (freeze:true is only for posed snaps.)

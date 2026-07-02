@@ -91,7 +91,7 @@ export function rollChestLoot(
   return rollLoot(
     { depth, bias: t.bias, category: t.category ? [...t.category] : undefined, minRarity: t.floor?.(depth) },
     rand,
-  ) ?? ITEMS['healing-potion'];
+  ) ?? ITEMS['flask-draught'];
 }
 
 /**

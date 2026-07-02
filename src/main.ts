@@ -2183,7 +2183,7 @@ if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
     runsAttempted: 7, runsDied: 6, deepestDepth: 4, totalKills: 31,
     totalPlayMs: 4 * 60 * 1000,
     enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
-    itemsFound: ['rusted-sword', 'scimitar', 'healing-potion', 'leather-gloves',
+    itemsFound: ['rusted-sword', 'scimitar', 'flask-draught', 'leather-gloves',
                  'worn-boots', 'ring-of-vigor', 'iron-coif'],
     notesRead: [
       'I came for the blade. I should have come for the door.',
@@ -2233,9 +2233,9 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('god'
 if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
   localStorage.setItem('delve:save', JSON.stringify({
     version: 1, floorId: 'depth-2', depth: 2, hp: 4,
-    inventory: { 'healing-potion': 2 },
+    inventory: { 'flask-draught': 2 },
     equipment: { weapon: 'scimitar' },
-    startedAt: Date.now() - 240000, kills: 7, itemsFound: ['scimitar', 'healing-potion'],
+    startedAt: Date.now() - 240000, kills: 7, itemsFound: ['scimitar', 'flask-draught'],
   }));
 }
 // Debug hook for snapping the end screen — `?showEnd=1` skips game

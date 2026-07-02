@@ -74,7 +74,7 @@ function scorn(note: string): Outcome['apply'] {
 
 function grantLoot(bias: number, note: string): Outcome['apply'] {
   return (ctx) => {
-    const item = rollLoot({ depth: ctx.depth, bias }, gameRng) ?? ITEMS['healing-potion'];
+    const item = rollLoot({ depth: ctx.depth, bias }, gameRng) ?? ITEMS['flask-draught'];
     if (item) dropBeside(ctx, item);
     showNote(note);
     return { itemIds: item ? [item.id] : [] };

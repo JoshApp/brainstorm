@@ -8,7 +8,7 @@ import { SKELETON_KEY } from './skeleton-key';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
 import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
 import {
-  HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
+  HEALING_POTION, FLASK_DRAUGHT, FLASK_SHARD, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
   IRON_COIF, BONE_AMULET, ACID_TONGUE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
   OIL_LAMP_MODEL,
@@ -355,8 +355,16 @@ export interface ItemSpec {
    * mutating the player entity's passives array.
    */
   passives?: PassiveSpec[];
-  /** For consumables: how much HP to restore on use (single-use). */
+  /** For consumables: how much HP to restore on use (single-use). LEGACY —
+   *  the flask (player/flask.ts) is the heal economy now; this survives only
+   *  for old saves still carrying `healing-potion`. */
   consumableHeal?: number;
+  /** For consumables: pour into the flask — restore this many CHARGES
+   *  (clamped to capacity; withheld at a full flask). The refill draught. */
+  consumableFlaskCharges?: number;
+  /** For consumables: fuse into the flask — grow capacity by this many
+   *  charges, arriving filled. The flask shard (rare, gated). */
+  consumableFlaskCapacity?: number;
   /** For consumables: apply this buff to the player on use. */
   consumableBuff?: { buffId: string; duration: number };
   /** For consumables: drinking applies the PERMANENT run mutation this
@@ -1488,6 +1496,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     carryLimit: 2,
     drop: { weight: 2, minDepth: 4 },
   },
+  // LEGACY — retired from every drop table (Estus Stage 2, LOOT-PUNCHLIST #3).
+  // The definition survives so an old save still holding vials can drink them;
+  // no `drop` field, so the loot roller can never produce another.
   'healing-potion': {
     id: 'healing-potion',
     kind: 'consumable',
@@ -1495,18 +1506,35 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A vial of dark elixir',
     flavor: 'Tastes of iron and dust.',
     dropModel: HEALING_POTION,
-    // Heals 2 of PLAYER_HP_MAX 8 — a quarter bar, a TOP-UP not a reset. At 4
-    // (half the bar) two pickups fully healed you, so attrition stopped
-    // mattering and the whole altar/transaction economy lost its teeth. A
-    // smaller sip keeps healing a managed resource (carry 3 = real sustain,
-    // not invulnerability).
     consumableHeal: 2,
     carryLimit: 3,
-    // The backbone of the heal economy — but weight 5 flooded every floor
-    // (and every chest) with cheap heals, which dissolves the tension the
-    // whole transaction economy runs on. 2.5 keeps potions PRESENT and
-    // makes finding one feel like a small mercy instead of litter.
-    drop: { weight: 2.5 },
+  },
+  // The flask economy (docs/LOOT-PUNCHLIST.md #3): healing loot is tiered.
+  // Uncommon DRAUGHTS refill flask charges; rare gated SHARDS grow the flask.
+  'flask-draught': {
+    id: 'flask-draught',
+    kind: 'consumable',
+    rarity: 'uncommon',
+    name: 'A stoppered draught',
+    flavor: 'The flask accepts it without thanks.',
+    dropModel: FLASK_DRAUGHT,
+    consumableFlaskCharges: 1,
+    carryLimit: 2,
+    // Present but scarce — the bonfire anchors the heal economy; a draught is
+    // a stay of execution between fires, not a second flask.
+    drop: { weight: 2 },
+  },
+  'flask-shard': {
+    id: 'flask-shard',
+    kind: 'consumable',
+    rarity: 'rare',
+    name: 'A shard of golden glass',
+    flavor: 'The flask remembers being larger.',
+    dropModel: FLASK_SHARD,
+    consumableFlaskCapacity: 1,
+    // No pool weight — shards are GATED, never rolled loose: guaranteed on
+    // bosses (enemies.ts `guaranteed`), so capacity growth tracks real
+    // progress the way the punch-list intends (boss/elite/gold/challenge).
   },
   'berserk-potion': {
     id: 'berserk-potion',

@@ -44,7 +44,7 @@ export function spawnReliquary(
 
   // The prize — pre-rolled at spawn, generous (locked > free), shown.
   const prize: ItemSpec =
-    rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['healing-potion'];
+    rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['flask-draught'];
 
   // ── Geometry ──
   const group = new THREE.Group();

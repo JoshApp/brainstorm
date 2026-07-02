@@ -45,9 +45,9 @@ export interface Destructible extends Damageable {
   group: THREE.Group;
 }
 
-// Loot table for vases.
+// Loot table for vases. Heals no longer spill from pottery (Estus Stage 2 —
+// the flask is the heal economy; common heal slots pay in currency instead).
 const VASE_GOLD_CHANCE = 0.50;     // 50% drop SOME gold
-const VASE_POTION_CHANCE = 0.04;   // 4% drop a healing potion
 const VASE_GOLD_MIN = 1;
 const VASE_GOLD_MAX = 3;
 
@@ -146,23 +146,11 @@ export function spawnVase(
       // rather than coins — visually they were already smashed,
       // so the "reward" should match.
       const goldChance  = isBroken ? VASE_GOLD_CHANCE * 0.25 : VASE_GOLD_CHANCE;
-      const potionChance = isBroken ? 0 : VASE_POTION_CHANCE;
       const dropY = group.position.y + 0.25;
       tmpDropPos.set(group.position.x, dropY, group.position.z);
       if (gameRngChance(goldChance)) {
         const amt = gameRngInt(VASE_GOLD_MIN, VASE_GOLD_MAX);
         spawnGoldCoins(scene, tmpDropPos, amt);
-      }
-      if (gameRngChance(potionChance)) {
-        const potion = ITEMS['healing-potion'];
-        if (potion) {
-          const launchVel = new THREE.Vector3(
-            (Math.random() - 0.5) * 1.2,
-            2.4,
-            (Math.random() - 0.5) * 1.2,
-          );
-          createPickup(scene, tmpDropPos.clone(), potion, { velocity: launchVel });
-        }
       }
       // Remove from scene; reclaim this vase's geometry.
       scene.remove(group);

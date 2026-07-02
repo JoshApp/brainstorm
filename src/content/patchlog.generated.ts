@@ -4,407 +4,404 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 18",
-    "date": "2026-06-24",
+    "version": "Build 24",
+    "date": "2026-07-01",
     "entries": [
       {
         "tag": "fix",
-        "text": "First blood, first dust, first parry of a fight no longer hitch — the dungeon rehearsed them.",
+        "text": "You stop spawning into a pair of mystery bloodstains at your feet — the dungeon was warming its knives, not remembering a murder.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Enemies can finally look at you from any angle without their heads spinning out — the facing holds rock-steady past a quarter-turn now.",
         "area": [
           "combat"
         ]
       },
       {
         "tag": "fix",
-        "text": "Swapping weapons stops hitching — the dungeon compiles the blade's shadow ahead of time now, on the loading stair where you can't feel it.",
+        "text": "Enemies stop shivering their aim on high-refresh screens — their gaze locks on hard and clean while they still glide between steps.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The rats stop vibrating their heads like tuning forks — they hold a steady stare and scurry, instead of juddering where they face.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Wound a coward badly enough and it breaks — bolts into the dark and cowers there, glancing back to see if you followed. Some of them you have to chase.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The ones biding their turn stop standing like statues — they fake lunges and coil at the edge of reach, waiting for you to slip.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead flinch when you land a blow now — every hit reads on them, not just the ones that break something.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Bury a heavy in a thing's wind-up and the blow dies in its hands. Bleed it first and its guard never knits back. The deep teaches you when to commit.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead stop twitching when they close in — they hold their ground and circle you steady now, instead of buzzing like flies.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The boss stands alone now. No hangers-on to hide behind — just the two of you, and the door sealed shut.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The rim-light round every relic is cut from one cloth now — descending no longer stutters to carve each anew.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead lean into their charges and bank through their circles now, and the archers stop shooting walls — they move to get a clear line on you.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead keep their eyes on you now — the body circles and strafes while the head tracks you like it wants something.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead stop moonwalking and twitching — they turn to face where they actually move now, and circle you like they mean it.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The flask drains as you drink it, and the satchel stopped pretending to be a lock.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The deep stops re-carving the same monsters' shaders each floor — repeat kin now share one form, and descending settles quiet.",
+        "area": [
+          "tech",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dead SHARP UPSCALE toggle leaves the menu — the deep already renders its edges the one true way.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The brightness slider works again — drag it and the dark actually answers.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The CRT-film toggle leaves the settings — it never did anything on the new renderer, and the dungeon prefers its own dark.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The deep stops re-learning how to draw each hall as you descend — new floors bloom without the stutter.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The stairs no longer catch as you descend — the deep dresses the next floor in the dark before you arrive.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Healing is a flask now — a handful of charges, refilled only at the fire. Drink wisely; the dark does not refill you.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The dead learned to bide their time — they weigh you, pick a moment, and lunge. Swinging on reflex was too kind.",
+        "area": [
+          "combat"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 23",
+    "date": "2026-06-30",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "The lurkers stop swaying on a metronome, and the pack circles you instead of crab-walking sideways at it. They hunt like they mean it now.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The deep floors stop sweating gold. Wet stone runs wet, not lacquered.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The blade no longer stutters mid-swing, and the view stops snapping through ghost angles. Smoother steel for the same blood.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The screen kicks again when steel finds bone — the blow had been landing in silence.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The screen kicks again when steel finds bone. The blow had been landing in silence; no longer.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Descending no longer freezes on the click — the dark comes down first, then the dungeon does its work behind it.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "What you can reach glows again as you near it. The dungeon does hate to watch you miss a trinket.",
+        "area": [
+          "interactables",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 22",
+    "date": "2026-06-29",
+    "entries": [
+      {
+        "tag": "fix",
+        "text": "The deep finishes carving every shape — even the dying ones — before it admits you. No more stutter as the dungeon and its dead take form.",
         "area": [
           "tech",
           "combat"
         ]
       },
       {
-        "tag": "fix",
-        "text": "The first shard a foe hurls no longer hitches — the dungeon loaded the throw before the fight.",
+        "tag": "tech",
+        "text": "The descent now lays the whole floor bare to itself before it lets you in — you arrive to a world already carved, no stutter as it forms.",
         "area": [
-          "combat"
+          "tech",
+          "level"
         ]
       },
       {
-        "tag": "fix",
-        "text": "The frame cap holds on every screen now — phones with adaptive refresh stop sailing past the limit you set.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The first time each foe comes apart no longer hitches — the dungeon prepared the cut ahead of time.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The frame limiter stops hitching on high-refresh screens — capped play paces clean against the glass now, no more standing-still stutter.",
+        "tag": "tech",
+        "text": "Fountains, spike pits and tome pillars stop re-forging themselves on every floor — the deep remembers their shape now.",
         "area": [
           "tech"
         ]
       },
       {
         "tag": "tech",
-        "text": "Enemies render as one skinned mesh now — fewer draws, and a lopped skull keeps its glowing eyes as it tumbles.",
+        "text": "The dark readies its carvings and embers before you ever descend — no more flinch when a new room lights up.",
         "area": [
-          "combat",
-          "atmosphere"
+          "tech",
+          "level"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The dungeon quits drawing rooms the fog already swallowed. Your sightline down the hall costs less now.",
+        "tag": "fix",
+        "text": "The deep no longer strands you on a black screen after it reforges itself — it pulls down the new build and descends on its own.",
         "area": [
-          "level",
-          "atmosphere"
+          "tech"
         ]
       }
     ]
   },
   {
-    "version": "Build 17",
-    "date": "2026-06-23",
+    "version": "Build 21",
+    "date": "2026-06-28",
     "entries": [
       {
-        "tag": "tune",
-        "text": "The first of each kind no longer staggers the world as it arrives — the dungeon rehearses every shape before the first one draws breath.",
+        "tag": "tech",
+        "text": "The dark stops re-forging the same stones each floor — fewer hitches the deeper you go.",
         "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The first blood no longer catches the dungeon off guard — the gore is rehearsed before the first kill, so the kill lands clean.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Monsters stop freezing the world the instant they first crawl into view — the dungeon learns their shape before they arrive.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A PIXEL DENSITY dial joins the graphics menu — trade sharpness for frames until the glass runs smooth.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Lamp shadows refresh every frame now — the light stops hitching as you turn, holding steady instead of pulsing.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The phone renders lighter underfoot — fewer pixels to grind, so the frame holds steadier when you sweep your gaze across a room.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dungeon stops twitching when you sidestep — edges hold steady in motion now, for everyone.",
-        "area": [
-          "graphics"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Strafing stops jittering — a new SHARP UPSCALE settles the edges, and the frame cap no longer quarrels with your screen.",
-        "area": [
-          "graphics"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 16",
-    "date": "2026-06-22",
-    "entries": [
-      {
-        "tag": "add",
-        "text": "Fighting feeds a hunger now. Fill it, and Hemorrhage — you burst, the blood sprays, and you drink back every drop you catch.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Red Thirst is a pact now: fires and potions do nothing for you — you heal only by spilling blood, and you bleed when you stop.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Your fates do things now. Hoard them and the blade hungers; corner yourself and the Martyr wakes; each kill feeds the next. The cards are a build, not a number.",
-        "area": [
-          "content"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 15",
-    "date": "2026-06-21",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "Fires settle where they belong now — a nook off the path, waiting in the dark. The dungeon places them on purpose, or not at all.",
-        "area": [
+          "tech",
           "level"
         ]
       },
       {
-        "tag": "tune",
-        "text": "Fires hide deeper in the dark now, not at the door. Find one and earn the rest.",
+        "tag": "tech",
+        "text": "Fewer flinches as the dark meets you now — the eyes that watch and the embers that drift were made ready in advance.",
         "area": [
-          "level"
+          "tech"
         ]
       },
       {
-        "tag": "add",
-        "text": "Pick your weapon, then your first card. The boss fire deals heavier fates now. The dungeon stopped pretending you had points to spend.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A fire is no longer promised on every floor. Sometimes you wake in the cold and walk on. Find one, and it means more.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "When the GPU blinks, the dark only gutters now instead of going black — and a descent that refuses to begin offers a way through instead of a dead screen.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Early floors stop repeating the same two rooms. The dungeon has more ways to greet you now, and uses them.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Empty floors are over. The dungeon now guarantees a welcome on every descent, whatever the rooms happen to be.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "When something breaks, the dark catches it now — it shows you the fault, takes your account of it, and remembers the exact descent so it can be mended.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The deep opens a door to the gathering outside it — a way to find the others who delve, and to be heard by the thing that builds this place.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The frame limiter is rebuilt from scratch and finally behaves: capped play sits exactly on its number instead of riding above it or sagging below.",
-        "area": [
-          "controls"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Rummage in a chest and your next strike starts clean — no more phantom dagger flurry picking up a combo you'd already abandoned.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Capped framerates hold their number now instead of sagging a few frames under; the limiter counts your screen's pulses instead of second-guessing a stopwatch.",
-        "area": [
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The frame limiter stops chasing its own tail when the scene gets busy; capped play holds its cadence under load instead of lurching.",
-        "area": [
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The frame cap locks to your screen's own pulse now instead of guessing with a stopwatch; capped play stops twitching, and the cap stops lying about the number it gives you.",
-        "area": [
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The view glides between the sim's heartbeats now; the stutter you almost noticed is gone, and I will take the credit for it.",
-        "area": [
-          "controls",
-          "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 14",
-    "date": "2026-06-19",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The eye tilts down to meet you now — it knows exactly where you stand.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The fire on the threshold sits full in view now, the dark floor falling away around it.",
+        "tag": "tech",
+        "text": "A bar marks the wait at the threshold, the dark fully forms before it admits you, and the deep now flinches visibly when it meets something it hasn't readied.",
         "area": [
           "ui",
-          "atmosphere"
+          "tech"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The eye in the keystone follows you now, and blinks. It was always watching; now you can tell.",
+        "tag": "tech",
+        "text": "The dark lays out its furniture before you arrive now — fewer stutters as new horrors come into the light.",
         "area": [
-          "atmosphere",
-          "level"
+          "tech"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The bonfire on the threshold draws a little nearer now.",
+        "tag": "tech",
+        "text": "The dark finishes its work before it lets you in now — the stair down opens without a stumble.",
         "area": [
-          "ui",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The deep readies its dead the instant you arrive now, not while you bleed for it.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The descent opens quick now and the deep furnishes itself behind your back — the dead you haven't met yet are made ready while you walk.",
+        "area": [
+          "tech",
           "atmosphere"
         ]
       },
       {
         "tag": "tech",
-        "text": "One way to frame a doorway now, and the eye only watches from the room you're standing in.",
+        "text": "The descent takes a breath now — the dark fills in as it readies, instead of seizing the whole window shut.",
         "area": [
-          "level",
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "One way to draw the dark now. The old path is shut.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The floor and the walls remember now — blood pools where you spill it and runs down the stone. The deep keeps the stains.",
+        "area": [
+          "combat",
           "atmosphere"
         ]
       },
       {
         "tag": "fix",
-        "text": "The eye opens over narrow doorways now, not only the grand arches.",
+        "text": "Strike one of a kind and only it flares — its kin no longer flinch in sympathy.",
         "area": [
-          "level",
-          "atmosphere"
+          "combat"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The dungeon's eye now sits true in the keystone of each arch, watching from the stone itself.",
+        "tag": "fix",
+        "text": "Slay one of a kind and its kin no longer rot in sympathy. The dead keep their dissolution to themselves.",
         "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dungeon opens an eye over the ways still worth walking, and shuts it on the ones you've spent.",
-        "area": [
-          "level",
+          "combat",
           "atmosphere"
         ]
       },
       {
         "tag": "fix",
-        "text": "The way in fits a phone held sideways now — DESCEND in reach, and the dungeon's tallies kept to the dark behind it.",
+        "text": "The dead stay dead and the living stay visible. Killing one of a kind no longer unmakes the rest.",
         "area": [
-          "ui"
+          "combat",
+          "atmosphere"
         ]
       }
     ]
   },
   {
-    "version": "Build 13",
-    "date": "2026-06-18",
+    "version": "Build 20",
+    "date": "2026-06-27",
     "entries": [
       {
         "tag": "fix",
-        "text": "A pause truly stops the clock now — your half-finished dodge waits for you instead of bleeding out behind the menu.",
+        "text": "Spitting projectiles stopped lighting the room. The dark prefers them dim, and they were never the signal.",
         "area": [
           "combat",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The way-marks burn on the floor of each threshold now, pointing you on.",
-        "area": [
-          "level",
           "atmosphere"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The way down always burns, and a room counts as known the moment you set foot in it — no rummaging required.",
+        "tag": "tech",
+        "text": "The torches cost the dark less to keep burning now. Nothing looks different; the frames come easier.",
         "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A bonfire burns behind the name now — real fire, real dark, waiting for you to fall in.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The threshold is rearranged — your name and the way down to the left, the fire to the right where the dark waits.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The wards now sit true on each arch instead of drifting in the dark above it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A warding mark smoulders over the ways still worth taking, and goes cold once you've spent them.",
-        "area": [
-          "level",
           "atmosphere"
         ]
       }

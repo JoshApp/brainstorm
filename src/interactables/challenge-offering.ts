@@ -180,7 +180,7 @@ export function spawnChallengeOffering(
   const drops: ItemSpec[] = [];
   {
     const floor = depth >= 3 ? 'rare' : 'uncommon';
-    const a = rollLoot({ depth, bias: 4, minRarity: floor }, gameRng) ?? ITEMS['healing-potion'];
+    const a = rollLoot({ depth, bias: 4, minRarity: floor }, gameRng) ?? ITEMS['flask-draught'];
     if (a) drops.push(a);
     const b = rollLoot({ depth, bias: 3, minRarity: 'uncommon' }, gameRng);
     if (b) drops.push(b);

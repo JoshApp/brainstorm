@@ -615,7 +615,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       rate: 0.45,
       pool: [
         { itemId: 'scimitar', weight: 5 },
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'iron-coif', weight: 2 },
         { itemId: 'ring-of-bloodthirst', weight: 1 },
       ],
@@ -730,14 +730,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 3,
     xp: 1,
     gold: [0, 3],
-    drops: {
-      // Trash mob — empty hands more often than not. Bumped from
-      // ~10% so the trash kills aren't pure XP grind.
-      rate: 0.22,
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // Skirmisher — the CHARGER. No longer "fast ghoul-lite": its identity
@@ -825,7 +817,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.38,                  // bumped from 0.22
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'worn-boots', weight: 2 },
         { itemId: 'ring-of-predation', weight: 1 },
         // The charger drops its reach weapon — uncommon spear. Fits the
@@ -941,7 +933,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.42,                  // bumped from 0.28
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'bone-amulet', weight: 1 },
         // The caster drops its implement — a rare arcane-bolt wand. Low
         // weight so it's a genuine find, thematically sourced from the
@@ -1058,10 +1050,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 25,
     gold: [15, 30],
     drops: {
-      // Boss — always drops the consolation potion. Then a single pool
+      // Boss — always drops a flask draught (the consolation heal). Then a pool
       // roll for one of the rare items (heartburn fabled or the amulet).
       // No matter what, the player walks away with at least a heal.
-      guaranteed: ['healing-potion'],
+      guaranteed: ['flask-draught'],
       rate: 1.0,
       pool: [
         { itemId: 'heartburn', weight: 1 },          // fabled — the headline
@@ -1126,12 +1118,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 4,
     gold: [0, 5],
     splitsInto: { enemyId: 'ooze-small', count: 2, radius: 0.5 },
-    drops: {
-      rate: 0.35,                  // bumped from 0.20
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // Small ooze — the offspring. Less HP, less damage, no further
@@ -1186,12 +1172,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 1,
     gold: [0, 2],
     // No splitsInto — recursion terminator.
-    drops: {
-      rate: 0.12,                // mostly nothing — they're cleanup
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // Acid spitter — the HOLDER. The deliberate foil to the acolyte: where
@@ -1264,7 +1244,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.38,
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'bone-amulet', weight: 1 },
       ],
     },
@@ -1373,7 +1353,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.55,                  // bumped from 0.40 — tanks are real fights
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'wooden-shield', weight: 2 },     // shield drops feel earned from a tank
         { itemId: 'iron-coif', weight: 2 },
         { itemId: 'ring-of-bloodthirst', weight: 1 },
@@ -1469,7 +1449,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.45,
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'bone-amulet', weight: 1 },
       ],
     },
@@ -1628,7 +1608,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.42,
       pool: [
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
         { itemId: 'bone-amulet', weight: 1 },
         { itemId: 'iron-coif', weight: 2 },
         // The armed undead drops its crossbow — uncommon physical ranged.
@@ -1725,12 +1705,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 4,
     xp: 4,
     gold: [0, 4],
-    drops: {
-      rate: 0.30,
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // The Boiling King — Act III boss (depth 12).
@@ -1969,9 +1943,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 60,                          // significant haul — earns the depth
     gold: [40, 80],
     drops: {
-      // Guaranteed: healing potion (the soft landing) + the unique
+      // Guaranteed: a FLASK SHARD (act-boss capacity growth) + the unique
       // boss drop. Pool roll on top adds variance.
-      guaranteed: ['healing-potion', 'acid-tongue'],
+      guaranteed: ['flask-shard', 'acid-tongue'],
       rate: 1.0,
       pool: [
         { itemId: 'heartburn',   weight: 1 },
@@ -2070,12 +2044,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 4,
     gold: [2, 6],
     // No splitsInto — recursion terminator.
-    drops: {
-      rate: 0.20,
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // ── Mob variety pass ───────────────────────────────────────────────
@@ -2288,9 +2256,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 80,
     gold: [60, 100],
     drops: {
-      // Guaranteed: healing potion + a unique boss drop (bone amulet
+      // Guaranteed: a FLASK SHARD (act-boss capacity growth) + a unique boss drop (bone amulet
       // for now; can swap to a sovereign-specific item later).
-      guaranteed: ['healing-potion', 'bone-amulet'],
+      guaranteed: ['flask-shard', 'bone-amulet'],
       rate: 1.0,
       pool: [
         { itemId: 'iron-coif',       weight: 1 },
@@ -2366,10 +2334,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     onHit: { buffId: 'poison', chance: 0.4, duration: 3 },
     xp: 4,
     gold: [0, 4],
-    drops: {
-      rate: 0.20,
-      pool: [{ itemId: 'healing-potion', weight: 1 }],
-    },
   },
 
   // Sump Wisp — floating non-humanoid caster. Distinct from the
@@ -2431,12 +2395,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
     xp: 5,
     gold: [0, 5],
-    drops: {
-      rate: 0.25,
-      pool: [
-        { itemId: 'healing-potion', weight: 2 },
-      ],
-    },
   },
 
   // Mimic — chest-disguised ambush mob. Never roll-placed in a vault
@@ -2488,7 +2446,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { itemId: 'iron-coif', weight: 3 },
         { itemId: 'leather-gloves', weight: 3 },
         { itemId: 'scimitar', weight: 4 },
-        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'flask-draught', weight: 2 },
       ],
     },
   },
@@ -2568,7 +2526,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.28,
       pool: [
-        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'flask-draught', weight: 1 },
         { itemId: 'leather-gloves', weight: 1 },
       ],
     },
@@ -2649,12 +2607,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 5,
     xp: 1,
     gold: [0, 2],
-    drops: {
-      rate: 0.10,                   // chaff — drops are rare per moth
-      pool: [
-        { itemId: 'healing-potion', weight: 1 },
-      ],
-    },
   },
 
   // Lasher — STATIONARY plant-creature with a long whip-arm tendril
@@ -2729,7 +2681,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.45,
       pool: [
-        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'flask-draught', weight: 1 },
         { itemId: 'acid-tongue', weight: 2 },
         { itemId: 'cord-of-knives', weight: 1 },
       ],
@@ -2831,7 +2783,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: {
       rate: 0.40,
       pool: [
-        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'flask-draught', weight: 1 },
         { itemId: 'leather-gloves', weight: 2 },
         { itemId: 'bone-needle', weight: 1 },
       ],
