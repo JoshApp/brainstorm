@@ -237,12 +237,14 @@ export function createPickup(
     // the potion is the only thing here.)
     canUse() {
       // Flask items feed the flask directly on pickup (no bag stop): a shard
-      // always fuses; a draught pours unless the flask is already full, in
-      // which case it pockets like a normal consumable (waste nothing).
+      // always fuses; a draught pours ONLY when a pip is empty. A draught
+      // NEVER pockets — at a full flask it stays on the stone for later,
+      // same contract as a carry-capped potion (waste nothing, carry
+      // nothing).
       if (item.consumableFlaskCapacity != null) return true;
       if (item.consumableFlaskCharges != null) {
         const f = getFlask();
-        if (f.charges < f.capacity) return true;
+        return f.charges < f.capacity;
       }
       return !(item.kind === 'consumable' && isAtCarryLimit(item.id));
     },
@@ -264,19 +266,24 @@ export function createPickup(
         interactable.destroyed = true;
         return;
       }
-      // Flask DRAUGHT — pours straight into the flask when there's room
-      // (a lit pip, no tap). At a full flask it falls through and pockets.
+      // Flask DRAUGHT — pours straight into the flask, instantly (a lit pip,
+      // no bag stop, no inventory item). At a full flask it stays on the
+      // ground: canUse() already blocks walk-over; this guard covers a
+      // deliberate tap and says why.
       if (item.consumableFlaskCharges != null) {
         const f = getFlask();
-        if (f.charges < f.capacity) {
-          addCharges(item.consumableFlaskCharges);
-          showInWorldMessage('The flask accepts it.');
-          playFlaskUncork();
-          pickupHaptic(RARITY_INDEX[item.rarity ?? 'mundane']);
-          emit({ type: 'item:picked-up', itemId: item.id });
-          interactable.destroyed = true;
+        if (f.charges >= f.capacity) {
+          showInWorldMessage('The flask is full.');
+          playDenied();
           return;
         }
+        addCharges(item.consumableFlaskCharges);
+        showInWorldMessage('The flask accepts it.');
+        playFlaskUncork();
+        pickupHaptic(RARITY_INDEX[item.rarity ?? 'mundane']);
+        emit({ type: 'item:picked-up', itemId: item.id });
+        interactable.destroyed = true;
+        return;
       }
       // Carry cap (consumables): if full, leave the pickup on the ground and
       // tell the player — no chime, no destroy, so they can grab it later.

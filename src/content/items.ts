@@ -1518,8 +1518,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A stoppered draught',
     flavor: 'The flask accepts it without thanks.',
     dropModel: FLASK_DRAUGHT,
+    // Pours into the flask INSTANTLY on pickup — never a bag item. At a full
+    // flask the vial stays on the ground (pickup.ts canUse), so no carryLimit.
     consumableFlaskCharges: 1,
-    carryLimit: 2,
     // Present but scarce — the bonfire anchors the heal economy; a draught is
     // a stay of execution between fires, not a second flask.
     drop: { weight: 2 },

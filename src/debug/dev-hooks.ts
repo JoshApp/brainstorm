@@ -175,6 +175,22 @@ export function installDevHooks(deps: DevHookDeps): void {
     // inspect-mode framing / the OOB-on-descent fix).
     interpSync([camera]);
   };
+  // __dropItem(id, dist?): spawn a real floor pickup ahead of the camera —
+  // loot-flow repro (auto-pickup, carry caps, flask pours) without a chest.
+  w.__dropItem = async (id: string, dist = 1.0) => {
+    const [{ ITEMS }, { createPickup }] = await Promise.all([
+      import('../content/items'), import('../interactables/pickup'),
+    ]);
+    const item = ITEMS[id];
+    if (!item) return `unknown item '${id}'`;
+    const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
+    createPickup(scene, new THREE.Vector3(
+      camera.position.x + fx * dist, 0.35, camera.position.z + fz * dist), item);
+    return id;
+  };
+  // __flask() / __flaskSpend(): read + drain flask charges — headless asserts.
+  w.__flask = async () => (await import('../player/flask')).getFlask();
+  w.__flaskSpend = async () => (await import('../player/flask')).spendCharge();
   // __smite(r): lethal damage to every enemy within r metres of the camera,
   // through the REAL damage pipeline — death/dissolve/corpse paths run exactly
   // as in combat. Headless corpse-bug repro.
