@@ -107,11 +107,27 @@ export function setPerfOverlayVisible(visible: boolean): void {
 }
 
 /** Push renderer stats from main.ts each frame. Optional — the FPS +
- *  ms readout works without it. */
+ *  ms readout works without it.
+ *
+ *  Draws/tris are shown as PER-FRAME deltas of the cumulative counters:
+ *  on WebGPU `renderer.info.reset()` does not clear render.calls/triangles
+ *  (they climb monotonically for the whole session), so the raw values are
+ *  meaningless as a frame readout. The delta since the previous drawn frame
+ *  is the true per-frame count on both backends. */
+let prevCumCalls = 0;
+let prevCumTris = 0;
 export function reportRendererInfo(renderer: DelveRenderer): void {
   if (!root || root.style.display === 'none') return;   // skip work when hidden
-  lastTris  = renderer.info.render.triangles;
-  lastCalls = renderer.info.render.calls;
+  const calls = renderer.info.render.calls;
+  const tris  = renderer.info.render.triangles;
+  // A skipped submit (backpressure) leaves the counters unchanged — keep the
+  // last real frame's numbers rather than reading a 0-delta as "no draws".
+  if (calls !== prevCumCalls) {
+    lastCalls = calls >= prevCumCalls ? calls - prevCumCalls : calls;   // < means a real reset happened (WebGL)
+    lastTris  = tris  >= prevCumTris  ? tris  - prevCumTris  : tris;
+    prevCumCalls = calls;
+    prevCumTris = tris;
+  }
   lastGeo   = renderer.info.memory.geometries;
   lastTex   = renderer.info.memory.textures;
 }
@@ -168,16 +184,16 @@ export function tickPerfOverlay(nowMs: number): void {
   // (e.g. a 60 cap is 45 on a 90Hz panel). 'native' when uncapped.
   const cap = Number(getSettings().frameCap);
   const capLabel = cap > 0 ? `${pacerEffectiveFps(cap)}` : 'native';
-  // Under WebGPU, renderer.info draw/tri/resource counts are unreliable (the
-  // node RenderPipeline renders async across multiple passes, so the counters
-  // can't be reset cleanly per frame). Show them as n/a rather than a misleading
-  // runaway — real WebGPU stats need timestamp queries (the Phase-3 cockpit port).
-  const drawsLine = `draws n/a · tris n/a  (webgpu — see Phase 3)`;
+  // Draws/tris are per-frame DELTAS of the cumulative counters (see
+  // reportRendererInfo) — under WebGPU info.reset() never clears them, so the
+  // raw values climb for the whole session; the delta is the true frame count
+  // on both backends. (This replaces the old blanket "n/a — see Phase 3".)
+  const fmt = (n: number) => n >= 100000 ? `${Math.round(n / 1000)}k` : `${n}`;
   secondaryEl.textContent =
     `${lastMs.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms\n` +
     `panel ${getNativeHz()}Hz · cap ${capLabel}\n` +
-    `${drawsLine}\n` +
-    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo n/a · tex n/a\n` +
+    `draws ${lastCalls} · tris ${fmt(lastTris)}\n` +
+    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${lastGeo} · tex ${lastTex}\n` +
     `pool ${getGeometryPoolSize()}${heap !== null ? ` · heap ${heap}MB` : ''}`;
   // Preserve the newline for the secondary block.
   secondaryEl.style.whiteSpace = 'pre';

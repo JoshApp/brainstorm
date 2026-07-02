@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The meter stops seeing double; frames march in one line and the numbers tell the truth.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "A dying GPU now gutters the lanterns and offers the stair back, instead of freezing the dark.",
         "area": [
           "tech"
@@ -390,20 +397,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The deep no longer strands you on a black screen after it reforges itself — it pulls down the new build and descends on its own.",
         "area": [
           "tech"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 21",
-    "date": "2026-06-28",
-    "entries": [
-      {
-        "tag": "tech",
-        "text": "The dark stops re-forging the same stones each floor — fewer hitches the deeper you go.",
-        "area": [
-          "tech",
-          "level"
         ]
       }
     ]

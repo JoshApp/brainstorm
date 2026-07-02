@@ -339,13 +339,41 @@ function tickInner() {
   requestAnimationFrame(tick);
 }
 
+// DEV loop-health probe: window.__loopStats() → ticks/s + how many parallel
+// rAF chains are driving the loop (must be 1 — a duplicated chain doubles CPU
+// work, fights the in-flight cap, and inflates every rAF-counting fps meter).
+let tickCount = 0;
+let chainPeak = 0;
+let lastStampTicks = 0;
+let lastStamp = -1;
+if (import.meta.env.DEV) {
+  let windowStart = performance.now();
+  (window as unknown as Record<string, unknown>).__loopStats = () => {
+    const now = performance.now();
+    const secs = (now - windowStart) / 1000;
+    const out = { ticksPerSec: Math.round(tickCount / Math.max(0.001, secs)), parallelChains: chainPeak };
+    tickCount = 0; chainPeak = 0; windowStart = now;
+    return out;
+  };
+}
+
 let bootConfirmed = false;
 // Fatal-error guard around the loop. If a frame throws, the loop would otherwise
 // die silently into a frozen screen. Catch it: capture (with the repro tape +
 // context), show the in-character crash overlay, and stop rescheduling — one
 // fault, handled, with a report path, instead of a black void.
 let fatalHandled = false;
-function tick() {
+function tick(rafTs?: number) {
+  if (import.meta.env.DEV) {
+    tickCount++;
+    // Chain detection: parallel loop chains fire within ONE vsync slot, so
+    // they share the rAF callback timestamp.
+    if (rafTs !== undefined) {
+      if (rafTs === lastStamp) lastStampTicks++;
+      else { lastStamp = rafTs; lastStampTicks = 1; }
+      if (lastStampTicks > chainPeak) chainPeak = lastStampTicks;
+    }
+  }
   // While the GPU context is lost, idle the loop (no sim, no render — rendering
   // would throw) until recovery clears the flag.
   if (isContextLost()) { requestAnimationFrame(tick); return; }
@@ -380,7 +408,14 @@ export function initFrameLoop(d: FrameLoopDeps): void {
   setDeterministicClock(USE_FIXED_STEP);
 }
 
-/** Kick the rAF loop. Idempotent enough for the boot paths that call it once. */
+/** Kick the rAF loop. IDEMPOTENT — startRun() calls this on every run start
+ *  (title vignette, DESCEND, CONTINUE, test chambers), and each unguarded call
+ *  used to fork a PARALLEL rAF chain: doubled CPU work, chains fighting the
+ *  render backpressure into an erratic present cadence (4↔67ms measured), and
+ *  every rAF-counting fps meter reading 2× the refresh rate. One loop, ever. */
+let loopStarted = false;
 export function startFrameLoop(): void {
+  if (loopStarted) return;
+  loopStarted = true;
   tick();
 }
