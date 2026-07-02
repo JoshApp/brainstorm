@@ -168,8 +168,9 @@ A weakness pass over the finished port. FIXED in the same session:
   REMAINING before promotion to default: the same A/B on the PHONE (`?tiled=1`
   works on the live site), plus a torch-dense real floor soak for look
   regressions (per-tile cap is 8 lights; overflow now degrades gracefully).
-- **SSAO is URL-flag only** (`?ssao=1`); if it survives its phone pricing, it
-  should become a GRAPHICS setting routed through the same rebuild path.
+- **SSAO stays parked** — DECIDED 2026-07-02: too expensive for the phone
+  budget right now; it stays a URL-flag experiment (`?ssao=1`), not a setting.
+  Revisit only if the frame budget grows.
 - ~~RenderPipeline.renderAsync() is deprecated in r184~~ DONE 2026-07-02:
   the frame submits via plain `render()` and MAX_IN_FLIGHT skip-pacing keys
   off `device.queue.onSubmittedWorkDone()` — true GPU completion. (The r184
@@ -181,8 +182,20 @@ A weakness pass over the finished port. FIXED in the same session:
 - **Async boot phase 1** — `scene/create-renderer.ts` owns construction +
   lighting-node selection + `await init()`; `main.ts` top-level-awaits it
   (vite `build.target: 'es2022'`), so everything below is structurally
-  after-init. `renderer-mode.ts` (the ready flag) is gone. Further main.ts
-  decomposition is still worthwhile, but boot is no longer async-blind.
+  after-init. `renderer-mode.ts` (the ready flag) is gone.
+- **Async boot phase 2 (2026-07-02)** — main.ts decomposed 2504 → ~1690
+  lines; the boot spine now reads as the boot sequence. Carved out:
+  `engine/frame-loop.ts` (cadence / fixed-step sim-present split / interp /
+  fatal guard, explicit `FrameLoopDeps`), `debug/dev-hooks.ts` (all
+  `window.__*` forensics + DEV URL overrides; tree-shakes from prod),
+  `debug/profiler-wiring.ts` (ships-in-prod suite), `scene/video-settings.ts`
+  (render scale / adaptive / bloom / DPR), `debug/boot-url-screens.ts`
+  (?fake* seeds + ?show* previews), `ui/boot-veil.ts`, `debug/lux-button.ts`.
+- **WebGPU device.lost recovery** — the last recovery gap:
+  `installDeviceLossRecovery` (scene/context-recovery.ts) watches
+  `device.lost` and shows the in-character veil + reload offer (a lost
+  GPUDevice can't be revived in place; the save persists across the reload).
+  `installContextRecovery` keeps owning the WebGL2 canvas events.
 - **Honest renderer type** — `DelveRenderer` (= WebGPURenderer) across every
   signature; the `as unknown as WebGLRenderer` cast is gone. The dead
   `info.programs` reads became `pipelineCount()` (the pipeline-cache size).
