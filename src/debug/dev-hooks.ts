@@ -5,6 +5,7 @@ import type { LiveLevel } from '../level/builder';
 import type { GameSystem } from '../engine/loop';
 import { loadLevel } from '../level/loader';
 import { setSimTurbo } from '../engine/frame-loop';
+import { interpSync } from '../engine/render-interp';
 import { initNavOverlay, setNavOverlay } from './nav-overlay';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
 import { setGoreDebugEnabled } from './gore-debug';
@@ -151,6 +152,10 @@ export function installDevHooks(deps: DevHookDeps): void {
     camera.rotation.order = 'YXZ';
     camera.rotation.y = yaw;
     camera.rotation.x = 0;
+    // Hard teleport outside the sim step — re-seed render-interp or
+    // interpRestore snaps the camera straight back (same trap as
+    // inspect-mode framing / the OOB-on-descent fix).
+    interpSync([camera]);
   };
   // __smite(r): lethal damage to every enemy within r metres of the camera,
   // through the REAL damage pipeline — death/dissolve/corpse paths run exactly

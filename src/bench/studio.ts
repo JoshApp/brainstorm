@@ -27,8 +27,10 @@ export interface Studio {
    *  view — published LLM-CAD research finds single-screenshot
    *  feedback degrades iteration; multi-view doesn't. */
   renderOrthoQuad(): void;
-  /** The three-lights acceptance test: BLACK / LAMP / TINT panels. */
-  renderThreeLights(): void;
+  /** The three-lights acceptance test: BLACK / LAMP / TINT panels.
+   *  Optional azimuth for subjects that read from an angle other than
+   *  the side profile (wall props: az 0 = front). */
+  renderThreeLights(azDeg?: number): void;
   /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
    *  to mutate the subject — for animation arcs (windup→strike→recover). */
   renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
@@ -219,15 +221,16 @@ export async function mountStudio(canvas: HTMLCanvasElement): Promise<Studio> {
     paintViewLabels(ORTHO_VIEWS.map((v) => v.label));
   }
 
-  // Three side-by-side SIDE views, one per test rig. The side profile
-  // is the gesture-readable angle; three lighting conditions beat
-  // three angles of one condition for ACCEPTANCE (the ortho quad
-  // already covers geometry from four angles).
-  function renderThreeLights(): void {
+  // Three side-by-side views, one per test rig. Default is the SIDE
+  // profile (the gesture-readable angle for mobs); pass an azimuth for
+  // subjects whose reading angle differs — wall props read from the
+  // FRONT (az 0). Three lighting conditions beat three angles of one
+  // condition for ACCEPTANCE (the ortho quad already covers geometry).
+  function renderThreeLights(azDeg = 90): void {
     const modes: Array<keyof typeof RIGS> = ['black', 'lamp', 'tint'];
     grid(3, (i, aspect) => {
       setLightRig(modes[i]);
-      placeCamera(90, 8, aspect);
+      placeCamera(azDeg, 8, aspect);
     });
     setLightRig('studio');
     paintViewLabels(['BLACK · emissive only', 'LAMP · neutral', 'TINT · blood room']);

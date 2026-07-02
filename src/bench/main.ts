@@ -181,7 +181,9 @@ if (!subjectId) {
 
       draw = () => {
         if (animN > 0 && mobAnim) mounted!.renderPoseGrid(animN, az, el, mobAnim.poseAt);
-        else if (lightsMode) mounted!.renderThreeLights();
+        // Explicit --az overrides the three-lights side profile (wall
+        // props read from the front, az 0).
+        else if (lightsMode) mounted!.renderThreeLights(params.get('az') !== null ? az : undefined);
         else if (orthoMode) mounted!.renderOrthoQuad();
         else if (gridN > 0) mounted!.renderTurntable(gridN, el);
         else mounted!.renderView(az, el);
