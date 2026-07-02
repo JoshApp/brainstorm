@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createRenderer } from './scene/create-renderer';
-import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
-import { initLampSpot, tickLampSpot } from './player/lamp-spot';
+import { initEmbersGPU } from './effects/embers-gpu';
+import { initLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
 
 // Lamp spot-shadow split (?lampspot=1): cube shadow (6 passes) → single map (1).
@@ -24,23 +24,18 @@ import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
 import { completePendingLink } from './net/account-link';
 import { initRunSync } from './net/run-sync';
-import { initTelemetry, track, setCrashContext, captureError, buildReport } from './telemetry/telemetry';
-import { showCrashOverlay } from './ui/crash-overlay';
+import { initTelemetry, track, setCrashContext } from './telemetry/telemetry';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
-import { initRites, tryActivateRite } from './combat/rites';
-import { isWorldPaused, shouldFreezeGameClock } from './world-paused';
+import { initRites } from './combat/rites';
 import { onPlayerDeath } from './player/health';
-import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
+import { triggerDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
-  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive,
+  triggerParry, deflectOpportunityActive,
 } from './combat/reactive-defense';
 import {
-  bindPlayerActionSources, canStartAction, enterParry, tickPlayerAction,
-} from './combat/player-action';
-import { tickBossSlowmo, getBossSlowmoTimeScale } from './combat/boss-slowmo';
+  bindPlayerActionSources, canStartAction, enterParry, } from './combat/player-action';
 import { setupBossCinematics } from './mobs/boss-cinematics';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
-import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
@@ -48,60 +43,52 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, getViewmodelRoots } from './style/render-frame';
+import { setMasterBrightness, setWickLift, getViewmodelRoots } from './style/render-frame';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
-import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
+import { initLux } from './debug/lux';
+import { setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './style/banded-lighting-webgpu';
 import {
-  enterInspectMode, tickInspectFraming, isInspectActive,
-  INSPECT_AMBIENT, INSPECT_REQUESTED,
+  enterInspectMode,   INSPECT_REQUESTED,
 } from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { beginArrival, tickArrival, suppressArrivalCeremony } from './player/arrival';
-import { initChasmPresence, tickChasmPresence } from './effects/chasm-presence';
+import { beginArrival, suppressArrivalCeremony } from './player/arrival';
+import { initChasmPresence } from './effects/chasm-presence';
 import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
-import { buildLevel, type LiveLevel } from './level/builder';
+import { type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
-import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
-import { initGoreDebug, setGoreDebugEnabled, tickGoreDebug } from './debug/gore-debug';
+import { initCombatDebug } from './combat/combat-debug';
+import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
 import { TITLE_VIGNETTE } from './level/title-vignette';
-import type { LevelSpec } from './level/types';
 import type { ModelSpec } from './ecs/model-types';
 import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
-import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
+import { initLevelLoader, loadInitialLevel, getCurrentDepth } from './level/loader';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
-import { initNavOverlay, setNavOverlay, tickNavOverlay } from './debug/nav-overlay';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
 import { suppressNextDescentTitle, setDescentProgress } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { applyState } from './state/save-hydration';
 import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
-import { isPlaying, getGameMode } from './state/game-mode';
-import { runSystems, type GameSystem, type TickContext } from './engine/loop';
+import { type GameSystem } from './engine/loop';
 import { buildSystems } from './engine/systems';
-import {
-  setRenderInterpEnabled, interpStepBegin, interpStepEnd, interpApply, interpRestore,
-  setInterpPositionOnly,
-} from './engine/render-interp';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
-import { setDeterministicClock, advanceGameClock, resetGameClock } from './engine/game-clock';
-import { startRecording as startRunRecording, finishRun, peekActiveTape, recordedSteps } from './harness/run-recorder';
+import { resetGameClock } from './engine/game-clock';
+import { startRecording as startRunRecording, finishRun, recordedSteps } from './harness/run-recorder';
 import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -109,9 +96,7 @@ import { showNameEntry } from './ui/name-entry-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
-import { tickMobAiReadout, mobAiReadoutEnabled } from './debug/mob-ai-readout';
-import { initAiGizmos, tickAiGizmos } from './debug/ai-gizmos';
-import type { Enemy } from './mobs/enemy';
+import { initAiGizmos } from './debug/ai-gizmos';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
 import { isAnyScreenOpen, msSinceLastScreenClose, onScreenStateChanged, isWorldPausedByScreen } from './ui/screen-manager';
@@ -119,36 +104,22 @@ import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, awaitBootUpdate, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
-import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
-import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
-import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, markWarmupComplete } from './debug/frame-timing';
-import { setStreamEnabled, streamEnabled, broadcastAttr } from './debug/perf-stream';
-import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
-import { auditScene } from './debug/scene-audit';
-import { launchSpector } from './debug/spector-launch';
-import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
-import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning, onAttributionReport } from './debug/gpu-attribution';
-import { setLambertPreview, isLambertPreview } from './debug/lambert-preview';
-import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
-import { createChargeRing, tickChargeRing } from './ui/charge-ring';
+import { createPerfOverlay, setPerfOverlayVisible } from './ui/perf-overlay';
+import { markWarmupComplete } from './debug/frame-timing';
+import { createChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
-import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
-import { packTokenCount } from './mobs/pack';
-import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs, setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
-import { lastWebGPUGpuMs, setWebGPULeanBloom, warmSceneCompile } from './style/render-webgpu';
-import { pacerShouldDraw, pacerEffectiveFps } from './scene/frame-pacer';
-import { beginBoot, bootSucceeded } from './boot-guard';
-import { installContextRecovery, isContextLost } from './scene/context-recovery';
-import { isLoading } from './scene/loading-gate';
+import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
+import { warmSceneCompile } from './style/render-webgpu';
+import { beginBoot } from './boot-guard';
+import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
 import { startWarmupStream } from './scene/warmup-stream';
-import { markWebGPUWarmupComplete, tickCompileWatch } from './debug/webgpu-compile-guard';
+import { markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -156,7 +127,7 @@ import { initBladeTrail } from './effects/blade-trail';
 import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
-import { createRiteButton, tickRiteButton } from './controls/rite-button';
+import { createRiteButton } from './controls/rite-button';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
 import { createHealthHearts } from './ui/health-hearts';
@@ -171,7 +142,13 @@ import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-coun
 import { createXpGoldHud } from './ui/xp-gold-hud';
 import { setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
-import { isDesktopLike } from './controls/platform';
+import { initVideoSettings, applyVideoSettings } from './scene/video-settings';
+import { setBootProgress, hideBootLoading, armBootVeilSafetyNet } from './ui/boot-veil';
+import { initFrameLoop, startFrameLoop, isFixedStepLoop } from './engine/frame-loop';
+import { installDevHooks } from './debug/dev-hooks';
+import { mountLuxButtonIfEnabled } from './debug/lux-button';
+import { initProfilerWiring, applyProfilerEnabled } from './debug/profiler-wiring';
+import { applyFakeStateFlags, handleDebugScreenFlags } from './debug/boot-url-screens';
 
 // The entry module executed — tell the stale-shell watchdog in index.html the app booted,
 // so it won't self-heal (reload). If a deploy had left a stale cached shell pointing at
@@ -243,12 +220,9 @@ resolveCrashGpu();   // adapter/context exists now — fill the crash report's G
 // with no signal at all — arm its wall-clock fallback there (valid because
 // that backend submits synchronously, so rAF intervals reflect GPU load).
 setAdaptiveWallClockFallback(!!(renderer.backend as unknown as { isWebGLBackend?: boolean })?.isWebGLBackend);
-// DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
-// stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
-// setting (see effectiveDprCap + the GRAPHICS slider). Re-applied live by
-// applyVideoSettings when the slider moves.
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()));
-renderer.setSize(window.innerWidth, window.innerHeight);
+// DPR cap + canvas size — owned by scene/video-settings.ts (one module applies
+// the render-scale/bloom/DPR settings identically at boot and on change).
+initVideoSettings(renderer);
 // (The WebGPU low-res fill win now comes from the RenderPipeline's PassNode
 // setResolutionScale — see style/render-webgpu.ts — so no pixel-ratio stopgap.)
 // WEBGPU SPIKE EXPERIMENT: point-light cube shadows redraw the scene 6× per
@@ -304,17 +278,6 @@ initEmbersGPU(renderer, scene);
 // the omni lamp point. The split makes the lamp's shadow a single-map render.
 if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 
-// Per-stage GPU breakdown probe — window.__gpuBreakdown() prices bloom/shadow/grade
-// by difference against the native timestamp timer. DEV-only.
-if (import.meta.env.DEV) {
-  (window as any).__gpuBreakdown = () => import('./debug/gpu-breakdown').then((m) => m.gpuBreakdown(renderer, scene));
-  // Pooled-material counts — the pipeline-budget invariant (docs/PIPELINE-BUDGET.md):
-  // these must PLATEAU as you descend, not climb per floor. Climbing = a `new Material`
-  // leaking past the pools (stdMat for static, createMaterial for models). `total` is
-  // the unified registry (static + model + any registered pool).
-  (window as any).__floorMats = () => import('./style/material-registry').then((m) => ({ floor: m.floorMaterialCount(), total: m.totalMaterialCount() }));
-}
-
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
 // studio lighting rig, PSX bypass, backdrop, and subject auto-framing are all
 // owned there. main.ts only calls enterInspectMode()/tickInspectFraming() and
@@ -329,26 +292,13 @@ installBandedLightingWebGPU(getSettings().bandedLighting);
 // ?lean=1 — compile the LEAN lighting model from boot (no live-recompile uncertainty)
 // for a clean A/B of the per-light BRDF cost.
 if (new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);
-// DEV: toggle banded lighting model live to A/B its per-fragment cost.
-if (import.meta.env.DEV) {
-  (window as any).__setBanded = (on: boolean) => installBandedLightingWebGPU(on);
-  // Lean lighting A/B — flips the model AND forces every node material to recompile
-  // so the change is visible on the LIVE scene (not just freshly-built materials).
-  (window as any).__setLean = (on: boolean) => {
-    setLeanLightingWebGPU(on);
-    scene.traverse((o: any) => {
-      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-      mats.forEach((m: any) => { if (m && m.isNodeMaterial) m.needsUpdate = true; });
-    });
-  };
-}
 const materials = buildMaterials(renderer);
-// Context-loss recovery — preventDefault the webglcontextlost event + offer a
-// reload, so a GPU context drop (memory pressure / a backgrounded tab) is a
-// veil, not a false crash. There's no classic render pipeline to rebuild under
-// WebGPU (the node renderer owns its own targets), so onRestore is a no-op;
-// WebGPU device-loss recovery (device.lost) is a separate, TODO concern.
+// GPU-loss recovery — WebGL2 context events (recoverable in place; onRestore
+// is a no-op since the node renderer owns its own targets) + the WebGPU
+// device.lost watch (unrecoverable in place → veil + reload offer; the save
+// persists so a reload resumes the run).
 installContextRecovery({ canvas, onRestore: () => {} });
+installDeviceLossRecovery(renderer);
 // Encounter feedback orchestrator — subscribes to gate/encounter lifecycle
 // events and fires their sound + shake + dust stingers (dust attaches to the
 // persistent scene root, cleared per level alongside the other effect pools).
@@ -390,25 +340,6 @@ initWeaponDrop(scene);
 // dead, and the bundler tree-shakes the entire debug/scenarios module (and
 // its fixed-seed test levels) out of the live site.
 const scenario = import.meta.env.DEV ? getScenarioFromUrl() : null;
-// Placeholder level used purely as a boot-time "give buildLevel
-// something to mount" — the title screen covers it, then the
-// first descent (startNewRun) replaces it with the real flow
-// (starter chamber → tutorial → procgen depth-1). The hand-authored
-// LEVEL_1 used to fill this slot; deleted along with all the other
-// legacy hand-authored floor specs.
-const PLACEHOLDER_LEVEL: LevelSpec = {
-  id: '__placeholder__',
-  depth: 1,
-  startPos: { x: 0, z: 0, yaw: 0 },
-  rooms: [{ id: 'p', rect: { x: 0, z: 0, w: 4, d: 4 }, height: 3 }],
-  corridors: [],
-  props: [],
-  torches: [],
-  spawns: [],
-  doors: [],
-  stairs: [],
-};
-const levelSpec = scenario?.level ?? PLACEHOLDER_LEVEL;
 
 // --- Player entity (HP + buffs + passives live in the world) ---
 // Spawn BEFORE buildLevel so enemies can already query player state during init.
@@ -768,8 +699,6 @@ initRites({
   getCenter: () => camera.position,
   getEnemies: () => currentLevel?.enemies ?? [],
 });
-// DEV: fire the rite from the console while the mobile button is being built.
-if (import.meta.env.DEV) (window as unknown as { __rite?: () => boolean }).__rite = tryActivateRite;
 
 // Player-action FSM — the single AUTHORITY for combat action arbitration.
 // It owns dodge/parry as committed dt-ticked states and observes the swing
@@ -1056,268 +985,11 @@ bootstrapSimWorld(scene);
 // 'off' internally; this lifts it to the user's setting). Live changes are
 // handled by the onSettingsChanged subscription further down.
 setShadowMode(getSettings().shadows);
-// Video settings — render scale (the adaptive ceiling + fixed value when
-// adaptive is off), adaptive resolution (phones only), bloom, and the CRT film.
-// One helper so boot + the onSettingsChanged subscription apply them identically.
-function applyVideoSettings(s = getSettings()): void {
-  setAdaptiveCeiling(s.renderScale);
-  const adaptiveOn = s.adaptiveResolution && !isDesktopLike();
-  setAdaptiveResolution(adaptiveOn);
-  // setAdaptiveResolution early-returns when the flag is unchanged, so set the
-  // fixed scale explicitly whenever adaptive is off (desktop, or toggled off).
-  if (!adaptiveOn) setPS1Scale(s.renderScale);
-  setBloomEnabled(s.bloom);
-  setWebGPULeanBloom(s.leanBloom);   // WebGPU-only; no-op on WebGL
-  scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
-}
-
-// Effective DPR cap: desktop debug stays crisp at the CONFIG cap; mobile (the
-// fill-bound target) honours the live PIXEL DENSITY setting.
-function effectiveDprCap(): number {
-  return isDesktopLike() ? CONFIG.PIXEL_RATIO_CAP : getSettings().pixelRatioCap;
-}
-// Apply the DPR cap to the renderer + resync the buffers. Re-creating the
-// drawing buffer + render targets is exactly what a window resize does, so we
-// reuse that path: set the ratio + size (so domElement.width is fresh BEFORE
-// any resize listener reads it — order-independent), then dispatch 'resize' to
-// resync the low-res target + bloom + post uniforms (render-target.ts) and the
-// camera aspect (main.ts resize handler).
-function applyDprNow(): void {
-  const target = Math.min(window.devicePixelRatio, effectiveDprCap());
-  if (Math.abs(renderer.getPixelRatio() - target) < 0.001) return;   // unchanged → skip
-  renderer.setPixelRatio(target);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  window.dispatchEvent(new Event('resize'));
-}
-// Debounce: the slider streams 'input' while dragging — coalesce so we rebuild
-// buffers once when the drag settles, not dozens of times per second.
-let dprApplyTimer: number | undefined;
-function scheduleDprApply(): void {
-  if (dprApplyTimer !== undefined) clearTimeout(dprApplyTimer);
-  dprApplyTimer = window.setTimeout(() => { dprApplyTimer = undefined; applyDprNow(); }, 120);
-}
+// Video settings (render scale / adaptive res / bloom / DPR) — apply the
+// persisted values now; onSettingsChanged re-applies on change. Owned by
+// scene/video-settings.ts.
 applyVideoSettings();
-// DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped
-// from prod by the literal-false guard.
-if (import.meta.env.DEV) {
-  const ps1 = Number(new URLSearchParams(window.location.search).get('ps1'));
-  if (ps1 > 0) setPS1Scale(ps1);
-}
-// DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
-// without touching the saved setting. Stripped from prod by the literal guard.
-if (import.meta.env.DEV) {
-  const sm = new URLSearchParams(window.location.search).get('shadows');
-  if (sm === 'off' || sm === 'hero' || sm === 'single' || sm === 'all') setShadowMode(sm);
-}
-// DEV-only: ?nooutline=1 disables the interaction-outline system so a perf
-// scenario can isolate the rest of the frame from its inverted-hull overdraw.
-if (import.meta.env.DEV) {
-  if (new URLSearchParams(window.location.search).get('nooutline') === '1') setOutlinesDisabled(true);
-}
-// DEV: headless floor-transition repro hook — __descend() walks the run
-// one floor down through the SAME loadLevel path the stairs use, and
-// __sceneScan(x,z,r) names every mesh near a world point (parent chain
-// included) so a mystery object in a screenshot can be interrogated.
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__descend = () => {
-    const next = currentLevel?.spec.stairs?.[0]?.targetLevel;
-    if (next) loadLevel(next);
-    return next ?? null;
-  };
-  (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
-  // DEV: nav-grid debug overlay — window.__navDebug() / ?navdebug=1 / press N.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  initNavOverlay(scene, () => currentLevel as any);
-  (window as unknown as Record<string, unknown>).__navDebug = (on?: boolean) => setNavOverlay(on);
-  if (new URLSearchParams(location.search).get('navdebug') === '1') setNavOverlay(true);
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'n' || e.key === 'N') setNavOverlay();
-  });
-  // DEV: live sim fast-forward for bot/headless testing — window.__turbo(3) etc.
-  (window as unknown as Record<string, unknown>).__turbo = (n: number) => {
-    simTurbo = Math.max(1, Math.min(8, Math.floor(n) || 1));
-    return simTurbo;
-  };
-  // DEV: harness-bot pathfinding forensics — route from the player to the nearest
-  // enemy (or a given world point), returning the chosen dir + the raw grid path.
-  (window as unknown as Record<string, unknown>).__navTest = async (to?: { x: number; z: number }) => {
-    if (!currentLevel) return { error: 'no level' };
-    const { makeNav } = await import('./harness/pathfind');
-    const nav = makeNav(currentLevel.nav);
-    const from = { x: camera.position.x, z: camera.position.z };
-    const e = (currentLevel as { enemies?: Array<{ group: THREE.Object3D; alive: boolean }> }).enemies?.find((x) => x.alive);
-    const target = to ?? (e ? { x: e.group.position.x, z: e.group.position.z } : from);
-    return { from, target, dir: nav.dirToward(from, target), path: nav._debugPath };
-  };
-  (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
-  // DEV: shader-warmup forensics. __progDiff() seeds a baseline of the CURRENT
-  // compiled-program cache on first call (call it once warmup is done — after the
-  // first level loads), then on every later call returns the keys that compiled
-  // SINCE the seed — i.e. exactly the shaders/pipelines warmup MISSED. Pass true
-  // to reseed. Pair with ?autobot=1: seed, let the bot play a few floors, call
-  // again → the list is the precise warmup gap, decode the flipped define/param.
-  //
-  // Renderer-agnostic: WebGL keys off renderer.info.programs[].cacheKey; WebGPU
-  // has no info.programs, so it keys off the pipeline cache (renderer._pipelines
-  // .caches — the RenderObjectPipeline map). Without the WebGPU branch this tool
-  // (and the compile guard) is BLIND on the default renderer.
-  {
-    let baseline: Set<string> | null = null;
-    const keysNow = (): string[] => {
-      const caches = (renderer as unknown as { _pipelines?: { caches?: Map<string, unknown> } })._pipelines?.caches;
-      return caches ? [...caches.keys()] : [];
-    };
-    (window as unknown as Record<string, unknown>).__progDiff = (reseed = false) => {
-      const now = keysNow();
-      if (!baseline || reseed) {
-        baseline = new Set(now);
-        return { seeded: baseline.size };
-      }
-      const gap = now.filter((k) => !baseline!.has(k));
-      const byType: Record<string, number> = {};
-      for (const k of gap) { const t = k.split(',')[0]; byType[t] = (byType[t] ?? 0) + 1; }
-      return { baseline: baseline.size, now: now.length, compiledSinceSeed: gap.length, byType, keys: gap };
-    };
-  }
-  (window as unknown as Record<string, unknown>).__stamp = (r = 1.2, a = 1.0, spray = false) => {
-    if (spray) {
-      const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
-      stampSpray(camera.position.x + fx * 1.5, camera.position.z + fz * 1.5, r, 0x8a1812, a, fx, fz);
-    } else {
-      stampSplat(camera.position.x, camera.position.z, r, 0x8a1812, a);
-    }
-    return [camera.position.x.toFixed(1), camera.position.z.toFixed(1)];
-  };
-  (window as unknown as Record<string, unknown>).__goreDebug = (on = true) => { setGoreDebugEnabled(on); return on; };
-  // __gore(e): full impact splash 1.2m ahead, thrown along the view.
-  (window as unknown as Record<string, unknown>).__gore = (e = 1.0) => {
-    const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
-    emitGoreSplash(camera.position.x + fx * 1.2, camera.position.z + fz * 1.2, 1.0, fx, fz, e, 0x8a1812);
-    return 'splashed';
-  };
-  // __teleport(x, z, yaw?): move the player camera. Headless repro aid.
-  (window as unknown as Record<string, unknown>).__teleport = (x: number, z: number, yaw = 0) => {
-    camera.position.set(x, CONFIG.PLAYER_HEIGHT, z);
-    camera.rotation.order = 'YXZ';
-    camera.rotation.y = yaw;
-    camera.rotation.x = 0;
-  };
-  // __smite(r): lethal damage to every enemy within r metres of the
-  // camera, through the REAL damage pipeline — death/dissolve/corpse
-  // paths run exactly as in combat. Headless corpse-bug repro.
-  (window as unknown as Record<string, unknown>).__smite = (r = 6) => {
-    const killed: string[] = [];   // kind@x,z of each kill
-    for (const e of currentLevel?.enemies ?? []) {
-      if (!e.alive) continue;
-      const d = Math.hypot(e.position.x - camera.position.x, e.position.z - camera.position.z);
-      if (d > r) continue;
-      e.takeDamage({ source: null, target: e.entityId, base: 99999, type: 'physical' });
-      killed.push(`${e.kind}@${e.position.x.toFixed(1)},${e.position.z.toFixed(1)}`);
-    }
-    return killed;
-  };
-  (window as unknown as Record<string, unknown>).__sceneScan = (x: number, z: number, r = 1.5) => {
-    const found: Array<{ name: string; type: string; center: number[]; radius: number; visible: boolean; chain: string }> = [];
-    scene.updateMatrixWorld(true);
-    scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || !m.geometry) return;
-      // Bounding sphere in WORLD space — world-baked merged meshes sit
-      // at transform origin with their geometry elsewhere; the bounds
-      // are where the pixels actually are.
-      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
-      const bs = m.geometry.boundingSphere!;
-      const c = bs.center.clone().applyMatrix4(m.matrixWorld);
-      const scale = m.getWorldScale(new THREE.Vector3()).length() / Math.sqrt(3);
-      const wr = bs.radius * scale;
-      if (Math.hypot(c.x - x, c.z - z) - Math.min(wr, 3) > r) return;
-      if (wr > 8) return;   // room-scale merges: not a "body"
-      const chain: string[] = [];
-      let n: THREE.Object3D | null = m;
-      while (n && chain.length < 6) { chain.push(n.name || n.type); n = n.parent; }
-      found.push({
-        name: m.name || '(unnamed)', type: m.type,
-        center: [+c.x.toFixed(2), +c.y.toFixed(2), +c.z.toFixed(2)],
-        radius: +wr.toFixed(2), visible: m.visible,
-        chain: chain.join(' < '),
-      });
-    });
-    return found;
-  };
-}
-// LUX button — `?lux=1` on ANY build (it's a safe read-only diagnostic:
-// measures pixels, changes nothing), always present in DEV. One tap →
-// overlay card with the numbers + room context; a phone screenshot of
-// that card is a complete bug report for light tuning.
-// STICKY: ?lux=1 persists to localStorage (and ?lux=0 clears it) so
-// the button survives the PWA's start_url launch, which carries no
-// query params. The service worker's cache cycle still applies — a
-// fresh deploy needs one open/close before the new bundle serves.
-{
-  const luxParam = new URLSearchParams(window.location.search).get('lux');
-  if (luxParam === '1') localStorage.setItem('delve-lux', '1');
-  if (luxParam === '0') localStorage.removeItem('delve-lux');
-}
-if (import.meta.env.DEV || localStorage.getItem('delve-lux') === '1') {
-  const btn = document.createElement('button');
-  btn.textContent = 'LUX';
-  Object.assign(btn.style, {
-    position: 'fixed', top: '40%', right: '8px', zIndex: '9998',
-    background: 'rgba(10,12,18,0.8)', color: '#9fb2cc',
-    font: '10px ui-monospace, monospace', padding: '7px 9px',
-    border: '1px solid #2a3242', borderRadius: '5px', opacity: '0.6',
-  } as Partial<CSSStyleDeclaration>);
-  btn.onclick = () => { requestLux().then(showLuxCard); };
-  document.body.appendChild(btn);
-}
-// Headless lux API (DEV; scripts/lux-scan.ts drives it via playwright).
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__lux = {
-    measure: () => requestLux().then((r) => { showLuxCard(r); return r; }),
-    tour: () => luxTour(),
-    bands: LUX_BANDS,
-  };
-}
-// DEV-only boss observation hook (window.__boss). Stripped from prod by the
-// literal-false guard. Drive + inspect multi-phase boss fights from the
-// console or a headless chrome-devtools session without grinding combat:
-//   __boss.info()      → { encounter, phase: { index, count } }
-//   __boss.phase(n)    → jump to phase n INSTANTLY (settled pose)
-//   __boss.advance()   → trigger the NEXT phase WITH its collapse animation
-// Reads the live boss lazily so it follows floor swaps.
-if (import.meta.env.DEV) {
-  const findBoss = () => currentLevel?.enemies.find((e) => e.isBoss && e.alive);
-  const bossApi = {
-    info: () => ({ encounter: bossEncounterDebug(), phase: findBoss()?.bossPhaseInfo() ?? null }),
-    phase: (n: number) => { findBoss()?.setDebugBossPhase(n); return bossApi.info(); },
-    advance: () => { findBoss()?.debugAdvanceBossPhase(); return bossApi.info(); },
-  };
-  (window as unknown as { __boss?: typeof bossApi }).__boss = bossApi;
-  // Pack/AI observation: per-enemy distance + bearing to the player + AI state.
-  // Lets a headless probe confirm a crowd RINGS (bearings spread, dist ≈ strike
-  // range) vs PILES (dist ≈ 0, bearings clustered). Drives pack tuning.
-  (window as unknown as { __mobPack?: () => unknown }).__mobPack = () => {
-    const lvl = currentLevel; if (!lvl) return null;
-    const px = camera.position.x, pz = camera.position.z;
-    const mobs = lvl.enemies.filter((e) => e.alive).map((e) => {
-      const dx = e.position.x - px, dz = e.position.z - pz;
-      const dist = Math.hypot(dx, dz) || 1;
-      // Facing error: angle between the model's forward (-Z → (-sinθ,-cosθ))
-      // and the unit vector TOWARD the player. 0° = looking at you, 180° = back
-      // turned. This is the "half face away" measurement.
-      const yaw = (e as unknown as { yaw: number }).yaw;
-      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-      const tox = -dx / dist, toz = -dz / dist;
-      const faceErr = Math.round(Math.acos(Math.max(-1, Math.min(1, fx * tox + fz * toz))) * 180 / Math.PI);
-      return {
-        kind: e.kind, state: e.aiState,
-        dist: Math.round(dist * 100) / 100,
-        faceErr,   // degrees off from looking at the player
-      };
-    });
-    return { tokens: packTokenCount(), mobs };
-  };
-}
+mountLuxButtonIfEnabled();
 initPickupLightPool(scene);
 // (The projectile pool + type registry are built by bootstrapSimWorld above,
 // alongside the light pool they depend on — so the headless replay runner gets
@@ -1387,7 +1059,6 @@ window.addEventListener('resize', () => {
 });
 
 // --- Render loop ---
-const clock = new THREE.Timer();   // THREE.Clock is deprecated; Timer.update()+getDelta() each frame
 const shakeOffset = new THREE.Vector3();
 const forwardScratch = new THREE.Vector3();
 
@@ -1404,340 +1075,29 @@ const SYSTEMS: GameSystem[] = buildSystems({
   getRoomCuller: () => roomCuller,
 });
 
-// DEV-only fixed-step sim stepper (window.__sim). Runs ONLY the kind:'sim'
-// systems by hand at a fixed timestep — the headless / deterministic-replay
-// substrate, distinct from the real-time ?harness path. Behind the DEV gate so
-// it dead-code-eliminates from the live build (window.__sim can't exist there).
+// The frame loop (cadence, fixed-step sim/present split, render interp, the
+// fatal guard) lives in engine/frame-loop.ts; main wires the world objects in.
+initFrameLoop({
+  renderer, camera, weapon, input,
+  systems: SYSTEMS,
+  getLevel: () => currentLevel,
+  syncRoomCuller,
+  getHarnessTick: () => harnessTickFn,
+  lampSpotEnabled: LAMP_SPOT,
+});
+
+// DEV console hooks + URL overrides (?ps1/?shadows/?nooutline/?god, the
+// window.__* forensics handles, the fixed-step sim stepper) — one install;
+// the whole module tree-shakes from the production bundle.
 if (import.meta.env.DEV) {
-  void import('./debug/sim-stepper').then((m) =>
-    m.installSimStepper({
-      systems: SYSTEMS,
-      getLevel: () => currentLevel,
-      getCamera: () => camera,
-      getSeed: getRunSeed,
-      getSwing: () => ({
-        phase: weapon.getPhase(),
-        striking: weapon.isStriking,
-        swinging: weapon.isSwinging,
-      }),
-    }),
-  );
-}
-
-// ── Fixed-step sim loop (opt-in) ─────────────────────────────────────────────
-// The LIVE loop is variable-dt: the sim advances by whatever the last frame
-// took, so play is fps-dependent and NOT reproducible. ?fixedstep=1 switches to
-// a fixed-timestep loop — the SIM advances in fixed 1/60s quanta (count driven
-// by accumulated wall-clock), and PRESENT (render/HUD/VFX) runs once per frame.
-// That makes a run fps-INDEPENDENT and replayable from (seed, per-step intents)
-// — the prerequisite for leaderboard run-validation, and it makes the headless
-// balance sweeps faithful to real play.
-//
-// DEFAULT OFF: with the flag absent, tick() runs the original interleaved pass
-// unchanged (byte-identical feel). The flag-on path reorders into sim-pass then
-// present-pass (the inherent shape of fixed-step) — feel-test before defaulting.
-const FIXED_DT = 1 / 60;
-const MAX_SUBSTEPS = 6; // realDt is capped at 0.1s, so ≤6 fixed steps/frame
-
-// SIM TURBO (DEV only): fast-forward the world by running N× the fixed steps per
-// frame — for headless/bot testing where waiting real-time through a boss fight is
-// the bottleneck. CPU-bound (N× the sim work per frame), so the real speedup is
-// min(N, whatever the frame can sustain). Strips from prod (DEV gate). Set via
-// ?turbo=N at boot or window.__turbo(N) live. Clamped 1..8.
-let simTurbo = 1;
-if (import.meta.env.DEV) {
-  const t = Number(new URLSearchParams(location.search).get('turbo'));
-  if (Number.isFinite(t) && t >= 1) simTurbo = Math.min(8, Math.floor(t));
-}
-const SIM_SYSTEMS = SYSTEMS.filter((s) => s.kind === 'sim');
-const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
-// Fixed-step is now the DEFAULT: a 60Hz deterministic sim, decoupled from the
-// draw rate (which the FRAME RATE cap matches to it). This makes gameplay
-// frame-rate-independent + fair across devices, and — critically — records a
-// replay tape for EVERY run (the leaderboard verifier needs it). The FPS cap
-// keeps it smooth without interpolation. Escape hatch for an A/B or a feel
-// regression: ?varstep=1 forces the legacy variable-dt loop.
-const USE_FIXED_STEP =
-  new URLSearchParams(location.search).get('varstep') !== '1';
-// Render interpolation (fixed-step only): DRAW a pose interpolated between the
-// two most-recent sim snapshots by the leftover-accumulator fraction, so the
-// 60Hz sim doesn't beat against the display clock into visible judder at a
-// locked 60fps (see engine/render-interp.ts). Presentation-only — the sim + the
-// replay tape are untouched. Escape hatch for an A/B or a feel regression:
-// ?nointerp=1 draws the raw latest sim pose (the legacy fixed-step behaviour).
-// Three loops are now A/B-able on the phone: default (fixed+interp),
-// ?nointerp=1 (fixed, no interp), ?varstep=1 (legacy variable-dt).
-const USE_INTERP =
-  USE_FIXED_STEP && new URLSearchParams(location.search).get('nointerp') !== '1';
-setRenderInterpEnabled(USE_INTERP);
-// In fixed-step, run the game clock deterministically (gameNow() = accumulated
-// sim time). In default play it stays on performance.now() — feel unchanged.
-setDeterministicClock(USE_FIXED_STEP);
-let simAccumulator = 0;
-// Reused scratch for the interpolation target list (camera + live enemies),
-// refilled in place each step so the loop never allocates.
-const interpTargets: THREE.Object3D[] = [];
-function fillInterpTargets(): void {
-  interpTargets.length = 0;
-  interpTargets.push(camera);
-  // First-person weapon: its swing + held pose live on the root group, authored
-  // ABSOLUTELY each fixed sim step ('weapon' is kind:'sim'), so on a non-60Hz
-  // display the swing samples in 1/60 jumps and judders against the camera. The
-  // group is camera-local, so interp lerps its local pose — bringing the sword
-  // in line with the lamp/offhand viewmodels (those tick at present-rate and are
-  // already smooth). The arm IK under it is solved from this pose and rides
-  // along rigidly; its sub-pose is ≤1 step stale during a fast swing, masked by
-  // the swing speed. weapon.update sets the group absolutely, so the lerped draw
-  // pose can never feed back into the sim — no drift even before interpRestore.
-  interpTargets.push(weapon.group);
-  const enemies = currentLevel?.enemies;
-  if (enemies) {
-    for (const e of enemies) {
-      if (e.alive || e.dying) { interpTargets.push(e.group); setInterpPositionOnly(e.group, true); }
-    }
-  }
-}
-
-/** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
- *  sim systems, all on the fixed clock (so the world is deterministic). */
-function advanceSimStep(dt: number): void {
-  // Advance the deterministic game clock by the real-time quantum — so the
-  // time-based gameplay timers (skill windows, hit-pause/bullet-time durations)
-  // that read gameNow() are reproducible. Advances during hit-pause so the
-  // freeze ends, but FREEZES during a menu / harness / debug pause: otherwise a
-  // pause burns in-flight skill windows and leaks real wall-clock time into the
-  // recorded tape, breaking replay determinism for any run that opened a menu.
-  if (!shouldFreezeGameClock()) advanceGameClock(dt);
-  // Time-scale drivers on the FIXED clock (deterministic hit-pause / bullet-
-  // time / death slow-mo), then the same two-clock split the variable path uses.
-  tickDeath(dt);
-  tickBulletTime(dt);
-  tickBossSlowmo(dt);
-  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-  const scaledDt = dt * baseScale * getWorldTimeScale();
-  const playerDt = dt * baseScale;
-  const fxDt = dt * getWorldTimeScale();
-  if (!isWorldPaused()) tickPlayerAction(playerDt);
-  const paused = isWorldPaused();
-  if (paused) { input.lookDx = 0; input.lookDy = 0; }
-  runSystems(SIM_SYSTEMS, {
-    realDt: dt, scaledDt, playerDt, fxDt, paused,
-    mode: getGameMode(), playing: isPlaying(),
+  installDevHooks({
+    renderer, scene, camera, weapon,
+    systems: SYSTEMS,
+    getLevel: () => currentLevel,
+    getRunSeed,
   });
 }
 
-/** Run the PRESENT (render/HUD/VFX/camera) systems once per frame, with the
- *  real frame dt + the live time-scales — so visuals stay smooth and VFX
- *  slow-mo (which rides scaledDt) reads exactly as it does today. */
-function presentPass(realDt: number): void {
-  if (import.meta.env.DEV) tickNavOverlay();   // DEV nav-grid overlay (strips in prod)
-  tickArrival(camera, realDt);
-  if (!isWorldPaused()) tickChasmPresence(camera, realDt);
-  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-  runSystems(PRESENT_SYSTEMS, {
-    realDt,
-    scaledDt: realDt * baseScale * getWorldTimeScale(),
-    playerDt: realDt * baseScale,
-    fxDt: realDt * getWorldTimeScale(),
-    paused: isWorldPaused(),
-    mode: getGameMode(),
-    playing: isPlaying(),
-  });
-}
-
-function tickInner() {
-  // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
-  // A drift-free time accumulator (scene/frame-pacer.ts) — never above the cap,
-  // jitter-immune (no creep down to 55), even on any panel, graceful under load.
-  // The sim isn't lost on a skip — clock.getDelta() accumulates the skipped time,
-  // so the next drawn frame advances the sim by the full elapsed time.
-  const frameCap = Number(getSettings().frameCap);
-  if (!pacerShouldDraw(frameCap, performance.now())) { requestAnimationFrame(tick); return; }
-  // Apply any pending level swap BEFORE any per-frame reads on the level.
-  // Stairs interactables call loadLevel() during the previous frame's
-  // interactables tick; the swap lands here at the top of the next frame.
-  tickPendingLoad();
-  // Build/tear-down the room culler to match the active level + setting.
-  syncRoomCuller();
-
-  clock.update();   // Timer computes its delta at update(); getDelta() then returns this frame's
-  const realDt = Math.min(clock.getDelta(), 0.1);
-
-  // Harness: drain any in-flight tick budget and advance game-time clock.
-  // Cheap when off. Called BEFORE the pause snapshot below so a budget that
-  // ends this frame re-pauses the world for the same frame's update gate.
-  harnessTickFn?.(realDt, !isWorldPaused());
-
-  // Advance the GPU compute embers once per drawn frame, BEFORE either render
-  // path (fixed-step presentPass or variable runSystems) reads the buffer.
-  tickEmbersGPU();
-  if (LAMP_SPOT) tickLampSpot(camera);   // place + aim the lamp's shadow spotlight
-
-  if (USE_FIXED_STEP) {
-    // FIXED-STEP path (?fixedstep=1): advance the SIM in fixed 1/60s quanta
-    // (count = accumulated wall-clock), then PRESENT once. fps-independent +
-    // replayable; reorders into sim-pass-then-present-pass (feel-test before
-    // making default).
-    // Restore last frame's authoritative camera pose HERE (frame start), not right after present. The
-    // drawn pose carries the screen-shake offset, and on WebGPU the render is async — `void renderAsync`
-    // reads the camera in a microtask AFTER present returns. Restoring right after present wiped the shake
-    // (and the interp pose) before that deferred read, so neither rendered. Restoring at the NEXT frame's
-    // start lets the drawn pose + shake survive the async render, while still being clean before this
-    // frame's sim integrates.
-    if (USE_INTERP) interpRestore(interpTargets);
-    simAccumulator += realDt * simTurbo;   // DEV fast-forward (default ×1)
-    let steps = 0;
-    while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS * simTurbo) {
-      if (USE_INTERP) { fillInterpTargets(); interpStepBegin(interpTargets); }
-      advanceSimStep(FIXED_DT);
-      if (USE_INTERP) { fillInterpTargets(); interpStepEnd(interpTargets); }
-      simAccumulator -= FIXED_DT;
-      steps++;
-    }
-    if (simAccumulator > FIXED_DT) simAccumulator = FIXED_DT; // drop the backlog
-    // Interpolate the drawn pose between the last two sim snapshots by the
-    // leftover fraction; on a 0-step frame this still advances the view toward
-    // `curr` instead of freezing (the judder fix). Restored after present so the
-    // next sim step integrates from authoritative state, not the draw pose.
-    if (USE_INTERP) { fillInterpTargets(); interpApply(simAccumulator / FIXED_DT, interpTargets); }
-    frameBegin();
-    presentPass(realDt);
-    frameEnd();
-    // (interpRestore MOVED to the top of this block — so the drawn pose + shake persist through WebGPU's
-    //  async render instead of being wiped before the deferred read. See the note above.)
-  } else {
-    // VARIABLE-dt path (default) — the original interleaved pass, unchanged.
-    tickArrival(camera, realDt);
-    tickDeath(realDt);
-    tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
-    tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
-    // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
-    // player included). worldScale = the reactive-defense bullet-time, which
-    // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
-    // they crawl while the player keeps acting at full speed (the asymmetric
-    // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
-    const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-    const scaledDt = realDt * baseScale * getWorldTimeScale();
-    const playerDt = realDt * baseScale;
-    // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
-    // dust hangs with the world during a perfect-dodge dip but never stutters on
-    // a hit-pause/death freeze (those aren't in getWorldTimeScale).
-    const fxDt = realDt * getWorldTimeScale();
-    // Advance the player-action FSM on the PLAYER clock, BEFORE input is
-    // processed below, so a committed dodge/parry that expires this frame frees
-    // the next action immediately.
-    if (!isWorldPaused()) tickPlayerAction(playerDt);
-    // Snapshot pause state AFTER the harness so a just-ended budget gates this
-    // frame's unpaused systems.
-    const paused = isWorldPaused();
-
-    // The deep breathes only while the world runs — a pause menu full of
-    // chasm whispers would give the trick away.
-    if (!paused) tickChasmPresence(camera, realDt);
-
-    // While paused, drain look input so it doesn't snap when we unfreeze.
-    // (The input-camera system is gated off by the pause, so it won't.)
-    if (paused) {
-      input.lookDx = 0;
-      input.lookDy = 0;
-    }
-
-    const ctx: TickContext = {
-      realDt,
-      scaledDt,
-      playerDt,
-      fxDt,
-      paused,
-      mode: getGameMode(),
-      playing: isPlaying(),
-    };
-    // Profiling brackets the system pass: begin opens the GPU timer + marks the
-    // CPU start, end closes them and fans the frame sample out to the HUD +
-    // recorder. Both early-return immediately unless something is listening (HUD
-    // visible, recording, or marks on), so this is free for players who never
-    // enable the PROFILER TOOLS setting — just two no-op calls per frame.
-    frameBegin();
-    runSystems(SYSTEMS, ctx);
-    frameEnd();
-  }
-
-  // Charge-ring HUD — early-outs on no-progress so it's free when no
-  // hold is in flight. Always ticked; the visual itself opts in.
-  tickChargeRing();
-  tickRiteButton();
-
-  // Perf overlay (toggle in Settings → PERF METER). Internally early-
-  // outs when hidden so it's free when off. reportRendererInfo reads
-  // renderer.info AFTER the render system has run this frame, so the
-  // tris/draws numbers reflect what was actually drawn.
-  reportRendererInfo(renderer);
-  tickPerfOverlay(performance.now());
-  // DEV mob-AI readout (?aidebug=1) — feed the NEAREST live mob to the jitter
-  // diagnostic. Whole block DCEs in prod (import.meta.env.DEV → false).
-  if (import.meta.env.DEV && mobAiReadoutEnabled()) {
-    const es = currentLevel?.enemies;
-    let near: Enemy | null = null;
-    let nearD = Infinity;
-    if (es) for (const e of es) {
-      if (!e.alive) continue;
-      const dx = e.position.x - camera.position.x, dz = e.position.z - camera.position.z;
-      const dd = dx * dx + dz * dz;
-      if (dd < nearD) { nearD = dd; near = e; }
-    }
-    tickMobAiReadout(near, Math.sqrt(nearD), performance.now());
-  }
-  if (import.meta.env.DEV) tickAiGizmos(currentLevel?.enemies);   // in-world facing gizmos (self-gates)
-  // Adaptive resolution — self-gates (no-op unless enabled on a real phone). The
-  // rAF interval can't see GPU load (skip-pacing pins it to vsync), so feed the
-  // real GPU-timestamp ms.
-  tickAdaptiveResolution(performance.now(), 1000 / pacerEffectiveFps(frameCap));
-  feedAdaptiveGpuMs(lastWebGPUGpuMs());
-  tickCombatDebug(realDt, currentLevel?.enemies ?? []);
-  tickGoreDebug();
-  // Programmatic perf probe (window.__perf for the headless perf runner).
-  // DEV-only — the literal-false guard dead-code-eliminates it from prod
-  // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
-  if (import.meta.env.DEV) tickPerfProbe(performance.now());
-
-  // DEV: flash a banner on any in-play pipeline compile (a warm gap) or lag frame, so
-  // hitches are impossible to miss as content is added. No-op in prod.
-  tickCompileWatch();
-
-  // First fully-rendered frame proves boot is good — clear the boot-loop flag.
-  if (!bootConfirmed) { bootConfirmed = true; bootSucceeded(); }
-
-  requestAnimationFrame(tick);
-}
-
-let bootConfirmed = false;
-// Fatal-error guard around the loop. If a frame throws, the loop would otherwise
-// die silently into a frozen screen. Catch it: capture (with the repro tape +
-// context), show the in-character crash overlay, and stop rescheduling — one
-// fault, handled, with a report path, instead of a black void.
-let fatalHandled = false;
-function tick() {
-  // While the GPU context is lost, idle the loop (no sim, no render — rendering
-  // would throw) until 'webglcontextrestored' clears the flag.
-  if (isContextLost()) { requestAnimationFrame(tick); return; }
-  // While the first-floor warmup owns the frame, SKIP the whole game frame — no
-  // sim, no audio, no render. Otherwise the warmup's rAF yields let the game loop
-  // run underneath: it ticked the sim (sound/activity before the player could act)
-  // and rendered the warmup's roster subjects (artifacts). Only the warmup + the
-  // DOM loading cover run; the game resumes the instant warmup tears down.
-  if (isLoading()) { requestAnimationFrame(tick); return; }
-  try {
-    tickInner();
-  } catch (err) {
-    if (fatalHandled) return;
-    fatalHandled = true;
-    const e = err instanceof Error ? err : new Error(String(err));
-    if (import.meta.env.DEV) console.error('[fatal] game loop threw:', e);
-    let repro: unknown = null;
-    try { repro = peekActiveTape(); } catch { /* recorder unavailable */ }
-    captureError(e, true, repro); // routes to Sentry (with the tape attached) or the beacon
-    showCrashOverlay(buildReport(e, { repro }), e.message);
-  }
-}
 
 // ── Run start ──────────────────────────────────────────────────────────
 // All the systems above are wired; we just don't have an active level
@@ -1780,7 +1140,7 @@ function startRun(floorId: string, startDepth: number = 1) {
   // Record the run for replay/validation — but ONLY in the deterministic
   // (fixed-step) loop, since a variable-dt tape can't be reproduced. Captured
   // allocation-free; finished + held on death for the leaderboard to submit.
-  if (USE_FIXED_STEP) startRunRecording(seed);
+  if (isFixedStepLoop()) startRunRecording(seed);
   if (import.meta.env.DEV) console.info(`[run] seed = ${seed}`);
   track('run_start', { depth: startDepth });
   loadInitialLevel(floorId, startDepth);
@@ -1808,7 +1168,7 @@ function startRun(floorId: string, startDepth: number = 1) {
   if (import.meta.env.DEV && new URLSearchParams(location.search).get('simfreeze') === '1') {
     setWorldFrozen(true);
   }
-  tick();
+  startFrameLoop();
 }
 
 /**
@@ -2030,197 +1390,23 @@ onSettingsChanged((s) => {
 // the per-frame cost is a single style read.
 createPerfOverlay();
 setPerfOverlayVisible(getSettings().perfMeter);
-// Install window.__perf for the headless perf runner (scripts/perf.ts).
-// DEV-only — the literal-false guard strips the call, and installPerfProbe
-// itself early-returns unless DEV, so window.__perf can never be set live.
-if (import.meta.env.DEV) installPerfProbe(renderer);
 
-// Profiling suite — per-system CPU/GPU profiler HUD, session recorder, spector
-// draw-call capture. A SAFE diagnostic (no gameplay effect), so it SHIPS in the
-// production build behind the PROFILER TOOLS setting — the same "diagnostics are
-// the exception" carve-out the perf meter uses. NOT import.meta.env.DEV gated:
-// the whole point is to run it on the live build, on the phone, where the drops
-// are. Zero footprint until enabled — the timing core + HUD are lazily created
-// the first time the toggle (or a ?profiler / ?profile / ?record session flag)
-// turns it on.
-//
-// Drive it from the on-screen toolbar (phone) or, on desktop, the hotkeys:
-//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 draw report · F9 detached stream. URL: ?profile/record/marks/stream=1.
-//   Console: window.__profiler / __perfRec.{...} / __marks / __gpuProbe / __draws / __perfStream / __spector (desktop).
-const profilerSessionFlag = ['profiler', 'profile', 'record', 'marks', 'stream']
-  .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
-function profilingEnabled(): boolean {
-  return getSettings().profilerTools || profilerSessionFlag;
-}
-let profilingInited = false;
-function ensureProfilingInited(): void {
-  if (profilingInited) return;
-  profilingInited = true;
-  initFrameTiming(renderer);
-  initDrawReport(scene, renderer, () => currentLevel);
-  initGpuAttribution(scene, renderer);
-  // A completed GPU-attribution sweep is forwarded to the detached cockpit (it
-  // shows the ranking beside the timeline). broadcastAttr is a no-op unless the
-  // stream is on, so this is free otherwise.
-  onAttributionReport((d) => broadcastAttr(d));
-  createProfilerHud();
-}
-function applyProfilerEnabled(): void {
-  const on = profilingEnabled();
-  if (on) { ensureProfilingInited(); setSceneAuditProvider(() => auditScene(scene)); }
-  setRollingEnabled(on);          // dashcam ring fills only while enabled
-  setProfilerToolbarVisible(on);
-  if (!on) {
-    setProfilerVisible(false);
-    setMarks(false);
-    setStreamEnabled(false);
-  }
-}
-applyProfilerEnabled();
-// Honour the specific URL flags once the suite is active for this session.
-if (profilingEnabled()) {
-  const q = new URLSearchParams(window.location.search);
-  if (q.get('profile') === '1') setProfilerVisible(true);
-  if (q.get('marks') === '1') setMarks(true);
-  if (q.get('stream') === '1') setStreamEnabled(true);
-  if (q.get('record') === '1') startRecording('auto');
-}
-window.addEventListener('keydown', (e) => {
-  if (!profilingEnabled()) return;
-  if (e.code === 'F2') { e.preventDefault(); toggleProfiler(); }
-  else if (e.code === 'F3') { e.preventDefault(); toggleRecording(); }
-  else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
-  else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
-  else if (e.code === 'F7') { e.preventDefault(); void runGpuAttribution(); }
-  else if (e.code === 'F9') { e.preventDefault(); ensureProfilingInited(); setStreamEnabled(!streamEnabled()); }
-}, true);
-const profWin = window as unknown as {
-  __profiler: () => void;
-  __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
-  __marks: () => void;
-  __perfStream: () => void;
-  __draws: () => void;
-  __drawData: () => ReturnType<typeof drawReportData>;
-  __gpuAttr: () => void;
-  __gpuAttrReport: () => { running: boolean; report: string | null };
-  __lambert: (on?: boolean) => boolean;
-  __spector: () => void;
-};
-profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
-profWin.__perfRec = {
-  start: (l) => { ensureProfilingInited(); startRecording(l); },
-  stop: stopRecording,
-  toggle: () => { ensureProfilingInited(); toggleRecording(); },
-  saveLast: (secs) => void saveLastSeconds(secs),
-};
-profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
-profWin.__perfStream = () => { ensureProfilingInited(); setStreamEnabled(!streamEnabled()); };
-profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
-profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); };
-profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
-profWin.__gpuAttrReport = () => ({ running: isAttributionRunning(), report: getLastAttributionReport() });
-// Lambert-class shading preview — A/B the PBR tax visually. __lambert() toggles,
-// __lambert(true/false) sets. Profiler-suite tool, not a player setting.
-profWin.__lambert = (on?: boolean) => { setLambertPreview(scene, on ?? !isLambertPreview()); return isLambertPreview(); };
-profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
+// Profiling suite wiring (HUD / recorder / draw report / GPU attribution /
+// hotkeys / window.__* handles) — debug/profiler-wiring.ts. Ships in prod
+// behind the PROFILER TOOLS setting; zero footprint until enabled.
+initProfilerWiring({ renderer, scene, getLevel: () => currentLevel });
 
-// Debug: `?fakemeta=1` seeds meta progress so title shows records +
-// the CODEX/STASH buttons without requiring real playthrough.
-if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
-  localStorage.setItem('delve:meta', JSON.stringify({
-    version: 2,
-    runsAttempted: 7, runsDied: 6, deepestDepth: 4, totalKills: 31,
-    totalPlayMs: 4 * 60 * 1000,
-    enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
-    itemsFound: ['rusted-sword', 'scimitar', 'flask-draught', 'leather-gloves',
-                 'worn-boots', 'ring-of-vigor', 'iron-coif'],
-    notesRead: [
-      'I came for the blade. I should have come for the door.',
-      'They told us it was one floor. They counted wrong.',
-    ],
-    achievementsUnlocked: ['first-blood', 'untouched', 'depth-3-reached'],
-    stash: [
-      { id: 'a1', tier: 'uncommon', source: 'Untouched' },
-      { id: 'a2', tier: 'rare', source: 'The Dungeon Notices' },
-      { id: 'a3', tier: 'fabled', source: 'Magic Bypass' },
-    ],
-  }));
-}
-// Debug: `?god=1` makes the player invulnerable — for posing combat states,
-// driving enemies, and screenshotting without dying. DEV-only: the whole
-// block is dropped from the production bundle (and setGodMode would refuse
-// anyway), so it can't be used on the live site.
-// Drop the boot loading veil (index.html) — fade out, then remove. Module-scope
-// so EVERY boot path can clear it (title, scenario, the debug ?show* hooks),
-// not just the title. The title path holds it across a PWA-update reload (see
-// the gated call below); a safety timer guarantees it never strands if some
-// path forgets to clear it.
-// Drive the boot veil's warmup progress bar (index.html #boot-loading .boot-bar),
-// 0..1 — fed by runWarmupPassWebGPU's onProgress while the roster compiles. Reveals the
-// bar on first call so fast/cached boots never flash it.
-function setBootProgress(t: number): void {
-  const bar = document.querySelector('#boot-loading .boot-bar') as HTMLElement | null;
-  const fill = document.querySelector('#boot-loading .boot-bar-fill') as HTMLElement | null;
-  if (!bar || !fill) return;
-  bar.classList.add('on');
-  fill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
-}
-function hideBootLoading() {
-  const el = document.getElementById('boot-loading');
-  if (!el || el.classList.contains('boot-hide')) return;
-  el.classList.add('boot-hide');
-  window.setTimeout(() => el.remove(), 500);
-}
-// Safety net — just past awaitBootUpdate's own 6s cap, so a legit update gate
-// resolves first; this only fires if a boot path never cleared the veil.
-window.setTimeout(hideBootLoading, 7000);
-
-if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('god') === '1') {
-  setGodMode(true);
-}
-// Debug: `?fakesave=1` seeds a save so the title shows CONTINUE for snaps.
-if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
-  localStorage.setItem('delve:save', JSON.stringify({
-    version: 1, floorId: 'depth-2', depth: 2, hp: 4,
-    inventory: { 'flask-draught': 2 },
-    equipment: { weapon: 'scimitar' },
-    startedAt: Date.now() - 240000, kills: 7, itemsFound: ['scimitar', 'flask-draught'],
-  }));
-}
-// Debug hook for snapping the end screen — `?showEnd=1` skips game
-// entirely, shows the end-screen with mocked stats.
-if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
-  import('./ui/end-screen').then(({ showEndScreen }) => {
-    showEndScreen(
-      {
-        depth: 2, kills: 7, itemsFound: 5, elapsed: '4:12',
-        epitaph: 'she was unmade in the first dark.',
-        discoveries: {
-          enemies: ['wraith'],
-          items: ['heartburn', 'bone-amulet'],
-          notes: 2,
-          newDepthRecord: true,
-        },
-      },
-      () => window.location.reload(),
-    );
-  });
-} else if (new URLSearchParams(window.location.search).get('showCodex') === '1') {
-  import('./ui/codex-screen').then(({ showCodex }) => showCodex());
-} else if (new URLSearchParams(window.location.search).get('showStash') === '1') {
-  import('./ui/stash-screen').then(({ showStash }) => showStash());
-} else if (new URLSearchParams(window.location.search).get('showPatchlog') === '1') {
-  import('./ui/patchlog-screen').then(({ showPatchlog }) => showPatchlog());
-} else if (new URLSearchParams(window.location.search).get('showSafeTransition') === '1') {
-  // Debug hook — preview the safe-room transition card with mocked stats.
-  import('./ui/safe-room-transition').then(({ showSafeRoomTransition }) => {
-    showSafeRoomTransition({
-      actName: 'The Old Refectory',
-      depth: 3,
-      kills: 14,
-      xp: 247,
-    });
-  });
+// Fake persisted state for snaps (?fakemeta=1 / ?fakesave=1) — debug/boot-url-screens.ts.
+applyFakeStateFlags();
+// Boot veil (index.html #boot-loading) — ui/boot-veil.ts owns the progress bar
+// + teardown; the safety net guarantees it never strands if a boot path
+// forgets to clear it.
+armBootVeilSafetyNet();
+// Debug ?show* screen previews (end screen / codex / stash / patchlog /
+// safe-transition card) — debug/boot-url-screens.ts. When one fires it owns
+// the boot; the game never starts.
+if (handleDebugScreenFlags()) {
+  // A debug screen owns this boot.
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
   // spec or use the procgen depth-1 fallback.

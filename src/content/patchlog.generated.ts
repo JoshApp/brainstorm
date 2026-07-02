@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-07-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The dark may keep more flames lit at once; distant sconces no longer surrender to the near.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tech",
         "text": "The deep learns to light its torches by district; whole rooms may now burn at once.",
         "area": [
@@ -396,14 +403,6 @@ export const GENERATED_PATCHLOG = [
         "tag": "tech",
         "text": "Fewer flinches as the dark meets you now — the eyes that watch and the embers that drift were made ready in advance.",
         "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "A bar marks the wait at the threshold, the dark fully forms before it admits you, and the deep now flinches visibly when it meets something it hasn't readied.",
-        "area": [
-          "ui",
           "tech"
         ]
       }

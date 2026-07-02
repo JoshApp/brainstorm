@@ -1,12 +1,18 @@
-// WebGL context-loss recovery.
+// GPU context / device loss recovery.
 //
-// Mobile GPUs drop the WebGL context under memory pressure or on backgrounding.
+// Mobile GPUs drop the context under memory pressure or on backgrounding.
 // By DEFAULT that's a permanent black screen — and worse here, the next render
 // call would throw and trip the fatal crash overlay for something that's
-// actually recoverable. The browser will only RESTORE the context if we
-// preventDefault() on the lost event, so we do: gate the frame loop
-// (isContextLost), show a brief in-character veil, and on restore rebuild the
-// custom render targets and resume. Without this, a tab-switch can brick a run.
+// actually recoverable. Two loss channels, one veil + frame-loop gate:
+//
+// - WebGL2 fallback backend: the canvas 'webglcontextlost' event. The browser
+//   only RESTORES the context if we preventDefault() on the lost event, so we
+//   do: gate the frame loop (isContextLost), show a brief in-character veil,
+//   and on restore resume. Without this, a tab-switch can brick a run.
+// - WebGPU backend: the device.lost promise. A lost GPUDevice CANNOT be
+//   revived in place — every pipeline/buffer/texture on it is gone, and Three
+//   has no whole-renderer rebuild path — so the honest recovery is the veil +
+//   an immediate reload offer (the run save persists; a reload resumes it).
 
 let lost = false;
 let veil: HTMLDivElement | null = null;
@@ -36,6 +42,22 @@ export function installContextRecovery(opts: {
     try { onRestore(); } catch { /* if reinit fails, the reload offer stands */ return; }
     lost = false;
     hideVeil();
+  });
+}
+
+/** WebGPU device-loss watch. Call after renderer.init() — the device exists
+ *  then. No-op on the WebGL2 backend (the canvas events above own that path).
+ *  reason === 'destroyed' is an intentional teardown (never ours in play) and
+ *  page unload on some browsers — ignored to avoid a veil flash on refresh. */
+export function installDeviceLossRecovery(renderer: unknown): void {
+  type LostInfo = { reason: string };
+  const device = (renderer as { backend?: { isWebGPUBackend?: boolean; device?: { lost?: Promise<LostInfo> } } })?.backend;
+  if (!device?.isWebGPUBackend || !device.device?.lost) return;
+  void device.device.lost.then((info: LostInfo) => {
+    if (info.reason === 'destroyed' || lost) return;
+    lost = true;   // idle the frame loop — a render on a lost device throws
+    showVeil('the dark gutters');
+    showReload();
   });
 }
 
