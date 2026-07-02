@@ -1,14 +1,12 @@
-// "Achievement Unlocked" toast in the DCC tribute register.
+// The voice in the deep — its remarks surface here (kills scored, firsts,
+// foolishness). Per CLAUDE.md Tone Layering: there is NO show, NO system, NO
+// "Achievement Unlocked" (banned) — the thing that lives below simply SAYS it.
 //
-// Visually distinct from the in-world UI on purpose, per CLAUDE.md Tone
-// Layering — this is the COSMIC BROADCAST FRAME, not the dungeon. So:
-// - cool color palette (cyan/violet instead of the dungeon's warm orange/red)
-// - sans-serif, ALL CAPS header, "transmission" feel
-// - slides in from top-right with a chime
-// - stacks if multiple fire in quick succession
-//
-// The dungeon's UI stays warm and atmospheric. The narrator's UI is sterile,
-// system-message, "you are being watched and judged."
+// Visually distinct from the in-world HUD on purpose, but OF the place:
+// - near-black depth palette with a dim violet cast (it speaks from below,
+//   not from a studio) — never the dungeon's warm torch orange
+// - serif, a quiet lowered header ("it notices"), no system-message chrome
+// - slides in from top-right with a chime; stacks if several fire
 
 import { playBroadcastChime } from '../audio/sfx';
 
@@ -37,20 +35,20 @@ function ensureContainer() {
   return container;
 }
 
-export function broadcastPop(title: string, desc: string, headerText = 'ACHIEVEMENT UNLOCKED') {
+export function broadcastPop(title: string, desc: string, headerText = 'it notices') {
   const root = ensureContainer();
   playBroadcastChime();
 
   const card = document.createElement('div');
   Object.assign(card.style, {
-    background: 'linear-gradient(135deg, rgba(20, 26, 48, 0.92), rgba(40, 28, 60, 0.92))',
-    border: '1px solid rgba(150, 200, 255, 0.45)',
-    borderLeft: '3px solid rgba(180, 220, 255, 0.95)',
-    color: '#e6f0ff',
-    fontFamily: 'system-ui, -apple-system, "Helvetica Neue", sans-serif',
+    background: 'linear-gradient(160deg, rgba(12, 10, 18, 0.94), rgba(24, 16, 34, 0.94))',
+    border: '1px solid rgba(140, 110, 180, 0.35)',
+    borderLeft: '3px solid rgba(150, 110, 200, 0.8)',
+    color: '#d8cfc0',
+    fontFamily: 'Georgia, "Times New Roman", serif',
     padding: '10px 14px',
-    borderRadius: '4px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 24px rgba(120, 180, 255, 0.18)',
+    borderRadius: '3px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.6), 0 0 24px rgba(110, 70, 160, 0.14)',
     backdropFilter: 'blur(4px)',
     WebkitBackdropFilter: 'blur(4px)',
     transform: 'translateX(120%)',
@@ -63,9 +61,10 @@ export function broadcastPop(title: string, desc: string, headerText = 'ACHIEVEM
   header.textContent = headerText;
   Object.assign(header.style, {
     fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.22em',
-    color: 'rgba(160, 210, 255, 0.85)',
+    fontStyle: 'italic',
+    letterSpacing: '0.28em',
+    textTransform: 'lowercase',
+    color: 'rgba(160, 130, 200, 0.8)',
     marginBottom: '4px',
   });
   card.appendChild(header);
@@ -75,7 +74,7 @@ export function broadcastPop(title: string, desc: string, headerText = 'ACHIEVEM
   Object.assign(titleEl.style, {
     fontSize: '15px',
     fontWeight: '600',
-    color: '#ffffff',
+    color: '#efe8da',
     marginBottom: '2px',
     lineHeight: '1.25',
   });
@@ -85,7 +84,8 @@ export function broadcastPop(title: string, desc: string, headerText = 'ACHIEVEM
   descEl.textContent = desc;
   Object.assign(descEl.style, {
     fontSize: '12px',
-    color: 'rgba(220, 230, 245, 0.78)',
+    fontStyle: 'italic',
+    color: 'rgba(200, 188, 168, 0.75)',
     lineHeight: '1.35',
   });
   card.appendChild(descEl);
