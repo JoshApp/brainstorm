@@ -48,6 +48,9 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
   // pacer-skipped rAFs, not on warm renders). The only page-observable way to detect a
   // "canvas frozen, sim alive" backpressure stall from instrumentation.
   (window as any).__presentedFrames = () => presentedFrameCount();
+  // DEV: latest native GPU frame ms (timer-query where supported) — the number the
+  // adaptive scaler feeds on. For quick A/B costing from the console/CDP.
+  (window as any).__gpuMs = () => lastWebGPUGpuMs();
 }
 
 let pipeline: RenderPipeline | null = null;
