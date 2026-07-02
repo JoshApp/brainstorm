@@ -5,6 +5,7 @@ import {
 } from './clutter';
 import { VASE_TALL, VASE_FLASK, VASE_BROKEN, VASE_SQUAT } from './vase';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from './chest';
+import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from './ossuary';
 
 // Static props/clutter the warmup must compile so their material pipelines are ready
 // BEFORE the prop first appears. Deeper floors introduce types the first floor lacks
@@ -24,4 +25,6 @@ export const WARM_MODELS = [
   VASE_TALL, VASE_FLASK, VASE_BROKEN, VASE_SQUAT,
   // chests
   CHEST, CHEST_IRON, CHEST_BOSS,
+  // pale family (PAINTED chroma props — one pipeline for the whole family)
+  OSSUARY_NICHE, OSSUARY_NICHE_SMALL,
 ];

@@ -7,6 +7,7 @@ import {
   FALLEN_PILLAR_SEGMENT, IRON_BARS, LURKER,
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
+import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
 import { COBWEB_CORNER } from '../content/cobweb';
 import { archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
 import { doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
@@ -322,6 +323,18 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   const buttressCount = ctx.area >= 60 ? 2 : ctx.area >= 30 ? 1 : 0;
   for (let i = 0; i < buttressCount; i++) {
     placeWallAttached(WALL_BUTTRESS, 0.30, 0.7, ctx, out, rand);
+  }
+
+  // Ossuary niches — the walls of the deep are furniture for the
+  // dead. PALE bone (chroma-amplified) in a dark stone frame: the
+  // room's coloured light drenches the bones while the frame stays
+  // swallowed. An ACCENT, not carpet — at most one per chamber (two
+  // in true halls), and plenty of rooms roll none.
+  const nicheRoll = rand();
+  const nicheCount = ctx.area >= 90 && nicheRoll < 0.6 ? 2 : ctx.area >= 28 && nicheRoll < 0.5 ? 1 : 0;
+  for (let i = 0; i < nicheCount; i++) {
+    if (rand() < 0.35) placeWallAttached(OSSUARY_NICHE_SMALL, 0.42, 0.55, ctx, out, rand, 0.45, 0.22);
+    else placeWallAttached(OSSUARY_NICHE, 0.44, 0.8, ctx, out, rand, 0.68, 0.23);
   }
 
   // Ruined column stubs — free-standing chest-high broken column.
@@ -680,11 +693,12 @@ function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number):
 }
 
 /** Place a wall-attached prop in a clear segment. Used for the
- *  buttress (full-height structural column). Position lifts off
- *  the wall by `depth/2` so the model's half-thickness sits in
- *  the wall and the rest pokes into the room. Buttress carries
- *  a rectangular collision matching its protruding footprint —
- *  the player paths around the column. */
+ *  buttress (full-height structural column) and the ossuary niches.
+ *  Position lifts off the wall by `depth/2` so the model's half-
+ *  thickness sits in the wall and the rest pokes into the room.
+ *  Collision half-extents are in MODEL local space — width along the
+ *  wall, depth out from the wall (defaults match the buttress's main
+ *  0.85m × 0.55m body). */
 function placeWallAttached(
   model: typeof WALL_BUTTRESS,
   depth: number,
@@ -692,28 +706,30 @@ function placeWallAttached(
   ctx: RoomContext,
   out: PropSpec[],
   rand: () => number,
+  collisionHalfW = 0.40,           // along the wall
+  collisionHalfD = 0.28,           // out from the wall
 ): void {
-  // Slightly more generous slack for buttresses near doorways.
+  // Slightly more generous slack for wall props near doorways.
   const nearOpening = (pos: number, openings: Opening[]) => inOpening(pos, openings, 0.6);
-  // Collision half-extents in MODEL local space — width along the
-  // wall, depth out from the wall. Matches the buttress model's
-  // main 0.85m × 0.55m body.
-  const collisionHalfW = 0.40;     // along the wall
-  const collisionHalfD = 0.28;     // out from the wall
   for (let a = 0; a < 10; a++) {
     const wall = Math.floor(rand() * 4);
     let x = 0, z = 0, rotY = 0;
     let blocked = false;
     switch (wall) {
+      // rotY maps local −Z (the model's wall side) onto the wall: Three's
+      // Y-rotation sends local −Z to (sinθ·−1→ x'=−sinθ), so the WEST wall
+      // (−X) needs +π/2 and the EAST wall −π/2. These two were swapped —
+      // invisible on the near-symmetric buttress, but a niche placed on an
+      // east/west wall faced INTO the stone.
       case 0: {
         z = ctx.minZ + alongHalf + rand() * Math.max(0, ctx.rect.d - 2 * alongHalf);
         if (nearOpening(z, ctx.openW)) { blocked = true; break; }
-        x = ctx.minX + depth / 2 + 0.02; rotY = -Math.PI / 2; break;
+        x = ctx.minX + depth / 2 + 0.02; rotY = Math.PI / 2; break;
       }
       case 1: {
         z = ctx.minZ + alongHalf + rand() * Math.max(0, ctx.rect.d - 2 * alongHalf);
         if (nearOpening(z, ctx.openE)) { blocked = true; break; }
-        x = ctx.maxX - depth / 2 - 0.02; rotY = Math.PI / 2; break;
+        x = ctx.maxX - depth / 2 - 0.02; rotY = -Math.PI / 2; break;
       }
       case 2: {
         x = ctx.minX + alongHalf + rand() * Math.max(0, ctx.rect.w - 2 * alongHalf);

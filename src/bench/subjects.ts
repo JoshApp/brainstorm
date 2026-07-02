@@ -16,6 +16,7 @@ import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
 import { HAND_LEFT_LANTERN } from '../content/hand-poses';
 import { LURKER } from '../content/clutter';
 import { SKELETON_KEY } from '../content/skeleton-key';
+import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -82,6 +83,8 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
   'skeleton-key': { label: 'Skeleton key — skull bow with glowing eye sockets', spec: SKELETON_KEY },
+  'ossuary-niche': { label: 'Ossuary niche — double-bay bone cabinet (PALE family)', spec: OSSUARY_NICHE },
+  'ossuary-niche-small': { label: 'Ossuary niche small — single-bay bone shrine (PALE family)', spec: OSSUARY_NICHE_SMALL },
   'origin-arch': { label: 'Origin arch — sealed round arch behind the spawn bonfire', spec: ORIGIN_ARCH },
   'corpse-crawled': { label: 'Fallen delver — crawled, with pack', spec: makeCorpseModel('crawled', 'fleshy', true) },
   'corpse-curled': { label: 'Fallen delver — curled', spec: makeCorpseModel('curled', 'fleshy', false) },
