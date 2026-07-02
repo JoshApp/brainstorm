@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { addFrameListener, removeFrameListener, gpuActive, setGpuProbe, gpuProbeOn, gpuSupported, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, type FrameSample } from './frame-timing';
 import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
 import {
@@ -11,6 +11,7 @@ import { setShadowMode, getShadowMode, setLightBudgetTrim, getLightSlotTotals } 
 import { setMotesHidden } from '../effects/drifting-motes';
 import { setSurfaceDetailEnabled, getSurfaceDetailEnabled } from '../style/surface-detail';
 import { setAdaptiveResolution, isAdaptiveResolutionEnabled } from '../scene/adaptive-resolution';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // GPU COST ATTRIBUTION — an A/B auto-profiler.
 //
@@ -43,10 +44,10 @@ const SETTLE_RECOMPILE = 40; // toggles that change light count / override mater
 const SAMPLE_FRAMES = 30;    // average the GPU timer over this many frames per stage
 
 let scene: THREE.Scene | null = null;
-let renderer: THREE.WebGLRenderer | null = null;
+let renderer: DelveRenderer | null = null;
 let running = false;
 
-export function initGpuAttribution(s: THREE.Scene, r: THREE.WebGLRenderer): void {
+export function initGpuAttribution(s: THREE.Scene, r: DelveRenderer): void {
   scene = s;
   renderer = r;
 }
@@ -105,10 +106,8 @@ export async function runGpuAttribution(): Promise<void> {
   if (!scene || !renderer) { flash('attribution not initialised'); return; }
   running = true;
 
-  // No GPU timing available? Arm the readPixels probe ourselves for the sweep.
-  const probeWasOn = gpuProbeOn();
-  const armedProbe = !gpuActive();
-  if (armedProbe) setGpuProbe(true);
+  // No GPU timestamps on this device → the sweep falls back to CPU/dt deltas
+  // (the report labels which signal it used via gpuActive()).
 
   // The adaptive scaler would fight the resolution stage (and drift the
   // baseline mid-sweep on a struggling device) — suspend it, restore after.
@@ -272,7 +271,6 @@ export async function runGpuAttribution(): Promise<void> {
   if (rend.getPixelRatio() !== prevDpr) applyDpr(prevDpr);
   lambertMat.dispose(); basicMat.dispose();
   if (adaptiveWasOn) setAdaptiveResolution(true);
-  if (armedProbe && !probeWasOn) setGpuProbe(false);
 
   const baseline = measured.get(baselineKeys[0]);
   const lastBaseline = measured.get(baselineKeys[baselineKeys.length - 1]);

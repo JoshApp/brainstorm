@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor } from 'three/tsl';
 

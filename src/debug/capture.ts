@@ -23,11 +23,12 @@ import { getRunState } from '../state/run-state';
 import { listLightSourcesNear, getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { actForDepth } from '../level/acts';
 import { captureAllOverlays } from './debug-screenshots';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 export interface DebugContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
+  renderer: DelveRenderer;
   canvas: HTMLCanvasElement;
   getLevel: () => LiveLevel | null;
 }

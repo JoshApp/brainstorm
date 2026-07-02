@@ -12,6 +12,7 @@ import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { getTexture } from '../style/procedural-textures';
 import { getWarmupHooks } from './warmup-registry';
 import { DEV } from '../debug/dev';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // ── REAL-ROSTER WARM — warm through the REAL build path, not a dummy ──────────────────────────────
 //
@@ -44,7 +45,7 @@ const yieldFrame = (): Promise<void> =>
     : Promise.resolve();
 
 export async function warmRealRoster(
-  renderer: THREE.WebGLRenderer,
+  renderer: DelveRenderer,
   liveScene: THREE.Scene,
   camera: THREE.Camera,
   onProgress?: (frac: number) => void,

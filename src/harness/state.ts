@@ -7,11 +7,12 @@ import * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
 import type { InputState } from '../controls/input';
 import type { WeaponViewmodel } from '../player/viewmodel';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 export interface HarnessContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
+  renderer: DelveRenderer;
   canvas: HTMLCanvasElement;
   input: InputState;
   /** Returns the active level — main.ts holds a mutable `currentLevel`,

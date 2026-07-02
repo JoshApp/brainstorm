@@ -4,6 +4,7 @@ import './spawn-warmups';   // side-effect: registers enemy/item/destructible wa
 import { essentialWarmupHooks } from './warmup-registry';
 import { warmRenderWebGPU } from '../style/render-webgpu';
 import { beginLoading, endLoading } from '../scene/loading-gate';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // ── The unified warmup pass (WebGPU) ────────────────────────────────────────
 //
@@ -68,7 +69,7 @@ const yieldFrame = (): Promise<void> =>
  *  (revealWhenReady), so the roster is compiled before the first enemy can spawn.
  *  Idempotent + best-effort: a driver hiccup must not brick the load. */
 export async function runWarmupPassWebGPU(
-  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+  renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera,
   onProgress?: (t: number) => void,
 ): Promise<void> {
   if (done) return;

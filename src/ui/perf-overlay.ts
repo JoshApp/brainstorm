@@ -16,6 +16,7 @@ import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getNativeHz, pacerEffectiveFps } from '../scene/frame-pacer';
 import { getSettings } from '../settings/settings';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // Chrome-only heap readout (absent on Firefox/Safari). Prod-safe: just a
 // number for the overlay, no behavioural effect.
@@ -107,7 +108,7 @@ export function setPerfOverlayVisible(visible: boolean): void {
 
 /** Push renderer stats from main.ts each frame. Optional — the FPS +
  *  ms readout works without it. */
-export function reportRendererInfo(renderer: THREE.WebGLRenderer): void {
+export function reportRendererInfo(renderer: DelveRenderer): void {
   if (!root || root.style.display === 'none') return;   // skip work when hidden
   lastTris  = renderer.info.render.triangles;
   lastCalls = renderer.info.render.calls;

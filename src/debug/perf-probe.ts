@@ -23,6 +23,7 @@ import type * as THREE from 'three';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { currentGpuMs } from './frame-timing';
+import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 
 // Chrome-only non-standard heap readout. Absent on Firefox/Safari and on
 // headless swiftshader unless --enable-precise-memory-info is passed.
@@ -36,7 +37,7 @@ function heapBytes(): number | null {
   return m ? m.usedJSHeapSize : null;
 }
 
-let renderer: THREE.WebGLRenderer | null = null;
+let renderer: DelveRenderer | null = null;
 
 // Frame-time ring (own copy so the probe works regardless of whether the
 // on-screen overlay is visible). Timestamps in ms; trimmed to a 1s window.
@@ -86,7 +87,7 @@ export interface PerfSnapshot {
   gpuMs: number | null;
 }
 
-export function installPerfProbe(r: THREE.WebGLRenderer): void {
+export function installPerfProbe(r: DelveRenderer): void {
   // Belt-and-suspenders: even if a stray call survives bundling, this
   // literal-false guard folds the body away in prod so window.__perf can
   // never be defined on the live site. (Same hardening as setGodMode.)
@@ -150,7 +151,7 @@ export function getPerfSnapshot(): PerfSnapshot {
     tris: info ? info.render.triangles : 0,
     geometries: info ? info.memory.geometries : 0,
     textures: info ? info.memory.textures : 0,
-    programs: info ? (info.programs?.length ?? 0) : 0,
+    programs: renderer ? pipelineCount(renderer) : 0,
     geometryPool: getGeometryPoolSize(),
     lightsActive: getActiveSourceCount(),
     lightsRegistered: getRegisteredSourceCount(),

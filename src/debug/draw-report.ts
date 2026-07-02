@@ -17,12 +17,13 @@ import type { LiveLevel } from '../level/builder';
 import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
 import { getViewmodelRoots } from '../style/render-frame';
+import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 
 let scene: THREE.Scene | null = null;
-let renderer: THREE.WebGLRenderer | null = null;
+let renderer: DelveRenderer | null = null;
 let getLevel: (() => LiveLevel | null) | null = null;
 
-export function initDrawReport(s: THREE.Scene, r: THREE.WebGLRenderer, gl: () => LiveLevel | null): void {
+export function initDrawReport(s: THREE.Scene, r: DelveRenderer, gl: () => LiveLevel | null): void {
   scene = s;
   renderer = r;
   getLevel = gl;
@@ -141,7 +142,7 @@ export function drawReportData(): DrawReportData | null {
     rtris: info ? info.render.triangles : 0,
     drawables: meshes + sprites + points, meshes, sprites, points,
     shadowCasters, transparent, sceneTris,
-    programs: info?.programs?.length ?? 0,
+    programs: renderer ? pipelineCount(renderer) : 0,
     geometries: info ? info.memory.geometries : 0,
     textures: info ? info.memory.textures : 0,
     lightsActive, lightsShadow, bySource,
@@ -321,7 +322,7 @@ export async function captureDrawReport(): Promise<void> {
   const info = renderer?.info;
   const draws = info ? info.render.calls : 0;
   const rtris = info ? info.render.triangles : 0;
-  const programs = info?.programs?.length ?? 0;
+  const programs = renderer ? pipelineCount(renderer) : 0;
   // GPU-resource counts — capture two reports (fresh vs after the slowdown sets
   // in); if these climb while the JS heap stays flat, that's the leak (created-
   // not-disposed geometry/texture, or a growing shader-program cache).

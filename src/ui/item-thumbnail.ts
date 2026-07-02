@@ -20,6 +20,9 @@ const cache = new Map<string, string>();
 function ensureRig() {
   if (renderer && scene && camera) return;
 
+  // Deliberately a classic WebGLRenderer (NOT the game's WebGPU renderer):
+  // this rig renders once, synchronously, straight into toDataURL — the async
+  // WebGPU submit has no place here, and a tiny second GL context is free.
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(THUMB_SIZE, THUMB_SIZE);
   renderer.setPixelRatio(1);

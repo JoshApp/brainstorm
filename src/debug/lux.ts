@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { listLightSourcesNear } from '../scene/light-pool';
+import { captureDisplayFrame } from '../style/render-webgpu';
 import type { LevelSpec } from '../level/types';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // ── LUX — the perceived-light meter ──────────────────────────────────
 //
@@ -92,48 +94,44 @@ function verdictFor(mean: number, voidPct: number, brightPct: number, tier: stri
   return `in band for '${tier}'`;
 }
 
-/** Called by the render loop RIGHT AFTER renderWithStyle, while the
- *  default framebuffer still holds the frame (works regardless of
- *  preserveDrawingBuffer). */
-export function flushLux(renderer: THREE.WebGLRenderer): void {
-  if (pending.length === 0 || !cameraRef) return;
-  // WebGPU: getContext() returns a GPUCanvasContext with no readPixels — the
-  // sync-readback meter never got ported (needs an async WebGPU readback; see
-  // WEBGPU-MIGRATION.md). Drain the queue with an honest error instead of
-  // throwing from the render loop.
-  const gl = renderer.getContext() as WebGL2RenderingContext & { readPixels?: unknown };
-  if (typeof gl.readPixels !== 'function') {
-    console.warn('[lux] not supported on the WebGPU backend (sync readPixels is WebGL-only)');
-    const stub: LuxReport = {
-      at: { x: 0, z: 0, yawDeg: 0 }, room: null,
-      screen: { mean: 0, p05: 0, p50: 0, p95: 0, voidPct: 0, brightPct: 0, zones: [] },
-      sources: [], verdict: 'UNSUPPORTED on WebGPU (sync readback removed)',
-    };
-    for (const cb of pending.splice(0)) cb(stub);
-    return;
-  }
-  const w = gl.drawingBufferWidth;
-  const h = gl.drawingBufferHeight;
-  const buf = new Uint8Array(w * h * 4);
-  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+let captureInFlight = false;
 
+/** Called by the render loop each frame; kicks an ASYNC measurement when one
+ *  is requested. The readback renders one extra frame through the real PSX
+ *  pipeline into a small offscreen target (style/render-webgpu.ts
+ *  captureDisplayFrame) and reads THAT — the canvas itself cannot be reliably
+ *  snapshotted under WebGPU (drawImage races the texture expiry). The image is
+ *  the exact display-referred output: grade, dither, dark-adapt and all. */
+export function flushLux(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  if (pending.length === 0 || !cameraRef || captureInFlight) return;
+  captureInFlight = true;
+  void captureDisplayFrame(renderer, scene, camera).then((cap) => {
+    captureInFlight = false;
+    if (!cap) { pending.length = 0; console.warn('[lux] capture failed'); return; }
+    // WebGPU readbacks are top-down; the WebGL fallback's readPixels is
+    // bottom-up. Flip the zone rows there so they always read top→bottom.
+    const flipRows = !!(renderer.backend as unknown as { isWebGLBackend?: boolean })?.isWebGLBackend;
+    finishLux(cap.data, cap.width, cap.height, flipRows);
+  }, () => { captureInFlight = false; pending.length = 0; });
+}
+
+function finishLux(buf: Uint8Array, w: number, h: number, flipRows: boolean): void {
+  if (!cameraRef) return;
   const lumas: number[] = [];
   const zoneSum = new Array(9).fill(0);
   const zoneN = new Array(9).fill(0);
-  const STRIDE = 3;
   let voidN = 0, brightN = 0;
-  for (let y = 0; y < h; y += STRIDE) {
-    for (let x = 0; x < w; x += STRIDE) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       const L = srgbLuma(buf[i], buf[i + 1], buf[i + 2]);
       lumas.push(L);
       if (L < 0.03) voidN++;
       if (L > 0.45) brightN++;
-      // gl rows are bottom-up; flip so zone rows read top→bottom.
-      const zr = 2 - Math.min(2, Math.floor((y / h) * 3));
+      const row = flipRows ? 2 - Math.min(2, Math.floor((y / h) * 3)) : Math.min(2, Math.floor((y / h) * 3));
       const zc = Math.min(2, Math.floor((x / w) * 3));
-      zoneSum[zr * 3 + zc] += L;
-      zoneN[zr * 3 + zc]++;
+      zoneSum[row * 3 + zc] += L;
+      zoneN[row * 3 + zc]++;
     }
   }
   lumas.sort((a, b) => a - b);

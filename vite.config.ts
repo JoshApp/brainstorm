@@ -106,6 +106,11 @@ export default defineConfig({
     },
   },
   build: {
+    // es2022 for TOP-LEVEL AWAIT — main.ts awaits renderer init before the rest
+    // of boot (async boot phase 1). Drops pre-2021 browsers (Chrome <89 /
+    // Safari <15), all far below the game's real floor (WebGL2 + phones that
+    // can run it).
+    target: 'es2022',
     // 'hidden' = emit .map files (so a captured minified stack can be
     // symbolicated, or uploaded to an error backbone later) WITHOUT advertising
     // them via sourceMappingURL — they're tooling, not in-browser exposure.

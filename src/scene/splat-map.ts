@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
 import { stampGoreWebGPU, stampWallGoreWebGPU, resetGoreWebGPU } from './gore-webgpu';
+import type { DelveRenderer } from './create-renderer';
 
 // ── GORE EMITTER — the floor remembers its violence ──────────────────
 //
@@ -12,20 +13,11 @@ import { stampGoreWebGPU, stampWallGoreWebGPU, resetGoreWebGPU } from './gore-we
 // HISTORY: this file used to own a WebGL render-target splat map (three
 // RTs + GLSL stamp/dry ShaderMaterials rendered by flushSplats). The
 // WebGPU port replaced that with the per-fragment gore buffer; the dead
-// RT/ShaderMaterial machinery is gone. The uSplat* uniform refs remain
-// exported (inert, always null/0) because surface-detail/build-model
-// still import them; drop those imports and these refs together.
+// RT/ShaderMaterial machinery (and its uSplat* uniform refs) is gone.
 //
 //   resetSplatMap(minX,minZ,w,d)      per floor (builder)
 //   stampSplat(x, z, r, color, a)     stamp floor blood (any gameplay code)
 //   flushSplats(renderer)             render tick drains timed bleed pulses
-
-// Inert compat refs (see HISTORY above) — nothing writes them anymore.
-export const uSplatTex = { value: null as THREE.Texture | null };
-export const uSplatBounds = { value: new THREE.Vector4(0, 0, 1, 1) };  // minX, minZ, sizeX, sizeZ
-export const uSplatOn = { value: 0 };
-export const uSplatWallTex = { value: null as THREE.Texture | null };
-export const uSplatWallIdTex = { value: null as THREE.Texture | null };
 
 /** Wall probe — registered by main per floor. Given a point + throw
  *  direction, returns the first axis-aligned wall within reach. */
@@ -36,8 +28,7 @@ export function setSplatWallProbe(fn: typeof wallProbe): void {
 }
 
 /** New floor: wipe the gore buffer and drop stale per-floor state. */
-export function resetSplatMap(minX: number, minZ: number, sizeX: number, sizeZ: number): void {
-  uSplatBounds.value.set(minX, minZ, Math.max(1, sizeX), Math.max(1, sizeZ));
+export function resetSplatMap(_minX: number, _minZ: number, _sizeX: number, _sizeZ: number): void {
   pendingBleeds.length = 0;   // a corpse can't bleed onto the floor below
   resetGoreWebGPU();          // wipe the WebGPU gore buffer
   wallProbe = null;   // stale probes reference the dead floor's walkable
@@ -200,7 +191,7 @@ export function stampBleedOut(x: number, z: number, color: number, gore: number)
 
 /** Drain due bleed-out pulses into the gore buffer. Called every frame
  *  from the render system; free when nothing is bleeding. */
-export function flushSplats(_renderer: THREE.WebGLRenderer): void {
+export function flushSplats(_renderer: DelveRenderer): void {
   if (pendingBleeds.length === 0) return;
   const now = performance.now() / 1000;
   for (let i = pendingBleeds.length - 1; i >= 0; i--) {

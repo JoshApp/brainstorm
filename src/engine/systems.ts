@@ -61,6 +61,7 @@ import { tickExhaustionHaptic } from '../combat/exhaustion-haptic';
 import { tickExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { tickBreath } from '../effects/breath';
 import { tickCameraStumble } from '../combat/camera-stumble';
+import type { DelveRenderer } from '../scene/create-renderer';
 import { tickHazardFields } from '../combat/hazard-field';
 import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
@@ -104,7 +105,7 @@ export type LiveLevelHandle = LiveLevel & { checkRoomClear?: () => void };
 export interface SystemDeps {
   camera: THREE.PerspectiveCamera;
   scene: THREE.Scene;
-  renderer: THREE.WebGLRenderer;
+  renderer: DelveRenderer;
   ambient: THREE.AmbientLight;
   canvas: HTMLCanvasElement;
   input: ReturnType<typeof createTouchInput>;
@@ -599,13 +600,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     { name: 'render', phase: 'always', tick() {
       tickSurfaceSeep(performance.now() / 1000);
-      flushSplats(renderer);   // WebGL: drain queued gore stamps into the splat map
-      tickGoreWebGPU();        // WebGPU: dry/evict + repack the per-fragment gore buffer
+      flushSplats(renderer);   // drain due bleed-out pulses into the gore buffer
+      tickGoreWebGPU();        // dry/evict + repack the per-fragment gore buffer
       renderWithStyle(renderer, scene, camera);
-      // LUX readback must happen while this frame's buffer is still
-      // valid (preserveDrawingBuffer is off in prod) — cheap no-op
-      // unless a measurement was requested.
-      if (luxPending()) flushLux(renderer);
+      // LUX measurement — async render-to-target capture through the real
+      // pipeline. Cheap no-op unless a measurement was requested.
+      if (luxPending()) flushLux(renderer, scene, camera);
     } },
     // (No 'shake-restore' — the shake is undone at the start of the next frame's shake-apply instead, so
     //  it survives WebGPU's async render. See shake-apply above.)

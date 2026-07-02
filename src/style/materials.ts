@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // Material library for the BIG STATIC SURFACES of the level (walls, floor,
 // ceiling). Dynamic entities (enemies, sword, torches, chests) own their
@@ -22,7 +23,7 @@ export interface StyleMaterials {
   chasmWall: THREE.Material;
 }
 
-export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
+export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // Emissive baseline: a tiny self-luminance on every static surface so
   // even unlit corners imply geometry ("stone, but barely") instead of
   // reading as black void. Way better than cranking global ambient,

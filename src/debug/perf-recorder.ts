@@ -22,7 +22,7 @@
 // allocates a small per-frame record, so the profiler's own GC/alloc readout
 // carries a little constant overhead while the tools are on — expected.
 
-import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, getCompiledProgramKeys, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, getCompiledProgramKeys, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
@@ -263,12 +263,8 @@ export function setRollingEnabled(on: boolean): void {
     lastAutoSpikeAt = -Infinity;
     autoSpikeCount = 0;
     addFrameListener(onRingFrame);
-    // On timer-query devices per-pass GPU spans are passive and free — arm
-    // them whenever the ring rolls, so every recording (incl. the dashcam)
-    // carries the per-pass breakdown without anyone touching PASS. Devices
-    // without the extension are left alone: the readPixels fallback stalls
-    // sampled frames and would pollute the very recording it feeds.
-    if (gpuSupported()) setGpuPassTiming(true);
+    // Per-pass GPU spans (render/compute split) are passive WebGPU timestamp
+    // queries — always on, so every recording carries them automatically.
   } else {
     removeFrameListener(onRingFrame);
     ring = [];

@@ -9,13 +9,11 @@
 //
 // DEV-only — pulled in exclusively behind `import.meta.env.DEV` in main.ts.
 
-import type * as THREE from 'three';
-import { GpuTimer } from './gpu-timer';
+import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 import { tickWebGPUTimestamps, webgpuGpuMs, webgpuGpuPhases, webgpuTimingSupported } from './gpu-timer-webgpu';
 import { setSystemProbe, setMarksEnabled } from '../engine/loop';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
-import { installRenderProbe, setRenderGpuProbe, renderGpuProbeOn, installGpuPassHooks, type GpuPassHooks } from './render-probe';
 import { setProfSpans } from './prof-span';
 
 export interface FrameSample {
@@ -55,20 +53,13 @@ function heapBytes(): number | null {
   return m ? m.usedJSHeapSize : null;
 }
 
-let renderer: THREE.WebGLRenderer | null = null;
-let gpu: GpuTimer | null = null;
+let renderer: DelveRenderer | null = null;
 
 const frameMs = new Map<string, number>();
 let frameStart = 0;
 let lastEnd = 0;
 let lastHeap: number | null = null;
 let marks = false;
-// GPU time measured by the readPixels probe (see frameEnd). Takes precedence
-// over the (often-unavailable, and on some drivers garbage) timer-query path.
-let probedGpu: number | null = null;
-let gpuProbeCount = 0;
-const GPU_PROBE_EVERY = 8;
-const GPU_PROBE_PIXEL = new Uint8Array(4);
 
 type FrameListener = (s: FrameSample) => void;
 const listeners = new Set<FrameListener>();
@@ -116,96 +107,26 @@ const sample: FrameSample = {
   heapMB: null, allocMB: 0, gc: false, systems: frameMs, gpuPhases: null,
 };
 
-// ── Per-pass GPU timing ──────────────────────────────────────────────
-// When armed, render-target brackets each render pass (prepass / scene /
-// bloom / blit) and we time each span instead of the whole frame. Two
-// implementations:
-//   • timer queries (free, passive) — sequential labeled spans; the whole-
-//     frame query is suspended while this is on (TIME_ELAPSED can't nest).
-//   • readPixels sync probe (fallback) — on sampled frames, force the GPU to
-//     drain at each pass boundary and wall-clock the gaps. Stalls those
-//     frames (like the whole-frame GPU probe), so it's a measurement mode.
-let passTiming = false;
-let passProbeFrame = false;          // fallback path: does THIS frame sample?
-let passProbeCounter = 0;
-let passProbeLabel = '';
-let passProbeT0 = 0;
-const passProbePhases = new Map<string, number>();  // sticky last measurement per pass
-
-function syncGpu(): void {
-  // getContext()/readPixels are WebGL-only; no-op under WebGPU (GPU timing comes
-  // from native timestamp queries instead).
-}
-
-const passHooks: GpuPassHooks = {
-  begin(label: string): void {
-    if (gpu?.supported) { gpu.begin(label); return; }
-    if (!passProbeFrame) return;
-    syncGpu();                        // drain prior work so the span starts clean
-    passProbeLabel = label;
-    passProbeT0 = performance.now();
-  },
-  end(): void {
-    if (gpu?.supported) { gpu.end(); return; }
-    if (!passProbeFrame || !passProbeLabel) return;
-    syncGpu();                        // wait for this pass's GPU work
-    passProbePhases.set(passProbeLabel, performance.now() - passProbeT0);
-    passProbeLabel = '';
-  },
-};
-
-/** Arm/disarm per-pass GPU timing. Uses timer queries when supported, else
- *  the readPixels sync probe on every Nth frame. */
-export function setGpuPassTiming(on: boolean): void {
-  passTiming = on;
-  if (!on) { passProbePhases.clear(); gpu?.lastByLabel.clear(); }
-  ensureHooks();
-}
-export function gpuPassTimingOn(): boolean { return passTiming; }
-
-/** Introspection for debugging the pass-timing chain (remote console). */
-export function gpuPassDiag(): Record<string, unknown> {
-  return {
-    passTiming,
-    timerSupported: !!gpu?.supported,
-    listeners: listeners.size,
-    labels: gpu ? [...gpu.lastByLabel.entries()].map(([k, v]) => `${k}:${v.toFixed(2)}`) : [],
-    probePhases: [...passProbePhases.entries()].map(([k, v]) => `${k}:${v.toFixed(2)}`),
-  };
-}
-
-export function initFrameTiming(r: THREE.WebGLRenderer): void {
+export function initFrameTiming(r: DelveRenderer): void {
   if (renderer) return;
   renderer = r;
-  // GpuTimer + the readPixels probe use renderer.getContext() and the WebGL2
-  // timer-query extension — neither exists under WebGPU. Leave gpu null; all
-  // gpu?.* calls are already null-safe, and CPU/per-system timing works. WebGPU
-  // GPU timing comes from native timestamp queries (webgpuGpuMs).
-  gpu = null;
 }
 
-/** GPU time is recorded by the passive timer-query extension (WebGL) or native
- *  timestamp queries (WebGPU). */
-/** The most recent frame's GPU ms, renderer-agnostic (WebGPU timestamp queries
- *  or the WebGL2 timer-query) — whatever frameEnd last computed. Null until a
- *  timed frame lands. Used by the differential gpu-breakdown so it works on both
- *  renderers. Requires the frame loop to be running (a profiler flag on). */
+/** The most recent frame's GPU ms (WebGPU native timestamp queries) — whatever
+ *  frameEnd last computed. Null until a timed frame lands. Used by the
+ *  differential gpu-breakdown. Requires the frame loop to be running (a
+ *  profiler flag on). The per-pass render/compute split rides along in
+ *  sample.gpuPhases — always on, no arming needed. */
 export function currentGpuMs(): number | null { return sample.gpuMs; }
 
 export function gpuSupported(): boolean {
-  return !!gpu?.supported || webgpuTimingSupported();
+  return webgpuTimingSupported();
 }
-/** GPU numbers are AVAILABLE if the timer query works, the finish() probe is
- *  armed, or per-pass timing is supplying spans — the HUD/recorder use this
- *  to decide "n/a" vs a value. */
+/** GPU numbers are AVAILABLE once a timestamp query has resolved — the
+ *  HUD/recorder use this to decide "n/a" vs a value. */
 export function gpuActive(): boolean {
-  return !!gpu?.supported || renderGpuProbeOn() || passTiming || webgpuTimingSupported();
+  return webgpuTimingSupported();
 }
-
-/** Arm/disarm the gl.finish() GPU probe (real GPU ms on devices without the
- *  timer-query extension; stalls the pipeline on sampled frames). */
-export function setGpuProbe(on: boolean): void { setRenderGpuProbe(on); if (!on) probedGpu = null; }
-export function gpuProbeOn(): boolean { return renderGpuProbeOn(); }
 
 function onSystem(name: string, ms: number): void {
   frameMs.set(name, (frameMs.get(name) ?? 0) + ms);
@@ -215,12 +136,6 @@ function ensureHooks(): void {
   const want = listeners.size > 0 || marks;
   setSystemProbe(want ? onSystem : null);
   setMarksEnabled(marks);
-  // Render sub-phase timings flow through the same frameMs map while anything
-  // is listening (the GPU probe runs directly in frameEnd, not via a sink).
-  installRenderProbe(want ? onSystem : null);
-  // Per-pass GPU spans only while something is listening — otherwise the
-  // queries would be issued but never harvested (frameEnd early-returns).
-  installGpuPassHooks(passTiming && want ? passHooks : null);
 }
 
 export function addFrameListener(l: FrameListener): void { listeners.add(l); ensureHooks(); }
@@ -238,26 +153,13 @@ export function frameBegin(): void {
   if (marks) performance.clearMeasures();   // bound the User Timing buffer
   frameMs.clear();
   frameStart = performance.now();
-  if (passTiming) {
-    // Per-pass mode: render-target's spans replace the whole-frame query
-    // (TIME_ELAPSED queries can't nest). Fallback path: pick sample frames.
-    if (!gpu?.supported) passProbeFrame = (passProbeCounter++ % GPU_PROBE_EVERY) === 0;
-  } else {
-    gpu?.begin();
-  }
 }
 
 /** Call immediately AFTER runSystems(). Fans the assembled sample out to
  *  every listener. */
 export function frameEnd(): void {
-  if (listeners.size === 0) {
-    // Marks-only: still balance the GPU begin/end so the query ring is sane.
-    if (marks) { gpu?.end(); gpu?.poll(); }
-    return;
-  }
+  if (listeners.size === 0) return;
   const now = performance.now();
-  if (!passTiming) gpu?.end();   // per-pass mode: spans already closed in render
-  gpu?.poll();
 
   const heap = heapBytes();
   let allocMB = 0;
@@ -278,8 +180,8 @@ export function frameEnd(): void {
   sample.gpuPhases = webgpuGpuPhases();
   sample.draws = info ? info.render.calls : 0;
   sample.tris = info ? info.render.triangles : 0;
-  sample.programs = info?.programs?.length ?? 0;
-  sample.newProgKinds = diffNewPrograms(info);
+  sample.programs = renderer ? pipelineCount(renderer) : 0;   // compiled pipelines (WebGPU)
+  sample.newProgKinds = diffNewPrograms(info as unknown as { programs?: ReadonlyArray<{ cacheKey?: string }> | null });
   sample.geometries = info ? info.memory.geometries : 0;
   sample.textures = info ? info.memory.textures : 0;
   sample.geometryPool = getGeometryPoolSize();

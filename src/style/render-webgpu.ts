@@ -19,6 +19,7 @@ import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, m
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // SSAO (?ssao=…) — GTAO contact-darkening from an MRT depth+normal G-buffer.
 // Budget-first for mobile: low sample count + half-res of the already-0.4x pass.
@@ -49,6 +50,7 @@ let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.4;   // scene-render scale (the adaptive scaler nudges this via setWebGPUResolutionScale)
 let tsInFlight = false;   // throttle the async GPU-timestamp resolve
+let wdInFlight = false;   // throttle the onSubmittedWorkDone fallback probe
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
 // (scene/adaptive-resolution.ts) reads this on WebGPU because its usual frame-time
 // signal is BLIND here: MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync
@@ -276,7 +278,7 @@ export function rebuildWebGPUPipeline(): void {
 if (typeof window !== 'undefined') window.addEventListener('resize', rebuildWebGPUPipeline);
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
   scenePass = pass(scene, camera);
   disposables.push(scenePass as any);
@@ -485,7 +487,7 @@ const MAX_IN_FLIGHT = 1;
 let inFlight = 0;
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
-export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   drainRetired();   // free any rebuilt-away pass/bloom/AO targets once the queue is empty
   ensurePipeline(renderer, scene, camera);
   if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__scenePassInfo) {
@@ -534,10 +536,33 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       // adaptive scaler reads it via lastWebGPUGpuMs(). Self-throttled.
       if (!tsInFlight) {
         tsInFlight = true;
-        (renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> })
-          .resolveTimestampsAsync?.('render')
+        const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
+        r.resolveTimestampsAsync?.('render')
           .then((ms) => { tsInFlight = false; if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) lastGpuMs = ms; },
                 () => { tsInFlight = false; });
+        // Also drain the COMPUTE query pool (the GPU embers) — with trackTimestamp
+        // on, unresolved pools fill up and warn ("Maximum number of queries
+        // exceeded"); the profiler only drains them while a listener is attached.
+        void r.resolveTimestampsAsync?.('compute').catch(() => {});
+      }
+      // FALLBACK GPU-load signal — WebGPU adapters WITHOUT timestamp-query
+      // (backend.trackTimestamp is forced false there): time from submit to
+      // queue completion. With MAX_IN_FLIGHT=1 exactly one frame is in the
+      // queue, so submit→done ≈ the GPU frame cost — coarser than a timestamp
+      // (includes queue scheduling), but a real bottleneck signal where the
+      // adaptive scaler would otherwise be blind.
+      if (!wdInFlight) {
+        const backend: any = (renderer as any).backend;
+        const q = backend?.isWebGPUBackend && backend.trackTimestamp === false
+          ? backend.device?.queue : null;
+        if (q?.onSubmittedWorkDone) {
+          wdInFlight = true;
+          const t0 = performance.now();
+          q.onSubmittedWorkDone().then(
+            () => { wdInFlight = false; lastGpuMs = performance.now() - t0; },
+            () => { wdInFlight = false; },
+          );
+        }
       }
       if (dev) dev.popErrorScope().then((err: any) => {
         if (err) {
@@ -549,6 +574,46 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
         }
       }).catch(() => {});
     }, () => { inFlight--; if (dev) dev.popErrorScope().catch(() => {}); });
+}
+
+// ── Display-frame capture (the LUX meter's readback) ────────────────────────
+// Renders ONE frame through the real PSX pipeline into a small offscreen target
+// and reads it back — the exact display-referred image (grade, dither and all).
+// This exists because Chrome's WebGPU canvas cannot be reliably snapshotted
+// (drawImage/createImageBitmap race the texture expiry and often read black);
+// an explicit render-to-target + readRenderTargetPixelsAsync is deterministic.
+// DEV-tool path: one extra low-res render per measurement, main loop held for
+// the single frame via the warmingUp gate (same trick as the warm pass).
+let luxRT: THREE.RenderTarget | null = null;
+export async function captureDisplayFrame(
+  renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera, width = 240,
+): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  ensurePipeline(renderer, scene, camera);
+  if (!pipeline) return null;
+  const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const height = Math.max(1, Math.round(width * (buf.y / Math.max(1, buf.x))));
+  if (!luxRT || luxRT.width !== width || luxRT.height !== height) {
+    luxRT?.dispose();
+    luxRT = new THREE.RenderTarget(width, height, { depthBuffer: false });
+    // Display-referred bytes: the pipeline applies the sRGB output transform
+    // when the target's texture asks for it (same as the canvas).
+    luxRT.texture.colorSpace = THREE.SRGBColorSpace;
+  }
+  const prev = renderer.getRenderTarget();
+  warmingUp = true;
+  try {
+    renderer.setRenderTarget(luxRT);
+    await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+    renderer.setRenderTarget(prev);
+    const px = await renderer.readRenderTargetPixelsAsync(luxRT as never, 0, 0, width, height) as unknown as Uint8Array;
+    return { data: px, width, height };
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn('[lux] capture failed:', err);
+    return null;
+  } finally {
+    renderer.setRenderTarget(prev);
+    warmingUp = false;
+  }
 }
 
 // ── Warm render ─────────────────────────────────────────────────────────────
@@ -563,7 +628,7 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
 let warmingUp = false;
 export function isWarmingUp(): boolean { return warmingUp; }
 export async function warmRenderWebGPU(
-  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
+  renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
 ): Promise<void> {
   drainRetired();
   ensurePipeline(renderer, scene, camera);
@@ -588,7 +653,7 @@ export async function warmRenderWebGPU(
  *  into later are covered too. Use as the GATED descent prewarm: the whole floor compiles behind
  *  the load screen, killing both the descent hitch and the move-in-hitch. See docs/PIPELINE-BUDGET.md. */
 export async function warmSceneCompile(
-  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+  renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera,
 ): Promise<void> {
   ensurePipeline(renderer, scene, camera);
   const rt = (scenePass as any)?.renderTarget;

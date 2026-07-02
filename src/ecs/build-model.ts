@@ -8,7 +8,6 @@ import { shadowFlags } from '../scene/shadow-role';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
-import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
 import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute, materialOpacity } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';

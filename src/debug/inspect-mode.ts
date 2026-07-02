@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { setInspectBypass } from '../style/render-frame';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // Ambient fill intensity while inspecting (pure white, flat). Bright enough
 // that a near-black mob's shadow side stays readable without blowing out metal.
@@ -45,7 +46,7 @@ export function isInspectActive(): boolean {
 export interface EnterInspectOpts {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
+  renderer: DelveRenderer;
   ambient: THREE.AmbientLight;
   /** Single-subject preview (mob/item/model): hide the surrounding level and
    *  auto-frame the tagged subject. Vault previews pass false — the room IS the

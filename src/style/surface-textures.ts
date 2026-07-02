@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -313,7 +314,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   return tex;
 }
 
-export function bakeSurfaceTexture(_renderer: THREE.WebGLRenderer, kind: SurfaceKind): THREE.DataTexture {
+export function bakeSurfaceTexture(_renderer: DelveRenderer, kind: SurfaceKind): THREE.DataTexture {
   // The GLSL bake (ShaderMaterial + readRenderTargetPixels) was WebGL-only; the
   // sole (WebGPU) path generates the SAME patterns on the CPU (bakeSurfaceCPU) —
   // faithful, one-time, no GL/readback.

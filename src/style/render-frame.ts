@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { isWebGPUReady } from '../scene/renderer-mode';
 import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
+import type { DelveRenderer } from '../scene/create-renderer';
 
 // WEBGPU: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
@@ -23,12 +23,7 @@ let webgpuRenderErrored = false;
 export const PS1_SCALE_DEFAULT = 0.4;
 let ps1Scale = PS1_SCALE_DEFAULT;
 
-// OVERDRAW HEATMAP flag — the DEV overdraw render path is gone (it lived in the
-// classic pipeline); the flag is kept only so the settings/main callers compile.
-let overdrawMode = false;
-export function setOverdrawMode(on: boolean): void { overdrawMode = on; }
-
-let rendererRef: THREE.WebGLRenderer | null = null;
+let rendererRef: DelveRenderer | null = null;
 
 // Held viewmodels (weapon / lamp / offhand) registered so the draw report can
 // classify their meshes as dynamic. Under WebGPU opaque parts use NORMAL depth.
@@ -157,7 +152,7 @@ export function setInspectBypass(_on: boolean): void {
 
 
 export function renderWithStyle(
-  renderer: THREE.WebGLRenderer,
+  renderer: DelveRenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
 ) {
@@ -165,10 +160,10 @@ export function renderWithStyle(
   // the removed initRenderPipeline.
   rendererRef = renderer;
   // The one render path: the native WebGPU RenderPipeline (render-webgpu.ts) owns
-  // the low-res PSX pass + bloom + grade. isWebGPUReady() ⇒ init() resolved, so the
-  // sync render() is valid. try/catch so an unported material can't kill the loop —
+  // the low-res PSX pass + bloom + grade. Boot top-level-awaits renderer init
+  // (scene/create-renderer.ts), so the backend is structurally ready before any
+  // frame can run. try/catch so an unported material can't kill the loop —
   // rate-limited to one log line.
-  if (!isWebGPUReady()) return;
   try {
     renderWebGPU(renderer, scene, camera);
   } catch (err) {

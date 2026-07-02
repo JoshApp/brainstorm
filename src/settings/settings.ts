@@ -48,7 +48,6 @@ export interface Settings {
   /** DEBUG tab readout toggles — independent on-screen diagnostic overlays.
    *  Each is its own panel so they can be turned on one at a time. */
   debugEyeAdapt: boolean;   // eye dark-adaptation readout (torch prox / adapt / ambient)
-  debugOverdraw: boolean;   // overdraw heatmap — fill-rate viz (the #1 mobile GPU cost)
   debugBossReadout: boolean; // boss-encounter readout — only paints during a boss fight
   /** Attach RGB axis triads to every hand + weapon slot in the
    *  viewmodel so authors can name rotations by colour (red +X / green
@@ -219,7 +218,6 @@ const DEFAULTS: Settings = {
   debugMode: false,
   perfMeter: false,
   debugEyeAdapt: false,
-  debugOverdraw: false,
   debugBossReadout: false,
   debugHandAxes: false,
   debugHitCones: false,

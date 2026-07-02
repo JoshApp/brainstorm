@@ -546,12 +546,6 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       set: (v) => updateSettings({ profilerTools: v }),
     }),
     makeToggle({
-      label: 'OVERDRAW HEATMAP',
-      description: 'Fill-rate view: every surface drawn additively with no depth test, so overlap accumulates. Dark = 1 layer, orange = a few, white = heavy overdraw — the #1 mobile-GPU cost. (Mesh fill; additive sprite-VFX not counted.)',
-      get: () => getSettings().debugOverdraw,
-      set: (v) => updateSettings({ debugOverdraw: v }),
-    }),
-    makeToggle({
       label: 'EYE ADAPT',
       description: 'Left-side readout of eye dark-adaptation: torch proximity, the 0..1 adapt value, and resulting ambient brightness.',
       get: () => getSettings().debugEyeAdapt,

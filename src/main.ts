@@ -1,9 +1,6 @@
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
-import { setWebGPUReady } from './scene/renderer-mode';
+import { createRenderer } from './scene/create-renderer';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
-import { DelveTiledLighting } from './scene/tiled-lighting';
-import { DelveLeanLighting } from './scene/lean-lights';
 import { initLampSpot, tickLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
 
@@ -51,11 +48,11 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-frame';
+import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift, getViewmodelRoots } from './style/render-frame';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
+import { stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './style/banded-lighting-webgpu';
@@ -125,7 +122,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag, markWarmupComplete } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, markWarmupComplete } from './debug/frame-timing';
 import { setStreamEnabled, streamEnabled, broadcastAttr } from './debug/perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
 import { auditScene } from './debug/scene-audit';
@@ -151,7 +148,7 @@ import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { isLoading } from './scene/loading-gate';
 import { startWarmupStream } from './scene/warmup-stream';
-import { installWebGPUCompileGuard, markWebGPUWarmupComplete, tickCompileWatch } from './debug/webgpu-compile-guard';
+import { markWebGPUWarmupComplete, tickCompileWatch } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -233,52 +230,19 @@ if (!beginBoot()) throw new Error('delve: safe mode (boot guard)');
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
-// --- Renderer ---
-// ONE renderer: WebGPURenderer (node/TSL pipeline). It auto-selects a WebGL2
-// backend on devices without WebGPU — same node materials, one code path — and
-// ?webgpu=0 forces that WebGL2 backend as a manual escape hatch / for testing the
-// fallback. The dedicated classic WebGLRenderer is gone (see render-webgpu.ts).
-const FORCE_WEBGL = new URLSearchParams(window.location.search).get('webgpu') === '0';
-let renderer: THREE.WebGLRenderer;
-{
-  // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res
-  // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks it.
-  const wgpu = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true, forceWebGL: FORCE_WEBGL });
-  // Tiled (Forward+) lighting prototype (?tiled=1). Bins point lights into screen
-  // tiles via a compute pass so each fragment shades at most ~8 lights regardless
-  // of total count — lets the torch count climb without the per-fragment wall.
-  // A/B behind the flag until proven against the custom pipeline + banded model.
-  if (new URLSearchParams(window.location.search).get('tiled') === '1') {
-    (wgpu as any).lighting = new DelveTiledLighting();
-    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting ON');
-  } else if (new URLSearchParams(window.location.search).get('unrolled') !== '1') {
-    // DEFAULT: custom rolled-loop lights node (scene/lean-lights.ts). Evaluates the
-    // pooled point lights in ONE loop instead of N unrolled per-light nodes, with two
-    // byte-identical wins: parked pool slots (intensity 0) aren't packed, and a per-
-    // fragment distance cull skips lights past their cutoff (Three's attenuation is
-    // exactly 0 there). ?unrolled=1 reverts to stock node lighting for A/B; ?tiled=1
-    // selects the Forward+ compute path.
-    (wgpu as any).lighting = new DelveLeanLighting();
-    if (import.meta.env.DEV) console.log('[webgpu] lean lights (default)');
-  }
-  // Codebase types the renderer as WebGLRenderer; WebGPURenderer shares the surface
-  // we use (render/setSize/setPixelRatio/info/…), so cast.
-  renderer = wgpu as unknown as THREE.WebGLRenderer;
-  wgpu.init()
-    .then(() => {
-      setWebGPUReady(true);
-      // On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
-      // (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
-      // with no signal at all — arm its wall-clock fallback there (valid because
-      // that backend submits synchronously, so rAF intervals reflect GPU load).
-      setAdaptiveWallClockFallback(!!(wgpu.backend as unknown as { isWebGLBackend?: boolean })?.isWebGLBackend);
-      // DEV: detect pipeline compiles (renderer.info has no .programs on WebGPU) so
-      // post-warmup compiles (warm gaps) are visible. window.__compileStats().
-      installWebGPUCompileGuard((wgpu.backend as unknown as { device?: unknown })?.device);
-      if (import.meta.env.DEV) console.log('[webgpu] renderer initialised (backend:', wgpu.backend?.constructor?.name ?? '?', ')');
-    })
-    .catch((err) => console.error('[webgpu] init failed', err));
-}
+// --- Renderer (async boot phase 1) ---
+// TOP-LEVEL AWAIT: nothing below this line runs until the backend device
+// exists, so the whole boot (scene, materials, warmup, the frame loop) is
+// structurally after-init — no ready-flag threading. If init rejects (no
+// WebGPU AND no WebGL2), the throw halts boot and the boot guard shows the
+// recovery screen on the next load instead of a silent black canvas.
+const renderer = await createRenderer(canvas);
+resolveCrashGpu();   // adapter/context exists now — fill the crash report's GPU name
+// On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
+// (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
+// with no signal at all — arm its wall-clock fallback there (valid because
+// that backend submits synchronously, so rAF intervals reflect GPU load).
+setAdaptiveWallClockFallback(!!(renderer.backend as unknown as { isWebGLBackend?: boolean })?.isWebGLBackend);
 // DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
 // stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
 // setting (see effectiveDprCap + the GRAPHICS slider). Re-applied live by
@@ -1043,15 +1007,24 @@ initTelemetry();
 track('boot');
 // Crash context — sampled lazily when a report is built, so a crash carries the
 // run seed + depth + how far in + the device GPU. With the seed + the repro tape
-// (attached on a fatal), the exact session replays in the stepper. Read the GPU
-// string once here; the rest are live getters.
-const crashGpu = (() => {
+// (attached on a fatal), the exact session replays in the stepper. The GPU name
+// resolves once the backend is up (adapter.info on WebGPU; the debug-renderer-
+// info extension on the WebGL2 fallback); a crash before that reads 'n/a'.
+let crashGpu = 'n/a';
+function resolveCrashGpu(): void {
   try {
-    const gl = renderer.getContext();
-    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-    return dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'n/a';
-  } catch { return 'n/a'; }
-})();
+    type AdapterInfo = { vendor?: string; architecture?: string; device?: string; description?: string };
+    const backend = (renderer as unknown as { backend?: { isWebGLBackend?: boolean; adapter?: { info?: AdapterInfo }; gl?: WebGL2RenderingContext } }).backend;
+    if (backend?.isWebGLBackend) {
+      const gl = backend.gl ?? (renderer.getContext() as WebGL2RenderingContext);
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      if (dbg) crashGpu = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
+    } else {
+      const info = backend?.adapter?.info;
+      if (info) crashGpu = [info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' / ') || 'n/a';
+    }
+  } catch { /* keep 'n/a' */ }
+}
 setCrashContext(() => ({
   seed: getRunSeed(),
   depth: getCurrentDepth(),
@@ -1191,9 +1164,7 @@ if (import.meta.env.DEV) {
   {
     let baseline: Set<string> | null = null;
     const keysNow = (): string[] => {
-      const progs = (renderer as { info?: { programs?: ReadonlyArray<{ cacheKey?: string }> } }).info?.programs;
-      if (progs) return progs.map((p) => p.cacheKey ?? '');
-      const caches = (renderer as { _pipelines?: { caches?: Map<string, unknown> } })._pipelines?.caches;
+      const caches = (renderer as unknown as { _pipelines?: { caches?: Map<string, unknown> } })._pipelines?.caches;
       return caches ? [...caches.keys()] : [];
     };
     (window as unknown as Record<string, unknown>).__progDiff = (reseed = false) => {
@@ -1217,10 +1188,6 @@ if (import.meta.env.DEV) {
     }
     return [camera.position.x.toFixed(1), camera.position.z.toFixed(1)];
   };
-  (window as unknown as Record<string, unknown>).__splatBg = (on: boolean) => {
-    (scene as unknown as { background: unknown }).background = on ? uSplatTex.value : null;
-    return on;
-  };
   (window as unknown as Record<string, unknown>).__goreDebug = (on = true) => { setGoreDebugEnabled(on); return on; };
   // __gore(e): full impact splash 1.2m ahead, thrown along the view.
   (window as unknown as Record<string, unknown>).__gore = (e = 1.0) => {
@@ -1228,12 +1195,6 @@ if (import.meta.env.DEV) {
     emitGoreSplash(camera.position.x + fx * 1.2, camera.position.z + fz * 1.2, 1.0, fx, fz, e, 0x8a1812);
     return 'splashed';
   };
-  (window as unknown as Record<string, unknown>).__splatState = () => ({
-    on: uSplatOn.value,
-    bounds: uSplatBounds.value.toArray(),
-    texSet: uSplatTex.value !== null,
-    texUuid: (uSplatTex.value as { uuid?: string } | null)?.uuid ?? null,
-  });
   // __teleport(x, z, yaw?): move the player camera. Headless repro aid.
   (window as unknown as Record<string, unknown>).__teleport = (x: number, z: number, yaw = 0) => {
     camera.position.set(x, CONFIG.PLAYER_HEIGHT, z);
@@ -2040,7 +2001,6 @@ initDarkAdaptReadout();
 initBossEncounterReadout();
 setDarkAdaptReadoutVisible(getSettings().debugEyeAdapt);
 setBossEncounterReadoutVisible(getSettings().debugBossReadout);
-setOverdrawMode(getSettings().debugOverdraw);
 // React to the settings-menu toggle live (no reload needed to show/hide
 // the button). The URL flag forces it on regardless of the setting.
 onSettingsChanged((s) => {
@@ -2048,7 +2008,6 @@ onSettingsChanged((s) => {
   setDebugButton(urlForced || s.debugMode);
   setPerfOverlayVisible(s.perfMeter);
   setDarkAdaptReadoutVisible(s.debugEyeAdapt);
-  setOverdrawMode(s.debugOverdraw);
   setGoreDebugEnabled(s.debugGoreSplats);
   setBossEncounterReadoutVisible(s.debugBossReadout);
   // Profiler tools — mount/unmount the on-screen toolbar (and tear the suite
@@ -2114,8 +2073,6 @@ function applyProfilerEnabled(): void {
   if (!on) {
     setProfilerVisible(false);
     setMarks(false);
-    setGpuProbe(false);
-    setGpuPassTiming(false);
     setStreamEnabled(false);
   }
 }
@@ -2133,10 +2090,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'F2') { e.preventDefault(); toggleProfiler(); }
   else if (e.code === 'F3') { e.preventDefault(); toggleRecording(); }
   else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
-  else if (e.code === 'F5') { e.preventDefault(); setGpuProbe(!gpuProbeOn()); }
   else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
   else if (e.code === 'F7') { e.preventDefault(); void runGpuAttribution(); }
-  else if (e.code === 'F8') { e.preventDefault(); setGpuPassTiming(!gpuPassTimingOn()); }
   else if (e.code === 'F9') { e.preventDefault(); ensureProfilingInited(); setStreamEnabled(!streamEnabled()); }
 }, true);
 const profWin = window as unknown as {
@@ -2144,13 +2099,10 @@ const profWin = window as unknown as {
   __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
   __marks: () => void;
   __perfStream: () => void;
-  __gpuProbe: () => void;
   __draws: () => void;
   __drawData: () => ReturnType<typeof drawReportData>;
   __gpuAttr: () => void;
   __gpuAttrReport: () => { running: boolean; report: string | null };
-  __gpuPass: () => void;
-  __gpuPassDiag: () => Record<string, unknown>;
   __lambert: (on?: boolean) => boolean;
   __spector: () => void;
 };
@@ -2163,13 +2115,10 @@ profWin.__perfRec = {
 };
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
 profWin.__perfStream = () => { ensureProfilingInited(); setStreamEnabled(!streamEnabled()); };
-profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
 profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
 profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); };
 profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
 profWin.__gpuAttrReport = () => ({ running: isAttributionRunning(), report: getLastAttributionReport() });
-profWin.__gpuPass = () => { ensureProfilingInited(); setGpuPassTiming(!gpuPassTimingOn()); };
-profWin.__gpuPassDiag = () => gpuPassDiag();
 // Lambert-class shading preview — A/B the PBR tax visually. __lambert() toggles,
 // __lambert(true/false) sets. Profiler-suite tool, not a player setting.
 profWin.__lambert = (on?: boolean) => { setLambertPreview(scene, on ?? !isLambertPreview()); return isLambertPreview(); };

@@ -12,7 +12,6 @@
 
 import { toggleProfiler, isProfilerVisible } from './profiler-hud';
 import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from './perf-recorder';
-import { setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn } from './frame-timing';
 import { captureDrawReport } from './draw-report';
 import { runGpuAttribution } from './gpu-attribution';
 import { launchSpector } from './spector-launch';
@@ -20,8 +19,6 @@ import { launchSpector } from './spector-launch';
 let root: HTMLDivElement | null = null;
 let hudBtn: HTMLButtonElement | null = null;
 let recBtn: HTMLButtonElement | null = null;
-let gpuBtn: HTMLButtonElement | null = null;
-let passBtn: HTMLButtonElement | null = null;
 
 function makeBtn(label: string): HTMLButtonElement {
   const b = document.createElement('button');
@@ -66,16 +63,9 @@ function mount(): void {
   const saveBtn = makeBtn('SAVE 15s');
   saveBtn.addEventListener('click', (e) => { e.stopPropagation(); void saveLastSeconds(15); });
 
-  // GPU probe — real GPU ms via gl.finish() on devices without the timer-query
-  // extension. Stalls the pipeline on sampled frames (fps dips while on), so
-  // it's a deliberate measurement toggle.
-  gpuBtn = makeBtn('GPU');
-  gpuBtn.addEventListener('click', (e) => { e.stopPropagation(); setGpuProbe(!gpuProbeOn()); paintGpu(); });
-
-  // PASS — per-pass GPU timing (prepass/scene/bloom/blit spans in the HUD).
-  // Timer queries when the device has them, readPixels sync probe otherwise.
-  passBtn = makeBtn('PASS');
-  passBtn.addEventListener('click', (e) => { e.stopPropagation(); setGpuPassTiming(!gpuPassTimingOn()); paintPass(); });
+  // (The old GPU / PASS toggles are gone: WebGPU timestamp queries are passive
+  // and always on — whole-frame GPU ms and the render/compute split just show
+  // in the HUD, no stall-probe to arm.)
 
   // DRAWS — analyze the scene's draw calls + instancing wins, share as text.
   // The quick, shareable summary.
@@ -92,30 +82,12 @@ function mount(): void {
   const spcBtn = makeBtn('SPCT');
   spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
 
-  root.append(hudBtn, recBtn, saveBtn, gpuBtn, passBtn, drawBtn, attrBtn, spcBtn);
+  root.append(hudBtn, recBtn, saveBtn, drawBtn, attrBtn, spcBtn);
   document.body.appendChild(root);
 
   onRecordingState(paintRec);
   paintRec(isRecording());
   paintHud();
-  paintGpu();
-  paintPass();
-}
-
-function paintGpu(): void {
-  if (!gpuBtn) return;
-  const on = gpuProbeOn();
-  gpuBtn.style.opacity = on ? '1' : '0.55';
-  gpuBtn.style.borderColor = on ? 'rgba(255, 130, 220, 0.7)' : 'rgba(150, 180, 255, 0.4)';
-  gpuBtn.style.color = on ? 'rgba(255, 180, 235, 0.95)' : 'rgba(200, 225, 255, 0.92)';
-}
-
-function paintPass(): void {
-  if (!passBtn) return;
-  const on = gpuPassTimingOn();
-  passBtn.style.opacity = on ? '1' : '0.55';
-  passBtn.style.borderColor = on ? 'rgba(255, 130, 220, 0.7)' : 'rgba(150, 180, 255, 0.4)';
-  passBtn.style.color = on ? 'rgba(255, 180, 235, 0.95)' : 'rgba(200, 225, 255, 0.92)';
 }
 
 function paintRec(rec: boolean): void {
