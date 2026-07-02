@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
 
-// Light slot pool — partitioned by category so each kind of light
-// plays by its own rules.
+// THE LIGHT DIRECTOR — decides, each frame, which of the level's many logical
+// light sources actually LIGHT the frame, and how strongly. Selection
+// (nearest-N per category), hysteresis (no boundary flicker), soft LOS
+// (through-wall sources dim instead of popping), flame wobble, and the
+// shadow-caster slots all live here. The fixed PointLight slots it binds
+// into are its OUTPUT.
 //
 // Categories:
 //
@@ -18,23 +22,27 @@ import { CONFIG } from '../config';
 //                 spells/darts). Own slots so a salvo can't crowd
 //                 torches out; the pool spawns few and they're spread.
 //
-// Slot counts per category live in CONFIG.LIGHT_SLOTS — they are a
-// per-fragment GPU price (see the note there), not just a cap.
+// Slot counts per category live in CONFIG.LIGHT_SLOTS. HISTORY: under
+// classic WebGL every slot (even parked) was a per-fragment shader cost
+// and a count change was a sync recompile — the fixed pool existed to
+// dodge that. Under the default LEAN lights node (scene/lean-lights.ts)
+// parked slots cost nothing (intensity 0 → not packed into the uniform
+// array) and a per-fragment range cull skips out-of-reach torches, so
+// the budget is now mostly a SELECTION cap: how many sources may light
+// simultaneously. The fixed count still serves the material-path
+// invariant (lamp + shadow casters — see below) and keeps the
+// ?unrolled/?tiled A/B paths comparable.
 //
 // Per category we sort registered sources by distance to camera and
 // bind the nearest N to that category's slots. Sources beyond their
 // own range are culled. Hysteresis (2.2m² bonus) prevents flicker
 // when two sources contend for the boundary slot.
-//
-// Three.js sees a constant number of PointLights in the scene — no
-// shader recompiles regardless of how many logical sources exist.
 
 export type LightCategory = 'lamp' | 'environment' | 'pickup' | 'projectile';
 
-// Budgets per category — CONFIG.LIGHT_SLOTS. Every slot is a per-fragment
-// shader cost on every lit material whether bound or parked, so the budget
-// is deliberately tight; the pool binds the nearest N visible sources per
-// category and the rest degrade to their emissive sprites.
+// Budgets per category — CONFIG.LIGHT_SLOTS (see the lean-era note there):
+// the director binds the nearest N visible sources per category and the
+// rest degrade to their emissive sprites.
 const CATEGORY_SLOTS: Record<LightCategory, number> = CONFIG.LIGHT_SLOTS;
 
 // Park position for unused slots — far below the floor.
@@ -147,16 +155,9 @@ function configureSlotShadow(light: THREE.PointLight, isLamp = false): void {
 export function initLightPool(sc: THREE.Scene): void {
   if (slotsByCategory.environment.length > 0) return;
   scene = sc;
-  // WEBGPU: the 9-slot budget was tuned for MOBILE WebGL, where every parked
-  // slot is a per-fragment cost and a count change is a SYNC recompile. On a
-  // desktop WebGPU backend (async pipeline compile, more headroom) we can afford
-  // a bigger fixed pool — so more torches light at once instead of the nearest-N
-  // dropping the rest. Still a FIXED count after init, so no per-frame recompile.
-  // (The proper fix — uncapped clustered lighting — is the next, bigger task.)
-  const slotScale = 1;   // reverted from 2.5x — isolating the fps drop; re-raise once perf is understood
   const categories = Object.keys(CATEGORY_SLOTS) as LightCategory[];
   for (const cat of categories) {
-    const n = Math.round(CATEGORY_SLOTS[cat] * slotScale);
+    const n = CATEGORY_SLOTS[cat];
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 5, 1.4);
       light.position.set(0, PARK_Y, 0);

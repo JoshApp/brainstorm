@@ -371,7 +371,14 @@ export const CONFIG = {
 
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
-    environment: 10,  // torches/candles/glows — 6 starved dense rooms (fills + torches + sconces contend); soft-LOS dimming keeps the extra slots cheap to LOOK at
+    // torches/candles/glows. LEAN-lights era (scene/lean-lights.ts): parked
+    // slots aren't packed and a per-fragment range cull skips out-of-reach
+    // torches, so this budget is a SELECTION cap, not a flat per-fragment
+    // price like under WebGL — extra slots only cost where torch ranges
+    // actually overlap. 10 → 14 so dense/big rooms keep their far torches
+    // lit instead of nearest-N dropping them. (Eyeball on the phone; drop
+    // back if a torch-heavy floor dips.)
+    environment: 14,
     // Signature-interactable glows ONLY (reliquary, tithe basin, challenge
     // offering, shrouded relic — the "light = signal" objects). Dropped
     // items and chests stopped using lights long ago; their glow is an

@@ -24,15 +24,15 @@ class SafeTiledLightsNode extends (TiledLightsNode as any) {
   }
 
   // Route point lights into the tiled bin EXCEPT those tagged `userData.noTile`
-  // (the player's lamp). The lamp is our only shadow-caster and the tiled loop's
-  // directPointLight casts none + over-brightens the things it lights (items,
-  // coins). Keeping it on the normal path restores its shadow + standard
-  // attenuation; the many torches/candles still get the cheap tiled treatment.
+  // (the player's lamp) and SHADOW CASTERS — the tiled loop's directPointLight
+  // casts none + over-brightens the things it lights (items, coins). Keeping
+  // them on the normal path preserves shadows + standard attenuation; the many
+  // torches/candles still get the cheap tiled treatment.
   setLights(lights: any[]): any {
     const { tiledLights, materialLights } = this;
     let ti = 0, mi = 0;
     for (const light of lights) {
-      if (light.isPointLight === true && !(light.userData && light.userData.noTile)) {
+      if (light.isPointLight === true && !(light.userData && light.userData.noTile) && light.castShadow !== true) {
         tiledLights[ti++] = light;
       } else {
         materialLights[mi++] = light;

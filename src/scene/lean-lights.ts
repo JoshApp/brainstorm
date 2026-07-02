@@ -53,11 +53,16 @@ class LeanLightsNode extends (LightsNode as any) {
 
   // Split: point lights (minus the lamp) go lean; everything else (the lamp with
   // its shadow, ambient, etc.) stays on the normal node path via super.setLights.
+  // SHADOW CASTERS must also take the material path — the lean loop's
+  // directPointLight samples NO shadow map, so a caster routed lean silently
+  // loses its shadow (the SHADOWS single/all modes were dead under lean).
+  // Caster count is fixed per shadow mode (light-pool applyShadowMode), so the
+  // material-path variant only recompiles on a settings flip, never mid-play.
   setLights(lights: any[]): any {
     const lean = this.leanLights, mat = this.materialLights;
     let li = 0, mi = 0;
     for (const light of lights) {
-      if (light.isPointLight === true && !(light.userData && light.userData.noTile)) {
+      if (light.isPointLight === true && !(light.userData && light.userData.noTile) && light.castShadow !== true) {
         if (li < MAX_LEAN_LIGHTS) lean[li++] = light;
       } else {
         mat[mi++] = light;

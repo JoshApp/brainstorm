@@ -153,42 +153,55 @@ A weakness pass over the finished port. FIXED in the same session:
 - **DEV lux meter no longer throws on WebGPU** (`getContext().readPixels` is
   WebGL-only); it drains requests with an explicit UNSUPPORTED verdict.
 
-### Improvements to build on later (noted, not done)
+### Improvements to build on later
 
 - **Promote tiled (Forward+) lighting.** `?tiled=1` (`scene/tiled-lighting.ts`)
   already adapts Three's TiledLightsNode to our pass-driven pipeline. The
   default lean loop pays O(live torches) per fragment (with a per-fragment
   range cull); Forward+ bins lights per tile via compute → "more torches at
-  the same cost", the winnable framing from the port. Needs a phone A/B +
-  keeping the lamp on the material path (`userData.noTile`).
-- **Reshape the light pool into a light director.** Its founding reason —
-  fixed light count to dodge WebGL recompiles — is vestigial under lean
-  lights (the loop is uniform-count bounded; parked slots aren't even packed).
-  What's still load-bearing: nearest-N selection + hysteresis, LOS dimming,
-  flicker, the shadow-slot management, the noTile tag. That's a *selection*
-  policy, not a *slot* system; `slotScale = 1` is a WebGL-era throttle — the
-  torch budget could rise on WebGPU once selection is the only cost.
-- **A real async `boot()`.** Still the biggest architectural debt: `main.ts`
-  (~2.5k lines) does boot at module scope around an async `renderer.init()`,
-  stitched with `isWebGPUReady`/`isLoading` gates. Decompose into explicit
-  phases (init renderer → build scene → warm → reveal) before the next
-  cross-cutting system lands on top.
-- **Type the renderer honestly.** Everything passes `WebGPURenderer as unknown
-  as THREE.WebGLRenderer`. A narrow `DelveRenderer` interface (the surface we
-  use) would kill the casts and document the real contract.
-- **Universal GPU-load signal.** Where timestamp-query is missing under
-  WebGPU, `device.queue.onSubmittedWorkDone()` latency can stand in as the
-  adaptive-resolution signal (submit→done ≈ queue depth). Small, contained.
-- **Cleanup backlog** (dead code the sweep found): `debug/gpu-timer.ts` (WebGL
-  timer class, never instantiated) + frame-timing's inert readPixels probe arm;
-  the OVERDRAW HEATMAP toggle in the Debug settings tab (drives nothing);
-  `outline.ts` `pxScaleShared` (written, never read); `surface-ao.ts`
-  `SHADOW_TINT_GLSL` (unused); the inert `uSplat*` refs + their imports;
-  crash-report `crashGpu` is always `'n/a'` on WebGPU (use
-  `adapter.info` instead); `lux` could port to an async WebGPU readback if the
-  light-band tuning workflow is still wanted.
+  the same cost". PARKED (2026-07-02): a first desktop try read SLOWER than
+  the lean loop under DELVE's ~14 lights — plausible (tiled pays a fixed
+  binning overhead that only wins at higher light counts), but do a real
+  instrumented A/B (desktop + phone, torch-dense floor) before concluding.
 - **SSAO is URL-flag only** (`?ssao=1`); if it survives its phone pricing, it
   should become a GRAPHICS setting routed through the same rebuild path.
+- **RenderPipeline.renderAsync() is deprecated in r184** (init is awaited at
+  boot now, so plain `render()` is legal). Our MAX_IN_FLIGHT skip-pacing keys
+  off the promise, which now resolves at submit — semantically what we use it
+  for, but when Three removes renderAsync the pacing needs to move to an
+  explicit `onSubmittedWorkDone`-based in-flight count.
+
+### Done in the 2026-07-02 follow-up (the rest of the review list)
+
+- **Async boot phase 1** — `scene/create-renderer.ts` owns construction +
+  lighting-node selection + `await init()`; `main.ts` top-level-awaits it
+  (vite `build.target: 'es2022'`), so everything below is structurally
+  after-init. `renderer-mode.ts` (the ready flag) is gone. Further main.ts
+  decomposition is still worthwhile, but boot is no longer async-blind.
+- **Honest renderer type** — `DelveRenderer` (= WebGPURenderer) across every
+  signature; the `as unknown as WebGLRenderer` cast is gone. The dead
+  `info.programs` reads became `pipelineCount()` (the pipeline-cache size).
+- **GPU-load signal everywhere** — no-timestamp WebGPU adapters feed the
+  adaptive scaler from submit→`onSubmittedWorkDone` latency; the WebGL2
+  fallback uses the wall-clock drawn-interval path; compute timestamp pools
+  are drained outside the profiler too.
+- **Lux meter truly ported** — canvas `drawImage` snapshots proved racy under
+  WebGPU (texture expiry → nondeterministic black); the meter now renders one
+  extra frame through the real pipeline into a small RT +
+  `readRenderTargetPixelsAsync` (exact display-referred image).
+- **Light pool → light director** — reframed: selection/hysteresis/LOS/wobble
+  is the system, slots are its output; the WebGL "fixed count dodges
+  recompiles" rationale is history (documented as such), `slotScale` removed,
+  env budget 10 → 14 (lean cull makes extra slots ~free — desktop-verified
+  equal GPU ms; eyeball a torch-dense floor on the phone). REAL BUG FIXED:
+  the lean/tiled light nodes routed SHADOW-CASTING env lights into their
+  no-shadow loops, so the SHADOWS single/all settings silently cast nothing —
+  casters now stay on the material path (fixed count per mode, recompile only
+  on the settings flip).
+- **Cleanup** — dead `gpu-timer.ts` + `render-probe.ts` deleted (with the
+  inert probe arms, GPU/PASS toolbar buttons, F5/F8 hotkeys); OVERDRAW
+  HEATMAP toggle chain removed; inert `uSplat*` refs removed; crash reports
+  carry the adapter's real GPU name.
 
 ## Risks / watch-list
 
