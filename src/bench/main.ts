@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
-import { mountStudio } from './studio';
+import { mountStudio, type Studio } from './studio';
 import { resolveSubject, listSubjects } from './subjects';
 import { computeReadout, type Readout } from './readout';
 import { makeMobAnimator, makeWeaponAnimator, type SubjectAnimator } from './animate';
@@ -60,7 +60,7 @@ function onResize(draw: () => void): void {
   draw();
 }
 
-let mounted: ReturnType<typeof mountStudio> | null = null;
+let mounted: Studio | null = null;
 
 if (!subjectId) {
   renderPicker();
@@ -68,7 +68,7 @@ if (!subjectId) {
 } else if (subjectId.startsWith('fx-')) {
   // ── Effect demo ──────────────────────────────────────────────────
   const demo = effectDemo(subjectId);
-  mounted = mountStudio(canvas);
+  mounted = await mountStudio(canvas);   // top-level await — bench is dev-only ESM
   if (!demo) {
     unknown(subjectId);
     window.__bench = NOOP;
@@ -88,7 +88,7 @@ if (!subjectId) {
 } else {
   // ── Model / mob ──────────────────────────────────────────────────
   const subject = resolveSubject(subjectId);
-  mounted = mountStudio(canvas);
+  mounted = await mountStudio(canvas);   // top-level await — bench is dev-only ESM
   if (!subject) {
     unknown(subjectId);
     window.__bench = NOOP;

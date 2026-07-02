@@ -13,6 +13,8 @@
 // in-game inspect snap read the same.
 
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
+import { installBandedLightingWebGPU } from '../style/banded-lighting-webgpu';
 
 export interface Studio {
   /** Center + frame the object; remembers its radius for camera distance. */
@@ -44,12 +46,21 @@ export interface Studio {
   resize(w: number, h: number): void;
 }
 
-export function mountStudio(canvas: HTMLCanvasElement): Studio {
-  const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: true, preserveDrawingBuffer: true,
-  });
+export async function mountStudio(canvas: HTMLCanvasElement): Promise<Studio> {
+  // The GAME's renderer (WebGPURenderer, WebGL2 backend as fallback — same
+  // detection as scene/create-renderer.ts). The whole reveal system — rim,
+  // dissolve, PAINTED chroma, the banded lighting model — lives in node
+  // properties a classic WebGLRenderer silently IGNORES; on the old renderer
+  // the three-lights acceptance test was blind to the very things it judges.
+  const forceWebGL = new URLSearchParams(location.search).get('webgpu') === '0'
+    || !('gpu' in navigator);
+  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  await renderer.init();
+  // Banded cel lighting, globally, like the game boots it (default setting is
+  // ON) — a bench shot should read like an in-game inspect snap.
+  installBandedLightingWebGPU(true);
 
   const scene = new THREE.Scene();
   scene.background = studioBackdrop();
@@ -168,7 +179,10 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
     for (let i = 0; i < n; i++) {
       const col = i % cols, row = Math.floor(i / cols);
       const x = col * tw;
-      const y = H - (row + 1) * th;   // GL viewport origin is bottom-left
+      // Node-renderer viewport/scissor y is TOP-LEFT origin on BOTH backends
+      // (the WebGL fallback converts to GL's bottom-left internally) — the old
+      // `H - (row+1)*th` GL flip put every contact-sheet row upside down.
+      const y = row * th;
       renderer.setViewport(x, y, tw, th);
       renderer.setScissor(x, y, tw, th);
       perTile(i, aspect);
