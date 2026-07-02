@@ -54,6 +54,14 @@ let lastHeap: number | null = null;
 let allocBytesInWindow = 0;
 let gcEventsInWindow = 0;
 const heapEvents: Array<{ t: number; alloc: number; gc: boolean }> = [];
+// FUZZ DETECTION. Without --enable-precise-memory-info, Chrome QUANTIZES
+// usedJSHeapSize (big steps, rate-limited updates) — the sawtooth proxy then
+// reads quantization artifacts as massive alloc churn (a 14 MB/s reading on a
+// page whose true sampled churn was 0.04 MB/s). Track the smallest nonzero
+// heap delta seen: precise heaps move in small steps constantly; a fuzzed
+// heap only ever jumps in >=1MB quanta. Surfaced as heapQuantized so readers
+// know to trust the alloc-profile CLI (real sampling stacks), not this proxy.
+let minAbsDelta = Infinity;
 
 export interface PerfSnapshot {
   /** Frames in the last 1s window (≈FPS). Meaningless under swiftshader. */
@@ -77,6 +85,10 @@ export interface PerfSnapshot {
   lightsRegistered: number;
   /** JS heap in MB, or null if the browser doesn't expose it. */
   heapMB: number | null;
+  /** TRUE when the heap counter is quantized (no --enable-precise-memory-info):
+   *  allocRateMBs/gcPerSec then reflect quantization noise, not real churn —
+   *  use `npm run alloc-profile` (sampling stacks) for the real numbers. */
+  heapQuantized: boolean | null;
   /** Estimated allocation churn, MB/s, over the window (GC proxy). */
   allocRateMBs: number | null;
   /** GC collections observed in the window (heap-drop count). */
@@ -112,6 +124,8 @@ export function tickPerfProbe(nowMs: number): void {
       const gc = delta < 0;
       if (gc) gcEventsInWindow++;
       else allocBytesInWindow += delta;
+      const ad = Math.abs(delta);
+      if (ad > 0 && ad < minAbsDelta) minAbsDelta = ad;
       heapEvents.push({ t: nowMs, alloc: gc ? 0 : delta, gc });
       // Trim window + roll the running sums back down.
       while (heapEvents.length && nowMs - heapEvents[0].t > FRAME_WINDOW_MS) {
@@ -156,6 +170,7 @@ export function getPerfSnapshot(): PerfSnapshot {
     lightsActive: getActiveSourceCount(),
     lightsRegistered: getRegisteredSourceCount(),
     heapMB: heap !== null ? round(heap / MB, 1) : null,
+    heapQuantized: heap !== null ? (minAbsDelta !== Infinity && minAbsDelta >= 1024 * 512) : null,
     allocRateMBs: heap !== null ? round(allocBytesInWindow / MB, 2) : null,
     gcPerSec: heap !== null ? gcEventsInWindow : null,
     gpuMs: (() => { const g = currentGpuMs(); return g !== null ? round(g, 2) : null; })(),

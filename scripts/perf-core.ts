@@ -102,10 +102,10 @@ export interface Harness {
   withPage<T>(cfg: SampleConfig, fn: (page: Page) => Promise<T>): Promise<T>;
 }
 
-function buildUrl(port: number, cfg: SampleConfig): string {
+function buildUrl(base: string, cfg: SampleConfig): string {
   const params = new URLSearchParams({ scenario: cfg.scenario, freeze: 'false' });
   for (const [k, v] of Object.entries(cfg.flags ?? {})) params.set(k, v);
-  return `http://127.0.0.1:${port}/brainstorm/?${params.toString()}`;
+  return `${base}/brainstorm/?${params.toString()}`;
 }
 
 export function flagLabel(cfg: SampleConfig): string {
@@ -118,9 +118,21 @@ export function flagLabel(cfg: SampleConfig): string {
  * `port` defaults to a random high port so parallel runs don't collide.
  */
 export async function withHarness(
-  opts: { viewport: Viewport; port?: number; onLog?: (line: string) => void },
+  opts: {
+    viewport: Viewport; port?: number; onLog?: (line: string) => void;
+    /** ATTACH MODE: a CDP endpoint (e.g. http://localhost:9223) of an
+     *  already-running REAL Chrome. Skips the headless launch AND the vite
+     *  spawn (pass serverUrl, default http://localhost:5174 — the shared dev
+     *  server). This is how allocation/GC probes run against the real
+     *  GPU/WebGPU backend instead of swiftshader: launch Windows Chrome with
+     *  --remote-debugging-port=9223 --user-data-dir=<scratch> and point
+     *  --attach at it. */
+    attach?: string;
+    serverUrl?: string;
+  },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
+  if (opts.attach) return withAttachedBrowser(opts as Parameters<typeof withAttachedBrowser>[0], fn);
   const chromiumPath = resolveChromium();
   if (!existsSync(chromiumPath)) {
     throw new Error(`Chromium binary not found at ${chromiumPath} — run: npx playwright install chromium`);
@@ -154,7 +166,13 @@ export async function withHarness(
       executablePath: chromiumPath,
       // --enable-precise-memory-info unlocks usedJSHeapSize granularity so the
       // GC churn proxy is meaningful headless.
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-precise-memory-info'],
+      args: [
+        '--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-precise-memory-info',
+        // WebGPU-on-swiftshader (Vulkan CPU path): lets allocation/count probes run
+        // the REAL WebGPU backend headless. Harmless where unsupported — the game
+        // falls back to the WebGL2 backend as in any no-WebGPU browser.
+        '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader',
+      ],
     });
     const context = await browser.newContext({ viewport: opts.viewport });
     const page: Page = await context.newPage();
@@ -162,7 +180,7 @@ export async function withHarness(
 
     // Navigate to a config + wait for the level to build. Shared by sample/read.
     const goto = async (cfg: SampleConfig): Promise<void> => {
-      const url = buildUrl(port, cfg);
+      const url = buildUrl(`http://127.0.0.1:${port}`, cfg);
       opts.onLog?.(`opening ${url}`);
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
       await page.waitForTimeout(1500);   // level build + enemies wake
@@ -223,6 +241,48 @@ export async function withHarness(
     if (browser) await browser.close().catch(() => { /* best effort */ });
     if (vite.pid) { try { process.kill(-vite.pid, 'SIGKILL'); } catch { /* group gone */ } }
     try { vite.kill('SIGKILL'); } catch { /* already dead */ }
+  }
+}
+
+/** Attach-mode twin of withHarness: connect over CDP to a REAL running
+ *  Chrome and drive the shared dev server. Same Harness surface. */
+async function withAttachedBrowser(
+  opts: { viewport: Viewport; onLog?: (line: string) => void; attach?: string; serverUrl?: string },
+  fn: (h: Harness) => Promise<void>,
+): Promise<void> {
+  const { chromium } = await import('playwright');
+  const base = (opts.serverUrl ?? 'http://localhost:5174').replace(/\/$/, '');
+  opts.onLog?.(`attaching to ${opts.attach} · server ${base}`);
+  const browser = await chromium.connectOverCDP(opts.attach!);
+  try {
+    const context = browser.contexts()[0] ?? await browser.newContext();
+    const page = await context.newPage();
+    page.on('pageerror', (err) => opts.onLog?.(`[browser pageerror] ${err.message}`));
+    await page.setViewportSize({ width: opts.viewport.width, height: opts.viewport.height });
+
+    const goto = async (cfg: SampleConfig): Promise<void> => {
+      const url = buildUrl(base, cfg);
+      opts.onLog?.(`opening ${url}`);
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 45_000 });
+      await page.waitForTimeout(1500);
+    };
+    const read = async <T>(cfg: SampleConfig, probe: string): Promise<T> => {
+      await goto(cfg);
+      if (cfg.secs) await page.waitForTimeout(cfg.secs * 1000);
+      return page.evaluate((p) => (window as unknown as Record<string, () => unknown>)[p](), probe) as Promise<T>;
+    };
+    const withPage = async <T>(cfg: SampleConfig, pfn: (p: Page) => Promise<T>): Promise<T> => {
+      await goto(cfg);
+      return pfn(page);
+    };
+    const sample = async (): Promise<PerfAggregate> => {
+      throw new Error('sample() not supported in attach mode yet — use read/withPage');
+    };
+    await fn({ sample, read, withPage });
+    await page.close().catch(() => { /* fine */ });
+  } finally {
+    // Disconnect only — the attached Chrome belongs to the caller.
+    await browser.close().catch(() => { /* disconnects the CDP session */ });
   }
 }
 

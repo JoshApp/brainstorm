@@ -1,5 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu';
 import { DelveTiledLighting } from './tiled-lighting';
+import { getSettings } from '../settings/settings';
+import { isDesktopLike } from '../controls/platform';
 import { DelveLeanLighting } from './lean-lights';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 
@@ -37,8 +39,19 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   const forceWebGL = new URLSearchParams(window.location.search).get('webgpu') === '0'
     || !('gpu' in navigator);
   // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res
-  // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks it.
-  const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true, forceWebGL });
+  // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks
+  // it. NOT free when on: Three allocates a query set + resolve buffers PER PASS
+  // PER FRAME (the top steady-state allocation site once everything else was
+  // pooled — measured via the alloc-profile attach mode). So only track where
+  // something actually consumes the timestamps: DEV (perf tooling), mobile
+  // (adaptive resolution's GPU-load signal), or the shipped profiler suite
+  // (constructor-time flag, so flipping PROFILER TOOLS on needs a reload —
+  // the suite's session URL flags always relaunch anyway).
+  const profilerWanted = getSettings().profilerTools ||
+    ['profiler', 'profile', 'record', 'marks', 'stream']
+      .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
+  const trackTimestamp = import.meta.env.DEV || !isDesktopLike() || profilerWanted;
+  const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp, forceWebGL });
 
   // DEFAULT: tiled (Forward+-lite) lighting (scene/tiled-lighting.ts). CPU-bins
   // the pooled point lights into screen tiles (uniform arrays, nearest-first on

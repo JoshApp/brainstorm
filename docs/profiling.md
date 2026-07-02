@@ -82,6 +82,39 @@ here — allocation behaviour is V8-level, unlike FPS. Watch for THREE's
 `getProgram`/`cloneUniforms` showing up mid-run: that's a shader compiling
 DURING gameplay (a hitch), i.e. a material that escaped warmup.
 
+**Attach mode — profile the REAL Chrome (real GPU, WebGPU backend):**
+
+```
+# on Windows, launch a scratch Chrome with a CDP port:
+chrome.exe --remote-debugging-port=9223 --user-data-dir=%TEMP%\delve-gc-prof
+# then (WSL reaches it via localhost):
+npm run alloc-profile -- in-corridor --secs=15 --settle=25 --attach=http://localhost:9223
+```
+
+`--server=` overrides the dev-server URL (default `http://localhost:5174`).
+Headless swiftshader can't run some real-Chrome paths (timestamp resolves,
+error scopes), so real-backend churn only shows in attach mode.
+
+**Pitfalls that produce fake numbers (all bitten us):**
+
+- **Settle window.** The streaming warm (`warmRealRoster`) keeps building node
+  materials for ~15-30s after a scenario load — a profile that starts early
+  reads the one-time warm as steady-state churn (8 MB/s of TSL `build`). Use
+  `--settle=25`+ for steady state, or a short settle to profile the warm itself.
+- **Fuzzed heap counter.** `performance.memory.usedJSHeapSize` is QUANTIZED
+  without `--enable-precise-memory-info` (the harness passes it; normal Chrome
+  doesn't) — the `__perf()` sawtooth proxy then reports quantization noise as
+  churn (a "14 MB/s" reading on a page whose true sampled churn was 0.04 MB/s).
+  `__perf().heapQuantized` flags this; trust the sampling profiler, not the proxy.
+- **Vite HMR.** An `src/` edit mid-window hot-reloads modules and rebuilds
+  materials — profile windows must not overlap edits.
+
+**Baseline (2026-07-02, real Chrome, WebGPU, in-corridor):** steady state
+~0.04 MB/s; heavy combat (perf-max + autobot) ~0.32 MB/s — effectively
+zero-GC. The remaining sites are spawn-time TSL node builds (first instance
+of a species/effect) and, before it was gated, per-pass timestamp-query
+allocation (now DEV/mobile/profiler-only — see create-renderer).
+
 ### Reading the `render` breakdown
 
 `render` is split into sub-phases so it's not one opaque blob:

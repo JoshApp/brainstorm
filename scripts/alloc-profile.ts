@@ -108,22 +108,35 @@ async function main(): Promise<void> {
   // a player death mid-window freezes the world and zeroes the churn we're
   // here to measure (DEV-only flag; this only ever runs against the dev server).
   const flags: Record<string, string> = { god: '1' };
+  let attach: string | undefined;
+  let serverUrl: string | undefined;
+  // Post-load settle before sampling. The default 2s only skips level build;
+  // the STREAMING warmup + first-bind churn runs ~15-20s — pass --settle=20
+  // to measure true steady state, or keep it short to measure the settle itself.
+  let settleSecs = 2;
   for (const a of argv) {
     if (!a.startsWith('--')) continue;
     const body = a.slice(2);
     if (body.startsWith('secs=') || body.startsWith('port=')) continue;
+    // --attach=http://localhost:9223 [--server=http://localhost:5174] — profile
+    // the REAL Chrome (real GPU + WebGPU backend) instead of headless
+    // swiftshader. Launch it on Windows first:
+    //   chrome.exe --remote-debugging-port=9223 --user-data-dir=%TEMP%\delve-gc-prof
+    if (body.startsWith('attach=')) { attach = body.slice(7); continue; }
+    if (body.startsWith('server=')) { serverUrl = body.slice(7); continue; }
+    if (body.startsWith('settle=')) { settleSecs = Number(body.slice(7)) || 2; continue; }
     const eq = body.indexOf('=');
     if (eq === -1) flags[body] = '1';
     else flags[body.slice(0, eq)] = body.slice(eq + 1);
   }
 
-  await withHarness({ viewport, port, onLog: (l) => console.log(l) }, async (h) => {
+  await withHarness({ viewport, port, attach, serverUrl, onLog: (l) => console.log(l) }, async (h) => {
     await h.withPage({ scenario, flags, secs: 0 }, async (page) => {
       const cdp = await page.context().newCDPSession(page);
       await cdp.send('HeapProfiler.enable');
       // Let the post-load settle pass (level build, shader warmup) finish so
       // we sample steady-state gameplay churn, not boot allocations.
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(settleSecs * 1000);
       await cdp.send('HeapProfiler.startSampling', { samplingInterval: SAMPLING_BYTES });
       await page.waitForTimeout(windowSecs * 1000);
       const { profile } = await cdp.send('HeapProfiler.stopSampling') as { profile: SamplingProfile };
