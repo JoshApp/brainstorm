@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { setInspectBypass } from '../style/render-frame';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { interpSync } from '../engine/render-interp';
 
 // Ambient fill intensity while inspecting (pure white, flat). Bright enough
 // that a near-black mob's shadow side stays readable without blowing out metal.
@@ -140,10 +141,18 @@ export function tickInspectFraming(): void {
   cameraRef.position.copy(c).addScaledVector(dir, dist);
   cameraRef.lookAt(c);
   cameraRef.updateMatrixWorld();
+  // Hard teleport outside the sim step — re-seed render-interp or interpRestore
+  // snaps the camera back to its pre-framing pose (frozen previews never run the
+  // sim to settle it, so every subject-only snap framed the spawn instead).
+  interpSync([cameraRef]);
 
   aimLight(keyLight, c, 2, 3, 3);
   aimLight(rimLight, c, -2, 2, -3);
   framePending = false;
+  // Signal for the snap CLI: the subject exists and the camera is framed on it.
+  // Headless spawns can land seconds after the loading cover drops, so a fixed
+  // delay can capture the pre-framing pose. (DEV-only module; safe to hang off window.)
+  (window as unknown as { __inspectFramed?: boolean }).__inspectFramed = true;
 }
 
 function aimLight(

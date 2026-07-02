@@ -246,6 +246,11 @@ async function main() {
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}`;
+    // Headless swiftshader has no working WebGPU: Chrome exposes navigator.gpu but
+    // the context provider fails, and the failed 'webgpu' getContext attempt poisons
+    // the canvas so the WebGL2 fallback gets a null context (black frame). Force the
+    // WebGL2 backend up-front — it skips the webgpu context request entirely.
+    if (!url.includes('ui-bench.html')) url += (url.includes('?') ? '&' : '?') + 'webgpu=0';
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output
@@ -260,6 +265,41 @@ async function main() {
     });
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+
+    // The WebGPU pipeline prewarm holds a black cover (#descent-fade, plus the
+    // "descending" mark) until every pipeline is compiled — on a cold shader
+    // cache that outlasts any fixed delay, so WAIT ON THE COVER ITSELF: the
+    // reveal drops its opacity to 0 when the world is actually visible. The
+    // depth title card (#descent-title) rides above the world for ~1.6s after
+    // reveal, so wait that out too. Timeout tolerated — ui- specimens and the
+    // bench never mount the cover, and the safety cap reveals at 15s anyway.
+    // NOTE: string form, not a closure — tsx/esbuild injects a `__name` helper
+    // into serialized function bodies, which doesn't exist in the page and makes
+    // the predicate throw (which aborts waitForFunction instantly).
+    await page.waitForFunction(`(function () {
+      function gone(id) {
+        var el = document.getElementById(id);
+        return !el || parseFloat(getComputedStyle(el).opacity) < 0.05;
+      }
+      return gone('descent-fade') && gone('descent-title') && gone('descent-loading');
+    })()`, undefined, { timeout: 45_000 }).catch(() => {
+      console.log('  [snap] warning: descent cover still up after 45s — capturing anyway');
+    });
+
+    // Subject-only inspect previews (mob-/item-/model-): the subject can spawn
+    // seconds after the cover drops (headless is slow), and the auto-framing only
+    // fires once it exists — wait for its signal or the shot frames the spawn room.
+    if (wantInspect && subjectOnlyFamily) {
+      await page.waitForFunction('window.__inspectFramed === true', undefined, { timeout: 20_000 }).catch(() => {
+        console.log('  [snap] warning: inspect framing never signalled — capturing anyway');
+      });
+      // The flag flips when the camera is POSED, not when that pose has been
+      // PRESENTED. Under swiftshader a frame can take >1s, so a fixed delay
+      // captures the pre-framing frame — wait out three real rAF frames instead.
+      await page.evaluate(
+        'new Promise((res) => { var n = 0; function tick() { if (++n >= 3) res(0); else requestAnimationFrame(tick); } requestAnimationFrame(tick); })',
+      );
+    }
 
     // Wait for canvas to actually render some frames. Vault-inspector previews
     // (`vault-<id>`) wait long enough for the floor title card to fully fade

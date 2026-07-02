@@ -29,8 +29,13 @@ export function pipelineCount(renderer: DelveRenderer): number {
  *  (no WebGPU and no WebGL2) — the boot guard turns that into the recovery
  *  screen rather than a silent black canvas. */
 export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRenderer> {
-  // ?webgpu=0 forces the WebGL2 backend — the manual escape hatch / fallback test.
-  const forceWebGL = new URLSearchParams(window.location.search).get('webgpu') === '0';
+  // Force the WebGL2 backend when WebGPU can't work: the ?webgpu=0 escape hatch,
+  // or navigator.gpu missing outright (insecure http origin, older browser,
+  // headless). Without the up-front force, THREE's failed 'webgpu' getContext
+  // attempt can poison the canvas and the auto-fallback then gets a NULL webgl2
+  // context — init rejects and boot dies where a graceful WebGL2 boot was possible.
+  const forceWebGL = new URLSearchParams(window.location.search).get('webgpu') === '0'
+    || !('gpu' in navigator);
   // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res
   // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks it.
   const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true, forceWebGL });

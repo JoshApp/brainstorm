@@ -20,6 +20,7 @@ import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
 import { BONFIRE } from '../content/bonfire';
 import { buildModel } from '../ecs/build-model';
+import { interpSync } from '../engine/render-interp';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
@@ -1984,6 +1985,11 @@ export function applyScenario(
       ctx.camera.rotation.x = pp.pitch ?? 0;
       setCameraYaw(yaw);
     }
+    // Scenario poses are a HARD TELEPORT outside the sim step — same class as the
+    // descent teleport: without a re-seed, interpRestore snaps the camera back to
+    // its stale pre-scenario pose, and a frozen preview never runs the sim to
+    // settle it, so every mob-/item- snap framed the SPAWN instead of the subject.
+    interpSync([ctx.camera]);
   }
 
   if (scenario.hideSword) {
