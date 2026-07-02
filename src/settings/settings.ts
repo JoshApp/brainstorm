@@ -166,6 +166,9 @@ export interface Settings {
    *  culling flipped to default-on, so existing saves that carried the old
    *  explicit `false` get force-enabled exactly once — see load(). */
   migratedPortalCulling?: boolean;
+  /** One-time marker: saved 'single'/'all' shadows rebaselined to 'hero' when
+   *  env-torch shadows became real (they were silently dead before). */
+  migratedShadowRebaseline?: boolean;
   /** Internal one-shot flag (not a user toggle): set true once the player
    *  has been shown the first-run "calibrate the dark" nudge, so it never
    *  fires twice. See src/ui/calibrate-hint.ts. */
@@ -255,6 +258,7 @@ const DEFAULTS: Settings = {
   torchRangeMul: 1.0,
   hudStyle: 'minimal',
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
+  migratedShadowRebaseline: true,   // fresh installs start at 'hero' (no migration needed)
 };
 
 let current: Settings = load();
@@ -275,6 +279,18 @@ function load(): Settings {
     if (parsed.migratedPortalCulling !== true) {
       merged.portalCulling = true;
       merged.migratedPortalCulling = true;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    // One-time migration: env-torch shadows under SHADOWS single/all were
+    // SILENTLY DEAD for the whole lean-lights era — the modes cost nothing and
+    // showed nothing, so a save carrying them doesn't reflect a real choice.
+    // The light-director fix made them genuinely cast (each an omni cube = 6
+    // shadow passes per torch per frame; measured 240fps → ~90fps unstable in
+    // a corridor). Rebaseline those saves to 'hero' (lamp-only, the design
+    // intent: ONE shadow, the player's) — a deliberate re-pick still sticks.
+    if (parsed.migratedShadowRebaseline !== true) {
+      if (merged.shadows === 'single' || merged.shadows === 'all') merged.shadows = 'hero';
+      merged.migratedShadowRebaseline = true;
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
     }
     return merged;

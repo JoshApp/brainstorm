@@ -9,9 +9,24 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The torches keep their light and give up their shadows; only your lamp still throws one.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The meter stops seeing double; frames march in one line and the numbers tell the truth.",
         "area": [
           "tech"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The walls keep their dead in niches now. In a blood-lit room, the bones drink the colour first.",
+        "area": [
+          "atmosphere",
+          "level"
         ]
       },
       {
@@ -380,21 +395,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tech",
         "text": "Fountains, spike pits and tome pillars stop re-forging themselves on every floor — the deep remembers their shape now.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dark readies its carvings and embers before you ever descend — no more flinch when a new room lights up.",
-        "area": [
-          "tech",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The deep no longer strands you on a black screen after it reforges itself — it pulls down the new build and descends on its own.",
         "area": [
           "tech"
         ]
