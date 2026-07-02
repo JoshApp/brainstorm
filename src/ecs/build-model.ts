@@ -10,7 +10,7 @@ import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
-import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute } from 'three/tsl';
+import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute, materialOpacity } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
@@ -543,9 +543,14 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
     // been passed. Gating on `dissolving` guarantees full opacity at rest — else a
     // few low-threshold cells could alpha-test away on a living mob (the ghoul, a
     // dissolvable body with no rim, went near-invisible).
-    mat.alphaTest = 0.5;
+    // opacityNode REPLACES the material's base opacity under the node renderer,
+    // so the un-eroded branch must return materialOpacity (a uniform — keeps one
+    // shared pipeline across all dissolvables), not a hardcoded 1: a translucent
+    // dissolvable (ooze membrane, wraith shroud) went fully opaque at rest.
+    // alphaTest scales with base opacity so a 0.45-opacity wisp isn't discarded.
+    mat.alphaTest = 0.5 * (def.opacity ?? 1);
     const eroded = (dissolving as any).and(thresh.lessThan(uDissolve));
-    (mat as any).opacityNode = (eroded as any).select((tslFloat as any)(0), (tslFloat as any)(1));
+    (mat as any).opacityNode = (eroded as any).select((tslFloat as any)(0), materialOpacity);
     // HEAT — a wide additive ember band at the front so it reads on any albedo.
     const heat = (tslSmoothstep as any)(0.0, 0.16, front).oneMinus();
     const heatTerm = (vec3 as any)(1.0, 0.40, 0.10).mul(heat.mul(heat)).mul(uDissolve.mul(0.9).add(0.5)).mul(active);
