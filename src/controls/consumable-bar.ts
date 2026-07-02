@@ -315,13 +315,14 @@ function ensureFlaskButton(): void {
   updateFlaskButton();
 }
 
-/** Redraw the flask — the icon stays bare glass; the PIPS carry the charge
- *  count and the border/glow warms with how charged it is. */
+/** Redraw the flask — the bulb holds LIQUID LIGHT whose level tracks
+ *  charges/capacity (the same draining glow as the 3D flask); the PIPS carry
+ *  the exact count and the border/glow warms with how charged it is. */
 function updateFlaskButton(): void {
   if (!flaskEl || !flaskPips) return;
   const { charges, capacity } = getFlask();
   const frac = capacity > 0 ? charges / capacity : 0;
-  if (flaskIcon && !flaskIcon.innerHTML) flaskIcon.innerHTML = estusFlaskSvg(42);
+  if (flaskIcon) flaskIcon.innerHTML = estusFlaskSvg(42, frac);
   // One pip per capacity: a lit gold ember while the charge is held, a dark
   // hollow once it's spent. Shards growing capacity grow the row.
   const lit = `background:${hexCss(ESTUS_GOLD)};box-shadow:0 0 4px ${hexRgba(ESTUS_GOLD, 0.9)};border:1px solid rgba(255,224,150,0.9)`;
@@ -537,24 +538,37 @@ function flaskSvg(tint: number, px: number): string {
   </svg>`;
 }
 
-// ── The Estus flask icon — an EMPTY round-bottomed apothecary flask with an
-// IRON collar. The glass is deliberately bare: the charge PIPS below the icon
-// carry the count, and the button's gold border/glow (updateFlaskButton)
-// carries the "how charged" read — the icon is the vessel, not the gauge.
-function estusFlaskSvg(px: number): string {
+// ── The Estus flask icon — a round-bottomed apothecary flask with an IRON
+// collar, holding LIQUID LIGHT. The gold inside is the gauge: its level and
+// glow track charges/capacity (`fill`), draining to bare dark glass at zero —
+// the same read as the 3D flask's inner light. Pips still carry the count.
+function estusFlaskSvg(px: number, fill: number): string {
   const glass = 'rgba(220,226,236,0.50)';
   const glassFill = 'rgba(220,226,236,0.07)';
-  // Round-bottomed bulb; the clip keeps the iron band inside the glass.
+  // Round-bottomed bulb; the clip keeps the liquid + iron band inside the glass.
   const bulb = 'M9.6 8 L14.4 8 C16 11 20 13 20 18.5 C20 23 16.4 26.5 12 26.5 C7.6 26.5 4 23 4 18.5 C4 13 8 11 9.6 8 Z';
   const uid = 'estus-clip';
+  // Liquid surface: bulb interior spans y≈10 (shoulders) → 26.5 (bottom).
+  const level = 26.5 - 16.5 * Math.max(0, Math.min(1, fill));
+  const liquid = fill > 0.01
+    ? `<defs><radialGradient id="estus-liq" cx="0.5" cy="0.35" r="0.75">
+        <stop offset="0%" stop-color="rgba(255,220,140,0.98)"/>
+        <stop offset="55%" stop-color="rgba(255,180,60,0.92)"/>
+        <stop offset="100%" stop-color="rgba(230,130,30,0.88)"/>
+      </radialGradient></defs>
+      <rect x="3.5" y="${level.toFixed(1)}" width="17" height="${(27 - level).toFixed(1)}" fill="url(#estus-liq)" clip-path="url(#${uid})"/>
+      <ellipse cx="12" cy="${level.toFixed(1)}" rx="8.5" ry="1.1" fill="rgba(255,232,170,0.85)" clip-path="url(#${uid})"/>`
+    : '';
   return `<svg viewBox="0 0 24 28" width="${px}" height="${(px * 28) / 24}" aria-hidden="true">
     <defs><clipPath id="${uid}"><path d="${bulb}"/></clipPath></defs>
     <rect x="9" y="0.5" width="6" height="3.2" rx="0.8" fill="#5a3d22" stroke="#3a2614" stroke-width="0.4"/>
     <rect x="9.7" y="3.4" width="4.6" height="4.8" fill="${glassFill}" stroke="${glass}" stroke-width="0.7"/>
-    <path d="${bulb}" fill="${glassFill}" stroke="${glass}" stroke-width="0.9"/>
+    <path d="${bulb}" fill="${glassFill}"/>
+    ${liquid}
     <rect x="3.5" y="16.6" width="17" height="2.6" fill="rgba(28,24,22,0.92)" clip-path="url(#${uid})"/>
     <circle cx="6.6" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
     <circle cx="17.4" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
+    <path d="${bulb}" fill="none" stroke="${glass}" stroke-width="0.9"/>
     <path d="M8.2 9.6 C7.1 12 6.9 14.5 7.3 17" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" fill="none" stroke-linecap="round"/>
   </svg>`;
 }

@@ -52,6 +52,24 @@ export function installDevHooks(deps: DevHookDeps): void {
   // ?god=1 — invulnerable, for posing combat states without dying. setGodMode
   // itself is DEV-gated too (belt-and-suspenders).
   if (new URLSearchParams(window.location.search).get('god') === '1') setGodMode(true);
+  // ?autodrink=1 — loop the flask drink forever (re-hurt, refill, drink) so a
+  // headless `snap flask --frames=N` catches the raise/sip/lower without input.
+  // Pair with ?scenario=flask.
+  if (new URLSearchParams(window.location.search).get('autodrink') === '1') {
+    void (async () => {
+      const [{ requestFlaskDrink, isDrinkingFlask }, { refillFlask }, health] = await Promise.all([
+        import('../player/flask-drink'),
+        import('../player/flask'),
+        import('../player/health'),
+      ]);
+      setInterval(() => {
+        if (isDrinkingFlask()) return;
+        refillFlask();
+        if (health.getPlayerHp() >= health.getPlayerMaxHp()) health.damagePlayer(5, null, 'physical', true);
+        requestFlaskDrink();
+      }, 2000);
+    })();
+  }
 
   // ── GPU / material forensics ──────────────────────────────────────────
   // Per-stage GPU breakdown probe — prices bloom/shadow/grade by difference

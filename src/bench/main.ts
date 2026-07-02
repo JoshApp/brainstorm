@@ -124,7 +124,8 @@ if (!subjectId) {
     // overlays light up the hand's structure); the weapon is parented
     // into the palm slot already. Otherwise it's just the subject's
     // spec built fresh.
-    const composition = handMode ? composeHeldWeapon(subject.spec) : null;
+    const composition = handMode ? composeHeldWeapon(subject.spec)
+      : subject.compose ? subject.compose() : null;
     const built = composition ? composition.hand : buildModel(subject.spec);
     // What goes on screen: the composition ROOT when composed (hand +
     // weapon are SIBLINGS under it since the wrist-solver rework — the

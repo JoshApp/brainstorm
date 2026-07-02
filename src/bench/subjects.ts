@@ -14,6 +14,9 @@ import { EFFECT_DEMOS } from './effects';
 import { makeCorpseModel } from '../content/corpse-model';
 import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
 import { HAND_LEFT_LANTERN } from '../content/hand-poses';
+import { ESTUS_FLASK } from '../content/loot-models';
+import { composeFlaskHold } from '../player/flask-hold';
+import type { HeldWeaponCompose } from '../player/held-weapon-compose';
 import { LURKER } from '../content/clutter';
 import { SKELETON_KEY } from '../content/skeleton-key';
 import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
@@ -92,6 +95,14 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'corpse-skeletal': { label: 'Fallen delver — skeletal (curled)', spec: makeCorpseModel('curled', 'skeletal', false) },
 };
 
+// Pre-composed subjects — hand + object compositions that AREN'T weapons
+// (so the generic --hand flag doesn't reach them) but still need bench eyes
+// on the grip. The bench renders the composition root exactly like a
+// --hand weapon subject.
+const COMPOSED_MODELS: Record<string, { label: string; spec: ModelSpec; compose: () => HeldWeaponCompose }> = {
+  'flask-held': { label: 'Right hand cupping the estus flask', spec: ESTUS_FLASK, compose: composeFlaskHold },
+};
+
 export interface BenchSubject {
   id: string;             // the subject id (= authorable.scenario), e.g. 'mob-ghoul'
   kind: AuthorableKind;
@@ -101,6 +112,8 @@ export interface BenchSubject {
   enemy?: EnemySpec;
   /** For weapons: the item, so the bench can drive its combo swing. */
   item?: ItemSpec;
+  /** Pre-composed hand+object subjects: build THIS instead of spec alone. */
+  compose?: () => HeldWeaponCompose;
 }
 
 export function resolveSubject(subjectId: string): BenchSubject | null {
@@ -128,6 +141,8 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
   }
   if (subjectId.startsWith('model-')) {
     const id = subjectId.slice('model-'.length);
+    const c = COMPOSED_MODELS[id];
+    if (c) return { id: subjectId, kind: 'item', label: c.label, spec: c.spec, compose: c.compose };
     const m = STANDALONE_MODELS[id];
     if (!m) return null;
     return { id: subjectId, kind: 'item', label: m.label, spec: m.spec };
@@ -145,6 +160,9 @@ export function listSubjects(): SubjectEntry[] {
     ...listAuthorables().map((a) => ({ id: a.scenario, label: a.label, kind: a.kind as string })),
     ...EFFECT_DEMOS.map((e) => ({ id: e.id, label: e.label, kind: 'effect' })),
     ...Object.entries(STANDALONE_MODELS).map(([id, m]) => ({
+      id: `model-${id}`, label: m.label, kind: 'model',
+    })),
+    ...Object.entries(COMPOSED_MODELS).map(([id, m]) => ({
       id: `model-${id}`, label: m.label, kind: 'model',
     })),
   ];

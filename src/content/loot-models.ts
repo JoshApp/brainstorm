@@ -54,9 +54,17 @@ export const ESTUS_FLASK: ModelSpec = {
   id: 'estus-flask',
   materials: {
     glass: {
-      color: 0x1b1a15,
+      // REAL alpha glass. The WebGPU render path has no depth-pre-pass
+      // tricks — an opaque bulb simply occludes the elixir sphere inside
+      // it (which is why the "light inside" was invisible in play). A
+      // transparent+opacity<1 material is the one translucency lane
+      // render-frame.ts leaves untouched, so the glow shows through
+      // legitimately, on any renderer.
+      color: 0x2a261e,
       roughness: 0.22,
       metalness: 0.12,
+      transparent: true,
+      opacity: 0.42,
       fog: false,
       flatShading: 'auto',
     },
@@ -94,6 +102,16 @@ export const ESTUS_FLASK: ModelSpec = {
     { kind: 'cylinder', name: 'neck', pos: [0, 0.152, 0], radius: 0.019, height: 0.05, segments: 10, mat: 'glass' },
     { kind: 'cylinder', name: 'cork', pos: [0, 0.188, 0], radius: 0.017, height: 0.024, segments: 8, mat: 'cork' },
   ],
+  slots: {
+    // Where the fist closes on the vessel — the drink viewmodel composes
+    // this flask into the right hand via composeHeldWeapon, which lands
+    // grip_anchor exactly ON the hand's palm_anchor. The palm plane sits
+    // on the −Z side of the palm frame (see hand.ts contact slots), so
+    // the anchor is pushed −Z off the bulb's centre by roughly its
+    // radius: the bulb then RESTS against the palm instead of clipping
+    // through it, cupped like a ball, neck emerging above the thumb.
+    grip_anchor: { pos: [0, 0.07, -0.04] },
+  },
 };
 
 // Refill draught — a stoppered measure of the same gold light, smaller and

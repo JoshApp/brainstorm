@@ -223,6 +223,12 @@ async function main() {
     const phaseArg = process.argv.find((a) => a.startsWith('--phase='))?.split('=')[1];
     const phaseOverride = phaseArg ? `&phase=${encodeURIComponent(phaseArg)}` : '';
     if (phaseArg) console.log(`Weapon phase: ${phaseArg}`);
+    // --q=foo=1&bar=2 — raw extra URL params, for one-off DEV flags
+    // (e.g. `--q=autodrink=1` with the flask scenario) without teaching
+    // snap a bespoke flag each time.
+    const rawQ = process.argv.find((a) => a.startsWith('--q='))?.slice('--q='.length) ?? '';
+    const extraQ = rawQ ? `&${rawQ}` : '';
+    if (rawQ) console.log(`Extra URL params: ${rawQ}`);
     let url: string;
     // UI bench: `ui-<specimen>` snaps a menu/HUD-chrome specimen in isolation
     // (no engine) via ui-bench.html. e.g. `ui-gallery`, `ui-settings`, `ui-codex`.
@@ -245,7 +251,7 @@ async function main() {
       const itemId = scenario.slice('item-'.length);
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}${extraQ}`;
     // Headless swiftshader has no working WebGPU: Chrome exposes navigator.gpu but
     // the context provider fails, and the failed 'webgpu' getContext attempt poisons
     // the canvas so the WebGL2 fallback gets a null context (black frame). Force the

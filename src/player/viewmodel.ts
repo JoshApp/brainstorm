@@ -21,6 +21,8 @@ import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
 import type { HeldWeaponCompose } from './held-weapon-compose';
 import { getSettings, onSettingsChanged } from '../settings/settings';
+import { isDrinkingFlask } from './flask-drink';
+import { getFlaskWristWorld } from './flask-viewmodel';
 
 const HAND_AXES_LENGTH = 0.07;        // ~7cm — visible without dominating the frame
 const HAND_AXES_GROUP_NAME = '__handAxesOverlay';
@@ -549,6 +551,13 @@ export function createWeaponViewmodel(
   let parryRaiseAmt = 0;
   function parryRaise() { parryRaiseAmt = 1; }
 
+  // DRINK STOW — eased 0→1 while the flask channel runs (flask-drink.ts).
+  // The weapon hand drops out of the frame bottom-right, and the arm IK
+  // below retargets onto the flask hand's wrist (flask-viewmodel.ts), so
+  // the ONE right arm visibly puts the weapon away and raises the flask.
+  let drinkStow = 0;
+  const _flaskWristWorld = new THREE.Vector3();
+
   function update(dt: number) {
     swing.advance(dt);
     repose(dt);
@@ -563,6 +572,26 @@ export function createWeaponViewmodel(
       group.rotation.z += 0.28 * k;     // canted across, a guard angle
       parryRaiseAmt = Math.max(0, parryRaiseAmt - dt * 5);   // ~0.2s settle
     }
+    // Layer the drink stow: weapon sinks off frame bottom-right while the
+    // flask hand rises (drinks only START from idle, and any real action
+    // cancels the drink — so this never fights an active swing pose).
+    {
+      const stowTarget = isDrinkingFlask() ? 1 : 0;
+      const effDt = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+      drinkStow += (stowTarget - drinkStow) * (1 - Math.exp(-12 * effDt));
+      if (drinkStow < 0.001) drinkStow = 0;
+      if (drinkStow > 0) {
+        const k = drinkStow * drinkStow * (3 - 2 * drinkStow);   // smooth
+        // Sink AND pitch the blade forward-down hard — a long blade held
+        // upright never clears the frame on translation alone; tipping it
+        // past horizontal drops the whole silhouette below the bottom edge
+        // in one motion (the natural "lower your sword" move).
+        group.position.x += 0.10 * k;
+        group.position.y -= 0.50 * k;
+        group.position.z += 0.06 * k;   // toward camera — clears the frame edge faster
+        group.rotation.x += 1.15 * k;   // blade tips down past horizontal
+      }
+    }
     // ── ARM IK ──────────────────────────────────────────────────────
     // Solve in arm-local (= camera-local) space, then DIRECTLY
     // position the bone meshes from the IK's shoulderPos/elbowPos/
@@ -572,6 +601,14 @@ export function createWeaponViewmodel(
     if (armIK && armShoulderSlot && handWristSlot && dt > 0) {
       group.updateMatrixWorld(true);
       handWristSlot.getWorldPosition(_wristWorld);
+      // Drink retarget: while the flask is up, the arm follows the FLASK
+      // hand's wrist (one frame stale — flask-viewmodel ticks later in the
+      // frame; the IK's damping hides it, same as the lamp arm). Blended by
+      // the eased stow amount so the handoff is a reach, not a snap.
+      if (drinkStow > 0.001 && getFlaskWristWorld(_flaskWristWorld)) {
+        const k = drinkStow * drinkStow * (3 - 2 * drinkStow);
+        _wristWorld.lerp(_flaskWristWorld, k);
+      }
       armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
       const r = armIK.solve(_wristArmLocal, dt);
       // Re-aim the hand at the live forearm (camera-local frame: the
