@@ -9,9 +9,61 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tech",
+        "text": "The deep learns to light its torches by district; whole rooms may now burn at once.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
         "text": "The renderer no longer runs ahead of the deep; frames land in step again.",
         "area": [
           "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The wraith's glow retreats from your lamp again, as it always should have. What waits in the dark still burns there.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The skeleton's sockets are carved hollow now. What glints in them was never eyes.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The stoneguard remembers the temple it held up. Parts of it are still missing.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The thing below stops shouting like a game console. It just tells you what it saw.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Browsers without WebGPU get the dungeon now, not the void.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The light inside the flask drains as you swallow. Shards fuse on touch.",
+        "area": [
+          "combat",
+          "ui"
         ]
       },
       {
@@ -353,58 +405,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "ui",
           "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dark lays out its furniture before you arrive now — fewer stutters as new horrors come into the light.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dark finishes its work before it lets you in now — the stair down opens without a stumble.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The deep readies its dead the instant you arrive now, not while you bleed for it.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The descent opens quick now and the deep furnishes itself behind your back — the dead you haven't met yet are made ready while you walk.",
-        "area": [
-          "tech",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The descent takes a breath now — the dark fills in as it readies, instead of seizing the whole window shut.",
-        "area": [
-          "atmosphere",
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "One way to draw the dark now. The old path is shut.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The floor and the walls remember now — blood pools where you spill it and runs down the stone. The deep keeps the stains.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]

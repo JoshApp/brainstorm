@@ -40,24 +40,24 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks it.
   const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true, forceWebGL });
 
-  // Tiled (Forward+) lighting prototype (?tiled=1). Bins point lights into screen
-  // tiles via a compute pass so each fragment shades at most ~8 lights regardless
-  // of total count — lets the torch count climb without the per-fragment wall.
-  // A/B behind the flag until proven against the custom pipeline + banded model.
+  // DEFAULT: tiled (Forward+-lite) lighting (scene/tiled-lighting.ts). CPU-bins
+  // the pooled point lights into screen tiles (uniform arrays, nearest-first on
+  // overflow) so each fragment shades at most ~8 lights regardless of total
+  // count. Measured flat in light count (~14.9ms GPU at n=14/30/56 vs lean
+  // 15.5/18.6/22.9 on the perf-lights bench) — torches can climb without the
+  // per-fragment wall. Escape hatches for A/B: ?tiled=0 = the lean rolled loop
+  // (scene/lean-lights.ts), ?unrolled=1 = stock per-light node lighting.
   // (The lighting classes extend `Lighting as any` — TSL's node classes aren't
   // cleanly subclassable in TS — so the assignments need a cast.)
-  if (new URLSearchParams(window.location.search).get('tiled') === '1') {
-    renderer.lighting = new DelveTiledLighting() as unknown as WebGPURenderer['lighting'];
-    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting ON');
-  } else if (new URLSearchParams(window.location.search).get('unrolled') !== '1') {
-    // DEFAULT: custom rolled-loop lights node (scene/lean-lights.ts). Evaluates the
-    // pooled point lights in ONE loop instead of N unrolled per-light nodes, with two
-    // byte-identical wins: parked pool slots (intensity 0) aren't packed, and a per-
-    // fragment distance cull skips lights past their cutoff (Three's attenuation is
-    // exactly 0 there). ?unrolled=1 reverts to stock node lighting for A/B; ?tiled=1
-    // selects the Forward+ compute path.
+  const lightingFlags = new URLSearchParams(window.location.search);
+  if (lightingFlags.get('unrolled') === '1') {
+    if (import.meta.env.DEV) console.log('[webgpu] stock unrolled lights (A/B)');
+  } else if (lightingFlags.get('tiled') === '0') {
     renderer.lighting = new DelveLeanLighting() as unknown as WebGPURenderer['lighting'];
-    if (import.meta.env.DEV) console.log('[webgpu] lean lights (default)');
+    if (import.meta.env.DEV) console.log('[webgpu] lean lights (A/B)');
+  } else {
+    renderer.lighting = new DelveTiledLighting() as unknown as WebGPURenderer['lighting'];
+    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting (default)');
   }
 
   await renderer.init();
