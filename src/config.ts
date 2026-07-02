@@ -371,14 +371,16 @@ export const CONFIG = {
 
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
-    // torches/candles/glows. LEAN-lights era (scene/lean-lights.ts): parked
-    // slots aren't packed and a per-fragment range cull skips out-of-reach
-    // torches, so this budget is a SELECTION cap, not a flat per-fragment
-    // price like under WebGL — extra slots only cost where torch ranges
-    // actually overlap. 10 → 14 so dense/big rooms keep their far torches
-    // lit instead of nearest-N dropping them. (Eyeball on the phone; drop
-    // back if a torch-heavy floor dips.)
-    environment: 14,
+    // torches/candles/glows. Under the default TILED node
+    // (scene/tiled-lighting.ts) each fragment shades at most its tile's 8
+    // binned lights no matter how many are bound, so this budget is purely a
+    // SELECTION cap — how many sources may be live at once — not a
+    // per-fragment price. 14 → 22 (the tiled promotion's payoff): big/dense
+    // floors keep all their sconces + candle stacks lit instead of nearest-N
+    // dropping the far ones. Remaining cost of a raise is CPU (director
+    // sort/LOS + per-frame binning, both ~linear and small) — drop back if a
+    // phone profile ever shows the director in the frame.
+    environment: 22,
     // Signature-interactable glows ONLY (reliquary, tithe basin, challenge
     // offering, shrouded relic — the "light = signal" objects). Dropped
     // items and chests stopped using lights long ago; their glow is an
