@@ -8,7 +8,7 @@ import { showNote } from '../ui/note-card';
 import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
 import { createPickup } from './pickup';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
-import type { FallenDelver, CorpsePose } from '../content/corpses';
+import type { FallenDelver } from '../content/corpses';
 import { makeCorpseModel } from '../content/corpse-model';
 
 // A fallen delver — someone who came down before you and failed here. Walking
@@ -31,12 +31,9 @@ function deepNote(f: FallenDelver): string {
   return lines.join('\n');
 }
 
-// Where the loot glint sits per pose — near the reaching hand / the dropped pack.
-const GLINT_POS: Record<CorpsePose, [number, number, number]> = {
-  crawled: [0.62, 0.13, 0.34],
-  curled: [0.34, 0.14, 0.30],
-  slumped: [0.10, 0.13, 0.32],
-};
+// Where the loot glint sits — the model exposes a `loot_glint` slot at the
+// hand worth searching, so the cue tracks the pose without a position table.
+const GLINT_FALLBACK: [number, number, number] = [0.3, 0.12, 0.1];
 
 export function spawnCorpse(
   parent: THREE.Object3D,
@@ -62,7 +59,9 @@ export function spawnCorpse(
       intensity: 0.95,
     });
     glint = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), glintMat);
-    glint.position.set(...GLINT_POS[fallen.pose]);
+    const glintSlot = built.slots.get('loot_glint');
+    if (glintSlot) glint.position.copy(glintSlot.position);
+    else glint.position.set(...GLINT_FALLBACK);
     glint.rotation.x = -Math.PI / 2.6;
     glint.renderOrder = 2;
     built.group.add(glint);
