@@ -2,63 +2,29 @@ import * as THREE from 'three';
 import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
 import { stampGoreWebGPU, stampWallGoreWebGPU, resetGoreWebGPU } from './gore-webgpu';
 
-// ── SPLAT MAP — the floor remembers its violence ─────────────────────
+// ── GORE EMITTER — the floor remembers its violence ──────────────────
 //
-// A single world-mapped render target that gameplay events stamp into
-// (Killing Floor's gore tech, sized for us): every blood burst leaves
-// a wet splat; the floor material samples the map by world XZ and
-// darkens/tints/wets where blood landed. Persistent for the life of
-// the floor — rooms accumulate their history; a new floor wipes it.
+// The gameplay-facing gore API: every landed hit calls emitGoreSplash /
+// stampSpray / stampBleedOut here, and the stamps land in the WebGPU
+// per-fragment gore buffer (scene/gore-webgpu.ts), which the lighting
+// model composites into floors and walls.
 //
-//   initSplatMap(renderer)            once at boot
+// HISTORY: this file used to own a WebGL render-target splat map (three
+// RTs + GLSL stamp/dry ShaderMaterials rendered by flushSplats). The
+// WebGPU port replaced that with the per-fragment gore buffer; the dead
+// RT/ShaderMaterial machinery is gone. The uSplat* uniform refs remain
+// exported (inert, always null/0) because surface-detail/build-model
+// still import them; drop those imports and these refs together.
+//
 //   resetSplatMap(minX,minZ,w,d)      per floor (builder)
-//   stampSplat(x, z, r, color, a)     queue a stamp (any gameplay code)
-//   flushSplats(renderer)             render tick drains the queue
-//
-// The map + bounds are exported as SHARED UNIFORM REFS that
-// surface-detail.ts wires into the floor material once.
+//   stampSplat(x, z, r, color, a)     stamp floor blood (any gameplay code)
+//   flushSplats(renderer)             render tick drains timed bleed pulses
 
-const SIZE = 1024;
-// Wall arc map: 1024×512, split halves by wall facing (left = X-facing
-// walls keyed by worldZ, right = Z-facing keyed by worldX), v = worldY
-// over a 3.5m height window. Channels: RG = stain colour (B is
-// reconstructed at read), B = the wall's PLANE COORDINATE (kills
-// ghosting between parallel walls sharing an axis), A = wetness.
-// Wall arcs don't dry (the drying lerp would corrupt the B channel) —
-// they're rare, deliberate marks: deaths and crits only.
-const WALL_W = 1024;
-const WALL_H = 512;
-// Height window in WORLD y. Rooms sit at different elevations (the
-// stepped-descent verticality), so the v axis must be world-anchored
-// on BOTH the stamp and the read — mob-relative stamping put deep-room
-// arcs into rows their own lowered walls never sample, while spawn-
-// elevation walls DID sample them (the 'blood on spawn walls from
-// miles away' ghosts). -10..+6 covers descent-biased floors.
-const WALL_Y_MIN = -10;
-const WALL_Y_SPAN = 16;
-
-let rt: THREE.WebGLRenderTarget | null = null;
-let wallRt: THREE.WebGLRenderTarget | null = null;
-let wallIdRt: THREE.WebGLRenderTarget | null = null;
-let stampScene: THREE.Scene | null = null;
-let stampSpace: THREE.Group | null = null;   // world-meters → map-UV
-let stampCam: THREE.OrthographicCamera | null = null;
-let stampMesh: THREE.Mesh | null = null;
-let stampMat: THREE.ShaderMaterial | null = null;
-let needsClear = true;
-
-// Shared uniform refs (surface-detail wires these into materials).
+// Inert compat refs (see HISTORY above) — nothing writes them anymore.
 export const uSplatTex = { value: null as THREE.Texture | null };
 export const uSplatBounds = { value: new THREE.Vector4(0, 0, 1, 1) };  // minX, minZ, sizeX, sizeZ
 export const uSplatOn = { value: 0 };
 export const uSplatWallTex = { value: null as THREE.Texture | null };
-// Plane-ID buffer: which wall each arc belongs to. SEPARATE from the
-// colour map because coordinates cannot survive alpha blending — a
-// soft-edged stamp stores a MIX of its plane coord and the background,
-// which both killed legitimate near-kill arcs (diluted coord fails the
-// match) and ghosted faded stains onto walls rooms away (whose coord
-// happened to equal the diluted value). IDs write with REPLACE
-// semantics (NoBlending + discard below threshold) and sample NEAREST.
 export const uSplatWallIdTex = { value: null as THREE.Texture | null };
 
 /** Wall probe — registered by main per floor. Given a point + throw
@@ -69,217 +35,21 @@ export function setSplatWallProbe(fn: typeof wallProbe): void {
   wallProbe = fn;
 }
 
-interface Stamp {
-  x: number; z: number; r: number; color: THREE.Color; a: number; seed: number;
-  /** Direction (map-space, normalized) for streak splats; null = radial pool. */
-  dir: { x: number; z: number } | null;
-  /** 'floor' renders into the XZ map; 'wall' into the wall-arc map
-   *  (x/z are then map UV, r pre-scaled, rot in radians). */
-  surface: 'floor' | 'wall';
-  rot?: number;
-  scaleX?: number;
-  scaleY?: number;
-  /** Wall stamps: the wall's plane coordinate (normalized), written
-   *  into the ID buffer on a second, no-blend pass. */
-  pc?: number;
-}
-const queue: Stamp[] = [];
-
-// Drying: every DRY_INTERVAL a low-alpha quad lerps the map's COLOR
-// toward dried brown-black (alpha/wetness untouched). Freshness needs
-// no extra channel — drying IS desaturating, and the floor shader
-// reads saturation as freshness (fresh saturated blood glistens and
-// flows; dried brown lies matte; skeleton dust never glistens).
-const DRY_INTERVAL_S = 2.5;
-const DRY_FULL_S = 75;
-let lastDryAt = 0;
-let dryMesh: THREE.Mesh | null = null;
-let stampIdMat: THREE.ShaderMaterial | null = null;
-let dryMat: THREE.ShaderMaterial | null = null;
-
-export function initSplatMap(): void {
-  if (rt) return;
-  rt = new THREE.WebGLRenderTarget(SIZE, SIZE, {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    format: THREE.RGBAFormat,
-    depthBuffer: false,
-  });
-  uSplatTex.value = rt.texture;
-  wallRt = new THREE.WebGLRenderTarget(WALL_W, WALL_H, {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    format: THREE.RGBAFormat,
-    depthBuffer: false,
-  });
-  uSplatWallTex.value = wallRt.texture;
-  wallIdRt = new THREE.WebGLRenderTarget(WALL_W, WALL_H, {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-    format: THREE.RGBAFormat,
-    depthBuffer: false,
-  });
-  uSplatWallIdTex.value = wallIdRt.texture;
-
-  stampScene = new THREE.Scene();
-  stampCam = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
-  stampMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uCenter: { value: new THREE.Vector2() },   // in map UV
-      uRadius: { value: 0.01 },                  // in map UV
-      uColor: { value: new THREE.Color(0x7a1612) },
-      uAlpha: { value: 0.8 },
-      uSeed: { value: 0 },
-      uStreak: { value: 0 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-    `,
-    fragmentShader: `
-      varying vec2 vUv;
-      uniform vec2 uCenter; uniform float uRadius; uniform vec3 uColor;
-      uniform float uAlpha; uniform float uSeed; uniform float uStreak;
-      uniform float uIdPass; uniform float uPc;
-      float h(vec2 p){ p = fract(p * 0.3183099 + uSeed); p *= 17.0; return fract(p.x * p.y * (p.x + p.y)); }
-      void main(){
-        // POPPED-BALLOON mask, not a scaled circle: the boundary
-        // radius wobbles per angular sector (smoothed hash → organic
-        // lobes), streaks grow FINGERS toward the throw while the
-        // body stays heavy at the impact end. Droplet blobs spray
-        // past the boundary.
-        vec2 pl = (vUv - vec2(0.5)) * 2.0;
-        float ang = atan(pl.y, pl.x);
-        float sect = (ang + 3.14159) * 1.2732;     // ~8 lobes around
-        float s0 = h(vec2(floor(sect), 7.0));
-        float s1 = h(vec2(floor(sect) + 1.0, 7.0));
-        float lobe = mix(s0, s1, smoothstep(0.0, 1.0, fract(sect)));
-        float along = pl.x * 0.5 + 0.5;            // streaks: 0 impact → 1 far
-        float streakK = clamp(uStreak, 0.0, 1.0) * step(uStreak, 1.5);  // 1 only for floor streaks
-        float wobble = mix(0.34, 0.55 + 0.35 * along, streakK);
-        vec2 pc = streakK > 0.5 ? pl + vec2(0.45, 0.0) : pl;
-        float d = length(pc) * (streakK > 0.5 ? 0.78 : 1.0);
-        float edge = (1.0 - wobble * 0.5) + (lobe - 0.5) * wobble;
-        float body = 1.0 - smoothstep(edge * 0.58, edge, d);
-        vec2 cell = pl * 5.5;
-        float blob = h(floor(cell));
-        float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
-        float thin = streakK > 0.5 ? (1.0 - along * 0.45) : 1.0;
-        float spatter = inBlob * (1.0 - smoothstep(0.55, 1.15, d)) * thin;
-        float a = clamp(max(body, spatter), 0.0, 1.0) * uAlpha;
-        // Quad-edge guard: the lobes can push past the quad bounds and
-        // CLIP into dead-straight edges (the flat line at the impact
-        // side of death pools). Fade everything out before the border.
-        a *= smoothstep(1.0, 0.82, max(abs(pl.x), abs(pl.y)));
-        // WALL ARC (uStreak=2): a messy splotch with DRIPS — gravity is
-        // what makes wall blood read as wall blood. The body sits in
-        // the upper half; thin runs of varying length descend from it.
-        if (uStreak > 1.5) {
-          vec2 pw = pl - vec2(0.0, 0.45);          // body centre upper-half
-          float dw = length(pw * vec2(1.0, 1.9));
-          float wbody = 1.0 - smoothstep(edge * 0.5, edge * 0.95, dw);
-          // splotch satellites around the body
-          vec2 wc = pl * vec2(4.5, 3.0) + vec2(0.0, -1.2);
-          float wb = h(floor(wc));
-          float wsat = smoothstep(0.6, 0.9, wb) * (1.0 - smoothstep(0.0, 0.42, length(fract(wc) - 0.5)))
-                     * (1.0 - smoothstep(0.5, 1.0, length(pw)));
-          // drips: columns below the body, random presence + length
-          float col = floor((pl.x + 1.0) * 4.0);
-          float dh = h(vec2(col, 3.0));
-          float colX = fract((pl.x + 1.0) * 4.0) - 0.5;
-          float inCol = 1.0 - smoothstep(0.10, 0.16, abs(colX));
-          float top = 0.30;
-          float bot = top - (0.5 + dh * 1.3);
-          float inRun = step(pl.y, top) * step(bot, pl.y) * step(0.35, dh);
-          float taper = smoothstep(bot, mix(bot, top, 0.35), pl.y);
-          float drip = inCol * inRun * taper;
-          a = clamp(max(max(wbody, wsat), drip * 0.9), 0.0, 1.0) * uAlpha;
-        }
-        if (a < 0.015) discard;
-        if (uIdPass > 0.5) {
-          // Plane-ID pass: hard-edged, REPLACES — no blending, so the
-          // coordinate survives intact. Soft fringes keep the old id
-          // (slight shrink of the matchable area; far better than
-          // coordinate dilution).
-          if (a < 0.30) discard;
-          gl_FragColor = vec4(uPc, 0.0, 0.0, 1.0);
-        } else {
-          gl_FragColor = vec4(uColor, a);
-        }
-      }
-    `,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    // RGB lerps toward the stamp colour; ALPHA accumulates (wetness adds up).
-    blending: THREE.CustomBlending,
-    blendSrc: THREE.SrcAlphaFactor,
-    blendDst: THREE.OneMinusSrcAlphaFactor,
-    blendSrcAlpha: THREE.OneFactor,
-    blendDstAlpha: THREE.OneFactor,
-  });
-  stampMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stampMat);
-  stampMesh.frustumCulled = false;   // positioned per stamp in flushSplats
-  // Stamps live in WORLD METRES inside this group; the group's scale
-  // maps metres → map UV. Rotating a streak inside it stays true to
-  // world space — rotating at the UV level squashed every angled
-  // streak along the floor's shorter axis ('direction feels buggy').
-  stampSpace = new THREE.Group();
-  stampSpace.add(stampMesh);
-  stampScene.add(stampSpace);
-
-  // Drying quad: lerps the map's COLOR toward dried brown-black,
-  // leaving alpha (wetness footprint) untouched.
-  dryMat = new THREE.ShaderMaterial({
-    uniforms: { uK: { value: 0.03 } },
-    vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `
-      uniform float uK;
-      void main(){ gl_FragColor = vec4(vec3(0.085, 0.035, 0.025), uK); }
-    `,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    blending: THREE.CustomBlending,
-    blendSrc: THREE.SrcAlphaFactor,
-    blendDst: THREE.OneMinusSrcAlphaFactor,
-    blendSrcAlpha: THREE.ZeroFactor,
-    blendDstAlpha: THREE.OneFactor,
-  });
-  stampIdMat = stampMat.clone();
-  stampIdMat.uniforms = THREE.UniformsUtils.clone(stampMat.uniforms);
-  stampIdMat.uniforms.uIdPass = { value: 1 };
-  stampIdMat.uniforms.uPc = { value: 0 };
-  stampIdMat.blending = THREE.NoBlending;
-  // base material needs the uniforms too (compiled once, branch at runtime)
-  stampMat.uniforms.uIdPass = { value: 0 };
-  stampMat.uniforms.uPc = { value: 0 };
-
-  dryMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), dryMat);
-  dryMesh.position.set(0.5, 0.5, 0);
-  dryMesh.visible = false;
-  stampScene.add(dryMesh);
-}
-
-/** New floor: set the world→map mapping and wipe the slate. */
+/** New floor: wipe the gore buffer and drop stale per-floor state. */
 export function resetSplatMap(minX: number, minZ: number, sizeX: number, sizeZ: number): void {
   uSplatBounds.value.set(minX, minZ, Math.max(1, sizeX), Math.max(1, sizeZ));
-  uSplatOn.value = 1;
-  queue.length = 0;
-  needsClear = true;
-  resetGoreWebGPU();   // wipe the WebGPU gore buffer too (no-op on WebGL)
+  pendingBleeds.length = 0;   // a corpse can't bleed onto the floor below
+  resetGoreWebGPU();          // wipe the WebGPU gore buffer
   wallProbe = null;   // stale probes reference the dead floor's walkable
 }
 
 /** Queue a splat. x/z world; radius metres; alpha = wetness added. */
 export function stampSplat(
   x: number, z: number, radius: number, colorHex: number, alpha = 0.8,
-  dir?: { x: number; z: number } | null,
+  _dir?: { x: number; z: number } | null,
 ): void {
-  // WebGPU: no render-target stamp — feed the per-fragment gore buffer instead
-  // (scene/gore-webgpu.ts). emitGoreSplash/stampSpray route through here, so this
-  // one hook covers all floor blood. (Wall arcs still go to the texture path,
-  // which is a WebGL-only no-op on WebGPU for now.)
+  // Feed the per-fragment gore buffer (scene/gore-webgpu.ts). emitGoreSplash /
+  // stampSpray route through here, so this one hook covers all floor blood.
   stampGoreWebGPU(x, z, radius, colorHex, alpha);
 }
 
@@ -360,7 +130,7 @@ export function stampWallArc(
   x: number, z: number, y: number, dirX: number, dirZ: number,
   colorHex: number, alpha = 0.8, size = 0.55,
 ): void {
-  if (!rt || !wallProbe) return;
+  if (!wallProbe) return;
   const len = Math.hypot(dirX, dirZ) || 1;
   let hit = wallProbe(x, z, dirX / len, dirZ / len);
   if (!hit) {
@@ -374,7 +144,7 @@ export function stampWallArc(
 }
 
 function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number, size: number): void {
-  // WebGPU: feed the per-fragment wall-arc buffer (scene/gore-webgpu.ts).
+  // Feed the per-fragment wall-arc buffer (scene/gore-webgpu.ts).
   stampWallGoreWebGPU(hit.axis, hit.plane, hit.along, y, size, colorHex, alpha);
 }
 
@@ -405,12 +175,11 @@ export function stampSpray(
   }
 }
 
-/** Drain queued stamps into the map. Called from the render tick. */
 // ── Bleed-out scheduler ───────────────────────────────────────────────
 // A death doesn't detonate a finished pool — the corpse BLEEDS OUT: a
 // few pool stamps spread over ~1.6s, each wider than the last, so the
 // stain visibly grows under the body while it dissolves. Pulses are
-// processed in flushSplats (already called every frame).
+// drained in flushSplats (called every frame by the render system).
 interface BleedPulse { at: number; x: number; z: number; r: number; color: number; a: number }
 const pendingBleeds: BleedPulse[] = [];
 
@@ -429,8 +198,15 @@ export function stampBleedOut(x: number, z: number, color: number, gore: number)
   }
 }
 
+/** Drain due bleed-out pulses into the gore buffer. Called every frame
+ *  from the render system; free when nothing is bleeding. */
 export function flushSplats(_renderer: THREE.WebGLRenderer): void {
-  // Gore stamping rendered GLSL ShaderMaterials into WebGL targets each frame —
-  // WebGL-only. No-op under WebGPU (floor/wall blood feeds the per-fragment gore
-  // buffer instead; see scene/gore-webgpu.ts). See WEBGPU-MIGRATION.md.
+  if (pendingBleeds.length === 0) return;
+  const now = performance.now() / 1000;
+  for (let i = pendingBleeds.length - 1; i >= 0; i--) {
+    const p = pendingBleeds[i];
+    if (now < p.at) continue;
+    stampGoreWebGPU(p.x, p.z, p.r, p.color, p.a);
+    pendingBleeds.splice(i, 1);
+  }
 }

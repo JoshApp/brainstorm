@@ -69,11 +69,54 @@ function applyStep(avgMs: number, nowMs: number): void {
   }
 }
 
-/** Formerly the WebGL rAF-interval frame-time path. Under WebGPU the async
- *  render's MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync even
- *  under GPU overload, so the signal comes from feedAdaptiveGpuMs (native GPU
- *  timestamps) instead and this path is a no-op. */
-export function tickAdaptiveResolution(_nowMs: number): void {
+// ── WALL-CLOCK FALLBACK (WebGL2-fallback backend only) ──────────────────────
+// The primary signal is the native GPU timestamp (feedAdaptiveGpuMs). But the
+// WebGL2 fallback backend needs EXT_disjoint_timer_query_webgl2 for timestamps,
+// which most mobile GPUs/browsers don't expose — i.e. the weak devices that need
+// adaptive res most would get NO signal at all. On that backend the render
+// submit is synchronous, so a GPU-bound frame DOES stretch the drawn-frame
+// interval (driver back-pressure) — wall-clock time between drawn frames is a
+// valid load signal there. It is NOT valid on WebGPU (MAX_IN_FLIGHT=1
+// skip-pacing pins the rAF interval to vsync), so main.ts only arms this when
+// init resolves to the WebGL backend — and a real GPU timestamp, if one ever
+// arrives, takes over permanently.
+let wallFallback = false;
+let gpuSignalSeen = false;
+let lastTickMs = 0;
+let winStartMs = 0;
+/** Arm the wall-clock frame-time fallback (call with true only on the WebGL2
+ *  fallback backend, where submits are sync and rAF intervals reflect GPU load). */
+export function setAdaptiveWallClockFallback(on: boolean): void {
+  wallFallback = on;
+  frames.length = 0; lastTickMs = 0; winStartMs = 0;
+}
+
+/** Per-drawn-frame tick. expectedMs = the frame-cap's target interval on this
+ *  panel (1000/effective fps) so a deliberate 30fps cap isn't misread as a
+ *  struggling device. No-op unless the wall-clock fallback is armed and no GPU
+ *  timestamp has ever resolved. */
+export function tickAdaptiveResolution(nowMs: number, expectedMs = 1000 / 60): void {
+  if (!enabled || !wallFallback || gpuSignalSeen) { lastTickMs = nowMs; return; }
+  const dt = lastTickMs === 0 ? 0 : nowMs - lastTickMs;
+  lastTickMs = nowMs;
+  if (dt <= 0 || dt > 100) return;   // boot / tab-stall / pause gaps aren't render cost
+  if (winStartMs === 0) winStartMs = nowMs;
+  frames.push(dt);
+  if (frames.length < MIN_SAMPLES || nowMs - winStartMs < WINDOW_MS) return;
+  const avg = frames.reduce((a, b) => a + b, 0) / frames.length;
+  frames.length = 0; winStartMs = 0;
+  // Same thresholds as the absolute DROP/RAISE constants at a 60fps target
+  // (16.7ms × 1.32 ≈ 22, × 1.02 ≈ 17), generalized to the capped rate.
+  if (nowMs - lastStep < COOLDOWN_MS) return;
+  if (avg > expectedMs * 1.32 && scale > MIN_SCALE) {
+    scale = Math.round((scale - STEP) * 100) / 100;
+    setPS1Scale(scale);
+    lastStep = nowMs;
+  } else if (avg < expectedMs * 1.02 && scale < maxScale) {
+    scale = Math.min(maxScale, Math.round((scale + STEP) * 100) / 100);
+    setPS1Scale(scale);
+    lastStep = nowMs;
+  }
 }
 
 // EMA of GPU frame ms (WebGPU only) — the bottleneck signal the rAF interval can't see.
@@ -81,7 +124,9 @@ let gpuEma = 0;
 /** Feed the latest GPU frame ms (native timestamp) — WebGPU's adaptive signal.
  *  Drives the same drop/raise stepping as the WebGL frame-time path. */
 export function feedAdaptiveGpuMs(ms: number): void {
-  if (!enabled || !(ms > 0)) return;
+  if (!(ms > 0)) return;
+  gpuSignalSeen = true;   // a real timestamp exists — it owns the signal from here
+  if (!enabled) return;
   gpuEma = gpuEma === 0 ? ms : gpuEma * 0.85 + ms * 0.15;
   applyStep(gpuEma, performance.now());
 }

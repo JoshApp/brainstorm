@@ -5,7 +5,6 @@ import { getCurrentDepth } from '../level/loader';
 import {
   setBloomEnabled, setInscatterEnabled, setDepthCrushEnabled,
   getBloomEnabled, getInscatterEnabled, getDepthCrushEnabled,
-  setViewmodelPrepassEnabled, getViewmodelPrepassEnabled,
   setPS1Scale, getPS1Scale,
 } from '../style/render-frame';
 import { setShadowMode, getShadowMode, setLightBudgetTrim, getLightSlotTotals } from '../scene/light-pool';
@@ -128,7 +127,6 @@ export async function runGpuAttribution(): Promise<void> {
   const prevInscatter = getInscatterEnabled();
   const prevDepth = getDepthCrushEnabled();
   const prevDetail = getSurfaceDetailEnabled();
-  const prevPrepass = getViewmodelPrepassEnabled();
   const prevScale = getPS1Scale();
   const prevDpr = rend.getPixelRatio();
 
@@ -175,12 +173,8 @@ export async function runGpuAttribution(): Promise<void> {
       off: () => setSurfaceDetailEnabled(false),
       restore: () => setSurfaceDetailEnabled(prevDetail),
     },
-    {
-      name: 'viewmodel prepass',
-      note: 'held-item depth pre-pass',
-      off: () => setViewmodelPrepassEnabled(false),
-      restore: () => setViewmodelPrepassEnabled(prevPrepass),
-    },
+    // (The 'viewmodel prepass' probe is gone: the WebGPU path has no depth
+    // pre-pass at all — opaque viewmodel parts just write normal depth.)
     {
       name: `scale ${prevScale.toFixed(2)}→0.30`,
       note: 'scene-target fill — big Δ = fragment-bound in the 3D pass',
@@ -273,7 +267,6 @@ export async function runGpuAttribution(): Promise<void> {
   setBloomEnabled(prevBloom); setShadowMode(prevShadow); setMotesHidden(false);
   setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth);
   setLightBudgetTrim(false); setSurfaceDetailEnabled(prevDetail);
-  setViewmodelPrepassEnabled(prevPrepass);
   if (root.overrideMaterial === lambertMat || root.overrideMaterial === basicMat) root.overrideMaterial = null;
   setPS1Scale(prevScale);
   if (rend.getPixelRatio() !== prevDpr) applyDpr(prevDpr);

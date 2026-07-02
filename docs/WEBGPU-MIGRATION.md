@@ -114,6 +114,82 @@ them. (Maintained as the rewrite surfaces more.)
 (Already fixed this session, same class of latent bug: the frame-pacer metastable
 accumulator, and `preserveDrawingBuffer` always-on in Debug Mode.)
 
+## Post-port review — 2026-07-02
+
+A weakness pass over the finished port. FIXED in the same session:
+
+- **Pipeline-rebuild GPU leak.** `rebuildWebGPUPipeline()` (fires on every
+  resize/rotation, DPR/bloom/lean-bloom toggle, DEV probes) only nulled the
+  refs; the retired PassNode / BloomNode (~11 RTs) / GaussianBlur / GTAO /
+  RenderPipeline all own render targets with `dispose()`. Now: rebuild retires
+  them, and they're disposed once the in-flight submit count is 0 (disposing a
+  texture an in-flight submit references is a validation error).
+- **`inFlight` strand on sync throw.** If `renderAsync()` threw synchronously,
+  the in-flight count never decremented → every later frame skipped →
+  permanent freeze. Now guarded (decrement + rethrow to the rate-limited log).
+- **Corpse bleed-out was silently dead.** `stampBleedOut` queued pulses that
+  only the removed WebGL `flushSplats` drained — so the growing-pool-under-the-
+  corpse feature vanished in the port AND the queue grew unboundedly.
+  `flushSplats` now drains due pulses into the WebGPU gore buffer. Verified
+  live: 5 pulses → 0 immediate → 5 in the buffer after ~1.6s.
+- **Adaptive resolution was blind on the WebGL2 fallback.** Its only signal was
+  the WebGPU GPU timestamp; the fallback backend needs
+  `EXT_disjoint_timer_query_webgl2` (absent on most mobiles) — exactly the weak
+  devices that need the scaler. Now: a wall-clock drawn-frame-interval fallback,
+  armed only on the WebGL backend (valid there — submits are sync, so rAF
+  intervals stretch under GPU load; on WebGPU skip-pacing pins them). A real
+  timestamp, if one ever resolves, takes over permanently. The thresholds scale
+  with the frame-cap's effective interval so a deliberate 30fps cap isn't
+  misread as a struggling device.
+- **splat-map RT machinery deleted.** `initSplatMap` still allocated three
+  render targets + GLSL stamp/dry ShaderMaterials that nothing ever rendered
+  (gore is per-fragment now). Gone; the gameplay-facing emitter API stays.
+  The `uSplat*` uniform refs remain exported but inert (surface-detail /
+  build-model still import them — drop together later).
+- **GPU-attribution probes made honest.** `setInscatterEnabled` /
+  `setDepthCrushEnabled` were inert flags (the sweep reported fake ~0ms
+  deltas); they now rebuild the pipeline with the effect actually off. The
+  `viewmodel prepass` probe is removed — there is no prepass on WebGPU.
+- **DEV lux meter no longer throws on WebGPU** (`getContext().readPixels` is
+  WebGL-only); it drains requests with an explicit UNSUPPORTED verdict.
+
+### Improvements to build on later (noted, not done)
+
+- **Promote tiled (Forward+) lighting.** `?tiled=1` (`scene/tiled-lighting.ts`)
+  already adapts Three's TiledLightsNode to our pass-driven pipeline. The
+  default lean loop pays O(live torches) per fragment (with a per-fragment
+  range cull); Forward+ bins lights per tile via compute → "more torches at
+  the same cost", the winnable framing from the port. Needs a phone A/B +
+  keeping the lamp on the material path (`userData.noTile`).
+- **Reshape the light pool into a light director.** Its founding reason —
+  fixed light count to dodge WebGL recompiles — is vestigial under lean
+  lights (the loop is uniform-count bounded; parked slots aren't even packed).
+  What's still load-bearing: nearest-N selection + hysteresis, LOS dimming,
+  flicker, the shadow-slot management, the noTile tag. That's a *selection*
+  policy, not a *slot* system; `slotScale = 1` is a WebGL-era throttle — the
+  torch budget could rise on WebGPU once selection is the only cost.
+- **A real async `boot()`.** Still the biggest architectural debt: `main.ts`
+  (~2.5k lines) does boot at module scope around an async `renderer.init()`,
+  stitched with `isWebGPUReady`/`isLoading` gates. Decompose into explicit
+  phases (init renderer → build scene → warm → reveal) before the next
+  cross-cutting system lands on top.
+- **Type the renderer honestly.** Everything passes `WebGPURenderer as unknown
+  as THREE.WebGLRenderer`. A narrow `DelveRenderer` interface (the surface we
+  use) would kill the casts and document the real contract.
+- **Universal GPU-load signal.** Where timestamp-query is missing under
+  WebGPU, `device.queue.onSubmittedWorkDone()` latency can stand in as the
+  adaptive-resolution signal (submit→done ≈ queue depth). Small, contained.
+- **Cleanup backlog** (dead code the sweep found): `debug/gpu-timer.ts` (WebGL
+  timer class, never instantiated) + frame-timing's inert readPixels probe arm;
+  the OVERDRAW HEATMAP toggle in the Debug settings tab (drives nothing);
+  `outline.ts` `pxScaleShared` (written, never read); `surface-ao.ts`
+  `SHADOW_TINT_GLSL` (unused); the inert `uSplat*` refs + their imports;
+  crash-report `crashGpu` is always `'n/a'` on WebGPU (use
+  `adapter.info` instead); `lux` could port to an async WebGPU readback if the
+  light-band tuning workflow is still wanted.
+- **SSAO is URL-flag only** (`?ssao=1`); if it survives its phone pricing, it
+  should become a GRAPHICS setting routed through the same rebuild path.
+
 ## Risks / watch-list
 
 - **Lighting/color from the bump** (useLegacyLights removed): the game may render

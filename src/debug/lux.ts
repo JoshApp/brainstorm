@@ -97,7 +97,21 @@ function verdictFor(mean: number, voidPct: number, brightPct: number, tier: stri
  *  preserveDrawingBuffer). */
 export function flushLux(renderer: THREE.WebGLRenderer): void {
   if (pending.length === 0 || !cameraRef) return;
-  const gl = renderer.getContext();
+  // WebGPU: getContext() returns a GPUCanvasContext with no readPixels — the
+  // sync-readback meter never got ported (needs an async WebGPU readback; see
+  // WEBGPU-MIGRATION.md). Drain the queue with an honest error instead of
+  // throwing from the render loop.
+  const gl = renderer.getContext() as WebGL2RenderingContext & { readPixels?: unknown };
+  if (typeof gl.readPixels !== 'function') {
+    console.warn('[lux] not supported on the WebGPU backend (sync readPixels is WebGL-only)');
+    const stub: LuxReport = {
+      at: { x: 0, z: 0, yawDeg: 0 }, room: null,
+      screen: { mean: 0, p05: 0, p50: 0, p95: 0, voidPct: 0, brightPct: 0, zones: [] },
+      sources: [], verdict: 'UNSUPPORTED on WebGPU (sync readback removed)',
+    };
+    for (const cb of pending.splice(0)) cb(stub);
+    return;
+  }
   const w = gl.drawingBufferWidth;
   const h = gl.drawingBufferHeight;
   const buf = new Uint8Array(w * h * 4);

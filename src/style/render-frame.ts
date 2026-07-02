@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isWebGPUReady } from '../scene/renderer-mode';
-import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 
 // WEBGPU: rate-limit render failures to one console line.
@@ -88,19 +88,21 @@ export function getViewmodelRoots(): readonly THREE.Object3D[] {
 }
 
 // PSX post (dither/quantize/scanlines/chromatic/depth-crush/inscatter/bloom)
-// lives in the node pipeline (render-webgpu.ts) and is always on. These flags +
-// setters are legacy A/B toggles that no longer drive anything under WebGPU;
-// kept only for their getters until the callers are cleaned up.
+// lives in the node pipeline (render-webgpu.ts) and is always on in play.
+// These setters forward to REAL pipeline toggles so the GPU-attribution
+// sweep prices what it claims to (a rebuild each way — probe-grade, cheap).
 let bloomEnabled = true;
 let depthCrushEnabled = true;
 let inscatterEnabled = true;
 
 export function setInscatterEnabled(on: boolean): void {
   inscatterEnabled = on;
+  setWebGPUInscatterEnabled(on);
 }
 
 export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
+  setWebGPUDepthCrushEnabled(on);
 }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
@@ -114,11 +116,6 @@ export function setBloomEnabled(on: boolean): void {
 export function getBloomEnabled(): boolean { return bloomEnabled; }
 export function getInscatterEnabled(): boolean { return inscatterEnabled; }
 export function getDepthCrushEnabled(): boolean { return depthCrushEnabled; }
-
-// Viewmodel depth pre-pass toggle — A/B probe only.
-let viewmodelPrepassEnabled = true;
-export function setViewmodelPrepassEnabled(on: boolean): void { viewmodelPrepassEnabled = on; }
-export function getViewmodelPrepassEnabled(): boolean { return viewmodelPrepassEnabled; }
 
 /** Set the scene-render resolution fraction (clamped sane). Driven by the
  *  adaptive-resolution scaler; forwarded to the WebGPU pass downscale. */

@@ -76,6 +76,21 @@ export function setSceneOnly(on: boolean): void {
   sceneOnly = on;
   rebuildWebGPUPipeline();
 }
+// Inscatter / depth-crush — REAL pipeline toggles (rebuild on change) so the
+// GPU-attribution "blit post-fx" probe prices what it claims to (the old
+// render-frame flags went inert in the WebGL removal). Always on in play.
+let inscatterOn = true;
+export function setWebGPUInscatterEnabled(on: boolean): void {
+  if (on === inscatterOn) return;
+  inscatterOn = on;
+  rebuildWebGPUPipeline();
+}
+let crushOn = true;
+export function setWebGPUDepthCrushEnabled(on: boolean): void {
+  if (on === crushOn) return;
+  crushOn = on;
+  rebuildWebGPUPipeline();
+}
 // TONEMAP — the response curve that turns linear HDR light into display values.
 // The WebGL/main path got this for free from renderer.toneMapping = ACESFilmic;
 // the WebGPU path runs NoToneMapping (main.ts) so WITHOUT this node bright torch-
@@ -232,8 +247,28 @@ export function setWebGPUBloomEnabled(on: boolean): void {
   rebuildWebGPUPipeline();
 }
 
-/** Drop the pipeline so the next renderWebGPU rebuilds it. */
-export function rebuildWebGPUPipeline(): void { pipeline = null; scenePass = null; }
+// Retired pipeline pieces awaiting disposal. A rebuild (resize / setting toggle /
+// probe) must FREE the old pass + bloom + AO render targets — RenderPipeline,
+// PassNode, BloomNode, GaussianBlurNode and GTAONode all own GPU render targets
+// and every one has a dispose() — or each rebuild leaks the full post stack
+// (phone rotation alone fires this repeatedly). But we can't dispose while a
+// submit may still reference the textures ("used in submit while destroyed"), so
+// retire now, dispose when the in-flight queue is empty (drainRetired below).
+let disposables: Array<{ dispose?: () => void }> = [];
+let retired: Array<{ dispose?: () => void }> = [];
+function drainRetired(): void {
+  if (inFlight > 0 || retired.length === 0) return;
+  for (const d of retired) { try { d.dispose?.(); } catch { /* best-effort */ } }
+  retired = [];
+}
+
+/** Drop the pipeline so the next renderWebGPU rebuilds it (old one disposed once
+ *  the GPU queue drains). */
+export function rebuildWebGPUPipeline(): void {
+  retired.push(...disposables);
+  disposables = [];
+  pipeline = null; scenePass = null; aoPassRef = null;
+}
 
 // A renderer resize (window or the PIXEL DENSITY / DPR apply, which dispatches
 // 'resize') invalidates the RenderPipeline's pass targets — rebuild so a settings
@@ -244,6 +279,7 @@ if (typeof window !== 'undefined') window.addEventListener('resize', rebuildWebG
 function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
   scenePass = pass(scene, camera);
+  disposables.push(scenePass as any);
   scenePass.setResolutionScale(resScale);
 
   // SSAO: render normals into a second MRT target so GTAO can read depth+normal.
@@ -289,6 +325,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     aoPass.resolutionScale = AO_RES_SCALE;
     aoPass.radius.value = AO_RADIUS;
     aoPass.scale.value = AO_STRENGTH;
+    disposables.push(aoPass);
     aoPassRef = aoPass;
     ssaoAoR = aoPass.getTextureNode().r;
     sceneCA = sceneCA.mul(ssaoAoR);
@@ -312,9 +349,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     const bright: any = (exposed as any).sub((float as any)(BLOOM_THRESHOLD)).max(0);
     const gb: any = (gaussianBlur as any)(bright, null, 6);
     gb.resolutionScale = 0.35;   // soft glow hides the low res (PS1-appropriate)
+    disposables.push(gb);
     bloomPass = (gb as any).mul((float as any)(BLOOM_STRENGTH));
   } else if (bloomEnabled) {
     bloomPass = bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+    disposables.push(bloomPass);
     // PERF: BloomNode sizes its 5-mip chain to the FULL drawing buffer (then /2),
     // but the scene is rendered at resScale (0.4x) — so bloom was processing MORE
     // pixels than the scene has. Scale its targets to ~match the scene; the soft
@@ -333,13 +372,15 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
-  const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
-  lit = lit.mul(crush);
+  if (crushOn) {
+    const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+    lit = lit.mul(crush);
+  }
 
   // FOG INSCATTER — add the bloom colour as glowing air, weighted by distance.
   // Added AFTER crush so the haze isn't darkened by it (surfaces fade, air glows).
   // Only when bloom is on (it's the haze colour source).
-  if (bloomPass) {
+  if (bloomPass && inscatterOn) {
     const fogW = (smoothstep as any)(INSCATTER_START_M, INSCATTER_END_M, distM).mul(INSCATTER_STRENGTH);
     lit = lit.add((bloomPass as any).mul(fogW));
   }
@@ -351,6 +392,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
       renderer as unknown as ConstructorParameters<typeof RenderPipeline>[0],
       node as ConstructorParameters<typeof RenderPipeline>[1],
     );
+    disposables.push(pipeline as any);
   };
   // ?ssao=show — output the raw occlusion (grayscale) so the AO is unmistakable.
   if (SSAO_SHOW && ssaoAoR) { build((vec4 as any)((vec3 as any)(ssaoAoR), 1.0)); return; }
@@ -444,6 +486,7 @@ let inFlight = 0;
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  drainRetired();   // free any rebuilt-away pass/bloom/AO targets once the queue is empty
   ensurePipeline(renderer, scene, camera);
   if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__scenePassInfo) {
     (window as any).__scenePassInfo = () => {
@@ -469,7 +512,19 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
   if (dev) dev.pushErrorScope('validation');
   inFlight++;
-  void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync()
+  // A SYNCHRONOUS throw from renderAsync (a bad node graph faults during setup,
+  // before the promise exists) must not strand the in-flight count — a stranded
+  // count makes every later frame skip (permanent freeze). Decrement + rethrow so
+  // renderWithStyle's rate-limited catch still logs it.
+  let submitted: Promise<void>;
+  try {
+    submitted = (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+  } catch (err) {
+    inFlight--;
+    if (dev) dev.popErrorScope().catch(() => {});
+    throw err;
+  }
+  void submitted
     .then(() => {
       inFlight--;
       // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps
@@ -510,6 +565,7 @@ export function isWarmingUp(): boolean { return warmingUp; }
 export async function warmRenderWebGPU(
   renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
 ): Promise<void> {
+  drainRetired();
   ensurePipeline(renderer, scene, camera);
   warmingUp = true;
   try {

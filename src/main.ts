@@ -55,7 +55,7 @@ import { renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, set
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
+import { uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './style/banded-lighting-webgpu';
@@ -144,9 +144,9 @@ import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
-import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs } from './scene/adaptive-resolution';
+import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs, setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { lastWebGPUGpuMs, setWebGPULeanBloom, warmSceneCompile } from './style/render-webgpu';
-import { pacerShouldDraw } from './scene/frame-pacer';
+import { pacerShouldDraw, pacerEffectiveFps } from './scene/frame-pacer';
 import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { isLoading } from './scene/loading-gate';
@@ -267,6 +267,11 @@ let renderer: THREE.WebGLRenderer;
   wgpu.init()
     .then(() => {
       setWebGPUReady(true);
+      // On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
+      // (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
+      // with no signal at all — arm its wall-clock fallback there (valid because
+      // that backend submits synchronously, so rAF intervals reflect GPU load).
+      setAdaptiveWallClockFallback(!!(wgpu.backend as unknown as { isWebGLBackend?: boolean })?.isWebGLBackend);
       // DEV: detect pipeline compiles (renderer.info has no .programs on WebGPU) so
       // post-warmup compiles (warm gaps) are visible. window.__compileStats().
       installWebGPUCompileGuard((wgpu.backend as unknown as { device?: unknown })?.device);
@@ -401,7 +406,6 @@ if (import.meta.env.DEV) initAiGizmos(scene);   // DEV facing gizmos (?aigizmos=
 // LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
 // frame. Wired early so the render system's flushLux has its refs.
 initLux(camera, () => currentLevel?.spec ?? null);
-initSplatMap();   // the floor's gore memory (scene/splat-map.ts)
 // Blade trail mesh attaches to the world scene root (NOT the camera) so it
 // reads in world space and depth-tests correctly against geometry. Persistent
 // across levels — one buffer, dynamic updates.
@@ -1725,7 +1729,7 @@ function tickInner() {
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone). The
   // rAF interval can't see GPU load (skip-pacing pins it to vsync), so feed the
   // real GPU-timestamp ms.
-  tickAdaptiveResolution(performance.now());
+  tickAdaptiveResolution(performance.now(), 1000 / pacerEffectiveFps(frameCap));
   feedAdaptiveGpuMs(lastWebGPUGpuMs());
   tickCombatDebug(realDt, currentLevel?.enemies ?? []);
   tickGoreDebug();
