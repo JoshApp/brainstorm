@@ -1614,18 +1614,43 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'sphere', joint: 'kneeR', radius: 0.031, mat: 'bone' },
         { kind: 'box', joint: 'footL', size: [0.06, 0.035, 0.17], pos: [0, 0.02, -0.045], mat: 'bone' },
         { kind: 'box', joint: 'footR', size: [0.06, 0.035, 0.17], pos: [0, 0.02, -0.045], mat: 'bone' },
-        // ── Skull: a slightly elongated cranium, sunken sockets with the
-        //    eye-lights set deep, a hollow nasal cavity, and a hinged jaw. ──
-        { kind: 'sphere', joint: 'head', radius: 0.115, scale: [0.86, 1.02, 1.14], jitter: 0.008, mat: 'bone' },
-        { kind: 'sphere', joint: 'head', radius: 0.046, pos: [-0.05, 0.014, -0.078], mat: 'socket' },
-        { kind: 'sphere', joint: 'head', radius: 0.046, pos: [0.05, 0.014, -0.078], mat: 'socket' },
-        // Eye-lights set proud in the socket openings so they actually glow.
-        { kind: 'sphere', joint: 'head', radius: 0.024, pos: [-0.05, 0.014, -0.116], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.024, pos: [0.05, 0.014, -0.116], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.022, scale: [0.7, 1.2, 1], pos: [0, -0.04, -0.11], mat: 'socket' },
-        // Upper teeth ridge + hinged jaw.
-        { kind: 'box', joint: 'head', size: [0.09, 0.022, 0.05], pos: [0, -0.072, -0.07], mat: 'bone' },
-        { kind: 'box', joint: 'head', size: [0.12, 0.05, 0.12], pos: [0, -0.105, -0.025], mat: 'bone' },
+        // ── Skull: CSG-carved. The old skull was a sphere with black balls
+        //    painted on and the eye-lights set PROUD of them — googly. Real
+        //    sockets are SUBTRACTED craters whose rims catch the room's light
+        //    (this is where the PAINTED bone material earns the carve), with
+        //    the glints recessed INSIDE — eyes burning out of holes, not
+        //    stickers. Crisp, no jitter: bone is the hard thing here.
+        {
+          kind: 'csg', op: 'subtract', joint: 'head', mat: 'bone',
+          a: {
+            kind: 'csg', op: 'subtract', mat: 'bone',
+            // Elongated cranium, flattened at the sides.
+            a: { kind: 'sphere', radius: 0.115, scale: [0.86, 1.02, 1.14], segments: [24, 18], mat: 'bone' },
+            // Left socket crater.
+            b: { kind: 'sphere', radius: 0.042, pos: [-0.048, 0.02, -0.1], segments: [18, 14], mat: 'bone' },
+          },
+          // Right socket crater.
+          b: { kind: 'sphere', radius: 0.042, pos: [0.048, 0.02, -0.1], segments: [18, 14], mat: 'bone' },
+        },
+        // Darkness pooled in the carved pits; the glints sit deeper than the
+        // skull's front face so they read as coming from inside.
+        { kind: 'sphere', joint: 'head', radius: 0.034, pos: [-0.048, 0.02, -0.09], mat: 'socket' },
+        { kind: 'sphere', joint: 'head', radius: 0.034, pos: [0.048, 0.02, -0.09], mat: 'socket' },
+        { kind: 'sphere', joint: 'head', radius: 0.016, pos: [-0.048, 0.02, -0.112], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.016, pos: [0.048, 0.02, -0.112], mat: 'eyes' },
+        // Nasal aperture — a narrow dark wedge, wider at the base.
+        { kind: 'box', joint: 'head', size: [0.026, 0.05, 0.02], pos: [0, -0.038, -0.121], rot: [0.1, 0, 0], mat: 'socket' },
+        // Cheekbone knots under the sockets — the zygomatic shadow line.
+        { kind: 'sphere', joint: 'head', radius: 0.022, pos: [-0.077, -0.022, -0.075], mat: 'bone' },
+        { kind: 'sphere', joint: 'head', radius: 0.022, pos: [0.077, -0.022, -0.075], mat: 'bone' },
+        // Upper teeth ridge with a dark seam under it.
+        { kind: 'box', joint: 'head', size: [0.088, 0.024, 0.05], pos: [0, -0.075, -0.085], mat: 'bone' },
+        { kind: 'box', joint: 'head', size: [0.084, 0.008, 0.048], pos: [0, -0.089, -0.086], mat: 'socket' },
+        // Mandible — hangs open and a few degrees OFF TRUE (nothing living
+        // holds a jaw like that): chin bar + two rami running back and up.
+        { kind: 'box', joint: 'head', size: [0.084, 0.03, 0.05], pos: [0.006, -0.125, -0.08], rot: [0.22, 0.08, 0.03], mat: 'bone' },
+        { kind: 'box', joint: 'head', size: [0.02, 0.028, 0.1], pos: [-0.045, -0.115, -0.03], rot: [0.34, 0.08, 0], mat: 'bone' },
+        { kind: 'box', joint: 'head', size: [0.02, 0.028, 0.1], pos: [0.055, -0.112, -0.03], rot: [0.3, 0.12, 0], mat: 'bone' },
       ],
     },
     baseEyeEmissive: 2.4,

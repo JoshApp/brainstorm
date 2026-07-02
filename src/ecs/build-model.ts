@@ -872,6 +872,12 @@ function buildCsg(
   // Replace the result's material with the CSG spec's chosen one and
   // free the operand geometries — they're no longer referenced.
   result.material = materials.get(part.mat)!;
+  // The evaluator only carries position/uv/normal through the boolean — a
+  // reveal material's per-vertex aReveal* attributes are lost, and a later
+  // same-material merge (mergeRigidSegments) rejects the mixed attribute
+  // sets. Stamp them on the result exactly like makeMesh does.
+  const reveal = revealOf(result.material);
+  if (reveal) setRevealAttributes(result.geometry, reveal);
   geoA.dispose();
   geoB.dispose();
   result.castShadow = part.castShadow ?? curShadow.cast;
