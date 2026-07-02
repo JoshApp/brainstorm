@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The dark holds the door a breath longer, and opens onto a finished room.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The dark no longer shows its scaffolding — descents cut clean to black, and the menu keeps its secrets.",
         "area": [
           "ui",
@@ -390,14 +397,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "tech",
           "combat"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The descent now lays the whole floor bare to itself before it lets you in — you arrive to a world already carved, no stutter as it forms.",
-        "area": [
-          "tech",
-          "level"
         ]
       }
     ]

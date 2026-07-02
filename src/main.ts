@@ -1687,12 +1687,18 @@ if (handleDebugScreenFlags()) {
     const _t0 = performance.now();
     try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
-    // CLEAN FRAME before the veil drops. The warm presents its subjects to the
-    // (covered) canvas, and the canvas HOLDS that last warm frame until the
-    // live loop actually submits again — under the frame cap, rAF ticks alone
-    // don't guarantee that (skipped draws). Wait for two REAL presents so the
-    // reveal always lands on the title, never the warm leftovers.
+    // CLEAN FRAME before the veil drops — two layers, because the artifact
+    // (warm leftovers / half-compiled title visible through the fading veil)
+    // is worse than an extra beat of black:
+    //  1. Wait for the pipeline-compile count to go QUIET again (the title's
+    //     own late compiles land in the first live frames after the warm; in
+    //     prod, where there's no counter, this is a short fixed budget).
+    //  2. Then wait for two REAL presented frames (rAF ticks alone don't
+    //     prove a submit under the frame cap) so the canvas provably shows
+    //     the settled title, never the last warm frame.
     await waitForPresentedFrames(2, 1500);
+    await settleCompiles(2000);
+    await waitForPresentedFrames(2, 1000);
     // (The deferred warm STREAM deliberately does NOT start here — it draws its
     // subjects in live frames, which would flash pool effects over the menu.
     // It starts after the first real floor reveals — see onLoaded.)
