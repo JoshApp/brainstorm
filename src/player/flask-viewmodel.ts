@@ -34,12 +34,16 @@ const CANCEL_OUT_S = 0.14;    // seconds to drop out of frame on cancel
 
 let group: THREE.Group | null = null;
 let elixirMat: THREE.MeshStandardMaterial | null = null;
+let elixirMesh: THREE.Object3D | null = null;
 let glow: THREE.Sprite | null = null;
 let glowBaseOpacity = 0;
 let shown = 0;          // 0 hidden → 1 posed; springs toward the drink state
 let sipFlash = 0;       // decaying pulse kicked when the sip lands
 let sawSip = false;
-let baseEmissive = 2.0;
+// The LIGHT inside the bulb — eased toward charges/capacity, so the swallow
+// visibly drains it (the charge is spent at the sip; this chases it).
+let displayFill = 1;
+const ELIXIR_Y = 0.066;   // the elixir part's authored centre (loot-models.ts)
 
 function smoothstep(a: number, b: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -66,7 +70,7 @@ function makeGlowTexture(): THREE.Texture {
 /** Build the flask + glow with the viewmodel material treatment (depth-test
  *  off, high renderOrder — same trick as sword/lamp/offhand so it never clips
  *  into walls). Shared by the live attach and the warmup hook. */
-function buildFlaskGroup(): { group: THREE.Group; elixir: THREE.MeshStandardMaterial; glow: THREE.Sprite } {
+function buildFlaskGroup(): { group: THREE.Group; elixir: THREE.MeshStandardMaterial; elixirMesh: THREE.Object3D | null; glow: THREE.Sprite } {
   const built = buildModel(ESTUS_FLASK);
   const g = built.group;
   g.traverse((obj) => {
@@ -97,7 +101,7 @@ function buildFlaskGroup(): { group: THREE.Group; elixir: THREE.MeshStandardMate
   sprite.position.set(0, 0.07, 0);   // centered on the bulb
   sprite.renderOrder = 998;
   g.add(sprite);
-  return { group: g, elixir, glow: sprite };
+  return { group: g, elixir, elixirMesh: built.parts.get('elixir') ?? null, glow: sprite };
 }
 
 function ensureBuilt(camera: THREE.Camera): void {
@@ -105,8 +109,11 @@ function ensureBuilt(camera: THREE.Camera): void {
   const built = buildFlaskGroup();
   group = built.group;
   elixirMat = built.elixir;
+  elixirMesh = built.elixirMesh;
   glow = built.glow;
   group.visible = false;
+  const f = getFlask();
+  displayFill = f.capacity > 0 ? f.charges / f.capacity : 0;
   camera.add(group);
   registerViewmodel(group);   // near-depth pass (see render-target.ts)
 }
@@ -147,15 +154,24 @@ export function tickFlaskViewmodel(camera: THREE.Camera, dt: number): void {
   const tip = smoothstep(RAISE_END, CONFIG.FLASK.SIP_AT, p);
   group.rotation.set(HIDDEN_ROT_X + (DRINK_TILT_X - HIDDEN_ROT_X) * tip * lift, 0.25 * lift, -0.12 * lift);
 
-  // The light: base glow tracks how much is left in the flask (a low flask is
-  // a dim flask), swells while raised, FLARES at the sip.
+  // The light inside: eased toward charges/capacity, so the swallow visibly
+  // DRAINS it — the orb of light shrinks toward the bulb's bottom and dims,
+  // gone entirely on the last charge. It flares once at the sip, then what
+  // remains settles smaller.
   if (drinking && !sawSip && hasSipLanded()) { sawSip = true; sipFlash = 1; }
   sipFlash = Math.max(0, sipFlash - dt * 3.2);
   const f = getFlask();
-  const fillFrac = f.capacity > 0 ? f.charges / f.capacity : 0;
-  baseEmissive = 1.1 + fillFrac * 1.3;
-  elixirMat.emissiveIntensity = baseEmissive + sipFlash * 3.0;
-  glowBaseOpacity = 0.25 * lift;
+  const targetFill = f.capacity > 0 ? f.charges / f.capacity : 0;
+  displayFill += (targetFill - displayFill) * Math.min(1, dt / 0.45);
+  if (Math.abs(targetFill - displayFill) < 0.005) displayFill = targetFill;
+  if (elixirMesh) {
+    const s = 0.3 + 0.7 * displayFill;   // never a point — a low flask is a small ember
+    elixirMesh.scale.setScalar(s);
+    elixirMesh.position.y = ELIXIR_Y - (1 - s) * 0.028;   // the light settles as it drains
+    elixirMesh.visible = displayFill > 0.02;              // spent flask = dark glass
+  }
+  elixirMat.emissiveIntensity = 0.6 + displayFill * 1.9 + sipFlash * 3.0;
+  glowBaseOpacity = 0.25 * lift * (0.25 + 0.75 * displayFill);
   (glow.material as THREE.SpriteMaterial).opacity = Math.min(1, glowBaseOpacity + sipFlash * 0.7);
   glow.scale.setScalar(0.26 + sipFlash * 0.14);
 }
@@ -174,7 +190,7 @@ export function disposeFlaskViewmodel(): void {
       mesh.geometry?.dispose();
     }
   });
-  group = null; elixirMat = null; glow = null; shown = 0;
+  group = null; elixirMat = null; elixirMesh = null; glow = null; shown = 0;
 }
 
 // Warmup — the flask's viewmodel materials (depth-test-off transparent

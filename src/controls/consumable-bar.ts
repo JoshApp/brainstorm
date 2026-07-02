@@ -315,13 +315,13 @@ function ensureFlaskButton(): void {
   updateFlaskButton();
 }
 
-/** Redraw the flask — the LIQUID LEVEL tracks charges/capacity (drains as you
- *  drink, a stateful read only vector UI can do), plus the pips + rim state. */
+/** Redraw the flask — the icon stays bare glass; the PIPS carry the charge
+ *  count and the border/glow warms with how charged it is. */
 function updateFlaskButton(): void {
   if (!flaskEl || !flaskPips) return;
   const { charges, capacity } = getFlask();
   const frac = capacity > 0 ? charges / capacity : 0;
-  if (flaskIcon) flaskIcon.innerHTML = estusFlaskSvg(frac, 42);
+  if (flaskIcon && !flaskIcon.innerHTML) flaskIcon.innerHTML = estusFlaskSvg(42);
   // One pip per capacity: a lit gold ember while the charge is held, a dark
   // hollow once it's spent. Shards growing capacity grow the row.
   const lit = `background:${hexCss(ESTUS_GOLD)};box-shadow:0 0 4px ${hexRgba(ESTUS_GOLD, 0.9)};border:1px solid rgba(255,224,150,0.9)`;
@@ -537,46 +537,21 @@ function flaskSvg(tint: number, px: number): string {
   </svg>`;
 }
 
-// ── The Estus flask icon — a round-bottomed apothecary flask with an IRON
-// collar, filled with GOLDEN LIGHT to the charge level (the Elden Ring
-// register: the liquid IS light, not medicine). `fillFrac` (0..1 =
-// charges/capacity) sets the liquid surface height, so drinking visibly drops
-// the level and an empty flask reads as bare glass. A radial glow blooms from
-// the liquid and dims with it. This dynamic, per-state render is exactly what
-// a raster/AI-art icon can't do — the case for keeping functional UI
-// procedural (see the UI-pipeline note).
-function estusFlaskSvg(fillFrac: number, px: number): string {
-  const f = Math.max(0, Math.min(1, fillFrac));
-  const liquid = hexCss(ESTUS_GOLD);
-  const liquidBright = '#ffd98a';
+// ── The Estus flask icon — an EMPTY round-bottomed apothecary flask with an
+// IRON collar. The glass is deliberately bare: the charge PIPS below the icon
+// carry the count, and the button's gold border/glow (updateFlaskButton)
+// carries the "how charged" read — the icon is the vessel, not the gauge.
+function estusFlaskSvg(px: number): string {
   const glass = 'rgba(220,226,236,0.50)';
   const glassFill = 'rgba(220,226,236,0.07)';
-  // Round-bottomed bulb; the clip keeps liquid + iron band inside the glass.
+  // Round-bottomed bulb; the clip keeps the iron band inside the glass.
   const bulb = 'M9.6 8 L14.4 8 C16 11 20 13 20 18.5 C20 23 16.4 26.5 12 26.5 C7.6 26.5 4 23 4 18.5 C4 13 8 11 9.6 8 Z';
-  const surfaceY = 26 - f * 15;   // liquid top: y=11 (full) → y=26 (empty)
   const uid = 'estus-clip';
-  const gid = 'estus-glow';
-  const lid = 'estus-liquid';
   return `<svg viewBox="0 0 24 28" width="${px}" height="${(px * 28) / 24}" aria-hidden="true">
-    <defs>
-      <clipPath id="${uid}"><path d="${bulb}"/></clipPath>
-      <radialGradient id="${gid}" cx="50%" cy="68%" r="55%">
-        <stop offset="0%" stop-color="${liquidBright}" stop-opacity="${(0.85 * f).toFixed(2)}"/>
-        <stop offset="55%" stop-color="${liquid}" stop-opacity="${(0.35 * f).toFixed(2)}"/>
-        <stop offset="100%" stop-color="${liquid}" stop-opacity="0"/>
-      </radialGradient>
-      <linearGradient id="${lid}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${liquidBright}"/>
-        <stop offset="100%" stop-color="${liquid}"/>
-      </linearGradient>
-    </defs>
-    ${f > 0 ? `<circle cx="12" cy="19" r="11" fill="url(#${gid})"/>` : ''}
+    <defs><clipPath id="${uid}"><path d="${bulb}"/></clipPath></defs>
     <rect x="9" y="0.5" width="6" height="3.2" rx="0.8" fill="#5a3d22" stroke="#3a2614" stroke-width="0.4"/>
     <rect x="9.7" y="3.4" width="4.6" height="4.8" fill="${glassFill}" stroke="${glass}" stroke-width="0.7"/>
     <path d="${bulb}" fill="${glassFill}" stroke="${glass}" stroke-width="0.9"/>
-    ${f > 0 ? `<rect x="0" y="${surfaceY.toFixed(1)}" width="24" height="28" fill="url(#${lid})" opacity="0.92" clip-path="url(#${uid})"/>
-    <ellipse cx="12" cy="${surfaceY.toFixed(1)}" rx="7.5" ry="0.9" fill="${liquidBright}" clip-path="url(#${uid})"/>
-    <circle cx="12" cy="${Math.min(24, surfaceY + 4).toFixed(1)}" r="2.2" fill="${liquidBright}" opacity="0.55" clip-path="url(#${uid})"/>` : ''}
     <rect x="3.5" y="16.6" width="17" height="2.6" fill="rgba(28,24,22,0.92)" clip-path="url(#${uid})"/>
     <circle cx="6.6" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
     <circle cx="17.4" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>

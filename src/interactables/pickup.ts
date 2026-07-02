@@ -11,7 +11,8 @@ import { tryAutoEquip } from '../player/equipment';
 import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
-import { playLootLand, playPickupChime, playDenied } from '../audio/sfx';
+import { playLootLand, playPickupChime, playDenied, playFlaskUncork } from '../audio/sfx';
+import { getFlask, addCharges, addCapacity } from '../player/flask';
 import { flashPickupGlow } from '../ui/vignette';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/active-level';
@@ -235,6 +236,14 @@ export function createPickup(
     // takeable item. (onUse still surfaces the "carry no more" message if
     // the potion is the only thing here.)
     canUse() {
+      // Flask items feed the flask directly on pickup (no bag stop): a shard
+      // always fuses; a draught pours unless the flask is already full, in
+      // which case it pockets like a normal consumable (waste nothing).
+      if (item.consumableFlaskCapacity != null) return true;
+      if (item.consumableFlaskCharges != null) {
+        const f = getFlask();
+        if (f.charges < f.capacity) return true;
+      }
       return !(item.kind === 'consumable' && isAtCarryLimit(item.id));
     },
     // Consumables are decision-free — grab them on walk-over, no tap. Gear stays
@@ -242,6 +251,33 @@ export function createPickup(
     // gate (canUse) means a full bag leaves the potion on the floor for later.
     autoPickup: item.kind === 'consumable',
     onUse() {
+      // Flask SHARD — fuses into the flask the moment it's touched: +capacity,
+      // the new pip arriving filled. Never enters the bag; growth is the event.
+      if (item.consumableFlaskCapacity != null) {
+        addCapacity(item.consumableFlaskCapacity, true);
+        showInWorldMessage('The flask grows deeper.');
+        const rarityIdx = RARITY_INDEX[item.rarity ?? 'mundane'];
+        playPickupChime(rarityIdx);
+        pickupHaptic(rarityIdx);
+        flashPickupGlow(rarityIdx);
+        emit({ type: 'item:picked-up', itemId: item.id });
+        interactable.destroyed = true;
+        return;
+      }
+      // Flask DRAUGHT — pours straight into the flask when there's room
+      // (a lit pip, no tap). At a full flask it falls through and pockets.
+      if (item.consumableFlaskCharges != null) {
+        const f = getFlask();
+        if (f.charges < f.capacity) {
+          addCharges(item.consumableFlaskCharges);
+          showInWorldMessage('The flask accepts it.');
+          playFlaskUncork();
+          pickupHaptic(RARITY_INDEX[item.rarity ?? 'mundane']);
+          emit({ type: 'item:picked-up', itemId: item.id });
+          interactable.destroyed = true;
+          return;
+        }
+      }
       // Carry cap (consumables): if full, leave the pickup on the ground and
       // tell the player — no chime, no destroy, so they can grab it later.
       if (item.kind === 'consumable' && isAtCarryLimit(item.id)) {
