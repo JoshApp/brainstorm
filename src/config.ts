@@ -335,7 +335,13 @@ export const CONFIG = {
   },
 
   // === RENDER ===
-  PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
+  // Desktop (debug) DPR cap. Was 2 ("crisp"), but the GPU attribution sweep
+  // priced the >1.0 canvas fill at 52% of the whole desktop frame (7.9ms of
+  // 15ms at DPR 1.5) — and all it buys on a 0.4x-scene PSX image is finer
+  // dither grain. The DOM HUD is CSS (unaffected by canvas DPR); the coarser
+  // Bayer/quantize at 1.0 is if anything more on-aesthetic. Halves the debug
+  // frame cost and steadies the frame-time readouts.
+  PIXEL_RATIO_CAP: 1,
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x
   // DPR panel renders 4x the pixels of 1x. This is the SINGLE biggest lever
   // against fill cost — and uniquely it scales the full-res PSX blit too (the

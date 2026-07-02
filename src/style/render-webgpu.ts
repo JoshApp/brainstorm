@@ -513,7 +513,17 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
 // degenerated to `await init(); render()` — resolving at SUBMIT, same microtask —
 // so the cap had silently stopped skipping. onSubmittedWorkDone restores the
 // designed semantics (true GPU completion) and outlives the deprecated API.
-const MAX_IN_FLIGHT = 1;
+// 2, not 1 (2026-07-02): with the FRAME CAP pacing submits (60 default — phones
+// always run capped), submissions are already spaced ≥ a cap period, so 2-in-flight
+// is classic double buffering, not the bursty fill-then-drain the note above fears
+// (that analysis assumed uncapped rAF-rate submission). At 1, the completion
+// round-trip (onSubmittedWorkDone lands a browser task AFTER the GPU finishes)
+// regularly overshoots the next paced draw slot, which then gets DROPPED — the
+// measured result was a hard ~30fps lock at a 60 cap with the GPU only ~8ms busy
+// (present p50 33.8ms → 16.8ms with the gate off). 2 hides the round-trip while
+// still bounding the queue. ?inflight1=1 restores the old serialization for A/B.
+const MAX_IN_FLIGHT = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('inflight1') === '1' ? 1 : 2;
 let inFlight = 0;
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
@@ -543,6 +553,10 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   // this localizes them to the PSX pass + the frame that triggered them.
   const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
   if (dev) dev.pushErrorScope('validation');
+  // Whether the GPU queue was empty at this submit — the no-timestamp fallback
+  // below only trusts submit→completion wall-clock as a GPU-cost proxy then
+  // (with another frame queued ahead, the wall-clock includes its wait too).
+  const soloSubmit = inFlight === 0;
   inFlight++;
   presentedFrames++;   // a real submit is happening (the skip paths returned above)
   // A SYNCHRONOUS throw (a bad node graph faults during encode) must not strand
@@ -577,10 +591,10 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     }
     // FALLBACK GPU-load signal — WebGPU adapters WITHOUT timestamp-query
     // (backend.trackTimestamp forced false there): submit→completion wall-clock.
-    // With MAX_IN_FLIGHT=1 exactly one frame is in the queue, so this ≈ the GPU
-    // frame cost — coarser than a timestamp, but real where the adaptive scaler
-    // would otherwise be blind.
-    if (backend?.isWebGPUBackend && backend.trackTimestamp === false) {
+    // Only trusted when this submit found the queue EMPTY (soloSubmit) — with a
+    // frame queued ahead (in-flight 2) the wall-clock includes its wait, which
+    // would over-read GPU cost and make the adaptive scaler over-shrink.
+    if (soloSubmit && backend?.isWebGPUBackend && backend.trackTimestamp === false) {
       lastGpuMs = performance.now() - t0;
     }
     if (dev) dev.popErrorScope().then((err: any) => {
