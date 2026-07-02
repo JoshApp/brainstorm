@@ -4,6 +4,52 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 25",
+    "date": "2026-07-02",
+    "entries": [
+      {
+        "tag": "tech",
+        "text": "The renderer no longer runs ahead of the deep; frames land in step again.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Torches cast their shadows again when you ask for them, and crowded halls keep their farthest fires lit.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The flask runs on golden light now, and drinking it takes a moment you must survive.",
+        "area": [
+          "combat",
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The oozes are see-through again. What floats inside never stopped watching.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Corpses bleed out beneath themselves again, and the dungeon returns the memory it hoarded each time you turned your phone.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 24",
     "date": "2026-07-01",
     "entries": [
@@ -358,50 +404,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The floor and the walls remember now — blood pools where you spill it and runs down the stone. The deep keeps the stains.",
         "area": [
           "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Strike one of a kind and only it flares — its kin no longer flinch in sympathy.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Slay one of a kind and its kin no longer rot in sympathy. The dead keep their dissolution to themselves.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dead stay dead and the living stay visible. Killing one of a kind no longer unmakes the rest.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 20",
-    "date": "2026-06-27",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "Spitting projectiles stopped lighting the room. The dark prefers them dim, and they were never the signal.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The torches cost the dark less to keep burning now. Nothing looks different; the frames come easier.",
-        "area": [
           "atmosphere"
         ]
       }
