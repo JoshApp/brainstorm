@@ -1284,10 +1284,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'stoneguard',
       archetype: 'biped',
-      proportions: { height: 1.95, girth: 0.36, armLength: 0.86 },
+      // Slight hunch: a caryatid still braced under a load that's gone. Kills
+      // the toy-robot uprightness (bolt-upright is the SKELETON's gesture).
+      proportions: { height: 1.95, girth: 0.36, armLength: 0.86, hunch: 0.1 },
       materials: {
         stone: { color: 0x3a3530, roughness: 1, flatShading: 'auto' },
-        dark: { color: 0x222019, roughness: 1, flatShading: 'auto' },   // recesses / joints
+        dark: { color: 0x222019, roughness: 1, flatShading: 'auto' },   // recesses / chips / joints
+        // The molten core, glimpsed through the chest fissure at rest — barely
+        // an ember (the stagger-opened core zone is the real reveal). Not a rim,
+        // not a glow: a crack of heat in an ABSORBED body, kin to its eyes.
+        ember: { color: 0x1a0c08, emissive: 0xff4020, emissiveIntensity: 0.55 },
         eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 1.4 },
       },
       eyes: { material: 'eyes', emissive: 1.4 },
@@ -1296,42 +1302,73 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { id: 'core', shape: { kind: 'sphere', center: [0, 0, -0.26], radius: 0.3 },
           role: 'weak', damageMul: 1.4, openWhenStaggered: true, follow: 'spine' },
       ],
+      // BROKEN CARYATID — a temple guardian torn from its architrave. Nothing
+      // about it is manufactured-symmetric: the chest blocks sit a few degrees
+      // out of true (stacked masonry, not a torso), one shoulder still carries
+      // the broken CAPITAL it once held up, the other is chipped to a stub, the
+      // right arm is the great smashing arm, the left ends in a broken stump.
+      // Dark inset blocks read as missing bites in silhouette; the ember
+      // fissure across the chest promises what the stagger opens.
       skin: [
-        // Torso — a layered chest block + a raised front plate, bevelled so the
-        // torchlight catches the edges.
-        { kind: 'box', joint: 'spine', size: [0.84, 0.94, 0.56], bevel: 0.05, mat: 'stone' },
-        { kind: 'box', joint: 'spine', size: [0.62, 0.5, 0.16], pos: [0, 0.08, -0.3], bevel: 0.04, mat: 'dark' },
-        { kind: 'box', joint: 'pelvis', size: [0.7, 0.44, 0.5], bevel: 0.04, mat: 'stone' },
-        { kind: 'cylinder', joint: 'neck', radius: 0.15, height: 0.16, mat: 'dark' },
-        // Head — a clean stone skull, glowing eyes on the front face (the brow
-        // + jaw blocks were occluding the eyes, so they're gone).
-        { kind: 'box', joint: 'head', size: [0.44, 0.46, 0.46], bevel: 0.06, mat: 'stone' },
-        { kind: 'sphere', joint: 'head', radius: 0.055, pos: [-0.12, 0.03, -0.24], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.055, pos: [0.12, 0.03, -0.24], mat: 'eyes' },
-        // Shoulders — big angled pauldrons.
-        { kind: 'box', joint: 'shoulderL', size: [0.38, 0.36, 0.44], rot: [0, 0, 0.18], bevel: 0.05, mat: 'stone' },
-        { kind: 'box', joint: 'shoulderR', size: [0.38, 0.36, 0.44], rot: [0, 0, -0.18], bevel: 0.05, mat: 'stone' },
-        // Arms — thick stone, dark elbow joints, blocky fists.
-        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.13, mat: 'stone' },
-        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.11, mat: 'stone' },
-        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.13, mat: 'stone' },
-        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.11, mat: 'stone' },
-        { kind: 'sphere', joint: 'elbowL', radius: 0.13, mat: 'dark' },
-        { kind: 'sphere', joint: 'elbowR', radius: 0.13, mat: 'dark' },
-        { kind: 'box', joint: 'handL', size: [0.2, 0.2, 0.2], bevel: 0.04, mat: 'stone' },
-        { kind: 'box', joint: 'handR', size: [0.22, 0.22, 0.22], bevel: 0.04, mat: 'stone' },
-        // Legs — thick, with knee guards and slab feet.
+        // Torso — two masonry courses, each rotated slightly off true so the
+        // stack reads BROKEN, not built. Bevels catch the torchlight.
+        { kind: 'box', joint: 'spine', size: [0.84, 0.58, 0.56], pos: [0, 0.20, 0], rot: [0, 0.06, 0.03], bevel: 0.05, mat: 'stone' },
+        { kind: 'box', joint: 'spine', size: [0.78, 0.46, 0.52], pos: [0.03, -0.28, 0], rot: [0, -0.05, -0.04], bevel: 0.05, mat: 'stone' },
+        // Missing bite — a dark block sunk into the upper-right chest corner.
+        { kind: 'box', joint: 'spine', size: [0.26, 0.22, 0.3], pos: [0.34, 0.38, -0.14], rot: [0.3, 0.4, 0.2], mat: 'dark' },
+        // Chest fissure — a jagged crack, not a line: three short ember shards
+        // staggered along the diagonal, each at its own angle, sunk in a dark
+        // gash. Reads as heat escaping the masonry, not paint on it.
+        { kind: 'box', joint: 'spine', size: [0.08, 0.34, 0.05], pos: [-0.05, -0.08, -0.27], rot: [0, 0, 0.38], mat: 'dark' },
+        { kind: 'box', joint: 'spine', size: [0.07, 0.3, 0.05], pos: [-0.14, -0.36, -0.27], rot: [0, 0, 0.6], mat: 'dark' },
+        { kind: 'box', joint: 'spine', size: [0.03, 0.2, 0.05], pos: [-0.03, -0.04, -0.278], rot: [0, 0, 0.35], mat: 'ember' },
+        { kind: 'box', joint: 'spine', size: [0.025, 0.14, 0.05], pos: [-0.09, -0.24, -0.278], rot: [0, 0, 0.55], mat: 'ember' },
+        { kind: 'box', joint: 'spine', size: [0.03, 0.16, 0.05], pos: [-0.17, -0.42, -0.278], rot: [0, 0, 0.62], mat: 'ember' },
+        // Pelvis course + hanging carved apron slab (two dark grooves = fluting).
+        { kind: 'box', joint: 'pelvis', size: [0.7, 0.44, 0.5], rot: [0, 0.04, 0], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'pelvis', size: [0.4, 0.5, 0.12], pos: [0, -0.3, -0.2], bevel: 0.03, mat: 'stone' },
+        { kind: 'box', joint: 'pelvis', size: [0.05, 0.44, 0.04], pos: [-0.09, -0.3, -0.265], mat: 'dark' },
+        { kind: 'box', joint: 'pelvis', size: [0.05, 0.44, 0.04], pos: [0.1, -0.3, -0.265], mat: 'dark' },
+        // Head — a weathered stele SUNK between the shoulders (no neck gap), a
+        // heavy brow ledge overhanging so the eyes burn out of real shadow.
+        { kind: 'box', joint: 'head', size: [0.4, 0.5, 0.44], pos: [0, -0.1, 0.02], rot: [0, -0.07, 0], bevel: 0.06, mat: 'stone' },
+        { kind: 'box', joint: 'head', size: [0.44, 0.12, 0.5], pos: [0, 0.08, 0], rot: [0.08, -0.07, 0], bevel: 0.04, mat: 'stone' },  // brow ledge
+        { kind: 'box', joint: 'head', size: [0.36, 0.1, 0.08], pos: [0, -0.02, -0.2], mat: 'dark' },  // eye shadow recess
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.11, -0.02, -0.23], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.11, -0.02, -0.23], mat: 'eyes' },
+        // Left shoulder — still carrying its broken CAPITAL: an impost block
+        // with a lip, tilted, too big for the body. The load is gone; it isn't.
+        { kind: 'box', joint: 'shoulderL', size: [0.5, 0.3, 0.52], pos: [-0.06, 0.14, 0], rot: [0, 0.1, 0.12], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'shoulderL', size: [0.58, 0.12, 0.6], pos: [-0.08, 0.3, 0], rot: [0, 0.1, 0.1], bevel: 0.03, mat: 'stone' },
+        // Right shoulder — chipped to a stub, one dark bite out of the corner.
+        { kind: 'box', joint: 'shoulderR', size: [0.32, 0.26, 0.38], rot: [0, 0, -0.24], bevel: 0.05, mat: 'stone' },
+        { kind: 'box', joint: 'shoulderR', size: [0.18, 0.16, 0.2], pos: [0.12, 0.12, 0.1], rot: [0.5, 0.3, 0.4], mat: 'dark' },
+        // Arms — RIGHT is the smashing arm (thick, ends in a column-drum fist);
+        // LEFT is wasted and ends in a broken stump. Dark elbow joints stay.
+        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.15, mat: 'stone' },
+        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.13, mat: 'stone' },
+        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.10, mat: 'stone' },
+        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.085, mat: 'stone' },
+        { kind: 'sphere', joint: 'elbowL', radius: 0.10, mat: 'dark' },
+        { kind: 'sphere', joint: 'elbowR', radius: 0.14, mat: 'dark' },
+        // Right fist — a squared column drum, the maul it never needed.
+        { kind: 'cylinder', joint: 'handR', radius: 0.17, height: 0.3, rot: [0.35, 0, 0], mat: 'stone' },
+        { kind: 'box', joint: 'handR', size: [0.1, 0.1, 0.12], pos: [0.1, -0.12, -0.06], rot: [0.4, 0.6, 0.2], mat: 'dark' },
+        // Left hand — a broken stump: short box + dark fracture face.
+        { kind: 'box', joint: 'handL', size: [0.15, 0.16, 0.15], bevel: 0.03, mat: 'stone' },
+        { kind: 'box', joint: 'handL', size: [0.12, 0.12, 0.06], pos: [0, -0.06, -0.06], rot: [0.3, 0.2, 0.5], mat: 'dark' },
+        // Legs — asymmetric: LEFT keeps its carved greave + knee guard, RIGHT
+        // is bare with a chipped knee. Feet are cracked plinth blocks.
         { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.15, mat: 'stone' },
         { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.13, mat: 'stone' },
-        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.15, mat: 'stone' },
-        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.13, mat: 'stone' },
-        { kind: 'box', joint: 'kneeL', size: [0.24, 0.2, 0.24], bevel: 0.04, mat: 'stone' },
-        { kind: 'box', joint: 'kneeR', size: [0.24, 0.2, 0.24], bevel: 0.04, mat: 'stone' },
-        { kind: 'box', joint: 'footL', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
-        { kind: 'box', joint: 'footR', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
-        // (Maul removed for now — it sat awkwardly in the fist. The overhead
-        // smash still swings the arm; a weapon comes back once attachment is
-        // tuned.)
+        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.14, mat: 'stone' },
+        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.115, mat: 'stone' },
+        { kind: 'box', joint: 'kneeL', size: [0.26, 0.22, 0.26], rot: [0, 0.08, 0], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'kneeL', size: [0.2, 0.34, 0.1], pos: [0, -0.16, -0.1], bevel: 0.03, mat: 'stone' },  // greave slab
+        { kind: 'box', joint: 'kneeR', size: [0.14, 0.12, 0.14], pos: [0.04, 0.02, -0.04], rot: [0.4, 0.3, 0.3], mat: 'dark' },  // chipped knee
+        { kind: 'box', joint: 'footL', size: [0.28, 0.14, 0.42], pos: [0, 0.07, -0.06], rot: [0, 0.05, 0], bevel: 0.03, mat: 'stone' },
+        { kind: 'box', joint: 'footR', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], rot: [0, -0.04, 0], bevel: 0.03, mat: 'stone' },
+        { kind: 'box', joint: 'footR', size: [0.12, 0.1, 0.1], pos: [0.08, 0.05, -0.22], rot: [0.2, 0.5, 0.2], mat: 'dark' },  // cracked toe
       ],
     },
     baseEyeEmissive: 1.2,
