@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-07-02",
     "entries": [
       {
+        "tag": "fix",
+        "text": "A dying GPU now gutters the lanterns and offers the stair back, instead of freezing the dark.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The dark may keep more flames lit at once; distant sconces no longer surrender to the near.",
         "area": [
@@ -397,13 +404,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "tech",
           "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Fewer flinches as the dark meets you now — the eyes that watch and the embers that drift were made ready in advance.",
-        "area": [
-          "tech"
         ]
       }
     ]
