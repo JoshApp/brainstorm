@@ -8,6 +8,7 @@
  *  by the roster warm's onProgress while pipelines compile. Reveals the bar on
  *  first call so fast/cached boots never flash it. */
 export function setBootProgress(t: number): void {
+  bootVeilHeartbeat();
   const bar = document.querySelector('#boot-loading .boot-bar') as HTMLElement | null;
   const fill = document.querySelector('#boot-loading .boot-bar-fill') as HTMLElement | null;
   if (!bar || !fill) return;
@@ -26,9 +27,29 @@ export function hideBootLoading(): void {
   window.setTimeout(() => el.remove(), 500);
 }
 
-/** Arm the strand-proof safety teardown. Just past awaitBootUpdate's own 6s
- *  cap, so a legit update gate resolves first; this only fires if a boot path
- *  never cleared the veil. */
+/** Watchdog heartbeat: any boot path doing REAL work (update gate polling, warm
+ *  progress, compile-settle frames) calls this to prove the boot isn't stranded.
+ *  Without it, the safety net raced legitimate slow boots — a cold-cache warm can
+ *  honestly take >7s, the net fired hideBootLoading() alone, and body.booting
+ *  dropped before the title screen set body.hud-hidden: the whole HUD (the full
+ *  gold flask, most visibly) leaked over the loading/title backdrop. */
+let lastHeartbeat = 0;
+export function bootVeilHeartbeat(): void {
+  lastHeartbeat = performance.now();
+}
+
+/** Arm the strand-proof safety teardown — a WATCHDOG, not a fixed timer: it
+ *  tears the veil down only after 7s with NO heartbeat, i.e. a boot path that
+ *  genuinely stranded (forgot to clear the veil / hung with no progress). A slow
+ *  but live boot keeps petting it and is left alone. */
 export function armBootVeilSafetyNet(): void {
-  window.setTimeout(hideBootLoading, 7000);
+  const QUIET_MS = 7000;
+  bootVeilHeartbeat();
+  const check = (): void => {
+    if (!document.getElementById('boot-loading')) return; // veil already gone
+    const quiet = performance.now() - lastHeartbeat;
+    if (quiet >= QUIET_MS) { hideBootLoading(); return; }
+    window.setTimeout(check, QUIET_MS - quiet + 50);
+  };
+  window.setTimeout(check, QUIET_MS + 50);
 }

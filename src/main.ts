@@ -143,7 +143,7 @@ import { createXpGoldHud } from './ui/xp-gold-hud';
 import { setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
 import { initVideoSettings, applyVideoSettings } from './scene/video-settings';
-import { setBootProgress, hideBootLoading, armBootVeilSafetyNet } from './ui/boot-veil';
+import { setBootProgress, hideBootLoading, armBootVeilSafetyNet, bootVeilHeartbeat } from './ui/boot-veil';
 import { initFrameLoop, startFrameLoop, isFixedStepLoop } from './engine/frame-loop';
 import { installDevHooks } from './debug/dev-hooks';
 import { mountLuxButtonIfEnabled } from './debug/lux-button';
@@ -1645,6 +1645,7 @@ if (handleDebugScreenFlags()) {
   // it. Only mount when we're actually showing the title (not reloading for an
   // update); the BACK-to-title path reuses whatever scene is already up.
   async function mountTitleScene() {
+    bootVeilHeartbeat();
     LEVELS['title-vignette'] = TITLE_VIGNETTE;
     suppressArrivalCeremony();
     suppressNextDescentTitle();
@@ -1664,6 +1665,9 @@ if (handleDebugScreenFlags()) {
     const raf = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
     while (performance.now() - start < maxMs) {
       await raf();
+      // Frames ticking while we wait for compiles = the boot is alive, not
+      // stranded — keep the veil watchdog from tearing down mid-warm.
+      bootVeilHeartbeat();
       if (stats) {
         const t = stats().total;
         if (t === last) { if (++stable >= 12) return; } else { stable = 0; last = t; }
