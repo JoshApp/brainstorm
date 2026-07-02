@@ -44,6 +44,10 @@ export function setSSAO(strength?: number, radius?: number): void {
 }
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   (window as any).__ssao = (strength?: number, radius?: number) => setSSAO(strength, radius);
+  // DEV: the honest presented-frame counter (bumps only on a REAL canvas submit — not on
+  // pacer-skipped rAFs, not on warm renders). The only page-observable way to detect a
+  // "canvas frozen, sim alive" backpressure stall from instrumentation.
+  (window as any).__presentedFrames = () => presentedFrameCount();
 }
 
 let pipeline: RenderPipeline | null = null;
