@@ -8,7 +8,7 @@ import { shadowFlags } from '../scene/shadow-role';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
-import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
+import { setMaterialRevealLightingWebGPU } from '../style/banded-lighting-webgpu';
 import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute, materialOpacity } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
@@ -481,13 +481,17 @@ function objectScalar(key: string): any { return (nodeObject as any)(new ObjectU
 
 /** WEBGPU rim reveal — additive fresnel emissive ("forms emerge from black").
  *  The GLSL seam's rim was darkness-reactive (brighter where scene light isn't);
- *  an emissive node can't read the final lit luma, so this is the constant-rim
- *  approximation (the darkReactive dimming is deferred). World-space fresnel so
- *  it's unambiguous regardless of the node renderer's view-space conventions. */
+ *  An emissive node can't read the lit luma, so a rim with `darkReactive` set
+ *  routes through the BANDED LIGHTING MODEL's finish() hook instead (which can) —
+ *  see setMaterialRevealLightingWebGPU. A rim without darkReactive stays on the
+ *  constant emissive-node path. World-space fresnel either way. */
 function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
-  // PAINTED chroma — over-saturate toward the room's coloured light (pale bone in
-  // a red room → vivid red). Runs via a per-material banded+chroma lighting model.
-  if (def.chroma != null && def.chroma !== 1) setMaterialChromaWebGPU(mat, def.chroma);
+  const rimDR = def.rim?.darkReactive ?? 0;
+  // PAINTED chroma and/or dark-reactive rim — both live in the per-material
+  // banded lighting model (finish() sees the lit colour; emissive nodes don't).
+  if ((def.chroma != null && def.chroma !== 1) || rimDR > 0) {
+    setMaterialRevealLightingWebGPU(mat, { chroma: def.chroma ?? 1, rimDarkReactive: rimDR });
+  }
 
   const hasRim = !!def.rim;
   const hasDissolve = !!def.dissolvable;
@@ -515,10 +519,14 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
     const intens = def.rim!.intensity ?? 1.0;
     const c = new THREE.Color(def.rim!.color ?? 0xffffff);
     reveal.reveal_rim = [c.r * intens, c.g * intens, c.b * intens, power];
-    const rimAttr: any = (tslAttribute as any)('aRevealRim', 'vec4');
-    const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
-    const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
-    emissive = emissive.add(rimAttr.xyz.mul(fres));
+    // darkReactive rims render in the lighting model's finish() (which reads the
+    // same aRevealRim attribute baked above) — adding here too would double them.
+    if (rimDR === 0) {
+      const rimAttr: any = (tslAttribute as any)('aRevealRim', 'vec4');
+      const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
+      const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
+      emissive = emissive.add(rimAttr.xyz.mul(fres));
+    }
   }
 
   // DISSOLVE — death crumble. The body erodes by chunky cells (alpha-cutout) with

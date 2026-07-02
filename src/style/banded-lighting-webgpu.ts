@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -25,7 +25,20 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // hue only where a mask says to (e.g. the mortar seams glowing the light's hue).
   chroma: number;
   chromaNode: any;
-  constructor(chroma = 1, chromaNode: any = null) { super(); this.chroma = chroma; this.chromaNode = chromaNode; }
+  // rimDarkReactive > 0 = the EMISSIVE reveal rim lives HERE instead of the
+  // material's emissiveNode. The GLSL rim was darkness-reactive — brighter where
+  // scene light isn't — which an emissiveNode can't do (it composites after
+  // lighting, blind to it). finish() sees the lit colour, so the parity port
+  // adds the rim scaled by (1 − darkReactive·litLuma): full strength in the
+  // dark, fading as the lamp finds the form. Colour·intensity + fresnel power
+  // still ride the per-vertex aRevealRim vec4 — one shared pipeline.
+  rimDarkReactive: number;
+  constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0) {
+    super();
+    this.chroma = chroma;
+    this.chromaNode = chromaNode;
+    this.rimDarkReactive = rimDarkReactive;
+  }
   // SINGLE-SCATTER direct specular — match WebGL's RE_Direct_Physical EXACTLY.
   // Three's WGSL PhysicalLightingModel.direct() uses BRDF_GGX_MULTISCATTER, which
   // is single-scatter GGX PLUS two DFG-LUT *texture lookups* + energy-compensation
@@ -70,6 +83,21 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
       const lum: any = (luminance as any)(out);
       out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chroma).max((vec3 as any)(0, 0, 0));
     }
+    // DARK-REACTIVE RIM — parity with the GLSL reveal rim ("forms emerge from
+    // black"): world-space fresnel in the aRevealRim colour, dimmed by how lit
+    // the fragment already is. In darkness the silhouette burns; under the
+    // lamp it recedes and the true material reads.
+    if (this.rimDarkReactive > 0) {
+      const rimAttr: any = (attribute as any)('aRevealRim', 'vec4');
+      const viewDir: any = (cameraPosition as any).sub(positionWorld).normalize();
+      const fres: any = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
+      // The exact GLSL-era gate (7f07509): mix(1, mix(1, 0.22, litLuma), dr)
+      // = 1 − 0.78·dr·litLuma — full rim in black, easing toward a 0.22 floor
+      // as the fragment lights up. Parity, not a re-tune.
+      const litLuma: any = (luminance as any)(out).clamp(0, 1);
+      const dim: any = litLuma.mul(0.78 * this.rimDarkReactive).oneMinus();
+      out = out.add(rimAttr.xyz.mul(fres).mul(dim));
+    }
     // GORE creep — recolour toward blood where the WebGPU splat buffer covers this
     // fragment (floor pools full, surface bases creep up). Post-lighting, like the
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
@@ -87,7 +115,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
 // preserved while each light gets cheaper. (A cheap Blinn-Phong highlight can be added
 // back per-material for metal/bone/wet where the glint matters.)
 class LeanBandedLightingModel extends BandedPhysicalLightingModel {
-  constructor(chroma = 1, chromaNode: any = null) { super(chroma, chromaNode); }
+  constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0) { super(chroma, chromaNode, rimDarkReactive); }
   direct({ lightDirection, lightColor, reflectedLight }: any): void {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
     const irradiance: any = dotNL.mul(lightColor);
@@ -121,6 +149,16 @@ export function installBandedLightingWebGPU(on: boolean): void {
  *  (pale skeletons/bone take on the torch colour vividly). */
 export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
   mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma);
+}
+
+/** Per-material reveal lighting — PAINTED chroma and/or a DARK-REACTIVE rim
+ *  (the rim reads the fragment's lit luminance and fades under light; colour +
+ *  fresnel power ride the per-vertex aRevealRim attribute). One installer so
+ *  rim'd + painted materials compose through a single lighting model. */
+export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: number; rimDarkReactive?: number }): void {
+  const chroma = opts.chroma ?? 1;
+  const dr = opts.rimDarkReactive ?? 0;
+  mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma, null, dr);
 }
 
 /** Per-material PER-FRAGMENT chroma — over-saturate toward the light's hue only
