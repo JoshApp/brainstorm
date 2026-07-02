@@ -719,15 +719,36 @@ export async function warmSceneCompile(
     // MAIN pass, ALL rooms + ALL directions — bind the PSX target so the format matches, then
     // compileAsync the whole (now-uncullable) scene. compileAsync only COMPILES (no draw calls /
     // render pass), so binding the scene-pass target here is safe — it can't create an 'output'
-    // read+write conflict. (We previously also did a real pipeline.renderAsync() here to warm the
-    // shadow pass, but that raw render — outside presentPass's setup — left the 'output' texture in
-    // a TextureBinding|RenderAttachment conflict on the next live frame. Removed; the few shadow
-    // variants compile on first cast instead, which is a far smaller cost than a per-descent
-    // validation error.)
+    // read+write conflict. (A raw pipeline.renderAsync() here — outside presentPass's setup —
+    // once left the 'output' texture in a TextureBinding|RenderAttachment conflict on the next
+    // live frame; the shadow warm below goes through warmRenderWebGPU's normal present path
+    // instead, which the boot warm already proves safe.)
     renderer.setRenderTarget(rt);
     try {
       await (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> }).compileAsync(scene, camera);
     } catch { /* best-effort */ }
+    // SHADOW-DEPTH pass warm — compileAsync has no shadow pass, so every material's
+    // depth pipeline used to compile ON FIRST CAST: the first reveal of a room whose
+    // props cast into the lamp's shadow cube stalled the GPU queue mid-play (frozen
+    // canvas for seconds while the sim kept ticking — the backpressure gate skips
+    // submits until the stalled frame completes). While everything is still forced
+    // visible + uncullable, drive ONE real frame through the normal present pass
+    // (warmRenderWebGPU — the same path the boot warm uses; the raw renderAsync that
+    // corrupted the 'output' texture is NOT this) so the shadow pass draws every
+    // caster and compiles + flushes its depth pipelines behind the descent cover.
+    renderer.setRenderTarget(prev);
+    const hasShadowCaster = ((): boolean => {
+      let found = false;
+      scene.traverse((o) => { if ((o as THREE.Light).isLight && o.castShadow) found = true; });
+      return found;
+    })();
+    // ?noshadowwarm=1 — A/B the shadow-depth warm only (leave the compileAsync warm on):
+    // reverts to compile-on-first-cast so the reveal stall can be measured in isolation.
+    const noShadowWarm = typeof location !== 'undefined'
+      && new URLSearchParams(location.search).get('noshadowwarm') === '1';
+    if (hasShadowCaster && !noShadowWarm) {
+      try { await warmRenderWebGPU(renderer, scene, camera, 1); } catch { /* best-effort */ }
+    }
   } finally {
     restoreCull();
     renderer.setRenderTarget(prev);

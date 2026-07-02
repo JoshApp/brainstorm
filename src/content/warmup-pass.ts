@@ -111,15 +111,25 @@ export async function runWarmupPassWebGPU(
     // (~150ms), then we yield so the browser breathes. Same total time, but a RESPONSIVE
     // loading screen (the veil animates, the bar moves) instead of a frozen tab. Compiles are
     // sync because Three's render path uses createRenderPipeline; compileAsync is worse here.
-    // Hide the rest of the scene (floor, props, lights) during the batched compile so each
-    // pass renders ONLY the few visible dummies — cheap. (The pipeline is keyed on material +
-    // format + the GLOBAL banded model + fog, not the specific lights, so a near-empty scene
-    // compiles the same pipeline. The floor's own materials already compiled when the title
-    // rendered before this.)
-    // Hide the rest of the scene EXCEPT objects flagged userData.warmKeep (e.g. the GPU
-    // embers Points) — those must render during the warm so their pipeline compiles here.
-    const others = scene.children.filter((c) => c !== warmGroup && !c.userData.warmKeep);
-    const prevVis = others.map((c) => c.visible);
+    // Hide the rest of the scene's DRAWABLES (floor, props) during the batched compile so each
+    // pass renders ONLY the few visible dummies — cheap. But NEVER the lights: the node
+    // renderer bakes the lighting context (indirect/ambient/shadow node structure) into every
+    // pipeline's WGSL, so a warm with lights hidden compiles UNLIT variants — and the first
+    // live draw of that material recompiles the lit one MID-PLAY (the compile-guard verdicts
+    // read exactly "warm{indirect:0 ambient:0 shadow:0} vs live{indirect:10 ambient:3}"). The
+    // old top-level children hide also swallowed the player group — taking the shadow-casting
+    // LAMP out of the warm's world. Hiding leaf drawables (never lights, never light parents,
+    // since visibility is hierarchical) keeps the lighting context identical to play.
+    // Objects flagged userData.warmKeep (e.g. the GPU embers Points) stay visible too —
+    // those must render during the warm so their pipeline compiles here.
+    const others: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      const any = o as THREE.Object3D & { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
+      if (!(any.isMesh || any.isSprite || any.isPoints || any.isLine)) return;
+      let p: THREE.Object3D | null = o;
+      while (p) { if (p === warmGroup || p.userData.warmKeep) return; p = p.parent; }
+      if (o.visible) others.push(o);
+    });
     for (const c of others) c.visible = false;
     const kids = warmGroup.children.slice();
     for (const k of kids) k.visible = false;
@@ -131,7 +141,7 @@ export async function runWarmupPassWebGPU(
       await yieldFrame();
     }
     for (const k of kids) k.visible = true;
-    others.forEach((c, i) => { c.visible = prevVis[i]; });
+    for (const c of others) c.visible = true;
     onProgress?.(1);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
