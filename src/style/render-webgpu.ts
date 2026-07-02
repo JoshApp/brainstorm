@@ -50,7 +50,6 @@ let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.4;   // scene-render scale (the adaptive scaler nudges this via setWebGPUResolutionScale)
 let tsInFlight = false;   // throttle the async GPU-timestamp resolve
-let wdInFlight = false;   // throttle the onSubmittedWorkDone fallback probe
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
 // (scene/adaptive-resolution.ts) reads this on WebGPU because its usual frame-time
 // signal is BLIND here: MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync
@@ -469,20 +468,25 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// FRAMES-IN-FLIGHT cap. renderAsync is async; submitting fire-and-forget let the
-// CPU run arbitrarily far ahead of the GPU, so present latency wandered frame to
-// frame (steady fps, but judder). We DON'T touch the rAF cadence to fix this —
-// the pacer's refresh estimate reads rAF intervals, so delaying rAF made it read
-// garbage. Instead: when MAX_IN_FLIGHT frames are already queued, SKIP this
-// submit (show the last frame). rAF keeps firing at the display rate (hertz stays
-// correct); the GPU queue is bounded; and on a display faster than the GPU can
-// feed, this naturally paces to the GPU's rate instead of piling up.
+// FRAMES-IN-FLIGHT cap. pipeline.render() encodes + submits synchronously; the
+// GPU executes async. Submitting fire-and-forget lets the CPU run arbitrarily
+// far ahead of the GPU, so present latency wanders frame to frame (steady fps,
+// but judder). We DON'T touch the rAF cadence to fix this — the pacer's refresh
+// estimate reads rAF intervals, so delaying rAF made it read garbage. Instead:
+// while MAX_IN_FLIGHT submits haven't COMPLETED on the GPU
+// (device.queue.onSubmittedWorkDone), SKIP this submit (show the last frame).
+// rAF keeps firing at the display rate (hertz stays correct); the GPU queue is
+// bounded; on a display faster than the GPU can feed, this naturally paces to
+// the GPU's rate instead of piling up.
 // 1, not 2: when the GPU is the bottleneck, a 2-deep queue submits two frames
 // back-to-back to fill it then drains — a BURSTY present cadence (the 4ms↔40ms
 // "wait" jitter). One in flight submits exactly once per GPU completion → even
 // cadence. The cost is a little GPU idle between completion and the next rAF (the
-// loop is rAF-driven) — slightly lower peak fps, but smooth. NOTE: unlike the
-// await approach, SKIPPING doesn't stall the CPU, so this doesn't tank fps.
+// loop is rAF-driven) — slightly lower peak fps, but smooth.
+// HISTORY: this used to key off renderAsync's promise. In r184 renderAsync
+// degenerated to `await init(); render()` — resolving at SUBMIT, same microtask —
+// so the cap had silently stopped skipping. onSubmittedWorkDone restores the
+// designed semantics (true GPU completion) and outlives the deprecated API.
 const MAX_IN_FLIGHT = 1;
 let inFlight = 0;
 
@@ -514,66 +518,59 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
   if (dev) dev.pushErrorScope('validation');
   inFlight++;
-  // A SYNCHRONOUS throw from renderAsync (a bad node graph faults during setup,
-  // before the promise exists) must not strand the in-flight count — a stranded
-  // count makes every later frame skip (permanent freeze). Decrement + rethrow so
-  // renderWithStyle's rate-limited catch still logs it.
-  let submitted: Promise<void>;
+  // A SYNCHRONOUS throw (a bad node graph faults during encode) must not strand
+  // the in-flight count — a stranded count makes every later frame skip
+  // (permanent freeze). Decrement + rethrow so renderWithStyle's rate-limited
+  // catch still logs it.
   try {
-    submitted = (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+    (pipeline as unknown as { render: () => void }).render();
   } catch (err) {
     inFlight--;
     if (dev) dev.popErrorScope().catch(() => {});
     throw err;
   }
-  void submitted
-    .then(() => {
-      inFlight--;
-      // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps
-      // (trackTimestamp is always on). renderAsync resolves at SUBMIT, not GPU
-      // completion, so wall-clock would read CPU submit time (~5ms) not the GPU cost
-      // (~27ms) — only the timestamp is the true bottleneck signal. The shared
-      // adaptive scaler reads it via lastWebGPUGpuMs(). Self-throttled.
-      if (!tsInFlight) {
-        tsInFlight = true;
-        const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
-        r.resolveTimestampsAsync?.('render')
-          .then((ms) => { tsInFlight = false; if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) lastGpuMs = ms; },
-                () => { tsInFlight = false; });
-        // Also drain the COMPUTE query pool (the GPU embers) — with trackTimestamp
-        // on, unresolved pools fill up and warn ("Maximum number of queries
-        // exceeded"); the profiler only drains them while a listener is attached.
-        void r.resolveTimestampsAsync?.('compute').catch(() => {});
+  const backend: any = (renderer as any).backend;
+  const t0 = performance.now();
+  const done = (): void => {
+    inFlight--;
+    // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps.
+    // Wall-clock at submit would read CPU encode time, not the GPU cost — only
+    // the timestamp is the true bottleneck signal. The shared adaptive scaler
+    // reads it via lastWebGPUGpuMs(). Self-throttled.
+    if (!tsInFlight) {
+      tsInFlight = true;
+      const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
+      r.resolveTimestampsAsync?.('render')
+        .then((ms) => { tsInFlight = false; if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) lastGpuMs = ms; },
+              () => { tsInFlight = false; });
+      // Also drain the COMPUTE query pool (the GPU embers) — with trackTimestamp
+      // on, unresolved pools fill up and warn ("Maximum number of queries
+      // exceeded"); the profiler only drains them while a listener is attached.
+      void r.resolveTimestampsAsync?.('compute').catch(() => {});
+    }
+    // FALLBACK GPU-load signal — WebGPU adapters WITHOUT timestamp-query
+    // (backend.trackTimestamp forced false there): submit→completion wall-clock.
+    // With MAX_IN_FLIGHT=1 exactly one frame is in the queue, so this ≈ the GPU
+    // frame cost — coarser than a timestamp, but real where the adaptive scaler
+    // would otherwise be blind.
+    if (backend?.isWebGPUBackend && backend.trackTimestamp === false) {
+      lastGpuMs = performance.now() - t0;
+    }
+    if (dev) dev.popErrorScope().then((err: any) => {
+      if (err) {
+        const msg = String(err.message || err);
+        const draws = (renderer as any).info?.render?.drawCalls;
+        // eslint-disable-next-line no-console
+        console.error('[psx gpu-error] frame draws=' + draws + ' :: ' + msg.slice(0, 280));
+        const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg);
       }
-      // FALLBACK GPU-load signal — WebGPU adapters WITHOUT timestamp-query
-      // (backend.trackTimestamp is forced false there): time from submit to
-      // queue completion. With MAX_IN_FLIGHT=1 exactly one frame is in the
-      // queue, so submit→done ≈ the GPU frame cost — coarser than a timestamp
-      // (includes queue scheduling), but a real bottleneck signal where the
-      // adaptive scaler would otherwise be blind.
-      if (!wdInFlight) {
-        const backend: any = (renderer as any).backend;
-        const q = backend?.isWebGPUBackend && backend.trackTimestamp === false
-          ? backend.device?.queue : null;
-        if (q?.onSubmittedWorkDone) {
-          wdInFlight = true;
-          const t0 = performance.now();
-          q.onSubmittedWorkDone().then(
-            () => { wdInFlight = false; lastGpuMs = performance.now() - t0; },
-            () => { wdInFlight = false; },
-          );
-        }
-      }
-      if (dev) dev.popErrorScope().then((err: any) => {
-        if (err) {
-          const msg = String(err.message || err);
-          const draws = (renderer as any).info?.render?.drawCalls;
-          // eslint-disable-next-line no-console
-          console.error('[psx gpu-error] frame draws=' + draws + ' :: ' + msg.slice(0, 280));
-          const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg);
-        }
-      }).catch(() => {});
-    }, () => { inFlight--; if (dev) dev.popErrorScope().catch(() => {}); });
+    }).catch(() => {});
+  };
+  // True GPU completion on WebGPU; the WebGL2 backend submits synchronously in
+  // render() (no queue object), so it completes here and the cap never skips.
+  const q = backend?.isWebGPUBackend ? backend.device?.queue : null;
+  if (q?.onSubmittedWorkDone) q.onSubmittedWorkDone().then(done, done);
+  else done();
 }
 
 // ── Display-frame capture (the LUX meter's readback) ────────────────────────
@@ -603,7 +600,7 @@ export async function captureDisplayFrame(
   warmingUp = true;
   try {
     renderer.setRenderTarget(luxRT);
-    await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+    (pipeline as unknown as { render: () => void }).render();
     renderer.setRenderTarget(prev);
     const px = await renderer.readRenderTargetPixelsAsync(luxRT as never, 0, 0, width, height) as unknown as Uint8Array;
     return { data: px, width, height };
@@ -634,9 +631,14 @@ export async function warmRenderWebGPU(
   ensurePipeline(renderer, scene, camera);
   warmingUp = true;
   try {
+    // render() encodes + submits synchronously; the rAF-yield between passes is
+    // paced by the callers (warmup-pass batches). Awaiting queue completion here
+    // keeps each warm pass's compiles fully flushed before the next batch.
+    const q = ((renderer as any).backend)?.device?.queue;
     for (let i = 0; i < passes; i++) {
       renderer.info.reset();
-      await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+      (pipeline as unknown as { render: () => void }).render();
+      if (q?.onSubmittedWorkDone) await q.onSubmittedWorkDone();
     }
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     warmingUp = false;
