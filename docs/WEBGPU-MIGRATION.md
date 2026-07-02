@@ -156,20 +156,25 @@ A weakness pass over the finished port. FIXED in the same session:
 ### Improvements to build on later
 
 - **Promote tiled (Forward+) lighting.** `?tiled=1` (`scene/tiled-lighting.ts`)
-  already adapts Three's TiledLightsNode to our pass-driven pipeline. The
-  default lean loop pays O(live torches) per fragment (with a per-fragment
-  range cull); Forward+ bins lights per tile via compute → "more torches at
-  the same cost". PARKED (2026-07-02): a first desktop try read SLOWER than
-  the lean loop under DELVE's ~14 lights — plausible (tiled pays a fixed
-  binning overhead that only wins at higher light counts), but do a real
-  instrumented A/B (desktop + phone, torch-dense floor) before concluding.
+  is a v2 rewrite: CPU-binned into uniform arrays (Three's stock compute-shader
+  TiledLightsNode over-dispatches 32×, grids off the canvas instead of the 0.4×
+  pass, and its storage bindings go stale through the warm's compileAsync) with
+  NEAREST-FIRST bin insertion so tile overflow sheds the least-contributing
+  lights (pack-order insertion was keeping far-past-cutoff torches and dropping
+  the ones lighting the camera — the "tiled renders black" bug). Desktop A/B
+  (`?scenario=perf-lights&n=N`, median GPU ms): lean 15.5/18.6/22.9 at
+  n=14/30/56 vs tiled 14.8/14.9/14.9 — tiled is FLAT in light count, the "more
+  torches at the same cost" win, at parity even at today's ~14 lights.
+  REMAINING before promotion to default: the same A/B on the PHONE (`?tiled=1`
+  works on the live site), plus a torch-dense real floor soak for look
+  regressions (per-tile cap is 8 lights; overflow now degrades gracefully).
 - **SSAO is URL-flag only** (`?ssao=1`); if it survives its phone pricing, it
   should become a GRAPHICS setting routed through the same rebuild path.
-- **RenderPipeline.renderAsync() is deprecated in r184** (init is awaited at
-  boot now, so plain `render()` is legal). Our MAX_IN_FLIGHT skip-pacing keys
-  off the promise, which now resolves at submit — semantically what we use it
-  for, but when Three removes renderAsync the pacing needs to move to an
-  explicit `onSubmittedWorkDone`-based in-flight count.
+- ~~RenderPipeline.renderAsync() is deprecated in r184~~ DONE 2026-07-02:
+  the frame submits via plain `render()` and MAX_IN_FLIGHT skip-pacing keys
+  off `device.queue.onSubmittedWorkDone()` — true GPU completion. (The r184
+  promise had degenerated to resolving at submit, so the cap had silently
+  stopped skipping; this also restores the designed backpressure.)
 
 ### Done in the 2026-07-02 follow-up (the rest of the review list)
 
