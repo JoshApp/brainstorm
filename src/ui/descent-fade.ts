@@ -1,3 +1,4 @@
+import { waitForPresentedFrames } from '../style/render-webgpu';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
 // frame — without a transition the camera angle and surroundings
@@ -13,6 +14,7 @@
 // is hidden and fades out alongside the black, so the player gets a
 // momentary "you have arrived" beat instead of a silent jump.
 
+
 let overlay: HTMLDivElement | null = null;
 let titleCard: HTMLDivElement | null = null;
 let titleEl: HTMLDivElement | null = null;
@@ -25,7 +27,9 @@ function ensureOverlay(): HTMLDivElement {
   Object.assign(overlay.style, {
     position: 'fixed',
     inset: '0',
-    background: '#000',
+    // Matches the boot veil: a faint warm breath in the centre falling to true
+    // black at the edges — depth, not a flat card.
+    background: 'radial-gradient(ellipse 90% 70% at 50% 46%, rgba(38,22,12,0.55), rgba(0,0,0,0) 60%) #000',
     pointerEvents: 'none',
     opacity: '0',
     zIndex: '50',           // above HUD (10-15), below screens (100+)
@@ -90,6 +94,7 @@ export function isDescendTransition(): boolean { return transitioning; }
  *  the black, then call fadeIn. */
 export function fadeOut(): Promise<void> {
   transitioning = true;
+  document.body.classList.add('descending');
   const el = ensureOverlay();
   return new Promise((resolve) => {
     el.style.transition = 'opacity 220ms ease-out';
@@ -102,13 +107,19 @@ export function fadeOut(): Promise<void> {
  *  clears) only once the fade has fully completed. */
 export function fadeIn(): void {
   const el = ensureOverlay();
-  // Slight delay so the first frame of the new level renders BEFORE
-  // the fade starts (prevents popping in mid-render).
-  window.setTimeout(() => {
+  // Wait for REAL presented frames before the fade starts — the canvas may
+  // still hold the last (covered) warm frame after a pipeline warm, and rAF
+  // ticks alone don't prove a present (the frame cap skips draws). Gate on the
+  // renderer's presented-frame counter, with a timeout so a hidden tab can't
+  // strand the cover.
+  void waitForPresentedFrames(2, 1500).then(() => {
     el.style.transition = 'opacity 320ms ease-out';
     el.style.opacity = '0';
-    window.setTimeout(() => { transitioning = false; }, 340);   // after the fade finishes
-  }, 40);
+    window.setTimeout(() => {
+      transitioning = false;
+      document.body.classList.remove('descending');   // HUD returns with the world
+    }, 340);   // after the fade finishes
+  });
 }
 
 // ── Prewarm-gated reveal ────────────────────────────────────────────────────
@@ -143,6 +154,15 @@ function ensureLoadingMark(): HTMLDivElement {
     transition: 'opacity 400ms ease-out',
   } as Partial<CSSStyleDeclaration>);
   loadingMark.textContent = 'descending';
+  // The same breathing coal the boot veil carries, floating above the mark.
+  const ember = document.createElement('div');
+  ember.classList.add('ember-coal');
+  Object.assign(ember.style, {
+    position: 'fixed', left: '50%', bottom: 'calc(12% + 34px)',
+    transform: 'translateX(-50%)',
+    pointerEvents: 'none', zIndex: '52',
+  } as Partial<CSSStyleDeclaration>);
+  loadingMark.appendChild(ember);
   document.body.appendChild(loadingMark);
 
   // A thin amber progress line under the mark — a real fill (driven by the warmup
@@ -208,6 +228,18 @@ function hideLoadingMark(): void {
  *  instant before the world appears — used to raise the "Depth N" title so its
  *  beat tracks the real reveal, not the load start. A safety cap reveals anyway
  *  if the prewarm stalls, so a driver hiccup can never strand the player on black. */
+/** Snap the black cover fully opaque, instantly (no fade). For boot paths that
+ *  are about to run a heavy SYNCHRONOUS level build with no fadeOut before it —
+ *  raise this, let it PAINT (two rAFs), then build, so the player sees a clean
+ *  black instead of a frozen menu. revealWhenReady/fadeIn drop it as usual. */
+export function holdCover(): void {
+  transitioning = true;
+  document.body.classList.add('descending');   // covers own HUD visibility (index.html rule)
+  const cover = ensureOverlay();
+  cover.style.transition = 'opacity 0ms';
+  cover.style.opacity = '1';
+}
+
 export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () => void): void {
   const finish = (): void => {
     window.clearTimeout(pulseTimer);
@@ -223,6 +255,7 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
   // loadInitialLevel with no fadeOut — so raise the black instantly here. fadeIn drops
   // it on reveal. (Idempotent: if already black, this is a no-op.)
   transitioning = true;   // gameplay stays paused until fadeIn fully recedes
+  document.body.classList.add('descending');
   const cover = ensureOverlay();
   cover.style.transition = 'opacity 0ms';
   cover.style.opacity = '1';

@@ -77,7 +77,7 @@ import { initLevelLoader, loadInitialLevel, getCurrentDepth } from './level/load
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
-import { suppressNextDescentTitle, setDescentProgress } from './ui/descent-fade';
+import { suppressNextDescentTitle, setDescentProgress, holdCover } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { applyState } from './state/save-hydration';
 import { initCharacterTracking, resetCharacter } from './state/character';
@@ -115,7 +115,7 @@ import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
-import { warmSceneCompile } from './style/render-webgpu';
+import { warmSceneCompile, waitForPresentedFrames } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
 import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
 import { startWarmupStream } from './scene/warmup-stream';
@@ -1129,7 +1129,13 @@ export function getRunSeed(): number {
   return lastRunSeed;
 }
 
-function startRun(floorId: string, startDepth: number = 1) {
+async function startRun(floorId: string, startDepth: number = 1): Promise<void> {
+  // Raise the black and let it PAINT before the heavy synchronous level build
+  // (procgen + buildLevel + CSG props). Without this, DESCEND/CONTINUE froze
+  // the still-visible menu for the whole build and the loading screen only
+  // appeared afterward. revealWhenReady/fadeIn drop the cover at reveal.
+  holdCover();
+  await yieldToCover(30);
   // Seed the gameplay RNG stream BEFORE any spawn so a seeded run's rolls AND
   // its spawn-time AI draws (pack orbit schedules, etc.) are reproducible —
   // the Phase-4 replay foundation. resolveRunSeed honours ?seed=N on every
@@ -1213,7 +1219,7 @@ function handleAutostart(): boolean {
       resetRunDiscoveries();
       applyState(null);
       setSlot('weapon', ITEMS['rusted-sword']);
-      startRun(spec.id, 5);
+      void startRun(spec.id, 5);
       return true;
     }
     console.warn(`?vault=${vaultId} not found in the vault library`);
@@ -1233,7 +1239,7 @@ function handleAutostart(): boolean {
     resetRunDiscoveries();
     applyState(null);
     setSlot('weapon', ITEMS['rusted-sword']);
-    startRun(spec.id, prevDepth);
+    void startRun(spec.id, prevDepth);
     return true;
   }
 
@@ -1422,7 +1428,7 @@ if (handleDebugScreenFlags()) {
   // headless snap (and the geometry the scenario exists to show).
   suppressArrivalCeremony();
   suppressNextDescentTitle();   // a debug jump isn't a descent — no title card
-  startRun(floorId);
+  await startRun(floorId);
   hideBootLoading();   // scenarios bypass the title — clear the veil right away
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
@@ -1638,11 +1644,11 @@ if (handleDebugScreenFlags()) {
   // world; the flame's own clock keeps flickering. DESCEND/CONTINUE rebuild over
   // it. Only mount when we're actually showing the title (not reloading for an
   // update); the BACK-to-title path reuses whatever scene is already up.
-  function mountTitleScene() {
+  async function mountTitleScene() {
     LEVELS['title-vignette'] = TITLE_VIGNETTE;
     suppressArrivalCeremony();
     suppressNextDescentTitle();
-    startRun('title-vignette');
+    await startRun('title-vignette');
     // Look DOWN a touch — the fire sits low on the floor close ahead, so a level
     // gaze clips it at the bottom; this lifts it into frame. (The title pauses the
     // world, so input never overwrites this pitch.)
@@ -1681,10 +1687,18 @@ if (handleDebugScreenFlags()) {
     const _t0 = performance.now();
     try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
-    startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
+    // CLEAN FRAME before the veil drops. The warm presents its subjects to the
+    // (covered) canvas, and the canvas HOLDS that last warm frame until the
+    // live loop actually submits again — under the frame cap, rAF ticks alone
+    // don't guarantee that (skipped draws). Wait for two REAL presents so the
+    // reveal always lands on the title, never the warm leftovers.
+    await waitForPresentedFrames(2, 1500);
+    // (The deferred warm STREAM deliberately does NOT start here — it draws its
+    // subjects in live frames, which would flash pool effects over the menu.
+    // It starts after the first real floor reveals — see onLoaded.)
   }
 
   awaitBootUpdate()
-    .then(async (updating) => { if (!updating) { mountTitleScene(); await bootWarm(); hideBootLoading(); openTitle(); } })
-    .catch(() => { mountTitleScene(); hideBootLoading(); openTitle(); });
+    .then(async (updating) => { if (!updating) { await mountTitleScene(); await bootWarm(); hideBootLoading(); openTitle(); } })
+    .catch(() => { void mountTitleScene().then(() => { hideBootLoading(); openTitle(); }); });
 }

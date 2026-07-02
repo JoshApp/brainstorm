@@ -14,6 +14,7 @@ export function mountLuxButtonIfEnabled(): void {
   if (luxParam === '0') localStorage.removeItem('delve-lux');
   if (!import.meta.env.DEV && localStorage.getItem('delve-lux') !== '1') return;
   const btn = document.createElement('button');
+  btn.classList.add('game-hud');   // hides with the HUD on menus / loading covers
   btn.textContent = 'LUX';
   Object.assign(btn.style, {
     position: 'fixed', top: '40%', right: '8px', zIndex: '9998',

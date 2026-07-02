@@ -57,6 +57,28 @@ let tsInFlight = false;   // throttle the async GPU-timestamp resolve
 let lastGpuMs = 0;
 /** Latest GPU frame ms from native timestamps (0 until one resolves). */
 export function lastWebGPUGpuMs(): number { return lastGpuMs; }
+
+// LIVE presented-frame counter — bumps only when the live loop actually SUBMITS
+// a frame to the canvas (not on pacer-skipped rAFs, not on warm renders). The
+// covers use it to hold until a CLEAN frame is really on screen: "wait two
+// rAFs" is NOT enough — under the frame cap both rAFs can be skipped draws,
+// and the veil then drops on the stale last-warm-frame canvas (the "bright
+// spheres before the title" artifact).
+let presentedFrames = 0;
+export function presentedFrameCount(): number { return presentedFrames; }
+/** Resolve once `n` more live frames have PRESENTED (or timeoutMs passes —
+ *  never strand a cover on a hidden tab where rAF stops). */
+export function waitForPresentedFrames(n = 1, timeoutMs = 1500): Promise<void> {
+  const target = presentedFrames + n;
+  const t0 = performance.now();
+  return new Promise((resolve) => {
+    const check = (): void => {
+      if (presentedFrames >= target || performance.now() - t0 > timeoutMs) { resolve(); return; }
+      requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
+}
 // ?raw=1 — ISOLATION: bypass the whole PSX grade (bloom/crush/inscatter/vignette/
 // quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
 // something upstream (lighting / fog / material response).
@@ -518,6 +540,7 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
   if (dev) dev.pushErrorScope('validation');
   inFlight++;
+  presentedFrames++;   // a real submit is happening (the skip paths returned above)
   // A SYNCHRONOUS throw (a bad node graph faults during encode) must not strand
   // the in-flight count — a stranded count makes every later frame skip
   // (permanent freeze). Decrement + rethrow so renderWithStyle's rate-limited
@@ -620,8 +643,16 @@ export async function captureDisplayFrame(
 // format (the canvas), so its pipelines get thrown away + recompiled on first real
 // draw — that's the residual first-use stutter. This renders whatever is in `scene`
 // (the loaded floor + any warm subjects added by the caller) a few times, awaiting
-// each submit, with the main loop gated off via `warmingUp`. MUST run behind the load
-// cover — it renders the warm subjects to the (covered) canvas.
+// each submit, with the main loop gated off via `warmingUp`.
+//
+// NOTE — an offscreen-RT warm was tried (render into a tiny RenderTarget so
+// warm frames never present) and REVERTED: binding an output target changes
+// NodeManager state (isToneMappingState et al), so every warmed pipeline was
+// the WRONG variant and the live render recompiled the world in-play (65
+// post-warm compiles, caught by the warmup guard). Warm renders MUST present
+// through the byte-identical live path — which is why they only ever run
+// behind an opaque DOM cover, and why the cover must not drop until a CLEAN
+// frame has presented after the warm (see bootWarm / fadeIn).
 let warmingUp = false;
 export function isWarmingUp(): boolean { return warmingUp; }
 export async function warmRenderWebGPU(

@@ -6,37 +6,38 @@ import { deferredWarmupHooks } from '../content/warmup-registry';
 // The proper fix for the boot freeze: don't warm the whole roster up front. Boot
 // warms only the cheap ESSENTIAL hooks (core combat VFX) behind the loading cover;
 // the heavy DEFERRED roster — enemy bodies (CSG creatures), item drops, destructibles
-// — is STREAMED here during play, one subject per idle period.
+// — is STREAMED here during play, one subject per calm moment.
 //
 // HOW it compiles the right pipeline without a visible flash:
-//  - Each deferred subject is built into an OFF-SCREEN group parked far below any floor
-//    (y = -4000), with frustum culling forced OFF so the live render still draws it —
-//    it just projects to no on-screen pixels. The draw goes through the REAL PSX
-//    pipeline, so the pipeline compiles at the live target format (not the wrong canvas
-//    format compileAsync alone would warm).
-//  - LEAN LIGHTS is what makes "off-screen" correct: the lit pipeline is ONE variant
-//    regardless of how many lights reach the fragment, so a subject warmed in the dark
-//    compiles the exact pipeline combat uses. (Under stock per-light-count lighting this
-//    would warm a wrong variant.)
-//  - Materials are RETAINED for the renderer's life so the compiled pipeline survives the
-//    subject's teardown.
+//  - Each deferred subject is built into an OFF-SCREEN group parked far below any
+//    floor (y = -4000), frustum culling forced OFF so the live render still draws
+//    (and therefore compiles) it — it just projects to no on-screen pixels. The
+//    draw goes through the REAL PSX pipeline, so the pipeline compiles at the live
+//    target format. (An offscreen-RT warm was tried and reverted — binding an
+//    output target changes the node variants; see render-webgpu warmRender note.)
+//  - Materials are RETAINED for the renderer's life so the compiled pipeline
+//    survives the subject's teardown.
 //
-// Scheduling: requestIdleCallback paces it to the main thread's free moments, so the
-// per-subject compile cost lands in calm gaps, never during active input/combat — and
-// each subject is warm long before the player descends to meet it.
+// PACING — the "lags for a few seconds after spawn" fix: a subject build
+// (buildCreature/CSG) is a heavy SYNCHRONOUS block that can't be split, so the only
+// lever is WHEN it runs. Steps fire on requestIdleCallback with a generous timeout,
+// but additionally require (a) a minimum gap since the last step and (b) a healthy
+// last frame — if the loop just spent >24ms on a frame (arrival ceremony, combat
+// burst, GC), the step re-queues instead of piling on. The stream finishing a few
+// seconds later is free; the player feeling it is not.
 
 const retained: THREE.Material[] = [];   // pin streamed pipelines for the renderer's life
-let streaming = false;
+let started = false;   // once per session — a completed stream must not re-run
+
+const STEP_GAP_MS = 350;        // minimum spacing between subject builds
+const HEALTHY_FRAME_MS = 24;    // skip the idle slot if the last frame ran longer
 
 const raf = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
 const onIdle = (fn: () => void): void => {
   const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
-  if (ric) ric(fn, { timeout: 1500 }); else setTimeout(fn, 200);
+  if (ric) ric(fn, { timeout: 4000 }); else setTimeout(fn, 400);
 };
 
-function noCull(obj: THREE.Object3D): void {
-  obj.traverse((o) => { (o as THREE.Mesh).frustumCulled = false; });
-}
 function retainMaterials(obj: THREE.Object3D): void {
   obj.traverse((o) => {
     const m = (o as THREE.Mesh).material;
@@ -44,39 +45,56 @@ function retainMaterials(obj: THREE.Object3D): void {
   });
 }
 /** Empty the warm group after a subject is compiled: REMOVE the meshes so they stop
- *  re-rendering off-screen. We do NOT dispose the geometry — on WebGPU you cannot free a
- *  buffer the backend may still reference in an in-flight submit ("used in submit while
- *  destroyed"), and there's no CPU-side completion signal to know when it's safe. This is
- *  the same trade-off warmup-pass.ts makes: the resident geometry of the warmed roster is
- *  retained for the session (a few MB), and the pipelines stay pinned via the materials. */
+ *  rendering. We do NOT dispose the geometry — on WebGPU you cannot free a buffer
+ *  the backend may still reference in an in-flight submit ("used in submit while
+ *  destroyed"), and there's no CPU-side completion signal to know when it's safe.
+ *  Same trade-off as warmup-pass.ts: the warmed roster's resident geometry is
+ *  retained for the session (a few MB), pipelines pinned via the materials. */
 function emptyGroup(group: THREE.Group): void {
   for (const child of group.children.slice()) group.remove(child);
 }
+
+// Last-frame health signal, fed by the frame loop (engine/frame-loop.ts) so the
+// stream can yield to a struggling frame without importing loop internals.
+let lastFrameMs = 0;
+export function feedStreamFrameMs(ms: number): void { lastFrameMs = ms; }
 
 /** Start streaming the DEFERRED warmup roster during play. Idempotent (once per
  *  session). Call after the first floor reveals — the essential warm is done and the
  *  player is in-game, so the idle scheduler has calm moments to work in. */
 export function startWarmupStream(scene: THREE.Scene, onComplete?: () => void): void {
-  if (streaming) return;
-  streaming = true;
+  if (started) return;
+  started = true;
   const group = new THREE.Group();
-  group.position.set(0, -4000, 0);   // far below any floor → rendered (compiles) but off-screen
+  group.position.set(0, -4000, 0);   // out of the fog even if a live frame catches it
   group.frustumCulled = false;
   group.matrixAutoUpdate = false; group.updateMatrix();
+  const noCull = (obj: THREE.Object3D): void => {
+    obj.traverse((o) => { (o as THREE.Mesh).frustumCulled = false; });
+  };
   scene.add(group);
   const queue = deferredWarmupHooks().slice();
+  let lastStep = 0;
 
   const step = async (): Promise<void> => {
+    // Re-queue rather than pile onto a busy moment: too soon since the last
+    // build, or the loop just had a slow frame (combat burst / ceremony / GC).
+    const now = performance.now();
+    if (now - lastStep < STEP_GAP_MS || lastFrameMs > HEALTHY_FRAME_MS) {
+      onIdle(() => { void step(); });
+      return;
+    }
+    lastStep = now;
     const hook = queue.shift();
     if (!hook) {
-      streaming = false;
+      scene.remove(group);
       // Everything's warm now — let the self-policing guard arm (any compile from
       // here is a genuine unwarmed gap).
       try { onComplete?.(); } catch { /* skip */ }
       return;
     }
     try {
-      hook.spawn(group);
+      hook.spawn(group);          // sync — heavy for creatures, unsplittable
       noCull(group);              // BEFORE the render frames — else the off-screen subject frustum-culls
       await raf(); await raf();   // two live frames draw it through the PSX pipeline → compile at right format
       retainMaterials(group);     // pin the compiled pipeline

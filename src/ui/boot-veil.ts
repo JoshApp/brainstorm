@@ -17,6 +17,9 @@ export function setBootProgress(t: number): void {
 
 /** Fade out + remove the veil. Idempotent. */
 export function hideBootLoading(): void {
+  // The veil owns HUD visibility while it's up (body.booting — set in the HTML
+  // so it holds from the very first paint); release it with the veil.
+  document.body.classList.remove('booting');
   const el = document.getElementById('boot-loading');
   if (!el || el.classList.contains('boot-hide')) return;
   el.classList.add('boot-hide');

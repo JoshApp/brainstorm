@@ -20,6 +20,7 @@ import { tickPendingLoad } from '../level/loader';
 import { pacerShouldDraw, pacerEffectiveFps } from '../scene/frame-pacer';
 import { isContextLost } from '../scene/context-recovery';
 import { isLoading } from '../scene/loading-gate';
+import { feedStreamFrameMs } from '../scene/warmup-stream';
 import { tickAdaptiveResolution, feedAdaptiveGpuMs } from '../scene/adaptive-resolution';
 import { lastWebGPUGpuMs } from '../style/render-webgpu';
 import { frameBegin, frameEnd } from '../debug/frame-timing';
@@ -197,6 +198,9 @@ function tickInner() {
 
   clock.update();   // Timer computes its delta at update(); getDelta() then returns this frame's
   const realDt = Math.min(clock.getDelta(), 0.1);
+  // Feed the warmup stream's health gate — it defers subject builds while
+  // frames run long (combat bursts, ceremonies) instead of piling on.
+  feedStreamFrameMs(realDt * 1000);
 
   // Harness: drain any in-flight tick budget and advance game-time clock.
   // Cheap when off. Called BEFORE the pause snapshot below so a budget that

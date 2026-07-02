@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The dark no longer shows its scaffolding — descents cut clean to black, and the menu keeps its secrets.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The torches keep their light and give up their shadows; only your lamp still throws one.",
         "area": [
           "atmosphere"
@@ -390,13 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "tech",
           "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Fountains, spike pits and tome pillars stop re-forging themselves on every floor — the deep remembers their shape now.",
-        "area": [
-          "tech"
         ]
       }
     ]

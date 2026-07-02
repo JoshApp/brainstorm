@@ -61,6 +61,15 @@
       body.hud-hidden .game-hud {
         display: none !important;
       }
+      /* Same rule during the boot veil (body.booting — set in the HTML, cleared by
+         hideBootLoading) and level transitions (body.descending — owned by
+         descent-fade). The HUD used to bleed OVER the covers (inventory button
+         z=95, LUX z=9998 vs cover z=50) — covers now own HUD visibility the same
+         way screens do, instead of joining a z-index war. */
+      body.booting .game-hud,
+      body.descending .game-hud {
+        display: none !important;
+      }
 
       /* HUD-only inspection mode — hide the 3D canvas and put a flat
          backdrop behind the rest. Lets us snap HUD widgets cleanly
@@ -87,15 +96,41 @@
       #boot-loading {
         position: fixed; inset: 0; z-index: 2000;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 16px; background: #000;
+        gap: 16px;
+        /* Not flat black: a faint warm breath in the centre falling to true black
+           at the edges — the dark has depth before it has geometry. */
+        background:
+          radial-gradient(ellipse 90% 70% at 50% 46%, rgba(38, 22, 12, 0.55), rgba(0,0,0,0) 60%),
+          #000;
         font-family: system-ui, -apple-system, sans-serif;
         transition: opacity 0.45s ease;
+      }
+      /* The ember — a single coal breathing in the dark above the wordmark. */
+      #boot-loading .boot-ember {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,196,120,0.95) 0%, rgba(255,120,40,0.75) 45%, rgba(120,30,8,0) 75%);
+        box-shadow: 0 0 18px 6px rgba(255,130,50,0.28), 0 0 48px 18px rgba(255,110,40,0.10);
+        animation: ember-breathe 2.6s ease-in-out infinite;
+        margin-bottom: 6px;
+      }
+      @keyframes ember-breathe {
+        0%, 100% { transform: scale(0.85); opacity: 0.55; }
+        55%      { transform: scale(1.15); opacity: 1; }
+      }
+      /* Reusable coal — the descent cover (descent-fade.ts) breathes the same ember. */
+      .ember-coal {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,196,120,0.95) 0%, rgba(255,120,40,0.75) 45%, rgba(120,30,8,0) 75%);
+        box-shadow: 0 0 18px 6px rgba(255,130,50,0.28), 0 0 48px 18px rgba(255,110,40,0.10);
+        animation: ember-breathe 2.6s ease-in-out infinite;
       }
       #boot-loading.boot-hide { opacity: 0; pointer-events: none; }
       #boot-loading .boot-mark {
         color: rgba(224, 214, 196, 0.82);
+        font-family: Georgia, 'Times New Roman', serif;
         font-size: 30px; font-weight: 600;
         letter-spacing: 0.55em; text-indent: 0.55em;
+        text-shadow: 0 0 24px rgba(255, 140, 60, 0.12);
       }
       #boot-loading .boot-sub {
         color: rgba(255, 150, 80, 0.55);
@@ -161,10 +196,11 @@
       })();
     </script>
   </head>
-  <body>
+  <body class="booting">
     <canvas id="scene"></canvas>
     <div id="rotate-warning">rotate your phone — descend in landscape</div>
     <div id="boot-loading">
+      <div class="boot-ember"></div>
       <div class="boot-mark">DELVE</div>
       <div class="boot-sub">descending</div>
       <div class="boot-bar"><div class="boot-bar-fill"></div></div>
