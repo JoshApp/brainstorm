@@ -123,7 +123,7 @@ import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
-import { warmSceneCompile, waitForPresentedFrames } from './style/render-webgpu';
+import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
 import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
 import { drainWarmupStream } from './scene/warmup-stream';
@@ -514,6 +514,23 @@ initLevelLoader({
           markWarmupComplete(); markWebGPUWarmupComplete();
         }
         await warmSceneCompile(renderer, scene, camera);
+        // PREPARE PASS — pipelines aren't the only first-render cost: three
+        // builds each OBJECT's GPU state (bind groups, uniform buffers) the
+        // first time it's encoded, and the room culler keeps most of the floor
+        // hidden, so opening a door mid-fight un-hid ~80 unprepared objects at
+        // once — measured 86+76ms back-to-back on the phone (2026-07-03 rec,
+        // frame 420). Render the floor ONCE with culling lifted, behind the
+        // cover at warm resolution: every room's objects prepare here and the
+        // door-open becomes free.
+        try {
+          roomCuller?.setEnabled(false);
+          setWarmLowRes(true);
+          await warmRenderWebGPU(renderer, scene, camera, 1);
+        } catch { /* best-effort */ } finally {
+          setWarmLowRes(false);
+          roomCuller?.setEnabled(true);
+          try { await flushWarmRenders(renderer); } catch { /* best-effort */ }
+        }
         // Covered-compile baseline for the warm cache's self-heal check — pipeline
         // growth from here until the next descent is in-play compiling.
         noteCoveredWarmPoint(renderer as unknown as DelveRenderer);
