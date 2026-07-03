@@ -47,6 +47,18 @@ export interface FrameSample {
   gpuPhases: Map<string, number> | null;
 }
 
+/** Per-frame draw-call count, renderer-agnostic. On WebGPU `info.render.calls`
+ *  counts render-pass BEGINS since boot (cumulative — it survives info.reset()),
+ *  NOT draws; `drawCalls` is the real per-frame count. WebGL has only `calls`
+ *  (correct there). Reading the wrong one made phone recordings report "40k
+ *  draws" that were just uptime — every draws consumer must go through this. */
+export function perFrameDraws(
+  info: { render: { calls: number; drawCalls?: number } } | null | undefined,
+): number {
+  if (!info) return 0;
+  return info.render.drawCalls ?? info.render.calls;
+}
+
 interface PerfMemory { usedJSHeapSize: number }
 function heapBytes(): number | null {
   const m = (performance as unknown as { memory?: PerfMemory }).memory;
@@ -178,7 +190,7 @@ export function frameEnd(): void {
   tickWebGPUTimestamps(renderer);
   sample.gpuMs = webgpuGpuMs();
   sample.gpuPhases = webgpuGpuPhases();
-  sample.draws = info ? info.render.calls : 0;
+  sample.draws = perFrameDraws(info);
   sample.tris = info ? info.render.triangles : 0;
   sample.programs = renderer ? pipelineCount(renderer) : 0;   // compiled pipelines (WebGPU)
   sample.newProgKinds = diffNewPrograms(info as unknown as { programs?: ReadonlyArray<{ cacheKey?: string }> | null });

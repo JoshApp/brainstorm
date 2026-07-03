@@ -19,6 +19,7 @@ import { captureScreenshot } from '../harness/annotate';
 import type { HarnessContext } from '../harness/state';
 import { getAllInteractables } from '../interactables/system';
 import { getRecentLogs } from './console-buffer';
+import { perFrameDraws } from './frame-timing';
 import { getRunState } from '../state/run-state';
 import { listLightSourcesNear, getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { actForDepth } from '../level/acts';
@@ -226,7 +227,7 @@ export async function captureDebugSnapshot(ctx: DebugContext) {
   const walkableHere = level.walkable.contains(cam.position.x, cam.position.z, 0.3);
   const perf = {
     fps: await sampleFps(),
-    drawCalls: info.render.calls,
+    drawCalls: perFrameDraws(info),
     triangles: info.render.triangles,
     geometries: info.memory.geometries,
     textures: info.memory.textures,

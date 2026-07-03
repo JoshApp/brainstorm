@@ -18,6 +18,7 @@ import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
 import { getViewmodelRoots } from '../style/render-frame';
 import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
+import { perFrameDraws } from './frame-timing';
 
 let scene: THREE.Scene | null = null;
 let renderer: DelveRenderer | null = null;
@@ -138,7 +139,7 @@ export function drawReportData(): DrawReportData | null {
   walk(scene);
   const info = renderer?.info;
   return {
-    draws: info ? info.render.calls : 0,
+    draws: perFrameDraws(info),
     rtris: info ? info.render.triangles : 0,
     drawables: meshes + sprites + points, meshes, sprites, points,
     shadowCasters, transparent, sceneTris,
@@ -320,7 +321,7 @@ export async function captureDrawReport(): Promise<void> {
   walk(scene);
 
   const info = renderer?.info;
-  const draws = info ? info.render.calls : 0;
+  const draws = perFrameDraws(info);
   const rtris = info ? info.render.triangles : 0;
   const programs = renderer ? pipelineCount(renderer) : 0;
   // GPU-resource counts — capture two reports (fresh vs after the slowdown sets

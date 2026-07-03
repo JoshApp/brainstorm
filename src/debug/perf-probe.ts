@@ -22,7 +22,7 @@
 import type * as THREE from 'three';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
-import { currentGpuMs } from './frame-timing';
+import { currentGpuMs, perFrameDraws } from './frame-timing';
 import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 
 // Chrome-only non-standard heap readout. Absent on Firefox/Safari and on
@@ -70,7 +70,7 @@ export interface PerfSnapshot {
   lastMs: number;
   /** 95th-percentile frame delta over the window, ms — surfaces hitches. */
   p95Ms: number;
-  /** Draw calls last frame (renderer.info.render.calls). */
+  /** Draw calls last frame (drawCalls on WebGPU; `calls` is cumulative there). */
   draws: number;
   /** Triangles last frame. */
   tris: number;
@@ -161,7 +161,7 @@ export function getPerfSnapshot(): PerfSnapshot {
     fps,
     lastMs: round(lastMs, 2),
     p95Ms: round(p95Ms, 2),
-    draws: info ? info.render.calls : 0,
+    draws: perFrameDraws(info),
     tris: info ? info.render.triangles : 0,
     geometries: info ? info.memory.geometries : 0,
     textures: info ? info.memory.textures : 0,
