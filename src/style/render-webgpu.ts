@@ -687,6 +687,49 @@ export async function captureDisplayFrame(
 // frame has presented after the warm (see bootWarm / fadeIn).
 let warmingUp = false;
 export function isWarmingUp(): boolean { return warmingUp; }
+
+// ── Warm-render pacing ──────────────────────────────────────────────────────
+// The 2026-07-03 descent-freeze triage found the first-descent warm spending
+// ~50s WALL on a fast desktop (minutes on a phone) with the main thread idle:
+// every warm render awaited device.queue.onSubmittedWorkDone() — a full GPU
+// execution + completion round-trip per pass, ~400 times. The wait exists only
+// to BOUND the queue (an unbounded burst of heavy frames risks device pressure
+// on phones); it does nothing for compile correctness — pipelines are created
+// during ENCODE, on the CPU. So: await completion only every Nth warm render,
+// and let callers flushWarmRenders() once at the end.
+const WARM_FLUSH_EVERY = 4;
+let warmSinceFlush = 0;
+
+/** Await GPU completion of everything warm renders have submitted so far.
+ *  Callers run this once after their last warm batch (and the descent gate
+ *  awaits it) so no warm work is still in flight when the cover drops. */
+export async function flushWarmRenders(renderer: DelveRenderer): Promise<void> {
+  warmSinceFlush = 0;
+  const q = (renderer as unknown as {
+    backend?: { device?: { queue?: { onSubmittedWorkDone?: () => Promise<unknown> } } };
+  }).backend?.device?.queue;
+  if (q?.onSubmittedWorkDone) { try { await q.onSubmittedWorkDone(); } catch { /* best-effort */ } }
+}
+
+// Warm renders happen behind an opaque cover, so their pixels are never seen —
+// render them TINY. setResolutionScale changes only the scene target's SIZE;
+// the pipeline cache keys on target FORMATS (see the offscreen-RT note above:
+// a different BINDING changes variants — a smaller size does not), so the
+// warmed pipelines stay byte-identical while the GPU raster cost of each warm
+// frame collapses. The compile guard (postWarmup counter) polices this claim.
+const WARM_RES_SCALE = 0.05;
+let preWarmResScale: number | null = null;
+/** Scope the warm's tiny render scale: on(true) before the first warm render,
+ *  on(false) — ALWAYS, in a finally — before the reveal presents real frames. */
+export function setWarmLowRes(on: boolean): void {
+  if (on) {
+    if (preWarmResScale === null) { preWarmResScale = resScale; setWebGPUResolutionScale(WARM_RES_SCALE); }
+  } else if (preWarmResScale !== null) {
+    setWebGPUResolutionScale(preWarmResScale);
+    preWarmResScale = null;
+  }
+}
+
 export async function warmRenderWebGPU(
   renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
 ): Promise<void> {
@@ -694,14 +737,13 @@ export async function warmRenderWebGPU(
   ensurePipeline(renderer, scene, camera);
   warmingUp = true;
   try {
-    // render() encodes + submits synchronously; the rAF-yield between passes is
-    // paced by the callers (warmup-pass batches). Awaiting queue completion here
-    // keeps each warm pass's compiles fully flushed before the next batch.
-    const q = ((renderer as any).backend)?.device?.queue;
+    // render() encodes + submits synchronously (pipeline compiles happen HERE,
+    // on the CPU); completion is only awaited every WARM_FLUSH_EVERY renders to
+    // keep the queue bounded without paying a GPU round-trip per batch.
     for (let i = 0; i < passes; i++) {
       renderer.info.reset();
       (pipeline as unknown as { render: () => void }).render();
-      if (q?.onSubmittedWorkDone) await q.onSubmittedWorkDone();
+      if (++warmSinceFlush >= WARM_FLUSH_EVERY) await flushWarmRenders(renderer);
     }
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     warmingUp = false;
@@ -785,6 +827,10 @@ export async function warmSceneCompile(
     restoreCull();
     renderer.setRenderTarget(prev);
     warmingUp = false;
+    // The descent gate reveals right after this returns — drain any warm
+    // submits still in flight so the reveal's first real frame isn't queued
+    // behind warm work.
+    try { await flushWarmRenders(renderer); } catch { /* best-effort */ }
   }
 }
 

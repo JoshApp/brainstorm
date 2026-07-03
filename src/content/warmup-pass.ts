@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { resetGoreWebGPU } from '../scene/gore-webgpu';
 import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
 import { essentialWarmupHooks } from './warmup-registry';
-import { warmRenderWebGPU } from '../style/render-webgpu';
+import { warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from '../style/render-webgpu';
 import { beginLoading, endLoading } from '../scene/loading-gate';
 import type { DelveRenderer } from '../scene/create-renderer';
 
@@ -78,6 +78,10 @@ export async function runWarmupPassWebGPU(
   // no sim, no audio, no render of our half-built subjects. The browser keeps painting
   // the DOM loading cover (compositor) across our rAF yields.
   beginLoading();
+  // Warm frames present behind the opaque cover — render them tiny (format-
+  // identical, size-collapsed) so each compile batch stops paying a full-res
+  // raster of the whole scene. Restored in the finally, before the reveal.
+  setWarmLowRes(true);
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
   // Boot warms ONLY the cheap ESSENTIAL hooks (core combat VFX) — fast. The heavy
@@ -133,7 +137,10 @@ export async function runWarmupPassWebGPU(
     for (const c of others) c.visible = false;
     const kids = warmGroup.children.slice();
     for (const k of kids) k.visible = false;
-    const CBATCH = 3;
+    // 8 per render (was 3): with the floor's drawables hidden and the warm at
+    // tiny resolution, the per-render cost is the COMPILES, not the raster —
+    // bigger batches just mean fewer rAF yields between them.
+    const CBATCH = 8;
     for (let i = 0; i < kids.length; i += CBATCH) {
       for (let j = i; j < Math.min(i + CBATCH, kids.length); j++) kids[j].visible = true;
       await warmRenderWebGPU(renderer, scene, camera, 1);
@@ -144,6 +151,8 @@ export async function runWarmupPassWebGPU(
     for (const c of others) c.visible = true;
     onProgress?.(1);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
+    setWarmLowRes(false);
+    try { await flushWarmRenders(renderer); } catch { /* best-effort */ }
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
     // The blood-burst warm-up stamps a gore splat into the per-fragment gore
     // buffer (a separate store from the effect pool h.clear() drops) — wipe it, or

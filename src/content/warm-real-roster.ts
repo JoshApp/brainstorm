@@ -6,7 +6,7 @@ import { WARM_MODELS } from './warmup-models';
 import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
-import { warmRenderWebGPU } from '../style/render-webgpu';
+import { warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from '../style/render-webgpu';
 import { registeredFloorMaterials, stdMat } from '../style/material-registry';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { getTexture } from '../style/procedural-textures';
@@ -149,16 +149,35 @@ export async function warmRealRoster(
   const holder = new THREE.Group();
   holder.name = '__warmRealRoster';
   liveScene.add(holder);
+  // Each warm render used to draw the ENTIRE live floor around the subjects and
+  // at full resolution — the subjects are what needs compiling, the floor is
+  // already warm (runWarmupPassWebGPU just rendered it). Hide the floor's leaf
+  // drawables (NEVER lights — the lighting context must stay identical to play,
+  // see warmup-pass) and render tiny; restored in the finally below.
+  setWarmLowRes(true);
+  const hiddenLeaves: THREE.Object3D[] = [];
+  liveScene.traverse((o) => {
+    const any = o as THREE.Object3D & { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
+    if (!(any.isMesh || any.isSprite || any.isPoints || any.isLine)) return;
+    let par: THREE.Object3D | null = o;
+    while (par) { if (par === holder || par.userData.warmKeep) return; par = par.parent; }
+    if (o.visible) hiddenLeaves.push(o);
+  });
+  for (const o of hiddenLeaves) o.visible = false;
   const forceDraw = (root: THREE.Object3D): void => root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (m.isMesh) { m.frustumCulled = false; m.visible = true; }
   });
   const BATCH = 24;
   let okBatches = 0, failBatches = 0;
+  let hookOk = 0, hookFail = 0;
+  try {
   for (let i = 0; i < subjects.length; i += BATCH) {
     for (const s of subjects.slice(i, i + BATCH)) holder.add(s);
     forceDraw(holder);
-    try { await warmRenderWebGPU(renderer, liveScene, camera, 2); okBatches++; }
+    // ONE pass per batch (was 2): pipelines are created during the first encode;
+    // the second render compiled nothing (verified: postWarmup stays 0).
+    try { await warmRenderWebGPU(renderer, liveScene, camera, 1); okBatches++; }
     catch { failBatches++; }
     holder.clear();
     onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
@@ -168,16 +187,20 @@ export async function warmRealRoster(
   // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed the
   // SAME way: spawn each into the holder under the live scene and RENDER, so it compiles with the real
   // lights + fog through the real path, one hook at a time so a single bad spawn can't abort the rest.
-  let hookOk = 0, hookFail = 0;
   for (const hook of getWarmupHooks()) {
     try {
       hook.spawn(holder);
       forceDraw(holder);
-      await warmRenderWebGPU(renderer, liveScene, camera, 2);
+      await warmRenderWebGPU(renderer, liveScene, camera, 1);
       hookOk++;
     } catch { hookFail++; }
     try { hook.clear(); } catch { /* the effect's pool clear */ }
     holder.clear();
+  }
+  } finally {
+    for (const o of hiddenLeaves) o.visible = true;
+    setWarmLowRes(false);
+    try { await flushWarmRenders(renderer); } catch { /* best-effort */ }
   }
   liveScene.remove(holder);
   // The blood-burst warm-up stamps a gore splat into the per-fragment gore buffer
