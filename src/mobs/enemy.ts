@@ -956,6 +956,16 @@ export function createEnemy(
   // the rest of the frame collapses), and a once-guard for the collapse trigger.
   let severedJoint: string | undefined;
   let crumbleCollapsed = false;
+  // STAGED GIBS (2026-07-03 phone triage): building a chunk means CPU-skinning a
+  // limb's verts into the death pose + the new mesh's first-encode cost — doing
+  // the killing-blow sever AND the whole crumble in single frames was the last
+  // big in-play hitch (90-200ms frames on the phone, tagged death/sever). The
+  // sever now builds ONE FRAME after the blow (inside the death hit-pause, so
+  // the flung limb's 16ms head start is invisible) and the crumble cuts ONE
+  // piece per tick during the topple — a progressive collapse that spreads the
+  // cost and reads MORE organic than the old single-frame burst.
+  let pendingSever: { joint: string; dirX: number; dirZ: number } | null = null;
+  let crumbleQueue: string[] | null = null;
   // Flung crumble chunks share the body materials but, on WebGPU, read their OWN
   // per-object dissolve (mesh.userData.dissolve) — so we track them and drive their
   // dissolve in sync with the body each frame (they no longer powder via a shared
@@ -1222,13 +1232,11 @@ export function createEnemy(
             1.3 * (spec.bloodAmount ?? 1), bc,
             { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
           );
-          // Snapshot the limb into a free chunk in its dominant material (so it
-          // dissolves in sync with the corpse — shared uDissolve), fling it, and
-          // collapse the limb out of the skinned body.
-          tagPerfEvent('sever');   // perf timeline — names the geo+1 render spike a live sever causes
-          const chunk = skinnedCreature.severBoneChunk(severJoint);
-          if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
-          severedJoint = severJoint;   // crumble skips this one — it's already flung
+          // Queue the limb snapshot for the NEXT dying tick (see tickDying) —
+          // the gore splash lands NOW, the chunk build + first encode land one
+          // frame later, inside the death hit-pause where they can't hitch.
+          pendingSever = { joint: severJoint, dirX, dirZ };
+          severedJoint = severJoint;   // crumble skips this one — it's getting flung
         }
       }
       // CRUMBLE — the killing-blow piece (above) flies off; the REST of the
@@ -1896,6 +1904,15 @@ export function createEnemy(
 
   function tickDying(dt: number) {
     deathTimer += dt;
+    if (pendingSever) {
+      // The killing-blow limb, deferred off the kill frame (see the death
+      // handler). Build + fling now — one chunk's cost on a calm frame.
+      const { joint, dirX, dirZ } = pendingSever;
+      pendingSever = null;
+      tagPerfEvent('sever');   // perf timeline — names the geo+1 render cost of the chunk
+      const chunk = skinnedCreature.severBoneChunk(joint);
+      if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
+    }
     const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION
       : deathStyle === 'crumble' ? CRUMBLE_DURATION
       : DEATH_DURATION;
@@ -1941,24 +1958,37 @@ export function createEnemy(
         built.group.rotation.x = 0.14 * hp * hp;
         built.group.rotation.z = Math.sin(deathTimer * 7) * 0.05 * hp;
       } else {
+        // STAGED CRUMBLE — one piece per tick instead of the whole body in one
+        // frame (see the staged-gibs note by the state vars): each tick severs
+        // one limb off the toppling frame and flings it; when the queue drains,
+        // the leftover torso goes as the final piece. Same chunks, same
+        // materials/dissolve — only the timing spreads, and the limbs peeling
+        // off the falling skeleton one by one reads better than the old
+        // simultaneous burst.
+        const flingChunk = (ch: THREE.Mesh, cx: number, cz: number): void => {
+          let dx = ch.position.x - cx, dz = ch.position.z - cz;
+          if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
+          ch.userData.dissolve = dissolveT;   // seed per-object dissolve; driven below
+          deathChunks.push(ch);
+          spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
+        };
+        if (!crumbleQueue) {
+          crumbleQueue = (spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'])
+            .filter((j) => j !== severedJoint);
+          tagPerfEvent('crumble');   // perf timeline — the staged chunk builds start here
+          spawnShatterBurst(scene as THREE.Object3D, container.position.x, container.position.y + 0.3, container.position.z, true, spec.bloodColor ?? 0x8a8274);
+        }
         if (!crumbleCollapsed) {
-          crumbleCollapsed = true;
-          // Shatter the one skinned body into a few chunks (head/arms/legs/torso)
-          // in a SINGLE vert pass — at the death instant only — and fling each.
-          // They share the body materials, so they dissolve in sync; they
-          // self-remove when powdered. The (now-empty) body group topples below,
-          // harmless. Cheap: one pass + a handful of transient draws per death.
-          const cuts = spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
           const cx = container.position.x, cz = container.position.z;
-          tagPerfEvent('crumble');   // perf timeline — corpse crumble builds several chunk geometries
-          for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
-            let dx = ch.position.x - cx, dz = ch.position.z - cz;
-            if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
-            ch.userData.dissolve = dissolveT;   // seed per-object dissolve; driven below
-            deathChunks.push(ch);
-            spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
+          const joint = crumbleQueue.shift();
+          if (joint !== undefined) {
+            const ch = skinnedCreature.severBoneChunk(joint);
+            if (ch) flingChunk(ch, cx, cz);
+          } else {
+            crumbleCollapsed = true;
+            // Everything still attached (the torso frame) drops as one piece.
+            for (const ch of skinnedCreature.crumbleToChunks([])) flingChunk(ch, cx, cz);
           }
-          spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, spec.bloodColor ?? 0x8a8274);
         }
         // The remaining frame (ribcage/spine) topples to the floor, then sinks
         // as it powders. The limbs have already dropped as their own pieces.
