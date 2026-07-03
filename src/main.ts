@@ -24,6 +24,9 @@ import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { runWarmupPassWebGPU } from './content/warmup-pass';
 import { warmRealRoster } from './content/warm-real-roster';
+import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
+import { installRenderPassCpu } from './debug/render-pass-cpu';
+import type { DelveRenderer } from './scene/create-renderer';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
@@ -220,6 +223,11 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 // recovery screen on the next load instead of a silent black canvas.
 const renderer = await createRenderer(canvas);
 resolveCrashGpu();   // adapter/context exists now — fill the crash report's GPU name
+// Per-pass CPU encode buckets for the profiler/recorder ('render·shadow' /
+// 'render·scene' / 'render·post' / 'render·canvas'). Ships in prod like the
+// rest of the profiler chain — phone recordings are how we attribute CPU cost.
+// Idle cost: one boolean per render pass.
+installRenderPassCpu(renderer);
 // On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
 // (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
 // with no signal at all — arm its wall-clock fallback there (valid because
@@ -482,19 +490,33 @@ initLevelLoader({
         } catch { /* best-effort — warm still runs, just possibly unlit */ }
         if (!rosterPrecompiled) {
           rosterPrecompiled = true;
-          try { await runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
-          // Warm through the REAL build path — one real instance of every enemy/prop/item, compiled at
-          // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
-          // real tail). Once, behind the first descent's cover. See warm-real-roster.ts.
-          try { await warmRealRoster(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
-          // Drain the DEFERRED roster HERE, still behind the cover — it used to
-          // stream during play after the reveal, which compiled its pipelines in
-          // live frames: the "game freezes for seconds right after the first
-          // descent" report. All loading behind the load screen, always.
-          try { await drainWarmupStream(scene); } catch { /* best-effort */ }
+          // REPEAT OPENS SKIP THE ROSTER WARM (content/warm-cache.ts): once this
+          // build+settings key has warmed fully on this device, the browser's
+          // persistent pipeline cache makes first-use creations fast — the floor
+          // itself is still compiled below (warmSceneCompile, every descent), and
+          // a session that compiles too much in play clears the marker so the
+          // next open warms fully again.
+          if (canSkipRosterWarm()) {
+            if (import.meta.env.DEV) console.log('[warm-cache] roster warm SKIPPED (marker hit)');
+          } else {
+            try { await runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
+            // Warm through the REAL build path — one real instance of every enemy/prop/item, compiled at
+            // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
+            // real tail). Once per build+settings key, behind the descent cover. See warm-real-roster.ts.
+            try { await warmRealRoster(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
+            // Drain the DEFERRED roster HERE, still behind the cover — it used to
+            // stream during play after the reveal, which compiled its pipelines in
+            // live frames: the "game freezes for seconds right after the first
+            // descent" report. All loading behind the load screen, always.
+            try { await drainWarmupStream(scene); } catch { /* best-effort */ }
+            markRosterWarmed();
+          }
           markWarmupComplete(); markWebGPUWarmupComplete();
         }
         await warmSceneCompile(renderer, scene, camera);
+        // Covered-compile baseline for the warm cache's self-heal check — pipeline
+        // growth from here until the next descent is in-play compiling.
+        noteCoveredWarmPoint(renderer as unknown as DelveRenderer);
       })();
     }
     setCameraYaw(level.playerSpawn.yaw);

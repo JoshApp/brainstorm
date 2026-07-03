@@ -274,6 +274,13 @@ const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021]; 
 const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
 const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
 
+/** Identity check for the PSX scene pass's render target — the per-pass CPU
+ *  probe (debug/render-pass-cpu.ts) uses it to label 'render·scene' vs post. */
+export function isScenePassTarget(rt: unknown): boolean {
+  const target = (scenePass as unknown as { renderTarget?: unknown } | null)?.renderTarget;
+  return target !== undefined && target !== null && rt === target;
+}
+
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res.
  *  Driven by the shared adaptive-resolution scaler (via setPS1Scale). */
 export function setWebGPUResolutionScale(s: number): void {

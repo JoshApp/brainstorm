@@ -10,7 +10,6 @@ import { warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from '../style/rend
 import { registeredFloorMaterials, stdMat } from '../style/material-registry';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { getTexture } from '../style/procedural-textures';
-import { getWarmupHooks } from './warmup-registry';
 import { DEV } from '../debug/dev';
 import type { DelveRenderer } from '../scene/create-renderer';
 
@@ -170,7 +169,6 @@ export async function warmRealRoster(
   });
   const BATCH = 24;
   let okBatches = 0, failBatches = 0;
-  let hookOk = 0, hookFail = 0;
   try {
   for (let i = 0; i < subjects.length; i += BATCH) {
     for (const s of subjects.slice(i, i + BATCH)) holder.add(s);
@@ -184,19 +182,11 @@ export async function warmRealRoster(
     await yieldFrame();   // paint the bar + breathe between batches so the cover never looks frozen
   }
 
-  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed the
-  // SAME way: spawn each into the holder under the live scene and RENDER, so it compiles with the real
-  // lights + fog through the real path, one hook at a time so a single bad spawn can't abort the rest.
-  for (const hook of getWarmupHooks()) {
-    try {
-      hook.spawn(holder);
-      forceDraw(holder);
-      await warmRenderWebGPU(renderer, liveScene, camera, 1);
-      hookOk++;
-    } catch { hookFail++; }
-    try { hook.clear(); } catch { /* the effect's pool clear */ }
-    holder.clear();
-  }
+  // (The self-registered warmup hooks — VFX, decor palettes, sprite variants — are
+  // NOT re-rendered here. They used to be, one warm render EACH (136 renders), but
+  // runWarmupPassWebGPU has already spawned and compiled every one of them through
+  // the same live-scene path earlier in this very prewarm, so the loop could never
+  // compile anything new. The compile guard's postWarmup counter polices this.)
   } finally {
     for (const o of hiddenLeaves) o.visible = true;
     setWarmLowRes(false);
@@ -214,6 +204,6 @@ export async function warmRealRoster(
 
   if (DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmRealRoster] ${subjects.length} subjects (${chunks} chunks) in ${okBatches}/${okBatches + failBatches} batches + ${hookOk}/${hookOk + hookFail} hooks, ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
+    console.log(`[warmRealRoster] ${subjects.length} subjects (${chunks} chunks) in ${okBatches}/${okBatches + failBatches} batches, ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
   }
 }

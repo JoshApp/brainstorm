@@ -144,6 +144,15 @@ function onSystem(name: string, ms: number): void {
   frameMs.set(name, (frameMs.get(name) ?? 0) + ms);
 }
 
+/** True while per-pass CPU buckets should accumulate (same policy as the
+ *  system probe: someone is listening). render-pass-cpu checks this per pass. */
+export function passCpuWanted(): boolean { return listeners.size > 0 || marks; }
+/** Add a per-render-pass CPU bucket ('render·shadow' etc.) to THIS frame's
+ *  systems map — lands in recordings next to the engine systems. */
+export function reportPassCpu(label: string, ms: number): void {
+  onSystem(label, ms);
+}
+
 function ensureHooks(): void {
   const want = listeners.size > 0 || marks;
   setSystemProbe(want ? onSystem : null);
