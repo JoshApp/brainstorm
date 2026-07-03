@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getLampIntensity, getLampWorldPos } from './handheld-lamp';
+import { getShadowMode } from '../scene/light-pool';
 
 // LAMP SPOT-SHADOW (?lampspot=1) — the lamp's shadow is the dearest thing in the
 // frame: a PointLight casts a CUBE shadow, so the scene renders 6× per frame to
@@ -52,4 +53,9 @@ export function tickLampSpot(camera: THREE.Camera): void {
   target.position.copy(_camPos).addScaledVector(_fwd, AIM_AHEAD);
   target.position.y -= AIM_DROP;
   spot.intensity = getLampIntensity() * SPOT_SHARE;
+  // Honour the SHADOWS setting: 'off' means no lamp shadow at all — the spot
+  // must not keep paying the depth pass the omni just stopped paying. Only
+  // flips on a settings change (same value every other frame), so the one
+  // pipeline-variant recompile lands on the flip, never mid-play.
+  spot.castShadow = getShadowMode() !== 'off';
 }

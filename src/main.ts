@@ -4,8 +4,13 @@ import { initEmbersGPU } from './effects/embers-gpu';
 import { initLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
 
-// Lamp spot-shadow split (?lampspot=1): cube shadow (6 passes) → single map (1).
-const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') === '1';
+// Lamp spot-shadow split — DEFAULT ON (2026-07-03): the omni lamp's cube shadow
+// re-encoded the scene 6× per frame and was ~40% of the phone's CPU encode wall
+// (13→8 passes, 3.3→2.3ms desktop encode with the split). A dim shadowless omni
+// keeps the all-around reveal; the forward SpotLight carries the light + casts a
+// single-map shadow that rakes the floor ahead. ?lampspot=0 restores the cube
+// shadow for A/B.
+const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') !== '0';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
