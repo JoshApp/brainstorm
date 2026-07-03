@@ -1225,6 +1225,7 @@ export function createEnemy(
           // Snapshot the limb into a free chunk in its dominant material (so it
           // dissolves in sync with the corpse — shared uDissolve), fling it, and
           // collapse the limb out of the skinned body.
+          tagPerfEvent('sever');   // perf timeline — names the geo+1 render spike a live sever causes
           const chunk = skinnedCreature.severBoneChunk(severJoint);
           if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
           severedJoint = severJoint;   // crumble skips this one — it's already flung
@@ -1949,6 +1950,7 @@ export function createEnemy(
           // harmless. Cheap: one pass + a handful of transient draws per death.
           const cuts = spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
           const cx = container.position.x, cz = container.position.z;
+          tagPerfEvent('crumble');   // perf timeline — corpse crumble builds several chunk geometries
           for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
             let dx = ch.position.x - cx, dz = ch.position.z - cz;
             if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }

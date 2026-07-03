@@ -105,14 +105,22 @@ registerWarmup({
   label: 'primitive:sprites+basic', live: true,
   spawn: (scene) => {
     const wisp = getTexture('fire-wisp');
-    const sprite = (blending: THREE.Blending, fog: boolean): THREE.Sprite => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: wisp, transparent: true, blending, depthWrite: false, fog }));
+    const sprite = (blending: THREE.Blending, fog: boolean, depthTest = true): THREE.Sprite => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: wisp, transparent: true, blending, depthWrite: false, fog, depthTest }));
       s.frustumCulled = false; s.position.set(0, 0.5, 0);
       return s;
     };
     // additive (eye-halos / glows) + normal, each with and without fog — the 4 sprite pipelines.
     scene.add(sprite(THREE.AdditiveBlending, true), sprite(THREE.AdditiveBlending, false));
     scene.add(sprite(THREE.NormalBlending, true), sprite(THREE.NormalBlending, false));
+    // depthTest-OFF additive — the VIEWMODEL overlay sprites (flask glow, lamp
+    // flame layers: depth always + additive). The flask's glow first renders on
+    // the first mid-fight sip, which compiled this variant IN PLAY — a ~120ms
+    // hitch on the phone (2026-07-03 recording, verified by __compileReport's
+    // "depth w0:always vs w0:less-equal" mismatch). Both fog states.
+    scene.add(sprite(THREE.AdditiveBlending, true, false), sprite(THREE.AdditiveBlending, false, false));
+    // …and normal-blended depth-off (breath puffs, over-viewmodel wisps).
+    scene.add(sprite(THREE.NormalBlending, true, false), sprite(THREE.NormalBlending, false, false));
     // basic unlit (simple effect/decal meshes), fog + no-fog.
     for (const fog of [true, false]) {
       const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog }));
