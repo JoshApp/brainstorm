@@ -56,12 +56,11 @@ const WARM_BOX_MODEL = new THREE.BoxGeometry(0.02, 0.02, 0.02);
 WARM_BOX_MODEL.userData.pooled = true;
 const WARM_BOX_MODEL_NOIDX = WARM_BOX_MODEL.toNonIndexed();
 WARM_BOX_MODEL_NOIDX.userData.pooled = true;
-const WARM_BOX_MODEL_BARE = (() => {   // CSG output: non-indexed, position+normal only
-  const g = WARM_BOX_MODEL.toNonIndexed();
-  g.deleteAttribute('uv');
-  g.userData.pooled = true;
-  return g;
-})();
+// (A third layout exists in the wild — uv-less CSG output, position+normal only
+// — but it's rare enough that its once-per-session lazy build beats taxing the
+// EVERY-OPEN boot warm with another builder run per material. The boot warm is
+// CPU-bound — node builds don't disk-cache — so each dummy variant here is a
+// per-open cost on the phone loop; warm only what hitches combat beats.)
 
 // Skinned dummy — skin attributes + bound to a 1-bone skeleton. Compiles the
 // SKINNING shader variant (the creature body), which is independent of bone/vert count.
@@ -117,9 +116,10 @@ function addChunkWarm(scene: THREE.Object3D, mat: THREE.Material): void {
   box.castShadow = false; box.frustumCulled = false;
   scene.add(box);
 }
-// Model variants (items/props/decor): the reveal-less layouts live drops use.
+// Model variants (items/props/decor): the reveal-less layouts live drops use —
+// indexed (merged primitives) + non-indexed (CSG parts).
 function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
-  for (const geo of [WARM_BOX_MODEL, WARM_BOX_MODEL_NOIDX, WARM_BOX_MODEL_BARE]) {
+  for (const geo of [WARM_BOX_MODEL, WARM_BOX_MODEL_NOIDX]) {
     const box = new THREE.Mesh(geo, mat);
     box.castShadow = false; box.frustumCulled = false;
     scene.add(box);
