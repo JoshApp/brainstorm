@@ -153,7 +153,10 @@ function ensureLoadingMark(): HTMLDivElement {
     textTransform: 'lowercase',
     transition: 'opacity 400ms ease-out',
   } as Partial<CSSStyleDeclaration>);
-  loadingMark.textContent = 'descending';
+  // Label in its own span so the progress % can update without nuking the ember child.
+  markLabel = document.createElement('span');
+  markLabel.textContent = 'descending';
+  loadingMark.appendChild(markLabel);
   // The same breathing coal the boot veil carries, floating above the mark.
   const ember = document.createElement('div');
   ember.classList.add('ember-coal');
@@ -191,6 +194,7 @@ function ensureLoadingMark(): HTMLDivElement {
 
 let progressBar: HTMLDivElement | null = null;
 let progressFill: HTMLDivElement | null = null;
+let markLabel: HTMLSpanElement | null = null;
 
 /** Drive the descent loading bar, 0..1 (the warmup reports its batch progress).
  *  No-op until the loading mark exists — fast floors never show it. Progress is
@@ -200,7 +204,12 @@ export function setDescentProgress(t: number): void {
   descentWorkHeartbeat();
   if (!progressFill || !progressBar) return;
   progressBar.style.opacity = '0.8';
-  progressFill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
+  const c = Math.max(0, Math.min(1, t));
+  progressFill.style.transform = `scaleX(${c})`;
+  // A long warm (cold cache after an update) can hold this cover for a minute
+  // on a phone — a bare 2px bar read as "black screen, frozen" (2026-07-04
+  // report). Say where it is, plainly.
+  if (markLabel) markLabel.textContent = `descending · ${Math.round(c * 100)}%`;
 }
 
 // ── Cover watchdog heartbeat ────────────────────────────────────────────────
@@ -218,8 +227,9 @@ export function descentWorkHeartbeat(): void { lastWorkAlive = performance.now()
 
 function showLoadingMark(): void {
   const el = ensureLoadingMark();
-  // Reset the bar to empty for this descent (the element is reused across loads).
+  // Reset the bar + label for this descent (the element is reused across loads).
   if (progressFill) { progressFill.style.transition = 'none'; progressFill.style.transform = 'scaleX(0)'; void progressFill.offsetWidth; progressFill.style.transition = 'transform 280ms ease-out'; }
+  if (markLabel) markLabel.textContent = 'descending';
   el.style.opacity = '0.55';
   // Slow breathe so it reads as alive, not a spinner — matches the dungeon's
   // unhurried tone. Web Animations API, cancelled when we hide.

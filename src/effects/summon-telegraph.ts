@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { registerWarmup } from '../content/warmup-registry';
 import { groundYAt } from '../level/elevation';
+import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 
 // Summon telegraph — the "something is being called up HERE" tell that
 // precedes a wave mob in an arena. Two layers:
@@ -80,23 +81,20 @@ export interface SummonTelegraph {
 
 const SMOKE_COUNT = 5;
 
-export function spawnSummonTelegraph(
-  scene: THREE.Object3D,
-  x: number,
-  z: number,
-  tint = 0xc01818,
-  radius = 0.7,
-): SummonTelegraph {
-  const group = new THREE.Group();
-  // Sit the sigil on the floor under the spawn point — arena rooms can be
-  // elevated, and Y=0 floated the ring above a sunken arena's floor.
-  group.position.set(x, groundYAt(x, z), z);
-  scene.add(group);
-
-  // Floor sigil.
-  const sigilMat = new THREE.MeshBasicMaterial({
+// Shared GPU resources — created ONCE, never disposed. Every telegraph reuses
+// the same unit sigil plane (scaled per spawn) and ACQUIRES its material
+// instances from the effect-clone-pool, releasing them on dispose. The old
+// version minted 1 sigil + 5 smoke materials per telegraph and DISPOSED them
+// the frame the mob materialised — on WebGPU that released the compiled
+// pipelines with the last clone, so every arena wave paid a node rebuild +
+// pipeline create (the recorded prog −3/+3 churn and 44–183ms spawn hitches).
+let _sigilGeo: THREE.PlaneGeometry | null = null;
+let _sigilTpl: THREE.MeshBasicMaterial | null = null;
+let _smokeTpl: THREE.SpriteMaterial | null = null;
+function shared() {
+  if (!_sigilGeo) _sigilGeo = new THREE.PlaneGeometry(2, 2);   // unit sigil — scaled by radius
+  if (!_sigilTpl) _sigilTpl = new THREE.MeshBasicMaterial({
     map: sigilTexture(),
-    color: tint,
     transparent: true,
     opacity: 0,
     blending: THREE.AdditiveBlending,
@@ -104,24 +102,52 @@ export function spawnSummonTelegraph(
     fog: false,
     side: THREE.DoubleSide,
   });
-  const sigil = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2), sigilMat);
+  if (!_smokeTpl) _smokeTpl = new THREE.SpriteMaterial({
+    map: smokeTexture(),
+    color: 0x231a1c,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: true,
+  });
+  return { sigilGeo: _sigilGeo, sigilTpl: _sigilTpl, smokeTpl: _smokeTpl };
+}
+
+export function spawnSummonTelegraph(
+  scene: THREE.Object3D,
+  x: number,
+  z: number,
+  tint = 0xc01818,
+  radius = 0.7,
+): SummonTelegraph {
+  const { sigilGeo, sigilTpl, smokeTpl } = shared();
+  const group = new THREE.Group();
+  // Sit the sigil on the floor under the spawn point — arena rooms can be
+  // elevated, and Y=0 floated the ring above a sunken arena's floor.
+  group.position.set(x, groundYAt(x, z), z);
+  scene.add(group);
+
+  // Floor sigil — pooled material instance; reset the animated fields (a
+  // recycled clone carries its previous wave's colour/opacity).
+  const sigilMat = acquireClone(sigilTpl);
+  sigilMat.color.setHex(tint);
+  sigilMat.opacity = 0;
+  const sigil = new THREE.Mesh(sigilGeo, sigilMat);
+  sigil.scale.set(radius, radius, 1);
   sigil.position.y = 0.02;
   sigil.rotation.x = -Math.PI / 2;
   group.add(sigil);
 
   // Rising smoke puffs (normal-blended murk so it occludes the glow as it
-  // billows up — additive dark would be invisible).
+  // billows up — additive dark would be invisible). Per-sprite pooled material
+  // instances (each puff's opacity animates on its own phase).
   const smoke: THREE.Sprite[] = [];
+  const smokeMats: THREE.SpriteMaterial[] = [];
   const smokeBase: number[] = [];
   for (let i = 0; i < SMOKE_COUNT; i++) {
-    const m = new THREE.SpriteMaterial({
-      map: smokeTexture(),
-      color: 0x231a1c,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: true,
-    });
+    const m = acquireClone(smokeTpl);
+    m.opacity = 0;
+    smokeMats.push(m);
     const sp = new THREE.Sprite(m);
     const off = (i / SMOKE_COUNT) * Math.PI * 2;
     sp.userData.ox = Math.cos(off) * radius * 0.35;
@@ -141,7 +167,7 @@ export function spawnSummonTelegraph(
     const pulse = 0.7 + 0.3 * Math.sin(c * 28);
     sigilMat.opacity = Math.min(1, c * 2) * (0.55 + 0.45 * c) * pulse;
     sigil.rotation.z = c * 2.2;                       // slow occult turn
-    const sc = 0.7 + 0.3 * c;
+    const sc = radius * (0.7 + 0.3 * c);              // unit plane → scale carries the radius
     sigil.scale.set(sc, sc, 1);
     // Smoke rises + swells + thickens.
     for (let i = 0; i < smoke.length; i++) {
@@ -159,16 +185,18 @@ export function spawnSummonTelegraph(
     if (disposed) return;
     sigilMat.color.setHex(0xffd0c0);
     sigilMat.opacity = 1;
-    sigil.scale.set(1.3, 1.3, 1);
+    sigil.scale.set(radius * 1.3, radius * 1.3, 1);
   }
 
   function dispose() {
     if (disposed) return;
     disposed = true;
     scene.remove(group);
-    sigil.geometry.dispose();
-    sigilMat.dispose();
-    for (const sp of smoke) (sp.material as THREE.Material).dispose();
+    // RELEASE the pooled clones — never dispose materials or the shared sigil
+    // plane (disposing released the pipelines with the last telegraph, and the
+    // next wave's sigil recompiled mid-play — the recorded spawn hitches).
+    releaseClone(sigilTpl, sigilMat);
+    for (const m of smokeMats) releaseClone(smokeTpl, m);
   }
 
   setProgress(0);

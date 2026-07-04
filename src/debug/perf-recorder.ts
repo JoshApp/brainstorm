@@ -69,6 +69,8 @@ interface RecFrame {
   ev?: string[];
 }
 
+declare const __BUILD_SHA__: string;
+
 export interface Recording {
   meta: {
     startedAt: string;
@@ -76,6 +78,9 @@ export interface Recording {
     frameCount: number;
     targetMs: number;
     gpuSupported: boolean;
+    /** Build SHA — ties a phone recording to the exact deploy (the 2026-07-04
+     *  recordings couldn't tell us whether the fixes were even on the device). */
+    build?: string;
     ua: string;
     dpr: number;
     viewport: [number, number];
@@ -328,6 +333,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       frameCount: frames.length,
       targetMs: TARGET_MS,
       gpuSupported: gpuActive(),
+      build: typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : 'dev',
       ua: navigator.userAgent,
       dpr: window.devicePixelRatio,
       pixelRatio: getRenderPixelRatio(),

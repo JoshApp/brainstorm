@@ -284,15 +284,22 @@ export function clearAllOutlines() {
 }
 
 // Self-registered warmup — compile the outline pipeline behind the load screen so the FIRST interactable
-// you near doesn't pay the compile. A box (position + normal, the only attrs the inverted-hull push reads)
-// wearing the real outline material; `live` so it warms in the lit real-scene pass (warm-real-roster).
+// you near doesn't pay the compile. The warm hull must match the LIVE hull's geometry cache key
+// exactly (attribute set + indexedness are both part of the render object's key): buildOutlinesFor
+// emits mergeVertices output = INDEXED position+normal, NO uv. A stock BoxGeometry carries uv, which
+// warmed a variant no live hull ever uses — the first loot-drop outline then paid its node build +
+// pipeline compile in-play (the death-beat `MeshBasicNodeMaterial` compile in the 2026-07-04 traces).
+// The warm mesh is retained for the session, so its render object PINS the live variant even when
+// every real hull has been removed (removeOutline disposes hull geometry per-interactable).
 import { registerWarmup } from '../content/warmup-registry';
 let warmOutlineMesh: THREE.Mesh | null = null;
 registerWarmup({
   label: 'interactable-outline',
   live: true,
   spawn: (scene: THREE.Object3D) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), makeOutlineMaterial());
+    const hullGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    hullGeo.deleteAttribute('uv');   // live hulls are position+normal only
+    const mesh = new THREE.Mesh(hullGeo, makeOutlineMaterial());
     mesh.userData.outline = true;
     mesh.userData._olColor = new THREE.Color(COLOR_ARMED);   // per-object uniforms → visible warm draw
     mesh.userData._olOpacity = 1;

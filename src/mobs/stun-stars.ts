@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 
 // Stagger "seeing stars" indicator — the cartoon/WC3 stun tell over a reeling
 // enemy's head, rendered in a grimdark register (cold spectral sparks, not
@@ -48,11 +49,12 @@ export interface StunStars {
 const STAR_COUNT = 3;
 const ORBIT_RADIUS = 0.26;
 
-// Template SpriteMaterial — built ONCE (with the shared star texture), cloned
-// per stagger. Every star in a ring fades together (same opacity), so ONE clone
-// covers all STAR_COUNT sprites; the clone shares the template's program and the
-// never-disposed template pins it. Was STAR_COUNT fresh SpriteMaterials per
-// stagger — a program/material churn on the most frequent combat beat.
+// Template SpriteMaterial — built ONCE (with the shared star texture); per-ring
+// instances are ACQUIRED from the effect-clone-pool and RELEASED on teardown,
+// never disposed. Every star in a ring fades together (same opacity), so ONE
+// pooled clone covers all STAR_COUNT sprites. (On WebGPU, disposing the last
+// live clone releases the compiled pipeline — the next stagger would recompile
+// mid-fight; see scene/effect-clone-pool.ts.)
 let starMatTpl: THREE.SpriteMaterial | null = null;
 function getStarMatTemplate(): THREE.SpriteMaterial {
   if (!starMatTpl) starMatTpl = new THREE.SpriteMaterial({
@@ -70,8 +72,9 @@ export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
   const group = new THREE.Group();
   group.position.set(0, y, 0);
   group.visible = false;
-  // One material clone for the whole ring (all stars share opacity).
-  const mat = getStarMatTemplate().clone();
+  // One pooled material instance for the whole ring (all stars share opacity).
+  const mat = acquireClone(getStarMatTemplate());
+  mat.opacity = 0;   // recycled clones carry their last ring's fade
   const sprites: THREE.Sprite[] = [];
   for (let i = 0; i < STAR_COUNT; i++) {
     const sp = new THREE.Sprite(mat);
@@ -106,7 +109,8 @@ export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
 
   function dispose(): void {
     parent.remove(group);
-    mat.dispose();   // the single ring material clone (geometry is Sprite-internal/shared)
+    // Release the ring's clone to the pool — never dispose (pipeline stays pinned).
+    releaseClone(getStarMatTemplate(), mat);
   }
 
   return { tick, dispose };

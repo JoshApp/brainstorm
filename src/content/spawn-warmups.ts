@@ -8,6 +8,7 @@ import { COBWEB_BARRIER } from './cobweb';
 import { getTexture } from '../style/procedural-textures';
 import { primeFloorPalette, registeredFloorMaterials } from '../style/material-registry';
 import { ACTS } from '../level/acts';
+import { SKELETONS, resolveProportions } from './skeletons';
 
 // ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
 //
@@ -34,10 +35,41 @@ WARM_BOX.userData.pooled = true;   // shared — the warm-pass teardown must not
 // are fine — only the attribute's presence/shape matters for the pipeline, not the values.
 setRevealAttributes(WARM_BOX, undefined, true);
 
-// Skinned dummy — a quad with skin attributes + bound to a 1-bone skeleton. Compiles the
+// GEOMETRY-LAYOUT PARITY — the render object's cache key includes the exact
+// attribute NAME SET and the INDEXED bit (RenderObject.getGeometryCacheKey), so
+// a dummy warms a REAL variant only when both match the live mesh. Live layouts
+// observed (2026-07-04):
+//   - death/sever chunks (creature-skinned buildChunk): NON-indexed,
+//     position+normal+uv+aReveal*
+//   - placed/dropped item + prop models: indexed, position+normal+uv, NO
+//     aReveal attributes
+//   - CSG-built parts: non-indexed, can be position+normal only (no uv)
+// A mismatched dummy is PHANTOM coverage: the first live use pays the full TSL
+// node build in-play (~100ms CPU on the phone, pipeline count unchanged — the
+// recorded death-frame spikes; placed props were rescued by the per-floor
+// warmSceneCompile, but mid-play LOOT DROPS were not).
+const WARM_BOX_NOIDX = WARM_BOX.toNonIndexed();
+WARM_BOX_NOIDX.userData.pooled = true;
+setRevealAttributes(WARM_BOX_NOIDX, undefined, true);
+// Item/prop variants — no reveal attributes (models are built reveal-less).
+const WARM_BOX_MODEL = new THREE.BoxGeometry(0.02, 0.02, 0.02);
+WARM_BOX_MODEL.userData.pooled = true;
+const WARM_BOX_MODEL_NOIDX = WARM_BOX_MODEL.toNonIndexed();
+WARM_BOX_MODEL_NOIDX.userData.pooled = true;
+const WARM_BOX_MODEL_BARE = (() => {   // CSG output: non-indexed, position+normal only
+  const g = WARM_BOX_MODEL.toNonIndexed();
+  g.deleteAttribute('uv');
+  g.userData.pooled = true;
+  return g;
+})();
+
+// Skinned dummy — skin attributes + bound to a 1-bone skeleton. Compiles the
 // SKINNING shader variant (the creature body), which is independent of bone/vert count.
+// NON-indexed: creature-skinned normalizeForSkin forces every live creature body
+// non-indexed, and the index bit is part of the cache key (see WARM_BOX_NOIDX) —
+// an indexed skinned dummy warms a variant NO live creature ever uses.
 const SKIN_GEO = (() => {
-  const g = new THREE.PlaneGeometry(0.02, 0.02);   // position + normal + uv
+  const g = new THREE.PlaneGeometry(0.02, 0.02).toNonIndexed();   // position + normal + uv
   const n = g.attributes.position.count;
   // skinIndex must be FLOAT32 to match the live creature: creature-skinned normalizeForSkin builds
   // skinIndex as a Float32 BufferAttribute, and the vertex-attribute FORMAT (float32x4 vs uint16x4) is
@@ -53,18 +85,45 @@ const SKIN_GEO = (() => {
   return g;
 })();
 
-function addSkinnedWarm(scene: THREE.Object3D, mat: THREE.Material): void {
-  const bone = new THREE.Bone();
+function addSkinnedWarm(scene: THREE.Object3D, mat: THREE.Material, boneCount = 1): void {
+  // BONE COUNT MATTERS: RenderObject's cache key appends skeleton.bones.length,
+  // so a 1-bone dummy warms a node-builder entry NO real creature hits. Pass the
+  // species' real joint count (see enemyBoneCount) or the first live spawn pays
+  // the full TSL node build in-play.
+  const bones: THREE.Bone[] = [];
+  for (let i = 0; i < Math.max(1, boneCount); i++) bones.push(new THREE.Bone());
+  for (let i = 1; i < bones.length; i++) bones[i - 1].add(bones[i]);
   const mesh = new THREE.SkinnedMesh(SKIN_GEO, mat);
-  mesh.add(bone);
-  mesh.bind(new THREE.Skeleton([bone]));
+  mesh.add(bones[0]);
+  mesh.bind(new THREE.Skeleton(bones));
   mesh.castShadow = false; mesh.frustumCulled = false;
   scene.add(mesh);
 }
-function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
-  const box = new THREE.Mesh(WARM_BOX, mat);
+
+/** A species' live skeleton bone count — the same joints list buildCreature
+ *  turns into bones (creature.joints = the compiled skeleton's joints, 1:1).
+ *  Resolved from DATA (no geometry build): archetype skeleton fn or explicit
+ *  skeleton override. */
+function enemyBoneCount(spec: (typeof ENEMIES)[keyof typeof ENEMIES]): number {
+  try {
+    const c = spec.creature;
+    const skel = c.skeleton ?? SKELETONS[c.archetype](resolveProportions(c.archetype, c.proportions));
+    return skel.joints.length;
+  } catch { return 1; }
+}
+// Chunk variant (creature materials): non-indexed + aReveal, matching buildChunk.
+function addChunkWarm(scene: THREE.Object3D, mat: THREE.Material): void {
+  const box = new THREE.Mesh(WARM_BOX_NOIDX, mat);
   box.castShadow = false; box.frustumCulled = false;
   scene.add(box);
+}
+// Model variants (items/props/decor): the reveal-less layouts live drops use.
+function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
+  for (const geo of [WARM_BOX_MODEL, WARM_BOX_MODEL_NOIDX, WARM_BOX_MODEL_BARE]) {
+    const box = new THREE.Mesh(geo, mat);
+    box.castShadow = false; box.frustumCulled = false;
+    scene.add(box);
+  }
 }
 // Instanced dummy — floor decor (sigils/cracks/rubble/niches) renders as InstancedMesh, whose
 // instanceMatrix attribute makes it a DISTINCT pipeline variant from a plain mesh. Warming on a
@@ -85,10 +144,11 @@ for (const spec of Object.values(ENEMIES)) {
   registerWarmup({
     label: `enemy:${spec.id}`, live: true,
     spawn: (scene) => {
+      const bones = enemyBoneCount(spec);
       for (const def of Object.values(spec.creature.materials)) {
         const mat = createMaterialFromDef(def.dissolvable ? def : { ...def, dissolvable: true });
-        addSkinnedWarm(scene, mat);
-        addPlainWarm(scene, mat);
+        addSkinnedWarm(scene, mat, bones);   // the body (non-indexed, aReveal, real bone count)
+        addChunkWarm(scene, mat);            // the flung death/sever chunk variant
       }
     },
     clear: () => {},

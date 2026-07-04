@@ -230,10 +230,11 @@ export function spawnCobweb(
       spawnShatterBurst(scene, group.position.x, group.position.y + 1.0, group.position.z, true);
       playEnemyDeath('small', group.position);
       onDestroyed?.();         // opens the passage
-      group.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
-      });
+      // NO synchronous dispose — same two hazards as the vase path above:
+      // pooled geometry is shared across props, and on WebGPU a fire-and-forget
+      // frame may still reference the buffers ("used in submit while destroyed"
+      // → device loss). GC reclaims the web's own geometry once the group
+      // leaves the scene.
       scene.remove(group);
       return applied;
     },

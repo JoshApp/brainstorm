@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { registerWarmup } from '../content/warmup-registry';
+import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 
 // Slime tentacle for the king's lash. A tapered limb that FORMS out of the
 // body and reaches toward the player: it's parented to the caster's
@@ -24,11 +25,11 @@ const SEGMENTS = 7;
 // Shared GPU resources — built ONCE, never disposed. The per-segment sphere
 // radii are fixed (taper depends only on the segment index, not on reach), so
 // every lash reuses the same 7 segment geometries + 1 tip geometry. The
-// materials are cloned per lash (colour/emissive vary per caster, but those are
-// uniforms — the clone shares the template's program), and the never-disposed
-// templates pin those programs. No per-windup geometry/PBR-program churn (the
-// leak that climbed over a fight; a fresh MeshStandardMaterial each lash forced
-// a fresh PBR program compile).
+// materials are per-lash instances (colour/emissive vary per caster) ACQUIRED
+// from the effect-clone-pool and released on teardown — never disposed. On
+// WebGPU, disposing the last live clone releases the compiled pipeline + node
+// builder state and the next lash recompiles mid-fight (see
+// scene/effect-clone-pool.ts).
 let _segGeo: THREE.SphereGeometry[] | null = null;
 let _tipGeo: THREE.SphereGeometry | null = null;
 let _matTpl: THREE.MeshStandardMaterial | null = null;
@@ -66,10 +67,13 @@ export function spawnLashTendril(
   parent.add(group);
 
   // Tapered tube of slime — stacked tapering spheres from a thick base to a
-  // thin tip, so it reads organic rather than a clean cone. One cloned emissive
-  // material shared across the limb so it flares together (colour set per caster).
-  const mat = matTpl.clone();
+  // thin tip, so it reads organic rather than a clean cone. One pooled emissive
+  // material shared across the limb so it flares together (colour set per caster;
+  // reset every animated field — a recycled clone carries its last lash's values).
+  const mat = acquireClone(matTpl);
   mat.emissive.setHex(color);
+  mat.emissiveIntensity = 2.0;
+  mat.opacity = 0.96;
   for (let i = 0; i < SEGMENTS; i++) {
     const f = i / (SEGMENTS - 1);            // 0 base → 1 tip
     const seg = new THREE.Mesh(segGeo[i], mat);
@@ -79,8 +83,9 @@ export function spawnLashTendril(
     group.add(seg);
   }
   // Glowing tip blob — the "head" of the tentacle.
-  const tipMat = tipMatTpl.clone();
+  const tipMat = acquireClone(tipMatTpl);
   tipMat.color.setHex(color);
+  tipMat.opacity = 0.9;
   const tip = new THREE.Mesh(tipGeo, tipMat);
   tip.position.set(0, -0.18 * Math.sin(Math.PI), -reach);
   group.add(tip);
@@ -101,11 +106,10 @@ export function spawnLashTendril(
     },
     dispose() {
       parent.remove(group);
-      // Dispose only the two CLONED materials — the segment/tip geometries and
-      // the material templates are shared and stay resident (pinning the
-      // programs so the next lash won't recompile).
-      mat.dispose();
-      tipMat.dispose();
+      // RELEASE the clones to the pool — never dispose (disposing the last live
+      // clone releases the pipeline; the next lash would recompile mid-fight).
+      releaseClone(matTpl, mat);
+      releaseClone(tipMatTpl, tipMat);
     },
   };
 }

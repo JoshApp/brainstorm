@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { groundYAt } from '../level/elevation';
+import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Ground telegraph for a telegraphed AoE attack (see the 'aoe' ability
 // effect). A flat ring marker on the floor at the target spot that
@@ -19,10 +21,10 @@ export interface AoeTelegraph {
 const RING_COLOR = 0xff2a14;
 
 // Shared GPU resources — created ONCE, never disposed. Every telegraph reuses
-// the same UNIT geometry (scaled by radius per spawn) and CLONES the template
-// materials. Clones share the template's compiled program (identical config →
-// same program-cache key), and the never-disposed template pins that program,
-// so no per-windup geometry/program churn (the leak that climbed over a fight).
+// the same UNIT geometry (scaled by radius per spawn) and ACQUIRES its material
+// clones from the effect-clone-pool (recycled, never disposed — on WebGPU a
+// disposed last clone releases the pipeline + node-builder state, and the next
+// cast recompiles mid-fight; see scene/effect-clone-pool.ts).
 let _geo: { ring: THREE.RingGeometry; disc: THREE.CircleGeometry } | null = null;
 let _mat: { ring: THREE.MeshBasicMaterial; fill: THREE.MeshBasicMaterial } | null = null;
 function shared() {
@@ -43,6 +45,16 @@ function shared() {
   return { geo: _geo, mat: _mat };
 }
 
+// Warm the telegraph's two pipelines at boot. clear() releases the clones to
+// the pool (never disposes), so the boot compile stays pinned for the session
+// — the first mid-fight AoE windup reuses it instead of compiling in-play.
+let _warmAoe: AoeTelegraph | null = null;
+registerWarmup({
+  label: 'aoe-telegraph',
+  spawn: (s) => { _warmAoe = spawnAoeTelegraph(s, 0, 0, 0.5); _warmAoe.setProgress(0.5); },
+  clear: () => { _warmAoe?.dispose(); _warmAoe = null; },
+});
+
 export function spawnAoeTelegraph(
   scene: THREE.Object3D,
   x: number,
@@ -54,10 +66,13 @@ export function spawnAoeTelegraph(
   group.position.set(x, groundYAt(x, z) + 0.03, z);   // just above the floor to avoid z-fight
   group.rotation.x = -Math.PI / 2;
 
-  // Per-instance material clones (opacity animates independently per telegraph);
-  // they share the template's program, so cloning is a cheap JS object, no compile.
-  const ringMat = mat.ring.clone();
-  const fillMat = mat.fill.clone();
+  // Per-instance material clones (opacity animates independently per telegraph),
+  // recycled through the pool. Reset the animated fields — a recycled clone
+  // carries its previous windup's values.
+  const ringMat = acquireClone(mat.ring);
+  const fillMat = acquireClone(mat.fill);
+  ringMat.opacity = 0.4;
+  fillMat.opacity = 0.0;
 
   // Outer rim — constant outline marking the danger radius. Unit geometry scaled.
   const ring = new THREE.Mesh(geo.ring, ringMat);
@@ -88,10 +103,10 @@ export function spawnAoeTelegraph(
       if (disposed) return;
       disposed = true;
       scene.remove(group);
-      // Dispose only the CLONED materials — shared geometry + template stay
-      // (the template keeps the program alive, so the next spawn won't recompile).
-      ringMat.dispose();
-      fillMat.dispose();
+      // RELEASE the clones back to the pool — never dispose (disposing the last
+      // live clone would release the pipeline; the next windup would recompile).
+      releaseClone(mat.ring, ringMat);
+      releaseClone(mat.fill, fillMat);
     },
   };
 }

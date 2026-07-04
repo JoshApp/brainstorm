@@ -17,6 +17,7 @@ import { flashPickupGlow } from '../ui/vignette';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/active-level';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -419,3 +420,40 @@ export function createPickup(
   };
   registerInteractable(interactable);
 }
+
+// Warm the loot-litter pipelines at boot: the floor disc is a SHARED stdMat per
+// rarity (transparent, fog-off — a variant nothing placed in a floor uses), so
+// without this the FIRST drop of each rarity compiled it in-play, on the death
+// beat that dropped the loot (the `shared:std` post-warmup compiles in the
+// 2026-07-04 traces). One disc per rarity + one range ring; the shared stdMat
+// pool retains the instances, so the compiled state stays pinned for the session.
+registerWarmup({
+  label: 'pickup-litter', live: true,
+  spawn: (scene) => {
+    for (const rarity of Object.keys(RARITY_COLORS) as Rarity[]) {
+      const m = new THREE.Mesh(pooledPlane(DISC_SIZE, DISC_SIZE), stdMat({
+        map: getTexture('fire-wisp'),
+        color: RARITY_COLORS[rarity],
+        emissive: RARITY_COLORS[rarity],
+        emissiveIntensity: 1.2,
+        transparent: true,
+        alphaTest: 0.05,
+        side: THREE.DoubleSide,
+        fog: false,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }));
+      m.frustumCulled = false;
+      scene.add(m);
+    }
+    const ring = new THREE.Mesh(pooledRing(0.50, 0.62, 28), new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+      fog: false, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    ring.frustumCulled = false;
+    scene.add(ring);
+  },
+  clear: () => {},
+});

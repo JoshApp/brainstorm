@@ -127,8 +127,10 @@ export function spawnCorpse(
         createPickup(parent, worldPos, loot);
         if (glint) {
           built.group.remove(glint);
-          glint.geometry.dispose();
-          (glint.material as THREE.Material).dispose();
+          // No dispose mid-play (WebGPU): a frame in flight may still reference
+          // the buffers, and disposing the last reveal material would release
+          // its pipeline (the next floor's corpses recompile it). GC reclaims
+          // the mesh once it leaves the scene.
           glint = null;
         }
         interactable.promptLabel = 'READ';   // still here to re-read, nothing to take
