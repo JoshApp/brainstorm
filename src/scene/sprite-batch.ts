@@ -1,0 +1,251 @@
+import * as THREE from 'three';
+import { SpriteNodeMaterial } from 'three/webgpu';
+import { instancedBufferAttribute, texture as textureNode, vec4 } from 'three/tsl';
+import { getTexture } from '../style/procedural-textures';
+import { registerWarmup } from '../content/warmup-registry';
+
+// ── INSTANCED SPRITE BATCH — flames, wisps, glows in a handful of draws ──────
+//
+// The phone CPU profile (2026-07-04) showed Three's WebGPU renderer charging
+// ~65µs of JS per draw, and 30-50 of our ~200 draws were individual additive
+// SPRITES: torch wisps, candle flame stacks, brazier/bonfire tongues, prop
+// glows — each its own THREE.Sprite with its own material, render object,
+// uniform upload and draw call, every frame.
+//
+// This module collapses them: ONE Mesh per (texture) — an InstancedBufferGeometry
+// unit quad with a SpriteNodeMaterial whose position/scale/colour ride
+// per-INSTANCE attributes (the documented SpriteNodeMaterial instancing path).
+// All flames on a floor become 1-2 draws, and their flicker becomes one small
+// buffer write per frame instead of N scene-graph mutations.
+//
+// CONSUMER CONTRACT (mirrors what the Sprite versions exposed):
+//  - createBatchedSprite() returns a handle whose `obj` is a plain Object3D
+//    placeholder the model parents where the Sprite used to sit. World position
+//    is read from the placeholder each tick (frozen static parents keep a
+//    constant, valid matrixWorld; moving parents update theirs as usual).
+//  - `color` / `opacity` / `scaleMul` are LIVE — the torch flicker mutates them
+//    per frame exactly like it mutated SpriteMaterial.color / sprite.scale.
+//    Opacity folds into the instance colour (additive blending: rgb×a is the
+//    only thing that reaches the framebuffer, so tint×opacity is equivalent).
+//  - Hiding any ancestor (room culler, wick states, fog-cull) hides the
+//    instance — the tick walks the placeholder's parent chain; detached
+//    placeholders (torn-down props, despawned models) go invisible too.
+//  - setTexture() moves the entry between per-texture batches (the mood-tint
+//    pass swaps flames to the neutral 'moonbeam' ramp).
+//
+// SCOPE: additive, fog-on world sprites authored as model `sprite` parts on
+// STATIC PROPS (torches/candles/braziers/props). Creature eye-halos stay real
+// Sprites — enemy-presentation.ts mutates their materials directly (eye flash)
+// and mobs are few. Viewmodel overlay sprites (depth-off) are a different
+// pipeline variant and stay as-is.
+//
+// Batching is opt-in per buildModel call (opts.batchSprites) and additionally
+// gated on setSpriteBatchScene() having been called — the bench/viewer tools
+// render models with no batch ticking, so they keep plain Sprites.
+
+const MAX_PER_BATCH = 256;
+
+interface Flicker { omega: number; phaseMs: number; scaleAmp: number; bobAmp: number }
+
+export interface BatchedSprite {
+  /** Placeholder Object3D — parent it where the Sprite used to sit. Carries
+   *  `userData.batchedSprite` back-reference for consumers that used to walk
+   *  the graph looking for Sprites (mood tint, torch flame collection). */
+  obj: THREE.Object3D;
+  /** Live tint — mutate freely (torch flicker writes base×brightness here). */
+  color: THREE.Color;
+  /** Live opacity 0..1 (folded into the additive colour on upload). */
+  opacity: number;
+  /** Live per-axis scale multiplier on top of the authored size (torch jitter). */
+  scaleMul: THREE.Vector2;
+  /** Authored base size (metres). */
+  baseSize: THREE.Vector2;
+  /** Swap the entry to another texture's batch (mood tint → 'moonbeam'). */
+  setTexture(name: string): void;
+}
+
+interface Entry extends BatchedSprite {
+  textureName: string;
+  flicker: Flicker | null;
+  baseY: number;   // placeholder's authored local Y (bob is applied around it)
+}
+
+class Batch {
+  mesh: THREE.Mesh;
+  pos: THREE.InstancedBufferAttribute;
+  scale: THREE.InstancedBufferAttribute;
+  col: THREE.InstancedBufferAttribute;
+  geo: THREE.InstancedBufferGeometry;
+  constructor(textureName: string) {
+    const plane = new THREE.PlaneGeometry(1, 1);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = plane.index;
+    geo.setAttribute('position', plane.getAttribute('position'));
+    geo.setAttribute('uv', plane.getAttribute('uv'));
+    this.pos = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PER_BATCH * 3), 3);
+    this.scale = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PER_BATCH * 2), 2);
+    this.col = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PER_BATCH * 3), 3);
+    this.pos.setUsage(THREE.DynamicDrawUsage);
+    this.scale.setUsage(THREE.DynamicDrawUsage);
+    this.col.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aPos', this.pos);
+    geo.setAttribute('aScale', this.scale);
+    geo.setAttribute('aCol', this.col);
+    geo.instanceCount = 0;
+    this.geo = geo;
+
+    const mat = new SpriteNodeMaterial();
+    mat.transparent = true;
+    mat.blending = THREE.AdditiveBlending;
+    mat.depthWrite = false;
+    mat.fog = true;   // world flames sit in the fog like their Sprite ancestors
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    (mat as any).positionNode = instancedBufferAttribute(this.pos);
+    (mat as any).scaleNode = instancedBufferAttribute(this.scale);
+    (mat as any).colorNode = (textureNode(getTexture(textureName)) as any)
+      .mul((vec4 as any)(instancedBufferAttribute(this.col), 1));
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    mat.name = `sprite-batch:${textureName}`;
+
+    this.mesh = new THREE.Mesh(geo, mat);
+    this.mesh.frustumCulled = false;      // instances span the floor; cull per-entry via visibility
+    this.mesh.matrixAutoUpdate = false;   // identity — instance positions are world-space
+    this.mesh.name = `sprite-batch:${textureName}`;
+  }
+}
+
+let batchScene: THREE.Scene | null = null;
+const batches = new Map<string, Batch>();
+const entries: Entry[] = [];
+const _world = new THREE.Vector3();
+
+function batchFor(textureName: string): Batch {
+  let b = batches.get(textureName);
+  if (!b) {
+    b = new Batch(textureName);
+    batches.set(textureName, b);
+    batchScene?.add(b.mesh);
+  }
+  return b;
+}
+
+/** Enable batching (the game calls this once with the live scene; bench/viewer
+ *  never do, so models built there keep plain Sprites). */
+export function setSpriteBatchScene(scene: THREE.Scene): void {
+  batchScene = scene;
+  for (const b of batches.values()) scene.add(b.mesh);
+}
+
+export function isSpriteBatchingEnabled(): boolean { return batchScene !== null; }
+
+/** Register a batched sprite. Caller parents `handle.obj` into its model. */
+export function createBatchedSprite(opts: {
+  texture: string;
+  size: [number, number];
+  color: number;
+  opacity: number;
+  flicker?: { speed: number; phase?: number; scale?: number; bob?: number };
+}): BatchedSprite {
+  const obj = new THREE.Object3D();
+  const entry: Entry = {
+    obj,
+    color: new THREE.Color(opts.color),
+    opacity: opts.opacity,
+    scaleMul: new THREE.Vector2(1, 1),
+    baseSize: new THREE.Vector2(opts.size[0], opts.size[1]),
+    textureName: opts.texture,
+    baseY: 0,
+    flicker: opts.flicker ? {
+      omega: Math.PI * 2 * opts.flicker.speed,
+      phaseMs: (opts.flicker.phase ?? Math.random() * 100) * 1000,
+      scaleAmp: opts.flicker.scale ?? 0,
+      bobAmp: opts.flicker.bob ?? 0,
+    } : null,
+    setTexture(name: string) { entry.textureName = name; },
+  };
+  obj.userData.batchedSprite = entry;
+  entries.push(entry);
+  batchFor(entry.textureName);   // ensure the batch exists (and warms) up front
+  return entry;
+}
+
+/** True when every ancestor up to (and including) the batch scene is visible. */
+function worldVisible(o: THREE.Object3D): boolean {
+  let cur: THREE.Object3D | null = o;
+  while (cur) {
+    if (!cur.visible) return false;
+    if (cur === (batchScene as THREE.Object3D)) return true;
+    cur = cur.parent;
+  }
+  return false;   // detached from the scene (torn down / not yet mounted)
+}
+
+/** Per-frame: fold every live entry into its batch's instance attributes.
+ *  One pass over ~60 entries + one small buffer upload per batch — replacing
+ *  ~60 per-object draw submissions. */
+export function tickSpriteBatch(): void {
+  if (!batchScene) return;
+  const counts = new Map<string, number>();
+  const now = Date.now();
+  for (const e of entries) {
+    if (!worldVisible(e.obj)) continue;
+    const b = batchFor(e.textureName);
+    const i = counts.get(e.textureName) ?? 0;
+    if (i >= MAX_PER_BATCH) continue;
+    counts.set(e.textureName, i + 1);
+
+    let s = 1;
+    let bob = 0;
+    if (e.flicker) {
+      const t = (now + e.flicker.phaseMs) / 1000;
+      const a = Math.sin(e.flicker.omega * t);
+      const c = Math.sin(e.flicker.omega * 1.7 * t + 1.3);
+      const w = a * 0.6 + c * 0.4;
+      s = 1 + w * e.flicker.scaleAmp;
+      bob = w * e.flicker.bobAmp;
+    }
+    e.obj.getWorldPosition(_world);
+    b.pos.setXYZ(i, _world.x, _world.y + bob, _world.z);
+    b.scale.setXY(i, e.baseSize.x * s * e.scaleMul.x, e.baseSize.y * s * e.scaleMul.y);
+    // Additive: only rgb×alpha reaches the framebuffer, so opacity folds into
+    // the tint and the shader's alpha stays the texture's own.
+    b.col.setXYZ(i, e.color.r * e.opacity, e.color.g * e.opacity, e.color.b * e.opacity);
+  }
+  for (const [name, b] of batches) {
+    const n = counts.get(name) ?? 0;
+    // Hide idle batches entirely — a visible mesh with instanceCount 0 still
+    // submits a degenerate draw (Dawn warns "index count of 0 is unusual").
+    b.mesh.visible = n > 0;
+    if (n === 0 && b.geo.instanceCount === 0) continue;   // idle — skip uploads
+    b.geo.instanceCount = n;
+    b.pos.needsUpdate = true;
+    b.scale.needsUpdate = true;
+    b.col.needsUpdate = true;
+  }
+}
+
+/** Drop every entry (level teardown/load — the placeholders die with the level
+ *  root; the batch meshes + pipelines stay resident for the next floor). */
+export function resetSpriteBatch(): void {
+  entries.length = 0;
+  for (const b of batches.values()) b.geo.instanceCount = 0;
+}
+
+// Warm the batch pipelines at boot: one visible dummy instance per common
+// texture, rendered through the real PSX pipeline by the warm pass. The batch
+// meshes live in the scene permanently, so the compiled pipelines stay pinned.
+registerWarmup({
+  label: 'sprite-batch', live: true,
+  spawn: () => {
+    if (!batchScene) return;
+    for (const name of ['fire-wisp', 'moonbeam']) {
+      const b = batchFor(name);
+      b.pos.setXYZ(0, 0, 0.5, 0);
+      b.scale.setXY(0, 0.05, 0.05);
+      b.col.setXYZ(0, 1, 1, 1);
+      b.geo.instanceCount = 1;
+      b.pos.needsUpdate = true; b.scale.needsUpdate = true; b.col.needsUpdate = true;
+    }
+  },
+  clear: () => { for (const b of batches.values()) b.geo.instanceCount = 0; },
+});

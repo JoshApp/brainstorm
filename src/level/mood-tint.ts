@@ -111,6 +111,15 @@ export function applyMoodTint(built: BuiltModel, tint: number): void {
   // tint colour alone decides the hue. (Same swap the stair shaft already
   // does for exactly this reason — see stairs.ts.)
   built.group.traverse((obj) => {
+    // Batched flames (instanced sprite batch): retint the handle + move it to
+    // the neutral-ramp batch — same recolour+map-swap, per instance.
+    const batched = obj.userData.batchedSprite as
+      { color: THREE.Color; setTexture(name: string): void } | undefined;
+    if (batched) {
+      batched.color.setHex(tint);
+      batched.setTexture('moonbeam');
+      return;
+    }
     const sprite = obj as THREE.Sprite;
     if (!sprite.isSprite) return;
     const m = sprite.material as THREE.SpriteMaterial;

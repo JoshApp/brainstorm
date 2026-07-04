@@ -5,6 +5,7 @@ import { registerMaterialPool } from '../style/material-registry';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
+import { createBatchedSprite, isSpriteBatchingEnabled } from '../scene/sprite-batch';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
@@ -43,6 +44,9 @@ export interface BuiltModel {
 // makeMesh / buildCsg / decal call. A per-part castShadow/receiveShadow still
 // overrides it (`part.castShadow ?? curShadow.cast`).
 let curShadow: { cast: boolean; receive: boolean } = { cast: true, receive: true };
+// Per-build flag (same idiom as curShadow): route additive sprite parts into
+// the instanced batch. Set by buildModel from opts, read in the sprite branch.
+let curBatchSprites = false;
 // Per-material unique id for WebGPU. three.webgpu otherwise shares render BINDINGS
 // (not just the compiled program) across structurally-identical materials, so removing
 // one dissolving/flashing mob leaves its uniform state stuck on the whole species
@@ -66,9 +70,17 @@ export function propClassShadow(spec: ModelSpec): ShadowRole | undefined {
   return spec.shadow ?? (spec.class ? PROP_CLASS_POLICY[spec.class].shadow : undefined);
 }
 
-export function buildModel(spec: ModelSpec): BuiltModel {
+export function buildModel(spec: ModelSpec, opts?: {
+  /** Route additive `sprite` parts into the instanced sprite batch
+   *  (scene/sprite-batch.ts) instead of one THREE.Sprite draw each. Opt-in for
+   *  STATIC PROP builders (level props, torches) — creatures keep real Sprites
+   *  (enemy-presentation mutates halo materials directly), and the bench/
+   *  viewer tools never enable the batch so they're unaffected either way. */
+  batchSprites?: boolean;
+}): BuiltModel {
   const flatShadingDefault = false;   // PS1 is the only style; smooth shading
   curShadow = shadowFlags(propClassShadow(spec));
+  curBatchSprites = (opts?.batchSprites ?? false) && isSpriteBatchingEnabled();
 
   // Fresh material instances per-model (so hit-flash on one ghoul doesn't
   // tint another, etc.).
@@ -688,6 +700,20 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       return buildCsg(part, materials);
     }
     case 'sprite': {
+      // BATCHED PATH (static props, additive only): a placeholder Object3D
+      // stands in for the Sprite; the instanced batch reads its world position
+      // + visibility each frame and draws all flames in one call. Flicker
+      // (same two-sine wobble) is ticked by the batch. See scene/sprite-batch.
+      if (curBatchSprites && part.blending === 'additive') {
+        const handle = createBatchedSprite({
+          texture: part.texture,
+          size: [part.size[0], part.size[1]],
+          color: part.color ?? 0xffffff,
+          opacity: part.opacity ?? 1,
+          flicker: part.flicker,
+        });
+        return handle.obj;
+      }
       const spriteMat = new THREE.SpriteMaterial({
         map: getTexture(part.texture),
         color: part.color ?? 0xffffff,

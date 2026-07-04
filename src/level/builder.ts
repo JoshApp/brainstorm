@@ -1223,7 +1223,10 @@ export function buildLevel(
         yTop: gy + 0.7,
       });
     } else if (prop.kind === 'model') {
-      const built = buildModel(prop.model);
+      // batchSprites: prop flame/glow sprites (candles, braziers, bonfires)
+      // fold into the instanced sprite batch — one draw per texture instead
+      // of one per tongue. Props are static, so their anchors never move.
+      const built = buildModel(prop.model, { batchSprites: true });
       // Height AO — darken the prop's base toward the floor so it sits in its
       // own shadow (world-Y driven, survives the static merge). Scaled by the
       // same SURFACE AO slider as the rest of the grounding.

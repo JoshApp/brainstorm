@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createBatchedSprite, isSpriteBatchingEnabled, type BatchedSprite } from './sprite-batch';
 import { type ArchwayEye } from './archway-eye';
 
 // Threshold draft — the diegetic "a way through here" cue at an open archway,
@@ -26,13 +27,21 @@ const DUST_SPEED = 0.18;          // m/s along the passage axis
 type Axis = 'x' | 'z';
 
 interface Mote {
-  sprite: THREE.Sprite;
-  mat: THREE.SpriteMaterial;
+  /** The positioned node — a real Sprite, or the batched handle's placeholder
+   *  (instanced sprite batch; ~50 mote draws per floor fold into one). */
+  sprite: THREE.Object3D;
+  mat: THREE.SpriteMaterial | null;
+  handle: BatchedSprite | null;
   // Offset from the opening centre (the mote rides the draft from here).
   ox: number; oy: number; oz: number;
   vAxis: number;   // drift speed along the passage axis (signed)
   vLat: number;    // lateral wander
   baseOpacity: number;
+}
+
+function setMoteOpacity(m: Mote, v: number): void {
+  if (m.handle) m.handle.opacity = v;
+  else if (m.mat) m.mat.opacity = v;
 }
 
 // The haze used to be a few layered planes at slightly different depths
@@ -199,21 +208,34 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
 
   const motes: Mote[] = [];
   for (let i = 0; i < MOTES_PER_DRAFT; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: moteTexture(),
-      color: DUST_COLOR,
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: true,
-    });
-    const sprite = new THREE.Sprite(mat);
     const sz = 0.04 + rand() * 0.04;
-    sprite.scale.set(sz, sz, 1);
-    scene.add(sprite);
+    let sprite: THREE.Object3D;
+    let mat: THREE.SpriteMaterial | null = null;
+    let handle: BatchedSprite | null = null;
+    if (isSpriteBatchingEnabled()) {
+      // Batched: ~50 mote draws per floor become part of one instanced draw.
+      // 'moonbeam' (soft white radial) is visually the old mote texture at
+      // these sizes and shares the mood-tint batch — no extra pipeline.
+      handle = createBatchedSprite({ texture: 'moonbeam', size: [sz, sz], color: DUST_COLOR, opacity: 0 });
+      sprite = handle.obj;
+      scene.add(sprite);
+    } else {
+      mat = new THREE.SpriteMaterial({
+        map: moteTexture(),
+        color: DUST_COLOR,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: true,
+      });
+      const s = new THREE.Sprite(mat);
+      s.scale.set(sz, sz, 1);
+      scene.add(s);
+      sprite = s;
+    }
     const m: Mote = {
-      sprite, mat,
+      sprite, mat, handle,
       ox: (rand() - 0.5) * w,
       oy: 0.3 + rand() * 1.8,
       oz: (rand() - 0.5) * 0.8,
@@ -271,7 +293,7 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
     for (const l of d.hazeLayers) l.mat.opacity = hazeOp * l.weight;
 
     if (dist > TICK_RANGE) {
-      for (const m of d.motes) m.mat.opacity = 0;
+      for (const m of d.motes) setMoteOpacity(m, 0);
       continue;
     }
     // Dust visibility tracks proximity too (a touch wider than the haze).
@@ -289,7 +311,7 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
       placeMote(d.cx, d.cz, d.floorY, d.axis, m);
       // Fade in at the ends of the column so they don't pop.
       const endFade = 1 - smoothstep(0.9, 1.3, Math.abs(m.ox));
-      m.mat.opacity = m.baseOpacity * dustVis * endFade;
+      setMoteOpacity(m, m.baseOpacity * dustVis * endFade);
     }
   }
 }
@@ -304,7 +326,10 @@ export function clearThresholdDrafts(): void {
     }
     for (const m of d.motes) {
       m.sprite.parent?.remove(m.sprite);
-      m.mat.dispose();
+      // Batched motes have no material of their own — their entries die with
+      // the level's resetSpriteBatch. (No dispose either way: releasing the
+      // last mote material used to evict its pipeline every descent.)
+      m.mat?.dispose();
     }
   }
   for (const lure of lures) lure.eye.dispose();

@@ -74,6 +74,7 @@ import { type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
 import { bundleStaticLevelContent } from './scene/render-bundles';
+import { setSpriteBatchScene } from './scene/sprite-batch';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
@@ -275,6 +276,10 @@ const scene = new THREE.Scene();
 if (import.meta.env.DEV) (globalThis as Record<string, unknown>).__scene = scene;
 scene.background = new THREE.Color(CONFIG.FOG_COLOR);
 scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
+// Enable the instanced sprite batch (flames/wisps/glows in 1-2 draws) — must
+// precede the first level build so torch/prop builders route their additive
+// sprite parts into it. Bench/viewer tools never call this and keep Sprites.
+setSpriteBatchScene(scene);
 
 // WEBGPU: halve the ambient fill. r184's units make AMBIENT_INTENSITY read much
 // brighter (flat wash on the stone). Trimming the fill here — rather than via a

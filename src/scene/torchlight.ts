@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
+import type { BatchedSprite } from './sprite-batch';
 import { WALL_TORCH } from '../content/torch';
 import { applyMoodTint } from '../level/mood-tint';
 import { registerLight, unregisterLight } from './light-pool';
@@ -29,6 +30,10 @@ export interface Torch {
   flameMaterial?: THREE.MeshStandardMaterial;
   flameMesh?: THREE.Mesh;
   wispSprite?: THREE.Sprite;
+  /** Set instead of wispSprite when the wisp went into the instanced sprite
+   *  batch (scene/sprite-batch.ts) — the flicker writes the handle's live
+   *  color/scaleMul instead of a SpriteMaterial. */
+  wispBatched?: BatchedSprite;
   wispBaseColor?: THREE.Color;
   wispBaseScale?: THREE.Vector3;
   /** The flame's draw-only children (emissive mesh + additive sprite stack) —
@@ -69,7 +74,9 @@ export function createTorchlight(
   intensityMul: number = 1,
   fixtureModel: ModelSpec = WALL_TORCH,
 ): Torch {
-  const built = buildModel(fixtureModel);
+  // batchSprites: the wisp + flame-tongue stack fold into the instanced
+  // sprite batch (one draw per texture floor-wide instead of one per sprite).
+  const built = buildModel(fixtureModel, { batchSprites: true });
   built.group.position.copy(position);
   built.group.rotation.y = wallYaw;
   scene.add(built.group);
@@ -96,17 +103,22 @@ export function createTorchlight(
 
   const baseIntensity = lightSpec.intensity * intensityMul;
 
-  const wispSprite = built.parts.get('wisp') as THREE.Sprite | undefined;
-  const wispBaseColor = wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
+  const wispPart = built.parts.get('wisp');
+  const wispBatched = wispPart?.userData.batchedSprite as BatchedSprite | undefined;
+  const wispSprite = !wispBatched ? (wispPart as THREE.Sprite | undefined) : undefined;
+  const wispBaseColor = wispBatched ? wispBatched.color.clone()
+    : wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
   const wispBaseScale = wispSprite ? wispSprite.scale.clone() : undefined;
-  // Collect the flame's draw-only children — every Sprite (wisp + flame-tongue
-  // stack) plus the named 'flame' mesh — for the distance fog-cull. The static
-  // sconce meshes get merged out by batchStaticFixtures; sprites + 'flame' are
-  // skipped by that merge, so these refs stay valid.
+  // Collect the flame's draw-only children — every Sprite / batched-sprite
+  // placeholder (wisp + flame-tongue stack) plus the named 'flame' mesh — for
+  // the distance fog-cull. The static sconce meshes get merged out by
+  // batchStaticFixtures; sprites + 'flame' are skipped by that merge, so these
+  // refs stay valid. Toggling a placeholder's `visible` hides its batch
+  // instance (the batch walks the parent chain).
   const flameVisuals: THREE.Object3D[] = [];
   built.group.traverse((o) => {
     const isSprite = (o as unknown as { isSprite?: boolean }).isSprite === true;
-    if (isSprite || o.name === 'flame') flameVisuals.push(o);
+    if (isSprite || o.name === 'flame' || o.userData.batchedSprite) flameVisuals.push(o);
   });
 
   // World position of the actual light: model group position + light's
@@ -127,6 +139,7 @@ export function createTorchlight(
     flameMaterial,
     flameMesh,
     wispSprite,
+    wispBatched,
     wispBaseColor,
     wispBaseScale,
     flameVisuals,
@@ -224,7 +237,17 @@ export function updateTorchlight(torch: Torch, dt: number, camDist?: number) {
   }
 
   // --- WISP SPRITE ---
-  if (torch.wispSprite && torch.wispBaseColor && torch.wispBaseScale) {
+  if (torch.wispBatched && torch.wispBaseColor) {
+    // Batched wisp: same flicker, written to the instance handle instead of a
+    // SpriteMaterial — the batch uploads it with everyone else's this frame.
+    const wispBrightness = Math.max(0.5, Math.min(1.4, flameFactor));
+    torch.wispBatched.color.copy(torch.wispBaseColor).multiplyScalar(wispBrightness);
+    const wispJitter = 1 + (scaleJitter - 1) * 1.6;
+    torch.wispBatched.scaleMul.set(
+      wispJitter,
+      wispJitter * (0.95 + Math.sin((t + n1) * 5) * 0.08),
+    );
+  } else if (torch.wispSprite && torch.wispBaseColor && torch.wispBaseScale) {
     const wispMat = torch.wispSprite.material as THREE.SpriteMaterial;
     const wispBrightness = Math.max(0.5, Math.min(1.4, flameFactor));
     wispMat.color.copy(torch.wispBaseColor).multiplyScalar(wispBrightness);

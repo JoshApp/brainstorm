@@ -74,6 +74,7 @@ import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickFlungParts } from '../effects/flung-parts';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickDustPuff } from '../effects/dust-puff';
+import { tickSpriteBatch } from '../scene/sprite-batch';
 import { tickParrySpark } from '../effects/parry-spark';
 import { tickArenaLightArc } from '../feedback/arena-light-arc';
 import { tickStatusVfx } from '../effects/status-vfx';
@@ -217,6 +218,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // slow-mo; haze blooms by player proximity.
       tickThresholdDrafts(ctx.realDt, camera.position);
     } },
+
+    // Instanced sprite batch — folds every batched flame/wisp (torch wisps,
+    // candle stacks, prop glows) into per-texture instance buffers. AFTER
+    // torchlight (which writes the wisp handles' colour/scale this frame);
+    // phase 'always' so flames keep rendering (and wobbling — Date.now
+    // flicker, like the old onBeforeRender) across pauses.
+    { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); } },
 
     // Effective torchlight at the player — torches within earshot AND with a
     // clear line of sight (one behind a wall neither lights nor sounds here).
