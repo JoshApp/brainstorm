@@ -18,7 +18,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 //
 // NOT for the arms — those are IK-driven (the elbow bends per frame), so their
 // bones DO move relative to each other and must stay separate.
-export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Object3D | null): void {
+export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Object3D | null, label = 'hand-merged'): void {
   group.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
   const local = new THREE.Matrix4();
@@ -34,9 +34,13 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
     const m = o as THREE.Mesh;
     if (m.isMesh && m.geometry && !Array.isArray(m.material)) {
       const mat = m.material as THREE.Material;
+      // TEXTURED parts stay loose — the merge strips everything but
+      // position+normal, which would break their uv mapping (e.g. the corpse's
+      // blood-pool decal). One or two meshes per model; not worth the risk.
+      if ((mat as THREE.MeshStandardMaterial).map) { for (const c of o.children) collect(c); return; }
       // Bake the mesh's transform relative to the group root into a geometry clone.
       local.multiplyMatrices(inv, m.matrixWorld);
-      const geo = m.geometry.clone().applyMatrix4(local);
+      let geo = m.geometry.clone().applyMatrix4(local);
       // Normalize attributes so MIXED primitives (box + sphere + cylinder) can
       // merge — mergeGeometries needs an identical attribute set across all
       // inputs, and it fails silently (returns null) otherwise. Viewmodel
@@ -44,6 +48,11 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
       for (const name of Object.keys(geo.attributes)) {
         if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
       }
+      // Normalize INDEXING too — a bucket mixing indexed (primitive) and
+      // non-indexed (CSG) geometry also makes mergeGeometries return null,
+      // which silently left whole material buckets unmerged (the corpse's
+      // cloth limbs, found via the 2026-07-04 phone recordings).
+      if (geo.index) { const ni = geo.toNonIndexed(); geo.dispose(); geo = ni; }
       const key = matSig(mat);
       let b = byMat.get(key);
       if (!b) { b = { mat, geos: [], meshes: [], cast: m.castShadow, recv: m.receiveShadow, order: m.renderOrder }; byMat.set(key, b); }
@@ -63,7 +72,7 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
     mesh.castShadow = b.cast;
     mesh.receiveShadow = b.recv;
     mesh.renderOrder = b.order;
-    mesh.name = 'hand-merged';
+    mesh.name = label;
     group.add(mesh);
     for (const m of b.meshes) m.removeFromParent();   // detach originals; don't dispose pooled geometry
   }

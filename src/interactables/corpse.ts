@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { buildModel } from '../ecs/build-model';
+import { mergeRigidViewmodel } from '../player/viewmodel-merge';
 import { registerInteractable } from './system';
 import { emit } from '../broadcast/event-bus';
 import { whisper, dismissWhisper } from '../ui/whisper';
@@ -43,6 +44,12 @@ export function spawnCorpse(
   loot: ItemSpec | null,
 ) {
   const built = buildModel(makeCorpseModel(fallen.pose, fallen.decay ?? 'fleshy', !!loot));
+  // The pose is baked into the spec — a corpse never re-articulates. Collapse
+  // its ~40+ bone meshes (each hand alone is 16 finger segments — the
+  // `handL_f`/`handR_f` swarm in the 2026-07-04 phone recordings) into a few
+  // merged meshes per material. Slots survive (the loot glint mounts on
+  // `loot_glint` below); the textured blood-pool decal stays loose.
+  mergeRigidViewmodel(built.group, null, 'corpse-merged');
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   parent.add(built.group);
