@@ -28,6 +28,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
+import { mergeRigidViewmodel } from './viewmodel-merge';
 import { getLanternSwing, getBobOffset } from './viewmodel-bob';
 import { getLampSway, getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback, getViewmodelPullbackFrac } from './viewmodel-pullback';
@@ -283,6 +284,11 @@ export function attachLamp(camera: THREE.Camera) {
       mesh.renderOrder = 998;  // just under the sword (999)
     }
   });
+  // Collapse the lantern's rigid cage/bracket meshes. Merge at the BODY (it
+  // swings as one unit under the hinge — merging at the hinge would bake the
+  // swing pose). Flame sprites aren't meshes and the glass is transparent, so
+  // both stay loose per the merge's own rules.
+  mergeRigidViewmodel(body, null, 'lamp-merged');
 
   // ── Logical light source via the pool ──────────────────────────────
   // The lantern doesn't own a THREE.PointLight directly — every

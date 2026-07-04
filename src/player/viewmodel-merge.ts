@@ -38,6 +38,9 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
       // position+normal, which would break their uv mapping (e.g. the corpse's
       // blood-pool decal). One or two meshes per model; not worth the risk.
       if ((mat as THREE.MeshStandardMaterial).map) { for (const c of o.children) collect(c); return; }
+      // TRANSPARENT parts stay loose too — merging them changes sort order
+      // against whatever they overlay (lamp glass over its flame, glow gems).
+      if (mat.transparent) { for (const c of o.children) collect(c); return; }
       // Bake the mesh's transform relative to the group root into a geometry clone.
       local.multiplyMatrices(inv, m.matrixWorld);
       let geo = m.geometry.clone().applyMatrix4(local);

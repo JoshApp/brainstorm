@@ -400,6 +400,14 @@ export function createWeaponViewmodel(
     // out of gleamCollect — it has no emissive.
     applyViewmodelRender(composed.hand.group, 998, false);
     if (composed.weapon) {
+      // Collapse the weapon's rigid parts (blade/edges/guard/grip/pommel — ~6
+      // draws) into 1-2 merged meshes. NOT for whip-class weapons: their bead
+      // chain (chain0..chain5) ripples per frame. Runs BEFORE the render-apply
+      // below so the gleam's flashMats collect from the materials that
+      // actually draw (the merge keeps one representative instance per look).
+      if (!composed.weapon.parts.has('chain0')) {
+        mergeRigidViewmodel(composed.weapon.group, null, 'weapon-merged');
+      }
       applyViewmodelRender(composed.weapon.group, 999, true);
       // Whip-class weapons have a named bead chain — wire its ripple
       // animator off the WEAPON's parts (not the hand's).

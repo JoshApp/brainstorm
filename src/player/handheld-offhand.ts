@@ -3,6 +3,7 @@ import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
 import { getOffhandSway } from './viewmodel-sway';
 import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
+import { mergeRigidViewmodel } from './viewmodel-merge';
 import type { ModelSpec } from '../ecs/model-types';
 
 // Generic offhand viewmodel — a model parented to the camera at the
@@ -50,6 +51,10 @@ export function attachOffhandViewmodel(camera: THREE.Camera, spec: ModelSpec) {
     }
     mesh.renderOrder = 998;   // just under the sword (999), same as the lamp
   });
+  // The offhand (shield: face + rim + boss) is rigid — braced, not
+  // articulated. Collapse its parts into merged meshes (transparent/textured
+  // parts stay loose per the merge's own rules).
+  mergeRigidViewmodel(group, null, 'offhand-merged');
   camera.add(group);
   registerViewmodel(group);   // near-depth pass (see render-target.ts)
 }
