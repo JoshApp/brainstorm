@@ -438,10 +438,11 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
-    // EXPERIMENT (?batchworld=1, default OFF — intermittent boot race, see
-    // scene/static-batch.ts): fold the whole static world into floor-wide
-    // BatchedMeshes (one render object per material family). AFTER the
-    // fixture merge (its output batches too), BEFORE the freeze + room culler.
+    // Fold the whole static world into floor-wide BatchedMeshes — one render
+    // object per material family, colours baked to vertex attributes, per-rect
+    // visibility driven by the room culler (?batchworld=0 kill switch; see
+    // scene/static-batch.ts). AFTER the fixture merge (its output batches
+    // too), BEFORE the freeze + room culler.
     batchStaticWorld(currentLevel);
     // Matrix-FREEZE the static world (walls/props never move; the per-frame
     // updateMatrixWorld math measured ~6-8% of phone CPU). Also hosts the

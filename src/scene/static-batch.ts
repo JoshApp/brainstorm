@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
 import { getAllInteractables } from '../interactables/system';
+import { deferGpuDispose } from '../style/render-webgpu';
 
 // ── STATIC-WORLD BATCHING (BatchedMesh) ──────────────────────────────────────
 //
@@ -34,27 +35,20 @@ import { getAllInteractables } from '../interactables/system';
 // (warmSceneCompile) warms their pipelines behind the cover. Escape hatch:
 // ?batchworld=0.
 
-/** ?batchworld=1 enables. DEFAULT OFF — the implementation is complete and
- *  renders correctly (verified: visuals, per-rect culling, teardown, zero
- *  in-play compiles), but roughly one boot in three hits an INTERMITTENT
- *  race during the first-descent warm: `setIndexBuffer: parameter 1 is not
- *  of type 'GPUBuffer'` followed by a depth/output texture usage-scope error
- *  storm and a black world — the same signature the render-bundle experiment
- *  died on. Best current theory: the warm's render-target collapse/restore
- *  (setWarmLowRes) destroys pass textures while a submit that references
- *  them is still in flight, and the batches' larger first-frame buffer
- *  uploads widen the window. Fix the warm-resize/in-flight hazard (or land a
- *  Three upgrade) before flipping this on; the payoff measured so far is
- *  ~30 static render objects replacing ~150+ per floor.
+/** Default ON; ?batchworld=0 is the kill switch.
  *
- *  ALSO KNOWN (tune before enabling): material-family fragmentation — 30
- *  batches/floor because shell/prop materials differ mostly by COLOUR.
- *  Baking colour into vertex attributes (one white vertexColors material per
- *  shading family) would collapse the flat-shaded stone family (~13 batches)
- *  into one. See the 2026-07-04 session notes. */
+ *  HISTORY: this shipped default-OFF for a night because ~1 boot in 3 hit an
+ *  intermittent black-world race (`setIndexBuffer: parameter 1 is not of type
+ *  'GPUBuffer'` → depth/output usage-scope storm — the same signature that
+ *  killed the render-bundle experiment). The GPUBuffer.destroy stack traps
+ *  identified the root cause: the level teardown's SYNCHRONOUS
+ *  geometry-dispose burst destroyed buffers a queued frame still referenced.
+ *  Fixed via deferGpuDispose (render-webgpu.ts) — teardown removes from the
+ *  scene immediately, buffers die at the next GPU-idle frame. Soaked: 5/5
+ *  clean boots + 3 chained descents + a 15-mob smite, zero GPU errors. */
 export function staticWorldBatchingEnabled(): boolean {
-  if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('batchworld') === '1';
+  if (typeof location === 'undefined') return true;
+  return new URLSearchParams(location.search).get('batchworld') !== '0';
 }
 
 // rectId → the batch instances belonging to that room rect (culler toggles).
@@ -113,7 +107,67 @@ function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
   return bestId;
 }
 
-interface Item { mesh: THREE.Mesh; rectId: string }
+interface Item { mesh: THREE.Mesh; rectId: string; geo: THREE.BufferGeometry }
+
+// ── COLOUR → VERTEX BAKE ─────────────────────────────────────────────────────
+// Most static materials differ ONLY by colour (the census: ~13 flat-shaded
+// stone materials, all rough=1 metal=0, colours apart) — keying batches on the
+// material value fragments them into near-singletons. For plain materials
+// (no map, black emissive, opaque, front-side, no vertex colours) the colour
+// is baked into a per-vertex `color` attribute instead, and every such mesh
+// shares ONE white vertexColors material per shading family — mathematically
+// identical output (base = color × vertexColor), one batch instead of ~13.
+const bakedMats = new Map<string, THREE.MeshStandardMaterial>();
+
+function bakeFamilyKey(m: THREE.MeshStandardMaterial): string {
+  return `${m.flatShading ? 'f' : 's'}|${(m.roughness ?? 1).toFixed(2)}|${(m.metalness ?? 0).toFixed(2)}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`;
+}
+
+function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
+  const m = mat as THREE.MeshStandardMaterial;
+  return (m as THREE.MeshStandardMaterial).isMeshStandardMaterial === true
+    && !m.map && !m.transparent && (m.alphaTest ?? 0) === 0
+    && m.side === THREE.FrontSide && !m.vertexColors
+    && m.emissive !== undefined && m.emissive.getHex() === 0x000000;
+}
+
+function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  const key = bakeFamilyKey(src);
+  let m = bakedMats.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: src.roughness,
+      metalness: src.metalness,
+      flatShading: src.flatShading,
+      fog: (src as THREE.Material & { fog?: boolean }).fog,
+    });
+    m.name = `static-batch-baked:${key}`;
+    bakedMats.set(key, m);   // module-lifetime — pins the batch pipeline across floors
+  }
+  return m;
+}
+
+/** A colour-attributed variant of `geo` (cloned — geometry may be POOLED and
+ *  shared by props of other colours; never mutate the original). Cached per
+ *  (geometry, colour) within one floor build. */
+function coloredVariant(
+  cache: Map<string, THREE.BufferGeometry>,
+  geo: THREE.BufferGeometry,
+  color: THREE.Color,
+): THREE.BufferGeometry {
+  const key = `${geo.uuid}|${color.getHexString()}`;
+  let v = cache.get(key);
+  if (v) return v;
+  v = geo.clone();
+  const n = v.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b; }
+  v.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  cache.set(key, v);
+  return v;
+}
 
 /**
  * Fold the level's static meshes into floor-wide BatchedMeshes (one per
@@ -134,8 +188,11 @@ export function batchStaticWorld(level: LiveLevel): void {
 
   level.root.updateMatrixWorld(true);
 
-  // Collect batchable meshes per material-family key.
+  // Collect batchable meshes per material-family key. Bakeable plain
+  // materials collapse into one white vertexColors family (colour rides a
+  // baked vertex attribute); the rest key on material value.
   const byKey = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; items: Item[] }>();
+  const variantCache = new Map<string, THREE.BufferGeometry>();   // per-floor colour-variant cache
   let candidates = 0;
   for (const child of level.root.children.slice()) {
     if (excluded.has(child)) continue;
@@ -152,13 +209,22 @@ export function batchStaticWorld(level: LiveLevel): void {
       if (m.name === 'flame') return;                     // animated flicker mesh
       if (m.userData?.dynamicPart) return;                // opt-out: animated transform/material
       if (m.userData?.batchedSprite) return;              // sprite-batch placeholder (not a Mesh anyway)
-      const geo = m.geometry as THREE.BufferGeometry;
+      let geo = m.geometry as THREE.BufferGeometry;
       if (!geo?.attributes?.position) return;
       candidates++;
-      const key = `${matSig(mat)}§${attrSig(geo)}§${m.castShadow ? 'c' : ''}${m.receiveShadow ? 'r' : ''}`;
+      let batchMat = mat;
+      let keyMat: string;
+      if (isBakeable(mat)) {
+        batchMat = bakedMaterial(mat);
+        geo = coloredVariant(variantCache, geo, mat.color);
+        keyMat = `bake|${bakeFamilyKey(mat)}`;
+      } else {
+        keyMat = matSig(mat);
+      }
+      const key = `${keyMat}§${attrSig(geo)}§${m.castShadow ? 'c' : ''}${m.receiveShadow ? 'r' : ''}`;
       let g = byKey.get(key);
-      if (!g) { g = { mat, cast: m.castShadow, receive: m.receiveShadow, items: [] }; byKey.set(key, g); }
-      g.items.push({ mesh: m, rectId: rectId! });
+      if (!g) { g = { mat: batchMat, cast: m.castShadow, receive: m.receiveShadow, items: [] }; byKey.set(key, g); }
+      g.items.push({ mesh: m, rectId: rectId!, geo });
     });
   }
 
@@ -170,7 +236,7 @@ export function batchStaticWorld(level: LiveLevel): void {
     const uniqueGeos = new Map<THREE.BufferGeometry, number>();   // geo → vertex count (dedup)
     let maxVerts = 0, maxIndices = 0;
     for (const it of items) {
-      const geo = it.mesh.geometry as THREE.BufferGeometry;
+      const geo = it.geo;
       if (uniqueGeos.has(geo)) continue;
       uniqueGeos.set(geo, geo.attributes.position.count);
       maxVerts += geo.attributes.position.count;
@@ -187,7 +253,7 @@ export function batchStaticWorld(level: LiveLevel): void {
 
     const geoIds = new Map<THREE.BufferGeometry, number>();
     for (const it of items) {
-      const geo = it.mesh.geometry as THREE.BufferGeometry;
+      const geo = it.geo;
       let geoId = geoIds.get(geo);
       if (geoId === undefined) { geoId = batch.addGeometry(geo); geoIds.set(geo, geoId); }
       const id = batch.addInstance(geoId);
@@ -204,9 +270,14 @@ export function batchStaticWorld(level: LiveLevel): void {
     batchCount++;
   }
 
+  // The colour-variant clones were copied into the batch buffers and never
+  // rendered themselves — no GPU side exists; free the CPU copies now.
+  for (const v of variantCache.values()) v.dispose();
+  variantCache.clear();
+
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} BatchedMesh draws (?batchworld=0 to disable)`);
+    console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches (${bakedMats.size} baked families)`);
   }
 }
 
@@ -228,7 +299,13 @@ export function showAllStaticBatches(): void {
  *  the same synchronous teardown block as the rest of the level's disposal,
  *  behind the descent cover. */
 export function resetStaticBatches(): void {
-  for (const b of liveBatches) { b.removeFromParent(); b.dispose(); }
+  for (const b of liveBatches) {
+    b.removeFromParent();
+    // DEFERRED — a queued frame may still reference the batch's (large)
+    // buffers; destroying them synchronously was part of the black-world
+    // race. Dies at the next GPU-idle frame.
+    deferGpuDispose(() => b.dispose());
+  }
   rectIndex.clear();
   liveBatches = [];
 }

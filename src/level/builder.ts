@@ -21,6 +21,7 @@ import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { isPooledGeometry } from '../scene/geometry-pool';
+import { deferGpuDispose } from '../style/render-webgpu';
 import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
@@ -2551,6 +2552,12 @@ export function buildLevel(
     // Yank the root from the scene. Geometry/material disposal walks the
     // subtree so GPU memory isn't held.
     scene.remove(root);
+    // DEFER the GPU disposal — a queued frame may still reference these
+    // buffers (the descent-teardown dispose burst was the root cause of the
+    // intermittent "setIndexBuffer: not a GPUBuffer" → black-world storm).
+    // The scene removal above is immediate (the world vanishes now); the
+    // buffers die at the next frame where the GPU queue is provably empty.
+    const doomed: THREE.BufferGeometry[] = [];
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh && mesh.geometry) {
@@ -2560,9 +2567,10 @@ export function buildLevel(
         // NEXT level. Shared materials (the StyleMaterials set) follow
         // the same rule and are skipped by virtue of never being walked
         // here (materials aren't disposed in this loop).
-        if (!isPooledGeometry(mesh.geometry)) mesh.geometry.dispose();
+        if (!isPooledGeometry(mesh.geometry)) doomed.push(mesh.geometry);
       }
     });
+    deferGpuDispose(() => { for (const g of doomed) g.dispose(); });
   }
 
   // Async bloodstains — real deaths recorded at this depth, placed as

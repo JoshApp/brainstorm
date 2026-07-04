@@ -211,7 +211,11 @@ function removeOutline(target: Interactable) {
   if (!refs) return;
   for (const r of refs) {
     r.clone.parent?.remove(r.clone);
-    r.clone.geometry.dispose();   // merged geometry is owned by this hull
+    // NO synchronous dispose (WebGPU): a queued frame may still reference the
+    // hull's buffers, and disposing the last hull also refcounts the outline's
+    // node-builder state away — the next interactable you neared recompiled it
+    // (the recurring "warmed but recompiled" MeshBasicNodeMaterial trickle).
+    // The merged hull geometry is small; GC reclaims it off-scene.
     // NB: the material is SHARED (sharedOutlineMat) — never dispose it here.
   }
   outlines.delete(target);

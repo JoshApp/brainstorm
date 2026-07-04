@@ -310,6 +310,18 @@ function drainRetired(): void {
   retired = [];
 }
 
+/** Defer a GPU-resource disposal until the GPU queue is provably empty
+ *  (drained at frame start when no submit is in flight). THE seam for any
+ *  dispose that could race an in-flight frame: level-teardown geometry,
+ *  BatchedMesh disposal, retired pass targets. Caught red-handed 2026-07-04:
+ *  the descent teardown's synchronous geometry.dispose() burst destroyed
+ *  buffers a queued frame still referenced → `setIndexBuffer: not a
+ *  GPUBuffer` → depth/output usage-scope storm → black world (the failure
+ *  that killed the render-bundle experiment and blocked static batching). */
+export function deferGpuDispose(dispose: () => void): void {
+  retired.push({ dispose });
+}
+
 /** Drop the pipeline so the next renderWebGPU rebuilds it (old one disposed once
  *  the GPU queue drains). */
 export function rebuildWebGPUPipeline(): void {
