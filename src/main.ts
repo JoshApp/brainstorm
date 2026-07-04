@@ -75,6 +75,7 @@ import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
 import { bundleStaticLevelContent } from './scene/render-bundles';
 import { setSpriteBatchScene } from './scene/sprite-batch';
+import { batchStaticWorld } from './scene/static-batch';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
@@ -437,6 +438,11 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
+    // EXPERIMENT (?batchworld=1, default OFF — intermittent boot race, see
+    // scene/static-batch.ts): fold the whole static world into floor-wide
+    // BatchedMeshes (one render object per material family). AFTER the
+    // fixture merge (its output batches too), BEFORE the freeze + room culler.
+    batchStaticWorld(currentLevel);
     // Matrix-FREEZE the static world (walls/props never move; the per-frame
     // updateMatrixWorld math measured ~6-8% of phone CPU). Also hosts the
     // DEV-parked ?bundles=1 render-bundle experiment (currently broken at the

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { LiveLevel } from './builder';
 import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
+import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
@@ -182,7 +183,9 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   function showAll() {
     for (const node of nodes.values()) {
       for (const o of node.objects) o.visible = true;
+      setStaticBatchRectVisible(node.id, true);
     }
+    showAllStaticBatches();   // instances in rects the culler doesn't track
     for (const e of level.enemies) e.group.visible = true;
     for (const it of getAllInteractables()) {
       const g = it.built?.group as THREE.Object3D | undefined;
@@ -265,6 +268,9 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const o of node.objects) {
         if (o.visible !== vis) o.visible = vis;
       }
+      // Static-world BatchedMesh instances belonging to this rect toggle with
+      // it (scene/static-batch.ts) — same occlusion granularity, one draw.
+      setStaticBatchRectVisible(node.id, vis);
     }
 
     // Enemies are occlusion-culled DYNAMICALLY. Unlike shells (assigned once),

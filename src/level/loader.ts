@@ -33,6 +33,7 @@ import { clearBloodBurst } from '../effects/blood-burst';
 import { clearDustPuff } from '../effects/dust-puff';
 import { clearParrySpark } from '../effects/parry-spark';
 import { resetSpriteBatch } from '../scene/sprite-batch';
+import { resetStaticBatches } from '../scene/static-batch';
 import { clearArenaLightArc } from '../feedback/arena-light-arc';
 import { getActiveLevel, setActiveLevel } from './active-level';
 import { tagPerfEvent } from '../debug/perf-recorder';
@@ -176,6 +177,7 @@ export function tickPendingLoad() {
     clearThresholdDrafts();
     resetExploredMap();   // drop the old floor's nav graph + visited set
     resetSpriteBatch();   // drop the old floor's batched flame instances
+    resetStaticBatches(); // dispose the old floor's BatchedMeshes (geo + matrices texture)
     prevLevel.teardown();
     setActiveLevel(null);
   }
