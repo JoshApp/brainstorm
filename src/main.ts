@@ -73,6 +73,7 @@ import { emit, on as onEvent } from './broadcast/event-bus';
 import { type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
+import { bundleStaticLevelContent } from './scene/render-bundles';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
@@ -431,6 +432,12 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
+    // Matrix-FREEZE the static world (walls/props never move; the per-frame
+    // updateMatrixWorld math measured ~6-8% of phone CPU). Also hosts the
+    // DEV-parked ?bundles=1 render-bundle experiment (currently broken at the
+    // Three level — see render-bundles.ts verdict). Must run BEFORE the room
+    // culler reads root children.
+    bundleStaticLevelContent(currentLevel);
     // PRE-WARM the floor's shaders NOW, behind the level-transition fade, while
     // every room is still visible (the portal culler hasn't run yet, so this
     // sees the whole floor). Without this, the FIRST time you turn to reveal a

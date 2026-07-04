@@ -38,6 +38,23 @@ const PROMPT_TINTS: Record<string, { color: string; border: string; bg: string; 
 // each frame from the target's world position via camera.project.
 
 const VERTICAL_OFFSET_WORLD = 0.6;  // raise the label this many meters
+
+// Cached canvas rect — getBoundingClientRect forces browser LAYOUT, and calling
+// it per label per frame measured 2.2% of phone CPU in the 2026-07-04 fight
+// profile. The rect only changes on resize/rotation, so cache and invalidate.
+let cachedRect: DOMRect | null = null;
+let cachedRectFor: HTMLCanvasElement | null = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => { cachedRect = null; });
+  window.addEventListener('orientationchange', () => { cachedRect = null; });
+}
+function canvasRect(canvas: HTMLCanvasElement): DOMRect {
+  if (!cachedRect || cachedRectFor !== canvas) {
+    cachedRect = canvas.getBoundingClientRect();
+    cachedRectFor = canvas;
+  }
+  return cachedRect;
+}
                                     // above the interactable's pivot in
                                     // world space, so it floats ABOVE
                                     // the object's silhouette.
@@ -220,7 +237,7 @@ export function updateInteractLabel(
   // above the pivot (chest-height for floor objects).
   const offsetY = target.labelOffsetY ?? VERTICAL_OFFSET_WORLD;
   tmpVec.set(target.position.x, target.position.y + offsetY, target.position.z);
-  const p = worldToScreen(tmpVec, camera, canvas.getBoundingClientRect());
+  const p = worldToScreen(tmpVec, camera, canvasRect(canvas));
   // If behind the camera, hide.
   if (p.behind) {
     hide();
