@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cachedCanvasRect } from '../ui/canvas-rect';
 import { on } from '../broadcast/event-bus';
 import { worldToScreen } from '../ui/hud';
 
@@ -132,7 +133,7 @@ export function tickTutorialHints(
   ensureListeners();
 
   const dtMs = dt * 1000;
-  const rect = canvas.getBoundingClientRect();
+  const rect = cachedCanvasRect(canvas);   // per-frame getBoundingClientRect forced layout (USB profile)
 
   for (const h of hints) {
     if (h.state === 'done') continue;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cachedCanvasRect } from './canvas-rect';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { isAnyScreenOpen } from './screen-manager';
 import { worldToScreen } from './hud';
@@ -206,7 +207,8 @@ export function unregisterItemPreview(id: string): void {
  *  Driven from main.ts. Forces all previews hidden while a screen
  *  (inventory, settings, etc.) is open so they don't poke through. */
 export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement): void {
-  const rect = canvas.getBoundingClientRect();
+  if (entries.size === 0) return;   // don't even touch layout with nothing to place
+  const rect = cachedCanvasRect(canvas);   // per-frame getBoundingClientRect forced layout (USB profile)
   const screensOpen = isAnyScreenOpen();
   for (const e of entries.values()) {
     if (!e.visible || screensOpen) {
