@@ -14,6 +14,7 @@ import { registerItemPreview, setItemPreviewAnchorAbove, setItemPreviewInspected
 import { emit } from '../broadcast/event-bus';
 import { TRANSACTION_TINTS } from '../content/transactions';
 import type { StyleMaterials } from '../style/materials';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // ── THE RELIQUARY — locked show-and-tell (PRICED family) ─────────────
 //
@@ -134,13 +135,7 @@ export function spawnReliquary(
       // The cage sinks into the pedestal; the prize becomes a pickup.
       if (prizeGroup) {
         scene.remove(prizeGroup);
-        prizeGroup.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          for (const m of mats) m.dispose();
-          mesh.geometry.dispose();
-        });
+        disposeBuiltTree(prizeGroup);
         prizeGroup = null;
       }
       createPickup(scene, new THREE.Vector3(pos.x, 0.9, pos.z), prize);

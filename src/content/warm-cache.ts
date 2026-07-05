@@ -29,9 +29,12 @@ import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 declare const __BUILD_SHA__: string;
 
 const KEY = 'delve.warm-cache.v1';
-// Known-benign in-play creations per session (e.g. the SpriteMaterial variant
-// gap): above this, the skip is judged to have been wrong.
-const HEAL_THRESHOLD = 12;
+// Known-benign in-play creations per session: above this, the skip is judged
+// to have been wrong. Was 12 while the clustered-grid warm mismatch made
+// 10-24 per descent "normal"; with the fixed grid + coverage fixes a healthy
+// session sits at ~0, so anything past a stray couple means the browser
+// evicted its pipeline cache (or a real coverage gap — either way, re-warm).
+const HEAL_THRESHOLD = 4;
 
 /** The settings that change compiled pipeline variants. Resolution / DPR /
  *  frame cap are NOT here — they change target sizes and pacing, never WGSL. */
@@ -82,15 +85,28 @@ export function noteCoveredWarmPoint(renderer: DelveRenderer): void {
   if (lastCoveredCount > 0 && now > lastCoveredCount) {
     // Creations since the previous covered point happened in live play.
     inPlayCreations += now - lastCoveredCount;
+    // Heal IMMEDIATELY at the descent boundary, not only at page teardown —
+    // a phone session that ends in a task-kill (swipe-away) may never fire
+    // pagehide, which used to leave a wrongly-warm marker in place forever.
+    if (inPlayCreations > HEAL_THRESHOLD) {
+      try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+    }
   }
   lastCoveredCount = now;
   if (!healArmed && typeof window !== 'undefined') {
     healArmed = true;
-    window.addEventListener('pagehide', () => {
+    const healCheck = (): void => {
       const tail = Math.max(0, pipelineCount(renderer) - lastCoveredCount);
       if (inPlayCreations + tail > HEAL_THRESHOLD) {
         try { localStorage.removeItem(KEY); } catch { /* ignore */ }
       }
+    };
+    // pagehide for the normal close; visibilitychange→hidden is the reliable
+    // last-chance signal on mobile (fires on tab switch / home button, before
+    // a possible task-kill that never delivers pagehide).
+    window.addEventListener('pagehide', healCheck);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') healCheck();
     });
   }
 }

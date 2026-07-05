@@ -3,6 +3,7 @@ import { getTexture } from '../style/procedural-textures';
 import { get } from '../ecs/world';
 import { BUFFS } from '../content/buffs';
 import type { Enemy } from '../mobs/enemy';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Status-effect VFX — colored motes emitted from any entity carrying a
 // buff that declares `vfx`. This is the "easy way for a status to have
@@ -171,3 +172,15 @@ export function clearStatusVfx() {
   }
   emitAccum = 0;
 }
+
+// Warm the pool's ACTUAL sprite instances (pooled per-mote materials): the
+// pool is built hidden at boot, so its sprite pipeline otherwise compiled on
+// the first mid-combat emit. One mote rendered during the live warm pins it.
+registerWarmup({
+  label: 'status-vfx', live: true,
+  spawn: (scene) => {
+    ensurePool(scene);
+    spawnMote(scene, 0, 0.5, 0, 0xffffff, 'rise');
+  },
+  clear: () => clearStatusVfx(),
+});

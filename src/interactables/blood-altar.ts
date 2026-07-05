@@ -13,6 +13,7 @@ import { emit } from '../broadcast/event-bus';
 import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // Blood altar — a stone block with a CURSED offering floating above
 // it, washed in violet glow. Taking it ALWAYS damages the player
@@ -206,13 +207,7 @@ export function spawnBloodAltar(
     destroyed: false,
     onDestroy() {
       scene.remove(offerGroup);
-      offerGroup.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeBuiltTree(offerGroup);
       // Also dim the violet disc — the altar is "spent" after the
       // offering is taken. Stays visible as a marker but quieter.
       discMat.opacity = 0.18;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import type { ItemSpec } from '../content/items';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // 3D item thumbnails for the inventory panel. Each item's dropModel gets
 // rendered once to an offscreen canvas, converted to a PNG data URL, and
@@ -93,14 +94,7 @@ export function getItemThumbnail(item: ItemSpec): string {
   // Cleanup — remove from scene + dispose of the built materials so we
   // don't leak GPU memory if there are many items.
   scene.remove(tempGroup);
-  group.traverse((obj) => {
-    if ((obj as THREE.Mesh).isMesh) {
-      const mesh = obj as THREE.Mesh;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const m of mats) m.dispose();
-      mesh.geometry.dispose();
-    }
-  });
+  disposeBuiltTree(group);
 
   cache.set(item.id, dataURL);
   return dataURL;

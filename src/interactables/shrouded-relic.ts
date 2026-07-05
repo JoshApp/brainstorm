@@ -13,6 +13,7 @@ import { rollCursedItem } from '../content/loot';
 import { RARITY_COLORS } from '../content/items';
 import { gameRng } from '../engine/rng';
 import type { ModelSpec } from '../ecs/model-types';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // Shrouded relic — a findable risk/reward GAMBLE. A cloth-wrapped thing
 // that floats just off the floor, washed in cursed-violet light so the
@@ -130,13 +131,7 @@ export function spawnShroudedRelic(
     onDestroy() {
       unregisterLight(lightId);
       scene.remove(group);
-      group.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeBuiltTree(group);
       onDestroy?.();
     },
   };

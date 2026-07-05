@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { brighten, darken } from './color-utils';
+import { isPooledGeometry } from '../scene/geometry-pool';
 
 // ── BOUNDED MATERIAL REGISTRY ────────────────────────────────────────────────
 //
@@ -69,6 +70,48 @@ export function basicMat(params: THREE.MeshBasicMaterialParameters): THREE.MeshB
 /** Every distinct shared material created so far — the closed set the warm compiles. */
 export function registeredFloorMaterials(): THREE.Material[] {
   return [...stdCache.values(), ...basicCache.values()];
+}
+
+/** True when a material is a SHARED pooled instance — the stdMat/basicMat
+ *  palette or build-model's model pool. Disposing one of these kills the
+ *  pipeline/render-objects out from under every OTHER mesh sharing it (and
+ *  the next spawn re-mints + recompiles). Both pools have carried "teardown
+ *  must skip it" flags since they were built — this is the one place that
+ *  actually honours them. */
+export function isSharedMaterial(m: THREE.Material): boolean {
+  return m.userData.sharedPalette === true || m.userData.sharedModelMat === true;
+}
+
+/** Dispose a subtree's OWNED materials, skipping shared pooled instances.
+ *  A bare `mats.forEach(m => m.dispose())` walk destroys pooled materials
+ *  that other live models still reference. */
+export function disposeOwnedMaterials(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const mat = (mesh as { material?: THREE.Material | THREE.Material[] }).material;
+    if (!mat) return;
+    const mats = Array.isArray(mat) ? mat : [mat];
+    for (const m of mats) if (!isSharedMaterial(m)) m.dispose();
+  });
+}
+
+/** THE teardown for a buildModel/buildCreature tree: dispose owned materials
+ *  (shared pool instances skipped — see disposeOwnedMaterials) AND owned
+ *  geometry (pooled primitives skipped via `userData.pooled`; bespoke
+ *  CSG/lathe/merged geometry is genuinely per-build and would otherwise
+ *  leak). Every site that previously hand-rolled a traverse-and-dispose
+ *  either corrupted a pool or leaked one of the two — use this instead. */
+export function disposeBuiltTree(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const mat = (mesh as { material?: THREE.Material | THREE.Material[] }).material;
+    if (mat) {
+      const mats = Array.isArray(mat) ? mat : [mat];
+      for (const m of mats) if (!isSharedMaterial(m)) m.dispose();
+    }
+    const geo = (mesh as { geometry?: THREE.BufferGeometry }).geometry;
+    if (geo && !isPooledGeometry(geo)) geo.dispose();
+  });
 }
 
 /** Count of distinct floor pipelines the registry holds (DEV diagnostics / invariant check). */

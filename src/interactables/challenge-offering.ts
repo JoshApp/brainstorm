@@ -15,6 +15,7 @@ import { playImpact, playRitualBell } from '../audio/sfx';
 import { kickShake } from '../combat/screen-shake';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { setRoomMood } from '../level/room-mood';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // Challenge offering — the VOLUNTARY arena, framed as a RITUAL ALTAR.
 // A dark stone altar with two unlit candles sits in the centre. Approach
@@ -266,13 +267,7 @@ export function spawnChallengeOffering(
     onDestroy() {
       unregisterLight(lightId);
       scene.remove(group);
-      group.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeBuiltTree(group);
       unsubscribe();
     },
   };
@@ -316,13 +311,7 @@ export function spawnChallengeOffering(
     // prize comes down off its pedestal and lands as pickups.
     if (prizeGroup) {
       scene.remove(prizeGroup);
-      prizeGroup.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeBuiltTree(prizeGroup);
       prizeGroup = null;
     }
     emit({

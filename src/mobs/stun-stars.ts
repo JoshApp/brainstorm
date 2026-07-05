@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Stagger "seeing stars" indicator — the cartoon/WC3 stun tell over a reeling
 // enemy's head, rendered in a grimdark register (cold spectral sparks, not
@@ -115,3 +116,16 @@ export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
 
   return { tick, dispose };
 }
+
+// Warm the ring's shared TEMPLATE material by rendering one real ring during
+// the live warm: rings acquire pooled clones of the template, and clones only
+// share a pinned pipeline if the template's pipeline was compiled once.
+registerWarmup({
+  label: 'stun-stars', live: true,
+  spawn: (scene) => {
+    warmRing = createStunStars(scene, 1);
+    warmRing.tick(0.5, true);   // fade-in makes the ring visible for the warm render
+  },
+  clear: () => { warmRing?.dispose(); warmRing = null; },
+});
+let warmRing: StunStars | null = null;

@@ -8,6 +8,7 @@ import { playEquipClick } from '../audio/sfx';
 import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
+import { disposeBuiltTree } from '../style/material-registry';
 
 // Starter-altar — a stone block with one of three offered weapons
 // floating + slowly rotating above it. Lives ONLY in the starter
@@ -166,13 +167,7 @@ export function spawnStarterAltar(
     // commitment marker.
     onDestroy() {
       scene.remove(weaponGroup);
-      weaponGroup.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeBuiltTree(weaponGroup);
       unregisterItemPreview(id);
       onDestroy?.();
       unsubscribe();

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { disposeOwnedMaterials } from '../style/material-registry';
 import type { Interactable } from './types';
 
 // Interactable runtime. Holds the live list of interactables; each frame, the
@@ -67,18 +68,14 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
       //    keep some of it standing (e.g. starter altars: the stone
       //    block stays as a monument after the weapon offer is taken).
       if (it.built && !it.keepBuiltOnDestroy) {
-        // Dispose the per-instance MATERIALS before detaching. buildModel mints
-        // fresh materials (+ their shader programs / uniforms) per model, so
-        // just removing the group leaked them every time a pickup was collected
-        // or a destructible broke — invisible to the JS heap (GPU-side), but it
-        // climbs all session and drags the renderer down until a context-loss
-        // (tab-out) frees it. Geometry is left alone: buildModel SHARES pooled
-        // primitives across instances, so disposing it would corrupt live models.
-        it.built.group.traverse((o) => {
-          const mm = o as THREE.Mesh;
-          const mats = Array.isArray(mm.material) ? mm.material : (mm.material ? [mm.material] : []);
-          for (const m of mats) m.dispose();
-        });
+        // Dispose the OWNED materials before detaching (a removed-but-undisposed
+        // material is a GPU-side leak that climbs all session). Shared pooled
+        // instances (build-model's modeldef pool, the stdMat/basicMat palette)
+        // are SKIPPED: since the 2026-07-01 material pooling, a bare dispose
+        // here killed the pipeline under every other model sharing the material
+        // and re-minted (recompiled) it on the next spawn. Geometry is left
+        // alone: buildModel shares pooled primitives across instances.
+        disposeOwnedMaterials(it.built.group);
         const parent = it.built.group.parent;
         parent?.remove(it.built.group);
       }

@@ -16,6 +16,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { registerWarmup } from '../content/warmup-registry';
 
 const COUNT = 8;                 // pool size — a few live at once (puff + wisps)
 const START_Y = -0.14;           // camera-local: just below eye line ("mouth")
@@ -152,3 +153,12 @@ export function tickBreath(dt: number): void {
 export function clearBreath(): void {
   for (const p of puffs) { p.active = false; p.sprite.visible = false; p.mat.opacity = 0; }
 }
+
+// Warm the pool's ACTUAL puff instances — they live hidden on the camera and
+// otherwise compile on the first winded breath mid-fight. No-op if initBreath
+// hasn't run yet (the primitive sprite matrix still covers the descriptor).
+registerWarmup({
+  label: 'breath-puff', live: true,
+  spawn: () => { if (cam) emitBreath(0.4); },
+  clear: () => clearBreath(),
+});
