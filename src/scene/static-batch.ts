@@ -246,7 +246,16 @@ export function batchStaticWorld(level: LiveLevel): void {
     batch.name = `static-batch-world`;
     batch.castShadow = cast;
     batch.receiveShadow = receive;
-    batch.frustumCulled = false;         // instances span the floor; Three culls per instance
+    batch.frustumCulled = false;         // instances span the floor
+    // Per-INSTANCE frustum culling OFF: r185 rewrote BatchedMesh's frustum
+    // path (reversedDepth planes, shared frustum) and it wrongly culls live
+    // instances at certain view angles — altar pedestals, the bonfire sword,
+    // entry rocks vanished from stable viewpoints (2026-07-05 phone reports;
+    // repro'd on depth-18 ritual circle: pedestal present with ?batchworld=0,
+    // gone with batching on). The room culler already gates instances per
+    // rect, so intra-rect frustum culling buys ~nothing at our scale — the
+    // upstream bug costs us more than the culling saves.
+    batch.perObjectFrustumCulled = false;
     batch.sortObjects = false;           // opaque only — skip the per-frame sort
     batch.matrixAutoUpdate = false;
     batch.matrixWorldAutoUpdate = false;
