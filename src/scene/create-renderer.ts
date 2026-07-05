@@ -50,7 +50,15 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   const profilerWanted = getSettings().profilerTools ||
     ['profiler', 'profile', 'record', 'marks', 'stream']
       .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
-  const trackTimestamp = import.meta.env.DEV || !isDesktopLike() || profilerWanted;
+  // ?timestamps=0 — A/B the timestamp-query tax (2026-07-05): on mobile,
+  // trackTimestamp is on to feed adaptive resolution's GPU-load signal, but
+  // with adaptive res OFF the per-pass-per-frame query sets + resolve-buffer
+  // mapping feed NOBODY. Costs to price: allocation churn, mapAsync round
+  // trips, native overhead. With 0, recordings lose their gpu-ms column
+  // (dt/cpu stay — those are the trustworthy ones anyway).
+  const tsOverride = new URLSearchParams(window.location.search).get('timestamps');
+  const trackTimestamp = (import.meta.env.DEV || !isDesktopLike() || profilerWanted)
+    && tsOverride !== '0';
   const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp, forceWebGL });
 
   // DEFAULT: tiled (Forward+-lite) lighting (scene/tiled-lighting.ts). CPU-bins
