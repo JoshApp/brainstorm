@@ -277,9 +277,8 @@ function buildItemsScenario(params: URLSearchParams): Scenario {
 /** perf-lights: the LIGHTING-NODE benchmark. One big room, N raw PointLights
  *  in a ceiling grid (BYPASSING the pool's slot cap — the node must see all N),
  *  frozen world, camera overlooking the floor. Compare configs by URL:
- *    ?scenario=perf-lights&n=30            (default lean loop)
- *    ?scenario=perf-lights&n=30&unrolled=1 (stock per-light nodes)
- *    ?scenario=perf-lights&n=30&tiled=1    (Forward+ tiled)
+ *    ?scenario=perf-lights&n=30              (default clustered Forward+)
+ *    ?scenario=perf-lights&n=30&clustered=0  (tiled fallback loop)
  *  Measure the median render+compute GPU ms (window.__renderer +
  *  resolveTimestampsAsync, or scripts driving real Chrome). */
 function buildLightBenchScenario(params: URLSearchParams): Scenario {

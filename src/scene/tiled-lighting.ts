@@ -39,11 +39,12 @@ import {
 // SHADOW-CASTING light stay on the material path (the tiled loop samples no
 // shadow maps); everything else point-shaped goes through the tiles.
 //
-// A/B: ?tiled=1 selects this; default is the lean rolled loop
-// (scene/lean-lights.ts); ?unrolled=1 is stock per-light nodes.
+// ROLE (since the 2026-07-05 path cull): the WebGL2 fallback light loop —
+// clustered (the WebGPU default) needs a compute pass the WebGL backend
+// can't run — and the ?clustered=0 A/B escape hatch.
 // Bench: ?scenario=perf-lights&n=<N> (debug/scenarios.ts).
 
-const MAX_LIGHTS = 64;       // matches lean-lights' cap
+const MAX_LIGHTS = 64;
 const TILE_LIGHT_COUNT = 8;  // max lights binned per tile (2 × vec4 slots)
 // Uniform-size budget: MAX_TILES × 2 vec4 × 16B = 32KB (limit is 64KB).
 // At the 0.4× pass a 32px tile grid is ~27×17 = 459 tiles; the tile size

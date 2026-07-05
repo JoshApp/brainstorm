@@ -25,13 +25,11 @@ import { CONFIG } from '../config';
 // Slot counts per category live in CONFIG.LIGHT_SLOTS. HISTORY: under
 // classic WebGL every slot (even parked) was a per-fragment shader cost
 // and a count change was a sync recompile — the fixed pool existed to
-// dodge that. Under the default LEAN lights node (scene/lean-lights.ts)
-// parked slots cost nothing (intensity 0 → not packed into the uniform
-// array) and a per-fragment range cull skips out-of-reach torches, so
-// the budget is now mostly a SELECTION cap: how many sources may light
-// simultaneously. The fixed count still serves the material-path
-// invariant (lamp + shadow casters — see below) and keeps the
-// ?unrolled/?tiled A/B paths comparable.
+// dodge that. Under the clustered/tiled light loops parked slots cost
+// nothing (intensity 0 → culled out of the bins), so the budget is now
+// mostly a SELECTION cap: how many sources may light simultaneously.
+// The fixed count still serves the material-path invariant (lamp +
+// shadow casters — see below).
 //
 // Per category we sort registered sources by distance to camera and
 // bind the nearest N to that category's slots. Sources beyond their

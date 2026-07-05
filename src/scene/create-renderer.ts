@@ -2,7 +2,6 @@ import { WebGPURenderer } from 'three/webgpu';
 import { DelveTiledLighting } from './tiled-lighting';
 import { getSettings } from '../settings/settings';
 import { isDesktopLike } from '../controls/platform';
-import { DelveLeanLighting } from './lean-lights';
 import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
@@ -75,21 +74,18 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // needed patching for). Params sized for DELVE: ≤32 pooled lights, 32px
   // tiles, 12 depth slices across our ~13m far plane, 16 per cluster.
   //
-  // Escape hatches for A/B: ?clustered=0 = our legacy tiled node,
-  // ?tiled=0 = the lean rolled loop, ?unrolled=1 = stock per-light nodes.
-  // forceWebGL keeps the legacy tiled node — clustered needs compute, and the
-  // WebGL backend can't run its culling pass.
+  // TWO light loops, no more: clustered (default) and tiled (the WebGL2
+  // fallback — clustered needs compute — doubling as the ?clustered=0 escape
+  // hatch). The lean rolled-loop (?tiled=0) and stock unrolled (?unrolled=1)
+  // A/B paths were deleted 2026-07-05 after the clustered promotion proved
+  // out on-device: every extra path was warm-coverage surface and a
+  // silently-rots-on-three-bumps liability (the r185 getLights contract
+  // change broke a subclass exactly that way).
   // (The custom lighting classes extend `Lighting as any` — TSL's node classes
   // aren't cleanly subclassable in TS — so those assignments need a cast.)
-  const lightingFlags = new URLSearchParams(window.location.search);
-  if (lightingFlags.get('unrolled') === '1') {
-    if (import.meta.env.DEV) console.log('[webgpu] stock unrolled lights (A/B)');
-  } else if (lightingFlags.get('tiled') === '0') {
-    renderer.lighting = new DelveLeanLighting() as unknown as WebGPURenderer['lighting'];
-    if (import.meta.env.DEV) console.log('[webgpu] lean lights (A/B)');
-  } else if (forceWebGL || lightingFlags.get('clustered') === '0') {
+  if (forceWebGL || new URLSearchParams(window.location.search).get('clustered') === '0') {
     renderer.lighting = new DelveTiledLighting() as unknown as WebGPURenderer['lighting'];
-    if (import.meta.env.DEV) console.log('[webgpu] legacy tiled lighting (fallback/A-B)');
+    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting (WebGL2 fallback / A-B)');
   } else {
     renderer.lighting = new DelveClusteredLighting() as unknown as WebGPURenderer['lighting'];
     if (import.meta.env.DEV) console.log('[webgpu] clustered lighting (official Forward+, default)');
