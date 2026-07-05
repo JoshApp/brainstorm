@@ -1,4 +1,5 @@
 import type { WalkableRect, Vec2 } from './types';
+import { SpatialHash } from './spatial-hash';
 
 // Walkable region = union of axis-aligned rectangles MINUS obstacles, MINUS
 // proximity to wall segments.
@@ -44,6 +45,18 @@ export type Obstacle =
   | { kind: 'circle'; x: number; z: number; r: number; yTop: number }
   | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number };
 
+// Scratch buffers for the spatial-hash queries — module-level so the hot
+// paths (clampMove per mob per frame, LOS per perception check) allocate
+// nothing. Safe because queries never nest: each loop body below is pure
+// math, and the wall pass completes before the obstacle pass begins.
+const WALL_SCRATCH: WallSegment[] = [];
+const OBS_SCRATCH: Obstacle[] = [];
+
+// Items are inserted with this AABB inflation so a query segment running
+// exactly along a cell boundary still finds walls touching the boundary.
+const GRID_EPS = 0.01;
+const GRID_CELL = 4;   // metres — room-scale; a wall spans a handful of cells
+
 export class WalkableRegion {
   /** Bumped on every wall/obstacle mutation. NavGrid compares this against
    *  the version it was built from and lazily rebuilds when they diverge —
@@ -53,11 +66,36 @@ export class WalkableRegion {
    *  wedged against the seal. */
   version = 0;
 
+  // Broad-phase acceleration over walls/obstacles. The arrays stay the
+  // source of truth (debug capture reads them; identity add/remove works on
+  // them); the grids mirror membership so queries touch only nearby items.
+  private readonly wallGrid = new SpatialHash<WallSegment>(GRID_CELL);
+  private readonly obstacleGrid = new SpatialHash<Obstacle>(GRID_CELL);
+
   constructor(
     private readonly rects: WalkableRect[],
     private readonly obstacles: Obstacle[] = [],
     private readonly walls: WallSegment[] = [],
-  ) {}
+  ) {
+    for (const w of walls) this.indexWall(w);
+    for (const o of obstacles) this.indexObstacle(o);
+  }
+
+  private indexWall(w: WallSegment): void {
+    this.wallGrid.insert(
+      w,
+      Math.min(w.ax, w.bx) - GRID_EPS, Math.min(w.az, w.bz) - GRID_EPS,
+      Math.max(w.ax, w.bx) + GRID_EPS, Math.max(w.az, w.bz) + GRID_EPS,
+    );
+  }
+
+  private indexObstacle(o: Obstacle): void {
+    if (o.kind === 'circle') {
+      this.obstacleGrid.insert(o, o.x - o.r - GRID_EPS, o.z - o.r - GRID_EPS, o.x + o.r + GRID_EPS, o.z + o.r + GRID_EPS);
+    } else {
+      this.obstacleGrid.insert(o, o.minX - GRID_EPS, o.minZ - GRID_EPS, o.maxX + GRID_EPS, o.maxZ + GRID_EPS);
+    }
+  }
 
   /**
    * Add a wall segment. Used by closed doors to plug a doorway gap; the
@@ -66,13 +104,14 @@ export class WalkableRegion {
    */
   addWall(seg: WallSegment) {
     this.walls.push(seg);
+    this.indexWall(seg);
     this.version++;
   }
 
   /** Remove a previously-added wall segment by reference. */
   removeWall(seg: WallSegment) {
     const idx = this.walls.indexOf(seg);
-    if (idx >= 0) { this.walls.splice(idx, 1); this.version++; }
+    if (idx >= 0) { this.walls.splice(idx, 1); this.wallGrid.remove(seg); this.version++; }
   }
 
   /** Push an obstacle in at runtime (e.g. boss-mist sealing the
@@ -80,13 +119,14 @@ export class WalkableRegion {
    *  walls — caller holds the reference. */
   addObstacle(o: Obstacle) {
     this.obstacles.push(o);
+    this.indexObstacle(o);
     this.version++;
   }
 
   /** Remove a previously-added obstacle by reference. */
   removeObstacle(o: Obstacle) {
     const idx = this.obstacles.indexOf(o);
-    if (idx >= 0) { this.obstacles.splice(idx, 1); this.version++; }
+    if (idx >= 0) { this.obstacles.splice(idx, 1); this.obstacleGrid.remove(o); this.version++; }
   }
 
   /** Projectile-only barriers — segments that stop PROJECTILES but never
@@ -140,13 +180,17 @@ export class WalkableRegion {
 
     // (2) No wall segment is closer than `radius` to the player center.
     const r2 = radius * radius;
-    for (const w of this.walls) {
+    const nw = this.wallGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, WALL_SCRATCH);
+    for (let i = 0; i < nw; i++) {
+      const w = WALL_SCRATCH[i];
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
 
     // (3) Outside every obstacle — unless the caller is a phasing mob.
     if (opts?.ignoreObstacles) return true;
-    for (const o of this.obstacles) {
+    const no = this.obstacleGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, OBS_SCRATCH);
+    for (let i = 0; i < no; i++) {
+      const o = OBS_SCRATCH[i];
       if (o.kind === 'circle') {
         const dx = x - o.x;
         const dz = z - o.z;
@@ -175,10 +219,14 @@ export class WalkableRegion {
     if (!inside) return false;
 
     const r2 = radius * radius;
-    for (const w of this.walls) {
+    const nw = this.wallGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, WALL_SCRATCH);
+    for (let i = 0; i < nw; i++) {
+      const w = WALL_SCRATCH[i];
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
-    for (const o of this.obstacles) {
+    const no = this.obstacleGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, OBS_SCRATCH);
+    for (let i = 0; i < no; i++) {
+      const o = OBS_SCRATCH[i];
       if (y > o.yTop) continue;   // shot flies above this prop's solid top (Infinity = full-height, never clears)
       if (o.kind === 'circle') {
         const dx = x - o.x;
@@ -220,14 +268,18 @@ export class WalkableRegion {
     ax: number, az: number, bx: number, bz: number,
     opts?: { includeObstacles?: boolean },
   ): boolean {
-    for (const w of this.walls) {
+    const nw = this.wallGrid.querySegment(ax, az, bx, bz, WALL_SCRATCH);
+    for (let i = 0; i < nw; i++) {
+      const w = WALL_SCRATCH[i];
       if (segmentsIntersect(ax, az, bx, bz, w.ax, w.az, w.bx, w.bz)) return false;
     }
     // For movement LOS (not perception), props ALSO block — otherwise a
     // mob will beeline through a pillar and clampMove stops it dead.
     // Default off so existing sight-cone callers keep their behaviour.
     if (opts?.includeObstacles) {
-      for (const o of this.obstacles) {
+      const no = this.obstacleGrid.querySegment(ax, az, bx, bz, OBS_SCRATCH);
+      for (let i = 0; i < no; i++) {
+        const o = OBS_SCRATCH[i];
         if (o.kind === 'circle') {
           if (distSqPointToSegment(o.x, o.z, ax, az, bx, bz) < o.r * o.r) return false;
         } else {
@@ -245,7 +297,10 @@ export class WalkableRegion {
    */
   rayWallDistance(ox: number, oz: number, dx: number, dz: number, maxDist: number): number {
     let best = maxDist;
-    for (const w of this.walls) {
+    // Duplicates from the grid are fine here — min() folds them away.
+    const nw = this.wallGrid.querySegment(ox, oz, ox + dx * maxDist, oz + dz * maxDist, WALL_SCRATCH);
+    for (let i = 0; i < nw; i++) {
+      const w = WALL_SCRATCH[i];
       const ex = w.bx - w.ax;
       const ez = w.bz - w.az;
       const denom = dx * ez - dz * ex;
