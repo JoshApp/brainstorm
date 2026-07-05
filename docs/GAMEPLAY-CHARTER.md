@@ -96,19 +96,26 @@ the predator.
   have killed you, desecration, lingering too deep). They are FEW (2–3 a
   run is a lot), named, terse, visible on the body/viewmodel, narrated
   once.
-- **Death mints your card.** Your run becomes a card — name, depth, cause,
-  build essence, epitaph — written by the narration layer from the actual
-  event log (Phase 5: one LLM call per death, cached forever). Future
-  delvers can draw their own dead. Meta-progression IS the deck growing
-  richer with your history.
+- **Death mints your card — selectively.** A run that earned remembering
+  becomes a card — name, depth, cause, build essence, epitaph — written by
+  the narration layer from the actual event log (Phase 5: one LLM call per
+  death, cached forever). NOT every death mints (criteria TBD — new-depth
+  runs, boss kills, interesting deaths); scarcity keeps cards precious.
+  Future delvers can draw their own dead. Meta-progression IS the deck
+  growing richer with your history.
+- **Fallen delvers carry cards.** The lootable corpse traces become RARE —
+  and finding one can yield a card: powerful-with-a-drawback, or dealt
+  straight-out reversed. Looting a card off a corpse is the world deck's
+  singleplayer seed — inheritance before Phase 4 even lands.
 - **The world deck (Phase 4).** Other players' death-cards circulate.
   Drawing a stranger's card carries a fragment of their build — and their
   bloodstain glows when you pass where they fell. Async multiplayer as
   inheritance.
 - **Floors are dealt.** Entering a floor, the voice flips its card — *The
   Toll, The Nest, The Long Dark* — and that card IS the floor's contract
-  (encounter shape, question, mood-light palette). Floor intent, content
-  budget, and narration share one vocabulary.
+  (encounter shape, question, mood-light palette) and can carry MODIFIERS
+  (the dark hungrier, the torches fewer, the dead restless). Floor intent,
+  content budget, and narration share one vocabulary.
 
 **GUARDRAIL: cards never enter combat.** No card-as-action, no hand
 management, no Balatro creep. Combat stays cone-swing crunch, computed
