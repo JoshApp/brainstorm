@@ -240,7 +240,6 @@ export function disposeFlaskViewmodel(): void {
 let warmKept: { group: THREE.Group } | null = null;
 registerWarmup({
   label: 'flask-viewmodel',
-  tier: 'deferred',
   live: true,
   spawn(scene) {
     const built = buildFlaskGroup();
@@ -251,7 +250,7 @@ registerWarmup({
   clear() {
     if (!warmKept) return;
     warmKept.group.parent?.remove(warmKept.group);
-    // Materials are retained by the warmup stream; drop only our reference.
+    // Materials are retained by the warmup pass; drop only our reference.
     warmKept = null;
   },
 });

@@ -42,11 +42,28 @@ A real creature mesh's attributes are `[normal, position, skinIndex, skinWeight,
 dummy matches exactly, so it compiles the **identical pipeline** the live spawn reuses.
 
 ### 2. Warm everything at boot, behind the loading cover
-Because warming is now cheap, every content hook is `tier: 'essential'` (the default) and the
-whole roster warms at boot through the **real PSX pipeline** (`runWarmupPassWebGPU`), so the
-compiled pipelines match the live render's target format. The game frame is fully paused
-during this (`scene/loading-gate.ts`) — no sim, audio, or half-built artifacts — and the
-descent cover shows a real progress bar. Repeat visits hit the browser cache → near-instant.
+Because warming is cheap, **every** registered hook warms at boot through the
+**real PSX pipeline** (`runWarmupPassWebGPU`), so the compiled pipelines match
+the live render's target format. The game frame is fully paused during this
+(`scene/loading-gate.ts`) — no sim, audio, or half-built artifacts — and the
+descent cover shows a real progress bar. Repeat opens skip the roster warm via
+the warm-cache marker (`content/warm-cache.ts`, self-healing) and lean on the
+browser's persistent pipeline cache → near-instant.
+
+The lifecycle is exactly four moments, all behind covers:
+1. **Boot** — `runWarmupPassWebGPU` drains the whole hook registry against the
+   title vignette (a real fogged floor, live lights).
+2. **First descent** — `warmRealRoster` builds one REAL instance of every
+   enemy/prop/item (kills dummy-vs-real drift), once per build+settings key.
+3. **Every descent** — `warmSceneCompile` (compileAsync over the whole floor at
+   the PSX target format) + the prepare pass (one culler-off warm render so
+   per-object GPU state exists before a door opens).
+4. **Self-heal** — `warm-cache` counts in-play pipeline creations between
+   covered points; past the threshold it clears the skip marker so the next
+   open pays a full warm.
+
+(The old `tier: essential/deferred` split and the play-time warmup stream were
+deleted 2026-07-05 — one drain path, nothing compiles in live frames.)
 
 ### 3. The compile guard (`debug/webgpu-compile-guard.ts`)
 `renderer.info` has no `.programs` on WebGPU, so the WebGL warmup guard was blind. We patch

@@ -129,7 +129,6 @@ import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
 import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
-import { drainWarmupStream } from './scene/warmup-stream';
 import { markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
@@ -522,11 +521,6 @@ initLevelLoader({
             // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
             // real tail). Once per build+settings key, behind the descent cover. See warm-real-roster.ts.
             try { await warmRealRoster(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
-            // Drain the DEFERRED roster HERE, still behind the cover — it used to
-            // stream during play after the reveal, which compiled its pipelines in
-            // live frames: the "game freezes for seconds right after the first
-            // descent" report. All loading behind the load screen, always.
-            try { await drainWarmupStream(scene); } catch { /* best-effort */ }
             markRosterWarmed();
           }
           markWarmupComplete(); markWebGPUWarmupComplete();
@@ -1769,9 +1763,6 @@ if (handleDebugScreenFlags()) {
     await waitForPresentedFrames(2, 1500);
     await settleCompiles(2000);
     await waitForPresentedFrames(2, 1000);
-    // (The deferred warm STREAM deliberately does NOT start here — it draws its
-    // subjects in live frames, which would flash pool effects over the menu.
-    // It starts after the first real floor reveals — see onLoaded.)
   }
 
   awaitBootUpdate()

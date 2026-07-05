@@ -42,17 +42,10 @@ export interface WarmupHook {
    *  keyed on render state — enemies, props, lit models — so it warms the
    *  variant the live render actually uses, not a wrong scratch variant. */
   live?: boolean;
-  /** TIER — when this hook is warmed on the WebGPU streamed path (scene/warmup-stream.ts):
-   *   - 'essential' → warmed at BOOT behind the loading cover; the reveal blocks on it.
-   *     Reserve for CHEAP, immediately-needed materials (core combat VFX) so boot stays fast.
-   *   - 'deferred' (DEFAULT) → NOT warmed at boot; streamed during play by the idle
-   *     scheduler (one subject per idle callback, off-screen). Use for everything heavy or
-   *     not-instantly-needed: enemy bodies (CSG creatures), item drops, destructibles, rare
-   *     effects. The heavy roster no longer blocks boot.
-   *  Lean lights (one pipeline regardless of light count) is what makes off-screen streaming
-   *  correct — the pipeline variant is material-determined, not scene-light-count-keyed. */
-  tier?: 'essential' | 'deferred';
 }
+// (A 'tier' field with a deferred-streaming path existed 2026-06/07; it died
+// 2026-07-05 — hooks are cheap now (materials on dummies, not full builds) and
+// the rule is ALL warming happens behind a cover, so every hook warms at boot.)
 
 const hooks: WarmupHook[] = [];
 
@@ -63,24 +56,6 @@ export function registerWarmup(hook: WarmupHook): void {
   const existing = hooks.findIndex((h) => h.label === hook.label);
   if (existing >= 0) hooks[existing] = hook;
   else hooks.push(hook);
-}
-
-/** A hook's tier. Default ESSENTIAL — content warmups are now CHEAP (materials on
- *  dummies, not full builds; see spawn-warmups.ts), so warming the whole set at boot
- *  behind the loading cover is fast, and repeat visits hit the browser's persistent
- *  pipeline cache. A hook opts into 'deferred' only if it's genuinely heavy/rare. */
-function tierOf(h: WarmupHook): 'essential' | 'deferred' {
-  return h.tier ?? 'essential';
-}
-
-/** Cheap, immediately-needed hooks — warmed at boot behind the loading cover. */
-export function essentialWarmupHooks(): WarmupHook[] {
-  return hooks.filter((h) => tierOf(h) === 'essential');
-}
-
-/** Heavy / not-instantly-needed hooks — streamed during play (scene/warmup-stream.ts). */
-export function deferredWarmupHooks(): WarmupHook[] {
-  return hooks.filter((h) => tierOf(h) === 'deferred');
 }
 
 export function getWarmupHooks(): readonly WarmupHook[] {

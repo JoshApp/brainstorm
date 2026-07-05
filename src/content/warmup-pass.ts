@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { resetGoreWebGPU } from '../scene/gore-webgpu';
 import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
-import { essentialWarmupHooks } from './warmup-registry';
+import { getWarmupHooks } from './warmup-registry';
 import { warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from '../style/render-webgpu';
 import { beginLoading, endLoading } from '../scene/loading-gate';
 import type { DelveRenderer } from '../scene/create-renderer';
@@ -84,10 +84,11 @@ export async function runWarmupPassWebGPU(
   setWarmLowRes(true);
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
-  // Boot warms ONLY the cheap ESSENTIAL hooks (core combat VFX) — fast. The heavy
-  // roster (enemies/items/destructibles) STREAMS during play (scene/warmup-stream.ts),
-  // so it no longer blocks the descent.
-  const hooks = essentialWarmupHooks();
+  // EVERY registered hook warms here, behind the cover — hooks are cheap
+  // (materials on dummies, not full builds), and the rule is: gameplay is
+  // never the compile lane. (The old essential/deferred tier split + play-time
+  // stream died 2026-07-05.)
+  const hooks = getWarmupHooks();
   try {
     scene.add(warmGroup);
     // BUILD, TIME-SLICED. Each hook spawn (buildCreature/CSG/skinning) is heavy +
