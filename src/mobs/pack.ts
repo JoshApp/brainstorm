@@ -49,6 +49,7 @@ function nextFlipDelay(): number {
 
 const members = new Map<string, Member>();
 const tokens = new Set<string>();   // ids currently holding an attack commit token
+const active: Member[] = [];        // tickPack scratch, reset each call
 
 const P = CONFIG.ENEMY_AI.PACK;
 const SEP_RADIUS_SQ = P.SEPARATION_RADIUS * P.SEPARATION_RADIUS;
@@ -83,7 +84,7 @@ export function leavePack(id: string): void {
  *  and auto-release tokens from mobs that stopped attacking. Call ONCE per frame,
  *  BEFORE the enemy update loop, with dt + the player position. */
 export function tickPack(dt: number, player: THREE.Vector3): void {
-  const active: Member[] = [];
+  active.length = 0;   // module scratch — this runs every frame
   for (const m of members.values()) {
     m.sepX = 0; m.sepZ = 0;
     if (m.tokenCd > 0) m.tokenCd = Math.max(0, m.tokenCd - dt);

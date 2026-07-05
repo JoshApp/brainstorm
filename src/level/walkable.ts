@@ -248,12 +248,25 @@ export class WalkableRegion {
     oldX: number, oldZ: number, newX: number, newZ: number, radius: number,
     opts?: { ignoreObstacles?: boolean },
   ): Vec2 {
+    return this.clampMoveInto({ x: 0, z: 0 }, oldX, oldZ, newX, newZ, radius, opts);
+  }
+
+  /** clampMove writing into a caller-owned scratch — the per-frame form
+   *  (player movement, every awake mob's walk step) so resolving a move
+   *  allocates nothing. Returns `out`. */
+  clampMoveInto(
+    out: Vec2,
+    oldX: number, oldZ: number, newX: number, newZ: number, radius: number,
+    opts?: { ignoreObstacles?: boolean },
+  ): Vec2 {
     let cx = newX;
     let cz = oldZ;
     if (!this.contains(cx, cz, radius, opts)) cx = oldX;
     cz = newZ;
     if (!this.contains(cx, cz, radius, opts)) cz = oldZ;
-    return { x: cx, z: cz };
+    out.x = cx;
+    out.z = cz;
+    return out;
   }
 
   /**

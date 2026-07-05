@@ -281,6 +281,11 @@ export interface Enemy extends Damageable {
   applyKnockback(dirX: number, dirZ: number, speed: number): void;
 }
 
+// clampMoveInto scratch — three because the stuck-sidestep compares a forward
+// resolve against BOTH perpendicular probes before picking one.
+const tmpClampFwd = { x: 0, z: 0 };
+const tmpClampLeft = { x: 0, z: 0 };
+const tmpClampRight = { x: 0, z: 0 };
 const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
 const tmpMuzzle = new THREE.Vector3();
@@ -884,7 +889,7 @@ export function createEnemy(
     const step = Math.min(speed * dt, dist);
     const clampOpts = spec.phasing ? { ignoreObstacles: true } : undefined;
     const cx = container.position.x, cz = container.position.z;
-    let resolved = walkable.clampMove(cx, cz, cx + dx * inv * step, cz + dz * inv * step, spec.collisionRadius, clampOpts);
+    let resolved = walkable.clampMoveInto(tmpClampFwd, cx, cz, cx + dx * inv * step, cz + dz * inv * step, spec.collisionRadius, clampOpts);
 
     // Stuck → sidestep. If the forward move was almost fully blocked by geometry
     // (a prop corner, a wall), accumulate stuck time; once pinned, try sliding
@@ -897,8 +902,8 @@ export function createEnemy(
       stuckT += dt;
       if (stuckT > NAV_STUCK_TIME) {
         const px = -dz * inv, pz = dx * inv;   // unit perpendicular to the target dir
-        const left = walkable.clampMove(cx, cz, cx + px * step, cz + pz * step, spec.collisionRadius, clampOpts);
-        const right = walkable.clampMove(cx, cz, cx - px * step, cz - pz * step, spec.collisionRadius, clampOpts);
+        const left = walkable.clampMoveInto(tmpClampLeft, cx, cz, cx + px * step, cz + pz * step, spec.collisionRadius, clampOpts);
+        const right = walkable.clampMoveInto(tmpClampRight, cx, cz, cx - px * step, cz - pz * step, spec.collisionRadius, clampOpts);
         const lMov = Math.hypot(left.x - cx, left.z - cz);
         const rMov = Math.hypot(right.x - cx, right.z - cz);
         const best = lMov >= rMov ? left : right;
@@ -1736,7 +1741,8 @@ export function createEnemy(
         const he = hu * hu * (3 - 2 * hu);               // smoothstep
         const tx = leapStart.x + (dest.x - leapStart.x) * he;
         const tz = leapStart.z + (dest.z - leapStart.z) * he;
-        const resolved = walkable.clampMove(
+        const resolved = walkable.clampMoveInto(
+          tmpClampFwd,
           container.position.x, container.position.z, tx, tz,
           spec.collisionRadius,
           spec.phasing ? { ignoreObstacles: true } : undefined,

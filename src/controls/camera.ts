@@ -26,6 +26,12 @@ const PLAYER_RADIUS = 0.3;
 // hits ~1.5 steps/sec at MOVE_SPEED (feels right at the listening ear).
 const STEP_DISTANCE = 1.05;
 
+// Per-frame scratch (updateCamera runs every frame — no allocations here).
+// CLAMP_SCRATCH holds a clampMoveInto result; SLIDE_SCRATCH the enemy-slide
+// result. Separate because the slide reads the clamp's output.
+const CLAMP_SCRATCH = { x: 0, z: 0 };
+const SLIDE_SCRATCH = { x: 0, z: 0 };
+
 let yaw = 0;
 let pitch = 0;
 let distanceSinceStep = 0;
@@ -93,7 +99,8 @@ export function updateCamera(
   if (kb.dx !== 0 || kb.dz !== 0) {
     const newX = camera.position.x + kb.dx;
     const newZ = camera.position.z + kb.dz;
-    const resolved = walkable.clampMove(
+    const resolved = walkable.clampMoveInto(
+      CLAMP_SCRATCH,
       camera.position.x, camera.position.z,
       newX, newZ,
       PLAYER_RADIUS,
@@ -104,22 +111,28 @@ export function updateCamera(
 
   // --- Move ---
   if ((input.moveX !== 0 || input.moveY !== 0) && !isArrivalActive()) {
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, yaw, 0));
+    // 2D move basis straight from yaw — forward is (0,0,-1) and right is
+    // (1,0,0) rotated about Y; y stays 0 throughout, so no Vector3/Euler
+    // objects (this runs every moving frame).
+    const sinY = Math.sin(yaw);
+    const cosY = Math.cos(yaw);
+    let moveX = sinY * input.moveY + cosY * input.moveX;
+    let moveZ = cosY * input.moveY - sinY * input.moveX;
+    const lenSq = moveX * moveX + moveZ * moveZ;
 
-    const move = new THREE.Vector3()
-      .addScaledVector(forward, -input.moveY)
-      .addScaledVector(right, input.moveX);
-
-    if (move.lengthSq() > 0) {
+    if (lenSq > 0) {
       // Aura-driven slow (e.g. inside the boiling king's body) × attack
       // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0). Both
       // multiplicative so they compose uniformly on MOVE_SPEED.
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * dt);
-      const newX = camera.position.x + move.x;
-      const newZ = camera.position.z + move.z;
+      const speed = CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * dt;
+      const scale = speed / Math.sqrt(lenSq);
+      moveX *= scale;
+      moveZ *= scale;
+      const newX = camera.position.x + moveX;
+      const newZ = camera.position.z + moveZ;
       // First pass: static collision (walls, pillars, altar, chest).
-      const resolved = walkable.clampMove(
+      const resolved = walkable.clampMoveInto(
+        CLAMP_SCRATCH,
         camera.position.x, camera.position.z,
         newX, newZ,
         PLAYER_RADIUS,
@@ -177,7 +190,8 @@ export function updateCamera(
       }
     }
     if (pushX !== 0 || pushZ !== 0) {
-      const out = walkable.clampMove(
+      const out = walkable.clampMoveInto(
+        CLAMP_SCRATCH,
         camera.position.x, camera.position.z,
         camera.position.x + pushX, camera.position.z + pushZ,
         PLAYER_RADIUS,
@@ -216,7 +230,9 @@ function slideAroundEnemies(oldX: number, oldZ: number, newX: number, newZ: numb
   if (collidesWithEnemy(cx, cz, enemies)) cx = oldX;
   cz = newZ;
   if (collidesWithEnemy(cx, cz, enemies)) cz = oldZ;
-  return { x: cx, z: cz };
+  SLIDE_SCRATCH.x = cx;
+  SLIDE_SCRATCH.z = cz;
+  return SLIDE_SCRATCH;   // per-frame scratch — consumed immediately by the caller
 }
 
 function collidesWithEnemy(x: number, z: number, enemies: readonly Enemy[]): boolean {

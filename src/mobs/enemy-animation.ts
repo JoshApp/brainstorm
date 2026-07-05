@@ -15,6 +15,9 @@ import type { WalkableRegion } from '../level/walkable';
 // so the call ORDER in update() is load-bearing — keep them invoked in the
 // same sequence (head, knockback, locomotion, presence).
 
+// Per-frame clampMoveInto scratch (knockback resolve — consumed immediately).
+const KNOCK_SCRATCH = { x: 0, z: 0 };
+
 export interface BodyAnimator {
   /** Set a decaying recoil impulse (charge contact, future stagger). */
   applyKnockback(dirX: number, dirZ: number, speed: number): void;
@@ -162,7 +165,8 @@ export function createBodyAnimator(
 
   function tickKnockback(dt: number, walkable: WalkableRegion) {
     if (knockVX === 0 && knockVZ === 0) return;
-    const r = walkable.clampMove(
+    const r = walkable.clampMoveInto(
+      KNOCK_SCRATCH,
       container.position.x, container.position.z,
       container.position.x + knockVX * dt,
       container.position.z + knockVZ * dt,
