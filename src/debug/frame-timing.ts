@@ -111,6 +111,36 @@ function diffNewPrograms(info: { programs?: ReadonlyArray<{ cacheKey?: string }>
  *  warmed set and see WHICH define flipped (the exact un-warmed variant). */
 export function getCompiledProgramKeys(): readonly string[] { return _compiledKeys; }
 
+// WEBGPU pipeline-compile capture — PROD-SAFE. `info.programs` is never
+// populated by the node renderer, so the WebGL capture above is blind on
+// WebGPU, and the DEV compile-guard doesn't ship — which left phone
+// recordings able to say "2 pipelines compiled, 202ms" but not WHICH (the
+// 2026-07-05 boiling-prince hitch). This reads the renderer's pipeline cache
+// directly (the same private map pipelineCount() already reads): when the
+// cache GROWS, the new entries' program names (`modeldef:…`, material type)
+// are tagged into the frame's events ('C:<name>') and their full keys into
+// the recording meta. Fast path is a size compare — zero cost while nothing
+// compiles.
+const _seenPipe = new Set<string>();
+let _pipeSeeded = false;
+let _pipeLastSize = 0;
+function diffNewPipelines(r: DelveRenderer): string[] {
+  const caches = (r as unknown as { _pipelines?: { caches?: Map<string, { vertexProgram?: { name?: string }; fragmentProgram?: { name?: string }; computeProgram?: { name?: string } }> } })._pipelines?.caches;
+  if (!caches) return [];
+  if (!_pipeSeeded) { for (const k of caches.keys()) _seenPipe.add(k); _pipeSeeded = true; _pipeLastSize = caches.size; return []; }
+  if (caches.size === _pipeLastSize) return [];   // fast path — nothing changed
+  _pipeLastSize = caches.size;
+  const out: string[] = [];
+  for (const [k, p] of caches) {
+    if (_seenPipe.has(k)) continue;
+    _seenPipe.add(k);
+    const name = p?.vertexProgram?.name || p?.fragmentProgram?.name || p?.computeProgram?.name || '?';
+    out.push(name);
+    if (_compiledKeys.length < 80) _compiledKeys.push(`${name} :: ${String(k).slice(0, 200)}`);
+  }
+  return out;
+}
+
 // One reused sample object — avoids per-frame allocation (which would itself
 // pollute the GC numbers we're trying to measure).
 const sample: FrameSample = {
@@ -203,6 +233,7 @@ export function frameEnd(): void {
   sample.tris = info ? info.render.triangles : 0;
   sample.programs = renderer ? pipelineCount(renderer) : 0;   // compiled pipelines (WebGPU)
   sample.newProgKinds = diffNewPrograms(info as unknown as { programs?: ReadonlyArray<{ cacheKey?: string }> | null });
+  if (renderer) sample.newProgKinds.push(...diffNewPipelines(renderer));   // WebGPU path (prod-safe)
   sample.geometries = info ? info.memory.geometries : 0;
   sample.textures = info ? info.memory.textures : 0;
   sample.geometryPool = getGeometryPoolSize();
