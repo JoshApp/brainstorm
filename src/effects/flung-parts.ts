@@ -52,9 +52,14 @@ function disposeNonPooled(obj: THREE.Object3D): void {
   void obj;
 }
 
-/** Max dissolve progress (0..1) across the part's dissolvable materials, or 0 if
- *  it has none. Drives both the despawn check and the pulled-into-the-floor sink. */
+/** Dissolve progress (0..1) of a part. Fast path: creature chunks carry a
+ *  per-object `userData.dissolve` (the value the WebGPU shader actually reads,
+ *  driven by the dying enemy's tick) — read it directly instead of walking the
+ *  subtree's materials every frame. The traverse stays as a fallback for any
+ *  part that predates the per-object scheme (WebGL material-uniform path). */
 function partDissolve(obj: THREE.Object3D): number {
+  const ud = obj.userData.dissolve;
+  if (typeof ud === 'number') return ud;
   let d = 0;
   obj.traverse((o) => {
     const u = ((o as THREE.Mesh).material as THREE.Material | undefined)

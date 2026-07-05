@@ -33,14 +33,46 @@ export interface SkinnedCreature {
   /** DISMEMBER (fling): like severBone, but FIRST snapshots the limb's current
    *  geometry into a free-standing chunk mesh (same material → dissolves in sync)
    *  positioned at the limb, THEN collapses it in the body. Returns the chunk for
-   *  the caller to fling (spawnFlungPart), or null if the joint wasn't found. */
-  severBoneChunk: (jointName: string) => THREE.Mesh | null;
+   *  the caller to fling (spawnFlungPart), or null if the joint wasn't found.
+   *  With `cacheKey` (the species id), the FIRST kill's chunk geometry becomes a
+   *  shared template and every later kill of the species reuses it — no vertex
+   *  bake, no new GPU buffers mid-fight (see chunkTemplates). */
+  severBoneChunk: (jointName: string, cacheKey?: string) => THREE.Mesh | null;
   /** CRUMBLE: shatter the whole body into a few chunks (cut at `cutJoints` — the
    *  severable limbs — plus the leftover torso), collapsing each out of the body.
    *  ONE pass over the verts → a handful of chunk meshes for the caller to fling.
    *  Cheap: it only runs at the moment of death, and the chunks self-remove when
-   *  they finish dissolving. */
-  crumbleToChunks: (cutJoints: readonly string[]) => THREE.Mesh[];
+   *  they finish dissolving. `cacheKey` templates the pieces like severBoneChunk. */
+  crumbleToChunks: (cutJoints: readonly string[], cacheKey?: string) => THREE.Mesh[];
+}
+
+// ── Chunk template cache — bake each species' debris pieces ONCE ─────────────
+// A severed head/arm chunk is rebuilt from scratch on EVERY kill (vertex scan +
+// five typed arrays + fresh GPU buffers), all charged mid-fight, which is
+// exactly when the phone CPU is busiest. But modulo pose the piece is the same
+// geometry every time — so the first kill's bake is stored here (keyed
+// species:joint, plus world scale so an up-scaled elite doesn't reuse a
+// normal-size bone) and later kills just wrap the shared geometry in a new
+// Mesh: zero bake, zero buffer creation, buffers shared across simultaneous
+// kills. Pose fidelity: the template carries the ORIGINAL kill's world-baked
+// orientation; reuse compensates yaw (bake-yaw vs current) and anchors at the
+// joint's live world position — a one-frame orientation approximation that the
+// immediate tumble (spin ≥ 7 rad/s) hides completely.
+// Geometries live for the session (bounded: species × ~6 joints) and must
+// NEVER be disposed — flung-parts already never disposes (see its WEBGPU note).
+interface ChunkTemplate {
+  geo: THREE.BufferGeometry;
+  mats: THREE.Material | THREE.Material[];
+  /** centroid − anchor(joint/root) world offset at bake time */
+  offset: THREE.Vector3;
+  bakeYaw: number;
+}
+const chunkTemplates = new Map<string, ChunkTemplate>();
+
+/** Yaw of a (yaw-facing) world matrix — mobs rotate in Y (plus a death topple
+ *  in X that we deliberately ignore; the tumble hides it). */
+function yawOfMatrix(m: THREE.Matrix4): number {
+  return Math.atan2(m.elements[8], m.elements[10]);
 }
 
 /** Normalize a geometry to a consistent attribute set so cross-material merges
@@ -239,16 +271,63 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     collapseVerts(vertsForBones(limb));
     return true;
   };
-  const severBoneChunk = (jointName: string): THREE.Mesh | null => {
+
+  // ── Template plumbing (see chunkTemplates above) ──
+  const _anchor = new THREE.Vector3();
+  /** World position the template is anchored at: the joint (limbs) or the
+   *  skinned mesh root (torso leftover). Assumes world matrices are current. */
+  const anchorWorld = (jointName: string | null, out: THREE.Vector3): THREE.Vector3 => {
+    const j = jointName ? creature.joints.get(jointName) : null;
+    return j ? j.getWorldPosition(out) : out.setFromMatrixPosition(mesh.matrixWorld);
+  };
+  /** Full key: species + joint + world scale (an up-scaled elite must not
+   *  reuse a normal-size bone). */
+  const templateKey = (cacheKey: string, piece: string): string => {
+    const sc = _anchor.setFromMatrixScale(mesh.matrixWorld);
+    return `${cacheKey}:${piece}@${sc.x.toFixed(2)}`;
+  };
+  const storeTemplate = (key: string, chunk: THREE.Mesh, jointName: string | null): void => {
+    anchorWorld(jointName, _anchor);
+    chunkTemplates.set(key, {
+      geo: chunk.geometry,
+      mats: chunk.material as THREE.Material | THREE.Material[],
+      offset: chunk.position.clone().sub(_anchor),
+      bakeYaw: yawOfMatrix(mesh.matrixWorld),
+    });
+  };
+  const meshFromTemplate = (tpl: ChunkTemplate, jointName: string | null): THREE.Mesh => {
+    const dy = yawOfMatrix(mesh.matrixWorld) - tpl.bakeYaw;
+    const c = Math.cos(dy), s = Math.sin(dy);
+    anchorWorld(jointName, _anchor);
+    const m = new THREE.Mesh(tpl.geo, tpl.mats);
+    m.position.set(
+      _anchor.x + tpl.offset.x * c + tpl.offset.z * s,
+      _anchor.y + tpl.offset.y,
+      _anchor.z - tpl.offset.x * s + tpl.offset.z * c,
+    );
+    m.rotation.y = dy;
+    m.castShadow = false;
+    m.updateMatrix();
+    return m;
+  };
+
+  const severBoneChunk = (jointName: string, cacheKey?: string): THREE.Mesh | null => {
     const limb = limbBones(jointName);
     if (!limb) return null;
     mesh.updateWorldMatrix(true, false); skeleton.update();
+    const key = cacheKey ? templateKey(cacheKey, jointName) : null;
+    const tpl = key ? chunkTemplates.get(key) : undefined;
+    if (tpl) {
+      collapseVerts(vertsForBones(limb));   // still hide the limb on the body
+      return meshFromTemplate(tpl, jointName);
+    }
     const verts = vertsForBones(limb);
     const chunk = buildChunk(verts);
     collapseVerts(verts);
+    if (chunk && key) storeTemplate(key, chunk, jointName);
     return chunk;
   };
-  const crumbleToChunks = (cutJoints: readonly string[]): THREE.Mesh[] => {
+  const crumbleToChunks = (cutJoints: readonly string[], cacheKey?: string): THREE.Mesh[] => {
     mesh.updateWorldMatrix(true, false); skeleton.update();
     // Map each bone → a piece index: a cut limb, or the leftover torso (last).
     const bonePiece = new Map<number, number>();
@@ -258,7 +337,22 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     const buckets: number[][] = Array.from({ length: torsoIdx + 1 }, () => []);
     for (let v = 0; v < skin.count; v++) buckets[bonePiece.get(skin.getX(v)) ?? torsoIdx].push(v);
     const chunks: THREE.Mesh[] = [];
-    for (const b of buckets) { const c = buildChunk(b); if (c) chunks.push(c); collapseVerts(b); }
+    buckets.forEach((b, i) => {
+      const jointName = i < cutJoints.length ? cutJoints[i] : null;
+      const key = cacheKey ? templateKey(cacheKey, jointName ?? 'torso') : null;
+      const tpl = key ? chunkTemplates.get(key) : undefined;
+      if (tpl) {
+        collapseVerts(b);
+        chunks.push(meshFromTemplate(tpl, jointName));
+        return;
+      }
+      const c = buildChunk(b);
+      collapseVerts(b);
+      if (c) {
+        chunks.push(c);
+        if (key) storeTemplate(key, c, jointName);
+      }
+    });
     return chunks;
   };
 

@@ -1916,8 +1916,15 @@ export function createEnemy(
       const { joint, dirX, dirZ } = pendingSever;
       pendingSever = null;
       tagPerfEvent('sever');   // perf timeline — names the geo+1 render cost of the chunk
-      const chunk = skinnedCreature.severBoneChunk(joint);
-      if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
+      const chunk = skinnedCreature.severBoneChunk(joint, spec.id);
+      if (chunk) {
+        // Track it like the crumble chunks: per-object dissolve (WebGPU reads
+        // chunk.userData.dissolve) must be DRIVEN or the killing-blow limb
+        // never powders — it used to pop out solid at its life cap.
+        chunk.userData.dissolve = 0;
+        deathChunks.push(chunk);
+        spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
+      }
     }
     const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION
       : deathStyle === 'crumble' ? CRUMBLE_DURATION
@@ -1988,12 +1995,12 @@ export function createEnemy(
           const cx = container.position.x, cz = container.position.z;
           const joint = crumbleQueue.shift();
           if (joint !== undefined) {
-            const ch = skinnedCreature.severBoneChunk(joint);
+            const ch = skinnedCreature.severBoneChunk(joint, spec.id);
             if (ch) flingChunk(ch, cx, cz);
           } else {
             crumbleCollapsed = true;
             // Everything still attached (the torso frame) drops as one piece.
-            for (const ch of skinnedCreature.crumbleToChunks([])) flingChunk(ch, cx, cz);
+            for (const ch of skinnedCreature.crumbleToChunks([], spec.id)) flingChunk(ch, cx, cz);
           }
         }
         // The remaining frame (ribcage/spine) topples to the floor, then sinks
