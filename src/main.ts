@@ -51,7 +51,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { setMasterBrightness, setWickLift, getViewmodelRoots } from './style/render-frame';
+import { setMasterBrightness, getViewmodelRoots } from './style/render-frame';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux } from './debug/lux';
@@ -330,7 +330,6 @@ setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);
 setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
-setWickLift(getSettings().wick);
 setWickFillMul(Math.pow(getSettings().wick, 1.5));
 
 // --- Camera ---
@@ -1453,7 +1452,6 @@ onSettingsChanged((s) => {
   setSurfaceDetailEnabled(s.surfaceDetail);
   setMasterBrightness(s.brightness);
   setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
-  setWickLift(s.wick);
   setWickFillMul(Math.pow(s.wick, 1.5));
   // Banded lighting toggle — re-patch the node lighting model (WebGPU).
   installBandedLightingWebGPU(s.bandedLighting);

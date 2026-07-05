@@ -363,17 +363,12 @@ export const CONFIG = {
   // pool binds the nearest N per category (LOS-culled, hysteresis-stable)
   // and an unbound torch keeps its emissive flame sprite — it just stops
   // casting light.
-  // Re-render the lamp's shadow cube-map every Nth frame (1 = every frame).
-  // WAS 2 to halve the cost — but Three renders all 6 cube faces in one shot on
-  // an update, so N=2 LUMPS that onto every other frame: a 2-frame draw/GPU
-  // spike (~60 draws on, ~0 off) that reads as relentless judder. Variance
-  // wrecks frame consistency worse than the average cost it saved. At N=1 the
-  // cost is CONSTANT (no spike) — and it's cheap: the 6 faces are CPU
-  // draw-submission of only the few in-range casters (shell is receive-only;
-  // shadow far already tight at the ~5.5m lit pool), which hides under the
-  // GPU-fill wall on a phone. If a later profile goes CPU-bound here, amortize
-  // faces across frames rather than re-lumping them.
-  SHADOW_UPDATE_EVERY_N_FRAMES: 1,
+  // (The old SHADOW_UPDATE_EVERY_N_FRAMES knob is gone: it was read by
+  // nothing, and its problem died with the lamp's cube shadow — the lamp is a
+  // single forward spot map now (player/lamp-spot.ts). History worth keeping:
+  // cube-face skipping at N=2 lumped all 6 faces onto every other frame, a
+  // judder worse than the cost it saved. If shadow encode ever walls again,
+  // amortize FACES across frames, don't re-lump whole-map updates.)
 
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins

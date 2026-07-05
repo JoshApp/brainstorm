@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled, setSceneOnly } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 import type { DelveRenderer } from '../scene/create-renderer';
 
@@ -129,11 +129,6 @@ export function getPS1Scale(): number { return ps1Scale; }
  *  0 before renderWithStyle has run once (which captures the live renderer). */
 export function getRenderPixelRatio(): number { return rendererRef ? rendererRef.getPixelRatio() : 0; }
 
-/** WICK grade-lift — the node pipeline has no separate wick-lift uniform; the
- *  wick's visible effect is the ambient FILL scale (setWickFillMul in
- *  light-pool, driven from applyVideoSettings). No-op here. */
-export function setWickLift(_v: number): void {}
-
 /** Master output brightness (1 = authored exposure) — the GRAPHICS BRIGHTNESS
  *  slider. Forwarded to the WebGPU grade's expose multiplier. */
 export function setMasterBrightness(v: number): void {
@@ -145,9 +140,12 @@ export function setDarkAdapt(amount: number): void {
 }
 
 /** Bypass every PSX post-effect. For inspection snaps where the gameplay
- *  crunchifiers fight a clean material read. */
-export function setInspectBypass(_on: boolean): void {
-  // Inspection bypass lives in the node pipeline.
+ *  crunchifiers fight a clean material read. Forwards to the node pipeline's
+ *  scene-only output (bare scene sample — no expose/crush/grade), which is
+ *  exactly the clean read; this was a silent no-op after the WebGL removal,
+ *  so inspect mode was still rendering through the full grimdark grade. */
+export function setInspectBypass(on: boolean): void {
+  setSceneOnly(on);
 }
 
 
