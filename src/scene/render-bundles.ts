@@ -39,28 +39,27 @@ import { getAllInteractables } from '../interactables/system';
 // Fully static membership means nothing ever needs `bundle.needsUpdate` — if
 // you ever bundle something mutable, bump `needsUpdate = true` on change.
 
-/** ?bundles=1 → on. DEV-ONLY and currently a KNOWN-BROKEN experiment.
+/** Default ON; ?bundles=0 is the kill switch.
  *
- *  VERDICT 2026-07-04 (laptop A/B, autobot on a real floor): Three r184's
- *  render-bundle path is incompatible with our post chain. With bundles
- *  recording, the depth texture trips Dawn validation ("[Texture 'depth']
- *  usage (TextureBinding|RenderAttachment) includes writable usage and
- *  another usage in the same synchronization scope") → the whole command
- *  buffer goes invalid → every submit fails → the frame pacer rides its
- *  1s completion timeout: ~1fps. A `setIndexBuffer: parameter 1 is not of
- *  type 'GPUBuffer'` during recording also appeared (bundle recording can
- *  hit objects whose GPU buffers aren't prepared yet). It can LOOK fine for
- *  a while (first run played 20k frames) — the breakage is racy.
- *
- *  Do NOT re-enable without fixing/upstreaming both. The matrix FREEZE part
- *  of this module is independent, measured safe, and always on. The next
- *  draw-count levers that avoid bundle semantics entirely: instanced flame/
- *  wisp sprites, then BatchedMesh for the static world (normal render path,
- *  one draw per batch). */
+ *  HISTORY (a cautionary tale in two misdiagnoses): the 2026-07-04 r184
+ *  experiment died with a depth/output usage-scope validation storm +
+ *  `setIndexBuffer: not a GPUBuffer` and was verdicted "Three's bundle
+ *  recording is incompatible with our post chain". The ACTUAL root cause was
+ *  OURS — the level teardown's synchronous geometry-dispose burst destroying
+ *  buffers referenced by in-flight frames (fixed by deferGpuDispose;
+ *  bundles' bigger recorded surface just made the race fire reliably). The
+ *  2026-07-05 r185 retest then read "still broken, 1fps" — that was a
+ *  BACKGROUND-TAB rAF throttle artifact (chrome throttles occluded tabs to
+ *  ~2 rAF/s), not the game. With the dispose fix + r185's render-bundle
+ *  fixes, bundles run clean: soaked over kills + chained descents with zero
+ *  validation errors, coexisting with the BatchedMesh world (batching takes
+ *  the mergeables; each rect's bundle wraps the loose static leftovers —
+ *  multi-material, single-material odds — killing their per-frame encode).
+ *  Josh's instinct that "we do something wrong with it" was exactly right.
+ */
 export function renderBundlesEnabled(): boolean {
-  if (!import.meta.env.DEV) return false;
   if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('bundles') === '1';
+  return new URLSearchParams(location.search).get('bundles') !== '0';
 }
 
 /** Smallest non-logical room rect containing (x, z), or null. Mirrors the
