@@ -36,6 +36,12 @@ card for everyone who ever came down.
    Combat and consideration are separated by the attention rule, not doors.
 4. **Terse grimdark applies to builds.** Run-defining choices are FEW and
    HEAVY — two or three per run that visibly change you. No trinket soup.
+5. **Placement is authorship.** Meaningful things are STAGED, never
+   scattered: a fallen delver sits with their back against a pillar at a
+   dead end, facing what killed them — not dropped on a random open cell.
+   Bonfires anchor their own quiet space. The content pass fills budgets,
+   but anything the player is meant to FEEL claims an anchor (geometry it
+   relates to) — the occupancy grid finds space; anchors give it meaning.
 
 ---
 
