@@ -183,16 +183,20 @@ registerWarmup({
     scene.add(sprite(THREE.NormalBlending, true, false), sprite(THREE.NormalBlending, false, false));
     // basic unlit (simple effect/decal meshes): normal AND additive blending
     // (additive was missing — pickup range rings + additive decals compiled
-    // their MeshBasic pipeline on first sight in play), fog + no-fog, and the
-    // depth-write-off variant additive effects use.
+    // their MeshBasic pipeline on first sight in play), fog + no-fog, the
+    // depth-write-off variant additive effects use, and BOTH cull modes —
+    // rings/decals are DoubleSide, which is its own pipeline (the guard's
+    // "prim triangle-list/back vs none" mismatch).
     for (const fog of [true, false]) {
       for (const blending of [THREE.NormalBlending, THREE.AdditiveBlending]) {
-        const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({
-          color: 0xffffff, transparent: true, fog, blending,
-          depthWrite: blending === THREE.NormalBlending,
-        }));
-        m.castShadow = false; m.frustumCulled = false;
-        scene.add(m);
+        for (const side of [THREE.FrontSide, THREE.DoubleSide]) {
+          const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({
+            color: 0xffffff, transparent: true, fog, blending, side,
+            depthWrite: blending === THREE.NormalBlending,
+          }));
+          m.castShadow = false; m.frustumCulled = false;
+          scene.add(m);
+        }
       }
     }
   },

@@ -292,10 +292,30 @@ export function sceneTargetSize(): { w: number; h: number } | null {
 }
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res.
- *  Driven by the shared adaptive-resolution scaler (via setPS1Scale). */
+ *  Driven by the shared adaptive-resolution scaler (via setPS1Scale).
+ *
+ *  DEFERRED: applying the scale resizes the scene pass's render targets,
+ *  which DESTROYS the old depth/output textures immediately — while up to
+ *  MAX_IN_FLIGHT queued submits still reference them. That was THE flaky
+ *  "Destroyed texture [depth] used in a submit" → per-frame usage-scope
+ *  validation storm (root-caused 2026-07-05 via the error-context
+ *  fingerprint: it fired with warming=1 inFlight=2 — the warm's 0.4↔0.05
+ *  scale flips with frames in flight; adaptive-res steps in play were the
+ *  same hazard). The scale is now staged and applied between frames, only
+ *  when the GPU queue is EMPTY. */
 export function setWebGPUResolutionScale(s: number): void {
   resScale = s;
-  scenePass?.setResolutionScale(s);
+  pendingResScale = s;
+}
+let pendingResScale: number | null = null;
+function applyPendingResScale(): void {
+  // BOTH queues must be empty: inFlight tracks live submits, but warm renders
+  // submit outside that counter — warmSinceFlush > 0 means unawaited warm
+  // frames may still reference the current pass textures (resizing then is
+  // the exact destroyed-texture storm this defer exists to prevent).
+  if (pendingResScale === null || inFlight > 0 || warmSinceFlush > 0 || warmingUp || !scenePass) return;
+  scenePass.setResolutionScale(pendingResScale);
+  pendingResScale = null;
 }
 
 /** Toggle bloom (wired to the BLOOM setting). Rebuilds the pipeline next frame. */
@@ -349,6 +369,7 @@ if (typeof window !== 'undefined') window.addEventListener('resize', rebuildWebG
 function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
   scenePass = pass(scene, camera);
+  pendingResScale = null;   // fresh pass builds at the current resScale below — nothing staged
   disposables.push(scenePass as any);
   scenePass.setResolutionScale(resScale);
 
@@ -573,6 +594,7 @@ let inFlight = 0;
 export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   drainRetired();   // free any rebuilt-away pass/bloom/AO targets once the queue is empty
   ensurePipeline(renderer, scene, camera);
+  applyPendingResScale();   // resize pass targets only while the GPU queue is empty
   // Render bundles are gated to THIS camera's pass — shadow/depth-array passes
   // must not record or execute them (see bundle-pass-order.ts).
   setBundleMainCamera(camera);
@@ -647,9 +669,14 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
       if (err) {
         const msg = String(err.message || err);
         const draws = (renderer as any).info?.render?.drawCalls;
+        // Frame-state fingerprint for the FLAKY usage-scope storm hunt (the
+        // depth/output TextureBinding|RenderAttachment errors): what was in
+        // flight when this submit was encoded. retired>0 = a pipeline rebuild
+        // is awaiting drainRetired; presented = frame ordinal since boot.
+        const ctx = ` :: ctx{retired=${retired.length} warming=${warmingUp ? 1 : 0} presented=${presentedFrames} inFlight=${inFlight}}`;
         // eslint-disable-next-line no-console
-        console.error('[psx gpu-error] frame draws=' + draws + ' :: ' + msg.slice(0, 280));
-        const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg);
+        console.error('[psx gpu-error] frame draws=' + draws + ctx + ' :: ' + msg.slice(0, 280));
+        const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg + ctx);
       }
     }).catch(() => {});
   };
@@ -767,6 +794,16 @@ export async function warmRenderWebGPU(
 ): Promise<void> {
   drainRetired();
   ensurePipeline(renderer, scene, camera);
+  // A staged resolution change (setWarmLowRes just flipped the scale) resizes
+  // the pass targets, destroying the old depth/output textures — which live
+  // frames still in flight may reference. Drain the queue FIRST, then apply.
+  if (pendingResScale !== null) {
+    await flushWarmRenders(renderer);
+    if (pendingResScale !== null && scenePass) {
+      scenePass.setResolutionScale(pendingResScale);
+      pendingResScale = null;
+    }
+  }
   warmingUp = true;
   try {
     // render() encodes + submits synchronously (pipeline compiles happen HERE,
