@@ -3,6 +3,7 @@ import { DelveTiledLighting } from './tiled-lighting';
 import { getSettings } from '../settings/settings';
 import { isDesktopLike } from '../controls/platform';
 import { DelveLeanLighting } from './lean-lights';
+import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 
 /** The one renderer DELVE runs on. WebGPURenderer auto-selects a WebGL2
@@ -61,24 +62,36 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
     && tsOverride !== '0';
   const renderer = new WebGPURenderer({ canvas, antialias: false, trackTimestamp, forceWebGL });
 
-  // DEFAULT: tiled (Forward+-lite) lighting (scene/tiled-lighting.ts). CPU-bins
-  // the pooled point lights into screen tiles (uniform arrays, nearest-first on
-  // overflow) so each fragment shades at most ~8 lights regardless of total
-  // count. Measured flat in light count (~14.9ms GPU at n=14/30/56 vs lean
-  // 15.5/18.6/22.9 on the perf-lights bench) — torches can climb without the
-  // per-fragment wall. Escape hatches for A/B: ?tiled=0 = the lean rolled loop
-  // (scene/lean-lights.ts), ?unrolled=1 = stock per-light node lighting.
-  // (The lighting classes extend `Lighting as any` — TSL's node classes aren't
-  // cleanly subclassable in TS — so the assignments need a cast.)
+  // DEFAULT: three's OFFICIAL Forward+ clustered lighting (examples/jsm/tsl/
+  // lighting/ClusteredLightsNode) — the upstream-maintained version of the
+  // tiled system we hand-rolled: 3D clusters (screen tiles × exponential depth
+  // slices), light-culling on GPU COMPUTE (our tiled node binned on the CPU
+  // every frame), 16 lights per cluster vs our 8-per-tile cap that measurably
+  // DROPPED far torch bins in busy rooms. Same routing policy as ours: point
+  // lights cluster, shadow casters (the lamp) keep the per-light material path
+  // — and its getLights() returns the FULL list, so it round-trips r185's
+  // Lighting save/restore correctly out of the box (the bug our subclasses
+  // needed patching for). Params sized for DELVE: ≤32 pooled lights, 32px
+  // tiles, 12 depth slices across our ~13m far plane, 16 per cluster.
+  //
+  // Escape hatches for A/B: ?clustered=0 = our legacy tiled node,
+  // ?tiled=0 = the lean rolled loop, ?unrolled=1 = stock per-light nodes.
+  // forceWebGL keeps the legacy tiled node — clustered needs compute, and the
+  // WebGL backend can't run its culling pass.
+  // (The custom lighting classes extend `Lighting as any` — TSL's node classes
+  // aren't cleanly subclassable in TS — so those assignments need a cast.)
   const lightingFlags = new URLSearchParams(window.location.search);
   if (lightingFlags.get('unrolled') === '1') {
     if (import.meta.env.DEV) console.log('[webgpu] stock unrolled lights (A/B)');
   } else if (lightingFlags.get('tiled') === '0') {
     renderer.lighting = new DelveLeanLighting() as unknown as WebGPURenderer['lighting'];
     if (import.meta.env.DEV) console.log('[webgpu] lean lights (A/B)');
-  } else {
+  } else if (forceWebGL || lightingFlags.get('clustered') === '0') {
     renderer.lighting = new DelveTiledLighting() as unknown as WebGPURenderer['lighting'];
-    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting (default)');
+    if (import.meta.env.DEV) console.log('[webgpu] legacy tiled lighting (fallback/A-B)');
+  } else {
+    renderer.lighting = new DelveClusteredLighting() as unknown as WebGPURenderer['lighting'];
+    if (import.meta.env.DEV) console.log('[webgpu] clustered lighting (official Forward+, default)');
   }
 
   await renderer.init();

@@ -281,6 +281,15 @@ export function isScenePassTarget(rt: unknown): boolean {
   return target !== undefined && target !== null && rt === target;
 }
 
+/** The PSX scene pass target's pixel size, or null before the pipeline
+ *  exists. Cluster/tile lighting must grid THIS domain — `screenCoordinate`
+ *  in the scene pass is pass-local (the 0.4× target), not canvas pixels. */
+export function sceneTargetSize(): { w: number; h: number } | null {
+  const rt = (scenePass as unknown as { renderTarget?: { width?: number; height?: number } } | null)?.renderTarget;
+  if (!rt || !Number.isFinite(rt.width) || !Number.isFinite(rt.height)) return null;
+  return { w: rt.width as number, h: rt.height as number };
+}
+
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res.
  *  Driven by the shared adaptive-resolution scaler (via setPS1Scale). */
 export function setWebGPUResolutionScale(s: number): void {
