@@ -3,6 +3,7 @@ import { isPooledGeometry } from '../scene/geometry-pool';
 import { spawnDustPuff } from './dust-puff';
 import { getDeathSink } from '../debug/death-debug';
 import { groundYAt } from '../level/elevation';
+import { CONFIG } from '../config';
 
 const _dustPos = new THREE.Vector3();   // scratch for the crumble dust poof
 
@@ -129,7 +130,77 @@ export function spawnFlungPart(
   });
 }
 
+// ── BONE LITTER — settled debris persists (CONFIG.DEBRIS_LITTER) ─────────────
+// A rested piece leaves the sim entirely: matrix frozen, zero per-frame cost,
+// one draw on shared template geometry. `userData.litter = true` tells the
+// owner enemy's dissolve driver to leave it alone (enemy.ts skips litter), so
+// it lies solid while the corpse powders. The dungeon reclaims it later —
+// LINGER_S elapses or the cap evicts the oldest — by re-running the same
+// powder+sink the immediate path uses, with the litter tick driving
+// userData.dissolve itself (the owner is long gone).
+interface LitterPiece {
+  obj: THREE.Object3D;
+  age: number;
+  dissolve: number;      // frozen at conversion; ramps again while reclaiming
+  reclaiming: boolean;
+  dust: boolean;
+  dusted: boolean;
+}
+const litter: LitterPiece[] = [];
+
+/** Rested + barely dissolved → convert to litter. Frozen mid-powder pieces
+ *  read as a glitch, so anything past MAX_DISSOLVE_AT_REST just finishes
+ *  dying on the legacy path. */
+function tryConvertToLitter(p: FlungPart, d: number): boolean {
+  const L = CONFIG.DEBRIS_LITTER;
+  if (!L.ENABLED || d > L.MAX_DISSOLVE_AT_REST) return false;
+  if (p.age < 0.5 || Math.abs(p.vy) > 0.4 || Math.hypot(p.vx, p.vz) > 0.25) return false;
+  p.obj.updateMatrix();
+  p.obj.matrixAutoUpdate = false;   // zero matrix math while it lies there
+  p.obj.userData.litter = true;
+  litter.push({ obj: p.obj, age: 0, dissolve: d, reclaiming: false, dust: p.dust, dusted: p.dusted });
+  return true;
+}
+
+function tickLitter(dt: number): void {
+  const L = CONFIG.DEBRIS_LITTER;
+  // Cap eviction: mark the oldest non-reclaiming pieces until we're at MAX.
+  let over = litter.length - L.MAX;
+  for (let i = 0; i < litter.length && over > 0; i++) {
+    if (!litter[i].reclaiming) { litter[i].reclaiming = true; over--; }
+  }
+  for (let i = litter.length - 1; i >= 0; i--) {
+    const q = litter[i];
+    q.age += dt;
+    if (!q.reclaiming) {
+      if (q.age >= L.LINGER_S) q.reclaiming = true;
+      else continue;   // lying still — no work
+    }
+    // RECLAIM — same read as the immediate path: powder (shader eats it via
+    // userData.dissolve) + a gentle pull under, dust poof as it starts.
+    if (q.dust && !q.dusted) {
+      q.dusted = true;
+      q.obj.getWorldPosition(_dustPos);
+      spawnDustPuff(q.obj.parent ?? q.obj, _dustPos.x, _dustPos.y, _dustPos.z, {
+        count: 6, size: 0.16, spread: 0.12, rise: 0.4, life: 0.7,
+      });
+    }
+    q.dissolve = Math.min(1, q.dissolve + L.RECLAIM_RATE * dt);
+    q.obj.userData.dissolve = q.dissolve;
+    if (getDeathSink()) {
+      q.obj.position.y -= q.dissolve * q.dissolve * SINK_RATE * dt;
+      q.obj.updateMatrix();   // matrixAutoUpdate is off — commit the sink
+    }
+    if (q.dissolve >= 0.98) {
+      q.obj.parent?.remove(q.obj);
+      disposeNonPooled(q.obj);
+      litter.splice(i, 1);
+    }
+  }
+}
+
 export function tickFlungParts(dt: number): void {
+  tickLitter(dt);
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     const d = partDissolve(p.obj);
@@ -156,6 +227,11 @@ export function tickFlungParts(dt: number): void {
         p.vx *= GROUND_DRAG;
         p.vz *= GROUND_DRAG;
         p.rvx *= 0.6; p.rvy *= 0.6; p.rvz *= 0.6;
+      }
+      // Rested on the floor + still solid → becomes litter and leaves the sim.
+      if (p.obj.position.y <= floorY + 0.001 && tryConvertToLitter(p, d)) {
+        parts.splice(i, 1);
+        continue;
       }
     }
     // Literal dust as the bone crumbles — fires once when it starts powdering,
@@ -186,4 +262,9 @@ export function clearFlungParts(): void {
     disposeNonPooled(p.obj);
   }
   parts.length = 0;
+  for (const q of litter) {
+    q.obj.parent?.remove(q.obj);
+    disposeNonPooled(q.obj);
+  }
+  litter.length = 0;
 }

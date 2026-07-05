@@ -44,6 +44,12 @@ export interface SkinnedCreature {
    *  Cheap: it only runs at the moment of death, and the chunks self-remove when
    *  they finish dissolving. `cacheKey` templates the pieces like severBoneChunk. */
   crumbleToChunks: (cutJoints: readonly string[], cacheKey?: string) => THREE.Mesh[];
+  /** WARM: pre-bake this species' debris templates (each severable limb + the
+   *  torso) WITHOUT collapsing anything — the mob stays intact. Call at spawn,
+   *  behind the load screen: a species cache hit returns immediately, so only
+   *  the first spawn of a species per session pays the bake, and no kill ever
+   *  does. */
+  bakeChunkTemplates: (cacheKey: string, severableJoints: readonly string[]) => void;
 }
 
 // ── Chunk template cache — bake each species' debris pieces ONCE ─────────────
@@ -65,15 +71,12 @@ interface ChunkTemplate {
   mats: THREE.Material | THREE.Material[];
   /** centroid − anchor(joint/root) world offset at bake time */
   offset: THREE.Vector3;
-  bakeYaw: number;
+  /** inverse of the mesh's world orientation at bake time — reuse applies
+   *  (current ∘ bakeInv) so a piece inherits the live body's yaw AND its
+   *  death-topple lean, not just a Y correction */
+  bakeQuatInv: THREE.Quaternion;
 }
 const chunkTemplates = new Map<string, ChunkTemplate>();
-
-/** Yaw of a (yaw-facing) world matrix — mobs rotate in Y (plus a death topple
- *  in X that we deliberately ignore; the tumble hides it). */
-function yawOfMatrix(m: THREE.Matrix4): number {
-  return Math.atan2(m.elements[8], m.elements[10]);
-}
 
 /** Normalize a geometry to a consistent attribute set so cross-material merges
  *  never reject a mismatch (creatures freely mix primitives — some carry uv,
@@ -286,26 +289,24 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     const sc = _anchor.setFromMatrixScale(mesh.matrixWorld);
     return `${cacheKey}:${piece}@${sc.x.toFixed(2)}`;
   };
+  const _decP = new THREE.Vector3(), _decQ = new THREE.Quaternion(), _decS = new THREE.Vector3();
   const storeTemplate = (key: string, chunk: THREE.Mesh, jointName: string | null): void => {
     anchorWorld(jointName, _anchor);
+    mesh.matrixWorld.decompose(_decP, _decQ, _decS);
     chunkTemplates.set(key, {
       geo: chunk.geometry,
       mats: chunk.material as THREE.Material | THREE.Material[],
       offset: chunk.position.clone().sub(_anchor),
-      bakeYaw: yawOfMatrix(mesh.matrixWorld),
+      bakeQuatInv: _decQ.clone().invert(),
     });
   };
   const meshFromTemplate = (tpl: ChunkTemplate, jointName: string | null): THREE.Mesh => {
-    const dy = yawOfMatrix(mesh.matrixWorld) - tpl.bakeYaw;
-    const c = Math.cos(dy), s = Math.sin(dy);
+    mesh.matrixWorld.decompose(_decP, _decQ, _decS);
+    const qDelta = _decQ.multiply(tpl.bakeQuatInv);   // current ∘ bakeInv
     anchorWorld(jointName, _anchor);
     const m = new THREE.Mesh(tpl.geo, tpl.mats);
-    m.position.set(
-      _anchor.x + tpl.offset.x * c + tpl.offset.z * s,
-      _anchor.y + tpl.offset.y,
-      _anchor.z - tpl.offset.x * s + tpl.offset.z * c,
-    );
-    m.rotation.y = dy;
+    m.quaternion.copy(qDelta);
+    m.position.copy(tpl.offset).applyQuaternion(qDelta).add(_anchor);
     m.castShadow = false;
     m.updateMatrix();
     return m;
@@ -356,5 +357,29 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     return chunks;
   };
 
-  return { mesh, skeleton, bones, severBone, severBoneChunk, crumbleToChunks };
+  const bakeChunkTemplates = (cacheKey: string, severableJoints: readonly string[]): void => {
+    mesh.updateWorldMatrix(true, false); skeleton.update();
+    const limbSets = new Map<string, Set<number>>();
+    for (const j of severableJoints) { const l = limbBones(j); if (l) limbSets.set(j, l); }
+    for (const [j, l] of limbSets) {
+      const key = templateKey(cacheKey, j);
+      if (chunkTemplates.has(key)) continue;
+      const chunk = buildChunk(vertsForBones(l));   // NO collapse — the mob is alive
+      if (chunk) storeTemplate(key, chunk, j);
+    }
+    // Torso = everything outside the severable limbs. (The runtime torso also
+    // carries the limbs' COLLAPSED verts — degenerate, invisible — so skipping
+    // them here bakes the same visible geometry.)
+    const torsoKey = templateKey(cacheKey, 'torso');
+    if (!chunkTemplates.has(torsoKey)) {
+      const cut = new Set<number>();
+      for (const l of limbSets.values()) for (const b of l) cut.add(b);
+      const verts: number[] = [];
+      for (let v = 0; v < skin.count; v++) if (!cut.has(skin.getX(v))) verts.push(v);
+      const chunk = buildChunk(verts);
+      if (chunk) storeTemplate(torsoKey, chunk, null);
+    }
+  };
+
+  return { mesh, skeleton, bones, severBone, severBoneChunk, crumbleToChunks, bakeChunkTemplates };
 }

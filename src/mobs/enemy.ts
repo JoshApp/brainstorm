@@ -159,6 +159,9 @@ export type EnemyState =
 // committing to chase. Sells the "I see you" moment — also gives the
 // player a reaction window.
 const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
+// Joints the crumble cuts when a spec doesn't name its own — also the set the
+// debris-template warm bakes at spawn (keep the two in sync by definition).
+const DEFAULT_SEVERABLE = ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
 
 // Grace beat a fog-gate boss grants the player on waking — it closes the
 // distance but holds fire this long so you can orient out of the walk-in.
@@ -376,6 +379,11 @@ export function createEnemy(
   // unchanged. The handle is kept for dismember/part-breaks (collapsing a limb
   // out of the single mesh — joint.visible does nothing to GPU-skinned verts).
   const skinnedCreature = buildSkinnedCreature(creature);
+  // WARM the debris templates while we're behind the load screen (or, for a
+  // combat summon, on its spawn frame — a species cache hit makes this free).
+  // Without it the FIRST kill of a species pays the chunk vertex bake
+  // mid-fight; with it every kill, first included, reuses shared geometry.
+  skinnedCreature.bakeChunkTemplates(spec.id, spec.severable ?? DEFAULT_SEVERABLE);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
@@ -1948,7 +1956,10 @@ export function createEnemy(
     // build-model objectScalar). Drive the body here; flung crumble chunks get theirs
     // set as they spawn (they share the material but read their own userData).
     skinnedCreature.mesh.userData.dissolve = dissolveT;
-    for (const ch of deathChunks) ch.userData.dissolve = dissolveT;
+    // Pieces that SETTLED into bone litter opted out of the corpse's powder —
+    // flung-parts owns their (much later) reclaim; overwriting here would eat
+    // the litter the instant its owner finished dying.
+    for (const ch of deathChunks) if (!ch.userData.litter) ch.userData.dissolve = dissolveT;
 
     if (deathStyle === 'collapse') {
       // TOPPLE backward, LIE (rest), then SINK as it melts. The enemy faced the
@@ -1986,7 +1997,7 @@ export function createEnemy(
           spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
         };
         if (!crumbleQueue) {
-          crumbleQueue = (spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'])
+          crumbleQueue = (spec.severable ?? DEFAULT_SEVERABLE)
             .filter((j) => j !== severedJoint);
           tagPerfEvent('crumble');   // perf timeline — the staged chunk builds start here
           spawnShatterBurst(scene as THREE.Object3D, container.position.x, container.position.y + 0.3, container.position.z, true, spec.bloodColor ?? 0x8a8274);

@@ -840,4 +840,18 @@ export const CONFIG = {
   // wants to breathe.
   DEATH_SEQUENCE_DURATION: 4.8,     // seconds before end screen appears
   DEATH_VIGNETTE_DARKEN_MS: 1800,   // red vignette ramps in over this
+
+  // === BONE LITTER (debris persistence experiment) ===
+  // Settled kill debris LIES WHERE IT FELL instead of powdering within
+  // seconds — the deep remembers what you did here. The dungeon still
+  // reclaims it: after LINGER_S (or when the cap evicts the oldest) the
+  // piece powders + sinks exactly like the old immediate path. Draw cost is
+  // one draw per settled piece (template geometry is shared), so MAX bounds it.
+  DEBRIS_LITTER: {
+    ENABLED: true,
+    MAX: 32,                    // settled pieces world-wide; oldest reclaimed beyond this
+    LINGER_S: 60,               // seconds a piece lies before the dungeon takes it
+    MAX_DISSOLVE_AT_REST: 0.25, // pieces already powdering past this just finish dying
+    RECLAIM_RATE: 0.45,         // dissolve/sec while being taken (~2.2s powder-out)
+  },
 };
