@@ -20,6 +20,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { setBundleMainCamera } from '../scene/bundle-pass-order';
 
 // SSAO (?ssao=…) — GTAO contact-darkening from an MRT depth+normal G-buffer.
 // Budget-first for mobile: low sample count + half-res of the already-0.4x pass.
@@ -572,6 +573,9 @@ let inFlight = 0;
 export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   drainRetired();   // free any rebuilt-away pass/bloom/AO targets once the queue is empty
   ensurePipeline(renderer, scene, camera);
+  // Render bundles are gated to THIS camera's pass — shadow/depth-array passes
+  // must not record or execute them (see bundle-pass-order.ts).
+  setBundleMainCamera(camera);
   if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__scenePassInfo) {
     (window as any).__scenePassInfo = () => {
       const rt: any = (scenePass as any)?.renderTarget;

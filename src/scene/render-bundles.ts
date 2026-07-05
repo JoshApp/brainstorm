@@ -35,12 +35,12 @@ import { getAllInteractables } from '../interactables/system';
 // touching this: torch flicker on bundled walls, blood pooling on a bundled
 // floor (DEV `__goreAt`), pillar shadows.
 //
-// EXPERIMENT FLAG: ?bundles=1 enables, default off until phone-profiled.
-// Fully static membership means nothing ever needs `bundle.needsUpdate` — if
-// you ever bundle something mutable, bump `needsUpdate = true` on change.
+// KILL SWITCH: ?bundles=0 disables. Fully static membership means nothing
+// ever needs `bundle.needsUpdate` — if you ever bundle something mutable,
+// bump `needsUpdate = true` on change.
 
-/** OPT-IN (?bundles=1). Three strikes so far — history, so nobody re-runs
- *  the same loops:
+/** Default ON (?bundles=0 kill switch). Three strikes on the way here —
+ *  history, so nobody re-runs the same loops:
  *
  *  1. r184 (2026-07-04): validation storm blamed on bundle recording — the
  *     real cause was OUR teardown's dispose-in-flight race (deferGpuDispose
@@ -48,21 +48,18 @@ import { getAllInteractables } from '../interactables/system';
  *  2. r185 retest "still broken, 1fps" — background-tab rAF throttle
  *     artifact, not a bug. Foregrounded, bundles render and soak clean over
  *     kills + descents.
- *  3. r185 default-ON for ~an hour (4580c93): the MERE PRESENCE of a
- *     BundleGroup in the scene stops the INSTANCED SPRITE BATCHES rendering
- *     (sprite-batch.ts: InstancedBufferGeometry + SpriteNodeMaterial) —
- *     title-screen bonfire lost its flame, floors lost prop flames per
- *     bundled rect. Instances positioned + ticking, zero errors, nothing
- *     drawn; ?bundles=0 restores them instantly. Likely three's bundle
- *     render-list handling vs transparent/instanced draws outside the
- *     bundle — investigate upstream before the next attempt.
- *
- *  The prize is small (~20 loose statics/floor — batching already took the
- *  mergeables), so OFF until the sprite interaction is actually understood.
+ *  3. r185 default-ON for ~an hour (4580c93): flames vanished per bundled
+ *     rect. ROOT CAUSE (2026-07-05): upstream executes bundles at END of
+ *     pass (WebGPUBackend.finishRender), AFTER the transparents — bundled
+ *     opaque walls repaint the pixels the additive depthWrite-off flame
+ *     sprites just drew. Not a sprite bug at all: the flames rendered and
+ *     were painted over. FIXED by scene/bundle-pass-order.ts, which flushes
+ *     bundles after opaques / before transparents. Recheck on every three
+ *     bump (title-screen bonfire flame is the canary).
  */
 export function renderBundlesEnabled(): boolean {
   if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('bundles') === '1';
+  return new URLSearchParams(location.search).get('bundles') !== '0';
 }
 
 /** Smallest non-logical room rect containing (x, z), or null. Mirrors the
@@ -138,12 +135,24 @@ export function bundleStaticLevelContent(level: LiveLevel): void {
     if (list) list.push(child); else byRect.set(rectId, [child]);
   }
 
-  // Bundle (flag-gated experiment). Re-parent BEFORE freezing — the freeze
+  // Bundle. Re-parent BEFORE freezing — the freeze
   // computes world matrices once and updateMatrixWorld(force) does not
   // recompute through a subtree whose matrixWorldAutoUpdate is already off.
+  //
+  // CAST-SHADOW EXCLUSION: bundles only render in the MAIN camera pass
+  // (bundle-pass-order.ts skips them in shadow passes — the depth-array
+  // encoder can't execute bundles at all). A bundled subtree therefore never
+  // draws into a shadow map, so anything that casts must stay loose. Under
+  // the shadow policy that's pillars — shells/clutter are cast-off anyway.
+  const castsShadow = (o: THREE.Object3D): boolean => {
+    let found = false;
+    o.traverse((c) => { if ((c as THREE.Mesh).castShadow) found = true; });
+    return found;
+  };
   let bundles = 0;
   if (renderBundlesEnabled()) {
-    for (const [rectId, members] of byRect) {
+    for (const [rectId, allMembers] of byRect) {
+      const members = allMembers.filter((m) => !castsShadow(m));
       if (members.length < 2) continue;   // a bundle of one buys nothing
       const bundle = new BundleGroup();
       bundle.static = true;

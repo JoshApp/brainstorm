@@ -5,6 +5,7 @@ import { isDesktopLike } from '../controls/platform';
 import { DelveLeanLighting } from './lean-lights';
 import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
+import { installBundlePassOrderFix } from './bundle-pass-order';
 
 /** The one renderer DELVE runs on. WebGPURenderer auto-selects a WebGL2
  *  backend on devices without WebGPU — same node materials, one code path.
@@ -95,6 +96,11 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   }
 
   await renderer.init();
+
+  // r185 executes render bundles AFTER transparents (end of pass), letting
+  // bundled opaque walls paint over additive flames — this reorders the flush
+  // to after-opaques/before-transparents. See bundle-pass-order.ts.
+  installBundlePassOrderFix(renderer);
 
   // DEV: detect pipeline compiles (renderer.info has no .programs on WebGPU) so
   // post-warmup compiles (warm gaps) are visible. window.__compileStats().
