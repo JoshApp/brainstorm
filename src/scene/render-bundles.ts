@@ -39,27 +39,30 @@ import { getAllInteractables } from '../interactables/system';
 // Fully static membership means nothing ever needs `bundle.needsUpdate` — if
 // you ever bundle something mutable, bump `needsUpdate = true` on change.
 
-/** Default ON; ?bundles=0 is the kill switch.
+/** OPT-IN (?bundles=1). Three strikes so far — history, so nobody re-runs
+ *  the same loops:
  *
- *  HISTORY (a cautionary tale in two misdiagnoses): the 2026-07-04 r184
- *  experiment died with a depth/output usage-scope validation storm +
- *  `setIndexBuffer: not a GPUBuffer` and was verdicted "Three's bundle
- *  recording is incompatible with our post chain". The ACTUAL root cause was
- *  OURS — the level teardown's synchronous geometry-dispose burst destroying
- *  buffers referenced by in-flight frames (fixed by deferGpuDispose;
- *  bundles' bigger recorded surface just made the race fire reliably). The
- *  2026-07-05 r185 retest then read "still broken, 1fps" — that was a
- *  BACKGROUND-TAB rAF throttle artifact (chrome throttles occluded tabs to
- *  ~2 rAF/s), not the game. With the dispose fix + r185's render-bundle
- *  fixes, bundles run clean: soaked over kills + chained descents with zero
- *  validation errors, coexisting with the BatchedMesh world (batching takes
- *  the mergeables; each rect's bundle wraps the loose static leftovers —
- *  multi-material, single-material odds — killing their per-frame encode).
- *  Josh's instinct that "we do something wrong with it" was exactly right.
+ *  1. r184 (2026-07-04): validation storm blamed on bundle recording — the
+ *     real cause was OUR teardown's dispose-in-flight race (deferGpuDispose
+ *     fixed it; bundles just made the race reliable).
+ *  2. r185 retest "still broken, 1fps" — background-tab rAF throttle
+ *     artifact, not a bug. Foregrounded, bundles render and soak clean over
+ *     kills + descents.
+ *  3. r185 default-ON for ~an hour (4580c93): the MERE PRESENCE of a
+ *     BundleGroup in the scene stops the INSTANCED SPRITE BATCHES rendering
+ *     (sprite-batch.ts: InstancedBufferGeometry + SpriteNodeMaterial) —
+ *     title-screen bonfire lost its flame, floors lost prop flames per
+ *     bundled rect. Instances positioned + ticking, zero errors, nothing
+ *     drawn; ?bundles=0 restores them instantly. Likely three's bundle
+ *     render-list handling vs transparent/instanced draws outside the
+ *     bundle — investigate upstream before the next attempt.
+ *
+ *  The prize is small (~20 loose statics/floor — batching already took the
+ *  mergeables), so OFF until the sprite interaction is actually understood.
  */
 export function renderBundlesEnabled(): boolean {
   if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('bundles') !== '0';
+  return new URLSearchParams(location.search).get('bundles') === '1';
 }
 
 /** Smallest non-logical room rect containing (x, z), or null. Mirrors the
