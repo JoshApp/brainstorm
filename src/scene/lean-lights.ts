@@ -73,6 +73,12 @@ class LeanLightsNode extends (LightsNode as any) {
     return super.setLights(mat);
   }
 
+  // Lossless round-trip for r185's Lighting save/restore (see tiled-lighting's
+  // getLights note — same silent light-loss otherwise).
+  getLights(): any[] {
+    return [...this.leanLights, ...super.getLights()];
+  }
+
   // Repack the live light data each frame into the uniform arrays (view-space
   // position follows the parked/bound pool slots + camera; intensity follows torch
   // flicker). View-space computed CPU-side so the shader does no per-light matrix

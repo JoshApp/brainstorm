@@ -109,6 +109,17 @@ class DelveTiledLightsNode extends (LightsNode as any) {
     return (LightsNode as any).prototype.setLights.call(this, materialLights);
   }
 
+  // r185's renderer Lighting helper SAVE/RESTOREs the light list around some
+  // passes: `cache.push(node.getLights())` … `node.setLights(cache.pop())`.
+  // The base getLights() returns only what super stores — our MATERIAL split —
+  // so the restore fed the truncated list back through the splitter and the
+  // tiled lights were permanently dropped (the r185 bump's silent-black-world:
+  // __tiledInfo read `lights: 0` with 11 active in the pool). Return the FULL
+  // original set so the round-trip is lossless.
+  getLights(): any[] {
+    return [...this.tiledLights, ...(LightsNode as any).prototype.getLights.call(this)];
+  }
+
   updateBefore(frame: any): void {
     const { renderer, camera } = frame;
 
