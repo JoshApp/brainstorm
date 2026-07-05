@@ -116,8 +116,11 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
     if (!it.promptLabel) continue;
     const dx = it.position.x - playerPos.x;
     const dz = it.position.z - playerPos.z;
-    const d = Math.hypot(dx, dz);
-    if (d > it.radius) continue;
+    // Squared-distance reject first — the sqrt only runs for the handful of
+    // items actually within reach (this loop runs every frame over all loot).
+    const d2 = dx * dx + dz * dz;
+    if (d2 > it.radius * it.radius) continue;
+    const d = Math.sqrt(d2);
     if (useCone && d > 0.01) {
       const dot = (fx * dx + fz * dz) / d;
       if (dot < dotMin) continue;
@@ -127,7 +130,8 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
     if (pr > bestPr || (pr === bestPr && d < bestD)) {
       best = it; bestPr = pr; bestD = d;
     }
-    if ((it.canUse ? it.canUse() : true) && (pr > bestUsablePr || (pr === bestUsablePr && d < bestUsableD))) {
+    if ((pr > bestUsablePr || (pr === bestUsablePr && d < bestUsableD))
+        && (it.canUse ? it.canUse() : true)) {
       bestUsable = it; bestUsablePr = pr; bestUsableD = d;
     }
   }
@@ -148,12 +152,12 @@ export function resolveUsable(aimed: Interactable, playerPos: THREE.Vector3): In
   let bestD = Infinity;
   for (const it of interactables) {
     if (it === aimed || !it.promptLabel) continue;
-    if (it.canUse ? !it.canUse() : false) continue;
     const dx = it.position.x - playerPos.x;
     const dz = it.position.z - playerPos.z;
-    const d = Math.hypot(dx, dz);
-    if (d > it.radius) continue;
-    if (d < bestD) { best = it; bestD = d; }
+    const d2 = dx * dx + dz * dz;
+    if (d2 > it.radius * it.radius) continue;
+    if (it.canUse ? !it.canUse() : false) continue;
+    if (d2 < bestD) { best = it; bestD = d2; }
   }
   return best ?? aimed;
 }
