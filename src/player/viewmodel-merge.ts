@@ -46,10 +46,18 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
       let geo = m.geometry.clone().applyMatrix4(local);
       // Normalize attributes so MIXED primitives (box + sphere + cylinder) can
       // merge — mergeGeometries needs an identical attribute set across all
-      // inputs, and it fails silently (returns null) otherwise. Viewmodel
-      // materials are untextured, so position + normal is all we need.
+      // inputs, and it fails silently (returns null) otherwise. KEEP uv:
+      // stripping it minted a position+normal-only layout that no warm dummy
+      // covers, so the first mid-play weapon EQUIP compiled its pipeline live
+      // (the named 88-230ms `modeldef:opa:plain` hitches in the 2026-07-05
+      // recordings). With uv kept (zero-filled when a part lacks it — these
+      // materials are untextured, values don't matter), merged meshes land in
+      // the same position+normal+uv layout family the warm already covers.
       for (const name of Object.keys(geo.attributes)) {
-        if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+        if (name !== 'position' && name !== 'normal' && name !== 'uv') geo.deleteAttribute(name);
+      }
+      if (!geo.attributes.uv) {
+        geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
       }
       // Normalize INDEXING too — a bucket mixing indexed (primitive) and
       // non-indexed (CSG) geometry also makes mergeGeometries return null,
