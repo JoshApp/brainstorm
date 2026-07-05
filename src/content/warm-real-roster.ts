@@ -73,12 +73,19 @@ export async function warmRealRoster(
   // a second instance of every creature here so those chunk pipelines (opaque AND the transparent
   // spectral/ooze variants — we crumble every enemy) warm too. Same real code as the live sever.
   const DEFAULT_CUTS = ['head', 'shoulderL', 'shoulderR', 'armL', 'armR', 'hipL', 'hipR', 'legL', 'legR', 'tail'];
+  // A subject that THROWS during the warm build is a silent coverage hole —
+  // its pipeline compiles on first spawn in play instead (a hitch the guard
+  // then reports as NOT-WARMED). Best-effort stays (a broken spec must not
+  // brick the load), but the drop is LOUD in DEV so it's fixed, not shipped.
+  const warmMiss = (what: string, err: unknown): void => {
+    if (import.meta.env.DEV) console.warn(`[warm-real-roster] ${what} failed to warm-build — its pipeline will compile IN PLAY:`, err);
+  };
   for (const spec of Object.values(ENEMIES)) {
     try {
       const creature = buildCreature(spec.creature);
       buildSkinnedCreature(creature);     // adds the SkinnedMesh into creature.group
       collect(creature.group);
-    } catch { /* body failed — chunks below still try */ }
+    } catch (err) { warmMiss(`enemy body '${spec.id}'`, err); /* chunks below still try */ }
     try {
       // Second instance, crumbled — warms the dismember-chunk pipelines (the crumble is destructive,
       // so it can't share the instance we just added as the live body).
@@ -86,14 +93,14 @@ export async function warmRealRoster(
       const sk2 = buildSkinnedCreature(c2);
       const cuts = (spec as { severable?: readonly string[] }).severable ?? DEFAULT_CUTS;
       for (const chunk of sk2.crumbleToChunks(cuts)) { collect(chunk); chunks++; }
-    } catch { /* a creature with no severable layout still warmed its body above */ }
+    } catch (err) { warmMiss(`chunks of '${spec.id}'`, err); }
   }
   // PROPS + ITEM DROPS — real models through buildModel (the placement / drop path).
   for (const spec of WARM_MODELS) {
-    try { collect(buildModel(spec).group); } catch { /* skip */ }
+    try { collect(buildModel(spec).group); } catch (err) { warmMiss(`model '${(spec as { id?: string }).id ?? '?'}'`, err); }
   }
-  for (const item of Object.values(ITEMS)) {
-    try { collect(buildModel(item.dropModel).group); } catch { /* skip */ }
+  for (const [id, item] of Object.entries(ITEMS)) {
+    try { collect(buildModel(item.dropModel).group); } catch (err) { warmMiss(`item drop '${id}'`, err); }
   }
 
   // FLOOR DECOR + static interactables — the shared stdMat/basicMat palette. The floor decor you walk

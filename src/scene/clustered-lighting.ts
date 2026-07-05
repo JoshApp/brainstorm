@@ -1,4 +1,5 @@
 import { Lighting, Vector2 } from 'three/webgpu';
+import { Fn, screenCoordinate, positionView, float, int, log, clamp, uniform } from 'three/tsl';
 // No DefinitelyTyped entry yet for the r185 lighting addons — runtime module is real.
 // @ts-expect-error — untyped examples/jsm module
 import ClusteredLightsNode from 'three/examples/jsm/tsl/lighting/ClusteredLightsNode.js';
@@ -34,22 +35,93 @@ const MAX_PER_CLUSTER = 16;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Two DELVE adaptations over the stock addon, both in updateProgram (the
-// only method that measures the render size):
-//  1. GRID DOMAIN — the addon grids `renderer.getDrawingBufferSize()` (the
-//     canvas), assuming render-to-canvas. Our scene pass renders into the
-//     0.4× PSX target, and `screenCoordinate` there is PASS-LOCAL — a
-//     canvas-sized grid would mis-cull everything toward one corner. Grid
-//     the scene pass target instead (same fix our legacy tiled node carries).
-//  2. NaN GUARD — the first updateProgram can run before any valid size
-//     exists; the stock code bakes `2.0 / NX` into the culling compute's
-//     WGSL, so a NaN width became a literal `NaN.0` in the shader and the
-//     compute pipeline failed for the whole session (observed on first
-//     integration). Skip invalid sizes; the grid builds on the first valid
-//     frame and rebuilds on real size changes (fragment side reads the grid
-//     via uniforms, so rebuilds are safe).
+// THE DELVE ADAPTATION — a FIXED canonical grid, created once, never re-sized.
+//
+// The stock addon grids the drawing buffer and RE-CREATES the grid whenever
+// the size changes. That re-create is poison for us, because `create()` bakes
+// NX / NX*NY / NZ into the WGSL of `_screenClusterIndex` as LITERALS — and
+// every lit material's fragment shader samples that node. Consequences we
+// measured (compile-guard SHADER-VARIANT verdicts, 2026-07-05):
+//   - the boot warm renders at 0.05× scale (WARM_RES_SCALE) → different (or
+//     absent) grid → every warmed pipeline differs from live by the cluster
+//     block → 10-24 IN-PLAY recompiles per descent, warm effectively dead;
+//   - adaptive resolution / DPR / resize during play → grid re-create → new
+//     literals → a MASS recompile of every lit material, mid-fight.
+//
+// Fix: the cluster grid does not need to match the render-target's pixels at
+// all. The compute side already bins lights in NDC (resolution-independent),
+// and the fragment side only needs "which screen REGION am I in" — so we
+// create the grid ONCE at a canonical size and map fragments to tiles by
+// normalizing the fragment coordinate against a live pass-size UNIFORM. The
+// WGSL literals are then constants for the whole session: warm pipelines are
+// byte-identical to live, and no resize can ever re-bake materials.
+//
+// (The original per-size version also carried a NaN guard — the first
+// updateProgram could run before any valid size existed and bake `NaN.0`
+// into the compute WGSL. Create-once at fixed dims makes that moot.)
+
+// Canonical grid: 20×10 tiles × 12 depth slices (create() derives NX/NY from
+// this size ÷ TILE_SIZE). Chosen to match the old live grid at 0.4× phone
+// landscape (~605×280 px → 18×8) with a little headroom.
+const CANON_W = 640;
+const CANON_H = 320;
+
+// ?fixedgrid=0 — kill switch back to the stock per-target-size grid (the
+// behaviour before 2026-07-05). For A/B if the fixed grid is ever suspected
+// in a lighting artefact or the flaky depth/output usage-scope storm (which
+// pre-dates this change — it appears on the stock path too, just rarer in
+// our samples; tracked separately).
+const FIXED_GRID = typeof location === 'undefined'
+  || new URLSearchParams(location.search).get('fixedgrid') !== '0';
+
 class DelveClusteredLightsNode extends (ClusteredLightsNode as any) {
-  updateProgram(renderer: any): void {
+  private _delveGridReady = false;
+  // Live scene-pass size in pixels — feeds the fragment tile mapping's
+  // normalization uniform. Mutated in place each updateBefore.
+  private readonly _delvePassSize = new Vector2(CANON_W, CANON_H);
+
+  /** Create the canonical grid + swap the fragment→cluster mapping from the
+   *  stock pixel-based one (only correct at exactly CANON_W×CANON_H) to a
+   *  normalized live-size mapping. */
+  private ensureFixedGrid(): void {
+    if (this._delveGridReady) return;
+    this.create(CANON_W, CANON_H);
+    const NX = Math.floor(CANON_W / TILE_SIZE);
+    const NY = Math.floor(CANON_H / TILE_SIZE);
+    const NZ = this.zSlices as number;
+    const near = this._cameraNear;
+    const far = this._cameraFar;
+    // The live pass size, as OUR OWN uniform (updated each updateBefore).
+    // Deliberately NOT TSL's `screenUV`/`screenSize` singletons — those are
+    // also baked into the post pass, and sharing node subtrees across passes
+    // is a needless variable; `screenCoordinate` is exactly what the stock
+    // node uses.
+    const passSize = (uniform as any)(this._delvePassSize);
+    const index = (Fn as any)(() => {
+      // Normalize the builtin fragment coordinate by the live pass size —
+      // resolution-agnostic (y=0 at the top, matching the compute's cy=0 =
+      // top row convention).
+      const u = (screenCoordinate as any).x.div(passSize.x);
+      const v = (screenCoordinate as any).y.div(passSize.y);
+      const tx = (clamp as any)(u.mul(NX).floor(), 0, NX - 1);
+      const ty = (clamp as any)(v.mul(NY).floor(), 0, NY - 1);
+      // Exponential Z slice — same math as the stock node, same uniforms.
+      const viewDepth = (positionView as any).z.negate();
+      const invLogFarOverNear = (float as any)(1).div((log as any)(far.div(near)));
+      const sliceFloat = (log as any)(viewDepth.div(near)).mul(invLogFarOverNear).mul((float as any)(NZ));
+      const zSlice = (clamp as any)(sliceFloat.floor(), (float as any)(0), (float as any)(NZ - 1));
+      return (int as any)(tx)
+        .add((int as any)(ty).mul((int as any)(NX)))
+        .add((int as any)(zSlice).mul((int as any)(NX * NY)));
+    });
+    this._screenClusterIndex = index().toVar();
+    this._delveGridReady = true;
+  }
+
+  /** The pre-fixed-grid behaviour (?fixedgrid=0): grid the scene-pass target,
+   *  re-creating on size change; NaN-guarded (an invalid first size used to
+   *  bake `NaN.0` into the culling compute's WGSL). */
+  private updateSizedGrid(renderer: any): void {
     const st = sceneTargetSize();
     let w: number, h: number;
     if (st) { w = st.w; h = st.h; }
@@ -65,10 +137,21 @@ class DelveClusteredLightsNode extends (ClusteredLightsNode as any) {
     }
   }
 
+  updateProgram(renderer: any): void {
+    if (FIXED_GRID) this.ensureFixedGrid();
+    else this.updateSizedGrid(renderer);
+  }
+
   updateBefore(frame: any): void {
-    // The stock updateBefore dispatches the culling compute unconditionally —
-    // guard for the frames before the first valid grid exists.
     this.updateProgram(frame.renderer);
+    if (FIXED_GRID) {
+      // Track the live pass size (the PSX scene target; falls back to the
+      // drawing buffer pre-pipeline). Grid + WGSL never change — only this
+      // normalization uniform does.
+      const st = sceneTargetSize();
+      if (st) this._delvePassSize.set(st.w, st.h);
+      else frame.renderer?.getDrawingBufferSize?.(this._delvePassSize);
+    }
     if (!this._compute) return;
     super.updateBefore(frame);
   }

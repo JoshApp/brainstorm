@@ -181,11 +181,19 @@ registerWarmup({
     scene.add(sprite(THREE.AdditiveBlending, true, false), sprite(THREE.AdditiveBlending, false, false));
     // …and normal-blended depth-off (breath puffs, over-viewmodel wisps).
     scene.add(sprite(THREE.NormalBlending, true, false), sprite(THREE.NormalBlending, false, false));
-    // basic unlit (simple effect/decal meshes), fog + no-fog.
+    // basic unlit (simple effect/decal meshes): normal AND additive blending
+    // (additive was missing — pickup range rings + additive decals compiled
+    // their MeshBasic pipeline on first sight in play), fog + no-fog, and the
+    // depth-write-off variant additive effects use.
     for (const fog of [true, false]) {
-      const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog }));
-      m.castShadow = false; m.frustumCulled = false;
-      scene.add(m);
+      for (const blending of [THREE.NormalBlending, THREE.AdditiveBlending]) {
+        const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({
+          color: 0xffffff, transparent: true, fog, blending,
+          depthWrite: blending === THREE.NormalBlending,
+        }));
+        m.castShadow = false; m.frustumCulled = false;
+        scene.add(m);
+      }
     }
   },
   clear: () => {},
