@@ -120,6 +120,13 @@ export function applyMoodTint(built: BuiltModel, tint: number): void {
       batched.setTexture('moonbeam');
       return;
     }
+    // Batched flame BLOBS (instanced flame-mesh batch): the 'flame' material
+    // in the map is unused when batched — the handle's colour IS the look.
+    const batchedBlob = obj.userData.batchedFlame as { color: THREE.Color } | undefined;
+    if (batchedBlob) {
+      batchedBlob.color.setHex(tint);
+      return;
+    }
     const sprite = obj as THREE.Sprite;
     if (!sprite.isSprite) return;
     const m = sprite.material as THREE.SpriteMaterial;

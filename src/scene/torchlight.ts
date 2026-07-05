@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import type { BatchedSprite } from './sprite-batch';
+import type { BatchedFlameMesh } from './flame-mesh-batch';
 import { WALL_TORCH } from '../content/torch';
 import { applyMoodTint } from '../level/mood-tint';
 import { registerLight, unregisterLight } from './light-pool';
@@ -29,6 +30,10 @@ export interface Torch {
    *  torch). Absent for sprite-stack fixtures (wall cresset). */
   flameMaterial?: THREE.MeshStandardMaterial;
   flameMesh?: THREE.Mesh;
+  /** Set instead of flameMesh/flameMaterial when the flame blob went into the
+   *  instanced flame-mesh batch — flicker writes the handle's live
+   *  emissiveIntensity/scaleMul/offsetY instead of a material + mesh. */
+  flameBatched?: BatchedFlameMesh;
   wispSprite?: THREE.Sprite;
   /** Set instead of wispSprite when the wisp went into the instanced sprite
    *  batch (scene/sprite-batch.ts) — the flicker writes the handle's live
@@ -84,8 +89,14 @@ export function createTorchlight(
   // 'flame' part + material are OPTIONAL — sprite-stack fixtures don't
   // have them. The per-frame tick checks for their presence before
   // mutating, so undefined here is fine.
-  const flameMaterial = built.materials.get('flame') as THREE.MeshStandardMaterial | undefined;
-  const flameMesh = built.parts.get('flame') as THREE.Mesh | undefined;
+  const flamePart = built.parts.get('flame');
+  const flameBatched = flamePart?.userData.batchedFlame as BatchedFlameMesh | undefined;
+  // When the blob went into the instanced batch, the 'flame' part is a
+  // placeholder — leave mesh/material undefined so the flicker drives the
+  // handle instead (the material in built.materials is real but UNUSED).
+  const flameMesh = flameBatched ? undefined : flamePart as THREE.Mesh | undefined;
+  const flameMaterial = flameBatched ? undefined
+    : built.materials.get('flame') as THREE.MeshStandardMaterial | undefined;
   if (!fixtureModel.light) {
     throw new Error(`${fixtureModel.id} is missing its light spec`);
   }
@@ -138,13 +149,14 @@ export function createTorchlight(
     group: built.group,
     flameMaterial,
     flameMesh,
+    flameBatched,
     wispSprite,
     wispBatched,
     wispBaseColor,
     wispBaseScale,
     flameVisuals,
     baseIntensity,
-    baseEmissive: flameMaterial?.emissiveIntensity ?? 0,
+    baseEmissive: flameMaterial?.emissiveIntensity ?? flameBatched?.emissiveIntensity ?? 0,
     currentIntensity: baseIntensity,
     envBoost: 1,
     sourceId: torchSourceId,
@@ -227,13 +239,24 @@ export function updateTorchlight(torch: Torch, dt: number, camDist?: number) {
   const flameFactor = lightFactor + (fFast + fXfast + fMed) * 0.18;
   if (torch.flameMaterial) {
     torch.flameMaterial.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
+  } else if (torch.flameBatched) {
+    torch.flameBatched.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
   }
 
   let scaleJitter = 1;
-  if (torch.flameMesh) {
+  if (torch.flameMesh || torch.flameBatched) {
     scaleJitter = 1 + Math.sin((t + n2) * 14) * 0.08 + Math.sin((t + n3) * 23) * 0.05;
-    torch.flameMesh.scale.set(scaleJitter, 1.4 * scaleJitter * (0.9 + Math.sin((t + n1) * 9) * 0.12), scaleJitter);
-    torch.flameMesh.position.y = Math.sin((t + n3) * 7) * 0.02 + Math.abs(Math.sin((t + n1) * 11)) * 0.015;
+    const sy = scaleJitter * (0.9 + Math.sin((t + n1) * 9) * 0.12);
+    const bob = Math.sin((t + n3) * 7) * 0.02 + Math.abs(Math.sin((t + n1) * 11)) * 0.015;
+    if (torch.flameMesh) {
+      torch.flameMesh.scale.set(scaleJitter, 1.4 * sy, scaleJitter);
+      torch.flameMesh.position.y = bob;
+    } else {
+      // Batched handle: the authored [1,1.4,1] stretch lives on the handle,
+      // so the multiplier here carries only the jitter (no re-baked 1.4).
+      torch.flameBatched!.scaleMul.set(scaleJitter, sy, scaleJitter);
+      torch.flameBatched!.offsetY = bob;
+    }
   }
 
   // --- WISP SPRITE ---

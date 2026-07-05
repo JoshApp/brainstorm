@@ -75,6 +75,7 @@ import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
 import { bundleStaticLevelContent } from './scene/render-bundles';
 import { setSpriteBatchScene } from './scene/sprite-batch';
+import { setFlameMeshBatchScene } from './scene/flame-mesh-batch';
 import { batchStaticWorld } from './scene/static-batch';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
@@ -280,6 +281,9 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 // precede the first level build so torch/prop builders route their additive
 // sprite parts into it. Bench/viewer tools never call this and keep Sprites.
 setSpriteBatchScene(scene);
+// Same for the solid emissive flame BLOBS (candle/torch spheres) — the
+// instanced flame-mesh batch collapses them to one draw (?flamebatch=0 A/B).
+setFlameMeshBatchScene(scene);
 
 // WEBGPU: halve the ambient fill. r184's units make AMBIENT_INTENSITY read much
 // brighter (flat wash on the stone). Trimming the fill here — rather than via a

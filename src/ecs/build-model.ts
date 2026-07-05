@@ -6,6 +6,7 @@ import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
 import { createBatchedSprite, isSpriteBatchingEnabled } from '../scene/sprite-batch';
+import { createBatchedFlameMesh, isFlameMeshBatchingEnabled } from '../scene/flame-mesh-batch';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
@@ -599,6 +600,21 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
   const pooled = !part.jitter;
   switch (part.kind) {
     case 'sphere': {
+      // BATCHED FLAME BLOB (static props/fixtures): the solid emissive flame
+      // sphere joins the instanced flame-mesh batch — a placeholder stands in
+      // for the Mesh, exactly like the sprite path below. Torchlight flicker
+      // and mood-tint drive the handle (userData.batchedFlame). One draw for
+      // every flame blob on the floor instead of a mesh + cloned material each.
+      if (curBatchSprites && part.mat === 'flame' && isFlameMeshBatchingEnabled()) {
+        const m = materials.get('flame') as THREE.MeshStandardMaterial;
+        const handle = createBatchedFlameMesh({
+          radius: part.radius,
+          stretch: [part.scale?.[0] ?? 1, part.scale?.[1] ?? 1, part.scale?.[2] ?? 1],
+          emissive: (m.emissive ?? m.color).getHex(),
+          emissiveIntensity: m.emissiveIntensity ?? 1,
+        });
+        return handle.obj;
+      }
       const segs = part.segments ?? [16, 12];
       const geo = pooled
         ? pooledSphere(part.radius, segs[0], segs[1])
