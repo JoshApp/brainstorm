@@ -54,6 +54,12 @@ interface RecFrame {
   geo: number;
   tex: number;
   prog: number;
+  /** GPU queue uploads this frame (writeBuffer/writeTexture calls) + KB
+   *  written — the encode-storm discriminator: a long render·scene with a fat
+   *  ubKB is an upload burst; with gc=true it's the collector; with neither
+   *  it's first-touch object prep. */
+  ub: number;
+  ubKB: number;
   sys: number[];        // per-system ms, aligned to sysNames
   /** Camera orientation this frame: [yaw, pitch] in radians. Lets a recording
    *  correlate a GPU/fill spike with WHERE the player was looking — pitch-down
@@ -228,6 +234,8 @@ function onRingFrame(s: FrameSample): void {
     geo: s.geometries,
     tex: s.textures,
     prog: s.programs,
+    ub: s.uploads,
+    ubKB: Math.round(s.uploadKB),
     sys: snapshotSys(s.systems),
     cam: [r2(getCameraYaw()), r2(getCameraPitch())],
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,

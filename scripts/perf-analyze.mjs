@@ -69,16 +69,27 @@ else {
 }
 
 console.log(hr('SPIKES (dt > 2× median)'));
-let spikes = 0;
+// Upload baseline (ub/ubKB columns, builds ≥ 2026-07-05): a spike frame whose
+// ubKB dwarfs the median is an UPLOAD BURST; one with gc=true is the
+// collector landing mid-frame; neither = first-touch object prep / external.
+const hasUb = F.some((x) => x.ubKB !== undefined);
+const mdUbKB = hasUb ? med(col((x) => x.ubKB ?? 0)) : 0;
+let spikes = 0, spikeGc = 0, spikeUpload = 0, spikeCpuHeavy = 0;
 for (let i = 1; i < F.length; i++) {
   if (F[i].dt > mdDt * 2) {
     spikes++;
     const dp = F[i].prog - F[i - 1].prog, dg = F[i].geo - F[i - 1].geo;
     const top = (F[i].sys || []).map((ms, j) => [sn[j], ms]).filter((x) => x[1] > 3).sort((a, b) => b[1] - a[1]).slice(0, 2);
-    if (spikes <= 12) console.log(`  [${i}] dt=${f1(F[i].dt)} cpu=${f1(F[i].cpu)} prog${dp >= 0 ? '+' : ''}${dp} geo${dg >= 0 ? '+' : ''}${dg} ev=${JSON.stringify(F[i].ev || [])} ${JSON.stringify(top)}`);
+    const cpuHeavy = F[i].cpu > mdDt;   // the CPU did real work (not an idle/GPU stall)
+    if (cpuHeavy) spikeCpuHeavy++;
+    let verdict = '';
+    if (F[i].gc) { spikeGc++; verdict = ' ⚑GC'; }
+    if (hasUb && cpuHeavy && (F[i].ubKB ?? 0) > Math.max(64, mdUbKB * 5)) { spikeUpload++; verdict += ` ⚑UPLOAD ${F[i].ub}×/${F[i].ubKB}KB`; }
+    if (spikes <= 12) console.log(`  [${i}] dt=${f1(F[i].dt)} cpu=${f1(F[i].cpu)} prog${dp >= 0 ? '+' : ''}${dp} geo${dg >= 0 ? '+' : ''}${dg}${hasUb ? ` ub=${F[i].ub}/${F[i].ubKB}KB` : ''} ev=${JSON.stringify(F[i].ev || [])} ${JSON.stringify(top)}${verdict}`);
   }
 }
-console.log(`  total spikes: ${spikes}`);
+console.log(`  total spikes: ${spikes}${hasUb ? `  (cpu-heavy ${spikeCpuHeavy} · gc-flagged ${spikeGc} · upload-burst ${spikeUpload})` : ''}`);
+if (hasUb) console.log(`  uploads/frame median ${med(col((x) => x.ub ?? 0))}× · ${f1(mdUbKB)}KB`);
 
 console.log(hr('PROGRAM CHURN (prog ±1 = a material minted+disposed per beat → recompile hitch)'));
 let ups = 0, downs = 0;
@@ -132,6 +143,13 @@ if (A?.byKind) {
   }
 }
 if (gpuSum > mdDt * 1.4) flags.push(`GPU-TIMER INFLATION: pass-sum ${f1(gpuSum)} vs dt ${f1(mdDt)} — don't chase per-pass absolutes (cost us a night on a "stale 11ms bloom"). Trust dt + draw counts.`);
+// Encode-storm discrimination (needs the ub/ubKB columns, builds ≥ 2026-07-05).
+if (hasUb && spikeCpuHeavy > 0) {
+  if (spikeUpload > 0) flags.push(`UPLOAD BURST: ${spikeUpload}/${spikeCpuHeavy} cpu-heavy spikes wrote ≫ the ${f1(mdUbKB)}KB/frame baseline — a system staged a big GPU copy that frame (skinning/instance/gore buffers). The ubKB number sizes it.`);
+  if (spikeGc > 0) flags.push(`GC IN FRAME: ${spikeGc}/${spikes} spike frames collected mid-frame — the encode bracket was frozen, not busy. Chase allocation churn (alloc-profile attach mode), not the renderer.`);
+  const unexplained = spikeCpuHeavy - spikeUpload - spikeGc;
+  if (unexplained > 2) flags.push(`UNEXPLAINED ENCODE: ${unexplained} cpu-heavy spikes with normal uploads and no GC → likely first-touch object prep (bind-group/uniform build on newly visible objects). Cross-check ev tags + what became visible.`);
+}
 if (!flags.length) flags.push('No obvious flags — likely fill/lighting bound or device-limited. Profile in Chrome with CPU throttle for the structural picture.');
 flags.forEach((f, i) => console.log(`  ${i + 1}. ${f}`));
 console.log();

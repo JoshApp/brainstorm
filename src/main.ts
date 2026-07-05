@@ -26,6 +26,7 @@ import { runWarmupPassWebGPU } from './content/warmup-pass';
 import { warmRealRoster } from './content/warm-real-roster';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
+import { installUploadCounter } from './debug/upload-counter';
 import type { DelveRenderer } from './scene/create-renderer';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
@@ -232,6 +233,10 @@ resolveCrashGpu();   // adapter/context exists now — fill the crash report's G
 // rest of the profiler chain — phone recordings are how we attribute CPU cost.
 // Idle cost: one boolean per render pass.
 installRenderPassCpu(renderer);
+// Per-frame GPU-upload counters (writeBuffer count + KB) for the recorder's
+// ub/ubKB columns — distinguishes an upload-burst "encode storm" from a GC
+// pause landing mid-encode. Same prod-shipping policy as the pass buckets.
+installUploadCounter(renderer);
 // On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
 // (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
 // with no signal at all — arm its wall-clock fallback there (valid because

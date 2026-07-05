@@ -13,6 +13,7 @@ import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 import { tickWebGPUTimestamps, webgpuGpuMs, webgpuGpuPhases, webgpuTimingSupported } from './gpu-timer-webgpu';
 import { setSystemProbe, setMarksEnabled } from '../engine/loop';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
+import { readAndResetUploads } from './upload-counter';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { setProfSpans } from './prof-span';
 
@@ -39,6 +40,10 @@ export interface FrameSample {
   allocMB: number;
   /** True if the heap shrank this frame — a GC collection happened. */
   gc: boolean;
+  /** GPU queue uploads (writeBuffer/writeTexture calls) this frame. */
+  uploads: number;
+  /** KB written to the GPU queue this frame — the upload-burst detector. */
+  uploadKB: number;
   /** Per-system ms THIS frame. TRANSIENT — the same Map is reused every frame;
    *  a listener that retains data must copy out, not hold the reference. */
   systems: Map<string, number>;
@@ -146,7 +151,7 @@ function diffNewPipelines(r: DelveRenderer): string[] {
 const sample: FrameSample = {
   dt: 0, cpuMs: 0, gpuMs: null, draws: 0, tris: 0, programs: 0, newProgKinds: [], geometries: 0,
   textures: 0, geometryPool: 0, lightsActive: 0, lightsRegistered: 0,
-  heapMB: null, allocMB: 0, gc: false, systems: frameMs, gpuPhases: null,
+  heapMB: null, allocMB: 0, gc: false, uploads: 0, uploadKB: 0, systems: frameMs, gpuPhases: null,
 };
 
 export function initFrameTiming(r: DelveRenderer): void {
@@ -242,6 +247,9 @@ export function frameEnd(): void {
   sample.heapMB = heap !== null ? heap / (1024 * 1024) : null;
   sample.allocMB = allocMB;
   sample.gc = gc;
+  const up = readAndResetUploads();
+  sample.uploads = up.count;
+  sample.uploadKB = up.kb;
   // sample.systems already aliases frameMs.
 
   lastEnd = now;
