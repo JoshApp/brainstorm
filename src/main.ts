@@ -76,6 +76,7 @@ import { batchStaticFixtures } from './level/static-merge';
 import { bundleStaticLevelContent } from './scene/render-bundles';
 import { setSpriteBatchScene } from './scene/sprite-batch';
 import { setFlameMeshBatchScene } from './scene/flame-mesh-batch';
+import { raiseFlaskForWarm } from './player/flask-viewmodel';
 import { batchStaticWorld } from './scene/static-batch';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
@@ -541,7 +542,15 @@ initLevelLoader({
         try {
           roomCuller?.setEnabled(false);
           setWarmLowRes(true);
-          await warmRenderWebGPU(renderer, scene, camera, 1);
+          // Raise the flask rig into this covered frame: its pipelines must
+          // compile under the PLAY lighting context (lamp shadow live) — the
+          // boot warm ran on the title where no lamp exists, and the first
+          // mid-fight sip paid two live compiles (2026-07-05 phone recs).
+          // Also pre-builds the live rig (the ~27ms first-sip compose).
+          const flaskWarm = raiseFlaskForWarm(camera);
+          try {
+            await warmRenderWebGPU(renderer, scene, camera, 1);
+          } finally { flaskWarm.restore(); }
         } catch { /* best-effort */ } finally {
           setWarmLowRes(false);
           roomCuller?.setEnabled(true);

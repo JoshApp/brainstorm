@@ -141,6 +141,25 @@ function ensureBuilt(camera: THREE.Camera): void {
   registerViewmodel(group);   // WebGPU depth conventions (see render-frame.ts)
 }
 
+/** DESCENT-CONTEXT WARM. The boot warm runs on the TITLE, where the player's
+ *  shadow-casting lamp doesn't exist — so the flask rig's pipelines compile
+ *  with a title lighting context baked into their WGSL, and the first in-game
+ *  sip recompiles the lit variants live (the compile guard's verdict on the
+ *  2026-07-05 phone recordings: warm{shadow:0 loop:3} vs live{shadow:3
+ *  loop:1}, two ~40-55ms frames). This builds the LIVE rig (also killing the
+ *  ~27ms first-sip compose+merge) and holds it raised for the caller's
+ *  covered warm render so the play-context pipelines compile behind the
+ *  descent black. Call the returned restore() right after that render. */
+export function raiseFlaskForWarm(camera: THREE.Camera): { restore(): void } {
+  ensureBuilt(camera);
+  if (!group) return { restore() { /* build failed — nothing to restore */ } };
+  const g = group;
+  const prevVisible = g.visible;
+  g.visible = true;
+  g.position.copy(RAISED_POS);
+  return { restore() { g.visible = prevVisible; g.position.copy(HIDDEN_POS); } };
+}
+
 /** World position of the flask hand's wrist while the rig is up — the
  *  weapon viewmodel retargets its right-arm IK here during a drink, so
  *  the one right arm follows the flask to the mouth. Null when hidden. */
