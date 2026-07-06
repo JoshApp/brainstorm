@@ -837,6 +837,12 @@ export const CONFIG = {
     // this is the per-floor chance one is budgeted at all.
     DEFINING_FIND_CHANCE: 0.7,
     DEFINING_FIND_RARE_DEPTH: 3,   // >= this depth, the find floors at 'rare' (else 'uncommon')
+    // QUESTION = the floor's one STAGED deal, dropped on a focal `spot` marker in
+    // an event-permitting room (survivable fountain/tithe shallow, run-threatening
+    // blood-altar/altar deep). Only lands if a spare marker is free; else the
+    // `?`-slot RNG still provides deals. This is the per-floor chance one is budgeted.
+    QUESTION_CHANCE: 0.65,
+    QUESTION_DEEP_DEPTH: 6,        // >= this depth, deals turn run-threatening (blood-altar/altar)
   },
 
   // === DEATH SEQUENCE ===

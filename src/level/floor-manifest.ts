@@ -24,7 +24,7 @@ import type { LevelSpec, PropSpec } from './types';
  *  want a per-floor cap on it. PropSpec kinds not listed are unlimited
  *  (e.g. pillars, vases, chests — those are placed per-vault by
  *  design). */
-export type ContentKind = 'fountain' | 'altar' | 'blood-altar';
+export type ContentKind = 'fountain' | 'altar' | 'blood-altar' | 'tithe-basin';
 
 /** Which PropSpec kinds map to which manifest content kind. Anything
  *  not in this map is unconstrained. */
@@ -32,6 +32,7 @@ const PROP_KIND_TO_CONTENT: Partial<Record<PropSpec['kind'], ContentKind>> = {
   fountain: 'fountain',
   altar: 'altar',
   'blood-altar': 'blood-altar',
+  'tithe-basin': 'tithe-basin',
 };
 
 export interface FloorManifest {
@@ -59,6 +60,9 @@ export function rollManifest(_depth: number, _rand: () => number): FloorManifest
       // makes the "gamble or pass" choice flatter and amplifies
       // run variance to dice-roll levels.
       'blood-altar': 1,
+      // Tithe basins: one per floor. Two commit-first offerings on one
+      // descent is just noise — the deal loses its weight.
+      'tithe-basin': 1,
     },
   };
 }
@@ -79,6 +83,9 @@ export function reconcileManifest(
   spec: LevelSpec,
   manifest: FloorManifest,
   rand: () => number,
+  /** Props the director staged INTENTIONALLY — they survive the cap first, so a
+   *  random `?`-slot duplicate is the one culled, not the meant-to-be-there one. */
+  protectedProps?: ReadonlySet<PropSpec>,
 ): void {
   // Bucket every capped prop by its content kind.
   const byKind: Partial<Record<ContentKind, PropSpec[]>> = {};
@@ -93,10 +100,14 @@ export function reconcileManifest(
     const props = byKind[k]!;
     const cap = manifest.caps[k] ?? 0;
     if (props.length <= cap) continue;
-    // Shuffle so the survivor is random across the floor, not always
-    // the first-placed instance (which would bias toward the start
-    // vault).
+    // Shuffle so the survivor is random across the floor, not always the
+    // first-placed instance (which would bias toward the start vault)...
     shuffleInPlace(props, rand);
+    // ...but sort PROTECTED (intentfully staged) props to the front so they
+    // survive the cap; random duplicates get culled first.
+    if (protectedProps) {
+      props.sort((a, b) => Number(protectedProps.has(b)) - Number(protectedProps.has(a)));
+    }
     for (let i = cap; i < props.length; i++) toRemove.add(props[i]);
   }
 

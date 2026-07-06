@@ -252,9 +252,17 @@ This model is not invented; it's the shipped playbook. Key confirmed findings:
    (`focal`/`facing`); add `floor-fill.ts`; the loot budget's **defining find**
    is staged onto a focal marker via the roller (hint-bounded, deterministic).
    *Felt:* a real reward lands on the dais, different every run.
-3. **Event budget.** One question/floor onto a focal marker in a `feature`
-   room; retire the `?` fountain/altar RNG + the manifest caps.
-   *Felt:* every floor poses one real, staged deal.
+3. **The manager + the staged deal.** ✓ (this pass) `floor-director.ts` is now
+   the single owner of the floor's content plan — it rolls the budget and picks
+   the fire, the combat count, the defining find, and ONE staged deal, then
+   hands a plan to the composer to execute. The deal is depth-tuned (survivable
+   fountain/tithe shallow, run-threatening blood-altar/altar deep) and
+   VARIETY-filtered: a soft-cap ledger + the manifest hard-cap mean a floor
+   never spams one kind (no two heal fountains), and the intentful staged deal
+   wins the cap over a random `?`-slot one. (`?`-slot RNG still runs as the
+   fallback; retiring it fully is a later cleanup once markers are widespread.)
+   *Felt:* every floor poses one real, staged deal — and the world stops
+   repeating itself.
 4. **Furnishing pass.** Vases/destructibles/minor chests → a DECORATE-stage
    density per room, mood-tuned + event-aware. Move baked clutter out of vaults.
    *Felt:* rooms feel inhabited and coherent, never twice the same.

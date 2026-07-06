@@ -30,6 +30,60 @@ export interface DefiningFind {
   roomId: string;
   facing?: number;
   loot: ItemSpec;
+  /** The marker this find claimed — so the director can keep the deal off it. */
+  spot: ContentSpot;
+}
+
+/** The deal kinds the FILL stage may stage for the floor's QUESTION. Shallow
+ *  ones are survivable-bad; deep ones are run-threatening gambles. */
+export type DealKind = 'fountain' | 'tithe-basin' | 'altar' | 'blood-altar';
+
+/** A resolved staged deal — the floor's one QUESTION, on a marker. */
+export interface StagedDeal {
+  x: number;
+  z: number;
+  roomId: string;
+  kind: DealKind;
+}
+
+/** Deals split by tension: survivable-bad early, run-threatening deep. */
+const SHALLOW_DEALS: readonly DealKind[] = ['fountain', 'tithe-basin'];
+const DEEP_DEALS: readonly DealKind[] = ['blood-altar', 'altar'];
+
+/**
+ * Stage the floor's ONE question (a deal) onto a marker. Mirrors
+ * {@link fillDefiningFind}: eligible = a `spot` in an EVENT-permitting room,
+ * focal preferred, and never the spot already taken by the find (`exclude`).
+ * The KIND is chosen from `allowed` (the director's variety-filtered set),
+ * biased by depth toward survivable (shallow) or run-threatening (deep). Returns
+ * null when there's no budget-allowed kind or no eligible marker.
+ */
+export function fillQuestion(
+  spots: readonly ContentSpot[],
+  roles: FloorRoles,
+  allowed: readonly DealKind[],
+  depth: number,
+  deepDepth: number,
+  rand: () => number,
+  exclude?: ContentSpot | null,
+): StagedDeal | null {
+  if (allowed.length === 0) return null;
+
+  const eligible = spots.filter(
+    (s) => roles.caps(s.roomId).allowEvent && s !== exclude,
+  );
+  if (eligible.length === 0) return null;
+  const focal = eligible.filter((s) => s.focal);
+  const pool = focal.length > 0 ? focal : eligible;
+  const spot = pool.length === 1 ? pool[0] : pool[Math.floor(rand() * pool.length)];
+
+  // Prefer the depth-appropriate tension band; fall back to whatever's allowed.
+  const band = depth >= deepDepth ? DEEP_DEALS : SHALLOW_DEALS;
+  const preferred = allowed.filter((k) => band.includes(k));
+  const from = preferred.length > 0 ? preferred : allowed;
+  const kind = from[Math.floor(rand() * from.length)];
+
+  return { x: spot.x, z: spot.z, roomId: spot.roomId, kind };
 }
 
 /**
@@ -67,5 +121,5 @@ export function fillDefiningFind(
   const loot = rollLoot({ depth, bias: 4, minRarity: budget.minRarity, category: [...GEAR_KINDS] }, rand);
   if (!loot) return null;
 
-  return { x: spot.x, z: spot.z, roomId: spot.roomId, facing: spot.facing, loot };
+  return { x: spot.x, z: spot.z, roomId: spot.roomId, facing: spot.facing, loot, spot };
 }

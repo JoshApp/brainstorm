@@ -46,6 +46,12 @@ export interface FloorContentBudget {
      *  harbor/post-boss fire is separate (always present, authored by the safe
      *  room). When false the player wakes + descends with no fire that floor. */
     minorFire: boolean;
+    /** Whether this floor stages ONE QUESTION — a deal (fountain/tithe shallow,
+     *  blood-altar/altar deep) placed on a focal marker in an event-permitting
+     *  room. Like the defining find, it only lands if the floor offers a spare
+     *  eligible marker; otherwise it no-ops and the `?`-slot RNG still provides
+     *  deals. A staged deal takes precedence over random ones at the floor cap. */
+    question: boolean;
   };
 }
 
@@ -76,8 +82,12 @@ export function combatIntensity(depth: number, rand: () => number): EncounterInt
  *  the design (not one-per-entrance), so it's a depth-weighted chance, not a
  *  guarantee. Always consumes exactly one rand() for stream stability. */
 export function floorEvents(depth: number, rand: () => number): FloorContentBudget['events'] {
-  void depth;   // reserved for depth-weighting the chance later
-  return { minorFire: rand() < CONFIG.CONTENT_BUDGET.MINOR_FIRE_CHANCE };
+  void depth;   // reserved for depth-weighting the fire chance later
+  const b = CONFIG.CONTENT_BUDGET;
+  // Two independent rolls, fixed order (fire then question) for stream stability.
+  const minorFire = rand() < b.MINOR_FIRE_CHANCE;
+  const question = rand() < b.QUESTION_CHANCE;
+  return { minorFire, question };
 }
 
 /** Roll this floor's loot line — currently the single DEFINING FIND. Whether it

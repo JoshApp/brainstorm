@@ -12,7 +12,6 @@ import { vaultsForTag, VAULTS } from './vault-library';
 import { ITEMS } from '../content/items';
 import { parseTileMap } from './tilemap';
 import { populateTemplate, rollFloorEnemies, type FeatureCell } from './procgen';
-import { floorContentBudget } from './content-budget';
 import { BONFIRE } from '../content/bonfire';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
@@ -21,7 +20,8 @@ import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, type RoomNode } from './floor-roles';
-import { fillDefiningFind, type ContentSpot } from './floor-fill';
+import type { ContentSpot } from './floor-fill';
+import { directFloor } from './floor-director';
 import { getPropAABB, type PropAABB } from './prop-aabb';
 import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
@@ -628,9 +628,13 @@ export function composeFloor(
   // spot, falling back to a generic open cell when a floor offers none.
   const fireAnchors: Array<{ x: number; z: number; roomId: string }> = [];
   // Dumb content MARKERS ('spot' anchors) harvested across the placed vaults —
-  // the FILL stage (floor-fill.ts) stages a defining find onto one of these,
-  // choosing by the owning room's role, not by anything the marker declares.
+  // the FILL stage (floor-fill.ts) stages a defining find / deal onto one of
+  // these, choosing by the owning room's role, not by anything the marker says.
   const contentSpots: ContentSpot[] = [];
+  // The floor's staged deal (the director's QUESTION), if any — held here so the
+  // manifest reconcile below can PROTECT it: the intentful deal wins the floor
+  // cap, and any random `?`-slot deal of the same kind is the one culled.
+  let stagedDealProp: PropSpec | null = null;
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
@@ -950,55 +954,42 @@ export function composeFloor(
   // combat vaults are eligible — we top up by seeding budget enemies into the
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
   {
-    const budget = floorContentBudget(depth, rand);
-    // MINOR FIRE = a director-owned FOUND event. INVARIANT: a fire never appears
-    // from vault authoring — strip every baked bonfire first, so "fires don't
-    // appear in vaults unless we want them" holds no matter what a vault bakes.
-    // Then, if this floor rolled a fire, the director places ONE: at a vault FIRE
-    // ANCHOR (an authored good spot, so it reads designed) when a non-start room
-    // offers one, else into a generic open cell deeper in. Roll miss → no fire
-    // (you descend cold). The composer owns fires (spec flag at return) so the
-    // builder won't re-add a threshold fire. MINOR_FIRE_CHANCE is the dial.
+    // INVARIANT: a fire never appears from vault authoring — strip every baked
+    // bonfire first, so the director is the sole owner of fires.
     for (let k = props.length - 1; k >= 0; k--) {
       const p = props[k] as { kind?: string; model?: { id?: string } };
       if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
     }
-    if (budget.events.minorFire) {
-      // Pick the fire's HOME by ROLE, not at random: a quiet dead-end pocket
-      // (`feature`, high bonfireScore) beats a through-room, and the exit room
-      // is excluded by its caps — the bonfire becomes a prominent, staged
-      // centrepiece instead of furniture. Prefer an authored fire anchor; fall
-      // back to an open cell in a bonfire-eligible room, then to any open cell
-      // so a fire never vanishes just because a floor lacked a perfect spot.
-      const best = <T extends { x: number; z: number; roomId: string }>(list: T[]): T | null => {
-        if (list.length === 0) return null;
-        let top = -Infinity;
-        for (const c of list) top = Math.max(top, roles.bonfireScore(c.roomId));
-        const tied = list.filter((c) => roles.bonfireScore(c.roomId) === top);
-        return tied[Math.floor(rand() * tied.length)];
-      };
-      let home: { x: number; z: number; roomId: string } | null = best(fireAnchors);
-      if (!home) {
-        const eligible = spawnCandidates.filter((c) => roles.caps(c.roomId).allowBonfire);
-        const pick = best(eligible.length > 0 ? eligible : spawnCandidates);
-        if (pick) {
-          // Take the chosen cell out of the enemy pool so nothing spawns on the fire.
-          const idx = spawnCandidates.indexOf(pick);
-          if (idx >= 0) spawnCandidates.splice(idx, 1);
-          home = { x: pick.x, z: pick.z, roomId: pick.roomId };
-        }
+
+    // ── The FLOOR DIRECTOR decides the whole content plan ──────────────────────
+    // One manager call replaces the scattered inline logic: it rolls the budget
+    // and picks the fire, the defining find, and the one staged deal (variety-
+    // filtered so the floor never spams a kind). The composer just EXECUTES the
+    // plan below — placing props, excluding the fire cell, injecting combat.
+    const plan = directFloor({
+      depth, rand, roles,
+      fireAnchors,
+      fireFallbackCells: spawnCandidates,
+      contentSpots,
+      bakedProps: props,   // vault-baked + `?`-slot deals — read for variety
+    });
+
+    // FIRE — place it, and if it took an open enemy cell, remove that cell.
+    if (plan.fire) {
+      if (plan.fireCell) {
+        const fc = plan.fireCell;
+        const idx = spawnCandidates.findIndex((c) => c.x === fc.x && c.z === fc.z);
+        if (idx >= 0) spawnCandidates.splice(idx, 1);
       }
-      if (home) {
-        props.push({ kind: 'model', model: BONFIRE, x: home.x, y: 0, z: home.z, rotY: rand() * Math.PI * 2 });
-        roles.designate(home.roomId, 'sanctum');   // the room is now the sanctum
-      }
+      props.push({ kind: 'model', model: BONFIRE, x: plan.fire.x, y: 0, z: plan.fire.z, rotY: rand() * Math.PI * 2 });
+      if (plan.sanctumRoomId) roles.designate(plan.sanctumRoomId, 'sanctum');
     }
+
+    // COMBAT — top up to the budget by seeding enemies into open cells.
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
-    const shortfall = budget.combat.count - liveCount;
+    const shortfall = plan.budget.combat.count - liveCount;
     if (shortfall > 0 && spawnCandidates.length > 0) {
-      // Deterministic shuffle (Fisher–Yates on `rand`), then stable-sort hints to
-      // the front so author-intended spots fill first; the shuffle spreads the
-      // rest across rooms roughly in proportion to each room's open space.
+      // Deterministic shuffle, then hints to the front so authored X slots fill first.
       const pool = spawnCandidates.slice();
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(rand() * (i + 1));
@@ -1006,27 +997,27 @@ export function composeFloor(
       }
       pool.sort((a, b) => Number(b.isHint) - Number(a.isHint));
       const place = Math.min(shortfall, pool.length);
-      const ids = rollFloorEnemies(depth, place, budget.combat.intensity, rand);
+      const ids = rollFloorEnemies(depth, place, plan.budget.combat.intensity, rand);
       for (let i = 0; i < place; i++) {
         const c = pool[i];
         spawns.push({ enemyId: ids[i], x: c.x, z: c.z, roomId: c.roomId });
       }
     }
 
-    // FILL: stage the floor's ONE defining find onto a content marker (a focal
-    // spot in a loot-permitting room, preferred). It's a REWARD — a gold chest
-    // with an explicit rolled item, so applyProcgenDefaults leaves it intact.
-    // No eligible marker → no find (scarcity by marker count, never a spray).
-    const find = fillDefiningFind(contentSpots, roles, budget.loot, depth, rand);
-    if (find) {
+    // DEFINING FIND — a gold chest with an explicit rolled item (applyProcgenDefaults
+    // leaves seeded loot intact). No eligible marker → the plan's find is null.
+    if (plan.find) {
       props.push({
-        kind: 'chest',
-        x: find.x,
-        z: find.z,
-        tier: 'gold',
-        loot: find.loot,
-        facing: { kind: 'wall-away' },
+        kind: 'chest', x: plan.find.x, z: plan.find.z,
+        tier: 'gold', loot: plan.find.loot, facing: { kind: 'wall-away' },
       });
+    }
+
+    // STAGED DEAL — the floor's question, on a marker; protected at the cap below.
+    if (plan.deal) {
+      // DealKind is a union of PropSpec kinds; the cast just picks the member.
+      stagedDealProp = { kind: plan.deal.kind, x: plan.deal.x, z: plan.deal.z } as PropSpec;
+      props.push(stagedDealProp);
     }
   }
 
@@ -1142,7 +1133,10 @@ export function composeFloor(
   //            torch reconciliation against final wall set.
   //   Phase C: Surface decoration — debris, cracks, wall damage.
   const manifest = rollManifest(depth, rand);
-  reconcileManifest(result, manifest, rand);
+  // Protect the director's staged deal: at the floor cap it survives, and a
+  // random `?`-slot deal of the same kind is the one culled — the intentful
+  // placement wins over the accidental one.
+  reconcileManifest(result, manifest, rand, stagedDealProp ? new Set([stagedDealProp]) : undefined);
   resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
