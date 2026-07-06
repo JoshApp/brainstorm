@@ -21,6 +21,7 @@ import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, type RoomNode } from './floor-roles';
+import { fillDefiningFind, type ContentSpot } from './floor-fill';
 import { getPropAABB, type PropAABB } from './prop-aabb';
 import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
@@ -626,6 +627,10 @@ export function composeFloor(
   // director places a rolled fire at one of these so it lands on an authored
   // spot, falling back to a generic open cell when a floor offers none.
   const fireAnchors: Array<{ x: number; z: number; roomId: string }> = [];
+  // Dumb content MARKERS ('spot' anchors) harvested across the placed vaults —
+  // the FILL stage (floor-fill.ts) stages a defining find onto one of these,
+  // choosing by the owning room's role, not by anything the marker declares.
+  const contentSpots: ContentSpot[] = [];
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
@@ -891,6 +896,25 @@ export function composeFloor(
         });
       }
     }
+    // Content MARKERS ('spot'): dumb authored spots the FILL stage may stage
+    // defining content onto. Harvest each still-open one regardless of role (the
+    // fill filters by caps), reserve it so no enemy spawns on the marker, and
+    // record world pos + focal + facing.
+    for (const a of pv.vault.anchors ?? []) {
+      if (a.kind !== 'spot') continue;
+      const ch = populated[a.row]?.[a.col];
+      const onFloor = (ch === '.' || ch === ',')
+        && !occ.has(a.col, a.row, 'floor') && !occ.has(a.col, a.row, 'void');
+      if (!onFloor) continue;
+      occ.reserve(a.col, a.row, 'floor', 'feature');
+      contentSpots.push({
+        x: a.col + 0.5 - W / 2 + pv.offsetX,
+        z: a.row + 0.5 - D / 2 + pv.offsetZ,
+        roomId: pv.roomId,
+        focal: a.focal === true,
+        facing: a.facing,
+      });
+    }
     if (roomCaps.allowCombat) {
       // Hint cells: original 'X' positions (incl. a non-boss 'B' treated as X).
       const hintCells = new Set<string>();
@@ -987,6 +1011,22 @@ export function composeFloor(
         const c = pool[i];
         spawns.push({ enemyId: ids[i], x: c.x, z: c.z, roomId: c.roomId });
       }
+    }
+
+    // FILL: stage the floor's ONE defining find onto a content marker (a focal
+    // spot in a loot-permitting room, preferred). It's a REWARD — a gold chest
+    // with an explicit rolled item, so applyProcgenDefaults leaves it intact.
+    // No eligible marker → no find (scarcity by marker count, never a spray).
+    const find = fillDefiningFind(contentSpots, roles, budget.loot, depth, rand);
+    if (find) {
+      props.push({
+        kind: 'chest',
+        x: find.x,
+        z: find.z,
+        tier: 'gold',
+        loot: find.loot,
+        facing: { kind: 'wall-away' },
+      });
     }
   }
 

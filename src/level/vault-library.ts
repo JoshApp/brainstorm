@@ -186,7 +186,12 @@ const COMBAT_PILLARS: Vault = {
     '11,6': [{ kind: 'pillar' }],
   },
   // Fire spot between the back pillars — a natural rest nook once cleared.
-  anchors: [{ kind: 'fire', col: 6, row: 6 }],
+  // Focal content marker back-right: the FILL stage may stage the floor's
+  // defining find here (guarded treasure — fight, then the reward).
+  anchors: [
+    { kind: 'fire', col: 6, row: 6 },
+    { kind: 'spot', col: 10, row: 5, focal: true },
+  ],
 };
 
 const COMBAT_CHOKE: Vault = {
@@ -386,6 +391,9 @@ const TREASURE_CACHE: Vault = {
     '5,3': [{ kind: 'vase' }],
     '3,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
   },
+  // Focal content marker at the cache's heart — the FILL stage stages the
+  // floor's defining find here (varies each run), amid the baked cache chests.
+  anchors: [{ kind: 'spot', col: 3, row: 3, focal: true }],
 };
 
 const TREASURE_VAULT: Vault = {

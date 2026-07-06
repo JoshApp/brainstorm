@@ -19,6 +19,7 @@
 
 import { CONFIG } from '../config';
 import type { EncounterIntensity } from '../content/encounters';
+import type { Rarity } from '../content/items';
 
 export interface FloorContentBudget {
   combat: {
@@ -27,6 +28,17 @@ export interface FloorContentBudget {
     count: number;
     /** Pack intensity for the floor ('heavy' upgrades a slot to an elite). */
     intensity: EncounterIntensity;
+  };
+  loot: {
+    /** Whether this floor stages ONE DEFINING FIND — a reward rolled with a
+     *  rarity floor and placed on a focal marker (the dais), not sprayed. It
+     *  only actually lands if the floor offers an eligible focal `spot` marker
+     *  in a loot-permitting room; otherwise it silently no-ops (scarcity by
+     *  marker count). Distinct from chest/vase loot, which is furnishing. */
+    definingFind: boolean;
+    /** The rarity floor for that find — the roll is clamped UP to at least
+     *  this, so a defining find always reads as a REWARD, not bone-and-rust. */
+    minRarity: Rarity;
   };
   events: {
     /** Whether this floor rolled a minor bonfire — a FOUND rest/card-draw fire
@@ -68,6 +80,17 @@ export function floorEvents(depth: number, rand: () => number): FloorContentBudg
   return { minorFire: rand() < CONFIG.CONTENT_BUDGET.MINOR_FIRE_CHANCE };
 }
 
+/** Roll this floor's loot line — currently the single DEFINING FIND. Whether it
+ *  appears is a depth-gated chance; its rarity floor climbs with depth so deep
+ *  finds read as bigger rewards. Always consumes exactly one rand() for stream
+ *  stability (the chance), and picks minRarity deterministically from depth. */
+export function floorLoot(depth: number, rand: () => number): FloorContentBudget['loot'] {
+  const b = CONFIG.CONTENT_BUDGET;
+  const definingFind = rand() < b.DEFINING_FIND_CHANCE;
+  const minRarity: Rarity = depth >= b.DEFINING_FIND_RARE_DEPTH ? 'rare' : 'uncommon';
+  return { definingFind, minRarity };
+}
+
 /** The full per-floor budget. `rand` should be a seeded stream derived from the
  *  floor seed so the budget reproduces on replay. */
 export function floorContentBudget(depth: number, rand: () => number): FloorContentBudget {
@@ -76,6 +99,7 @@ export function floorContentBudget(depth: number, rand: () => number): FloorCont
       count: combatCount(depth, rand),
       intensity: combatIntensity(depth, rand),
     },
+    loot: floorLoot(depth, rand),
     events: floorEvents(depth, rand),
   };
 }

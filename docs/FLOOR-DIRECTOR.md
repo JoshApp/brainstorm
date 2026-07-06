@@ -89,13 +89,68 @@ events}` to **`{combat, loot, event}`**. Each line is a *count* + a
 
 ### The placement law (meaning, not spam)
 
-**Anything the player is meant to FEEL claims an authored anchor; only trash
-mobs get random cells.** Vault anchors exist today but only `kind: 'fire'` is
-used (`vault.ts:163`; `loot`/`event`/`shrine` are stubbed comments) — light
-those up. If a budget line needs a slot and no anchor is free, the content
-**doesn't spawn** (scarcity by anchor count — you physically can't get ten
-altars). This is the "hands-off to author, hand-placed in feel" tiled
-solution.
+**Anything the player is meant to FEEL claims an authored MARKER; only trash
+mobs get random cells.** If a budget line needs a slot and no marker is free,
+the content **doesn't spawn** (scarcity by marker count — you physically can't
+get ten altars). "Hands-off to author, hand-placed in feel."
+
+---
+
+## 2b. The authoring model — vague markers, not a content taxonomy
+
+The marker a vault declares is **deliberately dumb**. It does NOT say
+"blood-altar" or even "deal" — because the meaningful intent already lives
+elsewhere, and a fact should live in exactly one place:
+
+- **The ROOM carries category + flavor.** Its *role* says the category a spot
+  may hold (a `feature` room's spots → a deal/find; a `combat` room's → a
+  fight). Its *theme/palette* says the flavor (a bloody vault → a bloody deal;
+  a merchant never spawns in the gore room).
+- **The BUDGET carries how-much / how-rare** (the three lines above).
+- **The MARKER carries only WHERE**, plus at most two optional bits geometry
+  can't infer:
+
+  ```
+  Marker = { col, row, focal?, facing? }
+  ```
+  - `focal` — is this *the* spot the room is built around (the dais) vs an
+    ordinary spot? The one bit that makes the defining find / the deal land on
+    the hero spot instead of a corner. Defaults from geometry (dead-end/raised).
+  - `facing` — which way it looks (the altar faces the entrance). Defaults to
+    the room entrance.
+
+- **FILL combines them:** `room role + theme + budget + marker → content`.
+
+So a vault authors *shape + role + theme + a few dumb markers* and the pipeline
+does the rest. This is L4D's model (designers place generic candidate spots;
+the Director picks a subset) — NOT a deep per-marker content vocabulary.
+
+**Escape hatch:** truly-fixed content (a story corpse, the safe-room merchant)
+stays a **concrete `cellProps` placement**, not a marker. Markers are for the
+varied stuff; concrete placement for the fixed stuff.
+
+## 2c. Two content tiers — Defining (fill) vs Furnishing (decorate)
+
+The reason vases/chests feel ad-hoc today is they're lumped with the beats.
+Split them:
+
+| Tier | What | Stage | Where |
+|---|---|---|---|
+| **Defining** | the fight, the deal, the *defining* find, the gold chest | **FILL** | role-gated, budget-sized, onto markers (focal spots), ~one beat/room |
+| **Furnishing** | vases, destructibles, minor restock chests, clutter, ambient props | **DECORATE** | **every** room, sized by its space, tuned by its mood |
+
+Vases/destructibles/minor chests are **furnishing** — a per-room DECORATE
+density, not floor-budgeted content. The anchored weapon / gold chest is
+**defining** — FILL, on a focal marker.
+
+**Mood flows down (fill before decorate):** a room's final mood =
+`base theme + whatever event FILL landed in it`. Because DECORATE runs *after*
+FILL and reads that mood, the vases come out bloody in the room the blood altar
+landed in, the torches tint to match, and furnishing dresses *around* the
+resolved content (occupancy grid already enforces this). Events may also
+**request** furnishing they need (breakable vases hiding loot, a cobweb seal),
+which DECORATE honours — so event + props are integrated by construction, not
+hand-authored together.
 
 ---
 
@@ -152,23 +207,60 @@ replace it.
 
 ---
 
+## Prior art (deep-research, 2026-07-06 — verified sources)
+
+This model is not invented; it's the shipped playbook. Key confirmed findings:
+
+- **L4D's weapon caches ARE this system.** *"The map designer hand-places many
+  POSSIBLE loot locations and the AI Director selects which subset actually
+  spawns each run — chosen over pure procedural placement to preserve visual
+  storytelling/intent."* (Mike Booth, Valve.) Our markers + fill, verbatim,
+  from 2008. Their spots are coarse affordances, not a deep content taxonomy —
+  which is why our markers are dumb.
+- **Spelunky: guarantee the critical path FIRST, then dress.** Carve a solvable
+  entrance→exit path, *then* add non-path rooms; side paths exist only to hold
+  treasure; the main path is made visually distinguishable. → our spine
+  guarantee + roles.
+- **The Riftbreaker: designers paint masks/marks; the generator fills** at
+  randomized position/orientation. "Prefabs act as authorable content anchors."
+  → our marker + decorate model.
+- **Slay the Spire's pity offset** (−5% → +40%, resets on a rare) guarantees the
+  good thing eventually without feeling scripted. → the defining-find guarantee.
+- **L4D Director = pace, don't difficulty-scale:** a four-state intensity FSM
+  (Build Up → Sustain Peak → Peak Fade → Relax) that varies the *frequency* of
+  peaks, injects mercy lulls, exempts bosses. Valve called it "procedural
+  narrative." → our pacing tier + the charter's "the deep deals the floor."
+- **Pure WFC cannot express intent** (local consistency, no pacing/theme); the
+  fix is a two-layer graph-grammar (mission) + local fill. The unsolved frontier
+  gap — *propagating authored semantic metadata into the generated content* —
+  **is exactly our marker→fill seam.** Our LLM authoring layer is the edge.
+- **Cost warning:** Unexplored's hand-designed feel came from ~5,000 authored
+  rewrite rules. Intent is bought with authoring effort — which is why the LLM
+  layer authoring dumb markers against a schema is the affordable path, not
+  hand-tuning grammars.
+- *Refuted by verification (do NOT trust):* "a player-modelling director is
+  measurably better than random" (human study inconclusive); StS's exact
+  encounter-keyed rarity table.
+
+---
+
 ## Build order (each step ships + is felt on the phone)
 
-1. **Room roles (`resolveFloor` v0).** Promote spine tags to roles; enforce
-   the role rules. No new content — pure placement discipline.
-   *Felt:* safe start, clean exit, the bonfire gets its own room.
-2. **Loot budget + the anchor lane.** Extend anchors to `loot`; add the Loot
-   budget with the guaranteed early weapon + one anchored defining find per
-   Full floor. Lift the curve into config.
-   *Felt:* every run gets a build seed; finds read as placed, not sprayed.
-3. **Event budget.** One question/floor into a `feature` event anchor; retire
-   the `?` fountain/altar RNG + the manifest caps.
+1. **Room roles (`resolveFloor` v0).** ✓ DONE. Rooms classified; passes read
+   caps not tags; the bonfire settles by role.
+2. **Markers + the FILL stage.** ✓ (this pass) Extend anchors → dumb markers
+   (`focal`/`facing`); add `floor-fill.ts`; the loot budget's **defining find**
+   is staged onto a focal marker via the roller (hint-bounded, deterministic).
+   *Felt:* a real reward lands on the dais, different every run.
+3. **Event budget.** One question/floor onto a focal marker in a `feature`
+   room; retire the `?` fountain/altar RNG + the manifest caps.
    *Felt:* every floor poses one real, staged deal.
-4. **Pacing + history.** `floorHistory` in run-state; lean/full/quiet; one
-   quiet floor per act.
-   *Felt:* rhythm — and the dread of the fight-free floor.
-5. **Follow-ons.** Scraps→rite conversion; attention aggregator → voice; the
-   config-lifted curve tuned by the content layer.
+4. **Furnishing pass.** Vases/destructibles/minor chests → a DECORATE-stage
+   density per room, mood-tuned + event-aware. Move baked clutter out of vaults.
+   *Felt:* rooms feel inhabited and coherent, never twice the same.
+5. **Pacing + history.** `floorHistory` in run-state; lean/full/quiet.
+6. **Follow-ons.** Scraps→rite; attention aggregator → voice; guaranteed early
+   weapon (build seed); lift the loot curve into config.
 
 ## What we are NOT doing
 

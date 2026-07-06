@@ -54,8 +54,9 @@ export function rollMimic(tier: ChestTier, rand: () => number): boolean {
   return rand() < chance;
 }
 
-// Wearable/wieldable gear — everything a silver/gold chest pulls from.
-const GEAR_KINDS: ReadonlyArray<import('../content/items').ItemKind> =
+// Wearable/wieldable gear — everything a silver/gold chest (and the floor's
+// defining find, see floor-fill.ts) pulls from.
+export const GEAR_KINDS: ReadonlyArray<import('../content/items').ItemKind> =
   ['weapon', 'armor', 'helmet', 'amulet', 'gloves', 'boots', 'offhand', 'ring'];
 
 // Each tier's promise, as DATA: what it pulls from (category), how rich

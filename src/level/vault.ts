@@ -155,12 +155,16 @@ export interface Vault {
    * set-pieces) — anchors are offers, cellProps are commitments.
    *
    *   kind 'fire'  — a bonfire reads well here (a dais, a nook off the path).
-   *   (more kinds — 'loot', 'event', 'shrine' — fold in as later steps.)
+   *   kind 'spot'  — a DUMB content marker: the director may stage DEFINING
+   *                  content here (a find, a deal), with the CATEGORY decided by
+   *                  the room's role and the FLAVOR by its theme — never by the
+   *                  marker (docs/FLOOR-DIRECTOR.md "the authoring model"). A
+   *                  marker carries only WHERE + two optional geometry bits.
    */
   anchors?: VaultAnchor[];
 }
 
-export type VaultAnchorKind = 'fire';
+export type VaultAnchorKind = 'fire' | 'spot';
 
 export interface VaultAnchor {
   /** What the director may place here. */
@@ -168,4 +172,11 @@ export interface VaultAnchor {
   /** Cell in the vault's ASCII grid (same coords as cellProps keys). */
   col: number;
   row: number;
+  /** ('spot' only) Is this THE hero spot the room is built around (a dais)?
+   *  The floor's defining find / the deal prefers a focal marker over an
+   *  ordinary one. Optional — defaults to false (an ordinary spot). */
+  focal?: boolean;
+  /** ('spot' only) Yaw the placed content should face, radians. Optional —
+   *  the fill defaults it toward the room entrance. Reserved; not yet consumed. */
+  facing?: number;
 }

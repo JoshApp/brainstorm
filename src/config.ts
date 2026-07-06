@@ -831,6 +831,12 @@ export const CONFIG = {
     // floor (the old always-on threshold fire); 0 = fires only at safe rooms.
     // The harbor/post-boss fire is unaffected (always present). Tune on feel.
     MINOR_FIRE_CHANCE: 0.5,
+    // DEFINING FIND = the floor's one STAGED reward — rolled with a rarity floor
+    // and dropped on a focal `spot` marker (the dais), not sprayed. Only lands
+    // if the floor offers an eligible focal marker, so authoring gates scarcity;
+    // this is the per-floor chance one is budgeted at all.
+    DEFINING_FIND_CHANCE: 0.7,
+    DEFINING_FIND_RARE_DEPTH: 3,   // >= this depth, the find floors at 'rare' (else 'uncommon')
   },
 
   // === DEATH SEQUENCE ===
