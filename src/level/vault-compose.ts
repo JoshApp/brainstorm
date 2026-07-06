@@ -20,6 +20,7 @@ import { CONFIG } from '../config';
 import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
+import { assignFloorRoles, type RoomNode } from './floor-roles';
 import { getPropAABB, type PropAABB } from './prop-aabb';
 import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
@@ -574,6 +575,25 @@ export function composeFloor(
     elevations[c.toIdx] = elevations[c.fromIdx] - drop;
   }
 
+  // ── Room ROLES — give each room its JOB before it's dressed ────
+  // (docs/FLOOR-DIRECTOR.md, step 1). The build passes below read a room's
+  // CAPS (may it hold combat? a bonfire?) instead of hardcoding "is this the
+  // start vault?" — so a floor composes by role and reads as designed. The
+  // spine ends are structural (start / boss|exit); branches sit AFTER the end
+  // in `placed`, so slot is derived from index, not from the trailing element.
+  const spineEndIdx = tagSeq.length - 1;
+  const connCount = placed.map(() => 0);
+  for (const c of corridors) { connCount[c.fromIdx]++; connCount[c.toIdx]++; }
+  const roles = assignFloorRoles(
+    placed.map((pv, i): RoomNode => ({
+      roomId: pv.roomId,
+      tags: pv.vault.tags,
+      slot: i === 0 ? 'start' : i === spineEndIdx ? 'end' : i > spineEndIdx ? 'branch' : 'mid',
+      connections: connCount[i] ?? 0,
+    })),
+    { isBossFloor: opts.isBossFloor === true },
+  );
+
   // ── 4. Parse each vault and translate to world coords ──────────
   const rooms: RoomSpec[] = [];
   const corridorRooms: RoomSpec[] = [];
@@ -845,20 +865,18 @@ export function composeFloor(
       }
     }
 
-    // ── v3: harvest this vault's OPEN spawn cells for the floor budget ──────
+    // ── Harvest this vault by ROLE (docs/FLOOR-DIRECTOR.md) ─────────────────
     // `occ` is now fully built (authored props, X/B spawns, $/? features+approach,
     // carved voids, torches all reserved), so enumerateOpenCells yields the cells
-    // an enemy can actually stand on. The start room and the boss arena stay
-    // combat-free; everything else feeds the budget. A cell that ORIGINALLY held
-    // an X but got density-gated to '.' is a HINT (author meant a fight there).
-    const isStart = pv.vault.tags.includes('start');
-    const isBossArena = opts.isBossFloor === true && pv.vault.tags.includes('boss');
-    if (!isStart && !isBossArena) {
-      // Director ANCHORS first: a vault offers fire spots; verify each is still
+    // an enemy can actually stand on. Two capabilities gate this SEPARATELY:
+    // `allowBonfire` (may a fire rest here?) and `allowCombat` (may the budget
+    // seed enemies here?). The entrance and boss arena permit neither; the exit
+    // room permits combat but no fire (a bonfire never guards the stairs).
+    const roomCaps = roles.caps(pv.roomId);
+    if (roomCaps.allowBonfire) {
+      // Director FIRE ANCHORS: a vault offers fire spots; verify each is still
       // open floor (decor/carve may have claimed it), reserve it so no enemy
-      // spawns ON the fire, and record its world position as a candidate fire
-      // location. Reserving BEFORE enumerateOpenCells keeps anchor cells out of
-      // the enemy pool.
+      // spawns ON the fire, and record its world position + owning room.
       for (const a of pv.vault.anchors ?? []) {
         if (a.kind !== 'fire') continue;
         const ch = populated[a.row]?.[a.col];
@@ -872,6 +890,8 @@ export function composeFloor(
           roomId: pv.roomId,
         });
       }
+    }
+    if (roomCaps.allowCombat) {
       // Hint cells: original 'X' positions (incl. a non-boss 'B' treated as X).
       const hintCells = new Set<string>();
       for (let r = 0; r < pv.vault.map.length; r++) {
@@ -920,16 +940,33 @@ export function composeFloor(
       if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
     }
     if (budget.events.minorFire) {
-      let fx: number | null = null, fz: number | null = null;
-      if (fireAnchors.length > 0) {
-        const a = fireAnchors[Math.floor(rand() * fireAnchors.length)];
-        fx = a.x; fz = a.z;   // anchor cell already reserved — no enemy on it
-      } else if (spawnCandidates.length > 0) {
-        const [cell] = spawnCandidates.splice(Math.floor(rand() * spawnCandidates.length), 1);
-        fx = cell.x; fz = cell.z;
+      // Pick the fire's HOME by ROLE, not at random: a quiet dead-end pocket
+      // (`feature`, high bonfireScore) beats a through-room, and the exit room
+      // is excluded by its caps — the bonfire becomes a prominent, staged
+      // centrepiece instead of furniture. Prefer an authored fire anchor; fall
+      // back to an open cell in a bonfire-eligible room, then to any open cell
+      // so a fire never vanishes just because a floor lacked a perfect spot.
+      const best = <T extends { x: number; z: number; roomId: string }>(list: T[]): T | null => {
+        if (list.length === 0) return null;
+        let top = -Infinity;
+        for (const c of list) top = Math.max(top, roles.bonfireScore(c.roomId));
+        const tied = list.filter((c) => roles.bonfireScore(c.roomId) === top);
+        return tied[Math.floor(rand() * tied.length)];
+      };
+      let home: { x: number; z: number; roomId: string } | null = best(fireAnchors);
+      if (!home) {
+        const eligible = spawnCandidates.filter((c) => roles.caps(c.roomId).allowBonfire);
+        const pick = best(eligible.length > 0 ? eligible : spawnCandidates);
+        if (pick) {
+          // Take the chosen cell out of the enemy pool so nothing spawns on the fire.
+          const idx = spawnCandidates.indexOf(pick);
+          if (idx >= 0) spawnCandidates.splice(idx, 1);
+          home = { x: pick.x, z: pick.z, roomId: pick.roomId };
+        }
       }
-      if (fx !== null && fz !== null) {
-        props.push({ kind: 'model', model: BONFIRE, x: fx, y: 0, z: fz, rotY: rand() * Math.PI * 2 });
+      if (home) {
+        props.push({ kind: 'model', model: BONFIRE, x: home.x, y: 0, z: home.z, rotY: rand() * Math.PI * 2 });
+        roles.designate(home.roomId, 'sanctum');   // the room is now the sanctum
       }
     }
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
