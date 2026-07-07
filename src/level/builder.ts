@@ -1386,10 +1386,10 @@ export function buildLevel(
       }
       const onMimic = prop.mimic
         ? (worldPos: THREE.Vector3) => {
-            if (chestObs) {
-              const idx = obstacles.indexOf(chestObs);
-              if (idx >= 0) obstacles.splice(idx, 1);
-            }
+            // Route removal through the region so the collider leaves the
+            // spatial hash (what collision reads) + bumps the nav version —
+            // else a revealed mimic leaves an invisible chest-shaped blocker.
+            if (chestObs) walkable.removeObstacle(chestObs);
             spawnInto(ENEMIES.mimic, worldPos, chestRoomId);
           }
         : undefined;
@@ -1441,15 +1441,15 @@ export function buildLevel(
         color: prop.color,
       });
     } else if (prop.kind === 'vase') {
-      // Push the obstacle FIRST, keep a reference, and pass a
-      // splice callback to spawnVase so the obstacle goes away
-      // when the vase shatters — otherwise the cell stays
-      // blocked even after the vase mesh is gone.
+      // Push the obstacle FIRST, keep a reference, and remove it via the
+      // region when the vase shatters. Routing through removeObstacle (not a
+      // raw array splice) is load-bearing: collision + LOS + nav all read the
+      // spatial HASH, not the array, so a bare splice left an invisible blocker
+      // (and a ghost the mobs kept pathing around) where the vase stood.
       const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18, yTop: gy + 0.6 };
       obstacles.push(vaseObs);
       const vase = spawnVase(root, prop.x, prop.z, () => {
-        const idx = obstacles.indexOf(vaseObs);
-        if (idx >= 0) obstacles.splice(idx, 1);
+        walkable.removeObstacle(vaseObs);
       });
       destructibles.push(vase);
     } else if (prop.kind === 'cobweb') {
@@ -1470,9 +1470,7 @@ export function buildLevel(
       const clusterObs: Obstacle[] = [];
       const cluster = spawnVaseCluster(root, prop.x, prop.z, (idx) => {
         const obs = clusterObs[idx];
-        if (!obs) return;
-        const j = obstacles.indexOf(obs);
-        if (j >= 0) obstacles.splice(j, 1);
+        if (obs) walkable.removeObstacle(obs);   // hash + nav, not a raw splice
       });
       for (const v of cluster) {
         destructibles.push(v);
