@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { registerWarmup } from './warmup-registry';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
-import { createMaterialFromDef, setRevealAttributes } from '../ecs/build-model';
+import { buildModel, createMaterialFromDef, setRevealAttributes } from '../ecs/build-model';
 import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
 import { getTexture } from '../style/procedural-textures';
@@ -228,6 +228,27 @@ for (const item of Object.values(ITEMS)) {
       for (const def of Object.values(item.dropModel.materials)) addPlainWarm(scene, createMaterialFromDef(def));
     },
     clear: () => {},
+  });
+}
+
+// WEAPON VIEWMODELS — the held first-person models. Built ONLY on equip and NOT
+// covered by the drop-model warm above (a viewmodel differs from its drop
+// model, e.g. the wand's arcane orb + halo). So switching weapons compiled their
+// pipelines LIVE — which BLACK-SCREENED the mage staff on real WebGPU: its
+// additive 'fire-wisp' SPRITE is the only sprite in ANY weapon viewmodel, and a
+// sprite pipeline (SpriteNodeMaterial) is a distinct variant from every warmed
+// mesh material, so the live compile faulted (headless tolerates it — the snap
+// renders it fine). Weapon viewmodels are cheap primitives (no skinning), so we
+// build each for REAL once, warming the exact mesh AND sprite pipelines equip
+// reuses. buildModel adds a real THREE.Sprite, so its material warms here.
+for (const item of Object.values(ITEMS)) {
+  const vm = item.viewmodel;
+  if (!vm) continue;
+  let warmed: THREE.Object3D | null = null;
+  registerWarmup({
+    label: `viewmodel:${item.id ?? item.name}`, live: true,
+    spawn: (scene) => { warmed = buildModel(vm).group; scene.add(warmed); },
+    clear: () => { warmed?.parent?.remove(warmed); warmed = null; },
   });
 }
 

@@ -165,6 +165,14 @@ export function renderWithStyle(
   try {
     renderWebGPU(renderer, scene, camera);
   } catch (err) {
-    if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
+    // A per-frame render throw leaves the 3D scene un-presented (black) while the
+    // DOM HUD keeps drawing — a silent, permanent black-out. Log the STACK on the
+    // first one so a recurrence points at the exact faulting material/pipeline
+    // (this is how the wand black-screen would surface). The usual cause is an
+    // unwarmed pipeline variant compiling live — see spawn-warmups.ts.
+    if (!webgpuRenderErrored) {
+      webgpuRenderErrored = true;
+      console.error('[webgpu] render failed (first only):', err, (err as Error)?.stack);
+    }
   }
 }
