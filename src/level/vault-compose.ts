@@ -22,6 +22,7 @@ import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, type RoomNode } from './floor-roles';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
+import { wallAdjacency } from './room-decor';
 import { getPropAABB, type PropAABB } from './prop-aabb';
 import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
@@ -620,7 +621,7 @@ export function composeFloor(
   // and combat can appear in any room shape. Each candidate carries its world
   // position, owning room, and whether it's a HINT (an author's X slot that the
   // density gate skipped — preferred so injected mobs land where intended).
-  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean }
+  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean; wallAdj: number }
   const spawnCandidates: SpawnCandidate[] = [];
   // Director intent-anchors harvested from the placed vaults — good SPOTS the
   // director may fill. Step 1: fire anchors (a bonfire reads well here). The
@@ -832,6 +833,32 @@ export function composeFloor(
       occ.reserve(col, row, 'wall', 'torch');
     }
 
+    // ── DOORWAY MARGIN — reserve a keep-clear apron at each corridor mouth so
+    // nothing (decor, furniture, debris, combat, the director's content) crowds
+    // an entrance. This is the SYSTEMIC fix: every downstream pass reads this
+    // occupancy, so one reservation keeps all four placement classes off the
+    // thresholds. For each corridor touching this room, the mouth sits on the
+    // edge facing that corridor; reserve the mouth cell + two cells inward.
+    for (const cor of corridors) {
+      if (cor.fromIdx !== i && cor.toIdx !== i) continue;
+      const dxc = cor.rect.x - pv.offsetX;
+      const dzc = cor.rect.z - pv.offsetZ;
+      let mCol: number, mRow: number, inCol = 0, inRow = 0;
+      if (Math.abs(dxc) >= Math.abs(dzc)) {
+        mCol = dxc > 0 ? W - 1 : 0;
+        mRow = clamp(Math.round(cor.rect.z - pv.offsetZ - 0.5 + D / 2), 0, D - 1);
+        inCol = dxc > 0 ? -1 : 1;   // step toward the room interior
+      } else {
+        mRow = dzc > 0 ? D - 1 : 0;
+        mCol = clamp(Math.round(cor.rect.x - pv.offsetX - 0.5 + W / 2), 0, W - 1);
+        inRow = dzc > 0 ? -1 : 1;
+      }
+      for (let k = 0; k < 3; k++) {
+        const cc = mCol + inCol * k, rr = mRow + inRow * k;
+        if (cc >= 0 && rr >= 0 && cc < W && rr < D) occ.reserve(cc, rr, 'floor', 'approach');
+      }
+    }
+
     // ── Carve pass — runs FIRST so lighting + decor see the post-carve walkable
     // region. Blocks on floor + wall (don't open a hole under a standing prop or
     // out from under a torch's footing); reserves each hole on the void layer.
@@ -939,13 +966,15 @@ export function composeFloor(
       // Collect this room's open cells, tracking the most CENTRAL one — the
       // auto-derived focal spot when the vault authored none.
       const cx = W / 2, cz = D / 2;
-      const roomCells: Array<{ x: number; z: number; isHint: boolean }> = [];
+      const roomCells: Array<{ x: number; z: number; isHint: boolean; wallAdj: number }> = [];
       let central: { col: number; row: number; x: number; z: number } | null = null;
       let centralDist = Infinity;
       for (const cell of enumerateOpenCells(region, isFloor, occ)) {
         const x = cell.col + 0.5 - W / 2 + pv.offsetX;
         const z = cell.row + 0.5 - D / 2 + pv.offsetZ;
-        roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`) });
+        // wallAdj = the FURNITURE affordance (0 open, 1 against a wall, 2+ corner)
+        // so the furnishing pass can hug vases to the edges instead of scattering.
+        roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`), wallAdj: wallAdjacency(cell.col, cell.row, isFloor) });
         const d = (cell.col - cx) ** 2 + (cell.row - cz) ** 2;
         if (d < centralDist) { centralDist = d; central = { col: cell.col, row: cell.row, x, z }; }
       }
@@ -963,7 +992,7 @@ export function composeFloor(
       for (const c of roomCells) {
         // Keep the derived focal cell out of the enemy pool.
         if (derived && c.x === derived.x && c.z === derived.z) continue;
-        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint });
+        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint, wallAdj: c.wallAdj });
       }
     }
   }
@@ -1048,10 +1077,12 @@ export function composeFloor(
     // FURNISHING — vases as a dynamic decorate density (docs/FLOOR-DIRECTOR.md,
     // "two content tiers"). Runs LAST, into the cells combat didn't take, so it
     // dresses AROUND everything the director staged and never clips the fire /
-    // find / deal (those sit on reserved cells, never in this pool). The count
-    // scales with the floor's open space; it varies each run, unlike the baked
-    // clutter it replaces. (Mood-tuning + destructible variety are follow-ups.)
-    const furnishPool = pool.slice(place);
+    // find / deal (those sit on reserved cells, never in this pool). Furniture's
+    // grammar is EDGE-HUG: sort the pool so wall-adjacent + corner cells come
+    // first (vases line the walls, they don't sprawl across open floor), and the
+    // doorway margin already kept these cells off the thresholds. The count
+    // scales with the floor's open space; it varies each run.
+    const furnishPool = pool.slice(place).sort((a, b) => b.wallAdj - a.wallAdj);
     const vaseCount = Math.min(
       Math.round(furnishPool.length * CONFIG.CONTENT_BUDGET.FURNISH_VASE_DENSITY),
       CONFIG.CONTENT_BUDGET.FURNISH_VASE_MAX,

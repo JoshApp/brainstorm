@@ -21,7 +21,7 @@
 // The reason is kept for debug — `reasonAt` answers "why is this cell taken?"
 
 export type OccLayer = 'floor' | 'wall' | 'void';
-export type OccReason = 'authored' | 'feature' | 'spawn' | 'void' | 'torch' | 'decor';
+export type OccReason = 'authored' | 'feature' | 'spawn' | 'void' | 'torch' | 'decor' | 'approach';
 
 // Which physical layer a prop KIND occupies — or null if it coexists with
 // everything (decals, glows, opening fittings) and should reserve nothing.

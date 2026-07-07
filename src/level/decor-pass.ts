@@ -23,7 +23,8 @@
 
 import type { PropSpec, TileMap } from './types';
 import type { Vault } from './vault';
-import type { ResolvedPaletteV1, DecorStyle, Density } from './palette';
+import type { ResolvedPaletteV1 } from './palette';
+import { symmetricPillars } from './room-decor';
 
 const WALKABLE = new Set('.,SoOD/^X%*'.split(''));
 function isWalkable(map: TileMap, col: number, row: number): boolean {
@@ -31,39 +32,6 @@ function isWalkable(map: TileMap, col: number, row: number): boolean {
   if (!r) return false;
   const ch = r[col];
   return !!ch && WALKABLE.has(ch);
-}
-
-/** Wall-edge candidate (walkable + adjacent to at least one wall). */
-function findWallEdgeCells(map: TileMap): Array<{ col: number; row: number }> {
-  const out: Array<{ col: number; row: number }> = [];
-  const D = map.length;
-  const W = map[0]?.length ?? 0;
-  for (let r = 0; r < D; r++) {
-    for (let c = 0; c < W; c++) {
-      if (!isWalkable(map, c, r)) continue;
-      if (
-        !isWalkable(map, c, r - 1) ||
-        !isWalkable(map, c, r + 1) ||
-        !isWalkable(map, c - 1, r) ||
-        !isWalkable(map, c + 1, r)
-      ) {
-        out.push({ col: c, row: r });
-      }
-    }
-  }
-  return out;
-}
-
-function densityFactor(density: Density): number {
-  if (density === 'off') return 0;
-  if (density === 'light') return 0.05;
-  if (density === 'standard') return 0.10;
-  /* dense */ return 0.18;
-}
-
-function targetCount(style: DecorStyle, density: Density, candidateCount: number): number {
-  if (style === 'off' || density === 'off') return 0;
-  return Math.max(1, Math.round(candidateCount * densityFactor(density)));
 }
 
 /**
@@ -80,45 +48,37 @@ export function decorPass(
   vault: Vault,
   palette: ResolvedPaletteV1,
   occupiedCells: Set<string>,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _rng: () => number,
+  rng: () => number,
 ): PropSpec[] {
   if (palette.decor.style === 'off' || palette.decor.density === 'off') return [];
 
-  // v1 dispatch — only 'pillared' is wired. Other styles fall back
-  // to no-op so the pass is safe to enable on every act even before
-  // the corresponding style handler exists.
-  let candidates: Array<{ col: number; row: number }>;
-  let propFor: (cell: { col: number; row: number }) => PropSpec;
+  const W = vault.map[0]?.length ?? 0;
+  const D = vault.map.length;
+
   switch (palette.decor.style) {
     case 'pillared': {
-      candidates = findWallEdgeCells(vault.map);
-      const W = vault.map[0]?.length ?? 0;
-      const D = vault.map.length;
-      propFor = (cell) => ({
+      // STRUCTURE grammar — a SYMMETRIC inset colonnade, not a wall-edge scatter
+      // (see room-decor.ts). Symmetric + inset reads as architecture and keeps
+      // the pillars clear of wall openings. `isBlocked` folds the tilemap walls
+      // together with everything earlier passes claimed — authored props,
+      // torches, carved voids, and the doorway margin the composer reserves —
+      // so a pillar never lands on any of them.
+      const isBlocked = (c: number, r: number) =>
+        occupiedCells.has(`${c},${r}`) || !isWalkable(vault.map, c, r);
+      const tier = palette.decor.density === 'light' ? 'light'
+        : palette.decor.density === 'dense' ? 'dense' : 'standard';
+      const cells = symmetricPillars(W, D, tier, isBlocked, rng);
+      return cells.map((cell) => ({
         kind: 'pillar',
         x: cell.col + 0.5 - W / 2,
         z: cell.row + 0.5 - D / 2,
-      });
-      break;
+      }));
     }
-    // 'sparse' / 'ruined' / 'bone' / 'verdant' — not implemented yet.
-    // No-op fallback keeps the contract: unknown style = nothing
-    // placed, not a crash. Add a case here when each style's
-    // candidate logic + prop palette is authored.
+    // 'sparse' / 'ruined' / 'bone' / 'verdant' — not implemented yet. The
+    // 'ruined' style is the natural next grammar: the symmetric colonnade with
+    // DECAY applied to some members (a toppled/cracked pillar) + debris clusters,
+    // distinct from the surface clutter pass (clutter.ts). No-op until authored.
     default:
       return [];
   }
-
-  const free = candidates.filter((c) => !occupiedCells.has(`${c.col},${c.row}`));
-  const target = targetCount(palette.decor.style, palette.decor.density, free.length);
-  if (target === 0 || free.length === 0) return [];
-
-  const stride = free.length / target;
-  const out: PropSpec[] = [];
-  for (let i = 0; i < target; i++) {
-    const idx = Math.floor(i * stride);
-    out.push(propFor(free[Math.min(idx, free.length - 1)]));
-  }
-  return out;
 }
