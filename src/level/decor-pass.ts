@@ -25,6 +25,7 @@ import type { PropSpec, TileMap } from './types';
 import type { Vault } from './vault';
 import type { ResolvedPaletteV1 } from './palette';
 import { symmetricPillars } from './room-decor';
+import { RUINED_COLUMN, FALLEN_PILLAR_SEGMENT } from '../content/clutter';
 
 const WALKABLE = new Set('.,SoOD/^X%*'.split(''));
 function isWalkable(map: TileMap, col: number, row: number): boolean {
@@ -49,6 +50,7 @@ export function decorPass(
   palette: ResolvedPaletteV1,
   occupiedCells: Set<string>,
   rng: () => number,
+  depth = 1,
 ): PropSpec[] {
   if (palette.decor.style === 'off' || palette.decor.density === 'off') return [];
 
@@ -56,7 +58,8 @@ export function decorPass(
   const D = vault.map.length;
 
   switch (palette.decor.style) {
-    case 'pillared': {
+    case 'pillared':
+    case 'ruined': {
       // STRUCTURE grammar — a SYMMETRIC inset colonnade, not a wall-edge scatter
       // (see room-decor.ts). Symmetric + inset reads as architecture and keeps
       // the pillars clear of wall openings. `isBlocked` folds the tilemap walls
@@ -68,16 +71,40 @@ export function decorPass(
       const tier = palette.decor.density === 'light' ? 'light'
         : palette.decor.density === 'dense' ? 'dense' : 'standard';
       const cells = symmetricPillars(W, D, tier, isBlocked, rng);
-      return cells.map((cell) => ({
-        kind: 'pillar',
+
+      // DECAY (the ruined colonnade): the hall STAYS symmetric — that's the
+      // authored intent — but history breaks some members. The chance scales
+      // with depth (shallow halls stand whole; deep ones are wrecks), and the
+      // 'ruined' style forces it high regardless of depth. A broken member is a
+      // RUINED_COLUMN stub, and half the time its FALLEN piece lies beside it
+      // (the pair tells the story of the collapse in one glance).
+      const decay = palette.decor.style === 'ruined'
+        ? 0.55
+        : Math.max(0, Math.min(0.45, (depth - 3) * 0.06));
+      const toWorld = (cell: { col: number; row: number }) => ({
         x: cell.col + 0.5 - W / 2,
         z: cell.row + 0.5 - D / 2,
-      }));
+      });
+
+      const out: PropSpec[] = [];
+      for (const cell of cells) {
+        const { x, z } = toWorld(cell);
+        if (decay > 0 && rng() < decay) {
+          out.push({ kind: 'model', model: RUINED_COLUMN, x, y: 0, z, rotY: rng() * Math.PI * 2, collision: { kind: 'circle', r: 0.34 } });
+          // The toppled piece lying beside the stub, angled AWAY from the room
+          // centre so it doesn't sprawl across the walking space.
+          if (rng() < 0.5) {
+            const ox = x < 0 ? -0.9 : 0.9;
+            out.push({ kind: 'model', model: FALLEN_PILLAR_SEGMENT, x: x + ox, y: 0, z, rotY: rng() * Math.PI, collision: { kind: 'circle', r: 0.45 } });
+          }
+        } else {
+          out.push({ kind: 'pillar', x, z });
+        }
+      }
+      return out;
     }
-    // 'sparse' / 'ruined' / 'bone' / 'verdant' — not implemented yet. The
-    // 'ruined' style is the natural next grammar: the symmetric colonnade with
-    // DECAY applied to some members (a toppled/cracked pillar) + debris clusters,
-    // distinct from the surface clutter pass (clutter.ts). No-op until authored.
+    // 'sparse' / 'bone' / 'verdant' — not implemented yet. No-op fallback keeps
+    // the pass safe on any act (unknown style = nothing placed, not a crash).
     default:
       return [];
   }

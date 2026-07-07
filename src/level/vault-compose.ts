@@ -22,7 +22,7 @@ import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, type RoomNode } from './floor-roles';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
-import { wallAdjacency } from './room-decor';
+import { wallAdjacency, roleDecorPolicy } from './room-decor';
 import { getPropAABB, type PropAABB } from './prop-aabb';
 import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
@@ -888,7 +888,14 @@ export function composeFloor(
 
     // ── Decor pass — pillars / debris stand on the floor at wall edges, so they
     // block on everything physical: floor (props/features), wall (torches), void.
-    const procDecor = decorPass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall', 'void'), rand);
+    // Per-room MOOD: the room's ROLE modulates the pillar density — a combat
+    // arena stays open, a feature room dresses up, an entrance/sanctum/exit
+    // stays bare (room-decor.ts roleDecorPolicy). The STYLE (pillared / ruined)
+    // still comes from the palette; the role decides HOW MUCH. Depth drives the
+    // decay of the ruined colonnade inside decorPass.
+    const decorTier = roleDecorPolicy(roles.role(pv.roomId)).pillars;
+    const decorPalette = { ...resolvedPalette, decor: { ...resolvedPalette.decor, density: decorTier } };
+    const procDecor = decorPass(pv.vault, decorPalette, occ.blocked('floor', 'wall', 'void'), rand, depth);
     for (const p of procDecor) {
       props.push(translateProp(p, pv.offsetX, pv.offsetZ));
     }
@@ -1076,21 +1083,27 @@ export function composeFloor(
 
     // FURNISHING — vases as a dynamic decorate density (docs/FLOOR-DIRECTOR.md,
     // "two content tiers"). Runs LAST, into the cells combat didn't take, so it
-    // dresses AROUND everything the director staged and never clips the fire /
-    // find / deal (those sit on reserved cells, never in this pool). Furniture's
-    // grammar is EDGE-HUG: sort the pool so wall-adjacent + corner cells come
-    // first (vases line the walls, they don't sprawl across open floor), and the
-    // doorway margin already kept these cells off the thresholds. The count
-    // scales with the floor's open space; it varies each run.
-    const furnishPool = pool.slice(place).sort((a, b) => b.wallAdj - a.wallAdj);
-    const vaseCount = Math.min(
-      Math.round(furnishPool.length * CONFIG.CONTENT_BUDGET.FURNISH_VASE_DENSITY),
-      CONFIG.CONTENT_BUDGET.FURNISH_VASE_MAX,
-      furnishPool.length,
-    );
-    for (let i = 0; i < vaseCount; i++) {
-      const c = furnishPool[i];
-      props.push({ kind: 'vase', x: c.x, z: c.z });
+    // dresses AROUND everything the director staged (fire/find/deal sit on
+    // reserved cells, never in this pool; the doorway margin kept these cells off
+    // the thresholds). Placed PER ROOM so mood varies by job: wall-HUG the vases
+    // (wall-adjacent + corner first, never sprawling across open floor) and scale
+    // the count by the room's role — an arena stays open, a storeroom fills up.
+    const leftover = pool.slice(place);
+    const byRoom = new Map<string, typeof leftover>();
+    for (const c of leftover) {
+      const arr = byRoom.get(c.roomId);
+      if (arr) arr.push(c); else byRoom.set(c.roomId, [c]);
+    }
+    const b = CONFIG.CONTENT_BUDGET;
+    for (const [roomId, cells] of byRoom) {
+      const mul = roleDecorPolicy(roles.role(roomId)).furnishMul;
+      cells.sort((a, b2) => b2.wallAdj - a.wallAdj);   // edge-hug
+      const n = Math.min(
+        Math.round(cells.length * b.FURNISH_VASE_DENSITY * mul),
+        b.FURNISH_VASE_MAX,
+        cells.length,
+      );
+      for (let i = 0; i < n; i++) props.push({ kind: 'vase', x: cells[i].x, z: cells[i].z });
     }
   }
 

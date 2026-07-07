@@ -12,6 +12,33 @@
 //
 // Pure + deterministic (seeded rand), no scene — unit-testable.
 
+import type { RoomRole } from './floor-roles';
+
+/** Per-room MOOD: how densely a room dresses, by its JOB. A combat arena wants
+ *  open floor to fight in; a treasure/feature room reads as a cluttered
+ *  storeroom; a sanctum is reverent and bare; the entrance + exit stay clean. So
+ *  the room's ROLE modulates the decor, not one flat palette default. */
+export interface RoomDecorPolicy {
+  /** Structural-pillar density tier, or 'off' to place none. Overrides the
+   *  palette tier so a role can force a room open or dressed. */
+  pillars: 'off' | 'light' | 'standard' | 'dense';
+  /** Multiplier on the room's furniture (vase) count. */
+  furnishMul: number;
+}
+
+export function roleDecorPolicy(role: RoomRole): RoomDecorPolicy {
+  switch (role) {
+    case 'entrance': return { pillars: 'off',      furnishMul: 0.25 };  // a clean, safe threshold
+    case 'combat':   return { pillars: 'light',    furnishMul: 0.5 };   // OPEN — room to fight/kite
+    case 'feature':  return { pillars: 'standard', furnishMul: 1.5 };   // dressed, storeroom-cluttered
+    case 'sanctum':  return { pillars: 'off',      furnishMul: 0.3 };   // reverent, calm around the fire
+    case 'finish':   return { pillars: 'off',      furnishMul: 0.2 };   // a bare exit
+    case 'quiet':    return { pillars: 'standard', furnishMul: 1.0 };   // dressed for dread
+    case 'boss':     return { pillars: 'off',      furnishMul: 0.4 };   // the arena stays clear
+    default:         return { pillars: 'standard', furnishMul: 1.0 };
+  }
+}
+
 /** True if the cell has a wall (or the room border) on at least one side — the
  *  furniture affordance. Uses a caller-supplied floor test so it works on the
  *  raw tilemap or a post-carve occupancy view. */
