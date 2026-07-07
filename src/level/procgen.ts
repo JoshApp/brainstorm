@@ -354,22 +354,16 @@ export function populateTemplate(
           features.push({ col: colIdx, row: rowIdx, prop: { kind: 'chest', x: 0, z: 0 } });
         }
       } else if (ch === '?') {
-        // Event slot — rolls a feature (trap / fountain / altar) or nothing.
-        // Same gating treatment as $. Trap stays an in-map '^' (the parser
-        // still emits the spike-trap); fountain/altar route as features.
+        // Hazard slot. DEALS are now the FLOOR DIRECTOR's job — one staged,
+        // depth-tuned, variety-controlled deal per floor (floor-director.ts) —
+        // so the '?' slot no longer rolls fountains/altars (that was the second,
+        // random source of deals we're retiring). It stays a spike-trap-or-
+        // nothing slot: the trap is an in-map '^' the parser emits. Same
+        // event-mul gating as before.
         if (eventMul < 1.0 && rand() >= eventMul) {
           out += '.';
         } else {
-          const r = rand();
-          if (r < 0.33) {
-            out += '.';
-          } else if (r < 0.77) {
-            out += '^';
-          } else {
-            out += '.';
-            const kind = r < 0.89 ? 'fountain' : 'altar';
-            features.push({ col: colIdx, row: rowIdx, prop: { kind, x: 0, z: 0 } });
-          }
+          out += rand() < 0.44 ? '^' : '.';
         }
       } else {
         out += ch;
