@@ -404,9 +404,15 @@ export interface ItemSpec {
      *  for things that should be a rarer sight within their tier. */
     weight?: number;
     /** If true, NEVER appears in generic loot rolls — reserved for
-     *  starter altars, boss-signature drops, or hand-placed/quest items
-     *  distributed deliberately. Default false. */
+     *  starter altars or hand-placed/quest items distributed deliberately.
+     *  Default false. */
     noDrop?: boolean;
+    /** UNIQUE-POOL membership. When set, this item is EXCLUSIVE to the named
+     *  pool (e.g. 'boss', 'cursed') — it never appears in a generic drop, and
+     *  ONLY rollPool('boss') / rollLoot({pool:'boss'}) can yield it. The pool's
+     *  roll params (bias, rarity floor, category) live in loot-pools.ts, so a
+     *  boss item just tags itself here and the manager decides how it drops. */
+    pool?: string;
   };
 }
 
@@ -562,9 +568,10 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
     ],
-    // Signature charged mechanic + fabled stats — a late-game prize. Gate
-    // to late Act II so it isn't an early casual find.
-    drop: { minDepth: 7, weight: 0.7 },
+    // Signature charged mechanic + fabled stats — a BOSS weapon now: it drops
+    // ONLY from the 'boss' pool (loot-pools.ts), never a generic chest. Gate to
+    // late Act II so the boss that carries it is deep enough to have earned it.
+    drop: { minDepth: 7, weight: 1, pool: 'boss' },
   },
   // ── REACH MELEE ───────────────────────────────────────────────────
   // The in-between weapon. Melee, but its long reach lets it strike from

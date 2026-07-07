@@ -13,7 +13,7 @@
 
 import type { PropSpec } from './types';
 import { ITEMS } from '../content/items';
-import { rollLoot } from '../content/loot';
+import { rollPool, type LootPoolId } from '../content/loot-pools';
 
 // Pool of corpse notes. applyProcgenDefaults picks one per corpse
 // entry whose `note` is undefined — deterministic via the rng the
@@ -54,45 +54,16 @@ export function rollMimic(tier: ChestTier, rand: () => number): boolean {
   return rand() < chance;
 }
 
-// Wearable/wieldable gear — everything a silver/gold chest (and the floor's
-// defining find, see floor-fill.ts) pulls from.
-export const GEAR_KINDS: ReadonlyArray<import('../content/items').ItemKind> =
-  ['weapon', 'armor', 'helmet', 'amulet', 'gloves', 'boots', 'offhand', 'ring'];
-
-// Each tier's promise, as DATA: what it pulls from (category), how rich
-// (bias), and a rarity floor on gold so the prize is never a let-down.
-// Bias shifts the rarity curve up; depth still gates what's eligible, so a
-// gold chest on floor 1 is generous-for-floor-1, not a free fabled.
-interface TierLoot {
-  bias: number;
-  category?: ReadonlyArray<import('../content/items').ItemKind>;
-  /** Depth-scaled rarity floor (uncommon early, rare deeper). */
-  floor?: (depth: number) => 'uncommon' | 'rare';
-}
-const TIER_LOOT: Record<ChestTier, TierLoot> = {
-  // Bronze = the restock: consumables (+ the coin-cache fallback in chest.ts
-  // when nothing rolls). This is what ISOLATES the potion flood — heals now
-  // come from clearly-marked bronze chests, not from every chest.
-  bronze: { bias: 0, category: ['consumable'] },
-  // Silver = the loadout chest: gear, mid bias.
-  silver: { bias: 2, category: GEAR_KINDS },
-  // Gold = the prize: gear, high bias, with a FLOOR so it can't disappoint.
-  gold:   { bias: 4, category: GEAR_KINDS, floor: (d) => (d >= 3 ? 'rare' : 'uncommon') },
-};
-
 export function rollChestLoot(
   tier: ChestTier,
   rand: () => number,
   depth = 1,
 ): import('../content/items').ItemSpec {
-  // Pull from the central distribution (content/loot.ts), filtered to the
-  // tier's content category and floored on gold. Depth still gates what's
-  // eligible + drives the rarity curve, so chests keep real variety.
-  const t = TIER_LOOT[tier];
-  return rollLoot(
-    { depth, bias: t.bias, category: t.category ? [...t.category] : undefined, minRarity: t.floor?.(depth) },
-    rand,
-  ) ?? ITEMS['flask-draught'];
+  // Chest tiers are named loot POOLS now (loot-pools.ts) — bronze = the
+  // consumable restock, silver = gear, gold = gear with a rarity floor. The
+  // pool owns the bias / category / floor; this just names it. Empty roll →
+  // the flask fallback (chest.ts also has the coin-cache safety net).
+  return rollPool(`chest-${tier}` as LootPoolId, depth, rand) ?? ITEMS['flask-draught'];
 }
 
 /**

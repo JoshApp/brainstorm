@@ -8,6 +8,7 @@ import { arenaEncounterId } from '../level/arena-waves';
 import { createPickup } from './pickup';
 import { buildModel } from '../ecs/build-model';
 import { rollLoot } from '../content/loot';
+import { rollPool } from '../content/loot-pools';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { gameRng } from '../engine/rng';
 import { showInWorldMessage } from '../ui/pickup-notification';
@@ -180,8 +181,9 @@ export function spawnChallengeOffering(
   // rare from floor 3 on. Bias still sets the ceiling (a chance at fabled).
   const drops: ItemSpec[] = [];
   {
-    const floor = depth >= 3 ? 'rare' : 'uncommon';
-    const a = rollLoot({ depth, bias: 4, minRarity: floor }, gameRng) ?? ITEMS['flask-draught'];
+    // Main reward from the 'challenge' pool (gear, depth-scaled rarity floor);
+    // a bonus second item stays a general roll.
+    const a = rollPool('challenge', depth, gameRng) ?? ITEMS['flask-draught'];
     if (a) drops.push(a);
     const b = rollLoot({ depth, bias: 3, minRarity: 'uncommon' }, gameRng);
     if (b) drops.push(b);

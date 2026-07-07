@@ -60,7 +60,7 @@ export function rollRarity(depth: number, bias: number, rand: () => number): Rar
 // gate + weight + kind so the item roll is a cheap filtered weighted pick
 // (kind powers the per-source category filter — a supply chest pulls only
 // consumables, a strongbox only gear).
-interface LootEntry { id: string; minDepth: number; weight: number; kind: ItemKind }
+interface LootEntry { id: string; minDepth: number; weight: number; kind: ItemKind; pool?: string }
 type LootIndex = Record<Rarity, LootEntry[]>;
 
 let indexCache: LootIndex | null = null;
@@ -76,6 +76,7 @@ function buildIndex(): LootIndex {
       minDepth: item.drop?.minDepth ?? 1,
       weight: item.drop?.weight ?? 1,
       kind: item.kind,
+      pool: item.drop?.pool,
     });
   }
   return idx;
@@ -95,8 +96,13 @@ function pickFromBand(
   depth: number,
   rand: () => number,
   allow: Set<ItemKind> | null = null,
+  pool: string | null = null,
 ): ItemSpec | null {
-  const ok = (e: LootEntry) => e.minDepth <= depth && (!allow || allow.has(e.kind));
+  const ok = (e: LootEntry) =>
+    e.minDepth <= depth
+    && (!allow || allow.has(e.kind))
+    // General roll (pool null) → only un-pooled items. Pool roll → only that pool.
+    && (pool === null ? e.pool === undefined : e.pool === pool);
   let total = 0;
   for (const e of band) if (ok(e)) total += e.weight;
   if (total <= 0) return null;
@@ -131,6 +137,14 @@ export interface LootContext {
    * something). Omit for an unrestricted roll.
    */
   category?: ItemKind[];
+  /**
+   * Draw ONLY from items whose `drop.pool` equals this — a UNIQUE pool (boss
+   * signature drops, cursed relics). Omitted → the roll draws from GENERAL
+   * items (those with no pool), so a pooled item never leaks into a generic
+   * chest/vase/kill drop. Set by the pool registry (loot-pools.ts), not by
+   * hand at call sites.
+   */
+  pool?: string;
 }
 
 /** Scan the rarity bands for an eligible item: down from `start` to the
@@ -139,17 +153,18 @@ export interface LootContext {
 function scanBands(
   idx: LootIndex, depth: number, rand: () => number,
   start: number, floorIdx: number, allow: Set<ItemKind> | null,
+  pool: string | null = null,
 ): ItemSpec | null {
   for (let i = start; i >= floorIdx; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
     if (item) return item;
   }
   for (let i = start + 1; i < RARITY_ORDER.length; i++) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
     if (item) return item;
   }
   for (let i = floorIdx - 1; i >= 0; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
     if (item) return item;
   }
   return null;
@@ -172,13 +187,15 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
   const floorIdx = ctx.minRarity ? RARITY_ORDER.indexOf(ctx.minRarity) : 0;
   const start = Math.max(RARITY_ORDER.indexOf(rolled), floorIdx);
   const allow = ctx.category && ctx.category.length ? new Set(ctx.category) : null;
+  const pool = ctx.pool ?? null;
 
-  const found = scanBands(idx, depth, rand, start, floorIdx, allow);
+  const found = scanBands(idx, depth, rand, start, floorIdx, allow, pool);
   if (found) return found;
   // The category may have excluded everything eligible at this depth — relax
-  // it rather than return null (a chest must still yield SOMETHING).
+  // it rather than return null (a chest must still yield SOMETHING). The POOL
+  // is NOT relaxed: a boss pool must never fall back to a general item.
   if (allow) {
-    const any = scanBands(idx, depth, rand, start, floorIdx, null);
+    const any = scanBands(idx, depth, rand, start, floorIdx, null, pool);
     if (any) return any;
   }
   return null;

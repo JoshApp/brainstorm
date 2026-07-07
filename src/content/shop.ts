@@ -5,7 +5,7 @@
 // unit-testable and the UI / interactable just present what this returns.
 
 import { ITEMS, type ItemSpec, type Rarity } from './items';
-import { rollLoot } from './loot';
+import { rollPool } from './loot-pools';
 import { gameRng } from '../engine/rng';
 
 export interface ShopWare {
@@ -45,7 +45,7 @@ export function rollShopStock(depth: number, count = 3, rand: () => number = gam
   // without handing out fabled gear cheaply. Over-roll a little to fill `count`
   // distinct ids even when the roller repeats.
   for (let attempts = 0; attempts < count * 6 && wares.length < count; attempts++) {
-    const item = rollLoot({ depth, bias: 2 }, rand);
+    const item = rollPool('merchant', depth, rand);
     if (!item || seen.has(item.id)) continue;
     seen.add(item.id);
     wares.push({

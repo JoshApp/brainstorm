@@ -1,11 +1,107 @@
 # DELVE — Identity & the Build Economy
 
-> **STATUS: DIRECTION SET 2026-06-22.** This captures the design session
-> that defined what DELVE *is* and how its builds work. The arcana card
-> system (the tarot lane) is BUILT; the gear-arts and rite lanes are
-> DESIGNED here and built per the order at the bottom. Companion to
-> `THE-DUNGEON-NOTICES.md` (progression spine), `THE-CARDS.md` (card
-> grammar), `VISUAL-LANGUAGE.md` (the look).
+> **STATUS: DIRECTION SET 2026-06-22; SPINE REFINED 2026-07-07.** The
+> refinement below is now AUTHORITATIVE and supersedes the lane details
+> further down where they conflict. Companion to `THE-DUNGEON-NOTICES.md`
+> (progression spine), `THE-CARDS.md` (card grammar), `VISUAL-LANGUAGE.md`
+> (the look), `FLOOR-DIRECTOR.md` (how it's placed).
+
+---
+
+## THE SPINE, REFINED — DECIDED 2026-07-07 (Josh + design session)
+
+The gimmick (steel / fate / the-deep-keeping-score) is unchanged. *How the
+build works* is now this. Build order at the end.
+
+### The run is a HEALTH ECONOMY, not a health bar
+
+- Health is scarce, precious, and does **not bloat.** A hit always matters.
+- You survive by **skill** (deflect + just-dodge + bullet-time) and smart
+  choices — never by out-HP'ing. Enemies escalate by **behaviour, not HP.**
+- Power makes you **stranger, not safer.** Metamorphosis **bends** the
+  economy — a glass build drops your pool for power, a grotesque one raises it
+  at a cost (Isaac's soul/black hearts) — it never inflates it into *safety.*
+- **You never FIND survivability, only POWER.** Heal pickups are gone. Your
+  heal is the flask (Estus), refilled ONLY at safe havens + after bosses.
+  Utility consumables still drop (tools, not health). The safe haven is the
+  reset (refill + spend + the reading), and health-cost deals get real teeth.
+
+### The excitement engine: get OP by ASSEMBLING A MACHINE
+
+- Roguelite power escalation IS the goal — you *can* get truly OP — but through
+  **smart combination**, not dumb stacking. Build the engine first; tune the
+  ceiling in balance.
+- Pieces are **verbs, not stats.** Verbs combine *laterally* into a
+  playstyle/identity (the blood-drinker, the duelist), so the snowball is
+  toward **who you are** — weird and specialised — which keeps you
+  *mortal-but-terrifying,* not a numb god.
+- They combine through a **shared substrate** (below), so synergy is **emergent
+  and cheap** — a system, not 5,000 hand-tuned combos. Lineage: Gunfire Reborn
+  (few weapons + stacking scrolls + a substrate), Hades (equipped weapon +
+  accumulating boons that combine), Dead Cells (status substrate), RoR2
+  (unbounded escalation), Isaac (visceral objects).
+
+### The four lanes
+
+1. **GEAR — what you WIELD.** Few, equipped, swappable, heavy. A **verb
+   triad**, NO stat-sticks:
+   - **Weapon** (attack — the defining verb) · **Offhand** (utility — can be a
+     2nd weapon / focus / tool) · **Vestment** (defence — a defensive *verb*:
+     "a hide that bleeds when you do," never `+armor`).
+2. **RELICS — what you ACCUMULATE.** Many, found, **unbounded-stacking.** The
+   escalation + combination engine (Isaac passives / RoR2 items / GR scrolls).
+   Grotesque cursed **objects** (see art), visible on the body.
+3. **MAJOR ARCANA — what you BECOME.** Few (2–3/run), drawn at the fire, heavy.
+   Your nature + the marks/reversals + the **death-cards / meta**
+   (the-deep-remembers). Tarot cards.
+4. **RITES — what you DO in the moment.** The active / Hunger lane.
+
+   *Cut:* the 9-slot armour paperdoll, ring/amulet stat slots. Their charm role
+   becomes **relics.**
+
+### The substrate — build this FIRST
+
+Everything combines *through* a small set of shared systems, so synergy emerges
+instead of being hand-authored:
+
+- **Statuses** (the richest): a tight set — **bleed, burn, fear, curse,
+  hunger** — each with hooks: **apply → amplify → consume/detonate → payoff.**
+- **The health economy** (hearts spent / gained / converted).
+- **Tempo** (deflect charges, no-hit / kill streaks).
+
+A build is a **pipeline** you assemble (*apply bleed → amplify → detonate →
+heal off it*). Stack appliers/amplifiers/detonators and the machine snowballs.
+A relic worthless alone is devastating beside the right weapon — "semi-working
+together," produced by a *system.* The bones exist (`STATUS-EFFECTS.md`,
+`modifiers.ts`, composable abilities); the work is making statuses a real
+apply/amplify/consume/payoff substrate that verbs hook into.
+
+### Art direction: one occult world, 2.5D, cheap
+
+- **Majors = ceremonial CARDS** (illustrated tarot, revealed at the fire — the
+  art pipeline). Few, heavy; the card format earns its ceremony.
+- **Relics = grotesque cursed OBJECTS (not cards):** 2D AI illustrations shown
+  as **sprite billboards** in the world + a **reliquary UI** (grimoire/belt of
+  accumulated icons) + selective viewmodel decals. Occult-cursed-object
+  register (Jujutsu-Kaisen cursed tools / occult reliquary horrors — a sealed
+  finger, a sigil-branded bone, a wrapped talisman).
+- **One aesthetic** across tarot + relics + UI: ink / Mörk Borg / grimoire. The
+  **same 2D generation pipeline** (cheap), **different presentation** (cards vs
+  object-sprites) so they never read same-y. On-style for DELVE's PS1/Lunacid
+  sprite-in-3D world — 2.5D is not a compromise. Avoids expensive per-item 3D
+  *and* the boring menu-bound card pile.
+- The metamorphosis is **felt** via the combat effect (bleed-drip, fear-aura —
+  substrate-driven) and **seen** via the reliquary + decals.
+
+### Build order
+
+1. **The substrate** (statuses + health economy + tempo hooks) — the engine.
+2. **The loot manager** (data-driven named pools — *this pass*) — relics / gear
+   / boss-items drop from tunable pools, not scattered code.
+3. **Health economy + checkpoint heals** (cut heal drops; flask at havens).
+4. **Gear rework** (weapon/offhand/vestment verbs; cut the paperdoll).
+5. **Relics** (grotesque objects + reliquary + stacking/combination).
+6. **Rites**; then minors→relics migration + the **death-card meta.**
 
 ---
 
