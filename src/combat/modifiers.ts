@@ -45,6 +45,11 @@ export type StatModifier =
   // to heal CONFIG.LIFESTEAL_ON_KILL_HEAL. Stacks additively, clamped to
   // 1.0. Proc'd by the enemy:killed listener in attack.ts.
   | { kind: 'lifesteal-pct';         amount: number }
+  // ── SUBSTRATE — status-payoff flags (docs/BUILD-ECONOMY.md). Read by the
+  // death-payoff handler (combat/blood-drinker.ts), not the damage math. These
+  // are the seam relics plug verbs into: presence/amount that a payoff consults.
+  | { kind: 'bleed-chain';           amount: number }   // a dying bleeder re-bleeds its neighbours
+  | { kind: 'bleed-feed';            amount: number }   // hearts healed per bleeding kill
 ;
 
 /**
@@ -144,6 +149,10 @@ export interface PlayerStats {
   critMultBonus: number;
   /** Percentage of damage dealt that heals the player (0..1, clamped). */
   lifestealPct: number;
+  /** SUBSTRATE — a dying BLEEDING enemy re-bleeds nearby enemies (the pack chain). */
+  bleedChain: boolean;
+  /** SUBSTRATE — hearts healed when a BLEEDING enemy dies (build-granted lifesteal). */
+  bleedFeed: number;
 }
 
 /**
@@ -162,6 +171,8 @@ export function computePlayerStats(): PlayerStats {
   let critChanceBonus = 0;
   let critMultBonus = 0;
   let lifestealPct = 0;
+  let bleedChain = false;
+  let bleedFeed = 0;
 
   for (const m of aggregateModifiers('player')) {
     switch (m.kind) {
@@ -175,6 +186,8 @@ export function computePlayerStats(): PlayerStats {
       case 'crit-chance':          critChanceBonus += m.amount; break;
       case 'crit-mult':            critMultBonus += m.amount; break;
       case 'lifesteal-pct':        lifestealPct += m.amount; break;
+      case 'bleed-chain':          bleedChain = true; break;
+      case 'bleed-feed':           bleedFeed += m.amount; break;
       // move/action-speed are handled by aggregateSpeed (movement +
       // attack timing), not the damage-stat path.
       case 'move-speed-mult':
@@ -202,6 +215,8 @@ export function computePlayerStats(): PlayerStats {
     critChanceBonus: Math.min(1, Math.max(0, critChanceBonus)),
     critMultBonus,
     lifestealPct: Math.min(1, Math.max(0, lifestealPct)),
+    bleedChain,
+    bleedFeed,
   };
 }
 

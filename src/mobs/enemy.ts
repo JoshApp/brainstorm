@@ -53,6 +53,7 @@ import type { Creature } from '../content/creature-types';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
+import { fireDeathPayoffs } from '../combat/death-payoffs';
 import { aggregateSpeed } from '../combat/modifiers';
 import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
@@ -1106,6 +1107,10 @@ export function createEnemy(
       // dying-branch in update(). Final scene.remove happens when
       // deathTimer crosses DEATH_DURATION.
       aliveLocal = false;
+      // SUBSTRATE payoff hook (docs/BUILD-ECONOMY.md): fire status-death payoffs
+      // while the dying enemy's buffs are STILL LIVE (before destroyEntity below).
+      // A bleeding kill chains bleed to neighbours + feeds the blood-drinker.
+      fireDeathPayoffs(entity, container.position);
       // Pop any OPEN deflect opportunity this mob was holding — a mob killed
       // mid-flash (white deflectable strike up) would otherwise leak the global
       // count, because the dead branch of update() returns before reconcileThreat

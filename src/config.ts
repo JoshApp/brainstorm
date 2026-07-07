@@ -714,6 +714,13 @@ export const CONFIG = {
   // per-damage lifesteal was way too strong.)
   LIFESTEAL_ON_KILL_HEAL: 2,
 
+  // === SUBSTRATE — bleed machine (docs/BUILD-ECONOMY.md) ===
+  // The blood-drinker's CHAIN payoff: when a bleeding enemy dies, enemies within
+  // this radius are re-bled (the pack pops down a chain). Duration = the bleed
+  // handed to the neighbour. Tune the chain's reach + persistence on feel.
+  BLEED_CHAIN_RADIUS: 3.0,
+  BLEED_CHAIN_DURATION: 3.5,
+
   // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
   // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat
   // has a UNIVERSAL floor (wanted by every build), FAMILY scaling (only

@@ -63,6 +63,8 @@ export function formatModifier(m: StatModifier): string {
     case 'crit-chance':           return signedPct(m.amount) + ' Crit Chance';
     case 'crit-mult':             return (m.amount >= 0 ? '+' : '') + m.amount.toFixed(2) + ' Crit Multiplier';
     case 'lifesteal-pct':         return signedPct(m.amount) + ' Lifesteal';
+    case 'bleed-chain':           return 'A dying bleeder bleeds those near it';
+    case 'bleed-feed':            return `Heal ${m.amount} on a bleeding kill`;
   }
 }
 

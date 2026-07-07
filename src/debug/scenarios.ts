@@ -384,6 +384,35 @@ const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
 };
 
 export const SCENARIOS: Record<string, Scenario> = {
+  // ── SUBSTRATE SLICE — the blood-drinker fun-check (docs/BUILD-ECONOMY.md) ──
+  // Bleed weapon (bone-needle) + the two bleed relics + a clustered pack: hit
+  // one, it bleeds, it dies, the burst CHAINS bleed to its neighbours, and every
+  // bleeding kill FEEDS you. Is the machine fun? That's the whole question.
+  'blood-drinker': {
+    level: {
+      id: 'blood-drinker', depth: 4, displayName: 'BLOOD DRINKER', fogColor: 0x0c0608,
+      startPos: { x: 0, z: 6, yaw: Math.PI },
+      rooms: [{ id: 'pit', rect: { x: 0, z: 0, w: 18, d: 18 }, height: 5 }],
+      corridors: [], props: [],
+      torches: [
+        { x: -8, z: 0, wall: 'W', height: 2.6, colorTint: 0xd83828, intensityMul: 1.2 },
+        { x:  8, z: 0, wall: 'E', height: 2.6, colorTint: 0xd83828, intensityMul: 1.2 },
+        { x:  0, z: -8, wall: 'N', height: 2.6, colorTint: 0xd83828, intensityMul: 1.2 },
+      ],
+      // A clustered pack so the chain visibly propagates.
+      spawns: Array.from({ length: 8 }, (_, i) => ({
+        enemyId: 'ooze-small',
+        x: (i % 4 - 1.5) * 1.7,
+        z: -3.5 - Math.floor(i / 4) * 1.7,
+        roomId: 'pit',
+      })),
+      doors: [], stairs: [],
+    },
+    equipWeaponId: 'bone-needle',
+    giveItems: ['clot-fetish', 'crimson-leech'],   // auto-equipped rings → the machine is live
+    playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
+  },
+
   // ── PERF STRESS SCENARIOS ──────────────────────────────────────────
   // perf-horde: a packed mob fight — many animated enemies + projectiles
   // in view at once. The dynamic-entity draw-call stress.

@@ -18,6 +18,7 @@ import { computePlayerStats } from './modifiers';
 import { gameRngChance, gameRng } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
+import { registerDeathPayoff } from './death-payoffs';
 import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
@@ -290,6 +291,28 @@ export function createCombatSystem(
     if (e.type !== 'enemy:killed') return;
     if (gameRngChance(computePlayerStats().lifestealPct)) {
       healPlayer(CONFIG.LIFESTEAL_ON_KILL_HEAL);
+    }
+  });
+
+  // SUBSTRATE — the blood-drinker payoff (docs/BUILD-ECONOMY.md). When a
+  // BLEEDING enemy dies: FEED (heal — build-granted lifesteal that bends the
+  // health economy) + CHAIN (the burst re-bleeds nearby enemies, so a pack
+  // pops down a chain). Stat-gated, so it's inert unless a relic enables it —
+  // this is the first status MACHINE; poison-detonate / burn-spread register
+  // the same way. Registered once (createCombatSystem is built at boot).
+  registerDeathPayoff((dying, pos) => {
+    if (!dying.buffs?.some((b) => b.specId === 'bleed')) return;
+    const s = computePlayerStats();
+    if (s.bleedFeed > 0) healPlayer(s.bleedFeed, 'combat');
+    if (s.bleedChain) {
+      const r2 = CONFIG.BLEED_CHAIN_RADIUS * CONFIG.BLEED_CHAIN_RADIUS;
+      for (const e of getEnemies()) {
+        if (!e.alive) continue;
+        const dx = e.position.x - pos.x, dz = e.position.z - pos.z;
+        if (dx * dx + dz * dz > r2) continue;
+        const ent = getEntity(e.entityId);
+        if (ent) applyBuff(ent, 'bleed', CONFIG.BLEED_CHAIN_DURATION, 'player');
+      }
     }
   });
 

@@ -1424,6 +1424,30 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: RING_OF_BLOODTHIRST,
     modifiers: [{ kind: 'lifesteal-pct', amount: 0.15 }],
   },
+  // ── SUBSTRATE SLICE — the blood-drinker relics (docs/BUILD-ECONOMY.md). Two
+  // pieces that each just touch BLEED; together with a bleed weapon they're a
+  // machine (bleed → pop → chain → feed). Placeholder ring models for the
+  // fun-check; the real 2.5D cursed-object sprites come with the relic art pass.
+  'clot-fetish': {
+    id: 'clot-fetish',
+    kind: 'ring',
+    rarity: 'rare',
+    name: 'A knot of old blood',
+    flavor: 'Gone hard as a knuckle. What dies bleeding near it, its wound calls to the rest.',
+    dropModel: RING_OF_BLOODTHIRST,
+    // CHAIN payoff — a dying bleeder re-bleeds its neighbours.
+    modifiers: [{ kind: 'bleed-chain', amount: 1 }],
+  },
+  'crimson-leech': {
+    id: 'crimson-leech',
+    kind: 'ring',
+    rarity: 'rare',
+    name: 'A crimson leech',
+    flavor: 'It fastens to the wrist and drinks whatever you spill. You barely feel it take.',
+    dropModel: RING_OF_BLOODTHIRST,
+    // FEED payoff — a bleeding kill mends you (build-granted lifesteal).
+    modifiers: [{ kind: 'bleed-feed', amount: 1 }],
+  },
   'vampire-amulet': {
     id: 'vampire-amulet',
     kind: 'amulet',
