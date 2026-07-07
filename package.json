@@ -10,7 +10,7 @@
     "dev:stop": "bash scripts/dev-stop.sh",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "verify": "tsc --noEmit",
-    "test": "tsx tests/combat-math.test.ts && tsx tests/floor-determinism.test.ts && tsx tests/item-format.test.ts && tsx tests/affix.test.ts && tsx tests/content-load.test.ts && tsx tests/vault-validate.test.ts && tsx tests/floor-invariants.test.ts && tsx tests/floor-roles.test.ts && tsx tests/floor-fill.test.ts && tsx tests/floor-director.test.ts && tsx tests/room-decor.test.ts && tsx tests/opening.test.ts && tsx tests/nav-grid.test.ts && tsx tests/walkable.test.ts && tsx tests/occupancy-grid.test.ts && tsx tests/content-budget.test.ts && tsx tests/prop-hitbox.test.ts && tsx tests/explored-map.test.ts && tsx tests/elevation.test.ts && tsx tests/player-action.test.ts && tsx tests/enemy-action.test.ts && tsx tests/intent.test.ts && tsx tests/flask.test.ts && tsx tests/loot.test.ts && tsx tests/loot-pools.test.ts && tsx tests/stamina.test.ts && tsx tests/swing-state.test.ts && tsx tests/swing-agency.test.ts && tsx tests/just-dodge.test.ts && tsx tests/weapon-pose-spec.test.ts && tsx tests/authorables.test.ts && tsx tests/patchlog-gen.test.ts && tsx tests/shop.test.ts && tsx tests/tap-resolve.test.ts && tsx tests/anim.test.ts && tsx tests/hearts.test.ts && tsx tests/cards.test.ts && tsx tests/rites.test.ts",
+    "test": "tsx scripts/test.ts",
     "ship": "bash scripts/ship.sh",
     "live": "bash scripts/live.sh",
     "watch-deploy": "bash scripts/watch-deploy.sh",
