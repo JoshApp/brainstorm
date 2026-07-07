@@ -33,7 +33,7 @@ import { actionForCode, getBinding } from './keybindings';
 import { useFirstConsumable, useConsumableSlot } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
 import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
-import { dismissTopScreen, isAnyScreenOpen, setReacquireFocusHandler } from '../ui/screen-manager';
+import { dismissTopScreen, confirmTopScreen, isAnyScreenOpen, setReacquireFocusHandler } from '../ui/screen-manager';
 import { isDesktopLike } from './platform';
 import { openSettings } from '../ui/settings-menu';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
@@ -94,6 +94,16 @@ export const desktopScheme: InputScheme = {
       // keyboard — don't let game verbs steal 'E', WASD, digits, etc.
       if (isTextEntryMode()) return;
       if (!e.repeat) codesDown.add(e.code);
+
+      // Prompt ADVANCE/CONFIRM — a modal prompt (note card, transition card)
+      // that registered onConfirm takes Space / Enter / the interact key to
+      // advance-or-dismiss. Routed HERE, through the ONE contained input scheme,
+      // so prompts don't each bolt a global keydown listener on the window. ESC
+      // routes to dismissTopScreen (the 'menu' verb below) — the back/cancel half.
+      if (!e.repeat && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space'
+          || actionForCode(e.code) === 'interact')) {
+        if (confirmTopScreen()) { e.preventDefault(); return; }
+      }
 
       // DASH (debug desktop) — Shift dodges in the current move direction, or
       // backsteps if standing still. Movement is polled into state each frame,

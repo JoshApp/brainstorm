@@ -9,7 +9,6 @@
 // still fire during or after; this card is the dungeon speaking.
 
 import { openScreen, closeScreen } from './screen-manager';
-import { isTextEntryMode } from '../controls/input-mode';
 
 const SCREEN_ID = 'safe-room-transition';
 const AUTO_DISMISS_MS = 6000;
@@ -136,6 +135,19 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
 
   document.body.appendChild(root);
 
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    hideSafeRoomTransition();
+  };
+
+  // True once the grace window has elapsed — only then does player input
+  // dismiss the card. Before that the input is swallowed (the handler fires but
+  // no-ops) so it doesn't leak to the paused canvas; the card just stays up.
+  const openedAt = performance.now();
+  const pastGrace = () => performance.now() - openedAt >= DISMISS_GRACE_MS;
+
   openScreen({
     id: SCREEN_ID,
     root,
@@ -146,6 +158,12 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
       needsBackdrop: false,
       layer: 'title',
     },
+    // Keyboard is CONTAINED in the one input scheme: ESC → onDismissRequest,
+    // Space/Enter/interact → onConfirm (both gated by the grace window). No
+    // per-card window keydown listener — that scattering (and its missing
+    // stopPropagation, which double-opened the menu) was the leak.
+    onDismissRequest: () => { if (pastGrace()) dismiss(); },
+    onConfirm: () => { if (pastGrace()) dismiss(); },
   });
 
   requestAnimationFrame(() => {
@@ -153,32 +171,11 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
     if (hint) hint.style.opacity = '1';
   });
 
-  let dismissed = false;
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    hideSafeRoomTransition();
-  };
-
-  // True once the grace window has elapsed — only then does player
-  // input dismiss the card. Until then we still swallow the event
-  // (preventDefault) so it doesn't leak to the paused canvas, it just
-  // doesn't close the card.
-  const openedAt = performance.now();
-  const pastGrace = () => performance.now() - openedAt >= DISMISS_GRACE_MS;
-
-  // Tap/click/key anywhere to dismiss. Capture-phase so we beat any
-  // pointer-locked canvas handler.
+  // Tap/click ANYWHERE to dismiss — the overlay's own pointer affordance (a
+  // full-bleed card with no shared backdrop). Capture-phase so it beats any
+  // pointer-locked canvas handler. Keyboard is the screen manager's job now.
   const onPointer = (e: Event) => { e.preventDefault(); if (pastGrace()) dismiss(); };
-  const onKey = (e: KeyboardEvent) => {
-    if (isTextEntryMode()) return;   // a focused text field owns the keyboard
-    if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'e') {
-      e.preventDefault();
-      if (pastGrace()) dismiss();
-    }
-  };
   window.addEventListener('pointerdown', onPointer, { capture: true });
-  window.addEventListener('keydown', onKey, { capture: true });
 
   // Auto-dismiss after a beat — players who want to soak in the moment
   // can, but the card never strands a distracted player.
@@ -188,7 +185,6 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
   // the close hook stays local to this call.
   const teardown = () => {
     window.removeEventListener('pointerdown', onPointer, { capture: true } as AddEventListenerOptions);
-    window.removeEventListener('keydown', onKey, { capture: true } as AddEventListenerOptions);
     window.clearTimeout(timer);
   };
   // Stash so hideSafeRoomTransition can call it.

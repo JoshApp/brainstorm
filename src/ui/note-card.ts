@@ -8,12 +8,10 @@
 // manager — same pause rules as inventory/settings.
 
 import { openScreen, closeScreen } from './screen-manager';
-import { isTextEntryMode } from '../controls/input-mode';
 
 const NOTE_SCREEN_ID = 'note';
 
 let activeCard: HTMLDivElement | null = null;
-let noteKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 let notePointerHandler: ((e: PointerEvent) => void) | null = null;
 
 export function showNote(text: string) {
@@ -93,26 +91,10 @@ export function showNote(text: string) {
     e.stopPropagation();
     dismiss();
   });
-  // Desktop: Space / E / Escape / Enter all dismiss too. Without
-  // this the keypress falls through to the global input handlers
-  // (Space triggers an attack, E fires onInteract) AND the note
-  // stays up, blocking the world. Capture + stop propagation so
-  // the underlying handlers don't see the keypress while the
-  // note is being acknowledged.
-  const onKey = (e: KeyboardEvent) => {
-    if (!activeCard) return;
-    if (isTextEntryMode()) return;   // a focused text field owns the keyboard
-    if (e.code === 'Space' || e.key === 'e' || e.key === 'E'
-        || e.key === 'Escape' || e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      dismiss();
-    }
-  };
-  // Capture phase so we run BEFORE the global window keydown
-  // listeners in input-desktop.ts.
-  window.addEventListener('keydown', onKey, true);
-  noteKeyHandler = onKey;
+  // Keyboard dismissal (Space / Enter / E / Esc) is owned by the ONE contained
+  // input scheme (input-desktop.ts) via the screen manager: ESC → onDismissRequest,
+  // the advance keys → onConfirm — both wired on the openScreen call below. No
+  // per-card window keydown listener; that scattering was the leak.
 
   // Desktop pointer-lock case: clicks on the locked canvas fire
   // mousedown on the canvas (not the card / not the screen
@@ -146,7 +128,8 @@ export function showNote(text: string) {
     // FPS with no stray cursor. The window-capture handlers below catch
     // the click even while pointer-locked.
     policy: { layer: 'modal', needsCursor: false },
-    onDismissRequest: dismiss,
+    onDismissRequest: dismiss,   // ESC / backdrop tap
+    onConfirm: dismiss,          // Space / Enter / interact
   });
 
   // Slide-up + fade-in on next frame.
@@ -167,10 +150,6 @@ function dismiss() {
   closeScreen(NOTE_SCREEN_ID);
   // Tear down the global listeners so they don't linger past
   // dismissal and eat input outside note-reading state.
-  if (noteKeyHandler) {
-    window.removeEventListener('keydown', noteKeyHandler, true);
-    noteKeyHandler = null;
-  }
   if (notePointerHandler) {
     window.removeEventListener('pointerdown', notePointerHandler, true);
     notePointerHandler = null;

@@ -43,10 +43,16 @@ export interface ScreenHandle {
   /** The screen's root DOM element. Manager sets z-index on it. */
   root: HTMLElement;
   policy?: ScreenPolicy;
-  /** Called when the backdrop is tapped (a dismiss request). The screen
-   *  decides whether to actually close itself. Screens without a backdrop
-   *  never get this callback. */
+  /** Called on a DISMISS / BACK request — a backdrop tap, or the ESC key
+   *  routed through the input scheme. The screen decides whether to actually
+   *  close. This is the "cancel/back" half. */
   onDismissRequest?: () => void;
+  /** Called on an ADVANCE / CONFIRM request — Space, Enter, or the interact
+   *  key, routed through the input scheme while this is the top-most screen.
+   *  The "accept" half, for prompts that dismiss-or-advance on a keypress (note
+   *  card, transition card). Prompts set this so they DON'T each bolt a global
+   *  keydown listener on the window — the controller stays contained. */
+  onConfirm?: () => void;
 }
 
 // ── Z-index buckets ───────────────────────────────────────────────────
@@ -166,6 +172,21 @@ export function dismissTopScreen(): boolean {
   for (const s of stack) {
     if (s.onDismissRequest) {
       s.onDismissRequest();
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Fire onConfirm on the top-most open screen that has one (advance/accept —
+ *  the Space/Enter/interact half, mirroring dismissTopScreen's ESC/back half).
+ *  Returns true if a confirm was dispatched, so the input scheme can swallow the
+ *  key instead of letting it fall through to a game verb. */
+export function confirmTopScreen(): boolean {
+  const stack = [...openScreens.values()].reverse();
+  for (const s of stack) {
+    if (s.onConfirm) {
+      s.onConfirm();
       return true;
     }
   }
