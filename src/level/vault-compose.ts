@@ -902,8 +902,8 @@ export function composeFloor(
     }
     // Content MARKERS ('spot'): dumb authored spots the FILL stage may stage
     // defining content onto. Harvest each still-open one regardless of role (the
-    // fill filters by caps), reserve it so no enemy spawns on the marker, and
-    // record world pos + focal + facing.
+    // fill filters by caps), reserve it so no enemy spawns on the marker.
+    const hasAuthoredSpot = (pv.vault.anchors ?? []).some((a) => a.kind === 'spot');
     for (const a of pv.vault.anchors ?? []) {
       if (a.kind !== 'spot') continue;
       const ch = populated[a.row]?.[a.col];
@@ -936,13 +936,34 @@ export function composeFloor(
         return ch === '.' || ch === ',';
       };
       const region = { col0: 0, row0: 0, cols: W, rows: D };
+      // Collect this room's open cells, tracking the most CENTRAL one — the
+      // auto-derived focal spot when the vault authored none.
+      const cx = W / 2, cz = D / 2;
+      const roomCells: Array<{ x: number; z: number; isHint: boolean }> = [];
+      let central: { col: number; row: number; x: number; z: number } | null = null;
+      let centralDist = Infinity;
       for (const cell of enumerateOpenCells(region, isFloor, occ)) {
-        spawnCandidates.push({
-          x: cell.col + 0.5 - W / 2 + pv.offsetX,
-          z: cell.row + 0.5 - D / 2 + pv.offsetZ,
-          roomId: pv.roomId,
-          isHint: hintCells.has(`${cell.col},${cell.row}`),
-        });
+        const x = cell.col + 0.5 - W / 2 + pv.offsetX;
+        const z = cell.row + 0.5 - D / 2 + pv.offsetZ;
+        roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`) });
+        const d = (cell.col - cx) ** 2 + (cell.row - cz) ** 2;
+        if (d < centralDist) { centralDist = d; central = { col: cell.col, row: cell.row, x, z }; }
+      }
+      // AUTO-DERIVED MARKER (docs/FLOOR-DIRECTOR.md — geometry proposes, an
+      // authored 'spot' overrides). A content-eligible room that declared no spot
+      // gets an implicit focal marker at its most central open cell, so the
+      // director's find / deal can land in ANY eligible room across the whole
+      // library — no per-vault annotation, self-maintaining for new vaults.
+      const derived = !hasAuthoredSpot && (roomCaps.allowLoot || roomCaps.allowEvent) && central
+        ? central : null;
+      if (derived) {
+        occ.reserve(derived.col, derived.row, 'floor', 'feature');
+        contentSpots.push({ x: derived.x, z: derived.z, roomId: pv.roomId, focal: true });
+      }
+      for (const c of roomCells) {
+        // Keep the derived focal cell out of the enemy pool.
+        if (derived && c.x === derived.x && c.z === derived.z) continue;
+        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint });
       }
     }
   }
