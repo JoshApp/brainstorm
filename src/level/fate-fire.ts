@@ -14,6 +14,7 @@ import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
 import { refillFlask } from '../player/flask';
+import { healPlayer, getPlayerMaxHp } from '../player/health';
 
 interface FateFireOpts {
   /** The built bonfire model — its flame meshes/sprites get spent in place. */
@@ -49,7 +50,13 @@ export function registerFateFire(o: FateFireOpts): void {
         onDone: (picked) => {
           if (!picked || drawn) return;
           drawn = true;
-          refillFlask();   // resting at the fire refills the flask (once per fire)
+          // The checkpoint refill (docs/BUILD-ECONOMY.md): resting at the fire
+          // restores health to full AND refills the flask. This is the ONLY way
+          // to get health back now that heal pickups are gone — safe havens and
+          // post-boss harbors both anchor a fire, so entering one and resting is
+          // the reset. Once per fire (the `drawn` guard).
+          healPlayer(getPlayerMaxHp(), 'passive');
+          refillFlask();
           spendFlame(flames);
           o.dimLight?.(0.34);
           interactable.promptLabel = ''; // spent — no rest prompt

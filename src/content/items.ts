@@ -1515,6 +1515,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEALING_POTION,
     consumableHeal: 2,
     carryLimit: 3,
+    // You never FIND survivability (docs/BUILD-ECONOMY.md — heals are the flask,
+    // refilled only at the fire). Legacy item, kept for old saves; never rolls.
+    drop: { noDrop: true },
   },
   // The flask economy (docs/LOOT-PUNCHLIST.md #3): healing loot is tiered.
   // Uncommon DRAUGHTS refill flask charges; rare gated SHARDS grow the flask.
@@ -1528,9 +1531,11 @@ export const ITEMS: Record<string, ItemSpec> = {
     // Pours into the flask INSTANTLY on pickup — never a bag item. At a full
     // flask the vial stays on the ground (pickup.ts canUse), so no carryLimit.
     consumableFlaskCharges: 1,
-    // Present but scarce — the bonfire anchors the heal economy; a draught is
-    // a stay of execution between fires, not a second flask.
-    drop: { weight: 2 },
+    // You never FIND survivability (docs/BUILD-ECONOMY.md). Draughts no longer
+    // drop from chests/vases — the flask is the heal, refilled at the fire.
+    // Safe rooms may still STOCK one via authored placement (unaffected by
+    // noDrop, which only blocks the generic roller).
+    drop: { noDrop: true },
   },
   'flask-shard': {
     id: 'flask-shard',
