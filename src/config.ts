@@ -843,6 +843,12 @@ export const CONFIG = {
     // `?`-slot RNG still provides deals. This is the per-floor chance one is budgeted.
     QUESTION_CHANCE: 0.65,
     QUESTION_DEEP_DEPTH: 6,        // >= this depth, deals turn run-threatening (blood-altar/altar)
+    // FURNISHING = vases as a dynamic decorate density (replaces baked vase
+    // clutter). Fraction of a floor's LEFTOVER open cells (after combat) that
+    // become a vase, hard-capped so big floors don't drown in pots — a few per
+    // floor, varying each run. Tune on feel.
+    FURNISH_VASE_DENSITY: 0.015,
+    FURNISH_VASE_MAX: 6,
   },
 
   // === DEATH SEQUENCE ===

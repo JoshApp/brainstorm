@@ -976,10 +976,13 @@ export function composeFloor(
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
   {
     // INVARIANT: a fire never appears from vault authoring — strip every baked
-    // bonfire first, so the director is the sole owner of fires.
+    // bonfire first, so the director is the sole owner of fires. Same for VASES:
+    // furnishing is a dynamic decorate density now (placed below), so it varies
+    // each run instead of sitting in the same authored cells — strip the baked
+    // ones so the furnish pass is the single source.
     for (let k = props.length - 1; k >= 0; k--) {
       const p = props[k] as { kind?: string; model?: { id?: string } };
-      if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
+      if ((p.kind === 'model' && p.model?.id === 'bonfire') || p.kind === 'vase') props.splice(k, 1);
     }
 
     // ── The FLOOR DIRECTOR decides the whole content plan ──────────────────────
@@ -1006,18 +1009,19 @@ export function composeFloor(
       if (plan.sanctumRoomId) roles.designate(plan.sanctumRoomId, 'sanctum');
     }
 
-    // COMBAT — top up to the budget by seeding enemies into open cells.
+    // COMBAT — top up to the budget by seeding enemies into open cells. Shuffle
+    // the open cells once (hints first): enemies take the front, and the REST
+    // become the furnishing pool below, so vases dress the cells combat left.
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
     const shortfall = plan.budget.combat.count - liveCount;
-    if (shortfall > 0 && spawnCandidates.length > 0) {
-      // Deterministic shuffle, then hints to the front so authored X slots fill first.
-      const pool = spawnCandidates.slice();
-      for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-      }
-      pool.sort((a, b) => Number(b.isHint) - Number(a.isHint));
-      const place = Math.min(shortfall, pool.length);
+    const pool = spawnCandidates.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    pool.sort((a, b) => Number(b.isHint) - Number(a.isHint));
+    const place = shortfall > 0 ? Math.min(shortfall, pool.length) : 0;
+    if (place > 0) {
       const ids = rollFloorEnemies(depth, place, plan.budget.combat.intensity, rand);
       for (let i = 0; i < place; i++) {
         const c = pool[i];
@@ -1039,6 +1043,23 @@ export function composeFloor(
       // DealKind is a union of PropSpec kinds; the cast just picks the member.
       stagedDealProp = { kind: plan.deal.kind, x: plan.deal.x, z: plan.deal.z } as PropSpec;
       props.push(stagedDealProp);
+    }
+
+    // FURNISHING — vases as a dynamic decorate density (docs/FLOOR-DIRECTOR.md,
+    // "two content tiers"). Runs LAST, into the cells combat didn't take, so it
+    // dresses AROUND everything the director staged and never clips the fire /
+    // find / deal (those sit on reserved cells, never in this pool). The count
+    // scales with the floor's open space; it varies each run, unlike the baked
+    // clutter it replaces. (Mood-tuning + destructible variety are follow-ups.)
+    const furnishPool = pool.slice(place);
+    const vaseCount = Math.min(
+      Math.round(furnishPool.length * CONFIG.CONTENT_BUDGET.FURNISH_VASE_DENSITY),
+      CONFIG.CONTENT_BUDGET.FURNISH_VASE_MAX,
+      furnishPool.length,
+    );
+    for (let i = 0; i < vaseCount; i++) {
+      const c = furnishPool[i];
+      props.push({ kind: 'vase', x: c.x, z: c.z });
     }
   }
 
