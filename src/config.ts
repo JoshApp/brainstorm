@@ -730,6 +730,9 @@ export const CONFIG = {
   // at 0.75 bleed = 0.75 + 3×(0.75×0.4) = ~1.65 expected stacks (165%), not 3.0
   // (300%). Tune to shift how hard flurries lean into their status.
   FLURRY_PROC_DIMINISH: 0.4,
+  // Dash-attack window (docs/MOVE-TIMELINE.md): strike within this many ms of a
+  // dodge and the opener serves its `dash` variant — a lunge out of the roll.
+  DASH_ATTACK_WINDOW_MS: 400,
 
   // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
   // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat

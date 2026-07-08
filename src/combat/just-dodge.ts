@@ -31,13 +31,20 @@ import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
 
 let dashStartedAt = -Infinity;   // gameNow() ms when the last dash fired
+let lastDashAt = -Infinity;      // gameNow() ms of the last dash — NOT consumed by a just-dodge (for the dash-attack window)
 let counterUntil = 0;            // gameNow() ms — counter window end
 
 /** dash.ts calls this the instant a dash fires, so the enemy can classify a
  *  strike landing soon after as a precisely-timed (perfect) dodge. */
 export function noteDashStarted(): void {
   dashStartedAt = gameNow();
+  lastDashAt = dashStartedAt;
 }
+
+/** ms since the last dash. The move system reads this to serve a DASH ATTACK (a
+ *  lunge) when you strike right out of a dodge. Unlike dashStartedAt this isn't
+ *  cleared by a just-dodge reward, so a dash-attack still fires after a perfect roll. */
+export function msSinceDash(): number { return gameNow() - lastDashAt; }
 
 /** Pure: is a strike landing `sinceDashMs` after the roll a PERFECT (reactive)
  *  dodge? True only inside the perfect window — you committed the roll just

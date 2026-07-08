@@ -1,7 +1,7 @@
 import { CONFIG } from '../config';
 import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile, FlurrySpec } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
-import { DAGGER_DEFAULT_MOVES, SWORD_DEFAULT_MOVES } from './weapon-moves';
+import { DAGGER_DEFAULT_MOVES, SWORD_DEFAULT_MOVES, DAGGER_HEAVY_MOVES, SWORD_HEAVY_MOVES } from './weapon-moves';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -134,6 +134,8 @@ export interface ResolvedWeaponStats {
   /** Timeline move COMBO — routes this weapon through the move runtime instead of
    *  the phase machine (docs/MOVE-TIMELINE.md). Passthrough from the weapon spec. */
   moves?: import('../combat/move-timeline').MoveStep[];
+  /** Heavy (charged) moveset — the hold→release combo. */
+  heavyMoves?: import('../combat/move-timeline').MoveStep[];
   /** Attack-speed multiplier (>1 = faster). Passthrough; scales a move's timing. */
   attackSpeed: number;
   /** On-hit status infliction, passed through from the weapon spec. */
@@ -229,6 +231,8 @@ interface ClassDefaults {
    *  WeaponStats.moves. Omitted → the class is still on the legacy phase-pose
    *  path (migration in progress). */
   moves?: import('../combat/move-timeline').MoveStep[];
+  /** DEFAULT heavy (charged) moveset for the class. Inherited like `moves`. */
+  heavyMoves?: import('../combat/move-timeline').MoveStep[];
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
   /** HEAVY combo chain (hold→hold→hold) — an escalating heavy 1-2-3 walked by
@@ -284,6 +288,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // this thrust→cut→double-stab. The legacy `combo` below is now only the
     // fallback shaping (reach/cone/maxTargets) the timeline hit still borrows.
     moves: DAGGER_DEFAULT_MOVES,
+    heavyMoves: DAGGER_HEAVY_MOVES,   // charged: a committed plunge → execute-flurry
     // stab → slash → double-stab. Stab one, slash cleaves two,
     // double-stab finisher commits on one target with extra damage.
     combo: [
@@ -341,6 +346,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // diagonal-slash → slash → thrust, with a reaching lunge + cleaving strafe
     // sweeps. The legacy `combo` below is now only the fallback cone shaping.
     moves: SWORD_DEFAULT_MOVES,
+    heavyMoves: SWORD_HEAVY_MOVES,   // charged: a big committed chop → driving thrust
     // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
     // (playtest: blanket cleave was OP). Cleave is reserved for the
     // directional STRAFE sweeps below + the charged ward.
@@ -821,6 +827,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     // Swing arc: per-weapon override, else the class default, else full (1).
     swingArc: spec.swingArc ?? baseT.swingArc ?? 1,
     moves: spec.moves ?? baseT.moves,   // weapon override → class default (inheritance)
+    heavyMoves: spec.heavyMoves ?? baseT.heavyMoves,
     attackSpeed: spec.attackSpeed ?? 1,
     onHit: spec.onHit,
     ranged: spec.ranged,

@@ -70,14 +70,19 @@ export interface DirectionalMoves {
   back?: MoveSpec;
   left?: MoveSpec;
   right?: MoveSpec;
+  /** DASH attack — served when you strike right out of a dodge (Souls-style).
+   *  Takes priority over the movement direction. */
+  dash?: MoveSpec;
 }
 export type MoveStep = MoveSpec | DirectionalMoves;
 export type MoveDir = 'forward' | 'back' | 'left' | 'right' | null;
 
-/** Resolve a combo step against the latched movement direction: the directional
- *  variant if authored, else the neutral/base move. */
-export function pickMove(step: MoveStep, dir: MoveDir): MoveSpec {
+/** Resolve a combo step against context: a DASH attack (if you just dodged and
+ *  the step authors one) wins over the movement direction, which wins over the
+ *  neutral/base move. A plain move ignores all context. */
+export function pickMove(step: MoveStep, dir: MoveDir, dashed = false): MoveSpec {
   if ('motion' in step) return step;                 // a plain move — no variants
+  if (dashed && step.dash) return step.dash;
   if (dir === 'forward' && step.forward) return step.forward;
   if (dir === 'back' && step.back) return step.back;
   if (dir === 'left' && step.left) return step.left;

@@ -1,6 +1,7 @@
 import { getCurrentWeapon } from '../player/current-weapon';
 import type { ResolvedComboStep } from '../content/weapon-classes';
-import { resolveMove, pickMove, type ResolvedMove, type MovePose, type MoveDir } from './move-timeline';
+import { resolveMove, pickMove, type ResolvedMove, type MovePose, type MoveDir, type MoveStep } from './move-timeline';
+import { msSinceDash } from './just-dodge';
 import { CONFIG } from '../config';
 
 // Extra grace ms added to the combo window when the just-finished step was on
@@ -164,19 +165,26 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   let strikesFired = 0;     // hitTimes already handed to combat via consumeStrikes
   let moveComboIndex = 0;   // which move in the weapon's `moves` combo is playing
   let moveDir: MoveDir = null;   // movement direction LATCHED at the opener press (research: sample-at-press, don't re-sample mid-move)
+  let moveDashed = false;        // did the opener press land right out of a dodge → serve the DASH attack
 
   /** Begin move `index` of the combo (docs/MOVE-TIMELINE.md). Used both to START
    *  a combo (from idle) and to CHAIN seamlessly to the next move on a buffered
    *  press. Holds phase='strike' so combat/agency/trail read a live swing. */
+  /** The active timeline moveset — the HEAVY track (charged) if the weapon has
+   *  one, else the light `moves`. `track` is set at the press in requestSwing. */
+  function timelineMoveset(wm: ReturnType<typeof getCurrentWeapon>): MoveStep[] {
+    return (track === 'heavy' && wm.heavyMoves && wm.heavyMoves.length) ? wm.heavyMoves : wm.moves!;
+  }
+
   function startTimelineMove(wm: ReturnType<typeof getCurrentWeapon>, index: number, charged: boolean) {
     moveComboIndex = index;
     // pickMove resolves the directional variant off the LATCHED moveDir (plain
-    // steps ignore it) — so only the opener flavors by movement.
-    resolvedMove = resolveMove(pickMove(wm.moves![index], moveDir), { attackSpeed: wm.attackSpeed ?? 1, flurryHits: 0 });
+    // steps ignore it) — so only the opener flavors by movement. Moveset =
+    // whichever TRACK (light/heavy) requestSwing chose.
+    resolvedMove = resolveMove(pickMove(timelineMoveset(wm)[index], moveDir, moveDashed), { attackSpeed: wm.attackSpeed ?? 1, flurryHits: 0 });
     elapsed = 0;
     strikesFired = 0;
     comboStep = 0;
-    track = 'light';
     activeDirectionalStep = null;
     activeEnderStep = null;
     openerDirKey = null;
@@ -266,23 +274,32 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // move's strike times, not the strike window.
     {
       const wm = getCurrentWeapon();
-      if (wm.moves && wm.moves.length) {
+      const charged = !!opts?.skipWindup;
+      // HEAVY track: a charged press plays `heavyMoves` (if the weapon has them),
+      // else falls back to the light `moves`. The heavy moveset is directional +
+      // combo just like light — everything below reuses it.
+      const newTrack: 'light' | 'heavy' = (charged && wm.heavyMoves && wm.heavyMoves.length) ? 'heavy' : 'light';
+      const moveset = newTrack === 'heavy' ? wm.heavyMoves! : wm.moves;
+      if (moveset && moveset.length) {
         if (phase !== 'idle') {
           // Mid-move press → BUFFER a chain if there's a next move (auto-fired on
-          // move-end in advance). Keeps the ramp responsive without waiting for
-          // the exact recover-window.
-          if (resolvedMove && moveComboIndex < wm.moves.length - 1) queuedPress = true;
+          // move-end in advance). Keeps the combo responsive.
+          if (resolvedMove && moveComboIndex < moveset.length - 1) queuedPress = true;
           return false;
         }
-        // Chain within the combo window, else restart at the opener. Latch the
-        // movement direction at THIS press (only affects the opener; deeper steps
-        // are plain). Map the combat AttackDirection → the move's MoveDir.
+        // Latch movement direction at THIS press (only affects the opener; deeper
+        // steps are plain). Map the combat AttackDirection → the move's MoveDir.
         const d = opts?.direction;
         moveDir = d === 'forward' ? 'forward' : d === 'back' ? 'back'
           : d === 'strafe-left' ? 'left' : d === 'strafe-right' ? 'right' : null;
-        const inWindow = clock < comboWindowExpiresAt;
-        const next = (inWindow && moveComboIndex < wm.moves.length - 1) ? moveComboIndex + 1 : 0;
-        startTimelineMove(wm, next, !!opts?.skipWindup);
+        // DASH attack: this press landed right out of a dodge → the opener serves
+        // its `dash` variant (a lunge), overriding the movement direction.
+        moveDashed = msSinceDash() < CONFIG.DASH_ATTACK_WINDOW_MS;
+        // Chain only within the SAME track + window; a light↔heavy switch restarts.
+        const inWindow = clock < comboWindowExpiresAt && newTrack === track;
+        track = newTrack;
+        const next = (inWindow && moveComboIndex < moveset.length - 1) ? moveComboIndex + 1 : 0;
+        startTimelineMove(wm, next, charged);
         return true;
       }
       resolvedMove = null;   // a legacy weapon must never carry a stale move
@@ -381,9 +398,9 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       elapsed += dt;
       if (elapsed >= resolvedMove.duration) {
         const w = getCurrentWeapon();
-        if (queuedPress && w.moves && moveComboIndex < w.moves.length - 1) {
+        if (queuedPress && moveComboIndex < timelineMoveset(w).length - 1) {
           // A press was buffered mid-move → chain to the next move SEAMLESSLY
-          // (no idle frame between). This is the ramp: stab → double → triple.
+          // (no idle frame between), staying on the current track.
           queuedPress = false;
           startTimelineMove(w, moveComboIndex + 1, false);
         } else {

@@ -218,6 +218,10 @@ export interface WeaponStats {
    *  (DirectionalMoves) instead of a plain move — the opener flavors by movement.
    *  Weapons without `moves` are unaffected. */
   moves?: MoveStep[];
+  /** HEAVY moveset — the charged (hold→release) combo. Same shape as `moves`
+   *  (directional + combo), just bigger/slower/harder. A charged press plays this
+   *  track; omitted → a charged press falls back to the light move + charge bonus. */
+  heavyMoves?: MoveStep[];
   /**
    * Multiplier applied to all combo-step timings after the class
    * defaults resolve. 1.0 = baseline, 1.2 = 20% faster (smaller

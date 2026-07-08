@@ -60,6 +60,8 @@ function daggerOpener(): MoveStep {
     back:    dg(1, M_RETREAT, 0.20, 0.5),
     left:    dg(1, M_SLASH_L, 0.22, 0.8, 0.55),
     right:   dg(1, M_SLASH_R, 0.22, 0.8, 0.55),
+    // DASH ATTACK — a leaping plunge out of a dodge: deep reach, extra bite.
+    dash:    { ...dg(1, M_LUNGE, 0.14, 1.1, 0.30), reachMul: 1.8 },
   };
 }
 
@@ -119,7 +121,44 @@ export const SWORD_DEFAULT_MOVES: MoveStep[] = [
     back:    sw(SM_WARD,    0.8),            // give ground, defensive cut
     left:    sw(SM_SWEEP_L, 0.9, 1.0, 2),    // wide arc, cleaves two
     right:   sw(SM_SWEEP_R, 0.9, 1.0, 2),
+    dash:    sw(SM_LUNGE,   1.5, 2.0),       // a driving lunge out of a dodge
   },
   sw(SM_SLASH_L, 1.0),                        // the opposite diagonal
   sw(SM_THRUST,  1.4, 1.25),                  // committed thrust finisher
+];
+
+// ── HEAVY (charged) movesets ────────────────────────────────────────────────
+// The hold→release track: bigger, slower (a long windup — you PAID for it by
+// charging), harder-hitting. Directional + combo, same as light.
+
+/** A heavy dagger move — long windup/recovery, high damage. */
+function dgH(n: number, motion: MoveSpec['motion'], loopS: number, damageMul: number, reachMul?: number, maxTargets?: number, hitAt = 0.35): MoveSpec {
+  return { motion, timing: { introS: 0.26, loopS, outroS: 0.32 }, loopCount: n, hitAt, damageMul, reachMul, maxTargets };
+}
+/** DAGGER heavy — a committed PLUNGE, flavored by movement, into an execute-flurry. */
+export const DAGGER_HEAVY_MOVES: MoveStep[] = [
+  {
+    neutral: dgH(1, M_LUNGE,   0.24, 1.8, 1.3),
+    forward: dgH(1, M_LUNGE,   0.22, 2.0, 1.7),          // a leaping lunge
+    back:    dgH(1, M_RETREAT, 0.24, 1.4),
+    left:    dgH(1, M_SLASH_L, 0.24, 1.5, 1.0, 2, 0.55),
+    right:   dgH(1, M_SLASH_R, 0.24, 1.5, 1.0, 2, 0.55),
+  },
+  dgH(4, M_STAB, 0.11, 0.7),                             // rapid heavy execute-flurry
+];
+
+/** A heavy sword move — a big committal chop. */
+function swH(motion: MoveSpec['motion'], damageMul: number, reachMul?: number, maxTargets?: number, hitAt = 0.5): MoveSpec {
+  return { motion, timing: { introS: 0.30, loopS: 0.30, outroS: 0.38 }, loopCount: 1, hitAt, damageMul, reachMul, maxTargets };
+}
+/** SWORD heavy — a big committed cut, flavored by movement, into a driving thrust. */
+export const SWORD_HEAVY_MOVES: MoveStep[] = [
+  {
+    neutral: swH(SM_SLASH_R, 2.0),
+    forward: swH(SM_LUNGE,   2.2, 1.7),                  // a stepping heavy lunge
+    back:    swH(SM_WARD,    1.4),                        // a heavy ward
+    left:    swH(SM_SWEEP_L, 1.6, 1.0, 3),               // wide heavy cleave (3)
+    right:   swH(SM_SWEEP_R, 1.6, 1.0, 3),
+  },
+  swH(SM_THRUST, 2.6, 1.4),                              // driving thrust finisher
 ];
