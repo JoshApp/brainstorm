@@ -4,6 +4,7 @@ import type { StatModifier } from '../combat/modifiers';
 import { collectActiveSetBonuses } from '../content/sets';
 import { cardOnHitVictim } from '../content/cards';
 import { getHeldCards } from '../state/run-state';
+import { addRelic, getReliquary } from './reliquary';
 
 // Equipment slots. Four slots total: weapon, armor, ring1, ring2. Each
 // slot holds at most one ItemSpec (or null).
@@ -18,32 +19,23 @@ import { getHeldCards } from '../state/run-state';
 // this module only owns what's CURRENTLY EQUIPPED. Pickup logic decides
 // auto-equip; whatever doesn't auto-equip stays in inventory.
 
-export type EquipSlot =
-  | 'weapon' | 'armor' | 'ring1' | 'ring2'
-  | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand';
+// THREE gear slots (docs/BUILD-ECONOMY.md): weapon + offhand + VESTMENT (one worn
+// garment). The old armor paperdoll (armor/helmet/gloves/boots) collapses into
+// `vestment`; the old jewelry (ring/amulet) becomes RELICS you collect into the
+// reliquary (player/reliquary.ts) — never a slot. Gear ground-swaps; relics
+// auto-collect and all apply.
+export type EquipSlot = 'weapon' | 'offhand' | 'vestment';
 
 export interface Equipment {
-  weapon:  ItemSpec | null;
-  armor:   ItemSpec | null;
-  ring1:   ItemSpec | null;
-  ring2:   ItemSpec | null;
-  helmet:  ItemSpec | null;
-  amulet:  ItemSpec | null;
-  gloves:  ItemSpec | null;
-  boots:   ItemSpec | null;
-  offhand: ItemSpec | null;
+  weapon:   ItemSpec | null;
+  offhand:  ItemSpec | null;
+  vestment: ItemSpec | null;
 }
 
 const slots: Equipment = {
-  weapon:  null,
-  armor:   null,
-  ring1:   null,
-  ring2:   null,
-  helmet:  null,
-  amulet:  null,
-  gloves:  null,
-  boots:   null,
-  offhand: null,
+  weapon:   null,
+  offhand:  null,
+  vestment: null,
 };
 
 // ── Affix sidecar ────────────────────────────────────────────────────
@@ -52,8 +44,7 @@ const slots: Equipment = {
 // Aggregated by src/combat/modifiers.ts into the central stat pipeline,
 // and read by the inventory panel to display "scimitar of the keening".
 const slotAffixes: Record<EquipSlot, AffixInstance[]> = {
-  weapon:  [], armor:   [], ring1:   [], ring2:   [],
-  helmet:  [], amulet:  [], gloves:  [], boots:   [], offhand: [],
+  weapon: [], offhand: [], vestment: [],
 };
 
 type EquipListener = (eq: Readonly<Equipment>) => void;
@@ -109,6 +100,8 @@ export function aggregateAffixModifiers(): StatModifier[] {
   for (const slot of Object.keys(slotAffixes) as EquipSlot[]) {
     for (const a of slotAffixes[slot]) out.push(...a.modifiers);
   }
+  // Relic affixes apply too (a rolled relic like a "keening" fetish).
+  for (const r of getReliquary()) for (const a of r.affixes) out.push(...a.modifiers);
   return out;
 }
 
@@ -116,7 +109,8 @@ export function aggregateAffixModifiers(): StatModifier[] {
  *  central-pipeline citizen as affix + buff modifiers; consumed by
  *  src/combat/modifiers.ts. */
 export function aggregateSetModifiers(): StatModifier[] {
-  const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  const setIds: (string | undefined)[] = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  for (const r of getReliquary()) setIds.push(r.spec.setId);
   const out: StatModifier[] = [];
   for (const b of collectActiveSetBonuses(setIds)) {
     if (b.modifiers) out.push(...b.modifiers);
@@ -145,7 +139,13 @@ export function getPlayerOnHits(): PlayerOnHit[] {
     const item = slots[slot];
     if (item?.onHit) out.push(item.onHit);
   }
-  const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  // RELIQUARY on-hits — every collected relic's on-hit + its affix on-hits apply.
+  for (const r of getReliquary()) {
+    if (r.spec.onHit) out.push(r.spec.onHit);
+    for (const a of r.affixes) if (a.onHit) out.push(a.onHit);
+  }
+  const setIds: (string | undefined)[] = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  for (const r of getReliquary()) setIds.push(r.spec.setId);
   for (const b of collectActiveSetBonuses(setIds)) if (b.onHit) out.push(b.onHit);
   // Fate-card ON-HIT hexes (the tarot PROC, e.g. The Pyre's bleed) are just
   // another on-hit source — folded in here so combat's single on-hit loop
@@ -169,17 +169,17 @@ export function getPlayerOnHits(): PlayerOnHit[] {
 export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   switch (item.kind) {
     case 'weapon':  return autoFillSingle('weapon', item, affixes);
-    case 'armor':   return autoFillSingle('armor', item, affixes);
-    case 'helmet':  return autoFillSingle('helmet', item, affixes);
-    case 'amulet':  return autoFillSingle('amulet', item, affixes);
-    case 'gloves':  return autoFillSingle('gloves', item, affixes);
-    case 'boots':   return autoFillSingle('boots', item, affixes);
     case 'offhand': return autoFillSingle('offhand', item, affixes);
-    case 'ring': {
-      if (!slots.ring1) { slots.ring1 = item; slotAffixes.ring1 = affixes; notify(); return true; }
-      if (!slots.ring2) { slots.ring2 = item; slotAffixes.ring2 = affixes; notify(); return true; }
-      return false;
-    }
+    // The old armor paperdoll → one VESTMENT slot.
+    case 'vestment':
+    case 'armor':
+    case 'helmet':
+    case 'gloves':
+    case 'boots':   return autoFillSingle('vestment', item, affixes);
+    // Jewelry + relics COLLECT into the reliquary — never a slot, always applies.
+    case 'relic':
+    case 'ring':
+    case 'amulet':  addRelic(item, affixes); return true;
     case 'consumable':
     case 'key':
       return false;
@@ -198,14 +198,17 @@ function autoFillSingle(slot: EquipSlot, item: ItemSpec, affixes: AffixInstance[
 export function slotKindFor(kind: ItemKind): EquipSlot[] {
   switch (kind) {
     case 'weapon':     return ['weapon'];
-    case 'armor':      return ['armor'];
-    case 'helmet':     return ['helmet'];
-    case 'amulet':     return ['amulet'];
-    case 'gloves':     return ['gloves'];
-    case 'boots':      return ['boots'];
     case 'offhand':    return ['offhand'];
-    case 'ring':       return ['ring1', 'ring2'];
-    case 'consumable': return [];
+    case 'vestment':
+    case 'armor':
+    case 'helmet':
+    case 'gloves':
+    case 'boots':      return ['vestment'];
+    // relics/jewelry don't occupy a slot — they collect into the reliquary.
+    case 'relic':
+    case 'ring':
+    case 'amulet':
+    case 'consumable':
     case 'key':        return [];
   }
 }
@@ -228,14 +231,18 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
   } else {
     switch (item.kind) {
       case 'weapon':  slot = 'weapon'; break;
-      case 'armor':   slot = 'armor'; break;
-      case 'helmet':  slot = 'helmet'; break;
-      case 'amulet':  slot = 'amulet'; break;
-      case 'gloves':  slot = 'gloves'; break;
-      case 'boots':   slot = 'boots'; break;
       case 'offhand': slot = 'offhand'; break;
-      case 'ring':    slot = !slots.ring1 ? 'ring1' : !slots.ring2 ? 'ring2' : 'ring1'; break;
-      case 'consumable': return null;
+      case 'vestment':
+      case 'armor':
+      case 'helmet':
+      case 'gloves':
+      case 'boots':   slot = 'vestment'; break;
+      // Equipping a relic from the bag = collecting it (no slot, no displacement).
+      case 'relic':
+      case 'ring':
+      case 'amulet':  addRelic(item); return null;
+      case 'consumable':
+      case 'key':     return null;
     }
   }
   if (!slot) return null;

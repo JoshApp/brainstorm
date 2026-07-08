@@ -2,6 +2,7 @@ import { CONFIG } from '../config';
 import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
 import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '../player/equipment';
+import { getReliquary } from '../player/reliquary';
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
 import { aggregateMutationModifiers } from '../state/run-mutations';
@@ -77,6 +78,17 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
           if (evaluateModifierCondition(c.condition, entityId)) {
             out.push(...c.modifiers);
           }
+        }
+      }
+    }
+    // RELIQUARY (docs/BUILD-ECONOMY.md) — every collected relic's own modifiers
+    // apply, UNCAPPED, alongside the 3 gear slots. No slot management: you accrete
+    // these. Same shape as a slot (base + conditional modifiers).
+    for (const r of getReliquary()) {
+      if (r.spec.modifiers) out.push(...r.spec.modifiers);
+      if (r.spec.conditionalModifiers) {
+        for (const c of r.spec.conditionalModifiers) {
+          if (evaluateModifierCondition(c.condition, entityId)) out.push(...c.modifiers);
         }
       }
     }
@@ -258,6 +270,8 @@ export function aggregatePassives(entityId: EntityId): PassiveSpec[] {
     for (const slot of Object.values(getEquipment())) {
       if (slot?.passives) out.push(...slot.passives);
     }
+    // Reliquary — every collected relic's passives, uncapped.
+    for (const r of getReliquary()) if (r.spec.passives) out.push(...r.spec.passives);
     // Fate-card PROCS (on kill/crit) — synthesized as passives so they fire
     // through the ONE trigger path (ecs/triggers.ts) alongside equipment, never
     // a fork. On-hit hexes ride getPlayerOnHits instead (victim-aware).

@@ -1,4 +1,5 @@
 import { getEquipment, type EquipSlot } from '../player/equipment';
+import { getReliquary } from '../player/reliquary';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
@@ -21,16 +22,13 @@ type SlotDef = {
   size: number;
 };
 
+// THREE gear slots (docs/BUILD-ECONOMY.md): the VESTMENT (one garment), the
+// WEAPON, and the OFF-HAND. Relics aren't slots — they show in the reliquary row
+// below (all collected, all active).
 const SLOTS: SlotDef[] = [
-  { slotId: 'helmet', top: '7%',  left: '50%', size: 38, shortLabel: 'HELM', longLabel: 'HELMET' },
-  { slotId: 'amulet', top: '24%', left: '50%', size: 28, shortLabel: 'AMU',  longLabel: 'AMULET' },
-  { slotId: 'armor',  top: '42%', left: '50%', size: 44, shortLabel: 'ARM',  longLabel: 'ARMOR' },
-  { slotId: 'weapon', top: '52%', left: '14%', size: 44, shortLabel: 'WPN',  longLabel: 'WEAPON' },
-  { slotId: 'offhand',top: '52%', left: '86%', size: 44, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
-  { slotId: 'gloves', top: '70%', left: '14%', size: 34, shortLabel: 'GLV',  longLabel: 'GLOVES' },
-  { slotId: 'ring1',  top: '70%', left: '38%', size: 30, shortLabel: 'R1',   longLabel: 'RING' },
-  { slotId: 'ring2',  top: '70%', left: '62%', size: 30, shortLabel: 'R2',   longLabel: 'RING' },
-  { slotId: 'boots',  top: '92%', left: '50%', size: 34, shortLabel: 'FEET', longLabel: 'BOOTS' },
+  { slotId: 'vestment', top: '28%', left: '50%', size: 50, shortLabel: 'VEST', longLabel: 'VESTMENT' },
+  { slotId: 'weapon',   top: '58%', left: '20%', size: 48, shortLabel: 'WPN',  longLabel: 'WEAPON' },
+  { slotId: 'offhand',  top: '58%', left: '80%', size: 48, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
 ];
 
 export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
@@ -61,7 +59,44 @@ export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
   }
 
   col.appendChild(dollContainer);
+  col.appendChild(buildRelicRow());
   return col;
+}
+
+/** The RELIQUARY row — every collected relic, all active. Read-only (relics are
+ *  permanent; nothing to unequip), a growing grid of thumbnails. */
+function buildRelicRow(): HTMLDivElement {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' } as Partial<CSSStyleDeclaration>);
+  const relics = getReliquary();
+  wrap.appendChild(sectionLabel(`RELIQUARY${relics.length ? ` · ${relics.length}` : ''}`));
+  const row = document.createElement('div');
+  Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', gap: '4px', minHeight: '28px', alignContent: 'flex-start' } as Partial<CSSStyleDeclaration>);
+  if (relics.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'nothing gathered';
+    Object.assign(empty.style, { color: TEXT_DIM, fontSize: '10px', fontStyle: 'italic', padding: '4px 2px' } as Partial<CSSStyleDeclaration>);
+    row.appendChild(empty);
+  } else {
+    const SIZE = 30;
+    for (const r of relics) {
+      const cell = document.createElement('div');
+      const rc = RARITY_COLORS[r.spec.rarity ?? 'mundane'];
+      Object.assign(cell.style, {
+        width: `${SIZE}px`, height: `${SIZE}px`, borderRadius: '3px',
+        border: `1px solid ${hexCss(rc)}`, background: 'rgba(20,14,10,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      } as Partial<CSSStyleDeclaration>);
+      cell.title = r.spec.name;
+      const thumb = document.createElement('img');
+      thumb.src = getItemThumbnail(r.spec);
+      Object.assign(thumb.style, { width: `${SIZE - 6}px`, height: `${SIZE - 6}px`, objectFit: 'contain' } as Partial<CSSStyleDeclaration>);
+      cell.appendChild(thumb);
+      row.appendChild(cell);
+    }
+  }
+  wrap.appendChild(row);
+  return wrap;
 }
 
 function buildSilhouette(): SVGSVGElement {

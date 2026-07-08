@@ -34,6 +34,13 @@ import { PASSIVES } from './passives';
 
 export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable'
                      | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand'
+                     // The SIMPLIFIED gear model (docs/BUILD-ECONOMY.md): three
+                     // slots — weapon / offhand / VESTMENT (one worn garment,
+                     // replacing armor/helmet/gloves/boots) — plus RELICS you
+                     // COLLECT into the reliquary (all apply, no slots; the old
+                     // ring/amulet route here). armor/helmet/gloves/boots still
+                     // exist as kinds but now equip into the vestment slot.
+                     | 'vestment' | 'relic'
                      // 'key' — carried, not worn or drunk: spent by locked
                      // things (reliquaries). Counted in inventory like a
                      // consumable but never appears on the consumable bar.
