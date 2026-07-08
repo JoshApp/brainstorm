@@ -1,5 +1,6 @@
 import { getCurrentWeapon } from '../player/current-weapon';
 import type { ResolvedComboStep } from '../content/weapon-classes';
+import { resolveMove, pickMove, type ResolvedMove, type MovePose, type MoveDir } from './move-timeline';
 import { CONFIG } from '../config';
 
 // Extra grace ms added to the combo window when the just-finished step was on
@@ -99,6 +100,13 @@ export interface SwingState {
   interruptSwing(): void;
   /** Debug-only: jump straight to a phase + phase timer (no transition). */
   setDebugPhase(phase: SwingPhase, phaseTimer: number): void;
+  /** Timeline mode (docs/MOVE-TIMELINE.md): the move's weapon pose at the current
+   *  elapsed time, or null when not playing a move. The view poses from this. */
+  getMovePose(): MovePose | null;
+  /** Timeline mode: the move's strike times crossed since the last call —
+   *  `count` of them, and the `startIndex` of the first (0 = the move's opening
+   *  rip → full crunch; >0 = a flurry sub-hit). {0,0} when not a move. */
+  consumeStrikes(): { count: number; startIndex: number };
 }
 
 // The combo BUFFER only opens toward the END of the current swing. A press
@@ -143,10 +151,52 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   // the only source of time, so a test drives behaviour purely by advance().
   let clock = 0;
 
+  // ── TIMELINE MODE (docs/MOVE-TIMELINE.md) ──────────────────────────────────
+  // When the equipped weapon has a `move`, the phase machine is BYPASSED: the
+  // move plays on `elapsed` (the one clock the view AND combat read), and strikes
+  // fire as elapsed crosses the move's hitTimes. Non-move weapons leave these
+  // null/0 and run the legacy machine bit-for-bit unchanged.
+  let resolvedMove: ResolvedMove | null = null;
+  let elapsed = 0;          // seconds since the move started — the shared clock
+  let strikesFired = 0;     // hitTimes already handed to combat via consumeStrikes
+  let moveComboIndex = 0;   // which move in the weapon's `moves` combo is playing
+  let moveDir: MoveDir = null;   // movement direction LATCHED at the opener press (research: sample-at-press, don't re-sample mid-move)
+
+  /** Begin move `index` of the combo (docs/MOVE-TIMELINE.md). Used both to START
+   *  a combo (from idle) and to CHAIN seamlessly to the next move on a buffered
+   *  press. Holds phase='strike' so combat/agency/trail read a live swing. */
+  function startTimelineMove(wm: ReturnType<typeof getCurrentWeapon>, index: number, charged: boolean) {
+    moveComboIndex = index;
+    // pickMove resolves the directional variant off the LATCHED moveDir (plain
+    // steps ignore it) — so only the opener flavors by movement.
+    resolvedMove = resolveMove(pickMove(wm.moves![index], moveDir), { attackSpeed: wm.attackSpeed ?? 1, flurryHits: 0 });
+    elapsed = 0;
+    strikesFired = 0;
+    comboStep = 0;
+    track = 'light';
+    activeDirectionalStep = null;
+    activeEnderStep = null;
+    openerDirKey = null;
+    phase = 'strike';
+    phaseTimer = 0;
+    options.onSwingStart?.({ charged });
+  }
+
   /** The combo array comboStep indexes — the heavy chain when on the heavy track
    *  (and the weapon has one), else the light combo. */
   function comboArray(w: ReturnType<typeof getCurrentWeapon>): ResolvedComboStep[] {
     return track === 'heavy' && w.heavyCombo && w.heavyCombo.length ? w.heavyCombo : w.combo;
+  }
+
+  /** Carry the opener's authored flurry (combo[0].hits) onto a directional /
+   *  charged opener variant. Those variants are authored WITHOUT `hits`, and
+   *  comboTuning only patches the base combo — so a MOVING melee attack (the
+   *  common case: you strafe a mob) dropped the opener flurry entirely. That was
+   *  the "1-1-3" bug: the dagger only flurried on the finisher. The directional
+   *  move's OWN hits win if it has them. */
+  function withOpenerFlurry(step: ResolvedComboStep, combo: ResolvedComboStep[]): ResolvedComboStep {
+    if (step.hits || !combo[0]?.hits) return step;
+    return { ...step, hits: combo[0].hits };
   }
 
   /** Resolve the step for the CURRENT combo index, defensively wrapping in
@@ -169,12 +219,12 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
           : openerDirKey === 'back'  ? 'back'
           : 'strafe';
         const chargedMove = w.chargedMoves?.[chargeKey];
-        if (chargedMove) return { combo: comboArray(w), step: chargedMove };
+        if (chargedMove) return { combo: comboArray(w), step: withOpenerFlurry(chargedMove, comboArray(w)) };
         const directional = w.directionalMoves?.[openerDirKey];
-        if (directional) return { combo: comboArray(w), step: directional };
+        if (directional) return { combo: comboArray(w), step: withOpenerFlurry(directional, comboArray(w)) };
       } else {
         const v = w.directionalMoves?.[openerDirKey];
-        if (v) return { combo: w.combo, step: v };
+        if (v) return { combo: w.combo, step: withOpenerFlurry(v, w.combo) };
       }
     }
     const arr = comboArray(w);
@@ -205,6 +255,35 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // Can't START a swing on an empty bar (combat gates this too, with the HUD
     // flash; this is the sim staying self-consistent).
     if (phase === 'idle' && !canSwing()) return false;
+    // TIMELINE MODE (docs/MOVE-TIMELINE.md): a weapon with a `move` bypasses the
+    // whole phase/combo machine below. v1 = one move per press (no buffering /
+    // multi-step combo yet). Resolve the move against the player's stats, arm the
+    // shared clock, and hold phase='strike' so isSwinging/isStriking/getActiveStep
+    // stay live (combat + agency + trail read them) — but hits come only from the
+    // move's strike times, not the strike window.
+    {
+      const wm = getCurrentWeapon();
+      if (wm.moves && wm.moves.length) {
+        if (phase !== 'idle') {
+          // Mid-move press → BUFFER a chain if there's a next move (auto-fired on
+          // move-end in advance). Keeps the ramp responsive without waiting for
+          // the exact recover-window.
+          if (resolvedMove && moveComboIndex < wm.moves.length - 1) queuedPress = true;
+          return false;
+        }
+        // Chain within the combo window, else restart at the opener. Latch the
+        // movement direction at THIS press (only affects the opener; deeper steps
+        // are plain). Map the combat AttackDirection → the move's MoveDir.
+        const d = opts?.direction;
+        moveDir = d === 'forward' ? 'forward' : d === 'back' ? 'back'
+          : d === 'strafe-left' ? 'left' : d === 'strafe-right' ? 'right' : null;
+        const inWindow = clock < comboWindowExpiresAt;
+        const next = (inWindow && moveComboIndex < wm.moves.length - 1) ? moveComboIndex + 1 : 0;
+        startTimelineMove(wm, next, !!opts?.skipWindup);
+        return true;
+      }
+      resolvedMove = null;   // a legacy weapon must never carry a stale move
+    }
     if (phase !== 'idle') {
       // Only the LIGHT tap chain buffers — heavy steps are discrete charged
       // presses, charged releases can't buffer, and overrides are finishers.
@@ -292,6 +371,29 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   function advance(dt: number) {
     clock += dt;
 
+    // TIMELINE MODE: age the shared clock; end the move at its duration (drop
+    // back to idle + open the combo window). The legacy phase machine never runs
+    // while a move is live.
+    if (resolvedMove) {
+      elapsed += dt;
+      if (elapsed >= resolvedMove.duration) {
+        const w = getCurrentWeapon();
+        if (queuedPress && w.moves && moveComboIndex < w.moves.length - 1) {
+          // A press was buffered mid-move → chain to the next move SEAMLESSLY
+          // (no idle frame between). This is the ramp: stab → double → triple.
+          queuedPress = false;
+          startTimelineMove(w, moveComboIndex + 1, false);
+        } else {
+          resolvedMove = null;
+          queuedPress = false;
+          phase = 'idle';
+          phaseTimer = 0;
+          comboWindowExpiresAt = clock + w.comboWindowMs / 1000;
+        }
+      }
+      return;
+    }
+
     if (phase === 'idle') {
       // Combo window lapsed while idle → drop back to a fresh light step 0 so any
       // combo HUD / held-pose preview reflects the reset.
@@ -300,6 +402,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
         track = 'light';
         openerDirKey = null;
       }
+      if (moveComboIndex !== 0 && clock >= comboWindowExpiresAt) moveComboIndex = 0;   // timeline combo resets too
       return;
     }
 
@@ -358,7 +461,20 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     requestSwing,
     advance,
     getPhase: () => phase,
-    getPhaseProgress: () => (phase === 'idle' ? 0 : Math.min(1, phaseTimer / Math.max(phaseDuration(), 0.001))),
+    getPhaseProgress: () => (
+      resolvedMove ? Math.min(1, elapsed / Math.max(resolvedMove.duration, 0.001))
+      : phase === 'idle' ? 0 : Math.min(1, phaseTimer / Math.max(phaseDuration(), 0.001))),
+    getMovePose: () => (resolvedMove ? resolvedMove.poseAt(elapsed) : null),
+    consumeStrikes: () => {
+      if (!resolvedMove) return { count: 0, startIndex: 0 };
+      const startIndex = strikesFired;   // 0 = the move's FIRST rip (full crunch)
+      let n = 0;
+      while (strikesFired < resolvedMove.hitTimes.length && elapsed >= resolvedMove.hitTimes[strikesFired]) {
+        strikesFired++;
+        n++;
+      }
+      return { count: n, startIndex };
+    },
     getCurrentStep: () => currentStep().step,
     getActiveStep: () => (phase === 'idle' ? null : currentStep().step),
     getComboStep: () => comboStep,
@@ -379,6 +495,10 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       activeDirectionalStep = null;
       activeEnderStep = null;
       openerDirKey = null;
+      resolvedMove = null;   // a weapon swap must not leak a move into the next
+      elapsed = 0;
+      strikesFired = 0;
+      moveComboIndex = 0;
     },
     breakCombo() {
       // Only meaningful between swings — never yank the step out from under a
@@ -399,6 +519,12 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       phaseTimer = t;
     },
     interruptSwing() {
+      // A timeline move has no windup/strike phases to interrupt — just end it.
+      if (resolvedMove) {
+        resolvedMove = null; elapsed = 0; strikesFired = 0; moveComboIndex = 0;
+        phase = 'idle'; phaseTimer = 0; queuedPress = false;
+        return;
+      }
       // Only meaningful from windup / strike. Jump to recover with phaseTimer
       // zeroed so the recover curve plays from its start pose (= the strike's
       // END pose) toward idle. The clank-back impulse on the viewmodel masks

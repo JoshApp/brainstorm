@@ -19,6 +19,7 @@ import { gameRngChance, gameRng } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { registerDeathPayoff } from './death-payoffs';
+import { setMoveIntent } from '../player/move-intent';
 import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
@@ -452,6 +453,13 @@ export function createCombatSystem(
   function tick(attackPressed: boolean, moveX: number, moveY: number, dt: number) {
     // Track movement intent for ranged accuracy bloom (plant to aim).
     lastMoveMag = Math.min(1, Math.hypot(moveX, moveY));
+    // Publish the movement-direction bucket every frame so the viewmodel can
+    // PRIME the weapon toward the directional attack you'd get (move-intent.ts).
+    {
+      const d = pickAttackDirection(moveX, moveY);
+      setMoveIntent(d === 'forward' ? 'forward' : d === 'back' ? 'back'
+        : d === 'strafe-left' ? 'left' : d === 'strafe-right' ? 'right' : null);
+    }
     // Telegraph the live joystick direction while a melee charge is held, so the
     // viewmodel can foretell (and switch) which way the heavy will strike.
     setChargeDirection(
@@ -515,6 +523,8 @@ export function createCombatSystem(
     }
 
     const striking = weapon.isStriking;
+    const wpMoves = getCurrentWeapon().moves;
+    const timelineMove = !!(wpMoves && wpMoves.length);
 
     if (striking && !wasStriking) {
       strikeAlreadyHit = false;
@@ -523,11 +533,34 @@ export function createCombatSystem(
       flurryRemaining = 0;
       flurrySubHit = false;
     }
-    // Strike phase just ended without a hit → open the trail window.
-    if (wasStriking && !striking && !strikeAlreadyHit) {
-      trailTimer = STRIKE_TRAIL_DURATION;
+    // Strike phase just ended. Open the trail window if EITHER we haven't
+    // connected yet (a near-miss still lands in the tail) OR a FLURRY is still
+    // owed — sized to finish the remaining sub-hits. The flurry case is the fix
+    // for the "1-1-3" bug: the flurry timer starts at the FIRST connect, so on a
+    // short step (opener 0.18s) a late connect leaves no strike time for the
+    // sub-hits, and without a trail they silently collapse to a single hit. The
+    // long finisher (0.26s) had the slack to survive, which is why only it
+    // flurried. Now every step gets a window long enough to finish its rips.
+    if (wasStriking && !striking) {
+      if (flurryRemaining > 0) {
+        trailTimer = Math.max(trailTimer, flurryRemaining * flurryInterval + 0.03);
+      } else if (!strikeAlreadyHit) {
+        trailTimer = STRIKE_TRAIL_DURATION;
+      }
     }
     wasStriking = striking;
+
+    // TIMELINE MODE (docs/MOVE-TIMELINE.md): hits come from the move's strike
+    // times, not the strike window. Open the hit window ONLY on a frame where a
+    // strike was crossed; keep it shut otherwise (so the move never fires a free
+    // legacy hit). The legacy flurry re-entry below stays inert — flurryRemaining
+    // is 0 because the arm is guarded off for a move. First strike = full crunch;
+    // the rest read as flurry sub-hits (light crunch + flurryChance).
+    if (timelineMove) {
+      const s = weapon.consumeStrikes();
+      strikeAlreadyHit = s.count === 0;
+      if (s.count > 0) flurrySubHit = s.startIndex > 0;   // opening rip = full crunch
+    }
 
     // Hit-test runs during strike OR during the trail tail (if we
     // haven't connected yet). Once strikeAlreadyHit is true, both
@@ -535,13 +568,18 @@ export function createCombatSystem(
     // FLURRY re-entry: while sub-hits are owed and the strike phase is still
     // live, count down and RE-OPEN the strike window (clear strikeAlreadyHit)
     // so the resolution below runs again as a fresh, independently-rolled hit.
-    if (flurryRemaining > 0 && striking) {
+    // Sub-hits may finish in the brief trail tail too, not just the strike phase
+    // — otherwise the SHORT early combo windows (0.15–0.18s) drop their last
+    // rips while only the long finisher (0.26s) survives, biasing every flurry
+    // weapon toward its finisher. The first hit already lands in the trail (below).
+    if (flurryRemaining > 0 && (striking || trailTimer > 0)) {
       flurryTimer -= dt;
       if (flurryTimer <= 0) {
         flurryTimer += flurryInterval;
         flurryRemaining -= 1;
         strikeAlreadyHit = false;
         flurrySubHit = true;
+        weapon.flurryJab();   // visible stab per rip, in sync with the damage
       }
     }
     const inHitWindow = (striking || trailTimer > 0) && !strikeAlreadyHit;
@@ -581,7 +619,7 @@ export function createCombatSystem(
     // finisher hits >100%, a quick jab <100%. Default 1.0 = one clean hit.
     // A flurry step splits its damage across sub-hits — each hit uses the
     // flurry's own per-hit fraction, ignoring the step's flat damageMul.
-    const stepDamageMul = step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
+    const stepDamageMul = (!timelineMove && step?.hits) ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
     // Directional-dismember side — resolved per target below. Two parts are
     // strike-wide: the player's explicit STRAFE intent, and the swing's authored
@@ -821,8 +859,17 @@ export function createCombatSystem(
         anyHeavy = true;
         const ent = getEntity(target.entityId);
         if (ent) {
+          // FLURRY proc chance is AUTHORED per weapon (docs/BUILD-ECONOMY.md): the
+          // first rip rolls `chance`; each flurry sub-hit rolls the weapon's own
+          // `flurryChance` — so a dagger sets a low `chance` and lets its flurry
+          // carry the bleed, while a slow single-hit weapon sets a high `chance`
+          // and never out-applies it. A weapon that doesn't bother falls back to
+          // `chance × FLURRY_PROC_DIMINISH` so nothing accidentally stacks 300%.
           for (const oh of getPlayerOnHits()) {
-            if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
+            const chance = flurrySubHit
+              ? (oh.flurryChance ?? oh.chance * CONFIG.FLURRY_PROC_DIMINISH)
+              : oh.chance;
+            if (gameRngChance(chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
           }
           // Empowered-hit verb — fires on a hit during the deflect-empower
           // window (empowerActive is already light-gated above, so this is the
@@ -966,11 +1013,12 @@ export function createCombatSystem(
     // Arm the FLURRY on the first CONNECTING hit of a `hits` step (anyHeavy =
     // a real mob, not a whiff or a vase). The re-entry block above then drives
     // the remaining sub-hits on the interval. Armed once per swing.
-    if (!flurryArmed && step?.hits && step.hits.count > 1 && anyHeavy) {
+    if (!timelineMove && !flurryArmed && step?.hits && step.hits.count > 1 && anyHeavy) {
       flurryArmed = true;
       flurryRemaining = step.hits.count - 1;
       flurryInterval = step.hits.interval;
       flurryTimer = step.hits.interval;
+      weapon.flurryJab();   // pop the first rip too, so the whole flurry stabs uniformly
     }
 
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"

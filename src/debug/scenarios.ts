@@ -408,7 +408,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       })),
       doors: [], stairs: [],
     },
-    equipWeaponId: 'bone-needle',
+    equipWeaponId: 'harrow',   // the frenzy verb — swap to 'bone-needle' to A/B the feel
     giveItems: ['clot-fetish', 'crimson-leech'],   // auto-equipped rings → the machine is live
     playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
   },

@@ -461,6 +461,11 @@ export const CONFIG = {
   // swing animations are NOT smoothed (they keep their crisp snap). Higher =
   // snappier; ~22 reaches 90% in ~0.1s, a quick swing-over not a teleport.
   HELD_POSE_SMOOTH_RATE: 22,
+  // Directional PRIMING (docs/MOVE-TIMELINE.md): fraction of the directional
+  // opener's ready pose the resting weapon leans into while you move that way. 0
+  // = no telegraph; 1 = fully cocked. ~0.4 reads as a clear lean without looking
+  // mid-swing. Eased in via HELD_POSE_SMOOTH_RATE so it's smooth, not a snap.
+  MOVE_PRIME_LEAN: 0.4,
   SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
   SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
   // Melee hit is a 3D capsule (genre-standard weapon hitbox), swept across the
@@ -720,6 +725,11 @@ export const CONFIG = {
   // handed to the neighbour. Tune the chain's reach + persistence on feel.
   BLEED_CHAIN_RADIUS: 3.0,
   BLEED_CHAIN_DURATION: 3.5,
+  // Flurry on-hit proc scaling: the first rip of a flurry rolls its status at
+  // full odds; each ADDITIONAL sub-hit rolls at this fraction. So a 4-hit flurry
+  // at 0.75 bleed = 0.75 + 3×(0.75×0.4) = ~1.65 expected stacks (165%), not 3.0
+  // (300%). Tune to shift how hard flurries lean into their status.
+  FLURRY_PROC_DIMINISH: 0.4,
 
   // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
   // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getBobOffset } from './viewmodel-bob';
+import { getMoveIntent } from './move-intent';
+import { pickMove } from '../combat/move-timeline';
 import { getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback } from './viewmodel-pullback';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
@@ -126,6 +128,10 @@ export interface WeaponViewmodel {
    *  by combat to apply per-step reach/cone/maxTargets overrides.
    *  Returns null when no swing is in progress. */
   getActiveStep(): ResolvedComboStep | null;
+  /** Timeline mode (docs/MOVE-TIMELINE.md): the move's strike times crossed since
+   *  the last call — `count` + the `startIndex` of the first (0 = opening rip).
+   *  {0,0} for legacy (non-move) weapons. */
+  consumeStrikes(): { count: number; startIndex: number };
   /** Current swing phase — read by the commitment system to scale player
    *  agency (idle = full freedom). */
   getPhase(): SwingPhase;
@@ -154,6 +160,9 @@ export interface WeaponViewmodel {
    *  and settles back over ~0.2s. A transient layered over whatever pose
    *  is active (idle or mid-swing), so it never fights the swing sim. */
   parryRaise(): void;
+  /** Pop a single forward stab, called once per flurry sub-hit so a multi-rip
+   *  combo step visibly stabs N times in sync with the damage. Transient. */
+  flurryJab(): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
    *  starter altar, and any future unequip-weapon flow). */
@@ -481,6 +490,27 @@ export function createWeaponViewmodel(
     // combo advances and the wand carries upright.
     const step = swing.getCurrentStep();
 
+    // TIMELINE MODE (docs/MOVE-TIMELINE.md): a weapon with a `move` poses from the
+    // move's keyframes (a DELTA off STANDARD_IDLE) on the same `elapsed` clock
+    // combat reads for hits — so the visible stab and its hit are the same
+    // instant. Mirrors the legacy swing mapping exactly: swingArc trims the
+    // sideways components (x/rotY/rotZ), forward depth + pitch (y/z/rotX) intact.
+    const mp = swing.getMovePose();
+    if (mp) {
+      const k = getCurrentWeapon().swingArc ?? 1;
+      const sx = STANDARD_IDLE.x + mp.x * k;
+      const ay = STANDARD_IDLE.y + mp.y;
+      const az = STANDARD_IDLE.z + mp.z;
+      const arx = STANDARD_IDLE.rotX + mp.rotX;
+      const srY = STANDARD_IDLE.rotY + mp.rotY * k;
+      const srZ = STANDARD_IDLE.rotZ + mp.rotZ * k;
+      const pull = getViewmodelPullback();
+      group.position.set(sx, ay, az + pull);
+      group.rotation.set(arx, srY, srZ);
+      setHeld(sx, ay, az, arx, srY, srZ);
+      return;
+    }
+
     if (phase === 'idle') {
       // Idle pose + walk bob. The bob layers on the baseline; it isn't applied
       // to swing animations because it would muddy their snap.
@@ -488,6 +518,22 @@ export function createWeaponViewmodel(
       const idle = computeWeaponPose(step.pose, 'idle', 0);
       let px = idle.x + b.x, py = idle.y + b.y, pz = idle.z;
       let prx = idle.rotX, pry = idle.rotY, prz = idle.rotZ + b.rotZ;
+      // DIRECTIONAL PRIMING (docs/MOVE-TIMELINE.md): while you MOVE, lean the
+      // resting weapon toward the OPENER you'd get in that direction — the loaded
+      // directional attack is telegraphed (forward → cock deeper-forward into the
+      // lunge; back → pull into the retreat jab). Reads the same move-intent
+      // bucket combat latches at the press, so the lean matches the attack.
+      const wpMoves = getCurrentWeapon().moves;
+      const md = getMoveIntent();
+      if (wpMoves && wpMoves.length && md) {
+        const introK = pickMove(wpMoves[0], md).motion.intro;
+        const ready = introK[introK.length - 1]?.pose;
+        if (ready) {
+          const lean = CONFIG.MOVE_PRIME_LEAN;
+          px += ready.x * lean; py += ready.y * lean; pz += ready.z * lean;
+          prx += ready.rotX * lean; pry += ready.rotY * lean; prz += ready.rotZ * lean;
+        }
+      }
       // CHARGED HOLD blend: mid-charge, lerp the resting pose toward the
       // END-OF-WINDUP pose — the weapon visibly cocks back the longer you hold.
       // That end pose IS the strike's t=0 pose, so on release (skipWindup →
@@ -559,6 +605,13 @@ export function createWeaponViewmodel(
   let parryRaiseAmt = 0;
   function parryRaise() { parryRaiseAmt = 1; }
 
+  // Flurry JAB transient — snaps to 1 on flurryJab(), called once per flurry
+  // sub-hit from attack.ts's flurry timer, so the visible stab cadence IS the
+  // damage cadence (no guessing). Decays fast so back-to-back rips (~0.05s
+  // apart) each pop as a distinct forward stab — the sewing-machine read.
+  let flurryJabAmt = 0;
+  function flurryJab() { flurryJabAmt = 1; }
+
   // DRINK STOW — eased 0→1 while the flask channel runs (flask-drink.ts).
   // The weapon hand drops out of the frame bottom-right, and the arm IK
   // below retargets onto the flask hand's wrist (flask-viewmodel.ts), so
@@ -579,6 +632,16 @@ export function createWeaponViewmodel(
       group.rotation.x -= 0.55 * k;     // blade tips up — the catch
       group.rotation.z += 0.28 * k;     // canted across, a guard angle
       parryRaiseAmt = Math.max(0, parryRaiseAmt - dt * 5);   // ~0.2s settle
+    }
+    // Layer the flurry jab: a quick FORWARD thrust per rip (camera-local −Z is
+    // forward, away from camera), so the weapon visibly stabs once per sub-hit
+    // instead of playing one motion for the whole flurry. Decays fast (~0.055s)
+    // so each rip reads separately.
+    if (flurryJabAmt > 0.001) {
+      const k = flurryJabAmt * flurryJabAmt * (3 - 2 * flurryJabAmt);   // smooth
+      group.position.z -= 0.11 * k;    // drive forward, into the target
+      group.rotation.x += 0.10 * k;    // tip pitches in — a stab, not a shove
+      flurryJabAmt = Math.max(0, flurryJabAmt - dt * 18);
     }
     // Layer the drink stow: weapon sinks off frame bottom-right while the
     // flask hand rises (drinks only START from idle, and any real action
@@ -758,6 +821,7 @@ export function createWeaponViewmodel(
     getPhaseProgress: swing.getPhaseProgress,
     startSwing: swing.requestSwing,
     interruptSwing: swing.interruptSwing,
+    consumeStrikes: swing.consumeStrikes,
     setSwingCharge(level: number) {
       chargedSwingLevel = Math.max(0, Math.min(1, level));
     },
@@ -771,6 +835,7 @@ export function createWeaponViewmodel(
     },
     update,
     parryRaise,
+    flurryJab,
     equip,
     breakCombo: swing.breakCombo,
     setDebugPhase,

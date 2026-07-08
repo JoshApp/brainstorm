@@ -1,6 +1,7 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { CONFIG } from '../config';
 import type { StatModifier } from '../combat/modifiers';
+import type { MoveSpec, MoveStep } from '../combat/move-timeline';
 import type { PassiveSpec } from '../ecs/types';
 import type { AttributeKind } from '../state/character';
 import { SWORD_RUSTED } from './sword';
@@ -206,6 +207,16 @@ export interface WeaponStats {
    *  archetype (WEAPON_CLASS_DEFAULTS) sets the baseline; this lets one weapon
    *  differ — e.g. a heavier dagger that hits 0.6 per stab instead of 0.45. */
   comboTuning?: ComboStepTuning[];
+  /** Timeline-authored move COMBO (docs/MOVE-TIMELINE.md). When set, this weapon
+   *  routes through the move runtime instead of the phase machine + flurry hack:
+   *  pressing chains through the array (like a combo), each entry a MoveSpec the
+   *  viewmodel poses from and whose strike times combat fires hits on — one shared
+   *  clock, so animation + hits can't desync. Ramp the combo by growing each
+   *  entry's `loopCount` (stabs per press). `attackSpeed` scales timing; a
+   *  `flurryHits` stat would grow loop counts. A step may be a directional SET
+   *  (DirectionalMoves) instead of a plain move — the opener flavors by movement.
+   *  Weapons without `moves` are unaffected. */
+  moves?: MoveStep[];
   /**
    * Multiplier applied to all combo-step timings after the class
    * defaults resolve. 1.0 = baseline, 1.2 = 20% faster (smaller
@@ -254,7 +265,18 @@ export interface WeaponStats {
    * blade bleeds or a venom-etched dagger poisons. Stacking statuses
    * (bleed/poison) build with repeated hits.
    */
-  onHit?: { buffId: string; chance: number; duration: number };
+  onHit?: {
+    buffId: string;
+    /** Proc chance on a normal (single / FIRST-of-flurry) hit. */
+    chance: number;
+    /** Proc chance on each FLURRY sub-hit. A fast weapon authors a LOW `chance`
+     *  but a meaningful `flurryChance` so its status comes from the flurry (many
+     *  small rolls that add up); a slow single-hit weapon sets a high `chance`
+     *  and no flurry, so it never out-applies a dagger. Omitted → sub-hits fall
+     *  back to `chance × CONFIG.FLURRY_PROC_DIMINISH` (the safe default). */
+    flurryChance?: number;
+    duration: number;
+  };
   /**
    * RANGED weapon. When set, the weapon FIRES this projectile at the
    * auto-target on its strike instead of doing a melee cone hit. The
@@ -389,6 +411,12 @@ export interface ItemSpec {
    *  enough pieces of the same set activates that set's threshold
    *  bonuses. Omit on items that belong to no set. */
   setId?: string;
+  /** ARCHETYPE tag (docs/BUILD-ECONOMY.md). Not a system — just a label
+   *  ('blood' | 'rot' | 'dread' | …) that lets the starter altar deal one
+   *  weapon per domain and the deep bias support toward what you're building.
+   *  A domain is the cluster of items sharing this tag, nothing more. The
+   *  domain's COLOUR comes free from its status VFX (blood = red drip). */
+  domain?: string;
   /**
    * Generic-loot distribution metadata — how this item flows through the
    * central loot roller (src/content/loot.ts). Controls WHERE and HOW
@@ -414,6 +442,67 @@ export interface ItemSpec {
      *  boss item just tags itself here and the manager decides how it drops. */
     pool?: string;
   };
+}
+
+// ── HARROW stab motion (docs/MOVE-TIMELINE.md) ─────────────────────────────
+// One deliberate STAB cycle, shared across the ramping combo. Poses are deltas
+// off STANDARD_IDLE. The asymmetry reads as a committed thrust, not a vibration:
+// a quick drive to the apex (0→0.30), a brief HOLD there (0.30→0.45), then a
+// slower retract (0.45→1). Slow enough per stab (loopS) to read as a stab.
+// A real STAB, matched to the hand-tuned dagger-stab pose (weapon-animations.ts
+// daggerStabPose): the blade TILTS to aim the point at the target (the big rotX
+// = −1.30 tip-forward + the rotY/rotZ that cancel idle yaw/roll) and HOLDS that
+// aim while it thrusts. The tilt is what reads as a stab (near-zero rotation was
+// a flat "low strike"). Deltas off STANDARD_IDLE, same as the dagger.
+const HARROW_HOME  = { x: 0,     y: 0,    z: 0,     rotX: 0,     rotY: 0,    rotZ: 0 };
+const HARROW_READY = { x: -0.06, y: 0.05, z: 0.10,  rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
+const HARROW_APEX  = { x: -0.06, y: 0.05, z: -0.22, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
+// Forward LUNGE — same aim, driven DEEPER: a committed reach in your move dir.
+const HARROW_LUNGE_APEX = { x: -0.06, y: 0.05, z: -0.44, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
+// Back RETREAT — a defensive poke: wound further back, a shallower jab as you give ground.
+const HARROW_RETREAT_READY = { x: -0.06, y: 0.06, z: 0.20,  rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
+const HARROW_RETREAT_APEX  = { x: -0.06, y: 0.06, z: -0.06, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
+
+/** Build a stab motion between a wound-back `ready` and a thrust `apex`. Quick
+ *  thrust (0→0.25) → hold at the point (→0.40) → retract. Loops per rip. */
+function stabMotion(ready: typeof HARROW_READY, apex: typeof HARROW_APEX): MoveSpec['motion'] {
+  return {
+    intro: [{ t: 0, pose: HARROW_HOME, ease: 'out' }, { t: 1, pose: ready }],   // quick cock
+    // SNAP the thrust: ease-OUT drives the blade out fast then settles at the
+    // point (the hand-tuned dagger's feel). The retract (apex→ready) stays smooth.
+    loop:  [{ t: 0, pose: ready, ease: 'out' }, { t: 0.22, pose: apex }, { t: 0.40, pose: apex }, { t: 1, pose: ready }],
+    outro: [{ t: 0, pose: ready }, { t: 1, pose: HARROW_HOME }],
+  };
+}
+const HARROW_MOTION_NEUTRAL = stabMotion(HARROW_READY, HARROW_APEX);
+const HARROW_MOTION_LUNGE   = stabMotion(HARROW_READY, HARROW_LUNGE_APEX);
+const HARROW_MOTION_RETREAT = stabMotion(HARROW_RETREAT_READY, HARROW_RETREAT_APEX);
+// Side CUTS — a lateral SLASH (matched to the legacy daggerSlashPose): wound
+// pulled to one side, edge sweeps across to the other. R sweeps left→right; L is
+// the mirror. This is what makes strafing read — a horizontal arc, not a thrust.
+const HARROW_SLASH_R_WOUND  = { x: -0.42, y: 0.10, z: 0.06,  rotX: -0.55, rotY: 0.95,  rotZ: -0.40 };
+const HARROW_SLASH_R_STRIKE = { x: 0.42,  y: 0,    z: -0.10, rotX: -0.25, rotY: -0.95, rotZ: 0.25 };
+const HARROW_SLASH_L_WOUND  = { x: 0.42,  y: 0.10, z: 0.06,  rotX: -0.55, rotY: -0.95, rotZ: 0.40 };
+const HARROW_SLASH_L_STRIKE = { x: -0.42, y: 0,    z: -0.10, rotX: -0.25, rotY: 0.95,  rotZ: -0.25 };
+// ONE-WAY sweep: wind to one side, cut across, follow through to rest. NOT a
+// loop-back (wound→strike→wound flops like a gummi). The outro starts from the
+// STRIKE (follow-through), matching where the cut ended — that's the weight.
+function slashMotion(wound: typeof HARROW_READY, strike: typeof HARROW_APEX): MoveSpec['motion'] {
+  return {
+    intro: [{ t: 0, pose: HARROW_HOME, ease: 'out' }, { t: 1, pose: wound }],   // quick wind to the side
+    loop:  [{ t: 0, pose: wound, ease: 'out' }, { t: 1, pose: strike }],        // SNAP the sweep across (one-way)
+    outro: [{ t: 0, pose: strike }, { t: 1, pose: HARROW_HOME }],               // follow through to rest
+  };
+}
+const HARROW_MOTION_SLASH_R = slashMotion(HARROW_SLASH_R_WOUND, HARROW_SLASH_R_STRIKE);
+const HARROW_MOTION_SLASH_L = slashMotion(HARROW_SLASH_L_WOUND, HARROW_SLASH_L_STRIKE);
+/** One combo step: `n` reps of a motion; `hitAt` = when in the loop the hit lands.
+ *  timing = windup (introS) + active×n (loopS) + recovery (outroS). The RECOVERY
+ *  governs cadence — how soon you can act again — so a single stab is a deliberate
+ *  ~0.55s (≈1.8/s), not a 0.34s spasm. `loopS` is the per-rip rhythm: keep it slow
+ *  for a single deliberate stab, fast for a flurry's rapid reps. */
+function harrowStab(n: number, motion = HARROW_MOTION_NEUTRAL, loopS = 0.20, hitAt = 0.30): MoveSpec {
+  return { motion, timing: { introS: 0.12, loopS, outroS: 0.22 }, loopCount: n, hitAt };
 }
 
 export const ITEMS: Record<string, ItemSpec> = {
@@ -485,6 +574,64 @@ export const ITEMS: Record<string, ItemSpec> = {
     affixPool: ['keening', 'gallows', 'spine', 'serration', 'venom'],
     maxAffixes: 1,
     setId: 'ossuary',
+    domain: 'blood',
+  },
+  // ── BLOOD DOMAIN — "the frenzy" (docs/BUILD-ECONOMY.md). The Harrow is the
+  // frenzy verb: where the needle crit-FISHES (few precise stabs), the Harrow
+  // SHREDS — an all-flurry moveset that buries bleed stacks fast and rewards
+  // never stopping. Low per-hit, high hit-COUNT: the ramp is the fun, not the
+  // burst. Placeholder needle model for now — judge the FEEL, not the look.
+  'harrow': {
+    id: 'harrow',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: 'The Harrow',
+    flavor: 'It does not cut. It rips, and rips, and rips.',
+    dropModel: BONE_NEEDLE,
+    viewmodel: BONE_NEEDLE,
+    domain: 'blood',
+    weapon: {
+      class: 'dagger',
+      coneHalfAngle: 0.62,
+      damage: 1,
+      critChance: 0.12,
+      critMultiplier: 2.0,
+      // Baseline dagger cadence — the frenzy is in the hit-COUNT, not raw speed
+      // (playtest: faster read as too strong AND truncated the flurries).
+      attackSpeed: 1.0,
+      // Bleed is AUTHORED as a flurry weapon (docs/BUILD-ECONOMY.md): a single
+      // stab barely bleeds (low `chance`), but the flurry carries it — many
+      // sub-hits at `flurryChance` add up to the dagger's signature pressure.
+      // This is the weapon that makes the blood-drinker machine hum.
+      onHit: { buffId: 'bleed', chance: 0.25, flurryChance: 0.28, duration: 3.5 },
+      // TIMELINE combo (docs/MOVE-TIMELINE.md) — a RAMP, not a flat flurry: a
+      // single deliberate stab → a double → a triple finisher. The reward is
+      // chaining to the 3-stab payoff; a starter weapon shouldn't open with a
+      // spasm. Each step is the same committed stab motion, more reps.
+      // A combo with VARIANCE (like the original stab→slash→double-stab), not
+      // three of the same stab: THRUST → CUT → FLURRY. The opener is directional
+      // (flavored by movement); deeper steps stay plain for readability.
+      moves: [
+        // Step 0 — a THRUST, directional: neutral stab, forward LUNGE, back
+        // RETREAT jab, and a side SLASH when you strafe.
+        {
+          neutral: harrowStab(1),
+          forward: harrowStab(1, HARROW_MOTION_LUNGE, 0.16),
+          back:    harrowStab(1, HARROW_MOTION_RETREAT),
+          left:    harrowStab(1, HARROW_MOTION_SLASH_L, 0.22, 0.55),
+          right:   harrowStab(1, HARROW_MOTION_SLASH_R, 0.22, 0.55),
+        },
+        // Step 1 — a wide CUT across the body: the motion break the combo needs.
+        harrowStab(1, HARROW_MOTION_SLASH_R, 0.22, 0.55),
+        // Step 2 — the FLURRY finisher: three rapid thrusts (fast loopS).
+        harrowStab(3, HARROW_MOTION_NEUTRAL, 0.13),
+      ],
+      // Per-stab damage/stagger for the timeline (no `hits` — the move drives the
+      // multi-hit). comboStep stays 0 for a move, so only [0] is read.
+      comboTuning: [
+        { damageMul: 0.4, staggerMul: 0.5 },
+      ],
+    },
   },
   'iron-maul': {
     id: 'iron-maul',
@@ -1435,6 +1582,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A knot of old blood',
     flavor: 'Gone hard as a knuckle. What dies bleeding near it, its wound calls to the rest.',
     dropModel: RING_OF_BLOODTHIRST,
+    domain: 'blood',
     // CHAIN payoff — a dying bleeder re-bleeds its neighbours.
     modifiers: [{ kind: 'bleed-chain', amount: 1 }],
   },
@@ -1445,6 +1593,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A crimson leech',
     flavor: 'It fastens to the wrist and drinks whatever you spill. You barely feel it take.',
     dropModel: RING_OF_BLOODTHIRST,
+    domain: 'blood',
     // FEED payoff — a bleeding kill mends you (build-granted lifesteal).
     modifiers: [{ kind: 'bleed-feed', amount: 1 }],
   },

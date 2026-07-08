@@ -130,6 +130,11 @@ export interface ResolvedWeaponStats {
   /** Resolved lateral swing-arc width (weapon override → class default → 1).
    *  The viewmodel scales a swing pose's sideways deviation by this. */
   swingArc: number;
+  /** Timeline move COMBO — routes this weapon through the move runtime instead of
+   *  the phase machine (docs/MOVE-TIMELINE.md). Passthrough from the weapon spec. */
+  moves?: import('../combat/move-timeline').MoveStep[];
+  /** Attack-speed multiplier (>1 = faster). Passthrough; scales a move's timing. */
+  attackSpeed: number;
   /** On-hit status infliction, passed through from the weapon spec. */
   onHit?: { buffId: string; chance: number; duration: number };
   /** Ranged projectile (crossbow/wand/throwing-knives) — strike fires
@@ -801,6 +806,8 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
     // Swing arc: per-weapon override, else the class default, else full (1).
     swingArc: spec.swingArc ?? baseT.swingArc ?? 1,
+    moves: spec.moves,
+    attackSpeed: spec.attackSpeed ?? 1,
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,

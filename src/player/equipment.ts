@@ -124,7 +124,7 @@ export function aggregateSetModifiers(): StatModifier[] {
   return out;
 }
 
-export interface PlayerOnHit { buffId: string; chance: number; duration: number; }
+export interface PlayerOnHit { buffId: string; chance: number; flurryChance?: number; duration: number; }
 
 /** Every on-hit status the player currently inflicts, from all sources:
  *  the equipped weapon's base on-hit, any on-hit AFFIXES rolled on the
