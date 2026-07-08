@@ -1,7 +1,7 @@
 import { CONFIG } from '../config';
 import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile, FlurrySpec } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
-import { DAGGER_DEFAULT_MOVES, SWORD_DEFAULT_MOVES, DAGGER_HEAVY_MOVES, SWORD_HEAVY_MOVES } from './weapon-moves';
+import { DAGGER_DEFAULT_MOVES, SWORD_DEFAULT_MOVES, DAGGER_HEAVY_MOVES, SWORD_HEAVY_MOVES, HAMMER_DEFAULT_MOVES, HAMMER_HEAVY_MOVES } from './weapon-moves';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -427,6 +427,12 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
              reachMul: 1.40, coneHalfAngleMul: 0.9, maxTargets: 2 },
   },
   hammer: {
+    // Timeline moveset (docs/MOVE-TIMELINE.md) — sweep → sweep → overhead SMASH,
+    // with a charged heavy (huge smash → ground-pound) and a slow cadence. The
+    // legacy `combo` below is now only the fallback cone shaping.
+    moves: HAMMER_DEFAULT_MOVES,
+    heavyMoves: HAMMER_HEAVY_MOVES,
+    attackCadenceS: 1.15,   // slow + heavy — the big commit
     // swing-right → swing-left → smash. Wide horizontal sweeps
     // cleave two; the overhead smash finisher catches up to three
     // with the widest area + a longer effective reach.

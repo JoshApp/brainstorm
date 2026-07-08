@@ -210,7 +210,7 @@ test('a centered opener (no direction) plays the normal combo step 0', () => {
 });
 
 // ── Heavy combo chain + light→heavy ender (the hammer) ───────────
-const HAMMER = { reach: 2.4, coneHalfAngle: 0.9, damage: 2, critChance: 0.05, critMultiplier: 2.0, class: 'hammer' as const };
+const LEGACY_HEAVY = { reach: 2.4, coneHalfAngle: 0.9, damage: 2, critChance: 0.05, critMultiplier: 2.0, class: 'spear' as const };  // a still-legacy class (heavyCombo+ender); hammer migrated to the timeline
 // A CHARGED swing skips windup (strike→recover→idle), so it reaches idle in TWO
 // advances — a third would lapse the combo window. Stops at idle, window open.
 function walkChargedToIdle(s: ReturnType<typeof createSwingState>) {
@@ -219,7 +219,7 @@ function walkChargedToIdle(s: ReturnType<typeof createSwingState>) {
 }
 
 test('heavy chain: charged releases walk the escalating heavy combo', () => {
-  setCurrentWeapon(HAMMER);
+  setCurrentWeapon(LEGACY_HEAVY);
   const s = createSwingState();
   const heavy = W().heavyCombo!;
   assert.ok(heavy && heavy.length >= 3, 'hammer has a heavy 1-2-3');
@@ -241,7 +241,7 @@ test('heavy chain: charged releases walk the escalating heavy combo', () => {
 });
 
 test('ender: a charged release at the end of a LIGHT chain fires the ender', () => {
-  setCurrentWeapon(HAMMER);
+  setCurrentWeapon(LEGACY_HEAVY);
   const s = createSwingState();
   s.requestSwing();              // light tap — step 0
   walkToIdleOrChain(s);          // light swing: idle, comboStep pre-advanced to 1, window open
@@ -255,7 +255,7 @@ test('ender: a charged release at the end of a LIGHT chain fires the ender', () 
 });
 
 test('a cold charged release (no light chain) starts the heavy chain, not the ender', () => {
-  setCurrentWeapon(HAMMER);
+  setCurrentWeapon(LEGACY_HEAVY);
   const s = createSwingState();
   assert.equal(s.requestSwing({ skipWindup: true }), true);
   assert.deepEqual(s.getActiveStep(), W().heavyCombo![0], 'fresh charge = H1, not the ender');
@@ -274,7 +274,7 @@ test('heavy chain survives the inter-heavy charge time', () => {
   // The cadence-set comboWindowMs alone (~520ms hammer) would lapse during
   // that hold, snapping the chain back to step 0. Window must extend with a
   // charge-time grace so chaining heavies actually works.
-  setCurrentWeapon(HAMMER);
+  setCurrentWeapon(LEGACY_HEAVY);
   const s = createSwingState();
   const heavy = W().heavyCombo!;
   // H1
@@ -290,7 +290,7 @@ test('heavy chain survives the inter-heavy charge time', () => {
 });
 
 test('heavy chain resets to the light track after the combo window lapses', () => {
-  setCurrentWeapon(HAMMER);
+  setCurrentWeapon(LEGACY_HEAVY);
   const s = createSwingState();
   s.requestSwing({ skipWindup: true });   // H1
   walkChargedToIdle(s);                    // idle, heavy comboStep 1, window open

@@ -162,3 +162,53 @@ export const SWORD_HEAVY_MOVES: MoveStep[] = [
   },
   swH(SM_THRUST, 2.6, 1.4),                              // driving thrust finisher
 ];
+
+// ── HAMMER vocabulary (wind/end deltas from POSE_SPECS) ──────────────────────
+// A hammer SMASHES: an overhead raise-and-slam + wide horizontal sweeps. Slow,
+// heavy, wide cleave, high damage/stagger. (arcForwardPush is dropped — the
+// lateral sweep + reach carry it; a v1 approximation of the legacy anim.)
+const HM_SMASH_WIND   = { x: -0.10, y: 0.55,  z: 0.08,  rotX: 1.40,  rotY: 0, rotZ: -0.20 };
+const HM_SMASH_END    = { x: 0.00,  y: -0.30, z: -0.12, rotX: -1.10, rotY: 0, rotZ: 0.25 };
+const HM_SWING_L_WIND = { x: 0.40,  y: 0.18,  z: 0.18,  rotX: 0,     rotY: 0, rotZ: -1.15 };
+const HM_SWING_L_END  = { x: -0.45, y: 0.18,  z: 0.18,  rotX: 0,     rotY: 0, rotZ: 1.45 };
+const HM_SWING_R_WIND = { x: -0.45, y: 0.18,  z: 0.18,  rotX: 0,     rotY: 0, rotZ: 1.45 };
+const HM_SWING_R_END  = { x: 0.40,  y: 0.18,  z: 0.18,  rotX: 0,     rotY: 0, rotZ: -1.15 };
+
+const HMM_SMASH   = slashMotion(HM_SMASH_WIND, HM_SMASH_END);       // raise → slam
+const HMM_SWING_L = slashMotion(HM_SWING_L_WIND, HM_SWING_L_END);
+const HMM_SWING_R = slashMotion(HM_SWING_R_WIND, HM_SWING_R_END);
+
+/** A hammer move — slow windup + long recovery, one big wide hit. */
+function hm(motion: MoveSpec['motion'], damageMul: number, reachMul?: number, maxTargets?: number, hitAt = 0.55): MoveSpec {
+  return { motion, timing: { introS: 0.24, loopS: 0.18, outroS: 0.42 }, loopCount: 1, hitAt, damageMul, reachMul, maxTargets };
+}
+/** A HEAVY hammer move — an even longer wind, a devastating hit. */
+function hmH(motion: MoveSpec['motion'], damageMul: number, reachMul?: number, maxTargets?: number, hitAt = 0.58): MoveSpec {
+  return { motion, timing: { introS: 0.34, loopS: 0.22, outroS: 0.52 }, loopCount: 1, hitAt, damageMul, reachMul, maxTargets };
+}
+
+/** DEFAULT hammer combo — sweep → sweep → overhead SMASH. Wide cleaves; the
+ *  smash finisher catches three and hits hardest. Directional opener. */
+export const HAMMER_DEFAULT_MOVES: MoveStep[] = [
+  {
+    neutral: hm(HMM_SWING_R, 1.0, 1.0, 2),
+    forward: hm(HMM_SMASH,   1.4, 1.15, 2),   // a stepping overhead
+    back:    hm(HMM_SWING_L, 0.9, 1.0, 2),
+    left:    hm(HMM_SWING_L, 1.0, 1.0, 2),
+    right:   hm(HMM_SWING_R, 1.0, 1.0, 2),
+    dash:    hm(HMM_SMASH,   1.6, 1.3, 2),     // a leaping smash out of a dodge
+  },
+  hm(HMM_SWING_L, 1.0, 1.0, 2),                // the opposite sweep
+  hm(HMM_SMASH,   1.6, 1.15, 3),               // overhead smash finisher, cleaves 3
+];
+
+/** HAMMER heavy (charged) — a huge overhead into a ground-pound. */
+export const HAMMER_HEAVY_MOVES: MoveStep[] = [
+  {
+    neutral: hmH(HMM_SMASH,   2.4, 1.2, 3),
+    forward: hmH(HMM_SMASH,   2.6, 1.5, 3),
+    left:    hmH(HMM_SWING_L, 1.8, 1.1, 3),
+    right:   hmH(HMM_SWING_R, 1.8, 1.1, 3),
+  },
+  hmH(HMM_SMASH, 3.0, 1.3, 4),                 // ground-pound finisher, cleaves 4
+];
