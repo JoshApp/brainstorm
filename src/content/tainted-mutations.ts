@@ -89,7 +89,7 @@ export const TAINTED_MUTATIONS: readonly TaintedMutation[] = [
     name: 'KINDNESS',
     flavor: 'The water is clean. You were not expecting that.',
     modifiers: [
-      { kind: 'max-hp', amount: 4 },
+      { kind: 'max-hp', amount: 2 },   // +1 heart (8-HP economy)
     ],
   },
 ];

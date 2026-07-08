@@ -521,7 +521,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   ghoul: {
     id: 'ghoul',
     name: 'ghoul',
-    hp: 3,
+    hp: 4,
     moveSpeed: 1.4,
     attackDamage: 1,
     // A killing blow to a limb zone lops it: head, arms (shoulderL/R), legs
@@ -625,7 +625,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   rat: {
     id: 'rat',
     name: 'rat',
-    hp: 1,           // dies in one hit — the trash mob
+    hp: 2,           // dies in one hit — the trash mob
     moveSpeed: 2.3,  // slower than player retreat (player MOVE_SPEED = 2.5)
     attackDamage: 1,
     attackRange: 1.0,
@@ -742,7 +742,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   skirmisher: {
     id: 'skirmisher',
     name: 'skirmisher',
-    hp: 2,
+    hp: 3,
     moveSpeed: 2.0,        // player retreat (2.5) outruns the WALK...
     attackDamage: 1,
     // Legacy fields kept for audio sizing + the debug poser; the
@@ -839,7 +839,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   acolyte: {
     id: 'acolyte',
     name: 'acolyte',
-    hp: 2,                  // squishy — closing on it pays off fast
+    hp: 3,                  // squishy — closing on it pays off fast
     moveSpeed: 1.7,         // mobile enough to actually kite a retreating gap
     attackDamage: 1,
     attackRange: 9,         // commits to casting from far out
@@ -956,7 +956,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // trash, and named, so it reads as a set-piece, not a stray mob.
     isBoss: true,
     bossName: 'The Hollow Choir',
-    hp: 13,                 // boss HP — a real fight, gives the bar range
+    hp: 18,                 // boss HP — a real fight, gives the bar range
     moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
     attackDamage: 2,        // hits twice as hard as the trash mobs
     attackRange: 1.9,
@@ -1073,7 +1073,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'ooze',
     bloodColor: 0x3a5c14,
     name: 'ooze',
-    hp: 2,
+    hp: 3,
     moveSpeed: 1.4,
     attackDamage: 1,
     attackRange: 1.0,
@@ -1128,7 +1128,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'ooze-small',
     bloodColor: 0x3a5c14,
     name: 'ooze',
-    hp: 1,                       // one-shot kill, like a rat
+    hp: 2,                       // one-shot kill, like a rat
     moveSpeed: 1.6,              // slightly faster — they're "cleanup speed"
     attackDamage: 1,
     attackRange: 0.8,
@@ -1189,7 +1189,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'acid-spitter',
     bloodColor: 0x4a6e1a,
     name: 'acid spitter',
-    hp: 5,                       // tanky — closing on it is a real commitment
+    hp: 7,                       // tanky — closing on it is a real commitment
     moveSpeed: 0.8,              // glacial — it holds ground, doesn't chase
     attackDamage: 1,
     attackRange: 7,              // ranged commit distance; no preferredRange (holds)
@@ -1261,7 +1261,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     bloodColor: 0x6e6a62,
     bloodAmount: 0.35,
     name: 'stoneguard',
-    hp: 16,                      // tankiest non-boss — bumped so it SURVIVES long
+    hp: 22,                      // tankiest non-boss — bumped so it SURVIVES long
                                  //   enough for sustained heavy hits to break its
                                  //   guard (poise) before it dies; staggering it is
                                  //   the intended way in (then the core opens).
@@ -1415,7 +1415,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   defiler: {
     id: 'defiler',
     name: 'defiler',
-    hp: 5,
+    hp: 7,
     moveSpeed: 1.1,              // slow drifter — it controls space, doesn't chase
     attackDamage: 2,            // legacy/default mirror of the hex damage
     attackRange: 7,
@@ -1507,7 +1507,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     severable: ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'],   // strike off the skull or a limb
     deathStyle: 'crumble', // clatters apart into bone debris, not a flesh topple
     name: 'skeleton',
-    hp: 3,
+    hp: 4,
     moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)
     attackDamage: 1,
     // Legacy mirrors for audio/debug; the abilities drive combat.
@@ -1690,7 +1690,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'spider',
     bloodColor: 0x4e5a16,
     name: 'spider',
-    hp: 2,
+    hp: 3,
     moveSpeed: 2.2,            // fast scuttle
     attackDamage: 1,
     attackRange: 1.5,
@@ -1807,7 +1807,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     dormantUntilEngaged: true,
     entrance: 'ceiling-drop',        // waits above the arena, slams down when you cross the gate
     scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
-    hp: 30,                          // bigger body, more HP — fight pacing stays similar
+    hp: 40,                          // bigger body, more HP — fight pacing stays similar
     moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing
     attackDamage: 3,                 // hits hard — the AoE is the threat
     attackRange: 10.0,               // proportional to body — leaps across the room
@@ -2032,7 +2032,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // ends only when the last prince dies.
     isBoss: true,
     bossName: 'Spawn of the King',
-    hp: 3,
+    hp: 4,
     moveSpeed: 1.6,                  // a touch faster so it can pressure a kiter
     attackDamage: 1,
     attackRange: 1.0,                // legacy fields (unused — `abilities` below drives it)
@@ -2197,7 +2197,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       //    every range, each with a distinct dodge tell so the player
       //    has to READ the silhouette before committing.
       {
-        hp: 16,
+        hp: 22,
         moveSpeed: 1.0,
         abilities: [
           // Bone-arm cleave — melee sweep. maxRange tightened so he
@@ -2260,7 +2260,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // ── PHASE 2 — Crawling. Legs + scythe gone. Lower silhouette,
       //    faster move (insectile crawl), shorter reach.
       {
-        hp: 12,
+        hp: 16,
         moveSpeed: 1.8,
         // Drop the rig (legs are gone — torso has to sit low to read
         // as crawling). Was -1.7 but the pelvis + dragging hands
@@ -2337,7 +2337,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'plague-spore',
     bloodColor: 0x6a6e2a,
     name: 'plague spore',
-    hp: 3,
+    hp: 4,
     moveSpeed: 0,                  // truly stationary
     attackDamage: 2,
     attackRange: 2.4,              // AoE radius; player must clear this
@@ -2407,7 +2407,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     bloodColor: 0x2a4e5e,
     bloodAmount: 0.5,
     name: 'sump wisp',
-    hp: 2,                          // one-shot for most weapons — closing matters
+    hp: 3,                          // one-shot for most weapons — closing matters
     moveSpeed: 1.8,                 // fast — it kites
     attackDamage: 1,
     attackRange: 8,
@@ -2471,7 +2471,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     name: 'mimic',
     // No tileChar — never roll-placed. The chest interactable is the
     // only spawn path.
-    hp: 6,
+    hp: 9,
     moveSpeed: 1.8,
     attackDamage: 2,
     attackRange: 1.6,
@@ -2519,7 +2519,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'carrion-hound': {
     id: 'carrion-hound',
     name: 'carrion hound',
-    hp: 3,
+    hp: 4,
     moveSpeed: 2.6,                 // fast chase
     attackDamage: 2,
     attackRange: 1.4,
@@ -2605,7 +2605,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'pit-moth': {
     id: 'pit-moth',
     name: 'pit moth',
-    hp: 1,
+    hp: 2,
     moveSpeed: 2.6,                 // fast — outruns retreat
     attackDamage: 1,
     attackRange: 1.4,
@@ -2683,7 +2683,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   lasher: {
     id: 'lasher',
     name: 'lasher',
-    hp: 4,
+    hp: 6,
     moveSpeed: 0,                   // rooted in the floor
     attackDamage: 2,
     attackRange: 3.8,               // long reach — the threat band

@@ -112,7 +112,7 @@ export const CARDS: Record<string, CardSpec> = {
   'the-companion': {
     id: 'the-companion', name: 'The Companion', arcana: 'minor', domains: ['grace'],
     fate: 'You are not alone down here.',
-    effect: { modifiers: [{ kind: 'max-hp', amount: 10 }] },
+    effect: { modifiers: [{ kind: 'max-hp', amount: 2 }] },   // +1 heart (8-HP economy)
   },
   'the-healer': {
     id: 'the-healer', name: 'The Healer', arcana: 'minor', domains: ['grace'],
@@ -140,7 +140,7 @@ export const CARDS: Record<string, CardSpec> = {
   'the-hollow-saint': {
     id: 'the-hollow-saint', name: 'The Hollow Saint', arcana: 'major', domains: ['bone'],
     fate: 'You endure as the dead endure — slow, and past caring.',
-    effect: { modifiers: [{ kind: 'max-hp', amount: 40 }, { kind: 'action-speed-mult', amount: 0.90 }] },
+    effect: { modifiers: [{ kind: 'max-hp', amount: 4 }, { kind: 'action-speed-mult', amount: 0.90 }] },   // +2 hearts — the tank pact, still the biggest maxHP source
   },
   // PROC — each death feeds the next. On kill, a short fury (self).
   'the-feast': {
@@ -209,7 +209,7 @@ export const CARDS: Record<string, CardSpec> = {
   'the-dawn': {
     id: 'the-dawn', name: 'The Dawn', arcana: 'major', domains: ['dawn'],
     fate: 'You carry the light down.',
-    effect: { modifiers: [{ kind: 'max-hp', amount: 15 }, { kind: 'physical-armor', amount: 2 }] },
+    effect: { modifiers: [{ kind: 'max-hp', amount: 3 }, { kind: 'physical-armor', amount: 2 }] },
   },
   // PACT — fast and forbidden. Mobility + edge, no real cost; the wanderer's gift.
   'the-wanderer': {

@@ -191,18 +191,18 @@ test('cardModifiers folds held cards and skips unknown ids', () => {
   assert.deepEqual(cardModifiers([]), [], 'empty hand → no modifiers');
   assert.deepEqual(cardModifiers(['does-not-exist']), [], 'unknown id contributes nothing');
 
-  const held = ['the-hearth', 'the-companion']; // armor +2, max-hp +10
+  const held = ['the-hearth', 'the-companion']; // armor +2, max-hp +2
   const mods = cardModifiers(held);
   const sum = (kind: string) => mods.filter((m) => m.kind === kind).reduce((a, m) => a + m.amount, 0);
   assert.equal(sum('physical-armor'), 2, 'hearth armor');
-  assert.equal(sum('max-hp'), 10, 'companion hp');
+  assert.equal(sum('max-hp'), 2, 'companion hp');
   assert.equal(mods.length, 2, 'only the two cards contributed');
 });
 
 test('a card duplicated in hand stacks (resolver does not dedupe)', () => {
   const mods = cardModifiers(['the-companion', 'the-companion']);
   const hp = mods.filter((m) => m.kind === 'max-hp').reduce((a, m) => a + m.amount, 0);
-  assert.equal(hp, 20, 'two Companions stack to +20 (the Spread, not the resolver, enforces the cap)');
+  assert.equal(hp, 4, 'two Companions stack to +4 (the Spread, not the resolver, enforces the cap)');
 });
 
 // ── dealCards (the fate hand) ─────────────────────────────────────────────────

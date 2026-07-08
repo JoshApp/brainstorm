@@ -179,11 +179,11 @@ export function spawnFountain(
         emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { mutationId } });
         return;
       }
-      // Both 'gamble' and 'rest' now do the same thing — a full heal.
-      // The variants still look different (green vs amber), but neither
-      // gambles. The dungeon is indifferent, sometimes kind.
+      // A solid PARTIAL heal — half the pool — not a free full reset (heals are
+      // precious in the 8-HP economy; the flask stays your main mend). Both
+      // 'gamble' and 'rest' do the same; the variants just look different.
       const before = getPlayerHp();
-      healPlayer(getPlayerMaxHp(), 'passive');   // environmental heal — a TRANSFORM may suppress it
+      healPlayer(Math.ceil(getPlayerMaxHp() / 2), 'passive');   // environmental heal — a TRANSFORM may suppress it
       const healed = getPlayerMaxHp() - before;
       emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { hpDelta: healed } });
       playHealSlurp();

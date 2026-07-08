@@ -61,7 +61,7 @@ export const RITES: Record<string, RiteSpec> = {
   gnash: {
     id: 'gnash', name: 'Gnash', domain: 'bone', hungerCost: 22,
     fate: 'The bones you are owed, collected early.',
-    effects: [{ kind: 'nova', radius: 2.6, damage: 8 }],
+    effects: [{ kind: 'nova', radius: 2.6, damage: 5 }],
     morph: [
       { atLeast: 2, damageMul: 1.4 },
       { atLeast: 4, radiusMul: 1.4, novaBuff: 'bleed' },
@@ -75,7 +75,7 @@ export const RITES: Record<string, RiteSpec> = {
     fate: 'You burst, and the blood is yours to take back.',
     effects: [
       { kind: 'cost', hp: 6 },
-      { kind: 'nova', radius: 3.5, damage: 12, healPerHit: 4 },
+      { kind: 'nova', radius: 3.5, damage: 7, healPerHit: 1 },
     ],
     morph: [
       { atLeast: 2, novaBuff: 'bleed' },
@@ -87,7 +87,7 @@ export const RITES: Record<string, RiteSpec> = {
   miasma: {
     id: 'miasma', name: 'Miasma', domain: 'rot', hungerCost: 46,
     fate: 'Breathe out the rot. Let it settle into them.',
-    effects: [{ kind: 'nova', radius: 4.0, damage: 5, buff: 'poison', buffDuration: 5 }],
+    effects: [{ kind: 'nova', radius: 4.0, damage: 3, buff: 'poison', buffDuration: 5 }],
     morph: [
       { atLeast: 2, radiusMul: 1.3 },
       { atLeast: 4, damageMul: 1.8 },
@@ -100,7 +100,7 @@ export const RITES: Record<string, RiteSpec> = {
     fate: 'Everything near becomes ash. Yourself, very nearly, among it.',
     effects: [
       { kind: 'cost', hp: 12 },
-      { kind: 'nova', radius: 5.5, damage: 30, buff: 'burn', buffDuration: 4 },
+      { kind: 'nova', radius: 5.5, damage: 14, buff: 'burn', buffDuration: 4 },
     ],
     morph: [
       { atLeast: 2, damageMul: 1.4 },
@@ -119,7 +119,7 @@ export const RITES: Record<string, RiteSpec> = {
       { kind: 'selfBuff', buff: 'ironhide', duration: 6 },
     ],
     morph: [
-      { atLeast: 2, add: [{ kind: 'heal', hp: 15 }] },
+      { atLeast: 2, add: [{ kind: 'heal', hp: 3 }] },
       { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'bloodthirst', duration: 6 }] },
     ],
   },
