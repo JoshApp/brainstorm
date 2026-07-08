@@ -1,5 +1,7 @@
 import { getEquipment, type EquipSlot } from '../player/equipment';
 import { getReliquary } from '../player/reliquary';
+import { getEquippedRite, equipRite } from '../state/run-state';
+import { RITES } from '../content/rites';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
@@ -59,8 +61,44 @@ export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
   }
 
   col.appendChild(dollContainer);
+  col.appendChild(buildRiteSlot(ctx));
   col.appendChild(buildRelicRow());
   return col;
+}
+
+/** The RITE slot — your one ACTIVE (docs/BUILD-ECONOMY.md), fired with Hunger.
+ *  Chips list every rite with its Hunger cost (the cadence: cheap = often, dear
+ *  = a big, rare erupt); tap to equip. Until rites are FOUND in the deep, all
+ *  are selectable here so the active lane is playable. */
+function buildRiteSlot(ctx: InventoryCtx): HTMLDivElement {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '6px' } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(sectionLabel('RITE · THE ACTIVE'));
+  const equipped = getEquippedRite();
+  const chips = document.createElement('div');
+  Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '4px' } as Partial<CSSStyleDeclaration>);
+  for (const spec of Object.values(RITES)) {
+    const isOn = spec.id === equipped;
+    const chip = document.createElement('button');
+    chip.textContent = `${spec.name} · ${spec.hungerCost}`;
+    chip.title = spec.fate;
+    Object.assign(chip.style, {
+      fontSize: '10px', padding: '3px 7px', borderRadius: '3px', cursor: 'pointer',
+      fontFamily: 'serif', letterSpacing: '0.03em', touchAction: 'manipulation',
+      border: `1px solid ${isOn ? ACCENT : 'rgba(80,60,40,0.4)'}`,
+      background: isOn ? 'rgba(120,30,20,0.35)' : 'rgba(20,14,10,0.5)',
+      color: isOn ? '#f0d8c0' : TEXT_DIM,
+    } as Partial<CSSStyleDeclaration>);
+    chip.addEventListener('click', () => { equipRite(isOn ? null : spec.id); ctx.select(ctx.selection); });
+    chips.appendChild(chip);
+  }
+  wrap.appendChild(chips);
+  const spec = equipped ? RITES[equipped] : undefined;
+  const fate = document.createElement('div');
+  fate.textContent = spec ? `"${spec.fate}"` : 'no rite — the meter goes quiet';
+  Object.assign(fate.style, { fontSize: '10px', fontStyle: 'italic', color: TEXT_DIM, lineHeight: '1.35' } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(fate);
+  return wrap;
 }
 
 /** The RELIQUARY row — every collected relic, all active. Read-only (relics are
