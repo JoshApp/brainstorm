@@ -166,6 +166,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   let moveComboIndex = 0;   // which move in the weapon's `moves` combo is playing
   let moveDir: MoveDir = null;   // movement direction LATCHED at the opener press (research: sample-at-press, don't re-sample mid-move)
   let moveDashed = false;        // did the opener press land right out of a dodge → serve the DASH attack
+  let moveStartClock = 0;        // clock (s) when the current move STARTED — for the attack-cadence floor
 
   /** Begin move `index` of the combo (docs/MOVE-TIMELINE.md). Used both to START
    *  a combo (from idle) and to CHAIN seamlessly to the next move on a buffered
@@ -182,7 +183,10 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // steps ignore it) — so only the opener flavors by movement. Moveset =
     // whichever TRACK (light/heavy) requestSwing chose.
     resolvedMove = resolveMove(pickMove(timelineMoveset(wm)[index], moveDir, moveDashed), { attackSpeed: wm.attackSpeed ?? 1, flurryHits: 0 });
-    elapsed = 0;
+    // A CHARGED move SKIPS its windup (intro) — you paid the windup by holding, so
+    // it fires straight into the strike (no double-cock after the charge-hold).
+    elapsed = charged ? resolvedMove.introReal : 0;
+    moveStartClock = clock;
     strikesFired = 0;
     comboStep = 0;
     activeDirectionalStep = null;
@@ -396,7 +400,15 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // while a move is live.
     if (resolvedMove) {
       elapsed += dt;
-      if (elapsed >= resolvedMove.duration) {
+      // The move ends only when its animation is done AND the attack-cadence
+      // floor has elapsed. If the swing finishes faster than the cadence, it
+      // HOLDS at rest (poseAt past duration = the outro end) until the interval
+      // passes — that's the felt "time between attacks", decoupled from the anim.
+      // attackSpeed also shrinks the cadence, so a "faster attacks" modifier
+      // actually speeds up a cadence-floored weapon (else the floor would cancel it).
+      const wm2 = getCurrentWeapon();
+      const cadence = wm2.attackCadenceS / Math.max(0.1, wm2.attackSpeed);
+      if (elapsed >= resolvedMove.duration && clock >= moveStartClock + cadence) {
         const w = getCurrentWeapon();
         if (queuedPress && moveComboIndex < timelineMoveset(w).length - 1) {
           // A press was buffered mid-move → chain to the next move SEAMLESSLY

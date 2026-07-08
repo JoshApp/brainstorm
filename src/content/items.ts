@@ -228,6 +228,11 @@ export interface WeaponStats {
    * timings), 0.8 = slower. Proficiency points feed in alongside it.
    */
   attackSpeed?: number;
+  /** Minimum seconds between attack STARTS (docs/MOVE-TIMELINE.md) — the felt
+   *  CADENCE, decoupled from the swing animation's length. A move that finishes
+   *  faster than this holds at rest until the interval elapses, so you can't
+   *  attack again sooner. 0 / omitted = no floor (as fast as the animation). */
+  attackCadenceS?: number;
   /**
    * Attribute SCALING grades (Souls/WC3-style). Maps an attribute to a
    * letter grade; the player's points in that attribute multiply this
@@ -543,6 +548,8 @@ export const ITEMS: Record<string, ItemSpec> = {
       // Baseline dagger cadence — the frenzy is in the hit-COUNT, not raw speed
       // (playtest: faster read as too strong AND truncated the flurries).
       attackSpeed: 1.0,
+      // Cadence inherited from the dagger class (0.72). Override here if the
+      // Harrow should feel faster/slower than a stock dagger.
       // Bleed is AUTHORED as a flurry weapon (docs/BUILD-ECONOMY.md): a single
       // stab barely bleeds (low `chance`), but the flurry carries it — many
       // sub-hits at `flurryChance` add up to the dagger's signature pressure.

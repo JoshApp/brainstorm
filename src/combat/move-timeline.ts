@@ -110,6 +110,7 @@ export interface ResolvedMove {
   damageMul: number;     // per-rip damage fraction (from the move)
   reachMul: number;      // reach multiplier (from the move)
   maxTargets: number;    // cleave count (from the move)
+  introReal: number;     // real seconds of the windup — start elapsed here to SKIP it (charged)
   poseAt(t: number): MovePose;   // weapon pose at real-time t (seconds since move start)
 }
 
@@ -182,7 +183,7 @@ export function resolveMove(spec: MoveSpec, mods?: MoveModifiers): ResolvedMove 
   }
 
   return {
-    duration, loops, hitTimes, poseAt,
+    duration, loops, hitTimes, poseAt, introReal,
     damageMul: spec.damageMul ?? 1,
     reachMul: spec.reachMul ?? 1,
     maxTargets: spec.maxTargets ?? 1,

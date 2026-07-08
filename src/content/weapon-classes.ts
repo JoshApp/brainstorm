@@ -138,6 +138,8 @@ export interface ResolvedWeaponStats {
   heavyMoves?: import('../combat/move-timeline').MoveStep[];
   /** Attack-speed multiplier (>1 = faster). Passthrough; scales a move's timing. */
   attackSpeed: number;
+  /** Minimum seconds between attack starts — the felt cadence floor. 0 = none. */
+  attackCadenceS: number;
   /** On-hit status infliction, passed through from the weapon spec. */
   onHit?: { buffId: string; chance: number; duration: number };
   /** Ranged projectile (crossbow/wand/throwing-knives) — strike fires
@@ -233,6 +235,9 @@ interface ClassDefaults {
   moves?: import('../combat/move-timeline').MoveStep[];
   /** DEFAULT heavy (charged) moveset for the class. Inherited like `moves`. */
   heavyMoves?: import('../combat/move-timeline').MoveStep[];
+  /** DEFAULT min seconds between attacks for the class — the felt cadence.
+   *  Inherited like `moves` (weapon override → class default → 0). */
+  attackCadenceS?: number;
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
   /** HEAVY combo chain (hold→hold→hold) — an escalating heavy 1-2-3 walked by
@@ -289,6 +294,8 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // fallback shaping (reach/cone/maxTargets) the timeline hit still borrows.
     moves: DAGGER_DEFAULT_MOVES,
     heavyMoves: DAGGER_HEAVY_MOVES,   // charged: a committed plunge → execute-flurry
+    attackCadenceS: 0.72,             // fast — but not machine-gun
+    // NOTE: fastest class, but a floor keeps it deliberate; tune per feel.
     // stab → slash → double-stab. Stab one, slash cleaves two,
     // double-stab finisher commits on one target with extra damage.
     combo: [
@@ -347,6 +354,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // sweeps. The legacy `combo` below is now only the fallback cone shaping.
     moves: SWORD_DEFAULT_MOVES,
     heavyMoves: SWORD_HEAVY_MOVES,   // charged: a big committed chop → driving thrust
+    attackCadenceS: 0.9,             // heavier, more committal than a dagger
     // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
     // (playtest: blanket cleave was OP). Cleave is reserved for the
     // directional STRAFE sweeps below + the charged ward.
@@ -829,6 +837,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     moves: spec.moves ?? baseT.moves,   // weapon override → class default (inheritance)
     heavyMoves: spec.heavyMoves ?? baseT.heavyMoves,
     attackSpeed: spec.attackSpeed ?? 1,
+    attackCadenceS: spec.attackCadenceS ?? baseT.attackCadenceS ?? 0,
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,
