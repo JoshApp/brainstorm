@@ -613,13 +613,14 @@ export function createCombatSystem(
     // single-target, so charge sweeps the sweepers without turning every poke
     // into an AoE. Damage scaling happens at the per-target calc below.
     const step = weapon.getActiveStep();
+    const moveShaping = timelineMove ? weapon.getMoveShaping() : null;   // per-move damage/reach/cleave
     const c = currentSwingCharge;
     // Per-combo-step damage / poise shaping (% of weapon damage). Authored per
     // archetype (weapon-classes.ts) + overridable per weapon (comboTuning). A
     // finisher hits >100%, a quick jab <100%. Default 1.0 = one clean hit.
     // A flurry step splits its damage across sub-hits — each hit uses the
     // flurry's own per-hit fraction, ignoring the step's flat damageMul.
-    const stepDamageMul = timelineMove ? weapon.getMoveDamageMul()
+    const stepDamageMul = moveShaping ? moveShaping.damageMul
       : step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
     // Directional-dismember side — resolved per target below. Two parts are
@@ -631,9 +632,9 @@ export function createCombatSystem(
       currentSwingDirection === 'strafe-left' ? 'L'
       : currentSwingDirection === 'strafe-right' ? 'R' : undefined;
     const poseSide = swingScreenSide(step?.pose, currentSwingDirection);
-    const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
+    const reach = stats.reach * (moveShaping ? moveShaping.reachMul : (step?.reachMul ?? 1)) * (1 + c * 0.20);
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
-    const baseTargets = step?.maxTargets ?? 1;
+    const baseTargets = moveShaping ? moveShaping.maxTargets : (step?.maxTargets ?? 1);
     const maxTargets = baseTargets + (c >= 0.7 && baseTargets >= 2 ? 1 : 0);
 
     // The hit is a 3D capsule along the TRUE look dir (forwardDir is the camera's

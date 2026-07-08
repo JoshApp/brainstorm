@@ -52,6 +52,10 @@ export interface MoveSpec {
   /** Damage each rip deals, as a fraction of the weapon's resolved damage. So a
    *  combo can vary per move (a wide cut hits harder than one flurry rip). Default 1. */
   damageMul?: number;
+  /** Reach multiplier for this move's hits — a lunge reaches further. Default 1. */
+  reachMul?: number;
+  /** Max targets this move's hits cleave — a sweep catches several. Default 1. */
+  maxTargets?: number;
 }
 
 /** A combo step is EITHER a plain move (same regardless of movement) OR a
@@ -99,6 +103,8 @@ export interface ResolvedMove {
   loops: number;         // effective loop count after flurryHits
   hitTimes: number[];    // real-time (s) at which each strike lands, ascending
   damageMul: number;     // per-rip damage fraction (from the move)
+  reachMul: number;      // reach multiplier (from the move)
+  maxTargets: number;    // cleave count (from the move)
   poseAt(t: number): MovePose;   // weapon pose at real-time t (seconds since move start)
 }
 
@@ -170,5 +176,10 @@ export function resolveMove(spec: MoveSpec, mods?: MoveModifiers): ResolvedMove 
     return spec.motion.outro[spec.motion.outro.length - 1]?.pose ?? REST;
   }
 
-  return { duration, loops, hitTimes, damageMul: spec.damageMul ?? 1, poseAt };
+  return {
+    duration, loops, hitTimes, poseAt,
+    damageMul: spec.damageMul ?? 1,
+    reachMul: spec.reachMul ?? 1,
+    maxTargets: spec.maxTargets ?? 1,
+  };
 }

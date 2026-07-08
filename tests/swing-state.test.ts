@@ -12,10 +12,10 @@ import { createSwingState } from '../src/combat/swing-state';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
-  // Every test runs against a known weapon (sword) so combo length + timings
+  // Every test runs against a known weapon (spear — a still-legacy class; sword migrated to the move-timeline) so combo length + timings
   // are stable; we still READ them at runtime rather than hard-coding, so
   // content re-tuning can't break the tests.
-  setCurrentWeapon({ reach: 2.1, coneHalfAngle: 0.8, damage: 1, critChance: 0.05, critMultiplier: 2.0, class: 'sword' });
+  setCurrentWeapon({ reach: 2.1, coneHalfAngle: 0.8, damage: 1, critChance: 0.05, critMultiplier: 2.0, class: 'spear' });
   try { fn(); passed++; }
   catch (err) { failed++; console.error(`✗ ${name}\n  ${(err as Error).message}`); }
 }
@@ -189,10 +189,10 @@ test('a buffered combo will not chain into an empty bar', () => {
 // ── Directional input flavors only the combo OPENER ──────────────
 
 test('directional input flavors the OPENER but the chain stays fixed + advances', () => {
-  // (sword is set by the test harness — it has directional moves)
+  // (spear is set by the harness — a legacy class with directional moves)
   const s = createSwingState();
   const w = W();
-  assert.ok(w.directionalMoves?.strafeLeft, 'sword has a strafe-left directional move');
+  assert.ok(w.directionalMoves?.strafeLeft, 'spear has a strafe-left directional move');
   // Opener with a held direction → the directional variant (not the combo step 0).
   s.requestSwing({ direction: 'strafe-left' });
   assert.deepEqual(s.getActiveStep(), w.directionalMoves!.strafeLeft, 'opener uses the directional variant');
@@ -261,32 +261,13 @@ test('a cold charged release (no light chain) starts the heavy chain, not the en
   assert.deepEqual(s.getActiveStep(), W().heavyCombo![0], 'fresh charge = H1, not the ender');
 });
 
-test('heavy chain with direction: opener gets flavored, chain still runs', () => {
-  // Sword has heavyCombo + chargedMoves.back (ward) + directionalMoves.back.
-  // Previously: charged + direction always overrode → heavy 1-2-3 never started.
-  // Now: direction flavors heavy opener (same pattern as light), 2 + 3 are the
-  // fixed heavy chain.
-  setCurrentWeapon({ reach: 2.1, coneHalfAngle: 0.8, damage: 1, critChance: 0.05, critMultiplier: 2.0, class: 'sword' });
-  const s = createSwingState();
-  const w = W();
-  const heavy = w.heavyCombo!;
-  const ward = w.chargedMoves!.back!;
-  assert.ok(heavy && heavy.length >= 3, 'sword has a heavy 1-2-3');
-  assert.ok(ward, 'sword has chargedMoves.back (the ward)');
-  // H1 with `back` held → the WARD pose, not a flat heavy step 0.
-  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
-  assert.deepEqual(s.getActiveStep(), ward, 'heavy opener flavored by direction → ward');
-  walkChargedToIdle(s);
-  assert.equal(s.getComboStep(), 1, 'heavy chain still pre-advances to step 1');
-  // H2 still as `back` held → step 1 is the FIXED heavy chain, direction ignored.
-  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
-  assert.deepEqual(s.getActiveStep(), heavy[1], 'heavy step 1 is fixed; direction ignored past opener');
-  walkChargedToIdle(s);
-  // H3 with direction → finisher (heavy[2]).
-  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
-  assert.deepEqual(s.getActiveStep(), heavy[2], 'heavy finisher is fixed too');
-  assert.equal(s.isFinisherStrike(), true);
-});
+// RETIRED (docs/MOVE-TIMELINE.md): this covered the LEGACY charged/heavy chain
+// with directional flavoring — a feature only the SWORD class defined
+// (heavyCombo + chargedMoves.back "ward"), and the sword has now migrated to the
+// move-timeline. No remaining legacy class defines chargedMoves, so there's
+// nothing legacy left to exercise it. Charged/heavy is a pending timeline
+// migration (a `charged` MoveStep variant, like the directional set); this test
+// returns, retargeted at the move runtime, when that lands.
 
 test('heavy chain survives the inter-heavy charge time', () => {
   // A back-to-back heavy needs the player to HOLD to charge again (~570ms).

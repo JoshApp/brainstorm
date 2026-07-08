@@ -77,3 +77,49 @@ export const HARROW_MOVES: MoveStep[] = [
   dg(1, M_SLASH_R, 0.22, 0.9, 0.55),
   dg(3, M_STAB,    0.13, 0.42),        // rapid triple flurry, weaker per rip
 ];
+
+// ── SWORD vocabulary (wind/end deltas from weapon-animations.ts POSE_SPECS) ──
+// A sword SLASHES: diagonal cuts, a reaching lunge, wide cleaving sweeps, a
+// committed thrust. Heavier + more committal than a dagger (longer timings).
+const SW_SLASH_R_WIND = { x: 0.10,  y: -0.15, z: 0.08,  rotX: 0.55,  rotY: 0,     rotZ: -0.10 };
+const SW_SLASH_R_END  = { x: 0.18,  y: 0.10,  z: -0.24, rotX: -0.45, rotY: -0.10, rotZ: 0.50 };
+const SW_SLASH_L_WIND = { x: -0.10, y: -0.15, z: 0.08,  rotX: 0.55,  rotY: 0,     rotZ: 0.10 };   // mirror of R
+const SW_SLASH_L_END  = { x: -0.18, y: 0.10,  z: -0.24, rotX: -0.45, rotY: 0.10,  rotZ: -0.50 };
+const SW_THRUST_WIND  = { x: -0.08, y: 0.10,  z: 0.12,  rotX: -1.15, rotY: 0.15,  rotZ: -0.40 };
+const SW_THRUST_END   = { x: -0.08, y: 0.10,  z: -0.43, rotX: -1.15, rotY: 0.15,  rotZ: -0.40 };
+const SW_LUNGE_WIND   = { x: -0.10, y: 0.14,  z: 0.16,  rotX: -1.30, rotY: 0.18,  rotZ: -0.45 };
+const SW_LUNGE_END    = { x: -0.10, y: 0.14,  z: -0.64, rotX: -1.30, rotY: 0.18,  rotZ: -0.45 };
+const SW_SWEEP_L_WIND = { x: 0.22,  y: 0.10,  z: 0.06,  rotX: -0.45, rotY: -0.55, rotZ: -0.85 };
+const SW_SWEEP_L_END  = { x: -0.28, y: -0.16, z: -0.05, rotX: -0.30, rotY: 0.40,  rotZ: 1.00 };
+const SW_SWEEP_R_WIND = { x: -0.22, y: 0.10,  z: 0.06,  rotX: -0.45, rotY: 0.55,  rotZ: 0.85 };
+const SW_SWEEP_R_END  = { x: 0.28,  y: -0.16, z: -0.05, rotX: -0.30, rotY: -0.40, rotZ: -1.00 };
+const SW_WARD_WIND    = { x: 0.04,  y: 0.18,  z: 0.10,  rotX: -0.30, rotY: -0.40, rotZ: -0.10 };
+const SW_WARD_END     = { x: -0.10, y: 0.02,  z: -0.32, rotX: -0.95, rotY: 0.30,  rotZ: 0.40 };
+
+const SM_SLASH_R = slashMotion(SW_SLASH_R_WIND, SW_SLASH_R_END);
+const SM_SLASH_L = slashMotion(SW_SLASH_L_WIND, SW_SLASH_L_END);
+const SM_THRUST  = stabMotion(SW_THRUST_WIND, SW_THRUST_END);   // out-and-back thrust
+const SM_LUNGE   = stabMotion(SW_LUNGE_WIND, SW_LUNGE_END);
+const SM_SWEEP_L = slashMotion(SW_SWEEP_L_WIND, SW_SWEEP_L_END);
+const SM_SWEEP_R = slashMotion(SW_SWEEP_R_WIND, SW_SWEEP_R_END);
+const SM_WARD    = slashMotion(SW_WARD_WIND, SW_WARD_END);
+
+/** A sword move: single hit, committal timing; per-move damage/reach/cleave. */
+function sw(motion: MoveSpec['motion'], damageMul: number, reachMul?: number, maxTargets?: number): MoveSpec {
+  return { motion, timing: { introS: 0.16, loopS: 0.26, outroS: 0.30 }, loopCount: 1, hitAt: 0.5, damageMul, reachMul, maxTargets };
+}
+
+/** The DEFAULT sword combo — diagonal slash → opposite slash → thrust. The opener
+ *  is directional: a reaching LUNGE forward, a defensive WARD back, wide cleaving
+ *  SWEEPS on the strafes (single-target otherwise — blanket cleave was OP). */
+export const SWORD_DEFAULT_MOVES: MoveStep[] = [
+  {
+    neutral: sw(SM_SLASH_R, 1.0),
+    forward: sw(SM_LUNGE,   1.2, 1.5),       // step in, long reach
+    back:    sw(SM_WARD,    0.8),            // give ground, defensive cut
+    left:    sw(SM_SWEEP_L, 0.9, 1.0, 2),    // wide arc, cleaves two
+    right:   sw(SM_SWEEP_R, 0.9, 1.0, 2),
+  },
+  sw(SM_SLASH_L, 1.0),                        // the opposite diagonal
+  sw(SM_THRUST,  1.4, 1.25),                  // committed thrust finisher
+];

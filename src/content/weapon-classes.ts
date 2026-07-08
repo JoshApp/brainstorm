@@ -1,7 +1,7 @@
 import { CONFIG } from '../config';
 import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile, FlurrySpec } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
-import { DAGGER_DEFAULT_MOVES } from './weapon-moves';
+import { DAGGER_DEFAULT_MOVES, SWORD_DEFAULT_MOVES } from './weapon-moves';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -337,6 +337,10 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
              reachMul: 1.20, coneHalfAngleMul: 0.8, maxTargets: 2 },
   },
   sword: {
+    // Timeline moveset (docs/MOVE-TIMELINE.md) — generic swords inherit this
+    // diagonal-slash → slash → thrust, with a reaching lunge + cleaving strafe
+    // sweeps. The legacy `combo` below is now only the fallback cone shaping.
+    moves: SWORD_DEFAULT_MOVES,
     // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
     // (playtest: blanket cleave was OP). Cleave is reserved for the
     // directional STRAFE sweeps below + the charged ward.
