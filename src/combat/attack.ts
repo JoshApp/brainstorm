@@ -619,7 +619,8 @@ export function createCombatSystem(
     // finisher hits >100%, a quick jab <100%. Default 1.0 = one clean hit.
     // A flurry step splits its damage across sub-hits — each hit uses the
     // flurry's own per-hit fraction, ignoring the step's flat damageMul.
-    const stepDamageMul = (!timelineMove && step?.hits) ? step.hits.damageMul : (step?.damageMul ?? 1);
+    const stepDamageMul = timelineMove ? weapon.getMoveDamageMul()
+      : step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
     // Directional-dismember side — resolved per target below. Two parts are
     // strike-wide: the player's explicit STRAFE intent, and the swing's authored

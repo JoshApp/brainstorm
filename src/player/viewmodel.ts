@@ -132,6 +132,8 @@ export interface WeaponViewmodel {
    *  the last call — `count` + the `startIndex` of the first (0 = opening rip).
    *  {0,0} for legacy (non-move) weapons. */
   consumeStrikes(): { count: number; startIndex: number };
+  /** Timeline mode: the current move's per-rip damage fraction (1 legacy/idle). */
+  getMoveDamageMul(): number;
   /** Current swing phase — read by the commitment system to scale player
    *  agency (idle = full freedom). */
   getPhase(): SwingPhase;
@@ -822,6 +824,7 @@ export function createWeaponViewmodel(
     startSwing: swing.requestSwing,
     interruptSwing: swing.interruptSwing,
     consumeStrikes: swing.consumeStrikes,
+    getMoveDamageMul: swing.getMoveDamageMul,
     setSwingCharge(level: number) {
       chargedSwingLevel = Math.max(0, Math.min(1, level));
     },

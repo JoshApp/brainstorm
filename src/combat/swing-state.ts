@@ -107,6 +107,8 @@ export interface SwingState {
    *  `count` of them, and the `startIndex` of the first (0 = the move's opening
    *  rip → full crunch; >0 = a flurry sub-hit). {0,0} when not a move. */
   consumeStrikes(): { count: number; startIndex: number };
+  /** Timeline mode: the current move's per-rip damage fraction (1 when idle/legacy). */
+  getMoveDamageMul(): number;
 }
 
 // The combo BUFFER only opens toward the END of the current swing. A press
@@ -465,6 +467,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       resolvedMove ? Math.min(1, elapsed / Math.max(resolvedMove.duration, 0.001))
       : phase === 'idle' ? 0 : Math.min(1, phaseTimer / Math.max(phaseDuration(), 0.001))),
     getMovePose: () => (resolvedMove ? resolvedMove.poseAt(elapsed) : null),
+    getMoveDamageMul: () => resolvedMove?.damageMul ?? 1,
     consumeStrikes: () => {
       if (!resolvedMove) return { count: 0, startIndex: 0 };
       const startIndex = strikesFired;   // 0 = the move's FIRST rip (full crunch)

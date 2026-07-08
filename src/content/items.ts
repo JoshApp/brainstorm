@@ -1,7 +1,8 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { CONFIG } from '../config';
 import type { StatModifier } from '../combat/modifiers';
-import type { MoveSpec, MoveStep } from '../combat/move-timeline';
+import type { MoveStep } from '../combat/move-timeline';
+import { HARROW_MOVES } from './weapon-moves';
 import type { PassiveSpec } from '../ecs/types';
 import type { AttributeKind } from '../state/character';
 import { SWORD_RUSTED } from './sword';
@@ -444,67 +445,6 @@ export interface ItemSpec {
   };
 }
 
-// ── HARROW stab motion (docs/MOVE-TIMELINE.md) ─────────────────────────────
-// One deliberate STAB cycle, shared across the ramping combo. Poses are deltas
-// off STANDARD_IDLE. The asymmetry reads as a committed thrust, not a vibration:
-// a quick drive to the apex (0→0.30), a brief HOLD there (0.30→0.45), then a
-// slower retract (0.45→1). Slow enough per stab (loopS) to read as a stab.
-// A real STAB, matched to the hand-tuned dagger-stab pose (weapon-animations.ts
-// daggerStabPose): the blade TILTS to aim the point at the target (the big rotX
-// = −1.30 tip-forward + the rotY/rotZ that cancel idle yaw/roll) and HOLDS that
-// aim while it thrusts. The tilt is what reads as a stab (near-zero rotation was
-// a flat "low strike"). Deltas off STANDARD_IDLE, same as the dagger.
-const HARROW_HOME  = { x: 0,     y: 0,    z: 0,     rotX: 0,     rotY: 0,    rotZ: 0 };
-const HARROW_READY = { x: -0.06, y: 0.05, z: 0.10,  rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
-const HARROW_APEX  = { x: -0.06, y: 0.05, z: -0.22, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
-// Forward LUNGE — same aim, driven DEEPER: a committed reach in your move dir.
-const HARROW_LUNGE_APEX = { x: -0.06, y: 0.05, z: -0.44, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
-// Back RETREAT — a defensive poke: wound further back, a shallower jab as you give ground.
-const HARROW_RETREAT_READY = { x: -0.06, y: 0.06, z: 0.20,  rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
-const HARROW_RETREAT_APEX  = { x: -0.06, y: 0.06, z: -0.06, rotX: -1.30, rotY: 0.15, rotZ: -0.40 };
-
-/** Build a stab motion between a wound-back `ready` and a thrust `apex`. Quick
- *  thrust (0→0.25) → hold at the point (→0.40) → retract. Loops per rip. */
-function stabMotion(ready: typeof HARROW_READY, apex: typeof HARROW_APEX): MoveSpec['motion'] {
-  return {
-    intro: [{ t: 0, pose: HARROW_HOME, ease: 'out' }, { t: 1, pose: ready }],   // quick cock
-    // SNAP the thrust: ease-OUT drives the blade out fast then settles at the
-    // point (the hand-tuned dagger's feel). The retract (apex→ready) stays smooth.
-    loop:  [{ t: 0, pose: ready, ease: 'out' }, { t: 0.22, pose: apex }, { t: 0.40, pose: apex }, { t: 1, pose: ready }],
-    outro: [{ t: 0, pose: ready }, { t: 1, pose: HARROW_HOME }],
-  };
-}
-const HARROW_MOTION_NEUTRAL = stabMotion(HARROW_READY, HARROW_APEX);
-const HARROW_MOTION_LUNGE   = stabMotion(HARROW_READY, HARROW_LUNGE_APEX);
-const HARROW_MOTION_RETREAT = stabMotion(HARROW_RETREAT_READY, HARROW_RETREAT_APEX);
-// Side CUTS — a lateral SLASH (matched to the legacy daggerSlashPose): wound
-// pulled to one side, edge sweeps across to the other. R sweeps left→right; L is
-// the mirror. This is what makes strafing read — a horizontal arc, not a thrust.
-const HARROW_SLASH_R_WOUND  = { x: -0.42, y: 0.10, z: 0.06,  rotX: -0.55, rotY: 0.95,  rotZ: -0.40 };
-const HARROW_SLASH_R_STRIKE = { x: 0.42,  y: 0,    z: -0.10, rotX: -0.25, rotY: -0.95, rotZ: 0.25 };
-const HARROW_SLASH_L_WOUND  = { x: 0.42,  y: 0.10, z: 0.06,  rotX: -0.55, rotY: -0.95, rotZ: 0.40 };
-const HARROW_SLASH_L_STRIKE = { x: -0.42, y: 0,    z: -0.10, rotX: -0.25, rotY: 0.95,  rotZ: -0.25 };
-// ONE-WAY sweep: wind to one side, cut across, follow through to rest. NOT a
-// loop-back (wound→strike→wound flops like a gummi). The outro starts from the
-// STRIKE (follow-through), matching where the cut ended — that's the weight.
-function slashMotion(wound: typeof HARROW_READY, strike: typeof HARROW_APEX): MoveSpec['motion'] {
-  return {
-    intro: [{ t: 0, pose: HARROW_HOME, ease: 'out' }, { t: 1, pose: wound }],   // quick wind to the side
-    loop:  [{ t: 0, pose: wound, ease: 'out' }, { t: 1, pose: strike }],        // SNAP the sweep across (one-way)
-    outro: [{ t: 0, pose: strike }, { t: 1, pose: HARROW_HOME }],               // follow through to rest
-  };
-}
-const HARROW_MOTION_SLASH_R = slashMotion(HARROW_SLASH_R_WOUND, HARROW_SLASH_R_STRIKE);
-const HARROW_MOTION_SLASH_L = slashMotion(HARROW_SLASH_L_WOUND, HARROW_SLASH_L_STRIKE);
-/** One combo step: `n` reps of a motion; `hitAt` = when in the loop the hit lands.
- *  timing = windup (introS) + active×n (loopS) + recovery (outroS). The RECOVERY
- *  governs cadence — how soon you can act again — so a single stab is a deliberate
- *  ~0.55s (≈1.8/s), not a 0.34s spasm. `loopS` is the per-rip rhythm: keep it slow
- *  for a single deliberate stab, fast for a flurry's rapid reps. */
-function harrowStab(n: number, motion = HARROW_MOTION_NEUTRAL, loopS = 0.20, hitAt = 0.30): MoveSpec {
-  return { motion, timing: { introS: 0.12, loopS, outroS: 0.22 }, loopCount: n, hitAt };
-}
-
 export const ITEMS: Record<string, ItemSpec> = {
   // ── WEAPONS ────────────────────────────────────────────────────────
   'rusted-sword': {
@@ -608,29 +548,10 @@ export const ITEMS: Record<string, ItemSpec> = {
       // single deliberate stab → a double → a triple finisher. The reward is
       // chaining to the 3-stab payoff; a starter weapon shouldn't open with a
       // spasm. Each step is the same committed stab motion, more reps.
-      // A combo with VARIANCE (like the original stab→slash→double-stab), not
-      // three of the same stab: THRUST → CUT → FLURRY. The opener is directional
-      // (flavored by movement); deeper steps stay plain for readability.
-      moves: [
-        // Step 0 — a THRUST, directional: neutral stab, forward LUNGE, back
-        // RETREAT jab, and a side SLASH when you strafe.
-        {
-          neutral: harrowStab(1),
-          forward: harrowStab(1, HARROW_MOTION_LUNGE, 0.16),
-          back:    harrowStab(1, HARROW_MOTION_RETREAT),
-          left:    harrowStab(1, HARROW_MOTION_SLASH_L, 0.22, 0.55),
-          right:   harrowStab(1, HARROW_MOTION_SLASH_R, 0.22, 0.55),
-        },
-        // Step 1 — a wide CUT across the body: the motion break the combo needs.
-        harrowStab(1, HARROW_MOTION_SLASH_R, 0.22, 0.55),
-        // Step 2 — the FLURRY finisher: three rapid thrusts (fast loopS).
-        harrowStab(3, HARROW_MOTION_NEUTRAL, 0.13),
-      ],
-      // Per-stab damage/stagger for the timeline (no `hits` — the move drives the
-      // multi-hit). comboStep stays 0 for a move, so only [0] is read.
-      comboTuning: [
-        { damageMul: 0.4, staggerMul: 0.5 },
-      ],
+      // SIGNATURE moveset override (weapon-moves.ts): the Harrow's frenzy —
+      // thrust → cut → rapid TRIPLE finisher, where a generic dagger inherits the
+      // class default's double-stab. Its damage/stagger now live in the moves.
+      moves: HARROW_MOVES,
     },
   },
   'iron-maul': {

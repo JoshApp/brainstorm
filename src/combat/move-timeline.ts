@@ -49,6 +49,9 @@ export interface MoveSpec {
   timing: { introS: number; loopS: number; outroS: number };   // real seconds at 1× speed
   loopCount: number;     // base flurry size (rips per press), >= 1
   hitAt: number;         // normalized point WITHIN a loop where the strike lands (0..1)
+  /** Damage each rip deals, as a fraction of the weapon's resolved damage. So a
+   *  combo can vary per move (a wide cut hits harder than one flurry rip). Default 1. */
+  damageMul?: number;
 }
 
 /** A combo step is EITHER a plain move (same regardless of movement) OR a
@@ -95,6 +98,7 @@ export interface ResolvedMove {
   duration: number;      // total real seconds
   loops: number;         // effective loop count after flurryHits
   hitTimes: number[];    // real-time (s) at which each strike lands, ascending
+  damageMul: number;     // per-rip damage fraction (from the move)
   poseAt(t: number): MovePose;   // weapon pose at real-time t (seconds since move start)
 }
 
@@ -166,5 +170,5 @@ export function resolveMove(spec: MoveSpec, mods?: MoveModifiers): ResolvedMove 
     return spec.motion.outro[spec.motion.outro.length - 1]?.pose ?? REST;
   }
 
-  return { duration, loops, hitTimes, poseAt };
+  return { duration, loops, hitTimes, damageMul: spec.damageMul ?? 1, poseAt };
 }

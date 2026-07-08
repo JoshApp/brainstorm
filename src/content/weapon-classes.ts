@@ -1,6 +1,7 @@
 import { CONFIG } from '../config';
 import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile, FlurrySpec } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
+import { DAGGER_DEFAULT_MOVES } from './weapon-moves';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -223,6 +224,11 @@ export interface ChargedMoves {
 interface ClassDefaults {
   combo: ComboStep[];
   comboWindowMs: number;
+  /** DEFAULT timeline moveset for the class (docs/MOVE-TIMELINE.md). Generic
+   *  weapons of the class inherit this; a signature weapon overrides via
+   *  WeaponStats.moves. Omitted → the class is still on the legacy phase-pose
+   *  path (migration in progress). */
+  moves?: import('../combat/move-timeline').MoveStep[];
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
   /** HEAVY combo chain (hold→hold→hold) — an escalating heavy 1-2-3 walked by
@@ -274,6 +280,10 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     timingMul: 0.9,         // a touch quicker than the baseline sword
   },
   dagger: {
+    // Timeline moveset (docs/MOVE-TIMELINE.md) — every generic dagger inherits
+    // this thrust→cut→double-stab. The legacy `combo` below is now only the
+    // fallback shaping (reach/cone/maxTargets) the timeline hit still borrows.
+    moves: DAGGER_DEFAULT_MOVES,
     // stab → slash → double-stab. Stab one, slash cleaves two,
     // double-stab finisher commits on one target with extra damage.
     combo: [
@@ -806,7 +816,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
     // Swing arc: per-weapon override, else the class default, else full (1).
     swingArc: spec.swingArc ?? baseT.swingArc ?? 1,
-    moves: spec.moves,
+    moves: spec.moves ?? baseT.moves,   // weapon override → class default (inheritance)
     attackSpeed: spec.attackSpeed ?? 1,
     onHit: spec.onHit,
     ranged: spec.ranged,
