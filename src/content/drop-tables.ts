@@ -135,6 +135,12 @@ export const TABLES: Record<string, LootTable> = {
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
   'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') }] }),
   'corpse':        T({ pools: [{ entries: [{ gold: [2, 6] }] }, { entries: [{ from: 'gear', bias: 1 }] }] } as LootTable),
+  // A bone-shrine set-piece you SEARCH — a little gold, and a fair chance of gear
+  // or a relic among the dead's leavings.
+  'ossuary':       T({ pools: [
+    { entries: [{ gold: [3, 8] }] },
+    { entries: [{ from: 'gear', bias: 1, weight: 45 }, { from: 'relics', bias: 1, weight: 15 }, { weight: 40 }] },
+  ] } as LootTable),
   'cursed':        T({ entries: [{ from: 'cursed', bias: 4 }] }),
 };
 

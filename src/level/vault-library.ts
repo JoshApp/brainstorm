@@ -303,7 +303,6 @@ const COMBAT_ARENA: Vault = {
   weight: 1,
   torchTint: TORCH_BLOOD,
   cellProps: {
-    '6,5': [{ kind: 'altar' }],
   },
 };
 
@@ -362,7 +361,6 @@ const TREASURE_ALTAR: Vault = {
   ],
   torchTint: TORCH_GOLD,
   cellProps: {
-    '4,3': [{ kind: 'altar' }],
     '1,5': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '8,5': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
   },
