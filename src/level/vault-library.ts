@@ -124,8 +124,8 @@ const FOYER_ALCOVE: Vault = {
   // No baked fire (director owns fires — see FOYER_SMALL).
   torchTint: TORCH_AMBER,
   cellProps: {
-    '3,3': [{ kind: 'corpse' }],
-    '9,3': [{ kind: 'corpse' }],
+    '3,3': [{ kind: 'loot-anchor', prominence: 'minor' }],
+    '9,3': [{ kind: 'loot-anchor', prominence: 'minor' }],
   },
 };
 
@@ -533,9 +533,9 @@ const ENCOUNTER_CORPSES: Vault = {
   minDepth: 2,
   torchTint: TORCH_GREEN,
   cellProps: {
-    '2,2': [{ kind: 'corpse' }],
-    '6,3': [{ kind: 'corpse' }],
-    '9,6': [{ kind: 'corpse' }],
+    '2,2': [{ kind: 'loot-anchor', prominence: 'minor' }],
+    '6,3': [{ kind: 'loot-anchor', prominence: 'minor' }],
+    '9,6': [{ kind: 'loot-anchor', prominence: 'minor' }],
   },
 };
 
@@ -1036,11 +1036,11 @@ const ENCOUNTER_OSSUARY: Vault = {
   weight: 1,
   torchTint: TORCH_GREEN,
   cellProps: {
-    '2,1': [{ kind: 'corpse' }],
-    '8,1': [{ kind: 'corpse' }],
+    '2,1': [{ kind: 'loot-anchor', prominence: 'minor' }],
+    '8,1': [{ kind: 'loot-anchor', prominence: 'minor' }],
     '5,3': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
-    '2,6': [{ kind: 'corpse' }],
-    '8,6': [{ kind: 'corpse' }],
+    '2,6': [{ kind: 'loot-anchor', prominence: 'minor' }],
+    '8,6': [{ kind: 'loot-anchor', prominence: 'minor' }],
   },
 };
 

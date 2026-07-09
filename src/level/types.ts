@@ -262,7 +262,11 @@ export type PropSpec =
   // 'corpse' = a fallen delver (content/corpses.ts). Walk up: epitaph
   // whispers, and if they died holding something a glint marks it and SEARCH
   // takes it. `note` overrides the picked epitaph (a vault speaking a death).
-  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note?: string }
+  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note?: string;
+      /** Pose override — the director sets this from the anchor's surroundings
+       *  (against a wall → slumped/leaning; open floor → crawled/curled). Omit to
+       *  use the fallen delver's own baked pose. */
+      pose?: import('../content/corpses').CorpsePose }
   // 'wall-rune' = a glyph scratched into the wall, invisible until the lamp
   // finds it; its message whispers as you pass. `rotY` faces it into the room
   // (N=0, S=π, W=π/2, E=−π/2). `text` overrides the picked wall-mark; omit for

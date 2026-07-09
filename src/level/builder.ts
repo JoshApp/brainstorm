@@ -1415,7 +1415,9 @@ export function buildLevel(
       // deterministically off the build stream. An authored `note` overrides
       // the epitaph (lets a vault speak a specific death).
       const base = pickFallen(buildRng);
-      const fallen = prop.note ? { ...base, epitaph: prop.note } : base;
+      // Note override + the director's context POSE override (against a wall vs
+      // open floor) both fold onto the picked delver.
+      const fallen = { ...base, ...(prop.note ? { epitaph: prop.note } : {}), ...(prop.pose ? { pose: prop.pose } : {}) };
       let loot: ItemSpec | null = null;
       if (fallen.carried === 'roll') loot = rollLoot({ depth: spec.depth ?? 1 }, buildRng);
       else if (typeof fallen.carried === 'string') loot = ITEMS[fallen.carried] ?? null;
