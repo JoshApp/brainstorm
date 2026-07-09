@@ -629,7 +629,7 @@ export function composeFloor(
   // director may fill. Step 1: fire anchors (a bonfire reads well here). The
   // director places a rolled fire at one of these so it lands on an authored
   // spot, falling back to a generic open cell when a floor offers none.
-  const fireAnchors: Array<{ x: number; z: number; roomId: string }> = [];
+  const fireAnchors: Array<{ x: number; z: number; roomId: string; openness: number }> = [];
   // Dumb content MARKERS ('spot' anchors) harvested across the placed vaults —
   // the FILL stage (floor-fill.ts) stages a defining find / deal onto one of
   // these, choosing by the owning room's role, not by anything the marker says.
@@ -933,6 +933,10 @@ export function composeFloor(
           x: a.col + 0.5 - W / 2 + pv.offsetX,
           z: a.row + 0.5 - D / 2 + pv.offsetZ,
           roomId: pv.roomId,
+          // OPENNESS — high when the anchor is centred / mid-wall, LOW in a corner
+          // (near a wall on both axes). The director prefers open spots so a
+          // bonfire doesn't wedge into a corner. = the less-cornered axis's wall gap.
+          openness: Math.max(Math.min(a.col, W - 1 - a.col), Math.min(a.row, D - 1 - a.row)),
         });
       }
     }

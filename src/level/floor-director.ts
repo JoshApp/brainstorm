@@ -23,7 +23,7 @@ import type { PropSpec } from './types';
 import { CONFIG } from '../config';
 
 /** A candidate bonfire site — an authored fire anchor or an open floor cell. */
-export interface FireSite { x: number; z: number; roomId: string }
+export interface FireSite { x: number; z: number; roomId: string; openness?: number }
 
 export interface DirectorInput {
   depth: number;
@@ -86,7 +86,12 @@ export function directFloor(input: DirectorInput): FloorPlan {
       let top = -Infinity;
       for (const c of list) top = Math.max(top, roles.bonfireScore(c.roomId));
       const tied = list.filter((c) => roles.bonfireScore(c.roomId) === top);
-      return tied[Math.floor(rand() * tied.length)];
+      // Among rooms tied on score, prefer the most OPEN spot — a bonfire in a
+      // corner reads as obstructed; centred / mid-wall breathes.
+      let bestOpen = -Infinity;
+      for (const c of tied) bestOpen = Math.max(bestOpen, c.openness ?? 0);
+      const open = tied.filter((c) => (c.openness ?? 0) === bestOpen);
+      return open[Math.floor(rand() * open.length)];
     };
     fire = best(fireAnchors);
     if (!fire) {
