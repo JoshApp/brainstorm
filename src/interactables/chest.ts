@@ -7,6 +7,7 @@ import { KEY_ID } from '../content/drop-tables';
 import { getCount, removeItem } from '../player/inventory';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerInteractable, unregisterInteractable } from './system';
+import { registerLight, unregisterLight } from '../scene/light-pool';
 import { createPickup } from './pickup';
 import { playChestOpen, playEquipClick } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
@@ -63,6 +64,19 @@ export function spawnChest(
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);
+
+  // A GOLD chest holds court — a warm amber glow marks it as a hot-spot across
+  // the room (lighting doctrine: a rare light means something is here). Wood +
+  // silver stay dark; only the prize tier earns the signal.
+  const glowId = `${generateEntityId('chest-glow')}`;
+  if (tier === 'gold') {
+    registerLight({
+      id: glowId, category: 'pickup',
+      position: new THREE.Vector3(pos.x, pos.y + 0.55, pos.z),
+      color: 0xffb040, intensity: 2.0, distance: 5.5, decay: 1.9,
+      getIntensity: () => { const t = performance.now() / 1000; return 2.0 * (1 + 0.08 * Math.sin(t * 4.7)); },
+    });
+  }
 
   const hinge = built.slots.get('hinge');
   const lootSpawnSlot = built.slots.get('loot_spawn');
@@ -135,6 +149,7 @@ export function spawnChest(
             // the scene so it doesn't sit visibly overlapping with
             // the mimic mob's own body.
             unregisterInteractable(id);
+            if (tier === 'gold') unregisterLight(glowId);   // the disguise + its glow go with the reveal
             const worldPos = new THREE.Vector3();
             built.group.getWorldPosition(worldPos);
             scene.remove(built.group);

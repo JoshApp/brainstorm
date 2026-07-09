@@ -20,6 +20,7 @@ import type { HeldWeaponCompose } from '../player/held-weapon-compose';
 import { LURKER } from '../content/clutter';
 import { SKELETON_KEY } from '../content/skeleton-key';
 import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
+import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -93,6 +94,9 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'corpse-curled': { label: 'Fallen delver — curled', spec: makeCorpseModel('curled', 'fleshy', false) },
   'corpse-slumped': { label: 'Fallen delver — slumped, with pack', spec: makeCorpseModel('slumped', 'fleshy', true) },
   'corpse-skeletal': { label: 'Fallen delver — skeletal (curled)', spec: makeCorpseModel('curled', 'skeletal', false) },
+  'chest-wood':   { label: 'Chest — wood (free tier)', spec: CHEST },
+  'chest-silver': { label: 'Chest — iron-bound silver (keyed)', spec: CHEST_IRON },
+  'chest-gold':   { label: 'Chest — gold, occult sigil + horns (imposing prize)', spec: CHEST_BOSS },
 };
 
 // Pre-composed subjects — hand + object compositions that AREN'T weapons

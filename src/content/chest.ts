@@ -99,30 +99,31 @@ export const CHEST_IRON: ModelSpec = {
     loot_spawn: { pos: [0, 0.32, 0] },
   },
   parts: [
-    { name: 'body', kind: 'box', pos: [0, 0.02, 0],     size: [0.50, 0.04, 0.40], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.165, 0.18],  size: [0.50, 0.27, 0.04], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.165, -0.18], size: [0.50, 0.27, 0.04], mat: 'wood' },
-    { kind: 'box', pos: [-0.23, 0.165, 0], size: [0.04, 0.27, 0.40], mat: 'wood' },
-    { kind: 'box', pos: [ 0.23, 0.165, 0], size: [0.04, 0.27, 0.40], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.045, 0], size: [0.42, 0.005, 0.32], mat: 'wood_dark' },
+    // Bigger than the wood chest (0.60 × 0.34 × 0.48) — the middle step.
+    { name: 'body', kind: 'box', pos: [0, 0.02, 0],     size: [0.60, 0.04, 0.48], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.195, 0.22],  size: [0.60, 0.31, 0.04], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.195, -0.22], size: [0.60, 0.31, 0.04], mat: 'wood' },
+    { kind: 'box', pos: [-0.28, 0.195, 0], size: [0.04, 0.31, 0.48], mat: 'wood' },
+    { kind: 'box', pos: [ 0.28, 0.195, 0], size: [0.04, 0.31, 0.48], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.045, 0], size: [0.52, 0.005, 0.40], mat: 'wood_dark' },
     // Thicker iron bands — wraps around the whole chest at three
     // points so the silhouette reads as iron-bound.
-    { kind: 'box', pos: [-0.18, 0.15, 0],  size: [0.035, 0.34, 0.42], mat: 'iron' },
-    { kind: 'box', pos: [ 0.18, 0.15, 0],  size: [0.035, 0.34, 0.42], mat: 'iron' },
-    { kind: 'box', pos: [0, 0.04, 0],  size: [0.50, 0.025, 0.40], mat: 'iron' },
+    { kind: 'box', pos: [-0.22, 0.18, 0],  size: [0.04, 0.38, 0.50], mat: 'iron' },
+    { kind: 'box', pos: [ 0.22, 0.18, 0],  size: [0.04, 0.38, 0.50], mat: 'iron' },
+    { kind: 'box', pos: [0, 0.04, 0],  size: [0.60, 0.025, 0.48], mat: 'iron' },
     {
       name: 'lid',
       parent: 'hinge',
       kind: 'box',
-      pos: [0, 0.025, 0.18],
-      size: [0.5, 0.05, 0.4],
+      pos: [0, 0.03, 0.22],
+      size: [0.60, 0.06, 0.48],
       mat: 'wood_dark',
     },
     // Iron lid band — top trim.
-    { parent: 'hinge', kind: 'box', pos: [0, 0.05, 0.18], size: [0.5, 0.012, 0.4], mat: 'iron' },
+    { parent: 'hinge', kind: 'box', pos: [0, 0.06, 0.22], size: [0.60, 0.014, 0.48], mat: 'iron' },
     // Lock plate — iron rim + green sigil core.
-    { kind: 'box', pos: [0, 0.22, 0.205], size: [0.09, 0.09, 0.012], mat: 'iron' },
-    { kind: 'box', pos: [0, 0.22, 0.212], size: [0.045, 0.045, 0.005], mat: 'seal' },
+    { kind: 'box', pos: [0, 0.25, 0.245], size: [0.10, 0.10, 0.012], mat: 'iron' },
+    { kind: 'box', pos: [0, 0.25, 0.252], size: [0.05, 0.05, 0.005], mat: 'seal' },
   ],
 };
 
@@ -134,51 +135,55 @@ export const CHEST_IRON: ModelSpec = {
 export const CHEST_BOSS: ModelSpec = {
   id: 'chest-boss',
   materials: {
-    wood: { color: 0x2a1b0f, roughness: 0.85, metalness: 0.0, flatShading: 'auto' },
-    wood_dark: { color: 0x180e06, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
-    gold: { color: 0xa37822, roughness: 0.35, metalness: 0.9, flatShading: 'auto' },
+    wood: { color: 0x241608, roughness: 0.85, metalness: 0.0, flatShading: 'auto' },
+    wood_dark: { color: 0x140b04, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    gold: { color: 0xb0832a, roughness: 0.3, metalness: 0.95, flatShading: 'auto' },
+    bone: { color: 0xcabfa2, roughness: 0.75, metalness: 0.0, flatShading: 'auto' },  // occult pallor
     seal: {
       color: 0x000000,
       emissive: 0xffb040,         // fabled amber-gold tier glow
-      emissiveIntensity: 1.8,
+      emissiveIntensity: 2.2,
       roughness: 0.3,
     },
   },
   slots: {
-    // Slightly higher hinge to match the taller body. Loot spawn lifted
-    // too so the spawn arc clears the bigger lid.
-    hinge: { pos: [0, 0.42, -0.23] },
-    loot_spawn: { pos: [0, 0.46, 0] },
+    // Taller/deeper body — the imposing tier. Hinge + loot spawn lift to match.
+    hinge: { pos: [0, 0.54, -0.29] },
+    loot_spawn: { pos: [0, 0.60, 0] },
   },
   parts: [
-    // Larger body — 0.62 × 0.40 × 0.50.
-    { name: 'body', kind: 'box', pos: [0, 0.02, 0],     size: [0.62, 0.04, 0.50], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.225, 0.23],  size: [0.62, 0.37, 0.04], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.225, -0.23], size: [0.62, 0.37, 0.04], mat: 'wood' },
-    { kind: 'box', pos: [-0.29, 0.225, 0], size: [0.04, 0.37, 0.50], mat: 'wood' },
-    { kind: 'box', pos: [ 0.29, 0.225, 0], size: [0.04, 0.37, 0.50], mat: 'wood' },
-    { kind: 'box', pos: [0, 0.045, 0], size: [0.54, 0.005, 0.42], mat: 'wood_dark' },
-    // Gold corner posts.
-    { kind: 'box', pos: [-0.29, 0.20, -0.23], size: [0.05, 0.42, 0.05], mat: 'gold' },
-    { kind: 'box', pos: [ 0.29, 0.20, -0.23], size: [0.05, 0.42, 0.05], mat: 'gold' },
-    { kind: 'box', pos: [-0.29, 0.20,  0.23], size: [0.05, 0.42, 0.05], mat: 'gold' },
-    { kind: 'box', pos: [ 0.29, 0.20,  0.23], size: [0.05, 0.42, 0.05], mat: 'gold' },
-    // Gold horizontal trim.
-    { kind: 'box', pos: [0, 0.20, 0.232], size: [0.55, 0.025, 0.005], mat: 'gold' },
-    { kind: 'box', pos: [0, 0.20, -0.232], size: [0.55, 0.025, 0.005], mat: 'gold' },
+    // Much larger body — 0.76 × 0.50 × 0.60 (a landmark you read across the room).
+    { name: 'body', kind: 'box', pos: [0, 0.02, 0],     size: [0.76, 0.04, 0.60], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.29, 0.28],  size: [0.76, 0.50, 0.04], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.29, -0.28], size: [0.76, 0.50, 0.04], mat: 'wood' },
+    { kind: 'box', pos: [-0.36, 0.29, 0], size: [0.04, 0.50, 0.60], mat: 'wood' },
+    { kind: 'box', pos: [ 0.36, 0.29, 0], size: [0.04, 0.50, 0.60], mat: 'wood' },
+    { kind: 'box', pos: [0, 0.045, 0], size: [0.66, 0.005, 0.50], mat: 'wood_dark' },
+    // Gold corner posts (thicker, taller).
+    { kind: 'box', pos: [-0.36, 0.27, -0.28], size: [0.06, 0.54, 0.06], mat: 'gold' },
+    { kind: 'box', pos: [ 0.36, 0.27, -0.28], size: [0.06, 0.54, 0.06], mat: 'gold' },
+    { kind: 'box', pos: [-0.36, 0.27,  0.28], size: [0.06, 0.54, 0.06], mat: 'gold' },
+    { kind: 'box', pos: [ 0.36, 0.27,  0.28], size: [0.06, 0.54, 0.06], mat: 'gold' },
+    // Gold horizontal trim (top + mid banding).
+    { kind: 'box', pos: [0, 0.50, 0.283], size: [0.66, 0.03, 0.006], mat: 'gold' },
+    { kind: 'box', pos: [0, 0.16, 0.283], size: [0.66, 0.02, 0.006], mat: 'gold' },
     {
       name: 'lid',
       parent: 'hinge',
       kind: 'box',
-      pos: [0, 0.035, 0.23],
-      size: [0.62, 0.07, 0.50],
+      pos: [0, 0.04, 0.29],
+      size: [0.76, 0.08, 0.60],
       mat: 'wood_dark',
     },
-    // Gold lid trim.
-    { parent: 'hinge', kind: 'box', pos: [0, 0.07, 0.23], size: [0.64, 0.018, 0.50], mat: 'gold' },
-    // Front amber seal — bigger emissive than the iron chest. Reads
-    // as a glowing lockstone from across a room.
-    { kind: 'box', pos: [0, 0.28, 0.262], size: [0.16, 0.16, 0.012], mat: 'gold' },
-    { kind: 'box', pos: [0, 0.28, 0.270], size: [0.09, 0.09, 0.006], mat: 'seal' },
+    // Gold lid trim (front + back edge).
+    { parent: 'hinge', kind: 'box', pos: [0, 0.085, 0.29], size: [0.78, 0.02, 0.60], mat: 'gold' },
+    // OCCULT SIGIL — a raised gold ring on the front with a glowing amber core
+    // (a ritual lockstone — this chest shouldn't be opened), flanked by two
+    // small bone HORNS on the lid crown for the grotesque tell.
+    { kind: 'cylinder', pos: [0, 0.34, 0.325], radius: 0.13, height: 0.03, rot: [Math.PI / 2, 0, 0], segments: 16, mat: 'gold' },
+    { kind: 'cylinder', pos: [0, 0.34, 0.345], radius: 0.07, height: 0.02, rot: [Math.PI / 2, 0, 0], segments: 16, mat: 'seal' },
+    // Horns on the lid crown — angled outward, the grotesque tell.
+    { parent: 'hinge', kind: 'cone', pos: [-0.26, 0.12, 0.22], radius: 0.06, height: 0.22, rot: [0, 0, 0.55], mat: 'bone' },
+    { parent: 'hinge', kind: 'cone', pos: [ 0.26, 0.12, 0.22], radius: 0.06, height: 0.22, rot: [0, 0, -0.55], mat: 'bone' },
   ],
 };
