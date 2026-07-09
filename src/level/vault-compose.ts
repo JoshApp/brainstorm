@@ -1,6 +1,7 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
 import { applyProcgenDefaults } from './decor-defaults';
 import { distributeLoot } from './loot-director';
+import { resolvePlacement, type RoomBox } from './placement';
 import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
@@ -1177,6 +1178,16 @@ export function composeFloor(
     });
   }
 
+  // GEOMETRY-AWARE PLACEMENT: run the loot director, then resolve content
+  // transforms (chest facing the entrance, etc.) from each room's continuous
+  // geometry — centre, walls, and the descent direction (placeDir).
+  const roomBoxes: RoomBox[] = placed.map((pv) => {
+    const vd = vaultDims(pv.vault);
+    return { cx: pv.offsetX, cz: pv.offsetZ, w: vd.w, d: vd.d, placeDir: pv.placeDir };
+  });
+  const placedProps = distributeLoot(props, depth, rand);
+  resolvePlacement(placedProps, roomBoxes);
+
   // Build the intermediate LevelSpec — props / torches will be
   // mutated by the decoration pipeline below.
   const result: LevelSpec = {
@@ -1191,7 +1202,7 @@ export function composeFloor(
     rooms,
     corridors: corridorRooms,
     // Floor LOOT DIRECTOR: loot-anchor markers → a budgeted, spaced set of chests.
-    props: distributeLoot(props, depth, rand),
+    props: placedProps,
     torches,
     spawns,
     doors,
