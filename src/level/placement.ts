@@ -98,12 +98,25 @@ const WALL_ANCHORED_DIST = 1.3;
 // half-cell off (even-width rooms can't hit centre with a cell) — snap it true.
 const CENTER_SNAP_DIST = 1.2;
 
-/** Resolve each content prop's transform from its room geometry. Mutates props in
- *  place. Run AFTER the loot director (so it sees the chests it placed). */
-export function resolvePlacement(props: PropSpec[], rooms: readonly RoomBox[]): void {
+/** STATICS pass — settle AUTHORED centrepiece props (pillar/altar/fountain) to the
+ *  room's true centre. Run BEFORE the director, so it places chests around their
+ *  FINAL positions (a centre-snapped altar can't then land on a chest). */
+export function resolveStatics(props: PropSpec[], rooms: readonly RoomBox[]): void {
   for (const p of props) {
-    // CHESTS — a central one turns to face the arriving player; a wall-anchored
-    // one keeps its authored facing (its back is already to a wall).
+    if (p.kind !== 'pillar' && p.kind !== 'altar' && p.kind !== 'fountain') continue;
+    const room = roomFor(p.x, p.z, rooms);
+    if (!room) continue;
+    if (Math.hypot(p.x - room.cx, p.z - room.cz) <= CENTER_SNAP_DIST) {
+      p.x = room.cx; p.z = room.cz;
+    }
+  }
+}
+
+/** CONTENT pass — orient the director's pieces. Run AFTER the director. */
+export function resolveContent(props: PropSpec[], rooms: readonly RoomBox[]): void {
+  for (const p of props) {
+    // CHESTS — a central one turns to face the arriving player (the entrance-point
+    // CONE); a wall-anchored one keeps its facing (its back is already to a wall).
     if (p.kind === 'chest') {
       const room = roomFor(p.x, p.z, rooms);
       if (!room) continue;
@@ -119,14 +132,11 @@ export function resolvePlacement(props: PropSpec[], rooms: readonly RoomBox[]): 
       p.rotY = backToWallRotY(p.x, p.z, room);
       p.facing = undefined;
     }
-    // CENTREPIECE props (pillar / altar / fountain) that landed near-centre snap
-    // to the room's TRUE centre — kills the half-cell offset.
-    else if (p.kind === 'pillar' || p.kind === 'altar' || p.kind === 'fountain') {
-      const room = roomFor(p.x, p.z, rooms);
-      if (!room) continue;
-      if (Math.hypot(p.x - room.cx, p.z - room.cz) <= CENTER_SNAP_DIST) {
-        p.x = room.cx; p.z = room.cz;
-      }
-    }
   }
+}
+
+/** Combined convenience (statics then content) — used by the placement tests. */
+export function resolvePlacement(props: PropSpec[], rooms: readonly RoomBox[]): void {
+  resolveStatics(props, rooms);
+  resolveContent(props, rooms);
 }

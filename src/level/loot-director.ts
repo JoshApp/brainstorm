@@ -18,6 +18,8 @@ type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
 /** Minimum metres between two placed pieces — keeps them from clustering even if
  *  two anchors sit close. */
 const MIN_CHEST_SPACING = 4.5;
+/** Keep a director chest this far from an authored set-piece (altar, ossuary…). */
+const BLOCKER_CLEARANCE = 2.6;
 
 // The L4D-style Director budget — anchors are POTENTIAL spots; this decides how
 // many pieces actually fill this floor. The COUNT lives here; each chest's TIER
@@ -60,8 +62,17 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   const used = new Set<Anchor>();
   const placed: { x: number; z: number }[] = [];
 
+  // Authored SET-PIECES (altar, pillar, fountain, a model like an ossuary, a
+  // narrative corpse) — the director keeps its chests clear of these so a chest
+  // never lands on an altar. They're settled (centre-snapped) already.
+  const BLOCKER_KINDS = new Set(['altar', 'pillar', 'fountain', 'model', 'corpse', 'stash-chest', 'challenge-offering', 'merchant']);
+  const blockers = kept
+    .filter((p) => BLOCKER_KINDS.has(p.kind))
+    .map((p) => p as unknown as { x: number; z: number });   // every blocker kind carries x/z
+
   const farEnough = (a: Anchor) =>
-    placed.every((p) => (p.x - a.x) ** 2 + (p.z - a.z) ** 2 >= MIN_CHEST_SPACING ** 2);
+    placed.every((p) => (p.x - a.x) ** 2 + (p.z - a.z) ** 2 >= MIN_CHEST_SPACING ** 2)
+    && blockers.every((b) => (b.x - a.x) ** 2 + (b.z - a.z) ** 2 >= BLOCKER_CLEARANCE ** 2);
 
   // Take the first free, well-spaced anchor from `first` then `second` queue.
   const take = (first: Anchor[], second: Anchor[]): Anchor | null => {
