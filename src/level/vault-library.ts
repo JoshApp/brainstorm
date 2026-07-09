@@ -34,8 +34,8 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 //   cellProps: {
 //     '3,2': [{ kind: 'pillar' }, { kind: 'torch', wall: 'N' }],
 //     '5,3': [{ kind: 'spawn', enemyId: 'boiling-king' }],
-//     '6,4': [{ kind: 'chest' }],                  // depth-rolled tier
-//     '7,5': [{ kind: 'chest', tier: 'silver' }],    // forced tier
+//     '6,4': [{ kind: 'loot-anchor', prominence: 'minor' }],                  // depth-rolled tier
+//     '7,5': [{ kind: 'loot-anchor', prominence: 'major' }],    // forced tier
 //     '8,1': [{ kind: 'pillar', offset: [0.2, 0] }],  // sub-cell nudge
 //   },
 //
@@ -363,8 +363,8 @@ const TREASURE_ALTAR: Vault = {
   torchTint: TORCH_GOLD,
   cellProps: {
     '4,3': [{ kind: 'altar' }],
-    '1,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
-    '8,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '1,5': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+    '8,5': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
   },
 };
 
@@ -385,11 +385,11 @@ const TREASURE_CACHE: Vault = {
   minDepth: 3,
   torchTint: TORCH_GOLD,
   cellProps: {
-    '2,2': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
-    '5,2': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '2,2': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+    '5,2': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '2,3': [{ kind: 'vase' }],
     '5,3': [{ kind: 'vase' }],
-    '3,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '3,5': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
   },
   // Focal content marker at the cache's heart — the FILL stage stages the
   // floor's defining find here (varies each run), amid the baked cache chests.
@@ -429,10 +429,10 @@ const TREASURE_VAULT: Vault = {
   cellProps: {
     '2,2': [{ kind: 'pillar' }],
     '9,2': [{ kind: 'pillar' }],
-    '4,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
-    '9,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
-    '4,7': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
-    '9,7': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '4,3': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+    '9,3': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+    '4,7': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+    '9,7': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '2,8': [{ kind: 'pillar' }],
     '9,8': [{ kind: 'pillar' }],
   },
@@ -598,7 +598,7 @@ const ENCOUNTER_PRISON: Vault = {
     '2,2': [{ kind: 'pillar' }],
     '9,2': [{ kind: 'pillar' }],
     '2,4': [{ kind: 'spawn', enemyId: 'wraith' }],
-    '9,4': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '9,4': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '2,6': [{ kind: 'pillar' }],
     '9,6': [{ kind: 'pillar' }],
   },
@@ -648,7 +648,7 @@ const ENCOUNTER_ARENA: Vault = {
   // since neither cell is a clean fit; this is the legit
   // sub-cell escape case.
   props: [
-    { kind: 'chest', x: 0, z: 0.5, tier: 'silver', facing: { kind: 'wall-away' } },
+    { kind: 'loot-anchor', prominence: 'major', x: 0, z: 0.5, facing: { kind: 'wall-away' } },
   ],
   // No static guardians — a TRAP arena: committing through any entrance
   // slams every gate and the wave controller summons escalating waves
@@ -758,7 +758,7 @@ const ENCOUNTER_TRAPPED: Vault = {
   weight: 1,
   torchTint: TORCH_GREEN,
   cellProps: {
-    '4,4': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '4,4': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
   },
 };
 
@@ -884,7 +884,7 @@ const ENCOUNTER_NEST: Vault = {
     '10,6': [{ kind: 'spawn', enemyId: 'spider' }],
     '6,4':  [{ kind: 'spawn', enemyId: 'skeleton' }],
     // Reward chest at the back of the swarm.
-    '6,6':  [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '6,6':  [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
   },
 };
 
@@ -1038,7 +1038,7 @@ const ENCOUNTER_OSSUARY: Vault = {
   cellProps: {
     '2,1': [{ kind: 'corpse' }],
     '8,1': [{ kind: 'corpse' }],
-    '5,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '5,3': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '2,6': [{ kind: 'corpse' }],
     '8,6': [{ kind: 'corpse' }],
   },

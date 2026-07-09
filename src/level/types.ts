@@ -210,6 +210,20 @@ export type PropSpec =
        *  looking at. Purely diagnostic — ignored by gameplay. */
       _dbg?: string;
     }
+  // 'loot-anchor' = a candidate spot where the floor LOOT DIRECTOR may place a
+  // chest (level/loot-director.ts). Authored in vaults with INTENT + a prominence;
+  // the director fills a spaced subset per its per-floor budget, and the rest
+  // vanish. This is how "big loot feels intentional, not stacked."
+  | {
+      kind: 'loot-anchor';
+      x: number;
+      z: number;
+      rotY?: number;
+      facing?: PropFacing;
+      /** minor = a plain wood-chest corner; major = a prominent alcove that a
+       *  silver/gold chest (or, later, an event) prefers. */
+      prominence: 'minor' | 'major';
+    }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
   | {

@@ -1,5 +1,6 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
 import { applyProcgenDefaults } from './decor-defaults';
+import { distributeLoot } from './loot-director';
 import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
@@ -1189,7 +1190,8 @@ export function composeFloor(
     startPos,
     rooms,
     corridors: corridorRooms,
-    props,
+    // Floor LOOT DIRECTOR: loot-anchor markers → a budgeted, spaced set of chests.
+    props: distributeLoot(props, depth, rand),
     torches,
     spawns,
     doors,

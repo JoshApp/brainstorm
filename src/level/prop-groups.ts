@@ -114,7 +114,7 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
   'chest-cache': {
     id: 'chest-cache',
     children: [
-      { prop: { kind: 'chest', x: 0, z: 0, facing: { kind: 'point-toward', x: 0, z: 1.3 } } },
+      { prop: { kind: 'loot-anchor', prominence: 'minor', x: 0, z: 0, facing: { kind: 'point-toward', x: 0, z: 1.3 } } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
       { prop: { kind: 'corpse', x: 0, z: 1.3, facing: { kind: 'point-toward', x: 0, z: 0 }, note: CORPSE_NOTE }, minClearance: 0.6 },
