@@ -26,10 +26,10 @@ interface LootBudget { wood: number; silver: number; gold: number; corpse: numbe
 /** Per-floor content budget. Deliberately small — wood is the staple, silver an
  *  occasional treat, gold a rare event (likelier deep), a corpse or two. */
 function rollBudget(depth: number, rand: () => number): LootBudget {
-  const wood = 1 + (rand() < 0.55 ? 1 : 0);                     // 1–2 wood
-  const silver = rand() < 0.45 ? 1 : 0;                          // ~half the floors
-  const gold = rand() < Math.min(0.4, 0.06 + depth * 0.035) ? 1 : 0;  // rare, ramps with depth
-  const corpse = rand() < 0.4 ? 1 : 0;                                 // 0–1, a corpse is RARE — a real find
+  const wood = 1 + (rand() < 0.25 ? 1 : 0);                     // usually 1, rarely 2
+  const silver = rand() < 0.3 ? 1 : 0;                           // a third of floors
+  const gold = rand() < Math.min(0.12, 0.02 + depth * 0.012) ? 1 : 0;  // GENUINELY rare, gentle ramp (cap 12%)
+  const corpse = rand() < 0.28 ? 1 : 0;                                // a corpse is a real find, not scatter
   return { wood, silver, gold, corpse };
 }
 
