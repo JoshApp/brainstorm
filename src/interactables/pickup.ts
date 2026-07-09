@@ -227,6 +227,9 @@ export function createPickup(
     // empty-label items, so the player can't grab an item mid-arc. We
     // flip to 'TAKE' the moment it lands (mode → 'settled').
     promptLabel: (mode === 'settled' ? 'TAKE' : ''),
+    // The overlay reads this to show the FULL item card while you're aimed at it
+    // — see before you take (ui/item-overlay.ts).
+    previewItem: item,
     // Items are small; the default 1.07× outline doesn't read at all
     // on a 30cm sword. 1.45× makes the silhouette properly pop without
     // looking like a halo balloon.

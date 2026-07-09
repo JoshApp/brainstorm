@@ -107,7 +107,7 @@ export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
   return col;
 }
 
-function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
+export function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
   // Stacked vertical: rarity·kind meta on top, name underneath. Sits
   // beside the thumbnail in the narrow details column.
   const wrap = document.createElement('div');
@@ -139,7 +139,7 @@ function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
 }
 
 /** Italic in-world flavor line — rendered between the header row and the effects bullets. */
-function buildFlavorLine(item: ItemSpec): HTMLDivElement | null {
+export function buildFlavorLine(item: ItemSpec): HTMLDivElement | null {
   if (!item.flavor) return null;
   const flavor = document.createElement('div');
   flavor.textContent = item.flavor;
@@ -239,7 +239,7 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
 }
 
 // Turn an ItemSpec into a list of human-readable description lines.
-function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): HTMLDivElement[] {
+export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): HTMLDivElement[] {
   const lines: HTMLDivElement[] = [];
 
   if (item.weapon) {

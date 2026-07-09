@@ -82,6 +82,7 @@ import { tickStatusVfx } from '../effects/status-vfx';
 import { updateOutline, updateOutlinePxScale } from '../interactables/outline';
 import { updateInteractLabel } from '../ui/interact-label';
 import { tickItemPreviews } from '../ui/item-preview';
+import { tickItemOverlay } from '../ui/item-overlay';
 import { tickBossBar } from '../ui/boss-bar';
 import { updateBuffBar } from '../ui/buff-bar';
 import { updateXpGoldHud } from '../ui/xp-gold-hud';
@@ -511,6 +512,8 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       updateInteractLabel(inRange, camera, canvas);
       // Item-preview labels (starter / blood altars) — world→screen projection.
       tickItemPreviews(camera, canvas);
+      // The see-before-you-take overlay: full item card for the focused pickup/reward.
+      tickItemOverlay();
       // Outline pulse on the in-range interactable. realDt so it animates at
       // real-time even during hit-pause.
       updateOutlinePxScale(camera as THREE.PerspectiveCamera, renderer.domElement.height);

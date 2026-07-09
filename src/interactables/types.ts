@@ -29,6 +29,11 @@ export interface Interactable {
    *   'unknown'  pale   — a mystery gamble, outcome hidden (tainted fountain, tithe)
    */
   promptKind?: 'neutral' | 'bargain' | 'trial' | 'unknown';
+  /** The item this thing OFFERS — a floor pickup's spec, an altar's reward.
+   *  When set + focused, the item overlay (ui/item-overlay.ts) shows its FULL
+   *  card so the player can read it before taking. Its rolled affixes, if any. */
+  previewItem?: import('../content/items').ItemSpec;
+  previewAffixes?: readonly import('../content/affixes').AffixInstance[];
   /** Called when the player presses USE while in range. */
   onUse: () => void;
   /**
