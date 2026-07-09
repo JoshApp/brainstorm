@@ -29,7 +29,7 @@ function rollBudget(depth: number, rand: () => number): LootBudget {
   const wood = 1 + (rand() < 0.55 ? 1 : 0);                     // 1–2 wood
   const silver = rand() < 0.45 ? 1 : 0;                          // ~half the floors
   const gold = rand() < Math.min(0.4, 0.06 + depth * 0.035) ? 1 : 0;  // rare, ramps with depth
-  const corpse = (rand() < 0.6 ? 1 : 0) + (rand() < 0.25 ? 1 : 0);    // 0–2, mostly 1
+  const corpse = rand() < 0.4 ? 1 : 0;                                 // 0–1, a corpse is RARE — a real find
   return { wood, silver, gold, corpse };
 }
 
