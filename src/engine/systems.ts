@@ -513,7 +513,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // Item-preview labels (starter / blood altars) — world→screen projection.
       tickItemPreviews(camera, canvas);
       // The see-before-you-take overlay: full item card for the focused pickup/reward.
-      tickItemOverlay();
+      tickItemOverlay(camera, canvas);
       // Outline pulse on the in-range interactable. realDt so it animates at
       // real-time even during hit-pause.
       updateOutlinePxScale(camera as THREE.PerspectiveCamera, renderer.domElement.height);
