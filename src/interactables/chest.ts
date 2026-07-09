@@ -2,24 +2,22 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
-import type { ItemSpec } from '../content/items';
+import type { DropResult } from '../content/drop-tables';
+import { KEY_ID } from '../content/drop-tables';
+import { getCount, removeItem } from '../player/inventory';
+import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerInteractable, unregisterInteractable } from './system';
 import { createPickup } from './pickup';
-import { playChestOpen } from '../audio/sfx';
+import { playChestOpen, playEquipClick } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
 
-export type ChestTier = 'bronze' | 'silver' | 'gold';
-
-// Gold a chest spews when it rolled no item (the "coin cache" fallback) — a
-// satisfying bundle, scaled by tier. The gold-coins effect bundles these into
-// a few chunky coins, so the count reads as "a small fortune," not litter.
-const COIN_CACHE_GOLD: Record<ChestTier, number> = { bronze: 14, silver: 26, gold: 48 };
+export type ChestTier = 'wood' | 'silver' | 'gold';
 
 // Bronze = plain wood, silver = iron-bound, gold = ornate amber — the
 // silhouette IS the tier's promise, read across the room.
 const TIER_MODEL: Record<ChestTier, typeof CHEST> = {
-  bronze: CHEST,
+  wood: CHEST,
   silver: CHEST_IRON,
   gold: CHEST_BOSS,
 };
@@ -56,8 +54,8 @@ export function spawnChest(
   scene: THREE.Object3D,
   pos: THREE.Vector3,
   rotY: number,
-  loot: ItemSpec | undefined,
-  tier: ChestTier = 'bronze',
+  bundle: DropResult,
+  tier: ChestTier = 'wood',
   isMimic: boolean = false,
   onMimic?: (worldPos: THREE.Vector3) => void,
 ) {
@@ -88,6 +86,16 @@ export function spawnChest(
     promptLabel: 'OPEN',
     onUse() {
       if (state !== 'closed') return;
+      // Silver + gold are LOCKED — they cost a key (wood is free). A mimic of
+      // that tier costs one too, so a free-opening chest never tells on itself.
+      if (tier === 'silver' || tier === 'gold') {
+        if (getCount(KEY_ID) <= 0) {
+          showInWorldMessage('Locked. It wants a key.');
+          playEquipClick();
+          return;
+        }
+        removeItem(KEY_ID);
+      }
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';
@@ -131,18 +139,19 @@ export function spawnChest(
             built.group.getWorldPosition(worldPos);
             scene.remove(built.group);
             onMimic(worldPos);
-          } else if (loot && lootSpawnSlot) {
-            // Normal chest — spawn the loot pickup beside it.
-            const worldPos = new THREE.Vector3();
-            lootSpawnSlot.getWorldPosition(worldPos);
-            createPickup(scene, worldPos, loot);
           } else if (lootSpawnSlot) {
-            // No item rolled — don't gape empty. It's a COIN CACHE: spew a
-            // bundle of coins (the gold-coins effect arcs them out + they home
-            // to you). Scaled by tier so a boss chest pays more.
+            // Normal chest — spawn the rolled BUNDLE (content/drop-tables.ts):
+            // each item as a pickup (spread so they don't stack on one pixel),
+            // plus any gold (a whiffed roll pays emptyGold, so it never gapes).
             const worldPos = new THREE.Vector3();
             lootSpawnSlot.getWorldPosition(worldPos);
-            spawnGoldCoins(scene, worldPos, COIN_CACHE_GOLD[tier]);
+            const N = bundle.items.length;
+            bundle.items.forEach((item, i) => {
+              const p = worldPos.clone();
+              p.x += (i - (N - 1) / 2) * 0.35;
+              createPickup(scene, p, item);
+            });
+            if (bundle.gold > 0) spawnGoldCoins(scene, worldPos, bundle.gold);
           }
         }
       }

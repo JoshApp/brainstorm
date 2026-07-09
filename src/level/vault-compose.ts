@@ -1070,7 +1070,7 @@ export function composeFloor(
     if (plan.find) {
       props.push({
         kind: 'chest', x: plan.find.x, z: plan.find.z,
-        tier: 'gold', loot: plan.find.loot, facing: { kind: 'wall-away' },
+        tier: 'gold', loot: { gold: 0, items: [plan.find.loot] }, facing: { kind: 'wall-away' },
       });
     }
 
@@ -1142,8 +1142,8 @@ export function composeFloor(
         kind: 'chest',
         x: start.offsetX - (sd.w / 2 - 1.4),
         z: start.offsetZ,
-        tier: 'silver',
-        loot: ITEMS[KEY_ID],
+        tier: 'wood',   // FREE — it hands you a key (a silver chest wanting a key to give a key is a paradox)
+        loot: { gold: 0, items: [ITEMS[KEY_ID]] },
         facing: { kind: 'wall-away' },
       });
     }

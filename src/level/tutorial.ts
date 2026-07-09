@@ -146,7 +146,7 @@ export const TUTORIAL: LevelSpec = {
       kind: 'chest',
       x: -1.4, z: -1.8,
       rotY: 0.8,
-      loot: ITEMS['flask-draught'],
+      loot: { gold: 0, items: [ITEMS['flask-draught']] },
     },
   ],
 

@@ -1639,7 +1639,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 9, d: 9 }, height: 3.2 }],
       corridors: [],
       props: [
-        { kind: 'chest', x: -2.4, z: -1.5, rotY: 0, tier: 'bronze', mimic: true },
+        { kind: 'chest', x: -2.4, z: -1.5, rotY: 0, tier: 'wood', mimic: true },
         { kind: 'chest', x:  0.0, z: -1.5, rotY: 0, tier: 'silver', mimic: true },
         { kind: 'chest', x:  2.4, z: -1.5, rotY: 0, tier: 'gold',   mimic: true },
       ],

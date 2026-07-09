@@ -218,12 +218,12 @@ export type PropSpec =
       z: number;
       rotY?: number;
       facing?: PropFacing;
-      loot?: import('../content/items').ItemSpec;
-      /** Tier — bronze = plain wood + consumables (default), silver =
-       *  iron-bound + gear, gold = ornate amber + gear with a rarity floor
-       *  (the prize). Drives BOTH the silhouette/materials and what the
-       *  chest pulls from the loot roller (see decor-defaults.ts). */
-      tier?: 'bronze' | 'silver' | 'gold';
+      /** Pre-rolled drop bundle (gold + items) from the chest's tier drop table. */
+      loot?: import('../content/drop-tables').DropResult;
+      /** Tier — wood = plain + common (free, default), silver = iron-bound +
+       *  gear/relic (keyed), gold = ornate + a relic (keyed). Drives BOTH the
+       *  silhouette/materials and the drop table (see decor-defaults.ts). */
+      tier?: 'wood' | 'silver' | 'gold';
       /** If true, this chest is a MIMIC in disguise. The interactable
        *  still renders as a chest of `tier` (so the player can't tell
        *  from a distance — see chest.ts for the subtle lid-jiggle

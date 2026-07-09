@@ -13,7 +13,7 @@
 
 import type { PropSpec } from './types';
 import { ITEMS } from '../content/items';
-import { rollPool, type LootPoolId } from '../content/loot-pools';
+import { rollDropTable, type DropResult, type DropTableId } from '../content/drop-tables';
 
 // Pool of corpse notes. applyProcgenDefaults picks one per corpse
 // entry whose `note` is undefined — deterministic via the rng the
@@ -32,17 +32,17 @@ const CORPSE_NOTES = [
 // prize. Few enough tiers that the player learns to read a chest across the
 // room — which is where the anticipation lives. (A locked "warded" tier
 // rides the key economy later.)
-export type ChestTier = 'bronze' | 'silver' | 'gold';
+export type ChestTier = 'wood' | 'silver' | 'gold';
 
 export function rollChestTier(depth: number, rand: () => number): ChestTier {
   // Cumulative weights by depth band. Gold never exceeds ~12% even very
   // deep — it stays a rare reward, not a regular.
-  let bronzeW = 0.75, silverW = 0.22, goldW = 0.03;
-  if (depth >= 4 && depth <= 7) { bronzeW = 0.55; silverW = 0.38; goldW = 0.07; }
-  else if (depth >= 8)           { bronzeW = 0.40; silverW = 0.48; goldW = 0.12; }
+  let woodW = 0.75, silverW = 0.22, goldW = 0.03;
+  if (depth >= 4 && depth <= 7) { woodW = 0.55; silverW = 0.38; goldW = 0.07; }
+  else if (depth >= 8)           { woodW = 0.40; silverW = 0.48; goldW = 0.12; }
   const r = rand();
-  if (r < bronzeW) return 'bronze';
-  if (r < bronzeW + silverW) return 'silver';
+  if (r < woodW) return 'wood';
+  if (r < woodW + silverW) return 'silver';
   return 'gold';
 }
 
@@ -50,7 +50,7 @@ export function rollMimic(tier: ChestTier, rand: () => number): boolean {
   // Rarer chests are likelier to be mimics — they're the gamble. The
   // dungeon punishes greed in proportion to the reward you reached
   // for. Bronze mimic is the surprise; gold mimic is the choice.
-  const chance = tier === 'bronze' ? 0.05 : tier === 'silver' ? 0.09 : 0.14;
+  const chance = tier === 'wood' ? 0.05 : tier === 'silver' ? 0.09 : 0.14;
   return rand() < chance;
 }
 
@@ -58,12 +58,11 @@ export function rollChestLoot(
   tier: ChestTier,
   rand: () => number,
   depth = 1,
-): import('../content/items').ItemSpec {
-  // Chest tiers are named loot POOLS now (loot-pools.ts) — bronze = the
-  // consumable restock, silver = gear, gold = gear with a rarity floor. The
-  // pool owns the bias / category / floor; this just names it. Empty roll →
-  // the flask fallback (chest.ts also has the coin-cache safety net).
-  return rollPool(`chest-${tier}` as LootPoolId, depth, rand) ?? ITEMS['flask-draught'];
+): DropResult {
+  // Chest tiers are named DROP TABLES now (content/drop-tables.ts) — wood = the
+  // free common restock, silver = gear + a relic chance, gold = a relic. The
+  // table owns bias / category / rarity floor / emptyGold; this just names it.
+  return rollDropTable(`chest-${tier}` as DropTableId, depth, rand);
 }
 
 /**

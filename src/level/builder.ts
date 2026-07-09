@@ -1397,7 +1397,7 @@ export function buildLevel(
         root,
         new THREE.Vector3(prop.x, gy, prop.z),
         prop.rotY ?? 0,
-        prop.loot,
+        prop.loot ?? { gold: 0, items: [] },   // mimics carry no bundle (their branch handles the reveal)
         prop.tier,
         prop.mimic ?? false,
         onMimic,
