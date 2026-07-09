@@ -38,31 +38,75 @@ export function roomFor(x: number, z: number, rooms: readonly RoomBox[]): RoomBo
   return null;
 }
 
-/** Metres from a point to the nearest of the room's four walls. Small = the prop
- *  is wall-anchored (keep its wall-facing); large = it's out in the open (central). */
+/** Distances from a point to each of the room's four walls (W, E, N, S). */
+function wallDists(x: number, z: number, r: RoomBox): { w: number; e: number; n: number; s: number } {
+  return {
+    w: Math.abs((r.cx - r.w / 2) - x), e: Math.abs((r.cx + r.w / 2) - x),
+    n: Math.abs((r.cz - r.d / 2) - z), s: Math.abs((r.cz + r.d / 2) - z),
+  };
+}
+
+/** Metres to the nearest wall. Small = wall-anchored, large = out in the open. */
 function nearestWallDist(x: number, z: number, r: RoomBox): number {
-  return Math.min(
-    Math.abs((r.cx - r.w / 2) - x), Math.abs((r.cx + r.w / 2) - x),
-    Math.abs((r.cz - r.d / 2) - z), Math.abs((r.cz + r.d / 2) - z),
-  );
+  const d = wallDists(x, z, r);
+  return Math.min(d.w, d.e, d.n, d.s);
+}
+
+/** Outward unit vector toward the nearest wall (the direction the wall lies). */
+function nearestWallOutward(x: number, z: number, r: RoomBox): [number, number] {
+  const d = wallDists(x, z, r);
+  const m = Math.min(d.w, d.e, d.n, d.s);
+  if (m === d.w) return [-1, 0];
+  if (m === d.e) return [1, 0];
+  if (m === d.n) return [0, -1];
+  return [0, 1];
+}
+
+/** rotY that points a model's LOCAL −X axis at the nearest wall. The slumped
+ *  corpse is authored with its back at −X (corpse-model.ts), so this seats its
+ *  back against the actual wall. Derived from Three's Y-rotation: local −X →
+ *  world (−cosθ, sinθ), so θ = atan2(outZ, −outX). */
+function backToWallRotY(x: number, z: number, r: RoomBox): number {
+  const [ox, oz] = nearestWallOutward(x, z, r);
+  return Math.atan2(oz, -ox);
 }
 
 // A prop closer than this to a wall is treated as wall-anchored (its facing is
 // dictated by the wall); further out, it's central and should face the entrance.
 const WALL_ANCHORED_DIST = 1.3;
+// A prop within this of the room centre is a would-be CENTREPIECE that landed a
+// half-cell off (even-width rooms can't hit centre with a cell) — snap it true.
+const CENTER_SNAP_DIST = 1.2;
 
 /** Resolve each content prop's transform from its room geometry. Mutates props in
  *  place. Run AFTER the loot director (so it sees the chests it placed). */
 export function resolvePlacement(props: PropSpec[], rooms: readonly RoomBox[]): void {
   for (const p of props) {
-    if (p.kind !== 'chest') continue;   // chests first; corpses/events extend this
-    const room = roomFor(p.x, p.z, rooms);
-    if (!room) continue;
-    // A CENTRAL chest (out in the open) turns to face the arriving player; a
-    // wall-anchored one keeps its authored facing (its back is already to a wall).
-    if (nearestWallDist(p.x, p.z, room) >= WALL_ANCHORED_DIST) {
-      const rot = faceEntranceRotY(room.placeDir);
-      if (rot !== null) { p.rotY = rot; p.facing = undefined; }
+    // CHESTS — a central one turns to face the arriving player; a wall-anchored
+    // one keeps its authored facing (its back is already to a wall).
+    if (p.kind === 'chest') {
+      const room = roomFor(p.x, p.z, rooms);
+      if (!room) continue;
+      if (nearestWallDist(p.x, p.z, room) >= WALL_ANCHORED_DIST) {
+        const rot = faceEntranceRotY(room.placeDir);
+        if (rot !== null) { p.rotY = rot; p.facing = undefined; }
+      }
+    }
+    // SLUMPED CORPSE — seat its (−X) back against the nearest wall.
+    else if (p.kind === 'corpse' && p.pose === 'slumped') {
+      const room = roomFor(p.x, p.z, rooms);
+      if (!room) continue;
+      p.rotY = backToWallRotY(p.x, p.z, room);
+      p.facing = undefined;
+    }
+    // CENTREPIECE props (pillar / altar / fountain) that landed near-centre snap
+    // to the room's TRUE centre — kills the half-cell offset.
+    else if (p.kind === 'pillar' || p.kind === 'altar' || p.kind === 'fountain') {
+      const room = roomFor(p.x, p.z, rooms);
+      if (!room) continue;
+      if (Math.hypot(p.x - room.cx, p.z - room.cz) <= CENTER_SNAP_DIST) {
+        p.x = room.cx; p.z = room.cz;
+      }
     }
   }
 }
