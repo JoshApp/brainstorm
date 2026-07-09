@@ -39,7 +39,7 @@ import { spawnCorpse } from '../interactables/corpse';
 import { spawnWallRune } from '../interactables/wall-rune';
 import { pickFallen } from '../content/corpses';
 import { pickWallMark } from '../content/wall-marks';
-import { rollLoot } from '../content/loot';
+import { rollDropItem } from '../content/drop-tables';
 import type { ItemSpec } from '../content/items';
 import { spawnFitting } from '../interactables/fitting';
 import { applyShadowRole } from '../scene/shadow-role';
@@ -1419,7 +1419,7 @@ export function buildLevel(
       // open floor) both fold onto the picked delver.
       const fallen = { ...base, ...(prop.note ? { epitaph: prop.note } : {}), ...(prop.pose ? { pose: prop.pose } : {}) };
       let loot: ItemSpec | null = null;
-      if (fallen.carried === 'roll') loot = rollLoot({ depth: spec.depth ?? 1 }, buildRng);
+      if (fallen.carried === 'roll') loot = rollDropItem('corpse', spec.depth ?? 1, buildRng);
       else if (typeof fallen.carried === 'string') loot = ITEMS[fallen.carried] ?? null;
       spawnCorpse(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, fallen, loot);
       // No collision — player steps over the body; walking up to SEARCH/READ

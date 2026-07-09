@@ -8,7 +8,7 @@ import { arenaEncounterId } from '../level/arena-waves';
 import { createPickup } from './pickup';
 import { buildModel } from '../ecs/build-model';
 import { rollLoot } from '../content/loot';
-import { rollPool } from '../content/loot-pools';
+import { rollDropItem } from '../content/drop-tables';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { gameRng } from '../engine/rng';
 import { showInWorldMessage } from '../ui/pickup-notification';
@@ -183,7 +183,7 @@ export function spawnChallengeOffering(
   {
     // Main reward from the 'challenge' pool (gear, depth-scaled rarity floor);
     // a bonus second item stays a general roll.
-    const a = rollPool('challenge', depth, gameRng) ?? ITEMS['flask-draught'];
+    const a = rollDropItem('challenge', depth, gameRng) ?? ITEMS['flask-draught'];
     if (a) drops.push(a);
     const b = rollLoot({ depth, bias: 3, minRarity: 'uncommon' }, gameRng);
     if (b) drops.push(b);

@@ -141,7 +141,7 @@ export interface LootContext {
    * Draw ONLY from items whose `drop.pool` equals this — a UNIQUE pool (boss
    * signature drops, cursed relics). Omitted → the roll draws from GENERAL
    * items (those with no pool), so a pooled item never leaks into a generic
-   * chest/vase/kill drop. Set by the pool registry (loot-pools.ts), not by
+   * chest/vase/kill drop. Set by the pool registry (drop-tables.ts), not by
    * hand at call sites.
    */
   pool?: string;

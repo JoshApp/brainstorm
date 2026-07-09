@@ -5,6 +5,8 @@ import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase'
 import { COBWEB_BARRIER } from '../content/cobweb';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { createPickup } from '../interactables/pickup';
+import { rollDropTable } from '../content/drop-tables';
+import { getCurrentDepth } from './loader';
 import { ITEMS } from '../content/items';
 import { playEnemyDeath, playSurfaceShatter } from '../audio/sfx';
 import { spawnShatterBurst } from '../effects/shatter-burst';
@@ -22,7 +24,7 @@ import {
 } from '../combat/damage';
 import type { Damageable } from '../combat/damageable';
 import { propHurtbox } from '../combat/hurtbox';
-import { gameRngInt, gameRngChance, buildRng, buildRngInt } from '../engine/rng';
+import { gameRng, gameRngInt, gameRngChance, buildRng, buildRngInt } from '../engine/rng';
 
 // Destructible props — a parallel hit-test target list for the
 // combat system. Distinct from enemies (no AI, no perception, no
@@ -48,8 +50,6 @@ export interface Destructible extends Damageable {
 // Loot table for vases. Heals no longer spill from pottery (Estus Stage 2 —
 // the flask is the heal economy; common heal slots pay in currency instead).
 const VASE_GOLD_CHANCE = 0.50;     // 50% drop SOME gold
-const VASE_GOLD_MIN = 1;
-const VASE_GOLD_MAX = 3;
 
 // Vase variant pool — weighted random picks. Broken vase is
 // rarer than the intact ones; it also rolls much lower loot
@@ -148,9 +148,12 @@ export function spawnVase(
       const goldChance  = isBroken ? VASE_GOLD_CHANCE * 0.25 : VASE_GOLD_CHANCE;
       const dropY = group.position.y + 0.25;
       tmpDropPos.set(group.position.x, dropY, group.position.z);
+      // Rare drop (the goldChance gate keeps most vases empty), and when it comes
+      // it's the unified 'vase' table — mostly a little gold, rarely a key/consumable.
       if (gameRngChance(goldChance)) {
-        const amt = gameRngInt(VASE_GOLD_MIN, VASE_GOLD_MAX);
-        spawnGoldCoins(scene, tmpDropPos, amt);
+        const bundle = rollDropTable('vase', getCurrentDepth(), gameRng);
+        if (bundle.gold > 0) spawnGoldCoins(scene, tmpDropPos, bundle.gold);
+        for (const item of bundle.items) createPickup(scene, tmpDropPos, item);
       }
       // Remove from scene; reclaim this vase's geometry.
       scene.remove(group);

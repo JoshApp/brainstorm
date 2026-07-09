@@ -8,7 +8,7 @@
 // which one actually gets the reward this run — "staged but varied".
 
 import type { FloorRoles } from './floor-roles';
-import { rollPool } from '../content/loot-pools';
+import { rollDropItem } from '../content/drop-tables';
 import type { ItemSpec, Rarity } from '../content/items';
 
 /** A harvested content marker in world space, ready for the fill to resolve. */
@@ -114,10 +114,10 @@ export function fillDefiningFind(
   const pool = focal.length > 0 ? focal : eligible;
   const spot = pool.length === 1 ? pool[0] : pool[Math.floor(rand() * pool.length)];
 
-  // The 'defining-find' pool (loot-pools.ts) owns the bias / rarity floor /
+  // The 'defining-find' pool (drop-tables.ts) owns the bias / rarity floor /
   // gear-only filter now — a potion is never a defining find, and the reward
   // scales with depth. A null roll (empty band) means no find.
-  const loot = rollPool('defining-find', depth, rand);
+  const loot = rollDropItem('defining-find', depth, rand);
   if (!loot) return null;
 
   return { x: spot.x, z: spot.z, roomId: spot.roomId, facing: spot.facing, loot, spot };

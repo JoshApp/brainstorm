@@ -455,7 +455,7 @@ export interface ItemSpec {
     /** UNIQUE-POOL membership. When set, this item is EXCLUSIVE to the named
      *  pool (e.g. 'boss', 'cursed') — it never appears in a generic drop, and
      *  ONLY rollPool('boss') / rollLoot({pool:'boss'}) can yield it. The pool's
-     *  roll params (bias, rarity floor, category) live in loot-pools.ts, so a
+     *  roll params (bias, rarity floor, category) live in drop-tables.ts, so a
      *  boss item just tags itself here and the manager decides how it drops. */
     pool?: string;
   };
@@ -655,7 +655,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
     ],
     // Signature charged mechanic + fabled stats — a BOSS weapon now: it drops
-    // ONLY from the 'boss' pool (loot-pools.ts), never a generic chest. Gate to
+    // ONLY from the 'boss' pool (drop-tables.ts), never a generic chest. Gate to
     // late Act II so the boss that carries it is deep enough to have earned it.
     drop: { minDepth: 7, weight: 1, pool: 'boss' },
   },

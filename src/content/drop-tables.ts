@@ -100,6 +100,13 @@ export const DROP_TABLES = {
 
 export type DropTableId = keyof typeof DROP_TABLES;
 
+/** Convenience for SINGLE-ITEM sources (a merchant ware, an event prize, a
+ *  reliquary reward): the first non-key item the table rolls, or null. Ignores
+ *  gold. Drop-in replacement for the old rollPool. */
+export function rollDropItem(id: DropTableId, depth: number, rand: () => number): ItemSpec | null {
+  return rollDropTable(id, depth, rand).items.find((it) => it.kind !== 'key') ?? null;
+}
+
 /** Roll a NAMED drop table into a resolved bundle — the single entry point every
  *  source uses. Deterministic given `rand`. */
 export function rollDropTable(id: DropTableId, depth: number, rand: () => number): DropResult {

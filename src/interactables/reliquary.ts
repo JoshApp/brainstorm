@@ -3,7 +3,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { buildModel } from '../ecs/build-model';
-import { rollPool } from '../content/loot-pools';
+import { rollDropItem } from '../content/drop-tables';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { getCount, removeItem } from '../player/inventory';
 import { createPickup } from './pickup';
@@ -45,7 +45,7 @@ export function spawnReliquary(
 
   // The prize — pre-rolled at spawn, generous (locked > free), shown.
   const prize: ItemSpec =
-    rollPool('reliquary', depth, gameRng) ?? ITEMS['flask-draught'];
+    rollDropItem('reliquary', depth, gameRng) ?? ITEMS['flask-draught'];
 
   // ── Geometry ──
   const group = new THREE.Group();
