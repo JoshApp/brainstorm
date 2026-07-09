@@ -1201,7 +1201,7 @@ export function composeFloor(
   const forDirector = startBox
     ? props.filter((p) => !(p.kind === 'loot-anchor' && roomFor(p.x, p.z, [startBox])))
     : props;
-  const placedProps = distributeLoot(forDirector, depth, rand);
+  const placedProps = distributeLoot(forDirector, depth, rand, roomBoxes);
   resolveContent(placedProps, roomBoxes);
 
   // Build the intermediate LevelSpec — props / torches will be
