@@ -26,7 +26,7 @@ import { flashHealGlow } from '../ui/vignette';
 //   - consumable-bar.ts renders the progress ring + start/deny feedback
 
 export type DrinkRequestResult =
-  | 'started' | 'lowered'                       // it worked (start / re-tap cancel)
+  | 'started' | 'lowered' | 'drinking'          // start · lowered (dash/attack) · re-tap while drinking (ignore)
   | 'empty' | 'full' | 'suppressed' | 'busy';   // withheld — caller shows why
 
 let t = -1;          // seconds into the drink; -1 = not drinking
@@ -48,12 +48,12 @@ export function getDrinkMoveMul(): number {
   return t >= 0 ? CONFIG.FLASK.DRINK_MOVE_MUL : 1;
 }
 
-/** The flask button / hotkey entry point. A tap while already drinking LOWERS
- *  the flask (the deliberate cancel); otherwise start the channel if the flask
- *  and the player's stance allow it. The caller maps the result to feedback —
- *  this module never touches the DOM. */
+/** The flask button / hotkey entry point. A re-tap while already drinking is
+ *  IGNORED — only committing to a dash or an attack lowers the flask (handled in
+ *  tickFlaskDrink). Otherwise start the channel if the flask + stance allow it.
+ *  The caller maps the result to feedback — this module never touches the DOM. */
 export function requestFlaskDrink(): DrinkRequestResult {
-  if (t >= 0) { cancelFlaskDrink(); return 'lowered'; }
+  if (t >= 0) return 'drinking';   // already drinking — a second tap does nothing
   if (getFlask().charges <= 0) return 'empty';
   if (getPlayerHp() >= getPlayerMaxHp()) return 'full';
   if (passiveHealSuppressed()) return 'suppressed';   // Red Thirst — deny up front, not 1s in

@@ -51,6 +51,17 @@ test('the start room (no placeDir) leaves chests untouched', () => {
   assert.equal((props[0] as { rotY: number }).rotY, 0.5);
 });
 
+test('the facing CONE — an off-centre chest angles toward the entrance point', () => {
+  // Dead-centre chest points straight at the entrance (cardinal).
+  const center: PropSpec[] = [{ kind: 'chest', x: 0, z: 0, rotY: 0 } as PropSpec];
+  resolvePlacement(center, [room]);
+  assert.ok(Math.abs((center[0] as { rotY: number }).rotY - faceEntranceRotY('S')!) < 1e-9, 'centre → straight in');
+  // A chest off to the side turns toward WHERE you enter, not the cardinal dir.
+  const east: PropSpec[] = [{ kind: 'chest', x: 2, z: 0, rotY: 0 } as PropSpec];
+  resolvePlacement(east, [room]);
+  assert.ok(Math.abs((east[0] as { rotY: number }).rotY - faceEntranceRotY('S')!) > 0.1, 'off-side → angled');
+});
+
 test('a slumped corpse seats its −X back against the nearest wall', () => {
   // Corpse near the EAST wall (x≈+4): back (−X) should point +X (rotY = π).
   const east: PropSpec[] = [{ kind: 'corpse', x: 3.5, z: 0, rotY: 0, pose: 'slumped' } as PropSpec];

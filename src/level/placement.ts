@@ -30,6 +30,26 @@ export function faceEntranceRotY(placeDir: Dir | undefined): number | null {
   return DIR_ROTY[placeDir] + Math.PI;   // +π = face −placeDir instead of +placeDir
 }
 
+/** The point on the −placeDir edge — the doorway the player comes through. null
+ *  for the start room. */
+export function entrancePoint(r: RoomBox): { x: number; z: number } | null {
+  if (!r.placeDir) return null;
+  const hw = r.w / 2, hd = r.d / 2;
+  switch (r.placeDir) {
+    case 'S': return { x: r.cx, z: r.cz - hd };   // player entered from the N edge
+    case 'N': return { x: r.cx, z: r.cz + hd };
+    case 'E': return { x: r.cx - hw, z: r.cz };
+    case 'W': return { x: r.cx + hw, z: r.cz };
+  }
+}
+
+/** rotY that aims a prop's FRONT (local +Z) at a target point — the CONE: a prop
+ *  off to the side turns toward where you enter, not just the cardinal direction.
+ *  Three's Y-rotation sends local +Z → world (sinθ, cosθ), so θ = atan2(dx, dz). */
+export function facePointRotY(px: number, pz: number, tx: number, tz: number): number {
+  return Math.atan2(tx - px, tz - pz);
+}
+
 /** The room a world point sits in (first box that contains it), or null. */
 export function roomFor(x: number, z: number, rooms: readonly RoomBox[]): RoomBox | null {
   for (const r of rooms) {
@@ -88,8 +108,8 @@ export function resolvePlacement(props: PropSpec[], rooms: readonly RoomBox[]): 
       const room = roomFor(p.x, p.z, rooms);
       if (!room) continue;
       if (nearestWallDist(p.x, p.z, room) >= WALL_ANCHORED_DIST) {
-        const rot = faceEntranceRotY(room.placeDir);
-        if (rot !== null) { p.rotY = rot; p.facing = undefined; }
+        const ep = entrancePoint(room);
+        if (ep) { p.rotY = facePointRotY(p.x, p.z, ep.x, ep.z); p.facing = undefined; }
       }
     }
     // SLUMPED CORPSE — seat its (−X) back against the nearest wall.

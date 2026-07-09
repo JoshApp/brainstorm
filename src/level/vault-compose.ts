@@ -1,7 +1,7 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
 import { applyProcgenDefaults } from './decor-defaults';
 import { distributeLoot } from './loot-director';
-import { resolvePlacement, type RoomBox } from './placement';
+import { resolvePlacement, roomFor, type RoomBox } from './placement';
 import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
@@ -1189,7 +1189,15 @@ export function composeFloor(
     const vd = vaultDims(pv.vault);
     return { cx: pv.offsetX, cz: pv.offsetZ, w: vd.w, d: vd.d, placeDir: pv.placeDir };
   });
-  const placedProps = distributeLoot(props, depth, rand);
+  // The START room (placed[0]) stays clear of AUTO loot — you arrive to breathing
+  // room, not a chest in your face. Strip its loot-anchors before the director
+  // fills them; authored cellProps (vases, an altar, the wake-fire) remain
+  // deliberate. The EXIT room keeps its anchors — a parting find before you descend.
+  const startBox: RoomBox | undefined = roomBoxes[0];
+  const forDirector = startBox
+    ? props.filter((p) => !(p.kind === 'loot-anchor' && roomFor(p.x, p.z, [startBox])))
+    : props;
+  const placedProps = distributeLoot(forDirector, depth, rand);
   resolvePlacement(placedProps, roomBoxes);
 
   // Build the intermediate LevelSpec — props / torches will be

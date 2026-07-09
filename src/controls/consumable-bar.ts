@@ -347,6 +347,7 @@ function drinkFlaskWithFeedback(): void {
   switch (requestFlaskDrink()) {
     case 'started':    hapticVibrate(8); break;   // the uncork sound carries it
     case 'lowered':    hapticVibrate(8); break;   // deliberate cancel — quiet
+    case 'drinking':   break;                     // re-tap while drinking — ignore, keep chugging
     case 'empty':      denyFlask('The flask runs dry.'); break;
     case 'full':       denyFlask('Already whole.'); break;
     case 'suppressed': denyFlask('The thirst refuses it.'); break;
