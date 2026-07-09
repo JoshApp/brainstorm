@@ -84,12 +84,6 @@ export const MODIFIERS: Record<string, ModifierSpec> = {
 const DEPTH_HP_MUL_PER_LEVEL = 0.15;
 const DEPTH_DAMAGE_ADD_PER_LEVEL = 0.3;
 const DEPTH_XP_MUL_PER_LEVEL = 0.10;
-const DEPTH_GOLD_MUL_PER_LEVEL = 0.12;
-// Drop rate bonus per depth. Pool rolls get incrementally generous as
-// the player descends — gentle ramp so floor 1 doesn't feel like a
-// gift shop, but deeper floors visibly cough up more loot.
-const DEPTH_DROP_RATE_BONUS_PER_LEVEL = 0.04;
-const DROP_RATE_CAP = 0.75;
 
 /**
  * Produce an instance-ready EnemySpec by applying depth-scaling and
@@ -111,7 +105,6 @@ export function scaleEnemySpec(
   let damageMul = 1;
   let speedMul = 1;
   let xpMul = 1 + Math.max(0, depth - 1) * DEPTH_XP_MUL_PER_LEVEL;
-  let goldMul = 1 + Math.max(0, depth - 1) * DEPTH_GOLD_MUL_PER_LEVEL;
   let hpAdd = 0;
 
   for (const m of mods) {
@@ -119,7 +112,6 @@ export function scaleEnemySpec(
     damageMul *= m.damageMul ?? 1;
     speedMul *= m.speedMul ?? 1;
     xpMul *= m.xpMul ?? 1;
-    goldMul *= m.goldMul ?? 1;
     if (m.hpAdd) hpAdd += m.hpAdd;
     if (m.damageAdd) damageAdd += m.damageAdd;
   }
@@ -128,33 +120,14 @@ export function scaleEnemySpec(
   const scaledDamage = Math.max(1, Math.round(base.attackDamage * damageMul + damageAdd));
   const scaledSpeed = base.moveSpeed * speedMul;
   const scaledXp = Math.max(1, Math.round((base.xp ?? 1) * xpMul));
-  const scaledGold: [number, number] | undefined = base.gold
-    ? [
-        Math.max(0, Math.round(base.gold[0] * goldMul)),
-        Math.max(0, Math.round(base.gold[1] * goldMul)),
-      ]
-    : undefined;
-
-  // Drops: bump rate by depth (deeper = more loot). Guaranteed and
-  // pool weights pass through unchanged — only the gate softens.
-  const scaledDrops = base.drops
-    ? {
-        ...base.drops,
-        rate: Math.min(
-          DROP_RATE_CAP,
-          (base.drops.rate ?? 0.30) +
-            Math.max(0, depth - 1) * DEPTH_DROP_RATE_BONUS_PER_LEVEL,
-        ),
-      }
-    : undefined;
-
+  // Gold + item drops (and their depth scaling) now live in the unified drop
+  // table (content/drop-tables.ts) — the roller takes `depth` directly, so the
+  // enemy spec no longer carries a gold range or a drop pool to scale here.
   return {
     ...base,
     hp: scaledHp,
     attackDamage: scaledDamage,
     moveSpeed: scaledSpeed,
     xp: scaledXp,
-    gold: scaledGold,
-    drops: scaledDrops,
   };
 }

@@ -91,15 +91,7 @@ function validateEnemy(id: string, spec: EnemySpec, errs: string[], warns: strin
       }
     }
   }
-  const drops = spec.drops;
-  if (drops) {
-    for (const gid of drops.guaranteed ?? []) {
-      if (!isItem(gid)) errs.push(`${w}: guaranteed drop '${gid}' is not a registered item`);
-    }
-    for (const p of drops.pool ?? []) {
-      if (!isItem(p.itemId)) errs.push(`${w}: drop pool '${p.itemId}' is not a registered item`);
-    }
-  }
+  // Enemy drops are validated in the drop-table registry now, not per-spec.
 }
 
 function validateAffixesAndSets(errs: string[]): void {

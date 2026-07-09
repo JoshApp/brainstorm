@@ -51,6 +51,8 @@ import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
 import type { Creature } from '../content/creature-types';
 import { ITEMS } from '../content/items';
+import { rollDropTable } from '../content/drop-tables';
+import { getCurrentDepth } from '../level/loader';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { fireDeathPayoffs } from '../combat/death-payoffs';
@@ -1126,26 +1128,14 @@ export function createEnemy(
       // Drop table: each entry rolls independently. Multiple successful
       // drops are spread in a small arc around the death position so they
       // don't stack on the same pixel.
-      if (spec.drops) {
-        const drops: string[] = [];
-        if (spec.drops.guaranteed) drops.push(...spec.drops.guaranteed);
-        const rate = spec.drops.rate ?? 0.3;
-        if (gameRngChance(rate) && spec.drops.pool && spec.drops.pool.length > 0) {
-          const total = spec.drops.pool.reduce((s, e) => s + e.weight, 0);
-          let r = gameRng() * total;
-          for (const entry of spec.drops.pool) {
-            r -= entry.weight;
-            if (r <= 0) {
-              drops.push(entry.itemId);
-              break;
-            }
-          }
-        }
-        const N = drops.length;
-        // Loot fountain — each item pops out of the corpse on its own arc.
-        drops.forEach((itemId, i) => {
-          const item = ITEMS[itemId];
-          if (!item) return;
+      // Unified DROP TABLE (content/drop-tables.ts) — the enemy's WHOLE drop from
+      // one named table: gold + the odd key/consumable, or (elites/bosses) a
+      // relic. No per-enemy pool arrays; a mob just names its tier. Items pop out
+      // of the corpse on their own arcs; gold flies to the counter below.
+      {
+        const bundle = rollDropTable(spec.dropTable ?? 'enemy', getCurrentDepth(), gameRng);
+        const N = bundle.items.length;
+        bundle.items.forEach((item, i) => {
           const pos = container.position.clone();
           const angle = (N > 1 ? (i / N) * Math.PI * 2 : Math.random() * Math.PI * 2)
             + (Math.random() - 0.5) * 0.6;
@@ -1158,6 +1148,11 @@ export function createEnemy(
           );
           createPickup(scene, pos, item, { velocity: launchVel });
         });
+        if (bundle.gold > 0) {
+          const coinOrigin = container.position.clone();
+          coinOrigin.y += 0.5;
+          spawnGoldCoins(scene as THREE.Object3D, coinOrigin, bundle.gold);
+        }
       }
       // Clear raycast targets so a swing mid-dissolve doesn't generate a
       // zero-damage "hit" on the disintegrating corpse.
@@ -1266,19 +1261,7 @@ export function createEnemy(
       essenceRigY = essenceRigYDefault;
       essenceTotal = spec.xp ?? 1;
       essenceSpawned = 0;
-      // Gold coins — bundled into 1–3 chunky drops. The roll picks a
-      // TOTAL gold amount once; the coin module decides how to split it.
-      const goldRange = spec.gold;
-      if (goldRange) {
-        const min = goldRange[0];
-        const max = goldRange[1];
-        const amt = gameRngInt(min, max);
-        if (amt > 0) {
-          const coinOrigin = container.position.clone();
-          coinOrigin.y += essenceRigY * 0.55;
-          spawnGoldCoins(scene as THREE.Object3D, coinOrigin, amt);
-        }
-      }
+      // (Gold now rides the unified drop table above — see rollDropTable.)
     }
     return result.applied;
   }

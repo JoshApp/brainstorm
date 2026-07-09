@@ -20,6 +20,7 @@ function spiderLegSkin(mat: string): SkinPart[] {
 }
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
+import type { DropTableId } from './drop-tables';
 import { mimicCreatureSpec } from './mimic';
 import { marrowCreatureSpec } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
@@ -178,12 +179,11 @@ export interface EnemySpec {
   loseSightTime?: number;
 
   // --- Drops ---
-  /**
-   * Drop table — see DropTable above for semantics. Guaranteed items
-   * always drop; pool items roll once vs `rate` then pick one by
-   * weight. Multiple drops from one kill spread in a small arc.
-   */
-  drops?: DropTable;
+  /** Which unified DROP TABLE (content/drop-tables.ts) this mob rolls on death.
+   *  Omitted → 'enemy' (the small layer: gold + the odd key/consumable). Tag
+   *  elites 'enemy-elite', bosses 'boss' (a relic). Gold + items both come from
+   *  the table — no per-enemy pool arrays or gold ranges anymore. */
+  dropTable?: DropTableId;
 
   // --- Reward ---
   /**
@@ -192,9 +192,6 @@ export interface EnemySpec {
    * when absorbed. Default 1 (trash mob); bosses go much higher.
    */
   xp?: number;
-  /** Gold range [min, max] dropped on kill. Credited directly to the
-   *  run's gold counter — no floor pickup for now (shop wiring comes later). */
-  gold?: [number, number];
 
   // --- Ranged ---
   /**
@@ -451,21 +448,8 @@ export interface PhaseSpec {
 // one + a stingier rate, most kills give nothing and the occasional
 // drop feels like an event.
 
-export interface DropPoolEntry {
-  itemId: string;
-  /** Relative weight inside the pool. Higher = more likely picked. */
-  weight: number;
-}
-
-export interface DropTable {
-  /** Items that always drop. Empty/undefined = nothing guaranteed. */
-  guaranteed?: string[];
-  /** Probability that ONE pool item drops. Default 0.30. Scales with
-   *  depth (see scaleEnemySpec). */
-  rate?: number;
-  /** Weighted pool — one item picked if the rate gate succeeds. */
-  pool?: DropPoolEntry[];
-}
+// (Enemy drops are the unified drop-table system now — content/drop-tables.ts.
+//  A mob names a tier via `dropTable`; there are no per-enemy pool arrays.)
 
 // --- Audio vocabulary ---------------------------------------------------
 // Which sound an enemy makes lives with the enemy data, not in the mob
@@ -604,22 +588,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.5,
     loseSightTime: 4,
     xp: 6,
-    gold: [0, 8],
-    drops: {
-      // Mid-tier melee. Bumped 0.30 → 0.45 so kills actually
-      // contribute to the player's kit and the trash mob (rat)
-      // bump doesn't end up giving ghouls a smaller relative
-      // drop rate. Scimitar is the standout weight; rare rolls
-      // give a potion or piece of armor. Ring-of-bloodthirst
-      // stays rare so finding one is genuinely exciting.
-      rate: 0.45,
-      pool: [
-        { itemId: 'scimitar', weight: 5 },
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'iron-coif', weight: 2 },
-        { itemId: 'ring-of-bloodthirst', weight: 1 },
-      ],
-    },
   },
 
   rat: {
@@ -729,7 +697,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.5,
     loseSightTime: 3,
     xp: 1,
-    gold: [0, 3],
   },
 
   // Skirmisher — the CHARGER. No longer "fast ghoul-lite": its identity
@@ -813,19 +780,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.0,
     loseSightTime: 5,
     xp: 3,
-    gold: [0, 6],
-    drops: {
-      rate: 0.38,                  // bumped from 0.22
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'worn-boots', weight: 2 },
-        { itemId: 'ring-of-predation', weight: 1 },
-        // The charger drops its reach weapon — uncommon spear. Fits the
-        // aggressive melee fantasy and gives the player the spacing tool
-        // to answer chargers in kind.
-        { itemId: 'spear', weight: 2 },
-      ],
-    },
   },
 
   // Acolyte — the KITER. Hurls a slow magic bolt AND backs away when you
@@ -929,18 +883,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       projectileId: 'acolyte-spit',
     },
     xp: 5,
-    gold: [0, 8],
-    drops: {
-      rate: 0.42,                  // bumped from 0.28
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'bone-amulet', weight: 1 },
-        // The caster drops its implement — a rare arcane-bolt wand. Low
-        // weight so it's a genuine find, thematically sourced from the
-        // thing that was casting at you.
-        { itemId: 'wand', weight: 1 },
-      ],
-    },
   },
 
   // Antechamber boss — taller, slower, hits hard with MAGIC damage. Physical
@@ -949,6 +891,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // Drops the first fabled-rarity weapon plus other rare loot.
   wraith: {
     id: 'wraith',
+    dropTable: 'boss',
     bloodAmount: 0.0,
     name: 'wraith',
     // BOSS — only ever spawned via the 'B' boss slot (never in roll tables),
@@ -1048,18 +991,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 1.5,
     loseSightTime: 7,
     xp: 25,
-    gold: [15, 30],
-    drops: {
-      // Boss — always drops a flask draught (the consolation heal). Then a pool
-      // roll for one of the rare items (heartburn fabled or the amulet).
-      // No matter what, the player walks away with at least a heal.
-      guaranteed: ['flask-draught'],
-      rate: 1.0,
-      pool: [
-        { itemId: 'heartburn', weight: 1 },          // fabled — the headline
-        { itemId: 'bone-amulet', weight: 2 },
-      ],
-    },
   },
 
   // Ooze — slow contact-damage blob. Dies in two strikes, BUT splits
@@ -1116,7 +1047,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.0,
     loseSightTime: 5,
     xp: 4,
-    gold: [0, 5],
     splitsInto: { enemyId: 'ooze-small', count: 2, radius: 0.5 },
   },
 
@@ -1170,7 +1100,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.0,
     loseSightTime: 3,
     xp: 1,
-    gold: [0, 2],
     // No splitsInto — recursion terminator.
   },
 
@@ -1187,6 +1116,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // cleared → back-line refilled" trap that punishes correct kill order.
   'acid-spitter': {
     id: 'acid-spitter',
+    dropTable: 'enemy-elite',
     bloodColor: 0x4a6e1a,
     name: 'acid spitter',
     hp: 7,                       // tanky — closing on it is a real commitment
@@ -1240,14 +1170,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       projectileId: 'acid-spit',
     },
     xp: 6,
-    gold: [0, 7],
-    drops: {
-      rate: 0.38,
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'bone-amulet', weight: 1 },
-      ],
-    },
   },
 
   // Stoneguard — slow, armoured, hits like a truck. Changes combat
@@ -1258,6 +1180,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // armor 2 means trash-tier weapons take a few hits to chew through.
   stoneguard: {
     id: 'stoneguard',
+    dropTable: 'enemy-elite',
     bloodColor: 0x6e6a62,
     bloodAmount: 0.35,
     name: 'stoneguard',
@@ -1386,16 +1309,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.0,           // can feel footfalls through the floor
     loseSightTime: 6,
     xp: 12,
-    gold: [10, 20],
-    drops: {
-      rate: 0.55,                  // bumped from 0.40 — tanks are real fights
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'wooden-shield', weight: 2 },     // shield drops feel earned from a tank
-        { itemId: 'iron-coif', weight: 2 },
-        { itemId: 'ring-of-bloodthirst', weight: 1 },
-      ],
-    },
   },
 
   // Defiler — the ZONE controller. The one enemy that teaches "don't
@@ -1414,6 +1327,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // distinct hexer model is pending the parametric-creature pass.
   defiler: {
     id: 'defiler',
+    dropTable: 'enemy-elite',
     name: 'defiler',
     hp: 7,
     moveSpeed: 1.1,              // slow drifter — it controls space, doesn't chase
@@ -1482,14 +1396,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.5,
     loseSightTime: 5,
     xp: 10,
-    gold: [5, 14],
-    drops: {
-      rate: 0.45,
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'bone-amulet', weight: 1 },
-      ],
-    },
   },
 
   // Skeleton — the PRESSURE enemy: dangerous at every range. It hurls
@@ -1666,19 +1572,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.5,
     loseSightTime: 5,
     xp: 7,
-    gold: [0, 9],
-    drops: {
-      rate: 0.42,
-      pool: [
-        { itemId: 'flask-draught', weight: 2 },
-        { itemId: 'bone-amulet', weight: 1 },
-        { itemId: 'iron-coif', weight: 2 },
-        // The armed undead drops its crossbow — uncommon physical ranged.
-        // Modest weight so it shows up reliably enough to let a player
-        // try the ranged playstyle without being guaranteed.
-        { itemId: 'crossbow', weight: 2 },
-      ],
-    },
   },
 
   // Spider — fast, fragile POUNCER that comes in packs. Scuttles in,
@@ -1766,7 +1659,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.0,
     loseSightTime: 4,
     xp: 4,
-    gold: [0, 4],
   },
 
   // The Boiling King — Act III boss (depth 12).
@@ -1795,6 +1687,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // pass once V1 plays well.
   'boiling-king': {
     id: 'boiling-king',
+    dropTable: 'boss',
     name: 'boiling king',
     // No tileChar — bosses bypass the ASCII char dictionary
     // entirely. populateTemplate's B-tile expansion records the
@@ -2003,17 +1896,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     xp: 60,                          // significant haul — earns the depth
-    gold: [40, 80],
-    drops: {
-      // Guaranteed: a FLASK SHARD (act-boss capacity growth) + the unique
-      // boss drop. Pool roll on top adds variance.
-      guaranteed: ['flask-shard', 'acid-tongue'],
-      rate: 1.0,
-      pool: [
-        { itemId: 'heartburn',   weight: 1 },
-        { itemId: 'bone-amulet', weight: 1 },
-      ],
-    },
     // Death = bursts into three smaller slimes. The fight isn't over
     // yet; the prince spec terminates the recursion (no splitsInto on
     // it). 0.8m scatter radius spreads them around the corpse.
@@ -2104,7 +1986,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.5,
     loseSightTime: 4,
     xp: 4,
-    gold: [2, 6],
     // No splitsInto — recursion terminator.
   },
 
@@ -2131,6 +2012,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // ability lists, rig offset/pitch overrides, hide-parts visual.
   'marrow-sovereign': {
     id: 'marrow-sovereign',
+    dropTable: 'boss',
     bloodColor: 0x8a8274,
     bloodAmount: 0.3,
     name: 'marrow sovereign',
@@ -2316,17 +2198,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     xp: 80,
-    gold: [60, 100],
-    drops: {
-      // Guaranteed: a FLASK SHARD (act-boss capacity growth) + a unique boss drop (bone amulet
-      // for now; can swap to a sovereign-specific item later).
-      guaranteed: ['flask-shard', 'bone-amulet'],
-      rate: 1.0,
-      pool: [
-        { itemId: 'iron-coif',       weight: 1 },
-        { itemId: 'cuirass-of-ash',  weight: 1 },
-      ],
-    },
   },
 
   // Plague Spore — stationary fungal turret. Doesn't move; periodically
@@ -2395,7 +2266,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // duration, so it's a real attrition threat without melting the player.
     onHit: { buffId: 'poison', chance: 0.4, duration: 3 },
     xp: 4,
-    gold: [0, 4],
   },
 
   // Sump Wisp — floating non-humanoid caster. Distinct from the
@@ -2456,7 +2326,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       projectileId: 'acolyte-spit',  // reuse the spectral spit; tinted by the wisp's blue
     },
     xp: 5,
-    gold: [0, 5],
   },
 
   // Mimic — chest-disguised ambush mob. Never roll-placed in a vault
@@ -2468,6 +2337,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // the chest is automatic; no need to be facing it.
   mimic: {
     id: 'mimic',
+    dropTable: 'enemy-elite',
     name: 'mimic',
     // No tileChar — never roll-placed. The chest interactable is the
     // only spawn path.
@@ -2496,21 +2366,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 8,
     xp: 12,
-    gold: [4, 16],
     // Surviving a mimic is its own loot event. Always drops a pool
     // pick (rate = 1.0) so the betrayal pays out, with quality
     // weighted toward gear over potions — the dungeon rewards a
     // player who keeps their footing after the trap springs.
-    drops: {
-      rate: 1.0,
-      pool: [
-        { itemId: 'ring-of-bloodthirst', weight: 1 },
-        { itemId: 'iron-coif', weight: 3 },
-        { itemId: 'leather-gloves', weight: 3 },
-        { itemId: 'scimitar', weight: 4 },
-        { itemId: 'flask-draught', weight: 2 },
-      ],
-    },
   },
 
   // Carrion Hound — fast quadruped pack predator. Sits between rat
@@ -2584,14 +2443,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // swarm, just no longer a near-one-shot from a single floor-3 hound.
     onHit: { buffId: 'bleed', chance: 0.25, duration: 2.5 },
     xp: 5,
-    gold: [0, 6],
-    drops: {
-      rate: 0.28,
-      pool: [
-        { itemId: 'flask-draught', weight: 1 },
-        { itemId: 'leather-gloves', weight: 1 },
-      ],
-    },
   },
 
   // Pit Moth — flying insectoid melee swarmer. The mob whose job is
@@ -2668,7 +2519,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.5,
     loseSightTime: 5,
     xp: 1,
-    gold: [0, 2],
   },
 
   // Lasher — STATIONARY plant-creature with a long whip-arm tendril
@@ -2682,6 +2532,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // long-reach melee from a fixed spot).
   lasher: {
     id: 'lasher',
+    dropTable: 'enemy-elite',
     name: 'lasher',
     hp: 6,
     moveSpeed: 0,                   // rooted in the floor
@@ -2739,15 +2590,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.5,
     loseSightTime: 99,              // stationary — sticks indefinitely
     xp: 8,
-    gold: [3, 10],
-    drops: {
-      rate: 0.45,
-      pool: [
-        { itemId: 'flask-draught', weight: 1 },
-        { itemId: 'acid-tongue', weight: 2 },
-        { itemId: 'cord-of-knives', weight: 1 },
-      ],
-    },
   },
 
   // Burrower — floor ambush predator. Spawns BURIED under a small
@@ -2841,15 +2683,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 8,
     xp: 8,
-    gold: [3, 12],
-    drops: {
-      rate: 0.40,
-      pool: [
-        { itemId: 'flask-draught', weight: 1 },
-        { itemId: 'leather-gloves', weight: 2 },
-        { itemId: 'bone-needle', weight: 1 },
-      ],
-    },
   },
 };
 

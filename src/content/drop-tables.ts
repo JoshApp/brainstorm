@@ -83,8 +83,8 @@ export const DROP_TABLES = {
   'chest-gold':   { item: { bias: 4, category: RELIC_KINDS, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') }, emptyGold: 20 },
 
   // ── BOSSES — a guaranteed relic; the reward for the fight. ──
-  'miniboss': { item: { bias: 3, category: RELIC_KINDS, minRarity: 'uncommon' } },
-  'boss':     { item: { bias: 4, category: RELIC_KINDS, minRarity: 'rare' } },
+  'miniboss': { item: { bias: 3, category: RELIC_KINDS, minRarity: 'uncommon' }, emptyGold: 12 },
+  'boss':     { item: { bias: 4, category: RELIC_KINDS, minRarity: 'rare' }, emptyGold: 25 },
 
   // ── EVENTS / DEALS — were scattered rollLoot/rollPool at each interactable. ──
   'defining-find': { item: { bias: 4, category: GEAR_KINDS, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') } },
