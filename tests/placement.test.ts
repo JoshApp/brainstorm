@@ -51,15 +51,17 @@ test('the start room (no placeDir) leaves chests untouched', () => {
   assert.equal((props[0] as { rotY: number }).rotY, 0.5);
 });
 
-test('the facing CONE — an off-centre chest angles toward the entrance point', () => {
-  // Dead-centre chest points straight at the entrance (cardinal).
+test('chest facing SNAPS to a cardinal (90°) toward the entrance', () => {
+  const isCardinal = (r: number) => Math.abs(r / (Math.PI / 2) - Math.round(r / (Math.PI / 2))) < 1e-9;
   const center: PropSpec[] = [{ kind: 'chest', x: 0, z: 0, rotY: 0 } as PropSpec];
   resolvePlacement(center, [room]);
-  assert.ok(Math.abs((center[0] as { rotY: number }).rotY - faceEntranceRotY('S')!) < 1e-9, 'centre → straight in');
-  // A chest off to the side turns toward WHERE you enter, not the cardinal dir.
+  const rc = (center[0] as { rotY: number }).rotY;
+  assert.ok(isCardinal(rc), 'centre rotY is a multiple of 90°');
+  assert.ok(Math.abs(rc - faceEntranceRotY('S')!) < 1e-9, 'centre faces straight in');
+  // Off to the side: still a clean cardinal (no jaunty diagonal), leaning entrance-ward.
   const east: PropSpec[] = [{ kind: 'chest', x: 2, z: 0, rotY: 0 } as PropSpec];
   resolvePlacement(east, [room]);
-  assert.ok(Math.abs((east[0] as { rotY: number }).rotY - faceEntranceRotY('S')!) > 0.1, 'off-side → angled');
+  assert.ok(isCardinal((east[0] as { rotY: number }).rotY), 'off-side rotY is a multiple of 90° too');
 });
 
 test('a slumped corpse seats its −X back against the nearest wall', () => {

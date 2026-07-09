@@ -43,11 +43,13 @@ export function entrancePoint(r: RoomBox): { x: number; z: number } | null {
   }
 }
 
-/** rotY that aims a prop's FRONT (local +Z) at a target point — the CONE: a prop
- *  off to the side turns toward where you enter, not just the cardinal direction.
- *  Three's Y-rotation sends local +Z → world (sinθ, cosθ), so θ = atan2(dx, dz). */
+/** rotY that aims a prop's FRONT (local +Z) at a target point — the CONE picks the
+ *  direction (a prop off to the side leans toward the entrance), then we SNAP to
+ *  the nearest 90° so furniture stays grid-aligned (no chest sitting at a jaunty
+ *  diagonal). Three's Y-rotation sends local +Z → world (sinθ, cosθ). */
 export function facePointRotY(px: number, pz: number, tx: number, tz: number): number {
-  return Math.atan2(tx - px, tz - pz);
+  const raw = Math.atan2(tx - px, tz - pz);
+  return Math.round(raw / (Math.PI / 2)) * (Math.PI / 2);   // snap to 0 / 90 / 180 / 270
 }
 
 /** The room a world point sits in (first box that contains it), or null. */
