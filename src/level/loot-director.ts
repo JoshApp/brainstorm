@@ -11,6 +11,7 @@ import type { PropSpec } from './types';
 import type { ChestTier } from '../interactables/chest';
 import type { CorpsePose } from '../content/corpses';
 import { rollChestLoot, rollMimic } from './decor-defaults';
+import { rollChestTier } from '../content/drop-tables';
 
 type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
 
@@ -19,18 +20,21 @@ type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
 const MIN_CHEST_SPACING = 4.5;
 
 // The L4D-style Director budget — anchors are POTENTIAL spots; this decides how
-// many of each content type actually fill this floor. Corpses are a loot EVENT
-// too (a fallen delver you search), so they share the anchor pool with chests.
-interface LootBudget { wood: number; silver: number; gold: number; corpse: number; }
+// many pieces actually fill this floor. The COUNT lives here; each chest's TIER
+// comes from the data-driven frequency table (drop-tables rollChestTier), so
+// "which varieties appear how often" is authored as config, not code here.
+interface LootBudget { chestTiers: ChestTier[]; corpse: number; }
 
-/** Per-floor content budget. Deliberately small — wood is the staple, silver an
- *  occasional treat, gold a rare event (likelier deep), a corpse or two. */
+const TIER_ORDER: Record<ChestTier, number> = { gold: 0, silver: 1, wood: 2 };
+
+/** Per-floor content budget. Deliberately small — a chest or two (tier rolled
+ *  from data), plus the occasional corpse. */
 function rollBudget(depth: number, rand: () => number): LootBudget {
-  const wood = 1 + (rand() < 0.25 ? 1 : 0);                     // usually 1, rarely 2
-  const silver = rand() < 0.3 ? 1 : 0;                           // a third of floors
-  const gold = rand() < Math.min(0.12, 0.02 + depth * 0.012) ? 1 : 0;  // GENUINELY rare, gentle ramp (cap 12%)
-  const corpse = rand() < 0.28 ? 1 : 0;                                // a corpse is a real find, not scatter
-  return { wood, silver, gold, corpse };
+  const chestCount = 1 + (rand() < 0.5 ? 1 : 0) + (rand() < 0.18 ? 1 : 0);   // 1–3
+  const chestTiers = Array.from({ length: chestCount }, () => rollChestTier(depth, rand))
+    .sort((a, b) => TIER_ORDER[a] - TIER_ORDER[b]);   // prized tiers claim major anchors first
+  const corpse = rand() < 0.28 ? 1 : 0;
+  return { chestTiers, corpse };
 }
 
 /** Fisher-Yates on a deterministic rand. */
@@ -75,10 +79,11 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   };
 
   // Prized tiers prefer MAJOR (prominent) anchors; wood + corpses take minors.
-  for (let i = 0; i < budget.gold; i++)   place((a) => makeChest(a, 'gold', depth, rand), majors, minors);
-  for (let i = 0; i < budget.silver; i++) place((a) => makeChest(a, 'silver', depth, rand), majors, minors);
+  for (const tier of budget.chestTiers) {
+    const major = tier !== 'wood';
+    place((a) => makeChest(a, tier, depth, rand), major ? majors : minors, major ? minors : majors);
+  }
   for (let i = 0; i < budget.corpse; i++) place((a) => makeCorpse(a, rand), minors, majors);
-  for (let i = 0; i < budget.wood; i++)   place((a) => makeChest(a, 'wood', depth, rand), minors, majors);
 
   return [...kept, ...content];
 }

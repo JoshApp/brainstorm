@@ -6,7 +6,7 @@
 //   npm test
 
 import assert from 'node:assert/strict';
-import { rollDropTable, DROP_TABLES, RELIC_KINDS, type DropTableId } from '../src/content/drop-tables';
+import { rollDropTable, TABLES, RELIC_KINDS, type DropTableId } from '../src/content/drop-tables';
 
 // Deterministic LCG so tests don't depend on Math.random.
 function seeded(seed: number): () => number {
@@ -21,7 +21,7 @@ function test(name: string, fn: () => void) {
 }
 
 test('every table id resolves to a valid bundle', () => {
-  for (const id of Object.keys(DROP_TABLES) as DropTableId[]) {
+  for (const id of Object.keys(TABLES) as DropTableId[]) {
     const r = rollDropTable(id, 5, seeded(1));
     assert.ok(r.gold >= 0 && Array.isArray(r.items), `${id} returns { gold, items }`);
   }
