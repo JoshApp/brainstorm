@@ -208,6 +208,23 @@ export type PropSpec =
       proximityGlow?: boolean;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
+      /**
+       * Turn this decoration into a one-shot SEARCHABLE container. The builder
+       * registers a shared interactable (level/../interactables/searchable.ts):
+       * it wears the standard focus OUTLINE, and on the first SEARCH it rolls
+       * `table` and SPEWS the loot half a step FORWARD (the prop's local +Z, so
+       * it lands in the room, not inside the model), then goes inert while the
+       * model itself stays as a monument. This is the data seam for "make a
+       * prop lootable" — no bespoke wiring per prop (the ossuary uses it).
+       */
+      searchable?: {
+        /** drop-table id (content/drop-tables.ts) rolled on the first search. */
+        table: string;
+        /** prompt verb — defaults to 'SEARCH'. */
+        label?: string;
+        /** interaction radius in metres — defaults to 1.5. */
+        radius?: number;
+      };
       /** Debug provenance — which pipeline phase produced this prop
        *  (`vault:lattice`, `geometry-warp`, `surface-clutter`,
        *  `floor-decor`, `group:altar-ritual`). Stamped at creation;

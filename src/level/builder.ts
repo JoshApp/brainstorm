@@ -39,9 +39,8 @@ import { spawnCorpse } from '../interactables/corpse';
 import { spawnWallRune } from '../interactables/wall-rune';
 import { pickFallen } from '../content/corpses';
 import { pickWallMark } from '../content/wall-marks';
-import { rollDropItem, rollDropTable } from '../content/drop-tables';
-import { createPickup } from '../interactables/pickup';
-import { spawnGoldCoins } from '../effects/gold-coins';
+import { rollDropItem } from '../content/drop-tables';
+import { registerSearchable } from '../interactables/searchable';
 import type { ItemSpec } from '../content/items';
 import { spawnFitting } from '../interactables/fitting';
 import { applyShadowRole } from '../scene/shadow-role';
@@ -58,7 +57,6 @@ import { BONFIRE } from '../content/bonfire';
 import { ORIGIN_ARCH } from '../content/origin-arch';
 import { registerFateFire } from './fate-fire';
 import { clearFateGate } from '../state/fate-gate';
-import { generateEntityId } from '../ecs/world';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
 import { spawnReliquary } from '../interactables/reliquary';
@@ -99,7 +97,7 @@ function rngFromSeed(seed: number) {
 // declaration below. Could be per-level seeded but cross-level
 // uniqueness is enough for our use.
 let lightSerial = 0;
-import { clearInteractables, registerInteractable, unregisterInteractable } from '../interactables/system';
+import { clearInteractables } from '../interactables/system';
 import { emit } from '../broadcast/event-bus';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
@@ -1239,28 +1237,12 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       if (prop.scale && prop.scale !== 1) built.group.scale.setScalar(prop.scale);
-      // LOOTABLE bone shrine — decoration made functional (docs/BUILD-ECONOMY.md).
-      // A large ossuary niche can be SEARCHED once for a drop from the 'ossuary'
-      // table (a little gold, a fair chance of gear/relic among the dead's leavings).
-      if (prop.model.id === 'ossuary-niche') {
-        const ossId = generateEntityId('ossuary');
-        let searched = false;
-        registerInteractable({
-          id: ossId,
-          position: new THREE.Vector3(prop.x, gy, prop.z),
-          radius: 1.5,
-          promptLabel: 'SEARCH',
-          onUse() {
-            if (searched) return;
-            searched = true;
-            unregisterInteractable(ossId);
-            const bundle = rollDropTable('ossuary', spec.depth ?? 1, gameRng);
-            const dropPos = new THREE.Vector3(prop.x, gy + 0.6, prop.z);
-            for (const item of bundle.items) createPickup(root, dropPos, item);
-            if (bundle.gold > 0) spawnGoldCoins(root, dropPos, bundle.gold);
-          },
-        });
-      }
+      // LOOTABLE decoration (docs/BUILD-ECONOMY.md) — any model prop tagged
+      // `searchable` becomes a one-shot container through the shared seam: it
+      // wears the standard focus outline and SPEWS its drop half a step forward
+      // on the first SEARCH (see interactables/searchable.ts). Registered after
+      // the group is parented, below; a searchable prop also opts OUT of the
+      // static merge so its meshes survive for the outline to hull.
       // Framed openings (archway / doorframe props): install the shared visual
       // fittings — proximity crown glow + the dungeon's nav eye at the model's
       // keystone slots. Same seam the fitting drain uses (see level/frame.ts), so
@@ -1290,15 +1272,31 @@ export function buildLevel(
         }
       }
       root.add(built.group);
-      // Fold the prop's STATIC meshes into the per-room static-merge pass — the
-      // biggest draw-call win on a floor. The merge skips meshes named 'flame'
-      // (the flicker) and all sprites; the prop's LIGHT is a separate pool
-      // source, untouched. Mood-tint sets colour once at spawn so a tinted body
-      // bakes fine. Archways/doorframes (proximityGlow) ARE folded now — their
-      // glow material is per-gate and the merge is per-corridor, so each gate
-      // collapses to ~one mesh that still pulses. They were the single biggest
-      // bucket of loose draws down a long hall.
-      markMergeStatic(built.group);
+      // Searchable props register their container now that the group is parented.
+      // The outline hulls this group's meshes, so a searchable prop must STAY OUT
+      // of the static merge (which would empty the group into a room-wide mesh and
+      // leave the outline nothing to trace).
+      if (prop.searchable) {
+        registerSearchable({
+          scene: root, built,
+          x: prop.x, y: prop.y + gy, z: prop.z, rotY: prop.rotY ?? 0,
+          table: prop.searchable.table,
+          depth: spec.depth ?? 1,
+          rng: gameRng,
+          label: prop.searchable.label,
+          radius: prop.searchable.radius,
+        });
+      } else {
+        // Fold the prop's STATIC meshes into the per-room static-merge pass — the
+        // biggest draw-call win on a floor. The merge skips meshes named 'flame'
+        // (the flicker) and all sprites; the prop's LIGHT is a separate pool
+        // source, untouched. Mood-tint sets colour once at spawn so a tinted body
+        // bakes fine. Archways/doorframes (proximityGlow) ARE folded now — their
+        // glow material is per-gate and the merge is per-corridor, so each gate
+        // collapses to ~one mesh that still pulses. They were the single biggest
+        // bucket of loose draws down a long hall.
+        markMergeStatic(built.group);
+      }
       // Optional collision shape(s) — used by structural model
       // props (buttresses, ruined columns, archway columns). For
       // AABB the half-extents rotate with the prop's rotY; we

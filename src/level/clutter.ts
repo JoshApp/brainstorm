@@ -332,9 +332,11 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // in true halls), and plenty of rooms roll none.
   const nicheRoll = rand();
   const nicheCount = ctx.area >= 90 && nicheRoll < 0.6 ? 2 : ctx.area >= 28 && nicheRoll < 0.5 ? 1 : 0;
+  // The large niche is a SEARCHABLE bone shrine (drops from the 'ossuary' table,
+  // spewed forward into the room). The small niche stays pure decoration.
   for (let i = 0; i < nicheCount; i++) {
     if (rand() < 0.35) placeWallAttached(OSSUARY_NICHE_SMALL, 0.42, 0.55, ctx, out, rand, 0.45, 0.22);
-    else placeWallAttached(OSSUARY_NICHE, 0.44, 0.8, ctx, out, rand, 0.68, 0.23);
+    else placeWallAttached(OSSUARY_NICHE, 0.44, 0.8, ctx, out, rand, 0.68, 0.23, { table: 'ossuary' });
   }
 
   // Ruined column stubs — free-standing chest-high broken column.
@@ -710,6 +712,7 @@ function placeWallAttached(
   rand: () => number,
   collisionHalfW = 0.40,           // along the wall
   collisionHalfD = 0.28,           // out from the wall
+  searchable?: { table: string; label?: string; radius?: number },
 ): void {
   // Slightly more generous slack for wall props near doorways.
   const nearOpening = (pos: number, openings: Opening[]) => inOpening(pos, openings, 0.6);
@@ -749,6 +752,7 @@ function placeWallAttached(
     out.push({
       kind: 'model', model, x, y: 0, z, rotY,
       collision: { kind: 'aabb', halfW: collisionHalfW, halfD: collisionHalfD },
+      ...(searchable ? { searchable } : {}),
     });
     ctx.existing.push({ x, z });
     return;
