@@ -19,6 +19,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CARD_ART } from '../src/art/cards';
+import { RELIC_ART } from '../src/art/relic-art';
 import { SIGIL_SUBJECT } from '../src/art/domains';
 import {
   STYLES, DEFAULT_STYLE, type StyleId,
@@ -81,6 +82,14 @@ function composeCardPrompt(base: string, art: string, accent?: string, tweak?: s
   return `${base}${accentClause}. ${art}${tweak ? `, ${tweak}` : ''}`;
 }
 
+// Relics reuse the style's ink REGISTER (palette / chiaroscuro / deep-black
+// edges) but are a single occult OBJECT, not a framed tarot card — steer FLUX
+// off the card format so it renders a thing you'd pick up off a corpse.
+function composeRelicPrompt(base: string, art: string, accent?: string, tweak?: string): string {
+  const accentClause = accent ? `, the single spot colour a ${accent}` : '';
+  return `${base}${accentClause}. a single grotesque occult relic object, NOT a tarot card, no card, no border, no frame — just the object on a black ground: ${art}${tweak ? `, ${tweak}` : ''}`;
+}
+
 async function main() {
   const m = M.load();
 
@@ -88,10 +97,12 @@ async function main() {
   if (!cmd) {
     console.log(`\nDELVE art suite — ${m.runs.length} runs · ${Object.keys(m.promoted).length} promoted · frame=${m.activeFrame ?? '—'}\n`);
     console.log(`CARDS (${CARD_ART.length}):  ${CARD_ART.map((c) => c.id).join('  ')}`);
+    console.log(`RELICS (${RELIC_ART.length}):  ${RELIC_ART.map((r) => r.id).join('  ')}`);
     console.log(`STYLES:  ${Object.entries(STYLES).map(([k, v]) => `${k}${k === DEFAULT_STYLE ? '*' : ''}`).join('  ')}   (${Object.values(STYLES).map((s) => s.label).join(' · ')})`);
     console.log(`FRAMES:  ${Object.keys(FRAMES).join('  ')}   ·  'all'`);
     console.log(`TEXTURES:  ${Object.keys(TEXTURES).join('  ')}   ·  'all'`);
     console.log(`\n  delve art card <id> [--n K] [--style s] [--from rX] [--tweak "…"]`);
+    console.log(`  delve art relic <id> [--n K] [--style s] [--from rX] [--tweak "…"]`);
     console.log(`  delve art frame <key|all> [--n K]`);
     console.log(`  delve art texture <id|all> [--n K] [--from rX] [--tweak "…"]`);
     console.log(`  delve art promote rX   ·   delve art ls [subject]`);
@@ -244,7 +255,32 @@ async function main() {
     return;
   }
 
-  console.error(`unknown command '${cmd}'. try: card · frame · promote · ls`);
+  if (cmd === 'relic') {
+    const spec = RELIC_ART.find((r) => r.id === arg1);
+    if (!spec) { console.error(`no relic '${arg1}'. known: ${RELIC_ART.map((r) => r.id).join(', ')}`); process.exit(1); }
+
+    const parent = flags.from ? M.findRun(m, flags.from) : undefined;
+    if (flags.from && !parent) { console.error(`no run ${flags.from}`); process.exit(1); }
+
+    const styleId = (flags.style ?? parent?.style ?? DEFAULT_STYLE) as StyleId;
+    const style = STYLES[styleId];
+    const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
+    const tweak = flags.tweak;
+    const prompt = parent
+      ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
+      : composeRelicPrompt(style.prompt, spec.art, spec.accent, tweak);
+
+    console.log(`\ndelve art — relic ${spec.id} x${N} · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
+    let ok = 0;
+    for (let i = 0; i < N; i++) {
+      const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, style.negative, baseSeed + i, ILLUSTRATION_SIZE.width, ILLUSTRATION_SIZE.height, parent?.id ?? null, tweak);
+      if (r) ok++;
+    }
+    console.log(`\n${ok}/${N} run(s) for ${spec.id}.  promote one:  delve art promote <id>`);
+    return;
+  }
+
+  console.error(`unknown command '${cmd}'. try: card · relic · frame · promote · ls`);
   process.exit(1);
 }
 

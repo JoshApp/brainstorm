@@ -12,7 +12,7 @@
  *   public/art/runs/<id>.png     one immutable image per run
  */
 
-export type RunKind = 'card' | 'frame' | 'texture';
+export type RunKind = 'card' | 'frame' | 'texture' | 'relic';
 
 export interface ArtRun {
   id: string;            // 'r1', 'r2', … — stable, also the filename

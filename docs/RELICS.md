@@ -134,14 +134,21 @@ The charter's plan: relics are **2D AI illustrations shown as sprite billboards
 in the world + a reliquary UI**, same FLUX pipeline as tarot, different
 presentation (object-sprites, not cards). Two pieces remain:
 
-- **Art generation.** The pipeline exists (`delve art card <id>` → FLUX → promote
-  → bake). It has no `relic` subcommand yet. Cheapest path: add a `RELIC_ART`
-  registry (prompt + accent + seed per relic, drawing on the domain's
-  `register.artTokens` + the relic's provenance) and a `delve art relic <id>`
-  path mirroring `card`. I did NOT run generation — it costs credits and needs
-  your eye. Prompt seeds are ready to drop in from the flavor + artTokens (e.g.
-  drowned-heart: *"a waterlogged human heart wrapped in sodden funeral cloth,
-  still faintly beating, crimson, ink / Mörk Borg, grotesque"*).
+- **Art generation — WIRED, ready to run.** `delve art relic <id>` now exists
+  (mirrors `card`), fed by a `RELIC_ART` registry (`src/art/relic-art.ts`) with
+  object-register prompts for all six Blood relics, built from each one's
+  provenance + the Blood domain's `register.artTokens`. It renders a single
+  occult OBJECT on black (not a framed card). I did NOT run generation — it costs
+  credits and needs your eye. When you're back:
+  ```
+  delve art relic drowned-heart --n 4      # a batch to explore
+  delve art relic gorged-tick --n 4
+  # eyeball them in the atelier:  /art.html   → star / promote
+  # fork a promising one:  delve art relic drowned-heart --from rNN --tweak "wetter"
+  ```
+  (Note: `promote` works; the card-frame BAKE step is card-shaped, so relic
+  baking to a runtime asset is a small follow-up — but generation + atelier
+  review, which is the whole "is it cool" question, works now.)
 - **Billboard presentation.** In-world 2D art today is a *swaying quad*
   (`card-drop.ts`); there's a real camera-facing sprite batch
   (`scene/sprite-batch.ts`) but it's VFX-only. The pilot needs a relic drop
