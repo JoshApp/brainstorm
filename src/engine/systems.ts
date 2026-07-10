@@ -38,6 +38,7 @@ import { updateDarkAdaptReadout } from '../debug/dark-adapt-readout';
 import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
 import { isAnyScreenOpen } from '../ui/screen-manager';
+import { isDescendTransition } from '../ui/descent-fade';
 import { tickAllBuffs } from '../ecs/buffs';
 import { tickInteractables, getInRangeInteractable, resolveUsable } from '../interactables/system';
 import { consumeInteractPressed } from '../controls/interact-input';
@@ -151,7 +152,14 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Look/move input + camera. While dying, control input is dropped so
     // nothing downstream (camera, bob) reads stale joystick values.
     { name: 'input-camera', kind: 'sim', phase: 'unpaused', tick(ctx) {
-      if (isFogWalkthroughActive()) {
+      if (isDescendTransition()) {
+        // Loading / descent transition (the screen is black): drop ALL player
+        // input so you can't move or turn behind the load veil.
+        input.lookDx = 0;
+        input.lookDy = 0;
+        input.moveX = 0;
+        input.moveY = 0;
+      } else if (isFogWalkthroughActive()) {
         // Soulslike fog-gate entry has the camera — drop player input and let
         // the forced walk drive position. realDt so the step is steady and
         // never freezes on a hit-pause.
@@ -186,7 +194,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // backsteps. Runs in 'unpaused' so it stops with the world, and after
     // input-camera so it reads this frame's facing.
     { name: 'dash', kind: 'sim', phase: 'unpaused', tick() {
-      if (isDying() || isFogWalkthroughActive()) return;
+      if (isDying() || isFogWalkthroughActive() || isDescendTransition()) return;
       // The action FSM arbitrates: no roll out of a swing's committed frames
       // or during a parry beat. Checked BEFORE consuming, so the input stays
       // pending and fires the instant the lock clears (roll-cancel buffer).
@@ -289,7 +297,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     } },
 
     { name: 'combat', kind: 'sim', phase: 'unpaused', tick(ctx) {
-      const attackPressed = isDying() ? false : consumeAttackPressed();
+      // Consume the press either way (so it can't buffer and fire on landing), but
+      // only ACT on it when not dying / behind the load veil.
+      const pressed = isDying() ? false : consumeAttackPressed();
+      const attackPressed = isDescendTransition() ? false : pressed;
       combat.tick(attackPressed, input.moveX, input.moveY, ctx.playerDt);
     } },
 
@@ -320,7 +331,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     { name: 'weapon', kind: 'sim', phase: 'unpaused', tick(ctx) {
       // A clean deflect this frame → the weapon snaps up into the catch beat.
-      if (consumeRiposte()) weapon.parryRaise();
+      if (consumeRiposte() && !isDescendTransition()) weapon.parryRaise();
       weapon.update(ctx.playerDt);
     } },
 
