@@ -13,13 +13,12 @@
  * regen — reroll the seed, fork promising runs with `--from rX --tweak`.
  */
 
-export type Domain =
-  // CORRUPTIONS — what the dungeon makes of your flesh (embrace → grotesque)
-  | 'blood' | 'bone' | 'rot' | 'ash'
-  // VIRTUES — what you hold onto (the delver's defiance; stay human)
-  | 'dawn' | 'grace' | 'valor'
-  // VICES — what tempts you deeper (avarice + transgression)
-  | 'greed' | 'forbidden';
+// Domain ids are now defined as ABSTRACTS in content/domains.ts (name, pole,
+// fantasy, register, affinities — the gameplay source of truth). This art layer
+// only needs the id union; alias it so existing `import { Domain } from
+// '../art/cards'` sites keep working while there's ONE canonical definition.
+import type { DomainId } from '../content/domains';
+export type Domain = DomainId;
 
 export interface CardArtSpec {
   id: string;
