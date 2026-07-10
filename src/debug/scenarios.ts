@@ -409,7 +409,10 @@ export const SCENARIOS: Record<string, Scenario> = {
       doors: [], stairs: [],
     },
     equipWeaponId: 'harrow',   // the frenzy verb — swap to 'bone-needle' to A/B the feel
-    giveItems: ['clot-fetish', 'crimson-leech'],   // auto-equipped rings → the machine is live
+    // The whole Blood machine as relics: apply (splinter) → amplify (2nd tick)
+    // → detonate (clot fetish chain) → feed (crimson leech). All accrete in the
+    // reliquary; a bleed weapon or the splinter seeds the loop on the pack.
+    giveItems: ['weeping-splinter', 'gorged-tick', 'clot-fetish', 'crimson-leech'],
     playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
   },
 

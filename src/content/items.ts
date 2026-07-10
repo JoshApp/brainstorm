@@ -24,6 +24,7 @@ import {
   RING_OF_IRON, RING_OF_EMBER, RING_OF_QUICKENING,
   STEADY_TONIC,
   MURKY_PHIAL, BLACK_PHIAL, PALE_PHIAL,
+  RELIC_BUNDLE,
 } from './loot-models';
 import { PASSIVES } from './passives';
 
@@ -1501,52 +1502,90 @@ export const ITEMS: Record<string, ItemSpec> = {
   // scythe, the sword's strafe sweeps) — each target in a cleave
   // contributes its own lifesteal heal, so a 3-target sweep at 15%
   // lifesteal can outpace incoming chip damage.
+  // ── BLOOD RELICS — the first domain's set, authored as real `kind:'relic'`
+  // grotesque objects (docs/BUILD-ECONOMY.md). They accrete UNCAPPED in the
+  // reliquary and combine through the BLEED substrate: apply (weeping splinter)
+  // → amplify (stack appliers) → detonate (clot fetish's chain) → feed (crimson
+  // leech). The premise is provenance — each belonged to a delver who became
+  // something down here; taking it takes on a piece of them. Spectrum runs
+  // common numeric TEXTURE → conditional PROCS → a cursed rule with a cost.
+  // Drop model is the shared RELIC_BUNDLE placeholder (or a fitting existing
+  // object) until the 2.5D AI-art sprite pass; the mechanics are final.
+
+  // — COMMON (mundane): stacking texture. Boring alone; the machine's fuel. —
+  'gorged-tick': {
+    id: 'gorged-tick',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A gorged tick',
+    flavor: 'Swollen fat on someone who went the whole way down. It feeds for you now.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'blood',
+    modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    drop: { minDepth: 1 },
+  },
+  'weeping-splinter': {
+    id: 'weeping-splinter',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A weeping splinter',
+    flavor: 'A shard of some saint that will not scar over. What it opens keeps opening.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'blood',
+    // APPLY — hits reopen the wound. Stack a few and bleed becomes reliable.
+    onHit: { buffId: 'bleed', chance: 0.18, duration: 2.5 },
+    drop: { minDepth: 1 },
+  },
+  // — UNCOMMON: the connective proc. —
   'sanguine-ring': {
     id: 'sanguine-ring',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'uncommon',
-    name: 'Sanguine Ring',
-    flavor: 'It drinks first, gives second.',
-    dropModel: RING_OF_BLOODTHIRST,
+    name: 'A blood-drinker’s stone',
+    flavor: 'It drinks first, gives second. The setting is worn to nothing where a finger held it.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'blood',
     modifiers: [{ kind: 'lifesteal-pct', amount: 0.15 }],
   },
-  // ── SUBSTRATE SLICE — the blood-drinker relics (docs/BUILD-ECONOMY.md). Two
-  // pieces that each just touch BLEED; together with a bleed weapon they're a
-  // machine (bleed → pop → chain → feed). Placeholder ring models for the
-  // fun-check; the real 2.5D cursed-object sprites come with the relic art pass.
+  // — RARE: the machine's payoff pieces (detonate + feed). —
   'clot-fetish': {
     id: 'clot-fetish',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'rare',
     name: 'A knot of old blood',
     flavor: 'Gone hard as a knuckle. What dies bleeding near it, its wound calls to the rest.',
-    dropModel: RING_OF_BLOODTHIRST,
+    dropModel: RELIC_BUNDLE,
     domain: 'blood',
-    // CHAIN payoff — a dying bleeder re-bleeds its neighbours.
+    // DETONATE — a dying bleeder re-bleeds its neighbours.
     modifiers: [{ kind: 'bleed-chain', amount: 1 }],
+    drop: { minDepth: 3 },
   },
   'crimson-leech': {
     id: 'crimson-leech',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'rare',
     name: 'A crimson leech',
     flavor: 'It fastens to the wrist and drinks whatever you spill. You barely feel it take.',
-    dropModel: RING_OF_BLOODTHIRST,
+    dropModel: RELIC_BUNDLE,
     domain: 'blood',
-    // FEED payoff — a bleeding kill mends you (build-granted lifesteal).
+    // FEED — a bleeding kill mends you (the loop closes).
     modifiers: [{ kind: 'bleed-feed', amount: 1 }],
+    drop: { minDepth: 3 },
   },
-  'vampire-amulet': {
-    id: 'vampire-amulet',
-    kind: 'amulet',
-    rarity: 'rare',
-    name: 'Amulet of the Drinker',
-    flavor: "She didn't survive the cellar. The thirst did.",
+  // — CURSED: a rule with a real wound. The grotesque identity piece. —
+  'drowned-heart': {
+    id: 'drowned-heart',
+    kind: 'relic',
+    rarity: 'cursed',
+    name: 'The Drowned Heart',
+    flavor: "She didn't survive the cellar. The thirst did. It beats when yours does.",
     dropModel: HEART_OF_DROWNED,
+    domain: 'blood',
     modifiers: [
       { kind: 'lifesteal-pct', amount: 0.25 },
       { kind: 'max-hp', amount: -2 },
     ],
+    drop: { minDepth: 4, pool: 'cursed' },
   },
   'reapers-vow-gauntlets': {
     id: 'reapers-vow-gauntlets',

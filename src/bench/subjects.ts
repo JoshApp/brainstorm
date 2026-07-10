@@ -14,7 +14,7 @@ import { EFFECT_DEMOS } from './effects';
 import { makeCorpseModel } from '../content/corpse-model';
 import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
 import { HAND_LEFT_LANTERN } from '../content/hand-poses';
-import { ESTUS_FLASK } from '../content/loot-models';
+import { ESTUS_FLASK, RELIC_BUNDLE } from '../content/loot-models';
 import { composeFlaskHold } from '../player/flask-hold';
 import type { HeldWeaponCompose } from '../player/held-weapon-compose';
 import { LURKER } from '../content/clutter';
@@ -97,6 +97,7 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'chest-wood':   { label: 'Chest — wood (free tier)', spec: CHEST },
   'chest-silver': { label: 'Chest — iron-bound silver (keyed)', spec: CHEST_IRON },
   'chest-gold':   { label: 'Chest — gold, occult sigil + horns (imposing prize)', spec: CHEST_BOSS },
+  'relic-bundle': { label: 'Relic bundle — cord-wrapped talisman, bone shard + branded sigil (relic placeholder)', spec: RELIC_BUNDLE },
 };
 
 // Pre-composed subjects — hand + object compositions that AREN'T weapons

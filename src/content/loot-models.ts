@@ -251,6 +251,35 @@ export const ACID_TONGUE_AMULET: ModelSpec = {
   ],
 };
 
+// --- Relic bundle — the shared grotesque-object PLACEHOLDER for relics.
+// A cord-wrapped talisman with a bone shard jutting out and a branded sigil
+// that glows the domain's accent (charter register: "a sealed finger, a
+// sigil-branded bone, a wrapped talisman"). Temporary: per BUILD-ECONOMY the
+// real relic is a 2.5D AI-art sprite billboard — this stands in until the art
+// pilot lands, so relics DROP and READ as cursed objects, not as rings. The
+// `brand` emissive is Blood-crimson for now (the first domain sliced); a later
+// pass tints it by the relic's domain register colour.
+export const RELIC_BUNDLE: ModelSpec = {
+  id: 'relic-bundle',
+  materials: {
+    wrap:  { color: 0x1a1512, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
+    cord:  { color: 0x0d0a06, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
+    bone:  { color: 0xbfb096, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
+    brand: { color: 0x000000, emissive: 0xcc1418, emissiveIntensity: 1.8, roughness: 1.0, fog: false },
+  },
+  parts: [
+    // The wrapped bundle — a chunky bevelled parcel of dark cloth.
+    { kind: 'box', pos: [0, 0.055, 0], size: [0.09, 0.11, 0.07], bevel: 0.025, mat: 'wrap', jitter: 0.01 },
+    // Two crossing cord bindings so it reads as bound, not a plain block.
+    { kind: 'torus', pos: [0, 0.055, 0], rot: [Math.PI / 2, 0, 0], radius: 0.052, tube: 0.008, segments: [12, 6], mat: 'cord' },
+    { kind: 'torus', pos: [0, 0.055, 0], rot: [0, 0, Math.PI / 2], radius: 0.06, tube: 0.008, segments: [12, 6], mat: 'cord' },
+    // A bone shard jutting from the top — the "something is sealed in here".
+    { kind: 'cylinder', pos: [0.015, 0.125, 0], rot: [0, 0, 0.35], radius: 0.011, height: 0.055, segments: 7, mat: 'bone', jitter: 0.02 },
+    // The branded sigil on the front face — the domain accent, faintly lit.
+    { kind: 'box', pos: [0, 0.06, -0.038], size: [0.032, 0.032, 0.006], bevel: 0.004, mat: 'brand' },
+  ],
+};
+
 // --- Gloves — single grouped representation (one glove shape) ---
 export const LEATHER_GLOVES: ModelSpec = {
   id: 'leather-gloves',
