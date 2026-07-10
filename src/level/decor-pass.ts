@@ -95,7 +95,7 @@ export function decorPass(
           // centre so it doesn't sprawl across the walking space.
           if (rng() < 0.5) {
             const ox = x < 0 ? -0.9 : 0.9;
-            out.push({ kind: 'model', model: FALLEN_PILLAR_SEGMENT, x: x + ox, y: 0, z, rotY: rng() * Math.PI, collision: { kind: 'circle', r: 0.45 } });
+            out.push({ kind: 'model', model: FALLEN_PILLAR_SEGMENT, x: x + ox, y: 0, z, rotY: rng() * Math.PI, collision: { kind: 'circle', r: 0.45, height: 0.5, dashable: true } });
           }
         } else {
           out.push({ kind: 'pillar', x, z });

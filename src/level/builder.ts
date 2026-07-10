@@ -1320,7 +1320,7 @@ export function buildLevel(
           const cx = prop.x + wox;
           const cz = prop.z + woz;
           if (shape.kind === 'circle') {
-            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, yTop: shape.height === undefined ? Infinity : gy + shape.height });
+            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, yTop: shape.height === undefined ? Infinity : gy + shape.height, dashable: shape.dashable });
           } else {
             // Swap halfW/halfD if rotation is perpendicular (±π/2).
             const swap = Math.abs(ca) < 0.5;
@@ -1331,6 +1331,7 @@ export function buildLevel(
               minX: cx - hw, maxX: cx + hw,
               minZ: cz - hd, maxZ: cz + hd,
               yTop: shape.height === undefined ? Infinity : gy + shape.height,
+              dashable: shape.dashable,
             });
           }
         }

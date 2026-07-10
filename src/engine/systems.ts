@@ -46,7 +46,7 @@ import { isBusInstalled } from '../harness/intent';
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { captureStep } from '../harness/run-recorder';
-import { tryDash } from '../combat/dash';
+import { tryDash, setDashOver, noteDashOverFired } from '../combat/dash';
 import { consumeRiposte } from '../combat/reactive-defense';
 import { updateSwingAgency } from '../combat/swing-agency';
 import { canStartAction, enterDodge } from '../combat/player-action';
@@ -213,9 +213,26 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         wx = rX * d.dx + fX * (-d.dy);              // strafe + forward(−dy)
         wz = rZ * d.dx + fZ * (-d.dy);
       }
+      // LANDING CHECK (dash-over): this roll vaults DASHABLE obstacles/gaps only
+      // if it would clear onto valid floor within reach — else they block it like
+      // a wall (stop at the edge, never inside). Decided up-front, before the dash.
+      const walkable = getLevel()?.walkable ?? null;
+      const dlen = Math.hypot(wx, wz) || 1;
+      const reach = CONFIG.STAMINA.DASH_OVER_REACH;
+      const over = !!walkable && walkable.canDashOver(
+        camera.position.x, camera.position.z,
+        camera.position.x + (wx / dlen) * reach, camera.position.z + (wz / dlen) * reach,
+        0.3,   // matches camera's PLAYER_RADIUS
+      );
       // On a real dodge, commit the FSM 'dodging' beat (≈ the i-frame window)
-      // so it locks out attack/parry for the roll's duration.
-      if (tryDash(wx, wz)) enterDodge(CONFIG.STAMINA.DASH_IFRAME_S);
+      // so it locks out attack/parry for the roll's duration. Only arm the vault
+      // when the dash actually fires — a cooldown-blocked tap shouldn't leave the
+      // flag hot for the next frame.
+      if (tryDash(wx, wz)) {
+        setDashOver(over);
+        if (over) noteDashOverFired(wx, wz);
+        enterDodge(CONFIG.STAMINA.DASH_IFRAME_S);
+      }
     } },
 
     { name: 'torchlight', phase: 'unpaused', tick(ctx) {

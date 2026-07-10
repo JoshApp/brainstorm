@@ -39,10 +39,16 @@ export type ObstacleCircle = {
  *  projectile), or set it on a LOW prop (a kerb, a fallen beam) so shots fly
  *  over it. The build folds it into the runtime obstacle's `yTop` (floor + this,
  *  or Infinity when omitted; see WalkableRegion.Obstacle / containsProjectile).
- *  Movement always collides regardless of height. */
+ *  Movement always collides regardless of height.
+ *
+ *  `dashable` (default false) marks a LOW, SHALLOW blocker the player can VAULT
+ *  mid-dash — a fallen beam, a rubble ridge, the lip of a 1-wide gap. It blocks
+ *  a normal walk but a validated dash-over clears it (see WalkableRegion
+ *  canDashOver / Obstacle.dashable). Only set it on things ≤ ~1m deep and
+ *  knee/waist high — never on a full column, a chest, or a wall. */
 export type PropCollision =
-  | { kind: 'circle'; r: number; ox?: number; oz?: number; height?: number }
-  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number; height?: number };
+  | { kind: 'circle'; r: number; ox?: number; oz?: number; height?: number; dashable?: boolean }
+  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number; height?: number; dashable?: boolean };
 
 /** Declarative facing directive for a prop. Resolves to a
  *  concrete rotY at compose time via src/level/facing.ts. The

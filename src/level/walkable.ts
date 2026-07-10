@@ -42,8 +42,8 @@ export interface WallSegment {
 // The footprint must MATCH the geometry that draws it (a round column = a
 // circle, not a square that eats shots grazing past it).
 export type Obstacle =
-  | { kind: 'circle'; x: number; z: number; r: number; yTop: number }
-  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number };
+  | { kind: 'circle'; x: number; z: number; r: number; yTop: number; dashable?: boolean }
+  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number; dashable?: boolean };
 
 // Scratch buffers for the spatial-hash queries — module-level so the hot
 // paths (clampMove per mob per frame, LOS per perception check) allocate
@@ -164,7 +164,7 @@ export class WalkableRegion {
    *                       altars, fountains, chests). Used by phasing
    *                       mobs (ghosts) who pass through props but are
    *                       still bounded by room walls. */
-  contains(x: number, z: number, radius: number, opts?: { ignoreObstacles?: boolean }): boolean {
+  contains(x: number, z: number, radius: number, opts?: { ignoreObstacles?: boolean; ignoreDashable?: boolean }): boolean {
     // (1) Inside the union of rects (unshrunken). Doorways are inside both
     // adjacent rects' union; the player can cross them.
     let inside = false;
@@ -191,6 +191,9 @@ export class WalkableRegion {
     const no = this.obstacleGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, OBS_SCRATCH);
     for (let i = 0; i < no; i++) {
       const o = OBS_SCRATCH[i];
+      // DASHABLE obstacles (fallen pillars, 1-wide gaps) don't block while the
+      // player is DASHING — they vault/dash over. Still block a normal walk.
+      if (opts?.ignoreDashable && o.dashable) continue;
       if (o.kind === 'circle') {
         const dx = x - o.x;
         const dz = z - o.z;
@@ -246,7 +249,7 @@ export class WalkableRegion {
    */
   clampMove(
     oldX: number, oldZ: number, newX: number, newZ: number, radius: number,
-    opts?: { ignoreObstacles?: boolean },
+    opts?: { ignoreObstacles?: boolean; ignoreDashable?: boolean },
   ): Vec2 {
     return this.clampMoveInto({ x: 0, z: 0 }, oldX, oldZ, newX, newZ, radius, opts);
   }
@@ -257,7 +260,7 @@ export class WalkableRegion {
   clampMoveInto(
     out: Vec2,
     oldX: number, oldZ: number, newX: number, newZ: number, radius: number,
-    opts?: { ignoreObstacles?: boolean },
+    opts?: { ignoreObstacles?: boolean; ignoreDashable?: boolean },
   ): Vec2 {
     let cx = newX;
     let cz = oldZ;
@@ -301,6 +304,66 @@ export class WalkableRegion {
       }
     }
     return true;
+  }
+
+  /**
+   * Can the player DASH from (fromX,fromZ) to (toX,toZ)? True iff the LANDING is
+   * valid floor AND the straight path crosses ONLY dashable obstacles — no wall,
+   * no solid pillar/chest. This is the dash-over gate (decided at dash START):
+   * you only vault a fallen pillar / clear a 1-wide gap when you'd actually land
+   * safe on the far side. If it returns false, the caller runs a NORMAL dash so
+   * you stop AT the obstacle's edge — never inside it, never teleported.
+   */
+  canDashOver(fromX: number, fromZ: number, toX: number, toZ: number, radius: number): boolean {
+    // (1) The landing must be real floor — obstacles + walls both respected, so a
+    // landing INSIDE a dashable obstacle (undershoot) fails and we don't vault.
+    if (!this.contains(toX, toZ, radius)) return false;
+    // (2) No WALL across the path (you can't dash through stone).
+    const nw = this.wallGrid.querySegment(fromX, fromZ, toX, toZ, WALL_SCRATCH);
+    for (let i = 0; i < nw; i++) {
+      const w = WALL_SCRATCH[i];
+      if (segmentsIntersect(fromX, fromZ, toX, toZ, w.ax, w.az, w.bx, w.bz)) return false;
+    }
+    // (3) No SOLID (non-dashable) obstacle across the path — a normal pillar or a
+    // chest still stops you. Dashable ones are exactly what we're clearing.
+    const no = this.obstacleGrid.querySegment(fromX, fromZ, toX, toZ, OBS_SCRATCH);
+    for (let i = 0; i < no; i++) {
+      const o = OBS_SCRATCH[i];
+      if (o.dashable) continue;
+      if (o.kind === 'circle') {
+        if (distSqPointToSegment(o.x, o.z, fromX, fromZ, toX, toZ) < o.r * o.r) return false;
+      } else {
+        if (segmentHitsAabb(fromX, fromZ, toX, toZ, o.minX, o.maxX, o.minZ, o.maxZ)) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Self-heal for a dash-over that undershot. If (x,z) is blocked ONLY by a
+   * DASHABLE obstacle — the lunge died with the player standing inside a fallen
+   * pillar / over a gap — resolve them forward along (dirX,dirZ) onto the first
+   * valid floor, completing the vault they committed to. Returns null when
+   * there's nothing to fix: already on floor, or stuck on a WALL / solid prop
+   * (not our business — normal collision owns that). Bounded search, so it's a
+   * short step to the obstacle's far edge, never a teleport.
+   */
+  resolveDashUndershoot(x: number, z: number, dirX: number, dirZ: number, radius: number): Vec2 | null {
+    if (this.contains(x, z, radius)) return null;                          // already safe
+    if (!this.contains(x, z, radius, { ignoreDashable: true })) return null;  // a wall holds them, not a dashable
+    const len = Math.hypot(dirX, dirZ) || 1;
+    const ux = dirX / len, uz = dirZ / len;
+    const STEP = 0.1, MAX = 3.0;
+    // Forward to the far edge — the intended landing.
+    for (let d = STEP; d <= MAX; d += STEP) {
+      if (this.contains(x + ux * d, z + uz * d, radius)) return { x: x + ux * d, z: z + uz * d };
+    }
+    // Forward somehow blocked (shouldn't happen after canDashOver) — back out
+    // the way we came so the player is never wedged inside geometry.
+    for (let d = STEP; d <= MAX; d += STEP) {
+      if (this.contains(x - ux * d, z - uz * d, radius)) return { x: x - ux * d, z: z - uz * d };
+    }
+    return null;
   }
 
   /**

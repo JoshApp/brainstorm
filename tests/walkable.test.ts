@@ -62,5 +62,53 @@ test('addObstacle then removeObstacle round-trips cleanly', () => {
   assert.equal(region.contains(0, 0, R), true, 'removed again is clear');
 });
 
+// --- Dash-over: vault a shallow dashable obstacle, but only onto valid floor ---
+
+test('canDashOver clears a DASHABLE obstacle when the landing is real floor', () => {
+  // A knee-high fallen log at x=0 spanning ±0.24 in Z-crossing; dashable.
+  const log: Obstacle = { kind: 'aabb', minX: -0.78, maxX: 0.78, minZ: -0.24, maxZ: 0.24, yTop: 0.5, dashable: true };
+  const region = new WalkableRegion([ROOM], [log]);
+  // Walk from z=-1 to z=+1 straight across the log: blocked as a walk...
+  assert.equal(region.contains(0, 0, R), false, 'the log blocks a normal walk');
+  // ...but a dash from the near side to clear floor beyond is allowed.
+  assert.equal(region.canDashOver(0, -1, 0, 1, R), true, 'vault the log onto floor beyond');
+});
+
+test('canDashOver REFUSES when the landing itself is inside the obstacle (undershoot = no teleport-in)', () => {
+  const log: Obstacle = { kind: 'aabb', minX: -0.78, maxX: 0.78, minZ: -0.24, maxZ: 0.24, yTop: 0.5, dashable: true };
+  const region = new WalkableRegion([ROOM], [log]);
+  // Target lands ON the log (z=0) — not valid floor, so no vault is armed.
+  assert.equal(region.canDashOver(0, -1, 0, 0, R), false, 'never validate a dash that ends inside the obstacle');
+});
+
+test('canDashOver REFUSES to cross a NON-dashable obstacle (a chest still stops you)', () => {
+  const chest: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 0.7 };
+  const region = new WalkableRegion([ROOM], [chest]);
+  assert.equal(region.canDashOver(0, -1, 0, 1, R), false, 'a solid chest blocks the dash — not dashable');
+});
+
+test('canDashOver REFUSES to cross a WALL even if the landing is floor', () => {
+  const wall = { ax: -1, az: 0, bx: 1, bz: 0 };
+  const region = new WalkableRegion([ROOM], [], [wall]);
+  assert.equal(region.canDashOver(0, -1, 0, 1, R), false, 'you cannot dash through stone');
+});
+
+test('resolveDashUndershoot completes the vault forward when stuck inside a dashable log', () => {
+  const log: Obstacle = { kind: 'aabb', minX: -0.78, maxX: 0.78, minZ: -0.24, maxZ: 0.24, yTop: 0.5, dashable: true };
+  const region = new WalkableRegion([ROOM], [log]);
+  // Player died mid-vault at z=0 (inside the log), heading +Z.
+  const land = region.resolveDashUndershoot(0, 0, 0, 1, R);
+  assert.ok(land, 'a stuck-in-dashable player is resolved');
+  assert.ok(land!.z > 0.24 + R - 1e-6, `pushed forward past the far edge (z=${land!.z})`);
+  assert.equal(region.contains(land!.x, land!.z, R), true, 'landing is valid floor');
+});
+
+test('resolveDashUndershoot is a NO-OP on valid floor and when stuck on a non-dashable obstacle', () => {
+  const chest: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 0.7 };
+  const region = new WalkableRegion([ROOM], [chest]);
+  assert.equal(region.resolveDashUndershoot(3, 3, 0, 1, R), null, 'on clear floor: nothing to fix');
+  assert.equal(region.resolveDashUndershoot(0, 0, 0, 1, R), null, 'stuck in a solid chest is NOT the dash-heal’s job');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

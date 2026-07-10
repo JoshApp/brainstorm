@@ -142,6 +142,7 @@ export const CONFIG = {
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
     DASH_COST: STAMINA_MAX / 3,       // 1 segment
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
+    DASH_OVER_REACH: 2.5,     // landing-check distance (m): a dash VAULTS a dashable obstacle/gap only if valid floor lies within this ahead
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Dodge NEVER blocks — at empty it still fires as a desperate STUMBLE:
     // shorter i-frames + a much weaker, shorter lunge, a camera lurch (see

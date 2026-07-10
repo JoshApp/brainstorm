@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
-import { getWindedMoveMul } from '../combat/dash';
+import { getWindedMoveMul, isDashingOver, resolveDashOverLanding } from '../combat/dash';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
@@ -99,11 +99,14 @@ export function updateCamera(
   if (kb.dx !== 0 || kb.dz !== 0) {
     const newX = camera.position.x + kb.dx;
     const newZ = camera.position.z + kb.dz;
+    // A validated dash-over vaults DASHABLE obstacles (fallen pillars / 1-wide
+    // gaps) — the knockback IS the dash, so ignore them here while it's active.
     const resolved = walkable.clampMoveInto(
       CLAMP_SCRATCH,
       camera.position.x, camera.position.z,
       newX, newZ,
       PLAYER_RADIUS,
+      { ignoreDashable: isDashingOver() },
     );
     camera.position.x = resolved.x;
     camera.position.z = resolved.z;
@@ -130,12 +133,14 @@ export function updateCamera(
       moveZ *= scale;
       const newX = camera.position.x + moveX;
       const newZ = camera.position.z + moveZ;
-      // First pass: static collision (walls, pillars, altar, chest).
+      // First pass: static collision (walls, pillars, altar, chest). A validated
+      // dash-over also lets joystick movement clear dashable obstacles this roll.
       const resolved = walkable.clampMoveInto(
         CLAMP_SCRATCH,
         camera.position.x, camera.position.z,
         newX, newZ,
         PLAYER_RADIUS,
+        { ignoreDashable: isDashingOver() },
       );
       // Second pass: dynamic collision against live enemies. Same axis-
       // decomposed slide so the player slides around an enemy instead of
@@ -199,6 +204,16 @@ export function updateCamera(
       camera.position.x = out.x;
       camera.position.z = out.z;
     }
+  }
+
+  // --- Dash-over undershoot rescue ---
+  // A validated vault normally overshoots the 1m obstacle, but a no-input dash
+  // can die inside it. Once the vault window closes, if we're still standing in
+  // the dashable obstacle, complete the vault forward onto the floor we were
+  // cleared to land on — bounded, never a teleport, no-op in the common case.
+  {
+    const land = resolveDashOverLanding(camera.position.x, camera.position.z, PLAYER_RADIUS, walkable);
+    if (land) { camera.position.x = land.x; camera.position.z = land.z; }
   }
 
   // Eye height locked above the GROUND at our feet (plus the floor-arrival

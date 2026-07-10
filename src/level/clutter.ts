@@ -464,7 +464,9 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
         // Cylinder lying along local X → halfW=0.78 (length/2)
         // along its long axis, halfD=0.24 (radius + jitter) across.
         // builder.ts swaps halfW/halfD for ±π/2 rotation.
-        collision: { kind: 'aabb', halfW: 0.78, halfD: 0.24 },
+        // Knee-high + shallow → a VAULTABLE fallen log: blocks a walk, a
+        // validated dash clears it; height lets shots sail over it too.
+        collision: { kind: 'aabb', halfW: 0.78, halfD: 0.24, height: 0.5, dashable: true },
       });
       ctx.existing.push({ x: p.x, z: p.z });
       break;

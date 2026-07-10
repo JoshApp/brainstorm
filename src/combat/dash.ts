@@ -38,6 +38,42 @@ let dodgeActiveUntil = 0;
 /** True while a dodge is mid-roll (its i-frame window). The FSM's 'dodging'. */
 export function isDodging(): boolean { return gameNow() < dodgeActiveUntil; }
 
+// DASH-OVER: set true at dash START only when a landing check said the dash CLEARS
+// a dashable obstacle/gap onto valid floor. While it holds AND we're mid-roll, the
+// movement collision ignores DASHABLE obstacles (so you vault over). False → normal
+// dash, dashable things still block, you stop at the edge (no teleport, no stuck).
+let dashOverActive = false;
+export function setDashOver(v: boolean): void { dashOverActive = v; }
+/** Is THIS dash a validated vault (ignore dashable obstacles this roll)? */
+export function isDashingOver(): boolean { return dashOverActive && isDodging(); }
+
+// Undershoot rescue. The lunge (knockback ≈1.3m + input) normally overshoots a
+// 1m obstacle, but a no-input dash can die inside it. We remember the vault
+// direction + a brief window; once the i-frame vault closes, if the player is
+// still standing inside the dashable obstacle we complete the vault forward
+// (never a teleport — a bounded step to the far edge). See resolveDashUndershoot.
+let dashDirX = 0, dashDirZ = 0;
+let dashHealUntil = 0;
+
+/** Mark that a validated dash-over just FIRED in world direction (dirX,dirZ). */
+export function noteDashOverFired(dirX: number, dirZ: number): void {
+  const len = Math.hypot(dirX, dirZ) || 1;
+  dashDirX = dirX / len; dashDirZ = dirZ / len;
+  dashHealUntil = gameNow() + 600;   // ms — spans the knockback settle
+}
+
+/** If a dash-over undershot and left the player inside the dashable obstacle,
+ *  return the position that completes the vault; null when nothing needs fixing.
+ *  Only acts once the vault window has closed and only briefly after the dash. */
+export function resolveDashOverLanding(
+  x: number, z: number, radius: number,
+  walkable: { resolveDashUndershoot(x: number, z: number, dx: number, dz: number, r: number): { x: number; z: number } | null },
+): { x: number; z: number } | null {
+  if (isDashingOver()) return null;          // still vaulting — being inside is intended
+  if (gameNow() > dashHealUntil) return null;
+  return walkable.resolveDashUndershoot(x, z, dashDirX, dashDirZ, radius);
+}
+
 /** Fire a dash in WORLD direction (dirX, dirZ) — normalised internally. Always
  *  fires (returns true) given a direction; an empty bar yields a weaker stumble.
  *  Gated only by the brief post-dodge cooldown. */
