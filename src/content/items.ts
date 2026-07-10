@@ -5,6 +5,7 @@ import type { MoveStep } from '../combat/move-timeline';
 import { HARROW_MOVES } from './weapon-moves';
 import type { PassiveSpec } from '../ecs/types';
 import type { AttributeKind } from '../state/character';
+import type { DomainId } from './domains';
 import { SWORD_RUSTED } from './sword';
 import { SKELETON_KEY } from './skeleton-key';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
@@ -429,12 +430,13 @@ export interface ItemSpec {
    *  enough pieces of the same set activates that set's threshold
    *  bonuses. Omit on items that belong to no set. */
   setId?: string;
-  /** ARCHETYPE tag (docs/BUILD-ECONOMY.md). Not a system — just a label
-   *  ('blood' | 'rot' | 'dread' | …) that lets the starter altar deal one
-   *  weapon per domain and the deep bias support toward what you're building.
-   *  A domain is the cluster of items sharing this tag, nothing more. The
-   *  domain's COLOUR comes free from its status VFX (blood = red drip). */
-  domain?: string;
+  /** The domain this item belongs to — one of the nine ABSTRACTS in
+   *  content/domains.ts (its fantasy / register / affinity palette). The tag
+   *  lets the starter altar deal one weapon per domain, biases the deep's
+   *  support toward what you're building, feeds Resonance counts, and (for
+   *  relics) drives the acquisition reveal's accent colour. The concrete
+   *  mechanics live on the item, not the domain — see domains.ts. */
+  domain?: DomainId;
   /**
    * Generic-loot distribution metadata — how this item flows through the
    * central loot roller (src/content/loot.ts). Controls WHERE and HOW

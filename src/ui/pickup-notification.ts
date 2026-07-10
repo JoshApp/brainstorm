@@ -1,14 +1,32 @@
 import { on } from '../broadcast/event-bus';
-import { ITEMS } from '../content/items';
+import { ITEMS, RARITY_COLORS } from '../content/items';
+import { DOMAINS } from '../content/domains';
 
 // Brief upper-center label that fades in and out when an item is picked up.
 // Stays warm/dim (in-world register, not broadcast register) so it doesn't
 // compete with achievement toasts in the upper-right.
+//
+// RELICS get an ACQUISITION MOMENT: the premise is that a relic belonged to a
+// delver who became something down here, and taking it takes on a piece of
+// them. So a relic pickup reveals its PROVENANCE (the flavor line) beneath the
+// name, tinted by its domain, and HOLDS longer the heavier the relic — a quiet,
+// grave "this was someone's," never a celebratory pop (the place doesn't cheer).
+// Not a modal: the same non-blocking upper-centre toast, so it never interrupts
+// a fight. Common relics get a short beat; rare/cursed get the held reveal.
 
 const SHOW_MS = 2200;
 const FADE_MS = 280;
+// Rarity → how long the reveal holds. The heavy finds linger; a common one is a
+// quick satisfying beat. (ms)
+const HOLD_BY_RARITY: Record<string, number> = {
+  mundane: 2400, uncommon: 2800, rare: 3800, cursed: 4400, fabled: 4600,
+};
+
+function hex(n: number): string { return '#' + n.toString(16).padStart(6, '0'); }
 
 let label: HTMLDivElement | null = null;
+let titleEl: HTMLDivElement | null = null;
+let subEl: HTMLDivElement | null = null;
 let hideTimer: number | undefined;
 
 export function createPickupNotification() {
@@ -38,14 +56,53 @@ export function createPickupNotification() {
     maxWidth: 'min(420px, 80vw)',
     textAlign: 'center',
   } as Partial<CSSStyleDeclaration>);
+
+  // Title (the item name) + an optional provenance subtitle (relics only).
+  titleEl = document.createElement('div');
+  subEl = document.createElement('div');
+  Object.assign(subEl.style, {
+    marginTop: '5px',
+    fontSize: '12.5px',
+    opacity: '0.82',
+    fontStyle: 'italic',
+    letterSpacing: '0.02em',
+    lineHeight: '1.35',
+  } as Partial<CSSStyleDeclaration>);
+  label.appendChild(titleEl);
+  label.appendChild(subEl);
   document.body.appendChild(label);
 
   on((event) => {
     if (event.type !== 'item:picked-up') return;
+    const item = ITEMS[event.itemId];
     // Use the affix-decorated displayName if the caller provided one
     // (rolled-affix pickup); fall back to the base item name otherwise.
-    show(event.displayName ?? ITEMS[event.itemId]?.name ?? event.itemId);
+    const name = event.displayName ?? item?.name ?? event.itemId;
+    // A relic with provenance earns the acquisition reveal: its flavor line,
+    // domain-tinted, held by rarity. Everything else is the plain name toast.
+    if (item?.kind === 'relic' && item.flavor) {
+      const accent = item.domain ? DOMAINS[item.domain].register.color : RARITY_COLORS[item.rarity ?? 'mundane'];
+      showReveal(name, item.flavor, accent, HOLD_BY_RARITY[item.rarity ?? 'mundane'] ?? SHOW_MS);
+    } else {
+      show(name);
+    }
   });
+}
+
+/** The relic acquisition moment — name + provenance, domain-tinted, held by
+ *  weight. Reuses the pickup toast so it never blocks a fight. */
+function showReveal(title: string, provenance: string, accentHex: number, holdMs: number) {
+  if (!label || !titleEl || !subEl) return;
+  const accent = hex(accentHex);
+  titleEl.textContent = title;
+  titleEl.style.fontStyle = 'normal';
+  titleEl.style.letterSpacing = '0.06em';
+  subEl.textContent = provenance;
+  subEl.style.display = '';
+  subEl.style.color = accent;
+  label.style.borderColor = accent;
+  label.style.boxShadow = `0 0 18px ${accent}44`;
+  reveal(holdMs);
 }
 
 /** Show a brief in-world message in the same warm serif register as pickups
@@ -56,8 +113,21 @@ export function showInWorldMessage(text: string) {
 }
 
 function show(text: string) {
+  if (!label || !titleEl || !subEl) return;
+  // Plain toast — name only, no provenance, warm default border.
+  titleEl.textContent = text;
+  titleEl.style.fontStyle = 'italic';
+  titleEl.style.letterSpacing = '0.04em';
+  subEl.textContent = '';
+  subEl.style.display = 'none';
+  label.style.borderColor = 'rgba(255, 180, 110, 0.45)';
+  label.style.boxShadow = 'none';
+  reveal(SHOW_MS);
+}
+
+/** Fade the label in and schedule its fade-out after `holdMs`. */
+function reveal(holdMs: number) {
   if (!label) return;
-  label.textContent = text;
   label.style.opacity = '1';
   label.style.transform = 'translateX(-50%) translateY(0)';
   if (hideTimer !== undefined) clearTimeout(hideTimer);
@@ -65,5 +135,5 @@ function show(text: string) {
     if (!label) return;
     label.style.opacity = '0';
     label.style.transform = 'translateX(-50%) translateY(-6px)';
-  }, SHOW_MS);
+  }, holdMs);
 }
