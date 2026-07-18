@@ -7,10 +7,12 @@ import type { EquipSlot } from '../player/equipment';
 // request a new one on tap. Keeping this in its own module avoids a cycle
 // between the panel and its columns.
 
-/** Currently selected item — from the bag, or an equipped doll slot. */
+/** Currently selected item — from the bag, an equipped doll slot, or a
+ *  collected relic in the reliquary (inspect-only; relics have no actions). */
 export type Selection =
   | { kind: 'bag'; item: ItemSpec }
   | { kind: 'slot'; slotId: EquipSlot; item: ItemSpec }
+  | { kind: 'relic'; item: ItemSpec }
   | null;
 
 export interface InventoryCtx {
@@ -18,6 +20,8 @@ export interface InventoryCtx {
   selection: Selection;
   /** Set the selection and rebuild the panel. */
   select(sel: Selection): void;
+  /** Jump to the RELIQUARY tab (the doll column's summary line uses this). */
+  openReliquary?(): void;
 }
 
 // ── Styling tokens ───────────────────────────────────────────────────────

@@ -136,6 +136,8 @@ export interface Scenario {
   giveItems?: string[];
   /** Programmatically open the inventory panel for the snap. */
   openInventoryPanel?: boolean;
+  /** Which tab the panel opens on (default 'gear'). */
+  inventoryTab?: 'gear' | 'reliquary';
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
   /** Open the character sheet (for UI snaps). */
@@ -1097,7 +1099,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       { itemId: 'rusted-sword',         x: -2.2, z: -1.5 }, // mundane (gray)
       { itemId: 'scimitar',             x: -1.1, z: -1.5 }, // uncommon (green)
       { itemId: 'ring-of-bloodthirst',  x:  0.0, z: -1.5 }, // rare (blue)
-      { itemId: 'ring-of-frenzy',       x:  1.1, z: -1.5 }, // cursed (violet)
+      { itemId: 'the-long-hunger',      x:  1.1, z: -1.5 }, // cursed (violet)
       { itemId: 'bone-amulet',          x:  2.2, z: -1.5 }, // rare (blue)
     ],
     spawnCards: [
@@ -1165,10 +1167,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   inventory: {
     freeze: true,
     giveItems: [
-      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
-      'worn-boots', 'wooden-shield',
-      'ring-of-vigor', 'ring-of-predation',
-      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'heretics-hood', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'shroud-step-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-ember',
+      'ring-of-bloodthirst', 'the-long-hunger',
       'scimitar',
       'flask-draught', 'flask-draught', 'berserk-potion',
     ],
@@ -1219,10 +1221,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hudOnly: true,
     giveItems: [
-      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
-      'worn-boots', 'wooden-shield',
-      'ring-of-vigor', 'ring-of-predation',
-      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'heretics-hood', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'shroud-step-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-ember',
+      'ring-of-bloodthirst', 'the-long-hunger',
       'scimitar',
       'flask-draught', 'flask-draught', 'berserk-potion',
     ],
@@ -1266,14 +1268,37 @@ export const SCENARIOS: Record<string, Scenario> = {
   'inventory-detail': {
     freeze: true,
     giveItems: [
-      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
-      'worn-boots', 'wooden-shield',
-      'ring-of-vigor', 'ring-of-predation',
-      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'heretics-hood', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'shroud-step-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-ember',
+      'ring-of-bloodthirst', 'the-long-hunger',
       'scimitar', 'flask-draught', 'flask-draught', 'berserk-potion',
     ],
     openInventoryPanel: true,
     selectItemId: 'ring-of-bloodthirst',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // The RELIQUARY tab populated across domains, with duplicate stacks —
+  // the oddities-collection snap. Relics route to the reliquary through
+  // the same tryAutoEquip path real pickups use.
+  reliquary: {
+    freeze: true,
+    giveItems: [
+      'gorged-tick', 'gorged-tick', 'gorged-tick',
+      'weeping-splinter', 'sanguine-ring', 'drowned-heart',
+      'ring-of-vigor', 'ring-of-iron', 'thornring', 'ring-of-marrow',
+      'ring-of-ember',
+      'jeweler-band', 'split-iris-amulet',
+      'the-long-hunger',
+      'ring-of-quickening',
+    ],
+    openInventoryPanel: true,
+    inventoryTab: 'reliquary',
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
@@ -2165,7 +2190,7 @@ export function applyScenario(
   }
 
   if (scenario.openInventoryPanel) {
-    openInventoryPanel();
+    openInventoryPanel(scenario.inventoryTab ?? 'gear');
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);

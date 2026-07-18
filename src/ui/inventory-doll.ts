@@ -62,7 +62,7 @@ export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
 
   col.appendChild(dollContainer);
   col.appendChild(buildRiteSlot(ctx));
-  col.appendChild(buildRelicRow());
+  col.appendChild(buildRelicLink(ctx));
   return col;
 }
 
@@ -101,40 +101,29 @@ function buildRiteSlot(ctx: InventoryCtx): HTMLDivElement {
   return wrap;
 }
 
-/** The RELIQUARY row — every collected relic, all active. Read-only (relics are
- *  permanent; nothing to unequip), a growing grid of thumbnails. */
-function buildRelicRow(): HTMLDivElement {
-  const wrap = document.createElement('div');
-  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' } as Partial<CSSStyleDeclaration>);
+/** One-line RELIQUARY summary — count + jump to the full collection tab.
+ *  The collection itself lives on its own tab (reliquary-screen.ts); the
+ *  gear column just points at it. */
+function buildRelicLink(ctx: InventoryCtx): HTMLButtonElement {
   const relics = getReliquary();
-  wrap.appendChild(sectionLabel(`RELIQUARY${relics.length ? ` · ${relics.length}` : ''}`));
-  const row = document.createElement('div');
-  Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', gap: '4px', minHeight: '28px', alignContent: 'flex-start' } as Partial<CSSStyleDeclaration>);
-  if (relics.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = 'nothing gathered';
-    Object.assign(empty.style, { color: TEXT_DIM, fontSize: '10px', fontStyle: 'italic', padding: '4px 2px' } as Partial<CSSStyleDeclaration>);
-    row.appendChild(empty);
-  } else {
-    const SIZE = 30;
-    for (const r of relics) {
-      const cell = document.createElement('div');
-      const rc = RARITY_COLORS[r.spec.rarity ?? 'mundane'];
-      Object.assign(cell.style, {
-        width: `${SIZE}px`, height: `${SIZE}px`, borderRadius: '3px',
-        border: `1px solid ${hexCss(rc)}`, background: 'rgba(20,14,10,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-      } as Partial<CSSStyleDeclaration>);
-      cell.title = r.spec.name;
-      const thumb = document.createElement('img');
-      thumb.src = getItemThumbnail(r.spec);
-      Object.assign(thumb.style, { width: `${SIZE - 6}px`, height: `${SIZE - 6}px`, objectFit: 'contain' } as Partial<CSSStyleDeclaration>);
-      cell.appendChild(thumb);
-      row.appendChild(cell);
-    }
-  }
-  wrap.appendChild(row);
-  return wrap;
+  const btn = document.createElement('button');
+  btn.textContent = relics.length
+    ? `RELIQUARY · ${relics.length} ›`
+    : 'RELIQUARY · empty ›';
+  Object.assign(btn.style, {
+    marginTop: '6px', minHeight: '32px', padding: '6px 10px',
+    fontSize: '10px', letterSpacing: '0.18em', textAlign: 'left',
+    fontFamily: 'serif', cursor: 'pointer', borderRadius: '3px',
+    border: '1px solid rgba(80,60,40,0.4)',
+    background: 'rgba(20,14,10,0.5)',
+    color: relics.length ? '#f0d8c0' : TEXT_DIM,
+    touchAction: 'manipulation',
+  } as Partial<CSSStyleDeclaration>);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ctx.openReliquary?.();
+  });
+  return btn;
 }
 
 function buildSilhouette(): SVGSVGElement {

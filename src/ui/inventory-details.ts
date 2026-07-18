@@ -12,6 +12,7 @@ import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
+import { getDomain } from '../content/domains';
 import { getCharacter, proficiencyTier } from '../state/character';
 import { hexCss } from '../style/color-utils';
 import {
@@ -125,6 +126,15 @@ export function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
     fontSize: '9px', color: TEXT_DIM, letterSpacing: '0.22em',
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   } as Partial<CSSStyleDeclaration>);
+  // Domain-tagged items (relics) name their domain in its register colour —
+  // the same accent the pickup reveal used, so the ledger matches the moment.
+  if (item.domain) {
+    const dom = getDomain(item.domain);
+    const span = document.createElement('span');
+    span.textContent = ` · ${dom.name.toUpperCase()}`;
+    span.style.color = hexCss(dom.register.color);
+    meta.appendChild(span);
+  }
 
   const name = document.createElement('div');
   name.textContent = item.name;
@@ -152,7 +162,19 @@ export function buildFlavorLine(item: ItemSpec): HTMLDivElement | null {
   return flavor;
 }
 
-function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTMLButtonElement {
+function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTMLElement {
+  // Relics have NO action — they are permanent. The line states the rule
+  // instead of offering a dead button.
+  if (sel.kind === 'relic') {
+    const kept = document.createElement('div');
+    kept.textContent = 'kept — what is taken is not returned';
+    Object.assign(kept.style, {
+      fontSize: '10px', fontStyle: 'italic', color: TEXT_FAINT,
+      textAlign: 'center', padding: '6px 0', letterSpacing: '0.05em',
+    } as Partial<CSSStyleDeclaration>);
+    return kept;
+  }
+
   const btn = document.createElement('button');
   let label: string;
   let onClick: () => void;

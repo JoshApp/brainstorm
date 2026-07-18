@@ -14,6 +14,8 @@ import { buildStatsColumn } from './inventory-stats';
 import { buildDollColumn } from './inventory-doll';
 import { buildBagColumn } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
+import { buildReliquaryContent } from './reliquary-screen';
+import { onReliquaryChanged } from '../player/reliquary';
 
 // The unified in-game menu — one satchel button opens ONE sheet with a
 // tab row: GEAR · CHARACTER · CODEX (+ a settings gear). Character is no
@@ -23,11 +25,11 @@ import { buildDetailsColumn } from './inventory-details';
 // inventory; CHARACTER / CODEX reuse the content builders from their
 // screens so the standalone entry points still work too.
 
-type Tab = 'gear' | 'character' | 'codex' | 'settings';
+type Tab = 'gear' | 'reliquary' | 'character' | 'codex' | 'settings';
 const TAB_LABELS: Record<Tab, string> = {
-  gear: 'GEAR', character: 'CHARACTER', codex: 'CODEX', settings: '⚙',
+  gear: 'GEAR', reliquary: 'RELIQUARY', character: 'CHARACTER', codex: 'CODEX', settings: '⚙',
 };
-const TABS: readonly Tab[] = ['gear', 'character', 'codex', 'settings'];
+const TABS: readonly Tab[] = ['gear', 'reliquary', 'character', 'codex', 'settings'];
 
 // ── Module-level state ───────────────────────────────────────────────
 let openButton: HTMLButtonElement | null = null;
@@ -126,6 +128,12 @@ export function createInventoryPanel() {
   onInventoryChanged(refreshGear);
   onEquipmentChanged(refreshGear);
   onPlayerStatsChanged(refreshGear);
+  // The RELIQUARY tab (and GEAR's summary line) track the collection live.
+  onReliquaryChanged(() => {
+    if (!sheet) return;
+    if (activeTab === 'reliquary') renderReliquary();
+    else if (activeTab === 'gear') renderGear();
+  });
   // Flag picked-up items as NEW (badge + sort-first in the bag).
   onEvent((e) => { if (e.type === 'item:picked-up') markItemNew(e.itemId); });
 }
@@ -134,7 +142,7 @@ function isOpen(): boolean { return !!sheet; }
 function toggle() { isOpen() ? close() : open('gear'); }
 
 /** Programmatic open — debug snaps + the I hotkey. */
-export function openInventoryPanel() { open('gear'); }
+export function openInventoryPanel(tab: 'gear' | 'reliquary' = 'gear') { open(tab); }
 
 /** Open straight to the CHARACTER tab (desktop C / settings button). */
 export function openCharacterTab() { open('character'); }
@@ -263,6 +271,8 @@ function renderTab() {
   sheet.body.replaceChildren();
   if (activeTab === 'gear') {
     renderGear();
+  } else if (activeTab === 'reliquary') {
+    renderReliquary();
   } else if (activeTab === 'character') {
     const c = buildCharacterContent();
     charDispose = c.dispose;
@@ -277,6 +287,16 @@ function renderTab() {
 function renderGear() {
   if (!sheet) return;
   sheet.body.replaceChildren(buildColumns());
+}
+
+// ── RELIQUARY: the oddities collection (domain-grouped stacks | details) ──
+function renderReliquary() {
+  if (!sheet) return;
+  const ctx: InventoryCtx = {
+    selection,
+    select(sel: Selection) { selection = sel; renderReliquary(); },
+  };
+  sheet.body.replaceChildren(buildReliquaryContent(ctx));
 }
 
 // ── GEAR columns: stats | doll | bag | details ───────────────────────
@@ -298,6 +318,7 @@ function buildColumns(): HTMLDivElement {
   const ctx: InventoryCtx = {
     selection,
     select(sel: Selection) { selection = sel; renderGear(); },
+    openReliquary() { selectTab('reliquary'); },
   };
 
   grid.appendChild(buildStatsColumn());
