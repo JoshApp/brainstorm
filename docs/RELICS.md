@@ -1,6 +1,13 @@
 # DELVE — Relics, Domains-as-Abstracts & the Acquisition Loop
 
-> **STATUS: SLICE BUILT 2026-07-10 (autonomous session, for Josh's review).**
+> **STATUS: SWITCH COMPLETE 2026-07-18 (Josh's call: full commit to 3 slots +
+> uncapped relics).** The legacy purge (Handoff 2) is DONE — all 43 paperdoll/
+> jewelry items converted (19 → domained relics, 19 → vestments) or deleted
+> (5 dups); every domain now has relic content. The reliquary has its own
+> menu tab (domain-grouped stacks + provenance details). PROVENANCE SETS are
+> live (`content/sets.ts`): a named dead delver's belongings, DISTINCT pieces
+> at 2/3 thresholds — first two owners: Vess (ash), Maren (bone). Remaining
+> handoff: the art pilot (`delve art relic <id>`).
 > Companion to `BUILD-ECONOMY.md` (the four lanes), `STATUS-EFFECTS.md` (the
 > substrate), `THE-CARDS.md`. This doc holds the relic-lane spine + what's built
 > + the two handoffs that need Josh's call.

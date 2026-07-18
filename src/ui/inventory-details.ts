@@ -2,7 +2,8 @@ import { equipFromInventory, unequipSlot, getEquipment, getSlotAffixes } from '.
 import { addItemSilently, removeItem } from '../player/inventory';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
 import { getFlask, addCharges, addCapacity } from '../player/flask';
-import { RARITY_COLORS, type ItemSpec, type WeaponClass } from '../content/items';
+import { ITEMS, RARITY_COLORS, type ItemSpec, type WeaponClass } from '../content/items';
+import { getReliquary } from '../player/reliquary';
 import type { AffixInstance } from '../content/affixes';
 import { SETS } from '../content/sets';
 import { BUFFS } from '../content/buffs';
@@ -335,7 +336,10 @@ export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] =
     const set = SETS[item.setId];
     if (set) {
       const have = countEquippedInSet(item.setId);
-      lines.push(detailLine(`${set.name}  (${have} worn)`));
+      const total = Object.values(ITEMS).filter((i) => i.setId === item.setId).length;
+      lines.push(detailLine(`${set.name} · ${have} of ${total} gathered`));
+      // Whose these were — the provenance line under the set name.
+      if (set.owner) lines.push(detailLine(set.owner, /*dim*/ true));
       for (const b of set.bonuses) {
         lines.push(detailLine(formatSetBonus(b), /*dim*/ have < b.pieces));
       }
@@ -347,11 +351,19 @@ export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] =
   return lines;
 }
 
-/** How many currently-equipped items belong to the given set. */
+/** How many pieces of the set the player holds — equipped gear plus
+ *  DISTINCT relics in the reliquary (duplicates never advance a set). */
 function countEquippedInSet(setId: string): number {
   let n = 0;
   for (const slot of Object.values(getEquipment())) {
     if (slot?.setId === setId) n++;
+  }
+  const seen = new Set<string>();
+  for (const r of getReliquary()) {
+    if (r.spec.setId === setId && !seen.has(r.spec.id)) {
+      seen.add(r.spec.id);
+      n++;
+    }
   }
   return n;
 }

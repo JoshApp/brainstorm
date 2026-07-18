@@ -101,12 +101,26 @@ export function aggregateAffixModifiers(): StatModifier[] {
   return out;
 }
 
+/** Set contributions from the reliquary — DISTINCT belongings only. A
+ *  duplicate relic stacks its own payload but never advances a provenance
+ *  set (a second copy of the same thimble is not "two of Maren's things"). */
+function relicSetIds(): (string | undefined)[] {
+  const seen = new Set<string>();
+  const out: (string | undefined)[] = [];
+  for (const r of getReliquary()) {
+    if (seen.has(r.spec.id)) continue;
+    seen.add(r.spec.id);
+    out.push(r.spec.setId);
+  }
+  return out;
+}
+
 /** Modifiers from every ACTIVE set bonus (enough pieces equipped). Same
  *  central-pipeline citizen as affix + buff modifiers; consumed by
  *  src/combat/modifiers.ts. */
 export function aggregateSetModifiers(): StatModifier[] {
   const setIds: (string | undefined)[] = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
-  for (const r of getReliquary()) setIds.push(r.spec.setId);
+  setIds.push(...relicSetIds());
   const out: StatModifier[] = [];
   for (const b of collectActiveSetBonuses(setIds)) {
     if (b.modifiers) out.push(...b.modifiers);
@@ -141,7 +155,7 @@ export function getPlayerOnHits(): PlayerOnHit[] {
     for (const a of r.affixes) if (a.onHit) out.push(a.onHit);
   }
   const setIds: (string | undefined)[] = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
-  for (const r of getReliquary()) setIds.push(r.spec.setId);
+  setIds.push(...relicSetIds());
   for (const b of collectActiveSetBonuses(setIds)) if (b.onHit) out.push(b.onHit);
   // Fate-card ON-HIT hexes (the tarot PROC, e.g. The Pyre's bleed) are just
   // another on-hit source — folded in here so combat's single on-hit loop

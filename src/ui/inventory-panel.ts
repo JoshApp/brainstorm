@@ -165,6 +165,15 @@ export function selectBagItem(itemId: string) {
   if (sheet) { syncTabStyles(); renderTab(); }
 }
 
+/** Select a collected relic by id (snap scenarios). Switches to RELIQUARY. */
+export function selectRelicItem(itemId: string) {
+  const item = ITEMS[itemId];
+  if (!item) return;
+  selection = { kind: 'relic', item };
+  activeTab = 'reliquary';
+  if (sheet) { syncTabStyles(); renderTab(); }
+}
+
 // ── Open / close ─────────────────────────────────────────────────────
 function open(tab: Tab) {
   if (sheet) { selectTab(tab); return; }

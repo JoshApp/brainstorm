@@ -1,6 +1,8 @@
 import { on } from '../broadcast/event-bus';
 import { ITEMS, RARITY_COLORS } from '../content/items';
 import { DOMAINS } from '../content/domains';
+import { SETS } from '../content/sets';
+import { getReliquary } from '../player/reliquary';
 
 // Brief upper-center label that fades in and out when an item is picked up.
 // Stays warm/dim (in-world register, not broadcast register) so it doesn't
@@ -82,7 +84,21 @@ export function createPickupNotification() {
     // domain-tinted, held by rarity. Everything else is the plain name toast.
     if (item?.kind === 'relic' && item.flavor) {
       const accent = item.domain ? DOMAINS[item.domain].register.color : RARITY_COLORS[item.rarity ?? 'mundane'];
-      showReveal(name, item.flavor, accent, HOLD_BY_RARITY[item.rarity ?? 'mundane'] ?? SHOW_MS);
+      let provenance = item.flavor;
+      // PROVENANCE-SET recognition — a second DISTINCT piece of the same dead
+      // delver's belongings gets named as such. (This event fires before the
+      // relic lands in the reliquary, so "held" is what you carried before.)
+      if (item.setId) {
+        const set = SETS[item.setId];
+        if (set?.owner) {
+          const held = new Set(
+            getReliquary().filter((r) => r.spec.setId === item.setId).map((r) => r.spec.id));
+          if (!held.has(item.id) && held.size >= 1) {
+            provenance = `${item.flavor} Another of ${set.owner.split(',')[0]}’s things.`;
+          }
+        }
+      }
+      showReveal(name, provenance, accent, HOLD_BY_RARITY[item.rarity ?? 'mundane'] ?? SHOW_MS);
     } else {
       show(name);
     }

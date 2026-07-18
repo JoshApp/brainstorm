@@ -26,7 +26,7 @@ import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
 import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
-import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
+import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
 
 // DEV-only endless-sparring dummies for the gore-arena scenario. Each splits
@@ -140,6 +140,8 @@ export interface Scenario {
   inventoryTab?: 'gear' | 'reliquary';
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
+  /** Select a collected relic in the RELIQUARY tab (snap scenarios). */
+  selectRelicId?: string;
   /** Open the character sheet (for UI snaps). */
   openCharacterScreen?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
@@ -1296,9 +1298,13 @@ export const SCENARIOS: Record<string, Scenario> = {
       'jeweler-band', 'split-iris-amulet',
       'the-long-hunger',
       'ring-of-quickening',
+      // Provenance sets — Vess 2/3 (set bonus live), Maren 1/3 (progress view).
+      'vess-striker', 'vess-oil-phial',
+      'maren-thimble',
     ],
     openInventoryPanel: true,
     inventoryTab: 'reliquary',
+    selectRelicId: 'vess-striker',
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
@@ -2194,6 +2200,9 @@ export function applyScenario(
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);
+  }
+  if (scenario.selectRelicId) {
+    selectRelicItem(scenario.selectRelicId);
   }
   if (scenario.openCharacterScreen) {
     openCharacterScreen();
