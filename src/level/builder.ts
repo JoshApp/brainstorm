@@ -2343,6 +2343,7 @@ export function buildLevel(
       enemyRoomMembership: () => aliveByRoom,
       roomHeight: roomHeightAt(spec.rooms, o.x, o.z),
       addDestructible: (d) => destructibles.push(d),
+      roomRectById: (id) => spec.rooms.find((rm) => rm.id === id)?.rect ?? null,
     });
     if (r.teardown) doorTeardowns.push(r.teardown);
   }

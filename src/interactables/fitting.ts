@@ -26,6 +26,9 @@ export interface FittingContext {
   roomHeight: number;
   /** Collect a destructible (cobweb) so the level can tick/dispose it. */
   addDestructible: (d: Destructible) => void;
+  /** roomId → walkable rect. Arena-trap gates test "player committed inside
+   *  the room" against this instead of a door-plane cross. */
+  roomRectById: (id: string) => { x: number; z: number; w: number; d: number } | null;
 }
 
 const FOG_GATE_HEIGHT = 2.6;   // = doorframe clear opening; the frame's lintel
@@ -44,7 +47,7 @@ export function spawnFitting(
       // Doors own their seal (wall segment) + state machine internally; the
       // stone frame is already emitted as a prop by the tilemap parser.
       return spawnDoor(scene, openingToDoorSpec(opening), walkable, ctx.materials,
-        ctx.enemyRoomMembership, opening.height ?? ctx.roomHeight);
+        ctx.enemyRoomMembership, opening.height ?? ctx.roomHeight, ctx.roomRectById);
 
     case 'cobweb': {
       // Destructible curtain. Seal is now a wall segment (was a hand-tuned

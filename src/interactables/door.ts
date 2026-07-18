@@ -56,6 +56,9 @@ export function spawnDoor(
   materials: StyleMaterials,
   enemyRoomMembership: () => Map<string, number>, // roomId -> alive count
   wallHeight: number = DOOR_HEIGHT_FALLBACK,
+  /** roomId → walkable rect, for the arena-trap "player inside the room"
+   *  commit test. Absent (test rigs) → the trap trigger never fires. */
+  roomRectById?: (id: string) => { x: number; z: number; w: number; d: number } | null,
 ) {
   const dx = spec.bx - spec.ax;
   const dz = spec.bz - spec.az;
@@ -157,19 +160,14 @@ export function spawnDoor(
   let openTimer = 0;
   let closeTimer = 0;
 
-  // Committed-side trigger state (arena slam). We track the side of the
-  // door the player has CLEARLY committed to — at least COMMIT_THRESHOLD
-  // past the door axis — so the slam fires only ONCE the player has
-  // stepped fully clear of the doorway. Slamming while their collision
-  // circle still straddles the door axis would drop a wall INSIDE them and
-  // trap them in the gap.
-  const COMMIT_THRESHOLD = 0.40;
-  let committedSide: 1 | -1 | null = null;
-  const doorAxisLen = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az) || 1;
-  const perpX = -(spec.bz - spec.az) / doorAxisLen;
-  const perpZ =  (spec.bx - spec.ax) / doorAxisLen;
-  const doorMidX = cx;
-  const doorMidZ = cz;
+  // Arena-trap commit depth. The gauntlet trips only when the player stands
+  // COMMITTED INSIDE the arena room itself — centre at least this far inside
+  // the room's wall line, so their whole collision circle is clear of the
+  // gate line before it drops. (The old test flipped on crossing the door
+  // axis' INFINITE plane, which also fired with the player OUTSIDE the room
+  // — walking past the wall in a corridor, or poking in and stepping back
+  // out — and sealed them out of an arena they could never clear.)
+  const COMMIT_DEPTH_M = 0.45;
 
   // ── Animation helpers ───────────────────────────────────────────────
   // Set the visible pose for a given progress. Hinged: rotate; gate: slide.
@@ -222,11 +220,10 @@ export function spawnDoor(
       playChestOpen();  // creaky hinge
     },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      // Arena trigger: while raised + passable, watch the player's COMMITTED
-      // side of the door axis. Drop the grate when the committed side flips
-      // (player walked through AND stepped clear).
-      // TRAP arenas (default trigger): the player committing across the
-      // threshold trips the gauntlet. CHALLENGE arenas (trigger 'offering')
+      // Arena trigger: while raised + passable, watch for the player standing
+      // committed INSIDE the arena room (rect containment, inset by
+      // COMMIT_DEPTH_M). TRAP arenas (default trigger): stepping fully into
+      // the room trips the gauntlet. CHALLENGE arenas (trigger 'offering')
       // skip this — the loot offering activates the encounter instead. Either
       // way the SEAL is the sealGate reactor on the encounter activating.
       if (
@@ -234,15 +231,15 @@ export function spawnDoor(
         spec.unlock?.kind === 'arena' &&
         spec.unlock.trigger !== 'offering'
       ) {
-        const ox = playerPos.x - doorMidX;
-        const oz = playerPos.z - doorMidZ;
-        const dot = perpX * ox + perpZ * oz;
-        if (Math.abs(dot) >= COMMIT_THRESHOLD) {
-          const newSide: 1 | -1 = dot >= 0 ? 1 : -1;
-          if (committedSide !== null && newSide !== committedSide) {
-            for (const rid of spec.unlock.roomIds) activateEncounter(arenaEncounterId(rid));
-          }
-          committedSide = newSide;
+        const committed = spec.unlock.roomIds.some((rid) => {
+          const r = roomRectById?.(rid);
+          if (!r) return false;
+          const mx = Math.max(0.1, r.w / 2 - COMMIT_DEPTH_M);
+          const mz = Math.max(0.1, r.d / 2 - COMMIT_DEPTH_M);
+          return Math.abs(playerPos.x - r.x) <= mx && Math.abs(playerPos.z - r.z) <= mz;
+        });
+        if (committed) {
+          for (const rid of spec.unlock.roomIds) activateEncounter(arenaEncounterId(rid));
         }
       }
 
