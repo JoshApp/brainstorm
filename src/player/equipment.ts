@@ -6,24 +6,20 @@ import { cardOnHitVictim } from '../content/cards';
 import { getHeldCards } from '../state/run-state';
 import { addRelic, getReliquary } from './reliquary';
 
-// Equipment slots. Four slots total: weapon, armor, ring1, ring2. Each
-// slot holds at most one ItemSpec (or null).
+// Equipment slots. Three gear slots (docs/BUILD-ECONOMY.md): weapon,
+// offhand, vestment (one worn garment). Each slot holds at most one
+// ItemSpec (or null).
 //
-// On pickup, ItemKind determines which slot the item targets:
-//   'weapon'   -> weapon slot (always swaps; old weapon goes to inventory)
-//   'armor'    -> armor slot  (auto-equip if empty, else inventory)
-//   'ring'     -> first empty ring slot (auto-equip if either empty)
-//   'consumable' -> inventory only (never auto-equip)
+// On pickup, ItemKind decides what happens:
+//   'weapon' / 'offhand' / 'vestment' -> the matching slot (auto-equip if
+//                                        empty; a weapon always swaps)
+//   'relic'      -> never a slot: auto-collects into the reliquary
+//                   (player/reliquary.ts), stacks uncapped, all apply
+//   'consumable' / 'key' -> inventory only (never auto-equip)
 //
 // The actual "what's in inventory" tracking lives in src/player/inventory.ts —
 // this module only owns what's CURRENTLY EQUIPPED. Pickup logic decides
 // auto-equip; whatever doesn't auto-equip stays in inventory.
-
-// THREE gear slots (docs/BUILD-ECONOMY.md): weapon + offhand + VESTMENT (one worn
-// garment). The old armor paperdoll (armor/helmet/gloves/boots) collapses into
-// `vestment`; the old jewelry (ring/amulet) becomes RELICS you collect into the
-// reliquary (player/reliquary.ts) — never a slot. Gear ground-swaps; relics
-// auto-collect and all apply.
 export type EquipSlot = 'weapon' | 'offhand' | 'vestment';
 
 export interface Equipment {
@@ -159,27 +155,18 @@ export function getPlayerOnHits(): PlayerOnHit[] {
  * false if no slot was available (caller should leave the item in inventory).
  *
  * Rules:
- *   weapon     -> always equips into the weapon slot (old weapon is returned
- *                 via the equipped-slot's previous value, caller decides what
- *                 to do — typically pushed back into inventory).
- *   armor      -> equips into armor slot iff empty.
- *   ring       -> equips into ring1 if empty, else ring2 if empty, else nope.
- *   consumable -> never auto-equipped (returns false).
+ *   weapon / offhand / vestment -> the matching slot iff empty (the caller
+ *                 handles the always-swap weapon path via equipFromInventory).
+ *   relic      -> collects into the reliquary — never a slot, always applies.
+ *   consumable / key -> never auto-equipped (returns false).
  */
 export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   switch (item.kind) {
-    case 'weapon':  return autoFillSingle('weapon', item, affixes);
-    case 'offhand': return autoFillSingle('offhand', item, affixes);
-    // The old armor paperdoll → one VESTMENT slot.
-    case 'vestment':
-    case 'armor':
-    case 'helmet':
-    case 'gloves':
-    case 'boots':   return autoFillSingle('vestment', item, affixes);
-    // Jewelry + relics COLLECT into the reliquary — never a slot, always applies.
-    case 'relic':
-    case 'ring':
-    case 'amulet':  addRelic(item, affixes); return true;
+    case 'weapon':   return autoFillSingle('weapon', item, affixes);
+    case 'offhand':  return autoFillSingle('offhand', item, affixes);
+    case 'vestment': return autoFillSingle('vestment', item, affixes);
+    // Relics COLLECT into the reliquary — never a slot, always applies.
+    case 'relic':    addRelic(item, affixes); return true;
     case 'consumable':
     case 'key':
       return false;
@@ -199,15 +186,9 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
   switch (kind) {
     case 'weapon':     return ['weapon'];
     case 'offhand':    return ['offhand'];
-    case 'vestment':
-    case 'armor':
-    case 'helmet':
-    case 'gloves':
-    case 'boots':      return ['vestment'];
-    // relics/jewelry don't occupy a slot — they collect into the reliquary.
+    case 'vestment':   return ['vestment'];
+    // relics don't occupy a slot — they collect into the reliquary.
     case 'relic':
-    case 'ring':
-    case 'amulet':
     case 'consumable':
     case 'key':        return [];
   }
@@ -219,10 +200,9 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
  * inventory bag. Used by the inventory panel's tap-to-equip handler.
  *
  * If no specific slot is given:
- *   - weapon -> weapon slot
- *   - armor -> armor slot
- *   - ring -> first empty ring slot, else ring1 (replace, return old)
- *   - consumable -> not equippable; returns null
+ *   - weapon / offhand / vestment -> the matching slot (replace, return old)
+ *   - relic -> collects into the reliquary (no slot, no displacement)
+ *   - consumable / key -> not equippable; returns null
  */
 export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): ItemSpec | null {
   let slot: EquipSlot | null = null;
@@ -230,19 +210,13 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
     slot = targetSlot;
   } else {
     switch (item.kind) {
-      case 'weapon':  slot = 'weapon'; break;
-      case 'offhand': slot = 'offhand'; break;
-      case 'vestment':
-      case 'armor':
-      case 'helmet':
-      case 'gloves':
-      case 'boots':   slot = 'vestment'; break;
+      case 'weapon':   slot = 'weapon'; break;
+      case 'offhand':  slot = 'offhand'; break;
+      case 'vestment': slot = 'vestment'; break;
       // Equipping a relic from the bag = collecting it (no slot, no displacement).
-      case 'relic':
-      case 'ring':
-      case 'amulet':  addRelic(item); return null;
+      case 'relic':    addRelic(item); return null;
       case 'consumable':
-      case 'key':     return null;
+      case 'key':      return null;
     }
   }
   if (!slot) return null;

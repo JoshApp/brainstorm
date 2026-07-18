@@ -13,7 +13,7 @@ import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PI
 import {
   HEALING_POTION, FLASK_DRAUGHT, FLASK_SHARD, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
-  IRON_COIF, BONE_AMULET, ACID_TONGUE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
+  BONE_AMULET, ACID_TONGUE_AMULET, LEATHER_GLOVES, WOODEN_SHIELD,
   OIL_LAMP_MODEL,
   // Content expansion — new equipment models.
   PENITENTS_ROBE, CUIRASS_OF_ASH,
@@ -32,21 +32,16 @@ import { PASSIVES } from './passives';
 // Item registry. An ItemSpec is the canonical definition of a thing the
 // player can collect: kind, display name, drop model, optional viewmodel
 // (weapons), optional combat stats (weapons), optional stat modifiers
-// (rings/armor).
+// (relics/vestments).
 
-export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable'
-                     | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand'
-                     // The SIMPLIFIED gear model (docs/BUILD-ECONOMY.md): three
-                     // slots — weapon / offhand / VESTMENT (one worn garment,
-                     // replacing armor/helmet/gloves/boots) — plus RELICS you
-                     // COLLECT into the reliquary (all apply, no slots; the old
-                     // ring/amulet route here). armor/helmet/gloves/boots still
-                     // exist as kinds but now equip into the vestment slot.
-                     | 'vestment' | 'relic'
-                     // 'key' — carried, not worn or drunk: spent by locked
-                     // things (reliquaries). Counted in inventory like a
-                     // consumable but never appears on the consumable bar.
-                     | 'key';
+// The gear model (docs/BUILD-ECONOMY.md): three SLOTS — weapon / offhand /
+// VESTMENT (one worn garment) — plus RELICS, which never occupy a slot:
+// they COLLECT into the reliquary (player/reliquary.ts), stack uncapped,
+// and all apply. 'consumable' lives on the consumable bar; 'key' is
+// carried, not worn or drunk — spent by locked things (reliquaries),
+// counted like a consumable but never on the bar.
+export type ItemKind = 'weapon' | 'offhand' | 'vestment' | 'relic'
+                     | 'consumable' | 'key';
 
 /**
  * Rarity tiers — atmospheric grimdark naming over the standard ARPG palette.
@@ -532,7 +527,6 @@ export const ITEMS: Record<string, ItemSpec> = {
     },
     affixPool: ['keening', 'gallows', 'spine', 'serration', 'venom'],
     maxAffixes: 1,
-    setId: 'ossuary',
     domain: 'blood',
   },
   // ── BLOOD DOMAIN — "the frenzy" (docs/BUILD-ECONOMY.md). The Harrow is the
@@ -821,10 +815,10 @@ export const ITEMS: Record<string, ItemSpec> = {
     affixPool: ['keening', 'serration', 'spine'],
     maxAffixes: 1,
   },
-  // ── ARMOR (chest slot) ─────────────────────────────────────────────
+  // ── VESTMENTS (the one worn-garment slot) ──────────────────────────
   'tattered-cloak': {
     id: 'tattered-cloak',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'mundane',
     name: 'A cloak, frayed and stained',
     flavor: 'Smells of cellar and old fire.',
@@ -832,33 +826,20 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
     affixPool: ['cinder', 'salt', 'spine', 'patience'],
     maxAffixes: 1,
-    setId: 'pauper',
   },
-  // ── HELMET ─────────────────────────────────────────────────────────
-  'iron-coif': {
-    id: 'iron-coif',
-    kind: 'helmet',
-    rarity: 'mundane',
-    name: 'An iron coif',
-    flavor: 'A skullcap, dented but serviceable.',
-    dropModel: IRON_COIF,
-    modifiers: [{ kind: 'physical-armor', amount: 1 }],
-    affixPool: ['cinder', 'spine'],
-    maxAffixes: 1,
-  },
-  // ── AMULET ─────────────────────────────────────────────────────────
+  // ── RELICS (converted paperdoll jewelry — provenance pieces) ───────
   'bone-amulet': {
     id: 'bone-amulet',
-    kind: 'amulet',
-    rarity: 'rare',
-    name: 'A bone amulet, eyes still warm',
-    flavor: 'It watches when you sleep.',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A vertebra on a cord',
+    flavor: 'Someone wore their own bone before the deep took the rest. It still holds the shape of standing.',
     dropModel: BONE_AMULET,
+    domain: 'bone',
     modifiers: [
       { kind: 'max-hp', amount: 1 },
       { kind: 'magic-armor', amount: 1 },
     ],
-    setId: 'ossuary',
   },
   // Boss-unique drop from The Boiling King (Act III). Cut from the
   // slime's core — still glistening, still warm. Equipping it
@@ -867,11 +848,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   // chemistry both ways.
   'acid-tongue': {
     id: 'acid-tongue',
-    kind: 'amulet',
+    kind: 'relic',
     rarity: 'fabled',
     name: 'Acid Tongue',
     flavor: 'Cut from something that had eaten kings.',
     dropModel: ACID_TONGUE_AMULET,
+    domain: 'rot',
     modifiers: [
       { kind: 'magic-armor', amount: 1 },
     ],
@@ -883,27 +865,15 @@ export const ITEMS: Record<string, ItemSpec> = {
     // chest/kill roll.
     drop: { noDrop: true },
   },
-  // ── GLOVES ─────────────────────────────────────────────────────────
+  // ── More vestments ─────────────────────────────────────────────────
   'leather-gloves': {
     id: 'leather-gloves',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'mundane',
     name: 'Worn leather gloves',
     flavor: 'Stiffened by old blood. Someone else\'s.',
     dropModel: LEATHER_GLOVES,
     modifiers: [{ kind: 'weapon-damage', amount: 1 }],
-    setId: 'pauper',
-  },
-  // ── BOOTS ──────────────────────────────────────────────────────────
-  'worn-boots': {
-    id: 'worn-boots',
-    kind: 'boots',
-    rarity: 'mundane',
-    name: 'A pair of worn boots',
-    flavor: 'They have walked further than you have.',
-    dropModel: WORN_BOOTS,
-    modifiers: [{ kind: 'physical-armor', amount: 1 }],
-    setId: 'pauper',
   },
   // ── OFFHAND ────────────────────────────────────────────────────────
   // The lamp is the player's default offhand. Equipping a shield (or any
@@ -934,42 +904,26 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'magic-armor', amount: 1 },
     ],
   },
-  // ── RINGS ──────────────────────────────────────────────────────────
+  // ── More relics ────────────────────────────────────────────────────
   'ring-of-vigor': {
     id: 'ring-of-vigor',
-    kind: 'ring',
-    rarity: 'uncommon',
-    name: 'A green-stoned ring',
-    flavor: 'The stone is warm and faintly damp.',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A knuckle of the stubborn',
+    flavor: 'Worried smooth by a thumb that would not quit. The habit outlived the hand.',
     dropModel: RING_OF_VIGOR,
+    domain: 'bone',
     modifiers: [{ kind: 'max-hp', amount: 2 }],
-  },
-  'ring-of-predation': {
-    id: 'ring-of-predation',
-    kind: 'ring',
-    rarity: 'uncommon',
-    name: 'A red-stoned ring',
-    flavor: 'Each pulse feels like another\'s heartbeat.',
-    dropModel: RING_OF_PREDATION,
-    modifiers: [{ kind: 'weapon-damage', amount: 1 }],
   },
   'ring-of-bloodthirst': {
     id: 'ring-of-bloodthirst',
-    kind: 'ring',
-    rarity: 'rare',
-    name: 'A crimson-stoned ring',
-    flavor: 'It tastes the kill before you do.',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: "A butcher's thumb-ring",
+    flavor: 'Worn on the hand that held the knife. Each kill fed him steadier than the meat did.',
     dropModel: RING_OF_BLOODTHIRST,
+    domain: 'blood',
     passives: [PASSIVES['bloodthirst-onkill']],
-  },
-  'ring-of-frenzy': {
-    id: 'ring-of-frenzy',
-    kind: 'ring',
-    rarity: 'cursed',
-    name: 'A violet-stoned ring',
-    flavor: 'You hear yourself laughing in someone else\'s voice.',
-    dropModel: RING_OF_FRENZY,
-    modifiers: [{ kind: 'damage-multiplier', amount: 1.2 }],
   },
   // ── BLOOD-ALTAR OFFERINGS ─────────────────────────────────────────
   // Cursed items with REAL downsides — what you get for paying HP at
@@ -978,11 +932,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   // cursed-violet rarity tint on pickup is the visual giveaway.
   'ring-of-marrow': {
     id: 'ring-of-marrow',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'cursed',
-    name: 'A bone-set ring',
-    flavor: 'It carved the wearer for the wearer.',
+    name: 'The Marrow-Thief',
+    flavor: "A surgeon's band, worn while he took from the living what the dying no longer needed. It takes from you too.",
     dropModel: RING_OF_FRENZY,
+    domain: 'bone',
     modifiers: [
       { kind: 'weapon-damage', amount: 2 },
       { kind: 'max-hp', amount: -1 },
@@ -1018,11 +973,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'eye-of-appetite': {
     id: 'eye-of-appetite',
-    kind: 'amulet',
+    kind: 'relic',
     rarity: 'cursed',
     name: 'Eye of Appetite',
-    flavor: 'It watches your enemies. It watches you longer.',
+    flavor: 'It looks at everything as a meal. Including out.',
     dropModel: ACID_TONGUE_AMULET,
+    domain: 'greed',
     // Glass-cannon crit: brutal on the swing, but every blow you TAKE
     // lands 15% harder. Reward the kill, fear the miss.
     modifiers: [
@@ -1034,11 +990,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'the-long-hunger': {
     id: 'the-long-hunger',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'cursed',
     name: 'The Long Hunger',
-    flavor: 'Feed it, or it feeds.',
+    flavor: 'It was a rich man\'s fast, then a poor man\'s famine. It kept what both men lost.',
     dropModel: RING_OF_BLOODTHIRST,
+    domain: 'greed',
     // Heavy lifesteal turns your offence into your healing — but your
     // pool is four shallower, so a dry spell is a death sentence.
     modifiers: [
@@ -1049,7 +1006,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'cowards-reward': {
     id: 'cowards-reward',
-    kind: 'boots',
+    kind: 'vestment',
     rarity: 'cursed',
     name: "Coward's Reward",
     flavor: 'Faster than the thing behind you. Barely.',
@@ -1065,7 +1022,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'martyrs-cilice': {
     id: 'martyrs-cilice',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'cursed',
     name: "Martyr's Cilice",
     flavor: 'Pain sharpens. The dungeon is a patient teacher.',
@@ -1080,17 +1037,15 @@ export const ITEMS: Record<string, ItemSpec> = {
     drop: { minDepth: 4 },
   },
   // ── CONTENT EXPANSION ─────────────────────────────────────────────
-  // Slot variety pass — most non-ring slots had a single mundane pick
-  // and no uncommon/rare options. These add a clear identity per item
-  // (defensive / mobility / offensive / hybrid) so the player has a
-  // build choice at every floor instead of "did the chest drop the
-  // one thing." Affix pools tag the broad theme; setId glues a few
-  // together so equipping the matching pieces awards a bonus.
+  // Variety pass — each item carries a clear identity (defensive /
+  // mobility / offensive / hybrid) so the player has a build choice at
+  // every floor instead of "did the chest drop the one thing." Affix
+  // pools tag the broad theme.
   //
-  // ARMOR (chest)
+  // VESTMENTS
   'penitents-robe': {
     id: 'penitents-robe',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'uncommon',
     name: "Penitent's Robe",
     flavor: 'Worn against both flesh and weather.',
@@ -1099,11 +1054,10 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'physical-armor', amount: 1 },
       { kind: 'magic-armor', amount: 1 },
     ],
-    setId: 'penitent',
   },
   'cuirass-of-ash': {
     id: 'cuirass-of-ash',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Cuirass of Ash',
     flavor: 'Forged in something that did not burn cleanly.',
@@ -1113,10 +1067,9 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'move-speed-mult', amount: 0.92 },
     ],
   },
-  // HELMET
   'heretics-hood': {
     id: 'heretics-hood',
-    kind: 'helmet',
+    kind: 'vestment',
     rarity: 'uncommon',
     name: "Heretic's Hood",
     flavor: 'Cuts no draught. Hides everything else.',
@@ -1125,11 +1078,10 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'magic-armor', amount: 1 },
     ],
-    setId: 'penitent',
   },
   'skullcap-hanged': {
     id: 'skullcap-hanged',
-    kind: 'helmet',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Skullcap of the Hanged',
     flavor: 'Taken before it could rot.',
@@ -1140,10 +1092,9 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'max-hp', amount: 1 },
     ],
   },
-  // GLOVES
   'gravecutter-gauntlets': {
     id: 'gravecutter-gauntlets',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'uncommon',
     name: 'Gravecutter Gauntlets',
     flavor: 'Brass knuckles, sealed inside leather. For decorum.',
@@ -1155,7 +1106,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'vellum-wraps': {
     id: 'vellum-wraps',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Vellum Wraps',
     flavor: 'Old vows, wrapped around the bones that broke them.',
@@ -1165,10 +1116,9 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'action-speed-mult', amount: 1.12 },
     ],
   },
-  // BOOTS
   'shroud-step-boots': {
     id: 'shroud-step-boots',
-    kind: 'boots',
+    kind: 'vestment',
     rarity: 'uncommon',
     name: 'Shroud-Step Boots',
     flavor: 'For walking past what is left behind.',
@@ -1180,7 +1130,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'sin-eater-sandals': {
     id: 'sin-eater-sandals',
-    kind: 'boots',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Sin-Eater Sandals',
     flavor: 'Worn thin by other people\'s sins.',
@@ -1188,7 +1138,6 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [
       { kind: 'incoming-damage-mult', amount: 0.90 },
     ],
-    setId: 'penitent',
   },
   // OFFHAND
   'splintered-aegis': {
@@ -1203,60 +1152,49 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'max-hp', amount: 1 },
     ],
   },
-  // AMULETS
+  // RELICS
   'mendicants-locket': {
     id: 'mendicants-locket',
-    kind: 'amulet',
-    rarity: 'uncommon',
-    name: "Mendicant's Locket",
-    flavor: 'Holds a coin that was never spent.',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: "A mendicant's locket",
+    flavor: 'Empty. Whatever face it held, he gave the deep everything else first.',
     dropModel: MENDICANT_LOCKET,
+    domain: 'grace',
     modifiers: [
       { kind: 'max-hp', amount: 2 },
       { kind: 'physical-armor', amount: 1 },
     ],
   },
-  'heart-of-drowned': {
-    id: 'heart-of-drowned',
-    kind: 'amulet',
-    rarity: 'rare',
-    name: 'Heart of the Drowned',
-    flavor: 'It beats slower than yours.',
-    dropModel: HEART_OF_DROWNED,
-    modifiers: [
-      { kind: 'max-hp', amount: 3 },
-      { kind: 'magic-armor', amount: 1 },
-    ],
-    // The cold seep — chill-on-hit chance. The drowned mark their kills.
-    onHit: { buffId: 'chill', chance: 0.30, duration: 2.5 },
-  },
-  // RINGS
   'ring-of-iron': {
     id: 'ring-of-iron',
-    kind: 'ring',
-    rarity: 'uncommon',
-    name: 'Ring of Iron',
-    flavor: 'A length of nail. Bent.',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A band of grave-iron',
+    flavor: 'Cut from a coffin nail by a sexton who feared his own yard. The iron remembers holding shut.',
     dropModel: RING_OF_IRON,
+    domain: 'bone',
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
   },
   'ring-of-ember': {
     id: 'ring-of-ember',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'uncommon',
-    name: 'Ring of Ember',
-    flavor: 'Still warm.',
+    name: 'A coal in silver',
+    flavor: 'A lamplighter set his last ember in a ring rather than let the dark have it. It has not forgiven the setting.',
     dropModel: RING_OF_EMBER,
+    domain: 'ash',
     modifiers: [{ kind: 'weapon-damage', amount: 1 }],
     onHit: { buffId: 'burn', chance: 0.25, duration: 2.0 },
   },
   'ring-of-quickening': {
     id: 'ring-of-quickening',
-    kind: 'ring',
-    rarity: 'rare',
-    name: 'Ring of Quickening',
-    flavor: 'The hours run shorter while it is worn.',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A ring worn on no finger',
+    flavor: "Found sewn under a courier's skin. Whatever she outran, she outran it twice.",
     dropModel: RING_OF_QUICKENING,
+    domain: 'forbidden',
     modifiers: [
       { kind: 'action-speed-mult', amount: 1.20 },
       { kind: 'max-hp', amount: -2 },
@@ -1285,11 +1223,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   // — On-damaged procs —
   'stoneskin-locket': {
     id: 'stoneskin-locket',
-    kind: 'amulet',
-    rarity: 'uncommon',
-    name: 'Stoneskin Locket',
-    flavor: 'The first wound stiffens the second.',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A locket of grey dust',
+    flavor: 'She powdered the wall of the deepest cell and wore it. What patience calcifies, pain cannot open.',
     dropModel: MENDICANT_LOCKET,
+    domain: 'bone',
     passives: [{
       id: 'stoneskin-on-dmg',
       trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'ironhide', duration: 4.0 }] },
@@ -1297,11 +1236,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'ring-of-fury': {
     id: 'ring-of-fury',
-    kind: 'ring',
-    rarity: 'rare',
-    name: 'Ring of Fury',
-    flavor: 'It hates whatever hates you.',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A cracked signet',
+    flavor: 'He struck the wall until the crest was gone. The anger set like mortar.',
     dropModel: RING_OF_EMBER,
+    domain: 'valor',
     passives: [{
       id: 'fury-on-dmg',
       trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'bloodthirst', duration: 5.0 }] },
@@ -1309,7 +1249,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'mantle-of-hounded': {
     id: 'mantle-of-hounded',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Mantle of the Hounded',
     flavor: 'The body learns what the mind refused.',
@@ -1322,7 +1262,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'wrathful-crown': {
     id: 'wrathful-crown',
-    kind: 'helmet',
+    kind: 'vestment',
     rarity: 'cursed',
     name: 'Wrathful Crown',
     flavor: "It rewards what shouldn't be rewarded.",
@@ -1337,11 +1277,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   // — Conditional (HP-threshold) modifiers —
   'bloodbond-ring': {
     id: 'bloodbond-ring',
-    kind: 'ring',
+    kind: 'relic',
     rarity: 'uncommon',
-    name: 'Bloodbond Ring',
-    flavor: 'Tighter as the blood gets warmer.',
+    name: 'A vow scratched in iron',
+    flavor: 'The oath is illegible now. Whoever swore it hit harder bleeding than whole.',
     dropModel: RING_OF_BLOODTHIRST,
+    domain: 'valor',
     conditionalModifiers: [{
       // Below half HP: +1 weapon damage. Classic "wounded fights
       // harder" hook. Small enough to stack with other items, big
@@ -1352,7 +1293,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'last-stand-pauldrons': {
     id: 'last-stand-pauldrons',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Last-Stand Pauldrons',
     flavor: 'Sized for the unburied.',
@@ -1371,7 +1312,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'mantle-of-resolve': {
     id: 'mantle-of-resolve',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Mantle of Resolve',
     flavor: "It hardens when there's nowhere left to fall.",
@@ -1387,11 +1328,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'talon-amulet': {
     id: 'talon-amulet',
-    kind: 'amulet',
+    kind: 'relic',
     rarity: 'uncommon',
-    name: 'Talon Amulet',
-    flavor: 'Sharpens while the carrier is unblooded.',
+    name: "A falcon's talon",
+    flavor: 'The bird struck only from clean sky. Its keeper starved it into perfection.',
     dropModel: HEART_OF_DROWNED,
+    domain: 'dawn',
     conditionalModifiers: [{
       // ABOVE-threshold variant — reward for STAYING healthy.
       // Different reward loop from the low-HP items: a haste boost
@@ -1408,11 +1350,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   // these effects fall back to targeting self — never crash.
   'frostgrip-amulet': {
     id: 'frostgrip-amulet',
-    kind: 'amulet',
-    rarity: 'rare',
-    name: 'Frostgrip Amulet',
-    flavor: 'The bite finds its way back along the arm.',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A shackle-charm of unlight',
+    flavor: 'Carved in a cell that had no window and no cold, yet frost grew on it. The jailer never touched it twice.',
     dropModel: HEART_OF_DROWNED,
+    domain: 'forbidden',
     modifiers: [{ kind: 'magic-armor', amount: 1 }],
     passives: [{
       id: 'frostgrip-chill-on-dmg',
@@ -1428,7 +1371,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'spineweave-cloak': {
     id: 'spineweave-cloak',
-    kind: 'armor',
+    kind: 'vestment',
     rarity: 'rare',
     name: 'Spineweave Cloak',
     flavor: 'Sewn with their own ribs, by their own hands.',
@@ -1445,11 +1388,12 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'thornring': {
     id: 'thornring',
-    kind: 'ring',
-    rarity: 'rare',
-    name: 'Thornring',
-    flavor: 'It draws back as it draws.',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A ring of fused barbs',
+    flavor: 'A trapper wore it to remember what teeth felt like. Now the remembering is outward.',
     dropModel: RING_OF_EMBER,
+    domain: 'bone',
     passives: [{
       id: 'thornring-retaliate',
       trigger: {
@@ -1468,20 +1412,22 @@ export const ITEMS: Record<string, ItemSpec> = {
   // weapon-class-agnostic "every fifth swing crushes" identity.
   'jeweler-band': {
     id: 'jeweler-band',
-    kind: 'ring',
-    rarity: 'uncommon',
-    name: "Jeweler's Band",
-    flavor: 'Reads weakness like a vein in stone.',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A lens of pale glass',
+    flavor: "A cutter's loupe, ground to see the one flaw in anything. Everything has it.",
     dropModel: RING_OF_PREDATION,
+    domain: 'dawn',
     modifiers: [{ kind: 'crit-chance', amount: 0.08 }],
   },
   'split-iris-amulet': {
     id: 'split-iris-amulet',
-    kind: 'amulet',
+    kind: 'relic',
     rarity: 'rare',
-    name: 'Split-Iris Amulet',
-    flavor: "Two pupils. Neither blinks.",
+    name: 'The Split Iris',
+    flavor: 'An eye that saw where to cut, set in gold by someone who wanted the seeing. Both are gone; the seeing keeps.',
     dropModel: BONE_AMULET,
+    domain: 'dawn',
     modifiers: [
       { kind: 'crit-chance', amount: 0.10 },
       { kind: 'crit-mult',   amount: 0.40 },
@@ -1489,7 +1435,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'executioners-gloves': {
     id: 'executioners-gloves',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'rare',
     name: "Executioner's Gloves",
     flavor: 'Worn to thirty-one names. The thirty-second was the same.',
@@ -1591,7 +1537,7 @@ export const ITEMS: Record<string, ItemSpec> = {
   },
   'reapers-vow-gauntlets': {
     id: 'reapers-vow-gauntlets',
-    kind: 'gloves',
+    kind: 'vestment',
     rarity: 'rare',
     name: "Reaper's Vow Gauntlets",
     flavor: 'Each finger is a kept promise.',

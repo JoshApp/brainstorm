@@ -17,13 +17,11 @@ import { rollLoot } from './loot';
 import { ITEMS } from './items';
 import type { ItemSpec, ItemKind, Rarity } from './items';
 
-// The three gear SLOTS (+ the old paperdoll kinds that still route into vestment).
-// ring/amulet are absent — they're relics now, so gear pools never leak a relic.
-export const GEAR_KINDS: readonly ItemKind[] =
-  ['weapon', 'offhand', 'vestment', 'armor', 'helmet', 'gloves', 'boots'];
+// The three gear SLOTS. Relics are their own pool, so gear pools never leak one.
+export const GEAR_KINDS: readonly ItemKind[] = ['weapon', 'offhand', 'vestment'];
 export const CONSUMABLE_KINDS: readonly ItemKind[] = ['consumable'];
-// Relics — real `kind:'relic'` + the transitional POC ring/amulet items.
-export const RELIC_KINDS: readonly ItemKind[] = ['relic', 'ring', 'amulet'];
+// Relics — the reliquary's uncapped collectibles.
+export const RELIC_KINDS: readonly ItemKind[] = ['relic'];
 
 /** The skeleton-key item — the chest currency. */
 export const KEY_ID = 'skeleton-key';

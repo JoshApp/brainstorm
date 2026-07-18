@@ -209,9 +209,9 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
  */
 export function rollCursedItem(depth: number, rand: () => number): ItemSpec | null {
   // The cursed pool is the DEDICATED gamble (blood altars, shrouded relics) —
-  // variety is the point, and most cursed rings gate to depth 3-4, so a shallow
-  // altar would otherwise only ever offer ring-of-frenzy / ring-of-marrow ("it
-  // always gives the same ring"). Soften the gate by a LOOKAHEAD so several
+  // variety is the point, and most cursed relics gate to depth 3-4, so a shallow
+  // altar would otherwise only ever offer the same one or two curses ("it
+  // always gives the same relic"). Soften the gate by a LOOKAHEAD so several
   // cursed items are in play early — you can pull a deeper curse sooner, the
   // risk/reward fantasy (you paid blood for it). Weight still applies, so the
   // deepest stay rarer.

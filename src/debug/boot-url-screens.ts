@@ -13,7 +13,7 @@ export function applyFakeStateFlags(): void {
       totalPlayMs: 4 * 60 * 1000,
       enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
       itemsFound: ['rusted-sword', 'scimitar', 'flask-draught', 'leather-gloves',
-                   'worn-boots', 'ring-of-vigor', 'iron-coif'],
+                   'shroud-step-boots', 'ring-of-vigor', 'heretics-hood'],
       notesRead: [
         'I came for the blade. I should have come for the door.',
         'They told us it was one floor. They counted wrong.',

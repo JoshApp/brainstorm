@@ -30,50 +30,11 @@ export interface SetSpec {
   bonuses: SetBonus[];
 }
 
-export const SETS: Record<string, SetSpec> = {
-  // The scrounger's kit — three mundane rags that, worn together, keep a
-  // pauper alive a little longer. Reward for NOT chasing the shiny loose
-  // drop early.
-  'pauper': {
-    id: 'pauper',
-    name: "Pauper's Vigil",
-    bonuses: [
-      { pieces: 2, modifiers: [{ kind: 'physical-armor', amount: 1 }] },
-      { pieces: 3, modifiers: [{ kind: 'max-hp', amount: 2 }, { kind: 'physical-armor', amount: 1 }] },
-    ],
-  },
-  // The bone kit — needle + amulet. Leans into the venom/decay theme: the
-  // amulet's magic armor plus a player-wide poison-on-hit, so the needle's
-  // fast cadence stacks poison even before a venom affix.
-  'ossuary': {
-    id: 'ossuary',
-    name: 'The Ossuary',
-    bonuses: [
-      {
-        pieces: 2,
-        modifiers: [{ kind: 'magic-armor', amount: 1 }],
-        onHit: { buffId: 'poison', chance: 0.35, duration: 4 },
-      },
-    ],
-  },
-  // Penitent's vigil — robe + hood + sandals. The ascetic set:
-  // damage-reduction stacks if you commit to the kit. Pairs naturally
-  // with the magic-armor / weapon-damage from the hood. Reads as
-  // "I wear my faith"; mechanically, leans into mitigation builds.
-  'penitent': {
-    id: 'penitent',
-    name: "The Penitent's Vigil",
-    bonuses: [
-      // Two-piece — modest defensive bump.
-      { pieces: 2, modifiers: [{ kind: 'physical-armor', amount: 1 }, { kind: 'magic-armor', amount: 1 }] },
-      // Three-piece — additional damage reduction on top.
-      { pieces: 3, modifiers: [
-        { kind: 'incoming-damage-mult', amount: 0.92 },
-        { kind: 'max-hp', amount: 2 },
-      ] },
-    ],
-  },
-};
+// Currently EMPTY — the legacy paperdoll sets (pauper / ossuary / penitent)
+// were retired with the item purge. Sets return as PROVENANCE SETS on the
+// relic lane: a named dead delver's belongings, thresholds at 2/3 pieces —
+// see docs/RELICS.md. The machinery below stays live for that.
+export const SETS: Record<string, SetSpec> = {};
 
 /**
  * Collect every active set bonus given the setIds of all equipped items
