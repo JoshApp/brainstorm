@@ -420,6 +420,42 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
   },
 
+  // ── RELIC LAB — every ITEM-GRAMMAR engine hook in one room ──────────
+  // Poison applier → carrion-tongue (heal on poisoned kill) and burn applier →
+  // ashen-psalm (fury on burning kill) exercise victim-conditions; deflect a
+  // flash → chime heals + aegis hardens; perfect-dodge → untouched-oath fury;
+  // gold showers feed the counting itch; 3× morningstar-chip shows hyperbolic
+  // crit stacking (+4% → ~11.5%, not 12%); usurers-seal compounds.
+  'relic-lab': {
+    level: {
+      id: 'relic-lab', depth: 4, displayName: 'RELIC LAB', fogColor: 0x0a0a0c,
+      startPos: { x: 0, z: 6, yaw: Math.PI },
+      rooms: [{ id: 'lab', rect: { x: 0, z: 0, w: 18, d: 18 }, height: 5 }],
+      corridors: [], props: [],
+      torches: [
+        { x: -8, z: 0, wall: 'W', height: 2.6, colorTint: 0x86b33f, intensityMul: 1.1 },
+        { x:  8, z: 0, wall: 'E', height: 2.6, colorTint: 0xd9772e, intensityMul: 1.1 },
+      ],
+      spawns: Array.from({ length: 8 }, (_, i) => ({
+        enemyId: 'ooze-small',
+        x: (i % 4 - 1.5) * 1.7,
+        z: -3.5 - Math.floor(i / 4) * 1.7,
+        roomId: 'lab',
+      })),
+      doors: [], stairs: [],
+    },
+    equipWeaponId: 'rusted-sword',
+    giveItems: [
+      'grave-mould-clump', 'carrion-tongue',          // poison → conditioned feed
+      'vess-striker', 'ashen-psalm',                  // burn → conditioned fury
+      'chime-of-still-air', 'patient-aegis',          // deflect payoffs
+      'untouched-oath',                               // just-dodge payoff
+      'counting-itch', 'usurers-seal',                // economy + compounding
+      'morningstar-chip', 'morningstar-chip', 'morningstar-chip',  // hyperbolic
+    ],
+    playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
+  },
+
   // ── PERF STRESS SCENARIOS ──────────────────────────────────────────
   // perf-horde: a packed mob fight — many animated enemies + projectiles
   // in view at once. The dynamic-entity draw-call stress.

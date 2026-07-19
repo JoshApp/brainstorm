@@ -1536,6 +1536,261 @@ export const ITEMS: Record<string, ItemSpec> = {
     drop: { minDepth: 4, pool: 'cursed' },
   },
 
+  // ── DOMAIN TOP-UP (docs/ITEM-GRAMMAR.md) — every thin domain filled to a
+  // real spectrum, each new engine hook shown working: hyperbolic stacking
+  // (morningstar-chip), compounding multipliers (usurers-seal, stolen-heel),
+  // victim-state kills (carrion-tongue, ashen-psalm), tempo triggers
+  // (chime-of-still-air, patient-aegis, untouched-oath), economy triggers
+  // (beggars-bowl, counting-itch). Authoring rules §5 apply: appliers scarce,
+  // rarity = shape, EV-honest numerics, provenance on everything.
+
+  // — ROT: what festers, wins (poison / curse / anti-heal) —
+  'grave-mould-clump': {
+    id: 'grave-mould-clump',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A clump of grave-mould',
+    flavor: 'Scraped from the underside of a coffin lid. It spreads to whatever you open.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'rot',
+    onHit: { buffId: 'poison', chance: 0.12, duration: 3.0 },
+    drop: { minDepth: 1 },
+  },
+  'plaguewick': {
+    id: 'plaguewick',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A wick soaked in bile',
+    flavor: 'The lamplighter of the sixth stair dipped his wicks in his own sickness. Touch his light and carry it.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'rot',
+    passives: [{
+      id: 'plaguewick-retaliate',
+      trigger: {
+        on: 'damaged', chance: 0.45,
+        effects: [{ type: 'apply-buff', buffId: 'poison', duration: 4.0, target: 'attacker' }],
+      },
+    }],
+    drop: { minDepth: 2 },
+  },
+  'carrion-tongue': {
+    id: 'carrion-tongue',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A carrion-bird’s tongue',
+    flavor: 'Dried and strung on gut. The bird ate only what was already dying. It never went hungry.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'rot',
+    // Rot's FEED — the victim-condition hook: only a kill on a poisoned foe pays.
+    passives: [{
+      id: 'carrion-feed',
+      trigger: {
+        on: 'killed', condition: { victimHasBuff: 'poison' },
+        effects: [{ type: 'heal', amount: 1 }],
+      },
+    }],
+    drop: { minDepth: 3 },
+  },
+
+  // — ASH: the fire passes to you (burn / crowd) —
+  'ashen-psalm': {
+    id: 'ashen-psalm',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A psalm burned onto slate',
+    flavor: 'The words are gone. The heat that spoke them is not. Finish what burns and it comes to you.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'ash',
+    passives: [{
+      id: 'ashen-psalm-fury',
+      trigger: {
+        on: 'killed', condition: { victimHasBuff: 'burn' },
+        effects: [{ type: 'apply-buff', buffId: 'berserk', duration: 2.5 }],
+      },
+    }],
+    drop: { minDepth: 3 },
+  },
+  'martyrs-tallow': {
+    id: 'martyrs-tallow',
+    kind: 'relic',
+    rarity: 'cursed',
+    name: 'A candle of martyr’s tallow',
+    flavor: 'Rendered from someone who volunteered. It gives a strong light and takes its fuel from the bearer.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'ash',
+    modifiers: [{ kind: 'damage-multiplier', amount: 1.25 }],
+    // The wound: every hit you take sets you briefly alight. Power, paid in kind.
+    passives: [{
+      id: 'tallow-selfburn',
+      trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'burn', duration: 1.2 }] },
+    }],
+    drop: { minDepth: 4, pool: 'cursed' },
+  },
+
+  // — DAWN: the killing light (crit / execute) —
+  'morningstar-chip': {
+    id: 'morningstar-chip',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A chip of the morning star',
+    flavor: 'A fleck of the light above, carried down. Each one you find glints a little less alone.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'dawn',
+    // HYPERBOLIC stacking showcase: each copy is another independent glint —
+    // 1 chip = +4%, 5 chips ≈ +18.5%, never 100%. Hoard them.
+    modifiers: [{ kind: 'crit-chance', amount: 0.04, stack: 'hyperbolic' }],
+    drop: { minDepth: 1 },
+  },
+  'cleanest-cut': {
+    id: 'cleanest-cut',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'The cleanest cut',
+    flavor: 'A sliver of edge from a sword that only ever needed one stroke. It remembers how endings feel.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'dawn',
+    // Execute spike — crits carve deeper (flat bonus damage on the crit).
+    passives: [{
+      id: 'cleanest-cut-carve',
+      trigger: { on: 'crit', effects: [{ type: 'damage', amount: 2, target: 'victim' }] },
+    }],
+    drop: { minDepth: 3 },
+  },
+
+  // — GRACE: mastery is the only clean heal (deflect) —
+  'chime-of-still-air': {
+    id: 'chime-of-still-air',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'A chime of still air',
+    flavor: 'It rings only when a blade stops where it should not have. The sound closes small wounds.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'grace',
+    // The tempo lane made real: skill IS the heal economy here.
+    passives: [{
+      id: 'chime-heal',
+      trigger: { on: 'deflect', effects: [{ type: 'heal', amount: 1 }] },
+    }],
+    drop: { minDepth: 2 },
+  },
+  'patient-aegis': {
+    id: 'patient-aegis',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A shard of the patient aegis',
+    flavor: 'The shield outlived three bearers who understood it and one who did not. Meet the blow, and it stands with you.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'grace',
+    passives: [{
+      id: 'aegis-harden',
+      trigger: { on: 'deflect', effects: [{ type: 'apply-buff', buffId: 'ironhide', duration: 4.0 }] },
+    }],
+    drop: { minDepth: 3 },
+  },
+
+  // — VALOR: most dangerous at the edge (brink / finisher) —
+  'oath-scrap': {
+    id: 'oath-scrap',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A scrap of a written oath',
+    flavor: '"…to the last of…" — the rest is blood. Whoever swore it, meant it most near the end.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'valor',
+    conditionalModifiers: [{
+      condition: { kind: 'below-hp-pct', value: 0.5 },
+      modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    }],
+    drop: { minDepth: 1 },
+  },
+  'horn-of-the-brink': {
+    id: 'horn-of-the-brink',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A horn cracked at the mouth',
+    flavor: 'Sounded once, at a last stand that held. The note lives in the crack and answers only desperation.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'valor',
+    conditionalModifiers: [{
+      condition: { kind: 'below-hp-pct', value: 0.35 },
+      modifiers: [{ kind: 'damage-multiplier', amount: 1.3 }],
+    }],
+    drop: { minDepth: 3 },
+  },
+
+  // — GREED: the ledger is a weapon (gold / chests / deals) —
+  'beggars-bowl': {
+    id: 'beggars-bowl',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A beggar’s bowl',
+    flavor: 'Held out for thirty years. Everything opened before it eventually gave something up.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'greed',
+    passives: [{
+      id: 'bowl-tithe',
+      trigger: { on: 'chest', effects: [{ type: 'heal', amount: 1 }] },
+    }],
+    drop: { minDepth: 1 },
+  },
+  'counting-itch': {
+    id: 'counting-itch',
+    kind: 'relic',
+    rarity: 'uncommon',
+    name: 'The counting itch',
+    flavor: 'A dried finger, still crooked mid-tally. Every coin it counts, it wants the next one more.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'greed',
+    // Fires per coin absorbed — small chance, brief fury; a gold shower after a
+    // kill keeps the appetite lit.
+    passives: [{
+      id: 'itch-appetite',
+      trigger: { on: 'gold', chance: 0.06, effects: [{ type: 'apply-buff', buffId: 'bloodthirst', duration: 2.0 }] },
+    }],
+    drop: { minDepth: 2 },
+  },
+  'usurers-seal': {
+    id: 'usurers-seal',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'A usurer’s seal',
+    flavor: 'Interest accrues. The usurer never once forgave a debt, and neither does the arithmetic.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'greed',
+    // COMPOUNDING showcase: multiplier kinds stack per copy (×1.06 each — two
+    // seals ×1.124, five ×1.338). The engine relic you hoard.
+    modifiers: [{ kind: 'damage-multiplier', amount: 1.06 }],
+    drop: { minDepth: 3 },
+  },
+
+  // — FORBIDDEN: the rules bend for the quick (just-dodge / mobility) —
+  'stolen-heel': {
+    id: 'stolen-heel',
+    kind: 'relic',
+    rarity: 'mundane',
+    name: 'A heel-bone, stolen',
+    flavor: 'Taken from the fastest thing in the third dark. It is not done running.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'forbidden',
+    // Multiplicative — copies compound (×1.04 each). Quietly absurd at depth.
+    modifiers: [{ kind: 'move-speed-mult', amount: 1.04 }],
+    drop: { minDepth: 1 },
+  },
+  'untouched-oath': {
+    id: 'untouched-oath',
+    kind: 'relic',
+    rarity: 'rare',
+    name: 'The untouched oath',
+    flavor: 'Sworn by a trespasser the deep never once laid a hand on. Slip the blow entirely and borrow their fury.',
+    dropModel: RELIC_BUNDLE,
+    domain: 'forbidden',
+    passives: [{
+      id: 'untouched-fury',
+      trigger: { on: 'just-dodge', effects: [{ type: 'apply-buff', buffId: 'berserk', duration: 2.0 }] },
+    }],
+    drop: { minDepth: 3 },
+  },
+
   // ── PROVENANCE SETS (content/sets.ts) — a named dead delver's belongings,
   // scattered through the deep. Distinct pieces advance the set; what the
   // owner was becoming starts becoming you at 2 and 3 pieces.
