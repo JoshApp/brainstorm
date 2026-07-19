@@ -181,6 +181,12 @@ gap (§4).
 
 ## 4. Gap analysis — engine hooks the grammar demands
 
+> **STATUS 2026-07-19: (1)–(4) BUILT** (stack-curves via `stackedRelicModifiers`
+> + `stack:'hyperbolic'`; `condition:{victimHasBuff}` with death-snapshot;
+> trigger events deflect / just-dodge / gold / chest / deal). (5) remains
+> add-per-need; (6) deferred until the pool passes ~50. Showcase content:
+> `?scenario=relic-lab`.
+
 Ranked by how much authoring surface each unlocks:
 
 1. **Stack-curve axis on relic stacking** *(from RoR2, [V])* — today every
