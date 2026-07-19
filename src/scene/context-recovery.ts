@@ -59,6 +59,82 @@ export function installDeviceLossRecovery(renderer: unknown): void {
     showVeil('the dark gutters');
     showReload();
   });
+  installGpuErrorWatch(device.device as unknown as GpuDeviceLike);
+}
+
+// ── Uncaptured-error watch (the PARTIAL-loss diagnostic) ─────────────────────
+//
+// Field report (2026-07-18): after a long tab-out, the starter-chamber FLOOR
+// came back invisible — see-through into the void — while everything else kept
+// rendering. That's not full device loss (the watch above would have veiled);
+// it's ONE resource dying (a texture/buffer reclaimed while backgrounded), which
+// makes just that mesh's draw fail validation EVERY FRAME — and before this
+// watch, entirely silently. WebGPU reports exactly what died on the device's
+// 'uncapturederror' channel; nobody was listening.
+//
+// Two jobs:
+//   1. DIAGNOSE — record the first few error messages (they name the dead
+//      resource) to memory + localStorage, so a phone occurrence is
+//      retrievable after the fact instead of gone with the console.
+//   2. RECOVER — a sustained storm (errors every frame for seconds) means the
+//      world is broken and will not heal; offer the same in-character
+//      veil + reload as device loss (the save persists; a reload rebuilds
+//      every GPU resource). One-frame hiccups never trip it.
+
+interface GpuDeviceLike {
+  addEventListener?: (type: string, fn: (e: { error?: { message?: string } }) => void) => void;
+}
+
+const ERR_STORE_KEY = 'delve:gpu-errors';
+const STORM_COUNT = 40;        // errors …
+const STORM_WINDOW_MS = 4000;  // … within this window = broken world, offer reload
+let errCount = 0;
+let stormStartAt = 0;
+let stormCountInWindow = 0;
+const firstMessages: string[] = [];
+let hiddenAt = 0;
+let lastHiddenGapMs = 0;
+
+function installGpuErrorWatch(device: GpuDeviceLike): void {
+  if (!device.addEventListener) return;
+  // Track how long the tab was backgrounded — the field bug's trigger. Folded
+  // into the stored diagnostic so "after a long tab-out" is data, not memory.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (hiddenAt) { lastHiddenGapMs = Date.now() - hiddenAt; hiddenAt = 0; }
+  });
+  device.addEventListener('uncapturederror', (e) => {
+    const msg = e.error?.message ?? 'unknown GPU error';
+    errCount++;
+    if (firstMessages.length < 5) {
+      firstMessages.push(msg);
+      try {
+        localStorage.setItem(ERR_STORE_KEY, JSON.stringify({
+          at: new Date().toISOString(),
+          hiddenGapS: Math.round(lastHiddenGapMs / 1000),
+          count: errCount,
+          messages: firstMessages,
+        }));
+      } catch { /* storage full/blocked — the console log below still fires */ }
+      // eslint-disable-next-line no-console
+      console.error(`[gpu] uncaptured error #${errCount} (last hidden gap ${Math.round(lastHiddenGapMs / 1000)}s):`, msg);
+    }
+    // Storm detection — reset the window when it lapses; veil once per life.
+    const now = Date.now();
+    if (now - stormStartAt > STORM_WINDOW_MS) { stormStartAt = now; stormCountInWindow = 0; }
+    stormCountInWindow++;
+    if (stormCountInWindow >= STORM_COUNT && !lost) {
+      lost = true;   // idle the frame loop — every further frame just errors again
+      showVeil('something below has shifted');
+      showReload();
+    }
+  });
+}
+
+/** The stored diagnostic from the last uncaptured-error episode (or null).
+ *  Read by the settings debug panel / a future report channel. */
+export function getStoredGpuErrorReport(): string | null {
+  try { return localStorage.getItem(ERR_STORE_KEY); } catch { return null; }
 }
 
 function showVeil(line: string): void {
