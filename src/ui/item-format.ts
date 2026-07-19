@@ -75,14 +75,25 @@ function signedPct(amount: number): string {
 }
 
 export function formatPassive(p: PassiveSpec): string {
-  const triggerLabel = ({
+  const base = ({
     hit: 'On hit',
     crit: 'On crit',
     killed: 'On kill',
     damaged: 'When damaged',
     died: 'On death',
     interval: 'Periodically',
+    deflect: 'On a clean deflect',
+    'just-dodge': 'On a perfect dodge',
+    gold: 'When gold is taken',
+    chest: 'On opening a chest',
+    deal: 'On striking a deal',
   } as const)[p.trigger.on];
+  // A victim-state gate folds into the trigger phrase: "On kill" +
+  // {victimHasBuff: 'bleed'} → "On killing a foe marked BLEED".
+  const cond = p.trigger.condition;
+  const triggerLabel = cond?.victimHasBuff
+    ? `On killing a foe marked ${BUFFS[cond.victimHasBuff]?.displayName ?? cond.victimHasBuff.toUpperCase()}`
+    : base;
 
   const effects = p.trigger.effects.map((e) => {
     if (e.type === 'damage')   return `${e.amount} damage`;

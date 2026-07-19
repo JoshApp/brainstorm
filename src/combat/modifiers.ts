@@ -39,13 +39,19 @@ export type StatModifier =
   // +10%); 'crit-mult' adds linearly to the multiplier (0.25 = +0.25
   // on top of the weapon's base 2.0). Both clamp at the use-site so a
   // pile of items can't roll past 100% chance or infinite mult.
-  | { kind: 'crit-chance';           amount: number }    // additive 0..1
+  // `stack` (relic copies only — docs/ITEM-GRAMMAR.md §4): how N copies of the
+  // SAME relic combine for this modifier. Default = per-copy (additive kinds
+  // sum linearly; multiplier kinds compound — the exponential curve is free by
+  // kind). 'hyperbolic' = diminishing returns for chance-like 0..1 stats:
+  // total = 1 − (1−amount)^N (each copy rolls independently — approaches 1,
+  // never reaches it; RoR2's curve for exactly this class of stat).
+  | { kind: 'crit-chance';           amount: number; stack?: 'hyperbolic' }    // additive 0..1
   | { kind: 'crit-mult';             amount: number }    // additive multiplier offset
   // Lifesteal — CHANCE to heal a flat amount ON KILL (not a per-hit
   // drain — that was far too strong). 0.20 = 20% chance per enemy killed
   // to heal CONFIG.LIFESTEAL_ON_KILL_HEAL. Stacks additively, clamped to
   // 1.0. Proc'd by the enemy:killed listener in attack.ts.
-  | { kind: 'lifesteal-pct';         amount: number }
+  | { kind: 'lifesteal-pct';         amount: number; stack?: 'hyperbolic' }
   // ── SUBSTRATE — status-payoff flags (docs/BUILD-ECONOMY.md). Read by the
   // death-payoff handler (combat/blood-drinker.ts), not the damage math. These
   // are the seam relics plug verbs into: presence/amount that a payoff consults.
@@ -61,6 +67,28 @@ export type StatModifier =
  *   3. (Future) intrinsic per-entity baseline modifiers
  *   4. (Future) per-floor blessings, character-class passives, etc.
  */
+/**
+ * How N copies of the same relic contribute one modifier list. Default: the
+ * modifier is pushed once PER COPY — additive kinds stack linearly, multiplier
+ * kinds compound (×a per copy = a^N, the exponential curve, free by kind).
+ * `stack: 'hyperbolic'` collapses to ONE synthesized modifier with
+ * total = 1 − (1−amount)^N — each copy is an independent roll, so chance-like
+ * 0..1 stats (crit-chance, lifesteal-pct) keep improving but never hit 1.
+ * Exported for tests.
+ */
+export function stackedRelicModifiers(mods: StatModifier[] | undefined, n: number): StatModifier[] {
+  if (!mods?.length || n <= 0) return [];
+  const out: StatModifier[] = [];
+  for (const m of mods) {
+    if ((m as { stack?: string }).stack === 'hyperbolic') {
+      out.push({ ...m, amount: 1 - Math.pow(1 - m.amount, n) });
+    } else {
+      for (let i = 0; i < n; i++) out.push(m);
+    }
+  }
+  return out;
+}
+
 export function aggregateModifiers(entityId: EntityId): StatModifier[] {
   const out: StatModifier[] = [];
 
@@ -84,11 +112,25 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // RELIQUARY (docs/BUILD-ECONOMY.md) — every collected relic's own modifiers
     // apply, UNCAPPED, alongside the 3 gear slots. No slot management: you accrete
     // these. Same shape as a slot (base + conditional modifiers).
-    for (const r of getReliquary()) {
-      if (r.spec.modifiers) out.push(...r.spec.modifiers);
-      if (r.spec.conditionalModifiers) {
-        for (const c of r.spec.conditionalModifiers) {
-          if (evaluateModifierCondition(c.condition, entityId)) out.push(...c.modifiers);
+    //
+    // STACK CURVES (docs/ITEM-GRAMMAR.md §4): copies of the same relic group
+    // first, then each modifier's `stack` decides how N copies combine —
+    // default per-copy (additive kinds linear, multiplier kinds compound),
+    // 'hyperbolic' collapses to one synthesized modifier with diminishing
+    // returns. See stackedRelicModifiers below (exported for tests).
+    const relicEntries = getReliquary();
+    const copies = new Map<string, { spec: (typeof relicEntries)[number]['spec']; n: number }>();
+    for (const r of relicEntries) {
+      const g = copies.get(r.spec.id);
+      if (g) g.n++; else copies.set(r.spec.id, { spec: r.spec, n: 1 });
+    }
+    for (const { spec, n } of copies.values()) {
+      out.push(...stackedRelicModifiers(spec.modifiers, n));
+      if (spec.conditionalModifiers) {
+        for (const c of spec.conditionalModifiers) {
+          if (evaluateModifierCondition(c.condition, entityId)) {
+            out.push(...stackedRelicModifiers(c.modifiers, n));
+          }
         }
       }
     }

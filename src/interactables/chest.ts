@@ -12,6 +12,7 @@ import { createPickup } from './pickup';
 import { playChestOpen, playEquipClick } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
+import { emit } from '../broadcast/event-bus';
 
 export type ChestTier = 'wood' | 'silver' | 'gold';
 
@@ -115,6 +116,8 @@ export function spawnChest(
       interactable.promptLabel = '';
       playChestOpen();
       recordChestOpened();
+      // Economy-lane hook: Greed relics trigger on this (ecs/triggers.ts).
+      emit({ type: 'chest:opened', tier });
       // On reveal, settle the lid back to its base Y before swinging
       // — otherwise the residual breath offset would briefly fight
       // the open animation.

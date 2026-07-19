@@ -62,12 +62,27 @@ export type TriggerEvent =
   | 'killed'       // entity killed a target (source = self)
   | 'damaged'      // entity took damage (source = self)
   | 'died'         // entity's HP reached 0
-  | 'interval';    // every tick — used inside buffs
+  | 'interval'     // every tick — used inside buffs
+  // ── Tempo lane (docs/ITEM-GRAMMAR.md §4) — skill moments as item hooks ──
+  | 'deflect'      // player landed a clean deflect/parry
+  | 'just-dodge'   // player's roll was a perfect dodge
+  // ── Economy lane — the deep's ledger as item hooks ──
+  | 'gold'         // gold was absorbed (fires PER COIN — author with chance/small effects)
+  | 'chest'        // the player opened a chest
+  | 'deal';        // the player accepted a transaction (altar/fountain/tithe/merchant)
 
 export interface TriggerSpec {
   on: TriggerEvent;
   /** 0..1 probability per trigger event. Default 1 (always fires). */
   chance?: number;
+  /**
+   * Optional gate on the event's context. `victimHasBuff`: for 'killed' (and
+   * 'hit'/'crit' when the victim is known) — fire only if the victim carried
+   * the named status when the event happened (the bleeding-kill payoff shape;
+   * killed events snapshot the victim's buffs at death, since the entity is
+   * gone by the time triggers run).
+   */
+  condition?: { victimHasBuff: string };
   /** Effects to apply if the trigger fires. */
   effects: EffectSpec[];
 }

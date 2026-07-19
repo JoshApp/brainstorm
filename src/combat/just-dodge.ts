@@ -27,6 +27,7 @@ import { registerSimReset } from '../engine/sim-state';
 import { gainStamina } from './stamina';
 import { playBuffApply } from '../audio/sfx';
 import { enterBulletTime } from './reactive-defense';
+import { emit } from '../broadcast/event-bus';
 import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
 
@@ -66,6 +67,8 @@ export function tryJustDodge(): boolean {
   enterBulletTime();   // shared reward — world crawls, you keep moving
   counterUntil = gameNow() + CONFIG.JUST_DODGE.COUNTER_WINDOW_S * 1000;
   gainStamina(CONFIG.STAMINA.DASH_COST * CONFIG.JUST_DODGE.REFUND_FRAC);  // partial dodge kickback
+  // The tempo lane's hook: Forbidden relics trigger on this (ecs/triggers.ts).
+  emit({ type: 'player:just-dodged' });
   playBuffApply();
   try { navigator.vibrate?.(CONFIG.JUST_DODGE.HAPTIC_MS); } catch { /* unsupported */ }
   // DEV: hold the label for the bullet-time duration so the slow-mo window is

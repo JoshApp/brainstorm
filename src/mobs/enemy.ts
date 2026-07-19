@@ -1120,6 +1120,10 @@ export function createEnemy(
       // true, so a LEFT-CLICK keeps routing to a (no-op) deflect and never
       // swings — while Space, which bypasses the tap arbiter, still attacks.
       reconcileThreat(false, false);
+      // Snapshot the statuses live at the moment of death — destroyEntity wipes
+      // them, but the kill event below must still say "died bleeding" so relic
+      // triggers can condition on it (TriggerSpec.condition.victimHasBuff).
+      const victimBuffs = entity.buffs.map((b) => b.specId);
       clearEntityCombatStats(entityId);
       unregisterDamageSink(entityId);
       destroyEntity(entityId);
@@ -1160,7 +1164,7 @@ export function createEnemy(
       // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
       stunStars?.dispose(); stunStars = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
-      emit({ type: 'enemy:killed', enemyId: spec.id });
+      emit({ type: 'enemy:killed', enemyId: spec.id, victimBuffs });
       // Death soaks the floor: a big pool under the corpse plus a
       // directional spray thrown by the killing blow (away from the
       // player), in the species' own blood.

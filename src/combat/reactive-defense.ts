@@ -24,6 +24,7 @@ import { gameNow } from '../engine/game-clock';
 import { registerSimReset } from '../engine/sim-state';
 import { setPlayerInvulnerable } from '../player/health';
 import { freezeFor } from './hit-pause';
+import { emit } from '../broadcast/event-bus';
 import { playParry, playSlowmoEnter } from '../audio/sfx';
 import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
@@ -79,6 +80,8 @@ export function notePlayerDeflected(): void {
   setPlayerInvulnerable(CONFIG.DEFLECT.IFRAME_S);
   freezeFor(CONFIG.DEFLECT.CLASH_FREEZE_MS);
   playParry();
+  // The tempo lane's hook: Grace relics trigger on this (ecs/triggers.ts).
+  emit({ type: 'player:deflected' });
   try { navigator.vibrate?.(CONFIG.DEFLECT.HAPTIC_MS); } catch { /* unsupported */ }
   if (DEV) flashReaction('PARRY', '#dfe8ff', 500);
 }

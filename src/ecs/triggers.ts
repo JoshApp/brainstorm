@@ -21,6 +21,10 @@ interface TriggerContext {
   victimId?: EntityId;
   /** Entity that hit the owner (filled for 'damaged' / 'died'). */
   attackerId?: EntityId;
+  /** Status ids live on the victim at the event ('killed': snapshot taken at
+   *  death, since the entity is destroyed before subscribers run). Gates
+   *  TriggerSpec.condition.victimHasBuff — the bleeding-kill payoff shape. */
+  victimBuffs?: readonly string[];
 }
 
 function fireTriggers(entity: Entity | undefined, event: TriggerEvent, ctx: Partial<TriggerContext> = {}) {
@@ -28,6 +32,10 @@ function fireTriggers(entity: Entity | undefined, event: TriggerEvent, ctx: Part
   const triggerCtx: TriggerContext = { ownerId: entity.id, ...ctx };
   for (const passive of aggregatePassives(entity.id)) {
     if (passive.trigger.on !== event) continue;
+    // Context gate BEFORE the chance roll — an ineligible event never consumes
+    // luck. victimHasBuff with no victim context simply never fires.
+    const cond = passive.trigger.condition;
+    if (cond?.victimHasBuff && !triggerCtx.victimBuffs?.includes(cond.victimHasBuff)) continue;
     const chance = passive.trigger.chance ?? 1;
     if (chance < 1 && gameRng() > chance) continue;
     for (const effect of passive.trigger.effects) {
@@ -57,7 +65,24 @@ export function initTriggerListener(playerEntityId: string) {
         if (event.crit) fireTriggers(player, 'crit');
         break;
       case 'enemy:killed':
-        fireTriggers(player, 'killed');
+        fireTriggers(player, 'killed', { victimBuffs: event.victimBuffs });
+        break;
+      // ── Tempo lane (skill beats as item hooks) ──
+      case 'player:deflected':
+        fireTriggers(player, 'deflect');
+        break;
+      case 'player:just-dodged':
+        fireTriggers(player, 'just-dodge');
+        break;
+      // ── Economy lane (the deep's ledger as item hooks) ──
+      case 'gold:absorbed':
+        fireTriggers(player, 'gold');
+        break;
+      case 'chest:opened':
+        fireTriggers(player, 'chest');
+        break;
+      case 'transaction:accepted':
+        fireTriggers(player, 'deal');
         break;
       case 'player:damaged':
         // The damage event carries the attacker so 'target: attacker'

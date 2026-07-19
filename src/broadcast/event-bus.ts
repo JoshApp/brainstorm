@@ -9,7 +9,10 @@
 export type GameEvent =
   | { type: 'attack:swing' }
   | { type: 'attack:hit'; damage: number; crit?: boolean; cls?: import('../content/items').WeaponClass }
-  | { type: 'enemy:killed'; enemyId: string }
+  // victimBuffs: snapshot of the status ids live on the enemy at the moment of
+  // death (the entity is destroyed before subscribers run) — lets relic
+  // triggers condition on "killed while bleeding/burning/…".
+  | { type: 'enemy:killed'; enemyId: string; victimBuffs?: readonly string[] }
   // A damage-over-time tick landed on an enemy (bleed/poison/burn). Carries
   // the body-centre world position, amount applied, and element tint so the UI
   // can float a coloured "tick" number — DoT has no attack caller to do it.
@@ -37,6 +40,10 @@ export type GameEvent =
   | { type: 'gate:settle'; x: number; y: number; z: number }   // grate reached the top
   | { type: 'xp:absorbed' }
   | { type: 'gold:absorbed' }
+  // ── Tempo moments (combat skill beats; relic triggers subscribe) ──
+  | { type: 'player:deflected' }
+  | { type: 'player:just-dodged' }
+  | { type: 'chest:opened'; tier: 'wood' | 'silver' | 'gold' }
   | { type: 'level:up'; level: number }
   | { type: 'starter:chosen'; weaponId: string }
   // ── Transactions (content/transactions.ts owns the grammar) ──
