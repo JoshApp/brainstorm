@@ -1,13 +1,12 @@
 # DELVE — The Item Grammar (research-grounded)
 
-> **STATUS: RESEARCH ROUND 1 COMPILED 2026-07-19.** Source: a deep-research
-> pass over 8 roguelikes (Isaac, RoR2, Slay the Spire, Balatro, Gungeon, Dead
-> Cells, Darkest Dungeon; Hades fell out of verification) — 24 sources, 106
-> extracted claims, 23 surviving 3-vote adversarial verification. A second
-> targeted pass (hand-authored synergies: Hades duos + Gungeon tags; celebrated
-> items) is in flight — its section is marked PENDING. Claims below are tagged:
-> **[V]** verified (survived 3-0), **[bg]** background knowledge (not
-> independently verified this pass).
+> **STATUS: RESEARCH COMPLETE 2026-07-19 (both rounds).** Round 1: 8 roguelikes,
+> 24 sources, 23 claims surviving 3-vote adversarial verification. Round 2
+> (targeted): the hand-authored synergy pole — Hades duos + Gungeon tags —
+> verified in detail (§7); celebrated-items consensus largely failed
+> verification (only RoR2's Shaped Glass survived) and stays an open question.
+> Claims are tagged **[V]** verified (survived 3-0), **[bg]** background
+> knowledge (not independently verified).
 >
 > Companion to `RELICS.md` (the lane), `BUILD-ECONOMY.md` (the four lanes),
 > `STATUS-EFFECTS.md` (the substrate). This doc is the authoring brief for item
@@ -234,14 +233,86 @@ rewrite. Recommended build order as listed.
 
 ---
 
-## 6. PENDING — round 2 (in flight)
+## 6. Refuted claims (never repeat these)
 
-The hand-authored pole (Hades duo prerequisites + budget, Gungeon's tagged
-synergy count/structure/discovery-UX + dev rationale) and the celebrated-items
-consensus (the design shapes players actually love, per game). Lands as §7 +
-revisions to the provenance-set budget guidance. Two refuted claims from round
-1 that must NOT be repeated: the Balatro/Luck-be-a-Landlord lineage story; "StS
-boss relics are always pick-1-of-3."
+From round 1's verification: the Balatro/Luck-be-a-Landlord lineage story
+(0-3); "StS boss relics are always pick-1-of-3" (0-3).
+
+---
+
+## 7. The hand-authored pole (round 2, verified) — two opposite scaling laws
+
+### Hades: exhaustive but BOUNDED — the disciplined model
+
+- **[V]** Exactly **28 Duo Boons = C(8,2)** — one per god pair across the 8
+  duo-eligible gods, exhaustive coverage with no gaps. Supergiant had **no
+  predetermined plan** for full coverage (Rao, on record) — it emerged from
+  iteration — but the *structure* is what made it finishable: the budget is a
+  closed pair-count, not an open item pool.
+- **[V]** Prerequisites are **one-of-a-list from EACH god** ("any of 4
+  Aphrodite boons AND either of 2 Ares curses") — flexible gates that fire
+  often enough to be *seen*, with a few deliberately narrow exceptions.
+- **[V]** The **negative space is authored too**: bespoke exclusion rules
+  between duos and against weapon aspects (Freezing Vortex ⊘ Hunting Blades;
+  seven duos incompatible with Aspect of Beowulf).
+- **[V]** **12 Legendary Boons** are the single-god analogue, gated "N of the
+  following" behind 2+ lower boons.
+- **[V]** **Pom scaling excludes duos/legendaries entirely** — the
+  hand-authored payoff pieces ship at FIXED power; open-ended scaling lives
+  only in the emergent substrate underneath (and even there, Pom levels halve
+  in value every 2 levels).
+- **[V]** Authoring budget: ~50 boon ideas brainstormed → ~15 implemented per
+  god; "the game is the design document."
+
+### Gungeon: exhaustive and UNBOUNDED — the cautionary model
+
+- **[V]** ~400 bespoke named synergies (wiki tally; officially "hundreds"),
+  structured as exact pairs, one-of-a-list groups, and full sets. The AG&D
+  update that added them took **18 months**.
+- **[V]** Discovery UX done right: a blue arrow over the player when a synergy
+  activates, the synergy NAMED in the pickup popup, synergising items outlined
+  in the Ammonomicon. A synergy that fires invisibly doesn't exist.
+- **[V]** The scaling ceiling, in the developer's own words (Dave Crooks):
+  every new item had to interact with 8 weapon categories + companions +
+  bullet modifiers; adding content "slowed to a crawl, and became less fun to
+  work on as it became more fragile" — **cited as a factor in ending Gungeon's
+  development entirely.**
+
+### The DELVE synthesis (this section is the payoff)
+
+1. **Budget authored synergies against a CLOSED structure, never the open item
+   pool.** Hades finished because the budget was C(8,2); Gungeon died because
+   the budget was every-item × every-item. Our closed structures: the **9
+   domains** (C(9,2)=36 possible domain-pairs — the bridge-card model: The
+   Martyr = Valor+Blood) and the **named dead owners** of provenance sets
+   (a small cast, each set a handful of pieces). Never author item×item pairs.
+2. **Gate on one-of-a-list, and we already own the primitive.** Hades'
+   "any N from god A + any M from god B" is structurally our
+   `heldDomainCount()` / distinct-piece set thresholds. Domain-pair content
+   gates on domain COUNTS, not exact items — it fires often enough to be a
+   build, not a lottery ticket.
+3. **Authored payoff pieces are FIXED-power.** Like duos being Pom-ineligible:
+   set bonuses and any future domain-pair payoffs don't stack-scale — the
+   scaling thrill lives in the individual relics underneath. This keeps the
+   hand-authored tier balanceable forever.
+4. **Author the negative space.** A payoff that must not combine with another
+   gets an explicit exclusion, written down, not discovered by a player breaking
+   the game.
+5. **Name the moment.** Blue-arrow lesson: when a set threshold or resonance
+   tier engages, the reveal SAYS so (the pickup toast already appends "Another
+   of Vess's things." — extend the same channel to threshold activation).
+6. **The one verified celebrated item is a shape we already ship:** RoR2's
+   Shaped Glass — a pure symmetric multiplicative trade-off (×2 damage, ½
+   health, compounding per stack) — is the canonical "elegant trade-off."
+   The Drowned Heart is this shape; the cursed tier should keep mining it,
+   including trade-offs that stack BOTH sides.
+
+*Round-2 caveats:* Gungeon counts are wiki tallies, not dev-stated; the
+"synergies legible without a wiki" judgment was 2-1 (one reviewer's
+impression); no direct Supergiant statement on duo budgeting specifically
+exists — the coverage discipline is inferred from verified structure. The
+celebrated-items question (which items players crown best-designed, per game)
+remains open — worth a future pass or simply our own playtest instincts.
 
 **Primary sources (round 1):** Isaac postmortem (Game Developer, McMillen &
 Himsl); LocalThunk on Game Maker's Notebook (Dec 2024) + dev blog; Red Hook
