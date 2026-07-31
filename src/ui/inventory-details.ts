@@ -12,6 +12,8 @@ import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
+import { statModifierIcon, statIconEl } from './stat-icons';
+import type { StatModifier } from '../combat/modifiers';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getDomain } from '../content/domains';
 import { getCharacter, proficiencyTier } from '../state/character';
@@ -284,7 +286,7 @@ export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] =
   // from weapon.onHit; without it, accessory procs went undescribed.
   if (item.onHit) lines.push(detailLine(formatOnHit(item.onHit)));
   if (item.modifiers && item.modifiers.length) {
-    for (const m of item.modifiers) lines.push(detailLine(formatModifier(m)));
+    for (const m of item.modifiers) lines.push(modifierLine(m));
   }
   // Conditional modifiers — the berserker / last-stand fantasy ("Below 30%
   // HP: +1 Damage"). Prefix each block with its HP condition so the trade is
@@ -294,14 +296,14 @@ export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] =
       const c = block.condition;
       const pct = Math.round(c.value * 100);
       const cond = c.kind === 'below-hp-pct' ? `Below ${pct}% HP` : `Above ${pct}% HP`;
-      for (const m of block.modifiers) lines.push(detailLine(`${cond}: ${formatModifier(m)}`));
+      for (const m of block.modifiers) lines.push(modifierLine(m, `${cond}: `));
     }
   }
   // Rolled affixes (equipped items only) — show each rolled bonus so a
   // "searing" / "venom-etched" weapon's behavioral on-hit is visible, not
   // just baked invisibly into the stats. Suffix labels which affix it is.
   for (const a of affixes) {
-    for (const m of a.modifiers) lines.push(detailLine(`${formatModifier(m)}  · ${a.suffix}`));
+    for (const m of a.modifiers) lines.push(modifierLine(m, '', `  · ${a.suffix}`));
     if (a.onHit) lines.push(detailLine(`${formatOnHit(a.onHit)}  · ${a.suffix}`));
   }
   if (item.passives && item.passives.length) {
@@ -471,4 +473,20 @@ function detailLine(text: string, dim = false): HTMLDivElement {
     lineHeight: '1.4',
   } as Partial<CSSStyleDeclaration>);
   return el;
+}
+
+/** A stat-modifier line led by its CATEGORY ICON (heart/blade/shield/…) instead
+ *  of a bare bullet, so life/damage/armour read at a glance. `prefix` carries a
+ *  condition tag ("Below 30% HP: "); `suffix` an affix label. */
+function modifierLine(m: StatModifier, prefix = '', suffix = ''): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex', alignItems: 'center', gap: '5px',
+    fontSize: '12px', color: TEXT_PRIMARY, letterSpacing: '0.04em', lineHeight: '1.4',
+  } as Partial<CSSStyleDeclaration>);
+  row.appendChild(statIconEl(statModifierIcon(m.kind)));
+  const text = document.createElement('span');
+  text.textContent = prefix + formatModifier(m) + suffix;
+  row.appendChild(text);
+  return row;
 }
