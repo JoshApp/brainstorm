@@ -245,6 +245,70 @@ export function spawnCobweb(
   return dest;
 }
 
+/** Spawn a BREAKABLE DECORATION from an arbitrary ModelSpec — a cosmetic
+ *  prop (a corner cobweb, hanging moss) that isn't a passage gate but should
+ *  still TEAR when the player's swing catches it. Unlike spawnCobweb it plugs
+ *  nothing (no obstacle, no onDestroyed splice) and drops no loot; it exists
+ *  so an idle web in the corner rewards a curious slash instead of ignoring it.
+ *  A generous body sphere (radius `reach`) lets a swing near the corner connect
+ *  even though the web hangs high. */
+export function spawnBreakableDecoration(
+  scene: THREE.Object3D,
+  model: typeof COBWEB_BARRIER,
+  x: number,
+  y: number,
+  z: number,
+  opts: { rotY?: number; rotZ?: number; scale?: number; reach?: number } = {},
+): Destructible {
+  const id = `decor-${Math.floor(buildRng() * 1e9).toString(36)}`;
+  const entityId = generateEntityId('prop');
+  const built = buildModel(model);
+  const group = built.group;
+  group.position.set(x, groundYAt(x, z) + y, z);
+  if (opts.rotY) group.rotation.y = opts.rotY;
+  if (opts.rotZ) group.rotation.z = opts.rotZ;
+  if (opts.scale && opts.scale !== 1) group.scale.setScalar(opts.scale);
+  scene.add(group);
+
+  spawnEntity({ id: entityId, kind: 'prop', hp: { base: 1, current: 1 }, buffs: [], passives: [] });
+  setEntityCombatStats(entityId, {});
+
+  const reach = opts.reach ?? 0.9;
+  const dest: Destructible = {
+    id,
+    entityId,
+    group,
+    position: group.position,
+    aimHeight: y,              // the cone + damage number aim at the hung web
+    collisionRadius: reach,    // wide aim-assist so a near swing catches it
+    hurtbox: propHurtbox(group, reach, reach),
+    hitFeedback: 'light',
+    bloodAmount: 0,   // silk does not bleed
+    alive: true,
+    takeDamage(event: DamageEvent) {
+      if (!dest.alive) return 0;
+      const entity = getEntity(entityId);
+      if (!entity || !entity.hp) return 0;
+      const { applied } = computeDamage(event);
+      entity.hp.current = Math.max(0, entity.hp.current - applied);
+      if (entity.hp.current > 0) return applied;
+      dest.alive = false;
+      destroyEntity(entityId);
+      clearEntityCombatStats(entityId);
+      // Soft tear — pale web tatters, no stone crunch. Burst at the web's
+      // actual height so the shards fall FROM the corner, not the floor.
+      spawnShatterBurst(scene, group.position.x, group.position.y, group.position.z, true);
+      playEnemyDeath('small', group.position);
+      // No obstacle to splice (decoration never blocked), no loot. Same
+      // no-synchronous-dispose rule as the other destructibles (pooled geo
+      // is shared; a WebGPU frame may still reference the buffers).
+      scene.remove(group);
+      return applied;
+    },
+  };
+  return dest;
+}
+
 /** Release the ECS entity backing a destructible that's being torn down
  *  with the level (i.e. never smashed). Smashing already cleans up via
  *  takeDamage; this is the leftover-on-floor-exit path. Idempotent. */

@@ -870,10 +870,10 @@ const ENCOUNTER_NEST: Vault = {
   cellProps: {
     // Corner cobwebs (map is 14×9 now; cell (col,row) → world
     // (col−6.5, row−4)). Hubs face inward via rotY.
-    '1,1':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.25 }],
-    '12,1': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.75 }],
-    '1,7':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.25 }],
-    '12,7': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.75 }],
+    '1,1':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.25, destructible: true }],
+    '12,1': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.75, destructible: true }],
+    '1,7':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.25, destructible: true }],
+    '12,7': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.75, destructible: true }],
     // Set-piece spawns — four spiders in a quad around the centre,
     // one skeleton midway. The cell key reads the same as the ASCII.
     '3,2':  [{ kind: 'spawn', enemyId: 'spider' }],

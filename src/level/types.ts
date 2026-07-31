@@ -208,6 +208,12 @@ export type PropSpec =
       proximityGlow?: boolean;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
+      /** If true, this decoration is BREAKABLE — the builder spawns it as a
+       *  destructible (its own ECS hp, a generous swing hurtbox) instead of
+       *  folding it into the static merge, so a swing that catches it tears it
+       *  away. For cosmetic clutter that should reward a slash (corner cobwebs).
+       *  Drops nothing and blocks nothing — purely tactile. */
+      destructible?: boolean;
       /**
        * Turn this decoration into a one-shot SEARCHABLE container. The builder
        * registers a shared interactable (level/../interactables/searchable.ts):

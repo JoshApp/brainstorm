@@ -7,7 +7,7 @@ import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, spawnBreakableDecoration, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { stdMat } from '../style/material-registry';
 import { installPropHeightAO } from '../style/surface-ao';
@@ -1229,6 +1229,14 @@ export function buildLevel(
         minZ: prop.z - 0.28, maxZ: prop.z + 0.28,
         yTop: gy + 0.7,
       });
+    } else if (prop.kind === 'model' && prop.destructible) {
+      // Breakable DECORATION (a corner cobweb) — spawn as a destructible so a
+      // swing tears it. Stays OUT of the static merge (it must survive as its
+      // own group for the hit-test + removal). Blocks nothing, drops nothing.
+      const web = spawnBreakableDecoration(root, prop.model, prop.x, prop.y, prop.z, {
+        rotY: prop.rotY, rotZ: prop.rotZ, scale: prop.scale,
+      });
+      destructibles.push(web);
     } else if (prop.kind === 'model') {
       // batchSprites: prop flame/glow sprites (candles, braziers, bonfires)
       // fold into the instanced sprite batch — one draw per texture instead

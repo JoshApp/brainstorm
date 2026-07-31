@@ -545,6 +545,7 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
       rotY: c.rotY + (rand() - 0.5) * 0.7,
       rotZ: (rand() - 0.5) * 0.6,         // tilt the web plane
       scale: 0.65 + rand() * 0.65,        // 65-130% size
+      destructible: true,                 // a swing near the corner tears it
     });
   }
 
