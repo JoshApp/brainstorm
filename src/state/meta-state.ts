@@ -15,8 +15,9 @@
 // here.
 
 import type { Rarity } from '../content/items';
+import { KEYS, readJSON, writeJSON } from './persist';
 
-const STORAGE_KEY = 'delve:meta';
+const STORAGE_KEY = KEYS.meta;
 // v2 added achievementsUnlocked + stash. v1 saves are compatible — the
 // fields default-init to empty arrays during the load fixup below.
 const META_VERSION = 2;
@@ -85,37 +86,20 @@ let cache: MetaState | null = null;
 
 function load(): MetaState {
   if (cache) return cache;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      cache = emptyMeta();
-      return cache;
-    }
-    const parsed = JSON.parse(raw) as Partial<MetaState>;
-    // Forward-migrate: any new fields added in later versions default to
-    // empty. v1 → v2 added achievementsUnlocked + stash.
-    if ((parsed.version ?? 0) > META_VERSION) {
-      // Newer save format from a future build — reset rather than risk
-      // half-reading it.
-      cache = emptyMeta();
-      return cache;
-    }
-    const fresh = emptyMeta();
-    cache = { ...fresh, ...parsed, version: META_VERSION };
-    return cache;
-  } catch {
-    cache = emptyMeta();
-    return cache;
-  }
+  const parsed = readJSON<Partial<MetaState> | null>(STORAGE_KEY, null);
+  // Missing / unparseable → a fresh meta (readJSON returned the null fallback).
+  if (!parsed) { cache = emptyMeta(); return cache; }
+  // Newer save format from a future build — reset rather than risk half-reading it.
+  if ((parsed.version ?? 0) > META_VERSION) { cache = emptyMeta(); return cache; }
+  // Forward-migrate: new fields added in later versions default to empty
+  // (v1 → v2 added achievementsUnlocked + stash).
+  cache = { ...emptyMeta(), ...parsed, version: META_VERSION };
+  return cache;
 }
 
 function persist() {
   if (!cache) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
-  } catch {
-    // quota / disabled — silently ignore
-  }
+  writeJSON(STORAGE_KEY, cache);   // swallows quota/disabled
 }
 
 /** Read-only snapshot for UI display. Mutations go through the

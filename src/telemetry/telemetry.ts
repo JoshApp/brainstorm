@@ -19,6 +19,7 @@
 // throttled so a per-frame exception can't flood.
 
 import { initSentry, isSentryActive, sentryBreadcrumb, sentryCaptureError, sentryCaptureReport } from './sentry';
+import { KEYS, readJSON, writeJSON, readRaw, writeRaw, remove } from '../state/persist';
 
 declare const __BUILD_SHA__: string;
 
@@ -78,33 +79,28 @@ export function track(event: string, props: Record<string, unknown> = {}): void 
 // dev can EXPORT their play history and read balance stats offline (delve stats),
 // with NO backend/endpoint configured. Capture-always, same as breadcrumbs; the
 // gated network send above is unchanged. Cleared via clearTelemetryLog().
-const LOG_KEY = 'delve:telemetry-log';
 const MAX_LOG = 1000;
 interface LogEntry { t: number; event: string; props: Record<string, unknown>; }
 let logRing: LogEntry[] | null = null;
 
 function loadLog(): LogEntry[] {
   if (logRing) return logRing;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]');
-    logRing = Array.isArray(parsed) ? parsed : [];
-  } catch { logRing = []; }
+  const parsed = readJSON<LogEntry[]>(KEYS.telemetryLog, []);
+  logRing = Array.isArray(parsed) ? parsed : [];
   return logRing;
 }
 function appendLog(event: string, props: Record<string, unknown>): void {
-  try {
-    const log = loadLog();
-    log.push({ t: Date.now(), event, props });
-    if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
-    localStorage.setItem(LOG_KEY, JSON.stringify(log));
-  } catch { /* storage full/disabled — telemetry must never break the game */ }
+  const log = loadLog();
+  log.push({ t: Date.now(), event, props });
+  if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+  writeJSON(KEYS.telemetryLog, log);   // swallows quota/no-storage — never breaks the game
 }
 /** Read-only copy of the local event ring (for the telemetry export). */
 export function getTelemetryLog(): LogEntry[] { return loadLog().slice(); }
 /** Wipe the local ring (a fresh balancing window). */
 export function clearTelemetryLog(): void {
   logRing = [];
-  try { localStorage.removeItem(LOG_KEY); } catch { /* ignore */ }
+  remove(KEYS.telemetryLog);
 }
 
 /** Capture an error — breadcrumb always, network send when enabled+under quota.
@@ -185,15 +181,10 @@ function toError(r: unknown): Error {
 }
 
 function loadSession(): string {
-  try {
-    const k = 'delve:telemetry-session';
-    let s = localStorage.getItem(k);
-    if (!s) {
-      s = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      localStorage.setItem(k, s);
-    }
-    return s;
-  } catch {
-    return 'nostore';
+  let s = readRaw(KEYS.telemetrySession);
+  if (!s) {
+    s = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    writeRaw(KEYS.telemetrySession, s);
   }
+  return s;
 }
