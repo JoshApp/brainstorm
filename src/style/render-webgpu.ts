@@ -21,6 +21,7 @@ import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import type { DelveRenderer } from '../scene/create-renderer';
 import { setBundleMainCamera } from '../scene/bundle-pass-order';
+import { getActiveGrade, setActiveGrade, setGradeOverrides, gradeNames, activeGradeName } from './grade-presets';
 
 // SSAO (?ssao=…) — GTAO contact-darkening from an MRT depth+normal G-buffer.
 // Budget-first for mobile: low sample count + half-res of the already-0.4x pass.
@@ -160,12 +161,13 @@ const TONEMAP_FN: Record<Exclude<ToneMap, 'none'>, (c: any, e: any) => any> = {
 // NOTE: with a real TONEMAP wired (above) the curve now supplies most of the
 // contrast, so the manual CONTRAST pow is dialled back from the no-tonemap-era
 // 1.18 — too much on top of the shoulder double-crushes the blacks.
-const SATURATION = 1.15;   // >1 = punchier colour (tonemap desaturates highs, so keep some)
-const CONTRAST = TONEMAP === 'none' ? 1.18 : 1.04;  // tonemap carries the curve now
+// SATURATION / CONTRAST now live per-preset (grade-presets.ts) — the grade is
+// data the design layer authors, not hard-coded here. TONEMAP still supplies the
+// filmic curve; presets are tuned for the default `aces` path.
 let bloomEnabled = true;
-// Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
-// bloom — not the whole image. Tune via the consts.
-const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
+// Bloom: subtle. STRENGTH/RADIUS stay global; the THRESHOLD is per-preset (lower
+// = more edges/props catch a halo → silhouette separation). Tune via presets.
+const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3;
 const BLOOM_RES_SCALE = 0.5;   // bloom mip-chain res vs the full buffer — scene is 0.4x, so bloom at full was over-resolved
 // ?leanbloom=1 — LEAN bloom: replace UnrealBloom's 5-mip chain (~11 render targets)
 // with bright-extract (ALU) + ONE separable gaussian blur (~3 RTs). Far fewer
@@ -187,14 +189,17 @@ export function setWebGPULeanBloom(on: boolean): void {
 // clipping. But side-by-side vs the WebGL/main reference the WebGPU scene still
 // read too bright in the near field, so exposure comes back DOWN under the
 // tonemap (0.6 → 0.42). Still the global brightness knob.
-const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.37;
+// EXPOSURE is per-preset now (grade-presets.ts). Presets carry the aces-path
+// value (~0.37); ?expo= overrides it live on the phone.
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
 // Aligned to the WebGL/main reference (render-target.ts DEPTH_START/END/FLOOR =
 // 6/12/0.16). The WebGPU re-guess (5/28/0.04) faded far too gently — mid-distance
 // walls stayed lit out to 28m, which was most of the "too bright" gap vs WebGL.
-const CRUSH_START_M = 6, CRUSH_END_M = 12, CRUSH_FLOOR = 0.16;
+// CRUSH_FLOOR is per-preset (truer blacks far away = the big value-separation
+// lever); the START/END distances stay global.
+const CRUSH_START_M = 6, CRUSH_END_M = 12;
 // FOG INSCATTER — the air glows the lights' colour, thicker with distance. The
 // original reused the BLOOM texture (the blurred bright pass) as the haze colour
 // × a depth weight, so it's coloured by whatever lights are near. We do the same.
@@ -207,8 +212,8 @@ const INSCATTER_STRENGTH = 0.06, INSCATTER_START_M = 8, INSCATTER_END_M = 30;   
 const CA_AMOUNT = 0.004;            // radial red/blue split (was reading as a bug above this)
 const QUANTIZE_LEVELS = 32.0;       // hard PSX colour steps
 const SCANLINE_DARKEN = 0.96;       // every other row
-const AMBER_TINT: readonly [number, number, number] = [1.025, 1.0, 0.96];
-const VIGNETTE = 0.22;              // matched toward the WebGL blit's 0.20 (was 0.55)
+// AMBER_TINT and VIGNETTE are per-preset now. amberTint [1,1,1] = OFF (light
+// owns the hue — the Mörk Borg "takes the colour of its light" look).
 
 // ORDERED 4x4 BAYER dither texture — the exact matrix the WebGL blit used (index
 // i = y*4 + x). Sampled NEAREST + REPEAT in screen space, it's a STABLE halftone
@@ -365,9 +370,39 @@ export function rebuildWebGPUPipeline(): void {
 // change doesn't freeze the image. Harmless in WebGL mode (pipeline stays null).
 if (typeof window !== 'undefined') window.addEventListener('resize', rebuildWebGPUPipeline);
 
+// ── COLOUR-GRADE live controls ───────────────────────────────────────────────
+// Preset switching is safe on the live site (it's art direction, not a cheat),
+// so setWebGPUGrade is exported for the video-settings UI. The finer per-axis
+// dial-in (__gradeSet) is DEV-only console sugar for tuning on the phone.
+/** Switch the active colour-grade preset (e.g. 'coldfire'). Rebuilds next frame. */
+export function setWebGPUGrade(name: string): boolean {
+  if (!setActiveGrade(name)) return false;
+  rebuildWebGPUPipeline();
+  return true;
+}
+/** Names available for a settings dropdown. */
+export function webGPUGradeNames(): string[] { return gradeNames(); }
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  // DEV: flip presets from the phone console — window.__grade('coldfire').
+  (window as any).__grade = (name?: string) => {
+    if (name) setWebGPUGrade(name);
+    return { active: activeGradeName(), available: gradeNames() };
+  };
+  // DEV: dial individual axes live — window.__gradeSet({ split: 0.7, blacks: 0.03 }).
+  // Keys: split, blacks, sat, expo, amber, vig, bloomth. {} clears overrides.
+  (window as any).__gradeSet = (partial: Record<string, number>) => {
+    setGradeOverrides(partial ?? {}, !partial || Object.keys(partial).length === 0);
+    rebuildWebGPUPipeline();
+    return getActiveGrade();
+  };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
+  // Active colour-grade (preset + live URL/console overrides). Read once per
+  // build; the DEV __grade/__gradeSet hooks rebuild the pipeline on change.
+  const G = getActiveGrade();
   scenePass = pass(scene, camera);
   pendingResScale = null;   // fresh pass builds at the current resScale below — nothing staged
   disposables.push(scenePass as any);
@@ -427,7 +462,7 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // in a desaturated white haze. Exposing first means only the genuinely-bright
   // sources (flames) clear the threshold → tight, subtle bloom.
   //
-  const exposed: any = sceneCA.mul(float(EXPOSURE)).mul(brightnessNode);
+  const exposed: any = sceneCA.mul(float(G.exposure)).mul(brightnessNode);
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
@@ -437,13 +472,13 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
     // ONE separable gaussian blur at low res → × strength. Drops ~8 render-target
     // switches vs UnrealBloom's 5-mip chain. Feeds both the additive glow and the
     // inscatter below, same as the UnrealBloom path.
-    const bright: any = (exposed as any).sub((float as any)(BLOOM_THRESHOLD)).max(0);
+    const bright: any = (exposed as any).sub((float as any)(G.bloomThreshold)).max(0);
     const gb: any = (gaussianBlur as any)(bright, null, 6);
     gb.resolutionScale = 0.35;   // soft glow hides the low res (PS1-appropriate)
     disposables.push(gb);
     bloomPass = (gb as any).mul((float as any)(BLOOM_STRENGTH));
   } else if (bloomEnabled) {
-    bloomPass = bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+    bloomPass = bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, G.bloomThreshold);
     disposables.push(bloomPass);
     // PERF: BloomNode sizes its 5-mip chain to the FULL drawing buffer (then /2),
     // but the scene is rendered at resScale (0.4x) — so bloom was processing MORE
@@ -464,7 +499,7 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
   if (crushOn) {
-    const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+    const crush = (mix as any)(float(1.0), float(G.crushFloor), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
     lit = lit.mul(crush);
   }
 
@@ -473,7 +508,10 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // Only when bloom is on (it's the haze colour source).
   if (bloomPass && inscatterOn) {
     const fogW = (smoothstep as any)(INSCATTER_START_M, INSCATTER_END_M, distM).mul(INSCATTER_STRENGTH);
-    lit = lit.add((bloomPass as any).mul(fogW));
+    // inscatterTint colours the FAR air independently of the (warm) bloom source,
+    // so a corridor fogs out toward cold-blue even when the near light is a torch.
+    const inTint: any = (vec3 as any)(G.inscatterTint[0], G.inscatterTint[1], G.inscatterTint[2]);
+    lit = lit.add((bloomPass as any).mul(inTint).mul(fogW));
   }
 
   // ISOLATION: ?raw=1 outputs the bare exposed scene (no grade) so we can tell if
@@ -512,9 +550,27 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   if (TONEMAP !== 'none') col = TONEMAP_FN[TONEMAP](col, _float(1.0));
   // SATURATION — punchier colour (push away from luminance).
   const lum = (luminance as any)(col);
-  col = (mix as any)((vec3 as any)(lum, lum, lum), col, SATURATION);
+  col = (mix as any)((vec3 as any)(lum, lum, lum), col, G.saturation);
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
-  col = col.pow(_float(CONTRAST));
+  col = col.pow(_float(G.contrast));
+
+  // ── SPLIT-TONE — the warm-key / cold-dark cinematic lever ──
+  // Lerp a per-luminance tint over the image: dark pixels toward shadowTint
+  // (cool), bright pixels toward highlightTint (warm). This is the contrast the
+  // eye reads as DEPTH in a torchlit scene — and unlike a global tint it LEAVES
+  // the hue the light gave a surface, only biasing shadow-vs-light temperature.
+  // splitStrength 0 → identity (baseline preset), so this node is always present
+  // but inert unless a preset/override asks for it.
+  if (G.splitStrength > 0) {
+    const sLum: any = (luminance as any)(col);
+    const w: any = (smoothstep as any)(_float(0.0), _float(0.6), sLum);   // 0 dark → 1 light
+    const tint: any = (mix as any)(
+      (vec3 as any)(G.shadowTint[0], G.shadowTint[1], G.shadowTint[2]),
+      (vec3 as any)(G.highlightTint[0], G.highlightTint[1], G.highlightTint[2]),
+      w,
+    );
+    col = (mix as any)(col, col.mul(tint), _float(G.splitStrength));
+  }
 
   // ── EYE DARK-ADAPTATION — soften the dark (see ADAPT_* notes above) ──
   // darkW = 1 in shadow/fog, ramping to 0 by ADAPT_CUTOFF brightness, so the LIT
@@ -524,7 +580,8 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   {
     const lum: any = col.r.max(col.g).max(col.b);
     const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.05), _float(ADAPT_CUTOFF), lum));
-    const a: any = (darkAdaptNode as any).mul(darkW);   // adapt, restricted to the darks
+    // adaptScale lets a preset dial the "eyes adjust" lift down (→ truer blacks).
+    const a: any = (darkAdaptNode as any).mul(darkW).mul(_float(G.adaptScale));   // adapt, restricted to the darks
     col = col.add((vec3 as any)(ADAPT_LIFT[0], ADAPT_LIFT[1], ADAPT_LIFT[2]).mul(a));
     col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));
   }
@@ -549,11 +606,12 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   const scan: any = (px.y.mod(_float(2.0)).lessThan(_float(1.0)) as any)
     .select(_float(1.0), _float(SCANLINE_DARKEN));
   col = col.mul(scan);
-  // AMBER TINT — push the whole image warm (no G/B darken, just the warm bias).
-  col = col.mul((vec3 as any)(AMBER_TINT[0], AMBER_TINT[1], AMBER_TINT[2]));
+  // AMBER TINT — global warm bias. [1,1,1] on a preset turns it OFF, which is
+  // what lets the LIGHT (not the grade) own each surface's hue.
+  col = col.mul((vec3 as any)(G.amberTint[0], G.amberTint[1], G.amberTint[2]));
   // VIGNETTE — mild edge darkening (matched toward the WebGL blit).
   const d = _uv.sub(0.5);
-  col = col.mul(_float(1.0).sub(_dot(d, d).mul(VIGNETTE)));
+  col = col.mul(_float(1.0).sub(_dot(d, d).mul(G.vignette)));
   build(_vec4(col, 1.0));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
