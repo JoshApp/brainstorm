@@ -15,6 +15,7 @@ import { FONT_UI } from './theme';
 import { FONT_BLACK, FONT_SERIF } from './fonts';
 import { formatModifier } from './item-format';
 import { CARDS, dealCards, type CardSpec, type CardCondition, type CardSynergy, type CardTrigger } from '../content/cards';
+import type { Transform } from '../combat/transforms';
 import { grantCard, getHeldCards } from '../state/run-state';
 import { BUFFS } from '../content/buffs';
 
@@ -68,12 +69,26 @@ function triggerPhrase(t: CardTrigger): string {
   return `${when}: ${what}${odds}`;
 }
 
-/** What the card DOES, terse — covers all four verb-types so you can compare
- *  before committing: passive (PACT), conditional (BRINK), synergy (RESONANCE),
- *  trigger (PROC). */
+/** Readable phrase for a TRANSFORM — the rule this card REWRITES. These are the
+ *  defining verbs of the grotesque majors (Red Thirst et al.) and were invisible
+ *  in the reading before, so a transform card showed only its side-triggers and
+ *  read as doing almost nothing. Named plainly so you know the pact you're taking. */
+function transformPhrase(t: Transform): string {
+  if (t.rule === 'suppress-passive-heal') return 'no mending but by the blade';
+  if (t.rule === 'hp-drain') {
+    return t.per === 'out-of-combat' ? 'bleed at rest, down to half' : 'lose life with each descent';
+  }
+  return '';
+}
+
+/** What the card DOES, terse — covers all five verb-types so you can compare
+ *  before committing: transform (the rule it rewrites), passive (PACT),
+ *  conditional (BRINK), synergy (RESONANCE), trigger (PROC). Transforms lead —
+ *  they're the card's identity. */
 function effectLines(card: CardSpec): string[] {
   const e = card.effect;
   const out: string[] = [];
+  for (const t of e.transform ?? []) { const p = transformPhrase(t); if (p) out.push(p); }
   for (const m of e.modifiers ?? []) out.push(formatModifier(m));
   for (const c of e.conditional ?? []) {
     for (const m of c.modifiers) out.push(`${formatModifier(m)} · ${conditionPhrase(c.condition)}`);
