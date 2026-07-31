@@ -3,6 +3,7 @@ import { clearReliquary } from '../player/reliquary';
 import { setSlot, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
+import { syncMaxHp } from '../player/health';
 import { hydrateCharacter } from './character';
 import { resetStamina } from '../combat/stamina';
 import { resetDashInput } from '../controls/dash-input';
@@ -62,6 +63,12 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   if (player?.hp) {
     player.hp.current = saveData ? saveData.hp : player.hp.base;
   }
+  // Recompute the max from the now-restored build (equipment + character +
+  // mutations) and clamp the restored HP to it, re-seeding the reconcile cache.
+  // Without this, a run that had LOST max HP restored with the raw saved value
+  // (over the real ceiling) and the live reconcile misfired off a stale cache —
+  // the "reload buffers lost HP / maxHP not recalculated from items" bug.
+  syncMaxHp();
 
   // Stamina is not persisted — it regenerates in seconds. Start every
   // floor (and every resume) at full so you arrive ready, not winded.

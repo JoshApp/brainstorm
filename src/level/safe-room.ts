@@ -130,8 +130,7 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
         variant: 'gamble',
       },
 
-      // ── STASH (back-left) — meta-progression store ──────────────────
-      { kind: 'stash-chest', x: -2.9, z: -2.4, rotY: Math.PI / 2 },
+      // (Stash removed from the safe room — Josh, 2026-07-31.)
 
       // The merchant — a hooded trader tucked at the back-right, the
       // harbor's gold sink. Faces the fire so you find them as you arrive.

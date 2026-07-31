@@ -96,6 +96,24 @@ export function getPlayerMaxHp(): number {
   return max;
 }
 
+/** Recompute max HP from the CURRENT build (items + attributes + mutations) and
+ *  reconcile current HP against it, WITHOUT the delta-heal — a hard resync.
+ *  Call after restoring a run/floor (equipment + character + saved HP are in
+ *  place): it clamps a restored current HP to the real item-computed ceiling
+ *  (fixing "buffered" HP after a max-HP loss) and re-seeds lastKnownMax so the
+ *  live reconcile in getPlayerMaxHp doesn't fire a spurious heal/clamp off a
+ *  stale cache. Also keeps the ECS hp.base in step so anything reading it as the
+ *  ceiling agrees with computeStats(). */
+export function syncMaxHp(): void {
+  const max = computeStats().maxHp;
+  lastKnownMax = max;
+  const player = get(PLAYER_ENTITY_ID);
+  if (player?.hp) {
+    player.hp.base = max;
+    player.hp.current = Math.max(1, Math.min(player.hp.current, max));
+  }
+}
+
 /** Restore HP, clamped to the current max. Returns actual amount healed.
  *  `kind` marks the SOURCE: 'passive' = fires / fountains / potions (the
  *  environmental heals a TRANSFORM like Red Thirst suppresses); 'combat' =
