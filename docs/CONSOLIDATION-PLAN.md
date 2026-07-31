@@ -13,6 +13,11 @@
   + `KEYS`). Migrated `telemetry.ts` + `meta-state.ts`; rest adopt incrementally.
 - **Phase 3 (composeStrikeDamage) — DONE.** Extracted the crit×multipliers strike
   math into the tested `damage-math.ts`; melee + ranged share it. +4 tests.
+- **Phase 2e (content type-surface splits) — DONE (2/…).** `enemies.ts` 2,697→2,278
+  (types → `enemy-types.ts`) and `items.ts` 2,033→1,676 (types → `item-types.ts`).
+  Pure relocation, re-exported so importers are unchanged. The runtime-coupled
+  splits (enemy.ts closure, build-model shader cache) were deliberately NOT done
+  blind — they need a device-in-the-loop pass.
 - **Phase 1c (writable migration) — SKIPPED (won't do).** On inspection the
   hand-rolled listener modules do NOT fit `writable`: `game-mode` passes
   `(next, prev)`, `flask` listeners are no-arg, `character` mutates in place
