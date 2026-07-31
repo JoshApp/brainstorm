@@ -330,6 +330,32 @@ registerTexture('rune-sigil', (canvas) => {
   ctx.globalAlpha = 1;
 });
 
+// 'mystery-rune' — a glowing question mark on transparent, for the MYSTERY
+// REWARD emblem (a trial's prize you know the CATEGORY of but not the item). Drawn
+// white so the sprite's `color` tints it to the category hue; a soft outer bloom
+// so it reads as arcane glow, not UI text. Centred so it billboards cleanly.
+registerTexture('mystery-rune', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  // Soft radial bloom behind the glyph.
+  const bloom = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.5);
+  bloom.addColorStop(0, 'rgba(255,255,255,0.55)');
+  bloom.addColorStop(0.5, 'rgba(255,255,255,0.14)');
+  bloom.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = bloom;
+  ctx.fillRect(0, 0, w, h);
+  // The '?' glyph — bold, centred, with a glow shadow so it stays legible small.
+  ctx.fillStyle = 'rgba(255,255,255,0.98)';
+  ctx.font = `bold ${Math.round(h * 0.62)}px Georgia, "Times New Roman", serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(255,255,255,0.9)';
+  ctx.shadowBlur = w * 0.14;
+  ctx.fillText('?', cx, cy + h * 0.02);
+});
+
 function makeMissingTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = 8;

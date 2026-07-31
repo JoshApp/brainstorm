@@ -10,6 +10,7 @@ import { buildModel } from '../ecs/build-model';
 import { rollLoot } from '../content/loot';
 import { rollDropItem } from '../content/drop-tables';
 import { ITEMS, type ItemSpec } from '../content/items';
+import { mysteryEmblem, rewardCategory } from '../content/mystery-emblem';
 import { gameRng } from '../engine/rng';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { playImpact, playRitualBell } from '../audio/sfx';
@@ -190,12 +191,16 @@ export function spawnChallengeOffering(
   }
   const prize = drops[0] ?? null;
   let prizeGroup: THREE.Group | null = null;
-  if (prize?.dropModel) {
-    const built = buildModel(prize.dropModel);
+  if (prize) {
+    // MYSTERY REWARD (task #22): float a category EMBLEM, not the real item —
+    // you know you're fighting for a mystery WEAPON / ARMOUR / RELIC (its tint +
+    // a '?' rune), the exact loot is the surprise you earn by winning. This also
+    // fixes the old "reward shows nothing" case where a prize had no dropModel:
+    // the emblem always renders. The real drops resolve on the win reactor.
+    const built = buildModel(mysteryEmblem(rewardCategory(prize)));
     prizeGroup = built.group;
     // Float just above the (low) slab — sigil sits at ~0.49, so PRIZE_FLOAT_Y
-    // keeps the reward hovering over the stone, not up at head height. (Was 1.0,
-    // which floated it in the air well above this short altar.)
+    // keeps the reward hovering over the stone, not up at head height.
     prizeGroup.position.set(pos.x, pos.y + PRIZE_FLOAT_Y, pos.z);
     scene.add(prizeGroup);
   }
