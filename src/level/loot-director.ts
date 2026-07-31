@@ -10,8 +10,7 @@
 import type { PropSpec } from './types';
 import type { ChestTier } from '../interactables/chest';
 import type { CorpsePose } from '../content/corpses';
-import { rollChestLoot, rollMimic } from './decor-defaults';
-import { rollChestTier } from '../content/drop-tables';
+import { rollChestLoot, rollMimic, rollChestTier } from './decor-defaults';
 import { roomFor, type RoomBox } from './placement';
 
 type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;

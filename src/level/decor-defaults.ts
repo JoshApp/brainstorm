@@ -35,10 +35,15 @@ const CORPSE_NOTES = [
 export type ChestTier = 'wood' | 'silver' | 'gold';
 
 export function rollChestTier(depth: number, rand: () => number): ChestTier {
-  // Cumulative weights by depth band. Gold never exceeds ~12% even very
-  // deep — it stays a rare reward, not a regular.
+  // Cumulative weights by depth band. Gold never exceeds ~12% even very deep —
+  // it stays a rare reward, not a regular. The LOCKED tiers (silver + gold, per
+  // chest.ts) ramp UP with depth, so the first floor is almost all openable —
+  // you shouldn't meet a chest you can't open before you've had a real chance at
+  // a key (wood chests + kills seed keys). Depth 1 is deliberately wood-heavy.
   let woodW = 0.75, silverW = 0.22, goldW = 0.03;
-  if (depth >= 4 && depth <= 7) { woodW = 0.55; silverW = 0.38; goldW = 0.07; }
+  if (depth <= 1)                { woodW = 0.90; silverW = 0.10; goldW = 0.00; }   // floor 1: openable
+  else if (depth <= 3)           { woodW = 0.74; silverW = 0.23; goldW = 0.03; }
+  else if (depth >= 4 && depth <= 7) { woodW = 0.55; silverW = 0.38; goldW = 0.07; }
   else if (depth >= 8)           { woodW = 0.40; silverW = 0.48; goldW = 0.12; }
   const r = rand();
   if (r < woodW) return 'wood';

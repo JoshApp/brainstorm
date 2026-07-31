@@ -145,22 +145,9 @@ export const TABLES: Record<string, LootTable> = {
 
 export type DropTableId = keyof typeof TABLES;
 
-// ── CHEST TIER FREQUENCY — how often each variety appears, as data ──────────
-interface TierWeight { tier: 'wood' | 'silver' | 'gold'; weight: number; perDepth?: number }
-const CHEST_TIERS: TierWeight[] = [
-  { tier: 'wood',   weight: 62 },
-  { tier: 'silver', weight: 28 },
-  { tier: 'gold',   weight: 3, perDepth: 1.2 },   // rare, gentle ramp with depth
-];
-
-/** Roll a chest tier by the data-driven frequency table. */
-export function rollChestTier(depth: number, rand: () => number): 'wood' | 'silver' | 'gold' {
-  const w = CHEST_TIERS.map((t) => t.weight + (t.perDepth ?? 0) * Math.max(0, depth - 1));
-  const total = w.reduce((a, b) => a + b, 0);
-  let r = rand() * total;
-  for (let i = 0; i < CHEST_TIERS.length; i++) { r -= w[i]; if (r <= 0) return CHEST_TIERS[i].tier; }
-  return 'wood';
-}
+// Chest-tier frequency lives in ONE place now — level/decor-defaults.ts
+// rollChestTier (the canonical roll used by both the prop-default path and the
+// loot-director). The divergent duplicate that used to live here is removed.
 
 // ── THE EXECUTOR — resolve a table into a bundle. Never edited to add loot. ──
 export interface DropResult {
