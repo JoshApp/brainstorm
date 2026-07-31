@@ -252,10 +252,11 @@ export function createPickup(
       }
       return !(item.kind === 'consumable' && isAtCarryLimit(item.id));
     },
-    // Consumables are decision-free — grab them on walk-over, no tap. Gear stays
-    // a deliberate tap (equipping is a choice + the bag is finite). The carry-cap
-    // gate (canUse) means a full bag leaves the potion on the floor for later.
-    autoPickup: item.kind === 'consumable',
+    // Consumables + KEYS are decision-free — grab them on walk-over, no tap
+    // (a key is pure currency, never a choice). Gear stays a deliberate tap
+    // (equipping is a choice + the bag is finite). The carry-cap gate (canUse)
+    // means a full bag leaves the potion on the floor for later.
+    autoPickup: item.kind === 'consumable' || item.kind === 'key',
     onUse() {
       // Flask SHARD — fuses into the flask the moment it's touched: +capacity,
       // the new pip arriving filled. Never enters the bag; growth is the event.

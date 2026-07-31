@@ -1,5 +1,7 @@
 import { on } from '../broadcast/event-bus';
 import { xpStore, goldStore, type XpState } from '../state/hud-stores';
+import { getCount } from '../player/inventory';
+import { KEY_ID } from '../content/drop-tables';
 import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
 
@@ -17,8 +19,14 @@ import { bind } from './hud';
 
 const SVG_COIN = `<svg width="14" height="14" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:5px;"><circle cx="8" cy="8" r="6.5" fill="rgba(200,140,40,0.95)" stroke="rgba(255,200,90,0.95)" stroke-width="1"/><circle cx="8" cy="8" r="3.5" fill="none" stroke="rgba(255,220,140,0.7)" stroke-width="1"/></svg>`;
 
+// Small brass key glyph — matches the coin's inline-icon style. Shown beside
+// the gold count when the player is carrying skeleton keys.
+const SVG_KEY = `<svg width="13" height="13" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:4px;"><circle cx="5" cy="6" r="3.2" fill="none" stroke="rgba(210,180,110,0.95)" stroke-width="1.6"/><path d="M7.3 7.6 L13 13 M11 11 l1.6 -1.6 M12.4 12.4 l1.2 -1.2" stroke="rgba(210,180,110,0.95)" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
+
 let goldContainer: HTMLDivElement | null = null;
 let goldEl: HTMLDivElement | null = null;
+let keysEl: HTMLDivElement | null = null;
+let prevKeys = -1;
 
 let xpContainer: HTMLDivElement | null = null;
 let xpBarEl: HTMLDivElement | null = null;
@@ -69,9 +77,22 @@ export function createXpGoldHud(): void {
     zIndex: '10',
     userSelect: 'none',
     WebkitUserSelect: 'none',
-    transition: 'transform 180ms ease-out, color 180ms ease-out',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   } as Partial<CSSStyleDeclaration>);
-  goldEl = goldContainer;   // single line — alias
+  // Keys count sits to the LEFT of the gold, hidden while you carry none. Pale
+  // brass so it reads as currency-but-not-gold.
+  keysEl = document.createElement('div');
+  Object.assign(keysEl.style, {
+    color: 'rgba(210, 185, 130, 0.92)',
+    display: 'none',
+    transition: 'transform 180ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  // Gold gets its own span so per-frame innerHTML rewrites don't wipe the keys.
+  goldEl = document.createElement('div');
+  goldEl.style.transition = 'transform 180ms ease-out, color 180ms ease-out';
+  goldContainer.append(keysEl, goldEl);
   document.body.appendChild(goldContainer);
 
   // Floating "+N" gold tick — sits just under the gold counter, rises + fades.
@@ -271,6 +292,17 @@ function showLevelToast(level: number) {
  *  (xp/gold absorb, level-up) back to rest. */
 export function updateXpGoldHud(dt: number): void {
   if (!goldEl || !xpFillEl || !xpLevelEl || !xpFractionEl) return;
+
+  // Keys — cheap poll of the inventory count (small bag); refresh the chip only
+  // when it changes. Hidden while you carry none so it doesn't clutter.
+  if (keysEl) {
+    const keys = getCount(KEY_ID);
+    if (keys !== prevKeys) {
+      prevKeys = keys;
+      keysEl.style.display = keys > 0 ? 'block' : 'none';
+      if (keys > 0) keysEl.innerHTML = `${SVG_KEY}${keys}`;
+    }
+  }
 
   // Pulse decays.
   if (xpPulseTimer > 0) {

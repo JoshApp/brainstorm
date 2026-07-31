@@ -39,6 +39,10 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
     // three altars. Room is 8 × 14m so the stair body has room to
     // extend without burying into the back wall.
     startPos: { x: 0, z: 5.5, yaw: 0 },
+    // Suppress the builder's auto wake-beside-fire threshold bonfire: the
+    // weapon-select chamber is a choice, not a rest — no fate fire here. The
+    // origin arch (placed independently of the fire) is unaffected.
+    composerManagedFires: true,
 
     rooms: [
       {
