@@ -99,14 +99,15 @@ export function spawnChest(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: 'OPEN',
-    // Silver + gold chests are locked — show the "give 🔑" cost up front so the
-    // player knows before walking up. Wood chests are free (no chip).
-    cost: (tier === 'silver' || tier === 'gold') ? { itemId: KEY_ID } : undefined,
+    // Only GOLD chests are locked now (Josh: "not every chest needs a key").
+    // Wood + silver are free gear; keys route to the rare gold prize. Show the
+    // "give 🔑" cost up front on gold so the player knows before walking up.
+    cost: tier === 'gold' ? { itemId: KEY_ID } : undefined,
     onUse() {
       if (state !== 'closed') return;
-      // Silver + gold are LOCKED — they cost a key (wood is free). A mimic of
-      // that tier costs one too, so a free-opening chest never tells on itself.
-      if (tier === 'silver' || tier === 'gold') {
+      // Only GOLD is LOCKED — it costs a key (wood + silver are free). A gold
+      // mimic costs one too, so a free-opening chest never tells on itself.
+      if (tier === 'gold') {
         if (getCount(KEY_ID) <= 0) {
           showInWorldMessage('Locked. It wants a key.');
           playEquipClick();

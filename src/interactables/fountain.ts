@@ -5,6 +5,7 @@ import { spawnEvent } from './event-factory';
 import { gameRng } from '../engine/rng';
 import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
+import { addCharges } from '../player/flask';
 import { playHealSlurp } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
@@ -46,11 +47,11 @@ interface VariantStyle {
 
 const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
   gamble: {
-    liquidColor:    0x2a3a22,
-    liquidEmissive: 0x66ff88,   // sickly green — but no longer cursed
-    lightColor:     0x88ffaa,
+    liquidColor:    0x3a2c10,
+    liquidEmissive: 0xffc844,   // molten gold — this one restores the flask
+    lightColor:     0xffc860,
     promptLabel:    'DRINK',
-    promptKind:     'unknown',  // pale — looks suspect (drinks clean now, but reads as a gamble)
+    promptKind:     'neutral',  // amber — a clean boon (a flask charge)
   },
   rest: {
     liquidColor:    0x3a2818,
@@ -178,6 +179,16 @@ export function spawnFountain(
       if (variant === 'tainted') {
         const mutationId = applyTaintedDrink();
         return { mutationId };
+      }
+      if (variant === 'gamble') {
+        // The golden fountain refills ONE flask charge — a found Estus draught,
+        // not a heal. (Was a green partial-heal; the flask is your real mend.)
+        const added = addCharges(1);
+        playHealSlurp();
+        showNote(added > 0
+          ? 'The gold water fills your flask. One more mercy for the dark.'
+          : 'The gold water beads on a full flask, and is gone.');
+        return {};
       }
       // A solid PARTIAL heal — half the pool — not a free full reset (heals are
       // precious in the 8-HP economy; the flask stays your main mend). Both

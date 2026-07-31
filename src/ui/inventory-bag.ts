@@ -1,4 +1,6 @@
-import { getAllItems } from '../player/inventory';
+import { getAllItems, removeItem, addItemSilently } from '../player/inventory';
+import { equipFromInventory } from '../player/equipment';
+import { playEquipClick } from '../audio/sfx';
 import { ITEMS, RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
@@ -136,6 +138,19 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
   cell.addEventListener('click', (e) => {
     e.stopPropagation();
     ctx.select({ kind: 'bag', item });
+  });
+
+  // Double-click / double-tap = equip (skips select → tap EQUIP). Gear only;
+  // consumables/keys/relics ignore it. Mirrors the EQUIP button's exact flow.
+  cell.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    if (item.kind === 'weapon' || item.kind === 'offhand' || item.kind === 'vestment') {
+      const previous = equipFromInventory(item);
+      removeItem(item.id);
+      if (previous) addItemSilently(previous.id);
+      playEquipClick();
+      ctx.select(null);
+    }
   });
 
   return cell;
