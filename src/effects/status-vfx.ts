@@ -40,8 +40,60 @@ const motes: Mote[] = [];
 
 // Throttle emission to a steady cadence regardless of frame rate / how
 // many things are afflicted.
-const EMIT_INTERVAL = 0.12;
+const EMIT_INTERVAL = 0.09;
 let emitAccum = 0;
+
+// ── Affliction AURA — the "the whole thing is afflicted" read ─────────────
+// Motes alone are easy to miss on a moving mob; an aura WREATHES the body in
+// the affliction's colour so a poisoned thing is visibly sickly-green, a
+// burning thing glows ember, a bleeding thing is haloed red. A soft additive
+// sprite (no material-path touch — safe over the fragile hit-flash), pooled and
+// re-bound to whichever enemies are afflicted this frame. This is the cheap
+// "elemental hull" without cloning the model or writing its shaders.
+interface Aura {
+  sprite: THREE.Sprite;
+  entityId: string | null;   // which enemy it's bound to this frame (null = free)
+}
+const AURA_MAX = 16;
+const auras: Aura[] = [];
+const auraByEntity = new Map<string, Aura>();
+
+function ensureAuraPool(scene: THREE.Object3D) {
+  if (auras.length > 0) return;
+  for (let i = 0; i < AURA_MAX; i++) {
+    const material = new THREE.SpriteMaterial({
+      map: getTexture('moonbeam'),   // neutral white glow — tints cleanly to any hue
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      opacity: 0,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.visible = false;
+    scene.add(sprite);
+    auras.push({ sprite, entityId: null });
+  }
+}
+
+function freeAura(a: Aura) {
+  a.sprite.visible = false;
+  (a.sprite.material as THREE.SpriteMaterial).opacity = 0;
+  if (a.entityId) auraByEntity.delete(a.entityId);
+  a.entityId = null;
+}
+
+/** The dominant affliction colour on an entity (first vfx-bearing buff), or
+ *  null if it carries none. */
+function afflictionColor(entityId: string): number | null {
+  const ent = get(entityId);
+  if (!ent) return null;
+  for (const b of ent.buffs) {
+    const spec = BUFFS[b.specId];
+    if (spec?.vfx) return spec.vfx.color ?? spec.color ?? 0xffffff;
+  }
+  return null;
+}
 
 /** Build the pool at boot instead of on the first mid-combat emit. The lazy
  *  path allocated 64 sprites + materials during a fight (a measured GC spike)
@@ -135,7 +187,11 @@ function emitForEntity(scene: THREE.Object3D, entityId: string, x: number, y: nu
     const spec = BUFFS[b.specId];
     if (!spec?.vfx) continue;
     const color = spec.vfx.color ?? spec.color ?? 0xffffff;
-    spawnMote(scene, x, y, z, color, spec.vfx.style ?? 'rise');
+    const style = spec.vfx.style ?? 'rise';
+    // Two motes per affliction per beat — dense enough to read as "on fire" /
+    // "dripping venom" on a moving mob, not a lone occasional speck.
+    spawnMote(scene, x, y, z, color, style);
+    spawnMote(scene, x, y, z, color, style);
   }
 }
 
@@ -152,6 +208,8 @@ export function tickStatusVfx(
   dt: number,
 ) {
   tickMotes(dt);
+  tickAuras(scene, enemies, dt);
+
   emitAccum += dt;
   if (emitAccum < EMIT_INTERVAL) return;
   emitAccum -= EMIT_INTERVAL;
@@ -163,6 +221,48 @@ export function tickStatusVfx(
   emitForEntity(scene, 'player', playerPos.x, playerPos.y - 0.3, playerPos.z);
 }
 
+const _auraSeen = new Set<string>();
+
+/** Each frame: wreathe every afflicted enemy in an aura of its affliction
+ *  colour; free auras whose enemy is no longer afflicted / alive / present. */
+function tickAuras(scene: THREE.Object3D, enemies: readonly Enemy[], dt: number) {
+  ensureAuraPool(scene);
+  _auraSeen.clear();
+  const t = auraClock += dt;
+
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const color = afflictionColor(e.entityId);
+    if (color === null) continue;
+    _auraSeen.add(e.entityId);
+
+    let a = auraByEntity.get(e.entityId);
+    if (!a) {
+      // Bind a free aura sprite to this enemy.
+      const free = auras.find((x) => x.entityId === null);
+      if (!free) continue;   // pool exhausted — a crowd; motes still carry it
+      free.entityId = e.entityId;
+      free.sprite.visible = true;
+      auraByEntity.set(e.entityId, free);
+      a = free;
+    }
+    const mat = a.sprite.material as THREE.SpriteMaterial;
+    mat.color.setHex(color);
+    // Size to the body; gentle breathing so it reads as alive, not a decal.
+    const h = Math.max(1.0, e.aimHeight * 1.9);
+    const pulse = 0.85 + 0.15 * Math.sin(t * 4 + e.position.x);
+    a.sprite.scale.set(h * pulse, h * pulse, 1);
+    a.sprite.position.set(e.position.x, e.position.y + e.aimHeight, e.position.z);
+    mat.opacity = 0.34 * pulse;   // soft — a wash, never a solid blob
+  }
+
+  // Retire auras bound to enemies no longer afflicted / present.
+  for (const a of auras) {
+    if (a.entityId && !_auraSeen.has(a.entityId)) freeAura(a);
+  }
+}
+let auraClock = 0;
+
 /** Free all live motes (level teardown). The pool itself persists — slots
  *  just go inactive + hidden, ready for reuse on the next floor. */
 export function clearStatusVfx() {
@@ -170,6 +270,8 @@ export function clearStatusVfx() {
     m.active = false;
     m.sprite.visible = false;
   }
+  for (const a of auras) freeAura(a);
+  auraByEntity.clear();
   emitAccum = 0;
 }
 
