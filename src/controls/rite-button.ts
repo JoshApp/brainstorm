@@ -13,6 +13,7 @@ let label: HTMLSpanElement | null = null;
 export function createRiteButton(): void {
   if (btn) return;
   btn = document.createElement('button');
+  btn.id = 'rite-button';
   Object.assign(btn.style, {
     position: 'fixed',
     right: 'max(20px, env(safe-area-inset-right, 0px))',

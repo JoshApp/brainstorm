@@ -18,6 +18,7 @@ export function showNote(text: string) {
   if (activeCard) dismiss();
 
   const card = document.createElement('div');
+  card.id = 'note-card';
   Object.assign(card.style, {
     position: 'fixed',
     top: '50%',
