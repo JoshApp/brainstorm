@@ -24,17 +24,25 @@ import type { CorpsePose } from './corpses';
 
 export type CorpseDecay = 'fleshy' | 'skeletal';
 
+// Cold pale-blue rim shared across the body materials — the fallen delver read
+// as the SAME warm tan as the floor/walls and vanished into them. A cool,
+// dark-reactive edge separates the silhouette from the warm stone without
+// recolouring the body (the warm-key/cold-accent contrast). darkReactive keeps
+// it subtle in torchlight and stronger in the dark, where the body would
+// otherwise disappear.
+const CORPSE_RIM = { color: 0x9ab8d8, power: 2.4, intensity: 0.55, darkReactive: 0.85 } as const;
+
 const MATERIALS = {
   // Ashen dead flesh — cold grey-umber, NOT warm brown (warm read as mud).
-  flesh:   { color: 0x8a7d69, roughness: 0.95, metalness: 0.0, flatShading: true as const },
+  flesh:   { color: 0x8a7d69, roughness: 0.95, metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
   // Mirrors ossuary PALE_BONE exactly so the whole bone family shares one
   // warmed pipeline and matches the skeleton roster's look.
-  bone:    { color: 0xc2b69c, roughness: 0.92, flatShading: 'auto' as const, chroma: 1.8 },
+  bone:    { color: 0xc2b69c, roughness: 0.92, flatShading: 'auto' as const, chroma: 1.8, rim: CORPSE_RIM },
   // The robe — two close cold tones so folds read without a highlight. Dark
   // but NOT light-proof: the lamp must be able to reveal the mass (dread-light
   // rule — near-black albedo makes the body undiscoverable in a dark room).
-  rag:     { color: 0x2b2318, roughness: 1.0,  metalness: 0.0, flatShading: true as const },
-  rag2:    { color: 0x3b2f1f, roughness: 1.0,  metalness: 0.0, flatShading: true as const },
+  rag:     { color: 0x2b2318, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
+  rag2:    { color: 0x3b2f1f, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
   leather: { color: 0x2f261b, roughness: 0.85, metalness: 0.0, flatShading: true as const },
   metal:   { color: 0x6b6356, roughness: 0.42, metalness: 0.7, flatShading: true as const },
   // Buried-cap darkness — hood interiors, eye sockets, the nasal slit.

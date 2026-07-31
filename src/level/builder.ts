@@ -45,6 +45,7 @@ import type { ItemSpec } from '../content/items';
 import { spawnFitting } from '../interactables/fitting';
 import { applyShadowRole } from '../scene/shadow-role';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
+import { rollFloorEnemies } from './procgen';
 import { registerEncounter, activateEncounter, clearEncounters, onEncounterActivated, onEncounterComplete, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { openingEndpoints } from './opening';
 import { bindLight as bindRoomMoodLight, bindFlame as bindRoomMoodFlame, clearRoomMoodBindings } from './room-mood';
@@ -2377,12 +2378,21 @@ export function buildLevel(
     seenArenaRooms.add(roomId);
     const room = spec.rooms.find((r) => r.id === roomId);
     if (!room) return;
-    // Escalating gauntlet; per-mob difficulty is depth-scaled inside
-    // spawnInto. Ends on ranged pressure so the last wave isn't a pushover.
+    // Escalating gauntlet, ROLLED per floor+room from the depth-appropriate
+    // enemy pool (was a fixed ghoul/skeleton/acid triad — same every trial,
+    // boring). Deterministic: seeded from the room id so a replay reproduces the
+    // exact gauntlet. Intensity climbs light→medium→heavy so the last wave bites.
+    const depth = spec.depth ?? 1;
+    const arenaRng = rngFromSeed(hashStringToSeed(`arena:${roomId}:${depth}`));
+    const toWave = (ids: string[]): WaveSpec => {
+      const counts = new Map<string, number>();
+      for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+      return { spawns: [...counts].map(([enemyId, count]) => ({ enemyId, count })) };
+    };
     const waves: WaveSpec[] = [
-      { spawns: [{ enemyId: 'ghoul', count: 2 }] },
-      { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
-      { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
+      toWave(rollFloorEnemies(depth, 2, 'light', arenaRng)),
+      toWave(rollFloorEnemies(depth, 3, 'medium', arenaRng)),
+      toWave(rollFloorEnemies(depth, 3, 'heavy', arenaRng)),
     ];
     let handle: EncounterHandle;
     const controller = createArenaController({
