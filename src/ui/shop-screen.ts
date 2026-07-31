@@ -8,7 +8,10 @@ import { emit } from '../broadcast/event-bus';
 import { getGold, spendGold, grantGold } from '../state/run-state';
 import { addItem } from '../player/inventory';
 import { wareItem, type ShopWare } from '../content/shop';
-import type { Rarity } from '../content/items';
+import { RARITY_COLORS, type Rarity } from '../content/items';
+import { describeItem } from './inventory-details';
+import { getItemThumbnail } from './item-thumbnail';
+import { hexCss } from '../style/color-utils';
 
 const RARITY_TINT: Record<Rarity, string> = {
   mundane: '#b9b2a6',
@@ -51,11 +54,31 @@ export function openShopScreen(stock: ShopWare[]): void {
 
 function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
   const item = wareItem(ware);
+  // The row + its (collapsed) preview live in one wrapper so tapping the row
+  // expands a stat panel BELOW it — "see what you buy before you buy it".
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, { borderBottom: '1px solid #1c1e22' } as Partial<CSSStyleDeclaration>);
+
   const row = document.createElement('div');
   Object.assign(row.style, {
     display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '10px 4px', borderBottom: '1px solid #1c1e22',
+    padding: '10px 4px', cursor: item ? 'pointer' : 'default',
   } as Partial<CSSStyleDeclaration>);
+
+  // Small rarity-framed thumbnail — the stall reads as wares, not a text list.
+  const rarityHex = hexCss(RARITY_COLORS[ware.rarity]);
+  const thumb = document.createElement('div');
+  Object.assign(thumb.style, {
+    width: '38px', height: '38px', flexShrink: '0',
+    background: 'rgba(20, 14, 10, 0.7)', border: `1.5px solid ${rarityHex}`,
+    borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  } as Partial<CSSStyleDeclaration>);
+  if (item) {
+    const img = document.createElement('img');
+    img.src = getItemThumbnail(item);
+    Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' } as Partial<CSSStyleDeclaration>);
+    thumb.appendChild(img);
+  }
 
   const info = document.createElement('div');
   info.style.flex = '1';
@@ -65,21 +88,54 @@ function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
   name.textContent = ware.name;
   const sub = document.createElement('div');
   Object.assign(sub.style, { color: '#6b727c', fontSize: '11px', fontStyle: 'italic' } as Partial<CSSStyleDeclaration>);
-  sub.textContent = item?.flavor ?? `${ware.rarity}${item ? ' · ' + item.kind : ''}`;
+  // A "tap to inspect" affordance replaces the flavour teaser — the full flavor
+  // + stats live in the preview panel now.
+  sub.textContent = item ? 'tap to inspect' : ware.rarity;
   info.append(name, sub);
 
   const price = document.createElement('div');
   Object.assign(price.style, { color: '#e8b84b', fontFamily: 'ui-monospace, monospace', fontSize: '13px', minWidth: '54px', textAlign: 'right' } as Partial<CSSStyleDeclaration>);
   price.textContent = `${ware.price}g`;
 
+  // menuButton stops click propagation itself, so tapping BUY never toggles the row.
   const buyBtn = menuButton('BUY', () => buy(), { small: true });
+
+  // ── Preview panel — thumbnail-backed stat readout, lazily built, toggled by
+  //    tapping the row. Reuses describeItem so the shop speaks the SAME stat
+  //    language (icons + lines) as the inventory. ──
+  const preview = document.createElement('div');
+  Object.assign(preview.style, {
+    display: 'none', flexDirection: 'column', gap: '4px',
+    padding: '2px 6px 12px 50px',   // indent under the thumbnail column
+  } as Partial<CSSStyleDeclaration>);
+  let previewBuilt = false;
+  function buildPreview(): void {
+    if (previewBuilt || !item) return;
+    previewBuilt = true;
+    if (item.flavor) {
+      const fl = document.createElement('div');
+      fl.textContent = item.flavor;
+      Object.assign(fl.style, { color: '#8a7a68', fontSize: '11px', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: '1.3', marginBottom: '3px' } as Partial<CSSStyleDeclaration>);
+      preview.appendChild(fl);
+    }
+    for (const line of describeItem(item)) preview.appendChild(line);
+  }
+  let open = false;
+  function toggle(): void {
+    if (!item) return;
+    open = !open;
+    if (open) buildPreview();
+    preview.style.display = open ? 'flex' : 'none';
+    sub.textContent = open ? 'tap to close' : 'tap to inspect';
+  }
+  row.addEventListener('click', toggle);
 
   function setSold(): void {
     buyBtn.textContent = 'SOLD';
     buyBtn.disabled = true;
     buyBtn.style.opacity = '0.4';
     buyBtn.style.cursor = 'default';
-    row.style.opacity = '0.45';
+    wrap.style.opacity = '0.45';
   }
   function deny(): void {
     // brief red flash on the price to say "can't".
@@ -103,6 +159,7 @@ function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
   }
 
   if (ware.sold) setSold();
-  row.append(info, price, buyBtn);
-  return row;
+  row.append(thumb, info, price, buyBtn);
+  wrap.append(row, preview);
+  return wrap;
 }
