@@ -623,7 +623,7 @@ export function composeFloor(
   // and combat can appear in any room shape. Each candidate carries its world
   // position, owning room, and whether it's a HINT (an author's X slot that the
   // density gate skipped — preferred so injected mobs land where intended).
-  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean; wallAdj: number }
+  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean; wallAdj: number; centrality?: number }
   const spawnCandidates: SpawnCandidate[] = [];
   // Director intent-anchors harvested from the placed vaults — good SPOTS the
   // director may fill. Step 1: fire anchors (a bonfire reads well here). The
@@ -979,7 +979,7 @@ export function composeFloor(
       // Collect this room's open cells, tracking the most CENTRAL one — the
       // auto-derived focal spot when the vault authored none.
       const cx = W / 2, cz = D / 2;
-      const roomCells: Array<{ x: number; z: number; isHint: boolean; wallAdj: number }> = [];
+      const roomCells: Array<{ x: number; z: number; isHint: boolean; wallAdj: number; centrality: number }> = [];
       let central: { col: number; row: number; x: number; z: number } | null = null;
       let centralDist = Infinity;
       for (const cell of enumerateOpenCells(region, isFloor, occ)) {
@@ -987,8 +987,13 @@ export function composeFloor(
         const z = cell.row + 0.5 - D / 2 + pv.offsetZ;
         // wallAdj = the FURNITURE affordance (0 open, 1 against a wall, 2+ corner)
         // so the furnishing pass can hug vases to the edges instead of scattering.
-        roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`), wallAdj: wallAdjacency(cell.col, cell.row, isFloor) });
         const d = (cell.col - cx) ** 2 + (cell.row - cz) ** 2;
+        // CENTRALITY (higher = more central) — drives visible bonfire placement:
+        // the director prefers the room's OPEN CENTRE over a corner, so a major
+        // event (a fire) reads as the room's centrepiece, not a thing wedged in a
+        // wall. Research: door-ray sightline / focal-point placement — for a
+        // rectangle the centre IS the max-visibility, min-door-adjacency spot.
+        roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`), wallAdj: wallAdjacency(cell.col, cell.row, isFloor), centrality: -d });
         if (d < centralDist) { centralDist = d; central = { col: cell.col, row: cell.row, x, z }; }
       }
       // AUTO-DERIVED MARKER (docs/FLOOR-DIRECTOR.md — geometry proposes, an
@@ -1005,7 +1010,7 @@ export function composeFloor(
       for (const c of roomCells) {
         // Keep the derived focal cell out of the enemy pool.
         if (derived && c.x === derived.x && c.z === derived.z) continue;
-        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint, wallAdj: c.wallAdj });
+        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint, wallAdj: c.wallAdj, centrality: c.centrality });
       }
     }
   }
@@ -1035,7 +1040,10 @@ export function composeFloor(
     const plan = directFloor({
       depth, rand, roles,
       fireAnchors,
-      fireFallbackCells: spawnCandidates,
+      // Fallback fire cells carry CENTRALITY as their openness score, so when a
+      // fire has to fall back to an open floor cell (no authored anchor) it lands
+      // in the room's centre — a visible centrepiece — not a random corner.
+      fireFallbackCells: spawnCandidates.map((c) => ({ x: c.x, z: c.z, roomId: c.roomId, openness: c.centrality })),
       contentSpots,
       bakedProps: props,   // vault-baked + `?`-slot deals — read for variety
     });
