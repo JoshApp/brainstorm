@@ -260,13 +260,57 @@ export function createXpGoldHud(): void {
 
   on((e) => {
     if (e.type === 'xp:absorbed') xpPulseTimer = 0.22;
-    else if (e.type === 'gold:absorbed') goldPulseTimer = 0.22;
+    else if (e.type === 'gold:absorbed') { goldPulseTimer = 0.22; spawnGoldFleck(); }
     else if (e.type === 'level:up') {
       levelPulseTimer = 0.8;
       levelBloomLeft = LEVEL_BLOOM_DUR;
       showLevelToast(e.level);
     }
   });
+}
+
+// Diegetic "gold drains into the purse": each absorbed coin launches a small
+// gold fleck from near the player (screen-bottom-centre, where world coins
+// stream in) that arcs UP to the gold counter and pops the pulse on arrival —
+// so earning gold reads as coins going somewhere, not a silent number bump.
+// Capped so a big cascade can't flood the DOM.
+let activeFlecks = 0;
+const MAX_FLECKS = 7;
+const FLECK_SVG = `<svg width="12" height="12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="rgba(255,200,90,0.95)" stroke="rgba(255,230,160,0.95)" stroke-width="1"/></svg>`;
+
+function spawnGoldFleck(): void {
+  if (!goldContainer || activeFlecks >= MAX_FLECKS) return;
+  const rect = goldContainer.getBoundingClientRect();
+  if (rect.width === 0) return;   // HUD not laid out yet
+  const targetX = rect.left + 9;
+  const targetY = rect.top + rect.height / 2;
+  const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 90;
+  const startY = window.innerHeight * 0.72;
+
+  const el = document.createElement('div');
+  el.innerHTML = FLECK_SVG;
+  Object.assign(el.style, {
+    position: 'fixed', left: `${startX}px`, top: `${startY}px`,
+    pointerEvents: 'none', zIndex: '11', willChange: 'transform, opacity',
+    filter: 'drop-shadow(0 0 4px rgba(255,190,80,0.7))',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(el);
+  activeFlecks++;
+
+  // Arc: rise past a control point above the midpoint, then curve into the HUD.
+  const midX = (startX + targetX) / 2 + (Math.random() - 0.5) * 70;
+  const midY = Math.min(startY, targetY) - (70 + Math.random() * 50);
+  const anim = el.animate(
+    [
+      { transform: 'translate(0,0) scale(1)', opacity: 0.95 },
+      { transform: `translate(${midX - startX}px, ${midY - startY}px) scale(0.92)`, opacity: 1, offset: 0.5 },
+      { transform: `translate(${targetX - startX}px, ${targetY - startY}px) scale(0.35)`, opacity: 0 },
+    ],
+    { duration: 420 + Math.random() * 130, easing: 'cubic-bezier(0.45, 0, 0.55, 1)' },
+  );
+  const done = () => { el.remove(); activeFlecks--; goldPulseTimer = 0.22; };
+  anim.onfinish = done;
+  anim.oncancel = done;
 }
 
 function showLevelToast(level: number) {
