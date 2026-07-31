@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { stdMat } from '../style/material-registry';
-import { generateEntityId, get } from '../ecs/world';
-import { registerInteractable } from './system';
+import { generateEntityId } from '../ecs/world';
+import { spawnEvent } from './event-factory';
 import { gameRng } from '../engine/rng';
 import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
-import { playHealSlurp, playBuffApply } from '../audio/sfx';
+import { playHealSlurp } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
 import { getMutationIds } from '../state/run-mutations';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
-import { emit } from '../broadcast/event-bus';
 
 // Fountain — a basin of suspect liquid. Three variants today:
 //
@@ -76,7 +75,23 @@ export function spawnFountain(
   variant: FountainVariant = 'gamble',
 ) {
   const style = VARIANT_STYLE[variant];
+  // Shared between build (visuals) and onUse (drain): the liquid disc we hide and
+  // the light intensity we dim once drunk. The basin STAYS after use (autoFinish
+  // false), draining rather than vanishing — so these live in the closure.
+  let liquid!: THREE.Mesh;
+  const fountainState = { intensity: 1.8 };
 
+  spawnEvent({
+    kind: 'fountain',
+    scene: parent,
+    pos,
+    rotY,
+    radius: 1.3,
+    promptLabel: style.promptLabel,
+    promptKind: style.promptKind,
+    family: 'unknown',      // a drink commits BEFORE the answer
+    autoFinish: false,      // the drained basin remains as a spent fixture
+    build: () => {
   const group = new THREE.Group();
   group.position.copy(pos);
   group.rotation.y = rotY;
@@ -132,7 +147,7 @@ export function spawnFountain(
     opacity: 0.85,
     fog: false,
   });
-  const liquid = new THREE.Mesh(
+  liquid = new THREE.Mesh(
     new THREE.CylinderGeometry(0.34, 0.34, 0.04, 16),
     liquidMat,
   );
@@ -142,7 +157,6 @@ export function spawnFountain(
   // Soft glow registered with the global light pool. Intensity is read
   // each frame via getIntensity so we can dim it after the fountain is
   // drunk (sets the fountainState.intensity to 0.2).
-  const fountainState = { intensity: 1.8 };
   registerLight({
     id: `fountain-${generateEntityId('fountain-light')}`,
     category: 'environment',
@@ -154,30 +168,16 @@ export function spawnFountain(
     getIntensity: () => fountainState.intensity,
   });
 
-  let used = false;
-
-  const interactable = {
-    id: generateEntityId('fountain'),
-    position: pos.clone(),
-    radius: 1.3,
-    promptLabel: style.promptLabel,
-    promptKind: style.promptKind,
-    onUse() {
-      if (used) return;
-      used = true;
-      interactable.promptLabel = '';
-      // Unified transaction stream: a drink commits BEFORE the answer —
-      // the UNKNOWN family (content/transactions.ts).
-      emit({ type: 'transaction:accepted', family: 'unknown', id: interactable.id, price: {} });
-
+      return { group };
+    },
+    onUse: () => {
       // Drain the liquid visually — hide the emissive disc, dim the glow.
       liquid.visible = false;
       fountainState.intensity = 0.2;
 
       if (variant === 'tainted') {
         const mutationId = applyTaintedDrink();
-        emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { mutationId } });
-        return;
+        return { mutationId };
       }
       // A solid PARTIAL heal — half the pool — not a free full reset (heals are
       // precious in the 8-HP economy; the flask stays your main mend). Both
@@ -185,7 +185,6 @@ export function spawnFountain(
       const before = getPlayerHp();
       healPlayer(Math.ceil(getPlayerMaxHp() / 2), 'passive');   // environmental heal — a TRANSFORM may suppress it
       const healed = getPlayerMaxHp() - before;
-      emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { hpDelta: healed } });
       playHealSlurp();
       showNote(
         healed > 0
@@ -194,11 +193,9 @@ export function spawnFountain(
               : 'The water is cold. Something inside you mends.')
           : 'The water is clean. You were already whole.',
       );
+      return { hpDelta: healed };
     },
-    destroyed: false,
-    built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
-  };
-  registerInteractable(interactable);
+  });
 }
 
 // Roll one tainted mutation, apply it, reconcile current HP against any
