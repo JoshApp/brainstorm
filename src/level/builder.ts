@@ -1346,7 +1346,17 @@ export function buildLevel(
       // Per-fire spent dimmer — the fate-fire sets this to fade THIS bonfire's
       // pooled light to embers once it's been drawn (1 = lit, <1 = spent).
       let bonfireDim = 1;
+      // Event-presence knob for the level-up fire. A bonfire is CONTENT (the
+      // rest + the fate draw happen here), so per lighting-as-signal it should
+      // read as an EVENT across a cluttered room, not blend into ambient props.
+      // ?bigfire=1.4 scales the fire up + boosts its pool so you can dial the
+      // presence on the phone; default 1.0 = today's look, zero regression.
+      // Boosts the LIGHT pass below too (fireBoost) so bigger fire = bigger glow.
+      let fireBoost = 1;
       if (prop.model.id === 'bonfire') {
+        const bigfire = typeof location !== 'undefined'
+          ? (Number(new URLSearchParams(location.search).get('bigfire')) || 1) : 1;
+        if (bigfire > 1) { built.group.scale.multiplyScalar(bigfire); fireBoost = bigfire; }
         registerFateFire({
           group: built.group,
           position: new THREE.Vector3(prop.x, gy, prop.z),
@@ -1367,7 +1377,9 @@ export function buildLevel(
         // sprites always flickered; the LIGHT didn't). Specs opt out
         // with flicker: 0 (moonlight, arcane).
         const amp = lp.flicker ?? 0.10;
-        const baseIntensity = lp.intensity;
+        // fireBoost (?bigfire=) grows the bonfire's pool with its size so a
+        // scaled-up fate fire also throws proportionally more warm light.
+        const baseIntensity = lp.intensity * fireBoost;
         const p1 = buildRng() * Math.PI * 2;
         const p2 = buildRng() * Math.PI * 2;
         registerLight({
@@ -1380,7 +1392,7 @@ export function buildLevel(
             const t = performance.now() / 1000;
             return baseIntensity * bonfireDim * (1 + amp * (0.6 * Math.sin(t * 5.1 + p1) + 0.4 * Math.sin(t * 8.7 + p2)));
           } : () => baseIntensity * bonfireDim,
-          distance: lp.distance,
+          distance: lp.distance * fireBoost,
           decay: lp.decay,
         });
       }
