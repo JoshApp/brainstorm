@@ -208,6 +208,7 @@ export function spawnChallengeOffering(
     labelOffsetY: 1.0,
     promptLabel: 'begin the ritual',
     promptKind: 'trial',   // blood-red — a blood trial
+    cost: { danger: true },  // "⚔ peril" chip — the price is the fight
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     onUse() {
       if (accepted) return;

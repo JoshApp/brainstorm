@@ -119,6 +119,7 @@ export function spawnReliquary(
     radius: 1.6,
     labelOffsetY: 1.5,
     promptLabel: 'UNLOCK',
+    cost: { itemId: KEY_ID },   // "give 🔑" chip — a skeleton key opens it
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
     onUse() {

@@ -195,7 +195,7 @@ function formatCost(cost: import('../interactables/types').Interactable['cost'])
   const parts: string[] = [];
   if (cost.hp) parts.push(`−${cost.hp} ❤`);
   if (cost.gold) parts.push(`${cost.gold} ◎`);
-  if (cost.itemId) parts.push(cost.itemId === 'key' ? 'give 🔑' : 'give ✦');
+  if (cost.itemId) parts.push(/key/i.test(cost.itemId) ? 'give 🔑' : 'give ✦');
   if (cost.danger) parts.push('⚔ peril');
   if (parts.length === 0) return null;
   // Colour by the dominant cost: HP/danger read blood-red, gold reads amber,

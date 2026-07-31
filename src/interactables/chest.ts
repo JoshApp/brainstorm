@@ -99,6 +99,9 @@ export function spawnChest(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: 'OPEN',
+    // Silver + gold chests are locked — show the "give 🔑" cost up front so the
+    // player knows before walking up. Wood chests are free (no chip).
+    cost: (tier === 'silver' || tier === 'gold') ? { itemId: KEY_ID } : undefined,
     onUse() {
       if (state !== 'closed') return;
       // Silver + gold are LOCKED — they cost a key (wood is free). A mimic of
