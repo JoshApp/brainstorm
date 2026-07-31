@@ -95,6 +95,7 @@ import { suppressNextDescentTitle, setDescentProgress, holdCover } from './ui/de
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { applyState } from './state/save-hydration';
 import { initCharacterTracking, resetCharacter } from './state/character';
+import { initWeaponUsage, resetWeaponUsage } from './player/weapon-usage';
 import { initRunStateListeners } from './state/run-state-listeners';
 import { type GameSystem } from './engine/loop';
 import { buildSystems } from './engine/systems';
@@ -1085,6 +1086,7 @@ validateContent();
 // floor entry is captured.
 initRunStateListeners();
 initCharacterTracking();
+initWeaponUsage();
 // Cinematic boss beats (music + room-mood flood on engage, slow-mo + shake +
 // colour-drain on death) — subscribed once to the boss lifecycle events.
 setupBossCinematics();
@@ -1594,6 +1596,7 @@ if (handleDebugScreenFlags()) {
         recordRunStart();
         resetRunDiscoveries();
         resetCharacter();
+        resetWeaponUsage();
         applyState(null);
         startRun('starter', 0);
       };

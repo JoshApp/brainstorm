@@ -6,6 +6,7 @@ import { createSheet, menuButton } from '../ui/menu-shell';
 import { getGold, spendGold } from '../state/run-state';
 import { damagePlayer, getPlayerHp } from '../player/health';
 import { getEquipped, setSlot } from '../player/equipment';
+import { getWeaponHits } from '../player/weapon-usage';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
 import { applyBuff } from '../ecs/buffs';
@@ -46,8 +47,13 @@ import type { StyleMaterials } from '../style/materials';
 
 const GOLD_TITHE_BASE = 25;       // scaled up with depth
 const BLOOD_TITHE_HP = 2;
+// Landed-hits threshold above which the basin treats the tithed weapon as your
+// true MAIN — a real sacrifice it will honour. Below it, the blade reads as a
+// barely-blooded castoff and the basin scorns the cheap trade (you can't swap to
+// a junk weapon a step before the hollow and cheese a better one out of it).
+const MAIN_WEAPON_MIN_HITS = 12;
 
-type TitheKind = 'blood' | 'gold' | 'weapon';
+type TitheKind = 'blood' | 'gold' | 'weapon' | 'weapon-castoff';
 
 interface Outcome {
   weight: number;
@@ -132,6 +138,13 @@ const TABLES: Record<TitheKind, Outcome[]> = {
     { weight: 5, apply: grantWeapon(4, 'The basin keeps the blade. It returns another.') },
     { weight: 2, apply: grantWeapon(6, 'The dark weighs the gift, and is moved.') },
     { weight: 2, apply: scorn('The basin keeps the blade. That is all.') },
+  ],
+  // A castoff — a blade you'd barely bloodied. The basin sees the cheap trade for
+  // what it is: mostly it just keeps the junk, rarely it indulges you.
+  'weapon-castoff': [
+    { weight: 6, apply: scorn('The basin tastes a castoff. It keeps the thing and gives nothing.') },
+    { weight: 2, apply: grantLoot(2, 'A trinket surfaces — payment for your gall, not your gift.') },
+    { weight: 1, apply: grantWeapon(3, 'Even a cheap trade, the dark sometimes indulges.') },
   ],
 };
 
@@ -240,14 +253,22 @@ export function spawnTitheBasin(
       spendGold(goldPrice);
       resolveTithe('gold', { gold: goldPrice });
     });
+    // The basin honours a REAL sacrifice — the weapon you've carved this delve
+    // with — and scorns a castoff swapped in to cheese it. It reads your actual
+    // per-run usage (player/weapon-usage), so the offering means what it costs.
+    const honored = !!weapon && getWeaponHits(weapon.id) >= MAIN_WEAPON_MIN_HITS;
     row(
       weapon ? `YOUR WEAPON · ${weapon.name}` : 'YOUR WEAPON',
-      weapon ? 'It will be gone. Something may answer.' : 'Your hands are already empty.',
+      weapon
+        ? (honored
+            ? 'It has drunk deep with you. The basin will honour the loss.'
+            : 'A blade barely blooded — the basin knows a castoff, and pays one.')
+        : 'Your hands are already empty.',
       !!weapon,
       () => {
         if (!weapon) return;
         setSlot('weapon', null);
-        resolveTithe('weapon', { itemId: weapon.id });
+        resolveTithe(honored ? 'weapon' : 'weapon-castoff', { itemId: weapon.id });
       },
     );
     sheet.open();
