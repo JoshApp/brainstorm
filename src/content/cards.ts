@@ -16,6 +16,8 @@
 //   RESONANCE — scales with the kin in your Spread (synergy). The combo engine.
 
 import type { StatModifier } from '../combat/modifiers';
+import type { ContentStatus } from './content-status';
+import { isIncluded } from './content-status';
 import type { Domain } from '../art/cards';
 import type { PassiveSpec, TriggerEvent, EffectSpec } from '../ecs/types';
 import type { Transform } from '../combat/transforms';
@@ -72,6 +74,9 @@ export interface CardEffect {
 export interface CardSpec {
   id: string;
   name: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). */
+  status?: ContentStatus;
   arcana: Arcana;
   /** Domains this card belongs to. One = single-anchor; [] = domain-less
    *  "true Arcana"; two = a bridge. (See the domain trio in THE-CARDS.md.) */
@@ -237,7 +242,7 @@ export function dealCards(
   const { arcana, exclude = [], rng = Math.random } = opts;
   const ex = new Set(exclude);
   const pool = Object.values(CARDS)
-    .filter((c) => (!arcana || c.arcana === arcana) && !ex.has(c.id))
+    .filter((c) => (!arcana || c.arcana === arcana) && !ex.has(c.id) && isIncluded(c))
     .map((c) => c.id);
   for (let i = pool.length - 1; i > 0; i--) {  // Fisher–Yates
     const j = Math.floor(rng() * (i + 1));

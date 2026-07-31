@@ -13,6 +13,7 @@
 // the "expand as we author" seam); individual rites just compose what's there.
 
 import type { Domain } from '../art/cards';
+import type { ContentStatus } from './content-status';
 
 /** One composable step of a rite. Add kinds here (+ a handler in combat/rites.ts)
  *  to widen what rites can DO; existing rites are unaffected. */
@@ -43,6 +44,9 @@ export interface RiteMorphTier {
 export interface RiteSpec {
   id: string;
   name: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). */
+  status?: ContentStatus;
   domain: Domain;
   hungerCost: number;
   /** One-line identity (broadcast register). */

@@ -20,6 +20,7 @@ import type { LevelSpec, EnemySpawnSpec, TileMap, PropSpec } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMIES } from '../content/enemies';
+import { isIncluded } from '../content/content-status';
 import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, type Role } from '../content/encounters';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
@@ -52,6 +53,12 @@ function hashSeed(idOrDepth: string | number, seed: number): number {
 type EnemyRoll = { enemyId: string; weight: number };
 
 function rollTableFor(depth: number): EnemyRoll[] {
+  // Include-flag: dev/draft enemies drop out of the pool for this build. Filters
+  // the raw table here so pickWeighted AND rollPack's `available` set (derived
+  // from this table) both respect it in one place.
+  return rollTableForRaw(depth).filter((r) => isIncluded(ENEMIES[r.enemyId]));
+}
+function rollTableForRaw(depth: number): EnemyRoll[] {
   // Depth 3-4: mostly trash mobs, occasional skirmisher. Ooze
   // shows up here too — the AoE-or-suffer math is a worthwhile
   // mid-early teach.

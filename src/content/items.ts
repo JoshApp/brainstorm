@@ -1,4 +1,5 @@
 import type { ModelSpec } from '../ecs/model-types';
+import type { ContentStatus } from './content-status';
 import { CONFIG } from '../config';
 import type { StatModifier } from '../combat/modifiers';
 import type { MoveStep } from '../combat/move-timeline';
@@ -346,6 +347,9 @@ export interface ItemSpec {
   kind: ItemKind;
   /** Display name shown in the pickup-notification overlay. */
   name: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). Covers weapons + relics too. */
+  status?: ContentStatus;
   /** Rarity tier — drives UI tint + (future) drop weighting. Default mundane. */
   rarity?: Rarity;
   /** Short flavor line shown in the details panel under the name. */

@@ -3,6 +3,9 @@ import { AFFIXES } from './affixes';
 import { SETS } from './sets';
 import { BUFFS } from './buffs';
 import { ENEMIES, type EnemySpec } from './enemies';
+import { BOSSES } from './bosses';
+import { ACTS } from '../level/acts';
+import { statusOf } from './content-status';
 import { isProjectileRegistered } from '../combat/projectile-pool';
 import type { ModelSpec } from '../ecs/model-types';
 
@@ -120,12 +123,31 @@ function validateAffixesAndSets(errs: string[]): void {
  * complete list of broken references if any are found. Call once at boot,
  * AFTER registerProjectiles().
  */
+/** Every Act's boss must be a RELEASE-status boss (and its enemy release too).
+ *  An Act always runs; a dev/draft boss would make a release build unbeatable —
+ *  so the include-flag must never gate an act boss out. A hard error, not a
+ *  silent skip. */
+function validateActBosses(errs: string[]): void {
+  for (const act of ACTS) {
+    const boss = BOSSES[act.bossId];
+    if (!boss) { errs.push(`Act ${act.number} '${act.name}' bossId '${act.bossId}' is not in BOSSES`); continue; }
+    if (statusOf(boss) !== 'release') {
+      errs.push(`Act ${act.number} boss '${act.bossId}' has status '${statusOf(boss)}' — an Act boss must be 'release' (the act always runs; a gated boss makes a release build unbeatable)`);
+    }
+    const enemy = ENEMIES[boss.enemyId];
+    if (enemy && statusOf(enemy) !== 'release') {
+      errs.push(`Act ${act.number} boss enemy '${boss.enemyId}' has status '${statusOf(enemy)}' — must be 'release'`);
+    }
+  }
+}
+
 export function validateContent(): void {
   const errs: string[] = [];
   const warns: string[] = [];
   for (const [id, item] of Object.entries(ITEMS)) validateItem(id, item, errs, warns);
   for (const [id, spec] of Object.entries(ENEMIES)) validateEnemy(id, spec, errs, warns);
   validateAffixesAndSets(errs);
+  validateActBosses(errs);
   for (const warn of warns) console.warn(`[content] ${warn}`);
   if (errs.length) {
     throw new Error(

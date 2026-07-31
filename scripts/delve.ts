@@ -34,6 +34,7 @@ DELVE — creator suite (author · preview · debug · play)
 
   MODELS & CONTENT
   delve list [vaults|mobs|items]    what can I point the tools at?
+  delve inventory [--json f|--md f] FULL catalog (all families + include-flag status)
   delve weapons                     weapon stat table — derived reach · class · arc
   delve bench <subject> [flags]     author/inspect a MODEL (viewmodel-<id>, mob-<id>, model-<id>)
                                       --hand drop into the hand · --ortho 4-view · --debug slots+bbox
@@ -159,6 +160,7 @@ function weapons() {
 switch (cmd) {
   case undefined: case 'help': case '--help': index(); break;
   case 'list': list(rest[0]); break;
+  case 'inventory': delegate('inventory'); break;
   case 'check': check(Number(rest[0]), Number(rest[1] ?? 1)); break;
   case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1']); break;
   case 'weapons': weapons(); break;

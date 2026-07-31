@@ -15,6 +15,7 @@
 
 import { rollLoot } from './loot';
 import { ITEMS } from './items';
+import { isIncluded } from './content-status';
 import type { ItemSpec, ItemKind, Rarity } from './items';
 
 // The three gear SLOTS. Relics are their own pool, so gear pools never leak one.
@@ -173,7 +174,8 @@ function rollGroup(entry: LootEntry, depth: number, rand: () => number): ItemSpe
   const g = GROUPS[entry.from!];
   if (!g) return null;
   if (g.items && g.items.length) {
-    const pool = g.items.map((id) => ITEMS[id]).filter((it): it is ItemSpec => !!it);
+    // Include-flag: an explicitly-listed dev/draft item is excluded from this build.
+    const pool = g.items.map((id) => ITEMS[id]).filter((it): it is ItemSpec => !!it && isIncluded(it));
     return pool.length ? pool[Math.floor(rand() * pool.length)] : null;
   }
   const minRarity = typeof entry.minRarity === 'function' ? entry.minRarity(depth) : entry.minRarity;

@@ -1,4 +1,5 @@
 import type { StatModifier } from '../combat/modifiers';
+import type { ContentStatus } from './content-status';
 import { gameRng } from '../engine/rng';
 
 // Affix system — ARPG-lite hybrid for DELVE.
@@ -23,6 +24,9 @@ import { gameRng } from '../engine/rng';
 export interface AffixSpec {
   /** Stable id; referenced by ItemSpec.affixPool. */
   id: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). */
+  status?: ContentStatus;
   /** Suffix appended to the item name on instances that roll this. */
   suffix: string;
   /** Pool weight — higher = more likely to roll. Default 1. */

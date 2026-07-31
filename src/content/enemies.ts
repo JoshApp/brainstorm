@@ -1,4 +1,5 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
+import type { ContentStatus } from './content-status';
 import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
@@ -51,6 +52,9 @@ export interface EnemySpec {
   id: string;
   /** Display name (for future tooltip / kill log / epitaph use). */
   name: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). */
+  status?: ContentStatus;
 
   /** What this creature spills when cut. Defaults to mortal red.
    *  Oozes run ichor-green; skeletons shed pale dust (see bloodAmount). */

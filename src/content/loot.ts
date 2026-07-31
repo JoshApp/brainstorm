@@ -21,6 +21,7 @@
 // right floors automatically. No pool editing.
 
 import { ITEMS, RARITY_ORDER, type ItemSpec, type Rarity, type ItemKind } from './items';
+import { isIncluded } from './content-status';
 
 // ── Rarity curve ────────────────────────────────────────────────────────
 // Weight per rarity as a function of a "quality" scalar q (higher = richer
@@ -70,6 +71,7 @@ function buildIndex(): LootIndex {
   for (const id in ITEMS) {
     const item = ITEMS[id];
     if (item.drop?.noDrop) continue;              // hand-distributed only
+    if (!isIncluded(item)) continue;              // dev/draft content, excluded from this build
     const rarity = item.rarity ?? 'mundane';
     idx[rarity].push({
       id,

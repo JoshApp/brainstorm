@@ -1,4 +1,5 @@
 import type { EnemySpec } from './enemies';
+import type { ContentStatus } from './content-status';
 
 // First-class boss architecture.
 //
@@ -36,6 +37,9 @@ import type { EnemySpec } from './enemies';
 export interface BossSpec {
   /** Stable id used by Act.bossId + by the intro card lookup. */
   id: string;
+  /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
+   *  production build (see content-status.ts). */
+  status?: ContentStatus;
   /** EnemySpec id to actually spawn (must exist in ENEMIES). */
   enemyId: string;
 
