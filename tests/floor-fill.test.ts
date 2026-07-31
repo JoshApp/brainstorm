@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { assignFloorRoles, type RoomNode } from '../src/level/floor-roles';
-import { fillDefiningFind, type ContentSpot } from '../src/level/floor-fill';
+import { fillDefiningFind, fillQuestion, type ContentSpot } from '../src/level/floor-fill';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -81,6 +81,32 @@ test('deterministic — same inputs → same find', () => {
   const a = fillDefiningFind(spots, roles, GRANT, 6, lcg(999));
   const b = fillDefiningFind(spots, roles, GRANT, 6, lcg(999));
   assert.deepEqual(a, b);
+});
+
+// ── fillQuestion: SMART PLACEMENT — keep the question out of the find's room ──
+
+const at = (roomId: string, x: number, z: number, focal = false): ContentSpot => ({ x, z, roomId, focal });
+
+test('the question avoids the find\'s room when another room is available', () => {
+  // find claimed a spot in branch-3; a marker exists in both branch-3 and vault-1.
+  const findSpot = at('branch-3', 0, 0, true);
+  const spots = [at('branch-3', 1, 0, true), at('vault-1', 5, 5, false)];
+  for (let seed = 0; seed < 30; seed++) {
+    const r = fillQuestion(spots, roles, ['fountain'], 3, 6, lcg(seed), findSpot);
+    assert.ok(r, `seed ${seed}: expected a deal`);
+    assert.equal(r!.roomId, 'vault-1', `seed ${seed}: deal should leave the find's room`);
+  }
+});
+
+test('forced to share the find\'s room, the question keeps its distance', () => {
+  // Only branch-3 has eligible markers: one on top of the find, one 5m away.
+  const findSpot = at('branch-3', 0, 0, true);
+  const spots = [at('branch-3', 0, 0, true), at('branch-3', 5, 0, true)];
+  for (let seed = 0; seed < 30; seed++) {
+    const r = fillQuestion(spots, roles, ['fountain'], 3, 6, lcg(seed), findSpot);
+    assert.ok(r, `seed ${seed}: expected a deal`);
+    assert.ok((r!.x - findSpot.x) ** 2 + (r!.z - findSpot.z) ** 2 >= 16, `seed ${seed}: deal too close to find`);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

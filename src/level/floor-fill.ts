@@ -68,10 +68,29 @@ export function fillQuestion(
 ): StagedDeal | null {
   if (allowed.length === 0) return null;
 
-  const eligible = spots.filter(
+  let eligible = spots.filter(
     (s) => roles.caps(s.roomId).allowEvent && s !== exclude,
   );
   if (eligible.length === 0) return null;
+
+  // SMART PLACEMENT (not blind dedup): don't drop the floor's question into the
+  // SAME ROOM as its reward (the find) — a chest and a fountain crammed together
+  // reads as a pile, and the two beats stop being separate decisions. Prefer any
+  // other room; only fall back to the find's room if the floor has nowhere else,
+  // and even then require real spacing from the find's spot so they don't overlap.
+  if (exclude) {
+    const otherRoom = eligible.filter((s) => s.roomId !== exclude.roomId);
+    if (otherRoom.length > 0) {
+      eligible = otherRoom;
+    } else {
+      const MIN_SEP2 = 4 * 4;   // ≥4m apart when forced to share the find's room
+      const spaced = eligible.filter(
+        (s) => (s.x - exclude.x) ** 2 + (s.z - exclude.z) ** 2 >= MIN_SEP2,
+      );
+      if (spaced.length > 0) eligible = spaced;
+    }
+  }
+
   const focal = eligible.filter((s) => s.focal);
   const pool = focal.length > 0 ? focal : eligible;
   const spot = pool.length === 1 ? pool[0] : pool[Math.floor(rand() * pool.length)];
