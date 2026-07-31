@@ -5,6 +5,7 @@ import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import type { DropResult } from '../content/drop-tables';
 import { KEY_ID } from '../content/drop-tables';
 import { getCount, removeItem } from '../player/inventory';
+import { hasSeenKey } from '../state/key-progress';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerInteractable, unregisterInteractable } from './system';
 import { registerLight, unregisterLight } from '../scene/light-pool';
@@ -61,6 +62,13 @@ export function spawnChest(
   isMimic: boolean = false,
   onMimic?: (worldPos: THREE.Vector3) => void,
 ) {
+  // KEY GATE: a locked GOLD chest must not appear before the run has produced
+  // its first key — you shouldn't meet a chamber you can't open with no chance
+  // at a key yet (the "gold chamber in the first room" bug). Until a key has
+  // been seen, a gold chest reads + opens as a free SILVER one. Catches gold
+  // chests from every source (rolled or vault-authored), at the one build site.
+  if (tier === 'gold' && !hasSeenKey()) tier = 'silver';
+
   const built = buildModel(TIER_MODEL[tier]);
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
