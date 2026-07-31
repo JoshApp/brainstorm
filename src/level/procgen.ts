@@ -130,7 +130,9 @@ function rollTableForRaw(depth: number): EnemyRoll[] {
     { enemyId: 'skeleton',      weight: 2 },
     { enemyId: 'spider',        weight: 1 },
     { enemyId: 'stoneguard',    weight: 2 },
-    { enemyId: 'wraith',        weight: 1 },
+    // (Wraith removed from the random pool — it's now a two-phase, boss-scale
+    //  set-piece fight, the Hollow Choir. It appears as an authored encounter,
+    //  not a stray roll that would drop an unstunnable elite into a trash room.)
     { enemyId: 'carrion-hound', weight: 2 },
     { enemyId: 'sump-wisp',     weight: 2 },
     // Plague spore commits more at deep dungeon — Verdant Rot

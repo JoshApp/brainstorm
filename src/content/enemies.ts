@@ -484,15 +484,94 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // trash, and named, so it reads as a set-piece, not a stray mob.
     isBoss: true,
     bossName: 'The Hollow Choir',
-    hp: 18,                 // boss HP — a real fight, gives the bar range
-    moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
-    attackDamage: 2,        // hits twice as hard as the trash mobs
-    attackRange: 1.9,
-    strikeRange: 1.75,
+    hp: 1,                  // unused — phases own the HP pool now
+    moveSpeed: 1.5,         // slow drift in phase 1
+    attackDamage: 2,        // mirrored by per-ability damage below
+    // Long attempt range so it engages with its bolt "choir" from across the
+    // cathedral; the per-ability minRange/maxRange bands govern which tool it
+    // reaches for. strike/windup/recover below still feed the audio sizing +
+    // the debug poser + the default-ability fallback.
+    attackRange: 12,
+    strikeRange: 2.0,
     windupTime: 0.95,       // long, readable telegraph
     strikeTime: 0.22,
     recoverTime: 0.75,
     damageType: 'magic',    // bypasses physical armor entirely
+    // ── THE HOLLOW CHOIR — a two-phase spectral fight (task #18) ──────────
+    // Phase 1 GATHERS: a spectral claw up close, a single probing note, and a
+    // three-bolt CHORD at range — you learn to close the gap and punish the
+    // cast recovery. It can still be staggered here (poise 20).
+    // Phase 2 SINGS (below half): it turns UNSTUNNABLE (poise 9999 — "it sings
+    // through your blows"), surges through space on a phantom lunge, wails a
+    // radial dirge up close, and looses a five-voice barrage. The stagger game
+    // you learned in phase 1 stops working — now it's pure spacing + dodging.
+    phases: [
+      {
+        hp: 12,
+        moveSpeed: 1.5,
+        poise: 20,
+        abilities: [
+          // Spectral claw — the only close tool. Deflectable (a melee opener).
+          {
+            id: 'spectral-claw', minRange: 0, maxRange: 2.8,
+            windup: 0.9, strike: 0.22, recover: 0.65, cooldown: 1.4, pose: 'swing',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 2.0, damage: 2, element: 'arcane' } }],
+          },
+          // Single note — one homing arcane bolt, a probing voice at mid range.
+          {
+            id: 'single-note', minRange: 2.5, maxRange: 11,
+            windup: 0.9, strike: 0.2, recover: 0.6, cooldown: 3.0, pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: {
+              kind: 'projectile', projectileId: 'arcane-bolt', muzzle: [0, 1.7, 0], damage: 2, toward: 'player',
+            } }],
+          },
+          // The chord — three bolts in a fan (the choir's voices). Sidestep the
+          // spread; the gaps between the three are the dodge.
+          {
+            id: 'chord', minRange: 3, maxRange: 12,
+            windup: 1.1, strike: 0.25, recover: 0.7, cooldown: 5.0, pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: {
+              kind: 'projectile', projectileId: 'arcane-bolt', muzzle: [0, 1.7, 0], damage: 2,
+              toward: 'player', count: 3, spreadDeg: 34,
+            } }],
+          },
+        ],
+      },
+      {
+        hp: 9,
+        moveSpeed: 2.2,          // it quickens as it sings
+        poise: 9999,             // UNSTUNNABLE — sings through your blows
+        invulnEntryTime: 0.8,    // a beat of untouchable as it rises into the second voice
+        abilities: [
+          // Phantom lunge — surges through space at where you were. Committed;
+          // sidestep the snapshot marker.
+          {
+            id: 'phantom-lunge', minRange: 3, maxRange: 9,
+            windup: 0.8, strike: 0.5, recover: 0.9, cooldown: 5.0, pose: 'charge',
+            steps: [{ trigger: { at: 0 }, action: {
+              kind: 'dash', toward: 'lockedTarget', speed: 8.0, contactReach: 1.7, damage: 3, element: 'arcane',
+            } }],
+          },
+          // The dirge — a radial wail centred on itself. Only dangerous if you're
+          // hugging; step outside the ring before the note lands.
+          {
+            id: 'dirge', minRange: 0, maxRange: 4,
+            windup: 1.1, strike: 0.2, recover: 0.9, cooldown: 6.0, pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 3.0, damage: 3, element: 'arcane' } }],
+          },
+          // Full chorus — five voices in a wide fan. The signature. Read the
+          // spread and thread a gap, or break line of sight behind a pillar.
+          {
+            id: 'full-chorus', minRange: 2, maxRange: 12,
+            windup: 1.2, strike: 0.3, recover: 0.8, cooldown: 6.0, pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: {
+              kind: 'projectile', projectileId: 'arcane-bolt', muzzle: [0, 1.7, 0], damage: 2,
+              toward: 'player', count: 5, spreadDeg: 60,
+            } }],
+          },
+        ],
+      },
+    ],
     // GHOST archetype — a hovering spectral form (no legs), tapering into a
     // wisp. Float + sway come from 'spectral' presence; the reach from the
     // telegraph (no clip bundle → telegraph pose stays on). Translucent teal

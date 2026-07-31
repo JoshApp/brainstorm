@@ -582,6 +582,10 @@ export function createEnemy(
     abilities = resolveAbilities(spec, currentAbilities);
     const ent = getEntity(entityId);
     if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
+    // Per-phase poise: a phase can become UNSTUNNABLE (high poise) or flimsier.
+    // Refill the pool on entry regardless — a new phase is a fresh stagger bar.
+    if (next.poise !== undefined) poiseMax = next.poise;
+    poiseLeft = poiseMax;
     firedPartBreaks = new Set();
     phaseInvulnTimer = animate ? (next.invulnEntryTime ?? 0) : 0;
     if (next.hideParts) hidePartsByName(next.hideParts);
@@ -642,7 +646,10 @@ export function createEnemy(
   // stagger weapon earns the break over ~2-3 committed hits (a charged heavy
   // halves that); tanks set an explicit higher `poise`. Bosses get a much
   // larger pool (rarely staggered unless spec-tuned).
-  const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
+  // A phase may override poise (a very high value = effectively unstunnable);
+  // phase[0]'s override wins at spawn, else the spec/default. `let` so a phase
+  // transition can raise or lower it.
+  let poiseMax = phases?.[0].poise ?? spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
   let falterCd = 0;         // cooldown after a FALTER so heavy hits can't chain-lock a windup forever

@@ -383,6 +383,11 @@ export interface PhaseSpec {
   abilities: Ability[];
   /** Optional move-speed override. Defaults to the spec's moveSpeed. */
   moveSpeed?: number;
+  /** Optional POISE override for this phase — the stagger pool the player's
+   *  heavy hits chip. A very high value makes the phase effectively UNSTUNNABLE
+   *  ("it sings through your blows"); omit to keep the pool from the previous
+   *  phase. Refilled on phase entry either way. See the poise system in enemy.ts. */
+  poise?: number;
   /** Names of model parts to HIDE when this phase begins (e.g. legs
    *  for the skeleton's crawl phase). Cumulative — parts hidden in
    *  earlier phases stay hidden. */
