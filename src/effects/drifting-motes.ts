@@ -41,25 +41,7 @@ const DRIFT_SPEED_UP   = CONFIG.EFFECTS_MOTES.DRIFT_SPEED_UP;
 const BASE_SIZE        = CONFIG.EFFECTS_MOTES.BASE_SIZE;
 const FADE_FRACTION    = CONFIG.EFFECTS_MOTES.FADE_FRACTION;
 
-interface Mote {
-  px: number; py: number; pz: number;
-  vx: number; vy: number; vz: number;
-  life: number;
-  age: number;
-  size: number;     // current half-extent, after the fade ramp
-  rect: WalkableRect;
-}
-
-let motes: Mote[] = [];
 let rects: WalkableRect[] = [];
-let material: THREE.MeshBasicMaterial | null = null;
-let geometry: THREE.BufferGeometry | null = null;
-let mesh: THREE.Mesh | null = null;
-let positions: Float32Array | null = null;
-
-// Reused per-frame billboard basis (camera right / up in world space).
-const right = new THREE.Vector3();
-const up = new THREE.Vector3();
 
 // ── WebGPU path (one draw, ZERO per-frame buffer rewrite) ──
 // The CPU path rewrites every quad corner each frame + re-uploads the whole
@@ -166,93 +148,29 @@ function initMotesWebGPU(scene: THREE.Object3D, tint: number): void {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export function tickDriftingMotes(dt: number, camera: THREE.Camera): void {
-  // GPU path: the whole drift + billboard runs in the vertex node. All the CPU
-  // does is hand the GPU this frame's camera right/up. No buffer rewrite.
-  if (gpuMesh) {
-    const e = camera.matrixWorld.elements;
-    nCamRight.value.set(e[0], e[1], e[2]).normalize();
-    nCamUp.value.set(e[4], e[5], e[6]).normalize();
-    return;
-  }
-  if (!geometry || !positions) return;
-
-  // Screen-aligned billboard basis: the camera's world right + up. Writing
-  // each quad's corners along these gives the same facing a Sprite has.
+export function tickDriftingMotes(_dt: number, camera: THREE.Camera): void {
+  // The whole drift + billboard runs in the vertex node. All the CPU does each
+  // frame is hand the GPU this frame's camera right/up. No buffer rewrite.
+  if (!gpuMesh) return;
   const e = camera.matrixWorld.elements;
-  right.set(e[0], e[1], e[2]).normalize();
-  up.set(e[4], e[5], e[6]).normalize();
-
-  for (let i = 0; i < motes.length; i++) {
-    const m = motes[i];
-    m.px += m.vx * dt;
-    m.py += m.vy * dt;
-    m.pz += m.vz * dt;
-    m.age += dt;
-    if (m.age >= m.life) respawn(m, false);
-
-    // Scale-based fade in / fade out — ramps up over the first 18% of life
-    // and down over the last 18%, so a mote is born and dies as a vanishing
-    // speck. Keeps the whole pool on one (opacity-static) material.
-    const t = m.age / m.life;
-    let sizeMul = 1.0;
-    if (t < FADE_FRACTION) sizeMul = t / FADE_FRACTION;
-    else if (t > 1 - FADE_FRACTION) sizeMul = (1 - t) / FADE_FRACTION;
-    const h = (BASE_SIZE * sizeMul) * 0.5;   // half-extent
-
-    // Four corners around the mote centre, along the camera basis.
-    const rx = right.x * h, ry = right.y * h, rz = right.z * h;
-    const ux = up.x * h,    uy = up.y * h,    uz = up.z * h;
-    const o = i * 12;
-    positions[o]     = m.px - rx - ux; positions[o + 1]  = m.py - ry - uy; positions[o + 2]  = m.pz - rz - uz;
-    positions[o + 3] = m.px + rx - ux; positions[o + 4]  = m.py + ry - uy; positions[o + 5]  = m.pz + rz - uz;
-    positions[o + 6] = m.px + rx + ux; positions[o + 7]  = m.py + ry + uy; positions[o + 8]  = m.pz + rz + uz;
-    positions[o + 9] = m.px - rx + ux; positions[o + 10] = m.py - ry + uy; positions[o + 11] = m.pz - rz + uz;
-  }
-  geometry.attributes.position.needsUpdate = true;
+  nCamRight.value.set(e[0], e[1], e[2]).normalize();
+  nCamUp.value.set(e[4], e[5], e[6]).normalize();
 }
 
 /** Hide/show the whole mote batch — used by the GPU-attribution probe to
  *  measure what the motes cost. No-op if motes aren't initialised. */
 export function setMotesHidden(hidden: boolean): void {
-  if (mesh) mesh.visible = !hidden;
   if (gpuMesh) gpuMesh.visible = !hidden;
 }
 
 export function clearDriftingMotes(): void {
-  mesh?.parent?.remove(mesh);
-  geometry?.dispose();
-  material?.dispose();
   if (gpuMesh) {
     gpuMesh.parent?.remove(gpuMesh);
     gpuMesh.geometry.dispose();
     (gpuMesh.material as THREE.Material).dispose();
     gpuMesh = null;
   }
-  motes = [];
   rects = [];
-  mesh = null;
-  geometry = null;
-  material = null;
-  positions = null;
-}
-
-function respawn(m: Mote, ageJitter: boolean): void {
-  m.rect = pickRect(rects);
-  m.px = m.rect.x - m.rect.w / 2 + Math.random() * m.rect.w;
-  m.pz = m.rect.z - m.rect.d / 2 + Math.random() * m.rect.d;
-  m.py = SPAWN_Y_MIN + Math.random() * (SPAWN_Y_MAX - SPAWN_Y_MIN);
-  // Random gentle drift — mostly upward with small lateral
-  // wander, like fine dust in a still room.
-  m.vx = (Math.random() - 0.5) * DRIFT_SPEED_LAT;
-  m.vy = (Math.random() * 0.5 + 0.5) * DRIFT_SPEED_UP;
-  m.vz = (Math.random() - 0.5) * DRIFT_SPEED_LAT;
-  m.life = LIFE_MIN + Math.random() * (LIFE_MAX - LIFE_MIN);
-  // First-tick jitter: when the level loads, all motes shouldn't
-  // start fresh at age 0 (they'd all pop in together). Seed each
-  // with a random age inside its lifespan so the pool is already
-  // mid-cycle.
-  m.age = ageJitter ? Math.random() * m.life : 0;
 }
 
 /** Area-weighted pick of a rect. Bigger rooms host more motes. */
