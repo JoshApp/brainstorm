@@ -24,3 +24,23 @@ export function resolveDamage(
   const applied = Math.max(1, Math.round(boosted - armor));
   return { applied, blocked: Math.max(0, boosted - applied) };
 }
+
+/**
+ * The pre-armor strike damage a swing/shot deals: `base`, crit-multiplied when
+ * `crit`, then times every situational multiplier (charge, finisher, cleave,
+ * zone, execute, step, …). The crit ROLL stays at the call site — it needs RNG
+ * and per-zone bonuses — but this composes the number, so the melee and ranged
+ * paths share ONE tested formula instead of re-inlining the multiplier product
+ * (melee had a 9-factor inline chain; ranged its own). Multiplication order is
+ * irrelevant to the result, so this is exactly behavior-preserving.
+ */
+export function composeStrikeDamage(
+  base: number,
+  crit: boolean,
+  critMultiplier: number,
+  multipliers: readonly number[] = [],
+): number {
+  let dmg = crit ? base * critMultiplier : base;
+  for (const m of multipliers) dmg *= m;
+  return dmg;
+}

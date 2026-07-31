@@ -15,6 +15,7 @@ import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
 import { computePlayerStats } from './modifiers';
+import { composeStrikeDamage } from './damage-math';
 import { gameRngChance, gameRng } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
@@ -373,7 +374,7 @@ export function createCombatSystem(
     // +80% damage. Held aim with a focus / charged crossbow becomes
     // worth the wait.
     const chargeMul = 1 + currentSwingCharge * 0.80;
-    const dmg = (crit ? weapon.damage * (weapon.critMultiplier ?? 2) : weapon.damage) * chargeMul;
+    const dmg = composeStrikeDamage(weapon.damage, crit, weapon.critMultiplier ?? 2, [chargeMul]);
 
     // Multi-projectile FAN — throwing knives spawn N projectiles per
     // strike with angular spread around the aim line. count=1 (the
@@ -789,7 +790,8 @@ export function createCombatSystem(
       // zone's additive critBonus (the head — crits more often, not always).
       const crit = (zone?.crit ?? false) || gameRngChance(critChance + (zone?.critBonus ?? 0));
       const execMul = isExecute ? CONFIG.EXECUTE.DAMAGE_MUL : 1;
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul * execMul * stepDamageMul;
+      const baseDamage = composeStrikeDamage(stats.damage, crit, critMult,
+        [finisherMult, chargeDamageMul, counterDmgMul, zoneMul, cleaveMul, execMul, stepDamageMul]);
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,

@@ -7,7 +7,7 @@
 // curve — against silent regressions as the stat pipeline grows.
 
 import assert from 'node:assert/strict';
-import { resolveDamage } from '../src/combat/damage-math';
+import { resolveDamage, composeStrikeDamage } from '../src/combat/damage-math';
 import {
   xpFloorForLevel, levelForXp, xpInLevel, xpForNextLevel, XP_PER_LEVEL,
 } from '../src/state/leveling';
@@ -101,6 +101,32 @@ test('xpForNextLevel equals the gap to the next floor', () => {
   assert.equal(xpForNextLevel(10), 20);
   // At L3 (xp 30..59): floor(4) - floor(3) = 60 - 30 = 30
   assert.equal(xpForNextLevel(30), 30);
+});
+
+// ── composeStrikeDamage (shared by melee + ranged) ─────────────────────────
+test('no crit, no multipliers → base', () => {
+  assert.equal(composeStrikeDamage(10, false, 2, []), 10);
+  assert.equal(composeStrikeDamage(10, false, 2), 10);
+});
+
+test('crit multiplies the base before the situational multipliers', () => {
+  assert.equal(composeStrikeDamage(10, true, 2, []), 20);
+  // crit then ×1.8 charge: (10×2)×1.8 = 36
+  assert.equal(composeStrikeDamage(10, true, 2, [1.8]), 36);
+});
+
+test('multipliers compound in any order (matches the old inline product)', () => {
+  // (crit? 10×2 : 10) × 1.5 × 0.5 × 2 = 20 × 1.5 = 30, ×0.5 = 15, ×2 = 30
+  assert.equal(composeStrikeDamage(10, true, 2, [1.5, 0.5, 2]), 30);
+  // order-independence
+  assert.equal(composeStrikeDamage(10, true, 2, [2, 0.5, 1.5]), 30);
+});
+
+test('reproduces the melee 7-factor chain exactly', () => {
+  const base = 12, critMult = 2.5;
+  const muls = [1.3, 1.8, 1.1, 1.0, 0.7, 1.0, 1.0];   // finisher/charge/counter/zone/cleave/exec/step
+  const expected = (12 * 2.5) * 1.3 * 1.8 * 1.1 * 1.0 * 0.7 * 1.0 * 1.0;
+  assert.equal(composeStrikeDamage(base, true, critMult, muls), expected);
 });
 
 // ── Report ───────────────────────────────────────────────────────────────
