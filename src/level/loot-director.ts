@@ -35,7 +35,10 @@ function rollBudget(depth: number, rand: () => number): LootBudget {
   const chestCount = 1 + (rand() < 0.5 ? 1 : 0) + (rand() < 0.18 ? 1 : 0);   // 1–3
   const chestTiers = Array.from({ length: chestCount }, () => rollChestTier(depth, rand))
     .sort((a, b) => TIER_ORDER[a] - TIER_ORDER[b]);   // prized tiers claim major anchors first
-  const corpse = rand() < 0.28 ? 1 : 0;
+  // Fallen delvers are now a RARE find (was 28%/floor) — a body you stumble on
+  // every few floors, not clutter — and they carry a real reward for it (see the
+  // upgraded 'corpse' drop table). Rarity is what makes the loot feel earned.
+  const corpse = rand() < 0.14 ? 1 : 0;
   return { chestTiers, corpse };
 }
 

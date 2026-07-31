@@ -133,7 +133,18 @@ export const TABLES: Record<string, LootTable> = {
   'merchant':      T({ entries: [{ from: 'gear', bias: 2 }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
   'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') }] }),
-  'corpse':        T({ pools: [{ entries: [{ gold: [2, 6] }] }, { entries: [{ from: 'gear', bias: 1 }] }] } as LootTable),
+  // A fallen delver is now a RARE find (loot-director drops the per-floor odds),
+  // so what they died holding is a real reward, not a scrap: a fair purse AND a
+  // biased uncommon-or-better piece — gear usually, a relic often enough to be a
+  // score — with the rarity floor climbing as you descend (the "later, much
+  // better loot" ask). They carried their whole delve to their death; you take it.
+  'corpse':        T({ pools: [
+    { entries: [{ gold: [5, 12] }] },
+    { entries: [
+      { from: 'gear',   bias: 3, weight: 62, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') },
+      { from: 'relics', bias: 3, weight: 38, minRarity: (d) => (d >= 4 ? 'rare' : 'uncommon') },
+    ] },
+  ] } as LootTable),
   // A bone-shrine set-piece you SEARCH — a little gold, and a fair chance of gear
   // or a relic among the dead's leavings.
   'ossuary':       T({ pools: [
