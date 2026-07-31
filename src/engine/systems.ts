@@ -57,7 +57,7 @@ import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
 import { hpDrainAmount } from '../combat/transforms';
 import { isInCombat } from '../combat/combat-state';
-import { bleedPlayer } from '../player/health';
+import { bleedPlayer, redThirstFloorHp } from '../player/health';
 import { tickExhaustionHaptic } from '../combat/exhaustion-haptic';
 import { tickExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { tickBreath } from '../effects/breath';
@@ -123,6 +123,11 @@ export interface SystemDeps {
   /** The active room culler, or null when culling is off. */
   getRoomCuller: () => RoomCuller | null;
 }
+
+// Red Thirst rest-bleed cadence: seconds of out-of-combat time banked toward
+// the next heart lost. Module-level so it survives across the per-frame system
+// rebuild-free tick; reset to 0 the moment you're in combat or the rule is off.
+let thirstBleedAccum = 0;
 
 export function buildSystems(deps: SystemDeps): GameSystem[] {
   const {
@@ -374,11 +379,17 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'flask-drink', kind: 'sim', phase: 'unpaused', tick(ctx) { tickFlaskDrink(ctx.playerDt); } },
 
     // TRANSFORM out-of-combat bleed (Red Thirst): while a held fate drains HP
-    // and you're NOT fighting, you bleed (floored at 1 — pressure, not death).
-    // 'unpaused' + scaledDt so it stops in menus / hit-pause like everything else.
+    // and you're NOT fighting, you bleed — but in discrete HEART increments on a
+    // slow cadence, and only DOWN TO A FLOOR (half health). Resting weakens you;
+    // it never drags you to the near-death "floating" state the old smooth 2 HP/s
+    // drain did. 'unpaused' + scaledDt so it stops in menus / hit-pause.
     { name: 'transform-drain', kind: 'sim', phase: 'unpaused', tick(ctx) {
-      const perSec = hpDrainAmount('out-of-combat');
-      if (perSec > 0 && !isInCombat()) bleedPlayer(perSec * ctx.scaledDt);
+      const perTick = hpDrainAmount('out-of-combat');   // HP per heart-tick (0 = rule off)
+      if (perTick <= 0 || isInCombat()) { thirstBleedAccum = 0; return; }
+      thirstBleedAccum += ctx.scaledDt;
+      if (thirstBleedAccum < CONFIG.RED_THIRST.DRAIN_INTERVAL_S) return;
+      thirstBleedAccum = 0;
+      bleedPlayer(perTick, redThirstFloorHp());
     } },
 
     // Gassed = felt: a heartbeat haptic while exhausted. realDt so the cadence

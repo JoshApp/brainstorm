@@ -6,6 +6,8 @@ import { getPlayerAction } from '../combat/player-action';
 import { registerSimReset } from '../engine/sim-state';
 import { playHealSlurp, playFlaskUncork, playFlaskLower } from '../audio/sfx';
 import { flashHealGlow } from '../ui/vignette';
+import { applyBuff } from '../ecs/buffs';
+import { get } from '../ecs/world';
 
 // The flask DRINK — a channel, not an instant tap. Raise the flask, sip at
 // SIP_AT (that's when the heal lands and the charge is spent), lower it.
@@ -26,11 +28,15 @@ import { flashHealGlow } from '../ui/vignette';
 //   - consumable-bar.ts renders the progress ring + start/deny feedback
 
 export type DrinkRequestResult =
-  | 'started' | 'lowered' | 'drinking'          // start · lowered (dash/attack) · re-tap while drinking (ignore)
-  | 'empty' | 'full' | 'suppressed' | 'busy';   // withheld — caller shows why
+  | 'started' | 'fervor' | 'lowered' | 'drinking'   // start (heal · fervor) · lowered · re-tap (ignore)
+  | 'empty' | 'full' | 'suppressed' | 'busy';       // withheld — caller shows why
 
 let t = -1;          // seconds into the drink; -1 = not drinking
-let sipped = false;  // the sip landed (charge spent, heal applied)
+let sipped = false;  // the sip landed (charge spent, effect applied)
+// The drink's MODE, captured at start. 'heal' = normal restore. 'fervor' = under
+// Red Thirst, where normal healing is suppressed, the flask instead pours a
+// BLOOD RUSH (lifesteal + damage surge) so its charge isn't dead weight.
+let mode: 'heal' | 'fervor' = 'heal';
 
 /** True while the flask is raised (from start until lowered/finished). */
 export function isDrinkingFlask(): boolean { return t >= 0; }
@@ -55,13 +61,16 @@ export function getDrinkMoveMul(): number {
 export function requestFlaskDrink(): DrinkRequestResult {
   if (t >= 0) return 'drinking';   // already drinking — a second tap does nothing
   if (getFlask().charges <= 0) return 'empty';
-  if (getPlayerHp() >= getPlayerMaxHp()) return 'full';
-  if (passiveHealSuppressed()) return 'suppressed';   // Red Thirst — deny up front, not 1s in
+  const suppressed = passiveHealSuppressed();   // Red Thirst — heal path is closed
+  // Under suppression the flask becomes a FERVOR draught (a combat surge), so the
+  // "already at full HP" gate doesn't apply — you'd drink it to fight, not to mend.
+  if (!suppressed && getPlayerHp() >= getPlayerMaxHp()) return 'full';
   if (getPlayerAction() !== 'idle') return 'busy';    // mid-swing/dodge/parry — hands are full
   t = 0;
   sipped = false;
+  mode = suppressed ? 'fervor' : 'heal';
   playFlaskUncork();
-  return 'started';
+  return mode === 'fervor' ? 'fervor' : 'started';
 }
 
 /** Lower the flask now. Before the sip this is a free cancel (the charge was
@@ -84,19 +93,32 @@ export function tickFlaskDrink(dt: number): void {
   const p = t / CONFIG.FLASK.DRINK_S;
   if (!sipped && p >= CONFIG.FLASK.SIP_AT) {
     sipped = true;
-    // 'passive' heal — suppression is pre-checked at start, but a transform
-    // could land mid-drink; if the heal yields nothing, keep the charge.
-    const healed = healPlayer(getFlask().healPerCharge, 'passive');
-    if (healed > 0) {
-      spendCharge();
-      playHealSlurp();
-      flashHealGlow();
-      try { navigator.vibrate?.(18); } catch { /* unsupported */ }
+    if (mode === 'fervor') {
+      // Red Thirst: no heal — spend the charge on a BLOOD RUSH surge instead, so
+      // the flask still matters when it can't mend you.
+      const player = get('player');
+      if (player) {
+        applyBuff(player, CONFIG.RED_THIRST.FERVOR_BUFF, CONFIG.RED_THIRST.FERVOR_DURATION_S, 'player');
+        spendCharge();
+        playHealSlurp();
+        flashHealGlow();
+        try { navigator.vibrate?.(18); } catch { /* unsupported */ }
+      }
+    } else {
+      // 'passive' heal — suppression is pre-checked at start, but a transform
+      // could land mid-drink; if the heal yields nothing, keep the charge.
+      const healed = healPlayer(getFlask().healPerCharge, 'passive');
+      if (healed > 0) {
+        spendCharge();
+        playHealSlurp();
+        flashHealGlow();
+        try { navigator.vibrate?.(18); } catch { /* unsupported */ }
+      }
     }
   }
   if (p >= 1) t = -1;
 }
 
-function resetFlaskDrink(): void { t = -1; sipped = false; }
+function resetFlaskDrink(): void { t = -1; sipped = false; mode = 'heal'; }
 // sim-state: no drink survives a run start / floor teleport (see sim-state.ts).
 registerSimReset(resetFlaskDrink);

@@ -346,6 +346,7 @@ function updateFlaskButton(): void {
 function drinkFlaskWithFeedback(): void {
   switch (requestFlaskDrink()) {
     case 'started':    hapticVibrate(8); break;   // the uncork sound carries it
+    case 'fervor':     hapticVibrate(12); break;  // Red Thirst — a fury draught, not a heal
     case 'lowered':    hapticVibrate(8); break;   // deliberate cancel — quiet
     case 'drinking':   break;                     // re-tap while drinking — ignore, keep chugging
     case 'empty':      denyFlask('The flask runs dry.'); break;

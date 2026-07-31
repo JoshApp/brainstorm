@@ -813,6 +813,22 @@ export const CONFIG = {
                            // cancelling before this refunds implicitly (the charge never left)
     DRINK_MOVE_MUL: 0.45,  // walk speed while the flask is up — reposition, don't escape
   },
+  // === RED THIRST (the TRANSFORM fate: heal only by striking, bleed at rest) ===
+  // The out-of-combat bleed used to be a smooth 2 HP/s drain that emptied the
+  // whole bar in ~4s and parked you at 1 HP (near-death "floating"). Now it
+  // ticks in discrete HEART increments (2 HP), on a slow cadence, and only down
+  // to a FLOOR — resting weakens you, it doesn't kill you. You climb back above
+  // the floor only by landing blows (the fate's heal-on-hit). And with normal
+  // healing suppressed, the flask REPURPOSES to a fervor draught (see flask-drink).
+  RED_THIRST: {
+    HEART_HP: 2,           // one heart = 2 HP (matches the health-hearts UI)
+    DRAIN_INTERVAL_S: 2.5, // seconds out of combat between each heart lost
+    FLOOR_PCT: 0.5,        // bleeding stops at this fraction of max HP (heart-rounded)
+    // The flask, unable to heal under the thirst, spends its charge on this
+    // instead: a short surge of lifesteal + damage so you can carve health back.
+    FERVOR_BUFF: 'bloodrush',
+    FERVOR_DURATION_S: 6,
+  },
   PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
   PLAYER_HIT_SHAKE_DURATION: 0.28,

@@ -131,11 +131,16 @@ export const CARDS: Record<string, CardSpec> = {
   // that makes survival relentless aggression (no more sliders).
   'red-thirst': {
     id: 'red-thirst', name: 'Red Thirst', arcana: 'major', domains: ['blood'],
-    fate: 'You heal only by striking, and bleed when you rest.',
+    // The fate now SPELLS OUT the loop (Josh: "the description doesn't explain
+    // it") — no normal healing, rest bleeds you toward half, blows drink it back,
+    // and the flask turns to fury.
+    fate: 'Rest and you bleed to half. Strike and you drink deep. No cup mends you — the flask pours fury instead.',
     effect: {
       transform: [
         { rule: 'suppress-passive-heal' },            // fires/fountains/potions do nothing
-        { rule: 'hp-drain', per: 'out-of-combat', amount: 2 },   // HP/sec while out of combat
+        // Drains one HEART (2 HP) per tick, on a slow cadence, only down to a
+        // half-health floor (see config RED_THIRST + engine/systems transform-drain).
+        { rule: 'hp-drain', per: 'out-of-combat', amount: 2 },
       ],
       // ...but every blow you land drinks a little (the only way you mend now).
       triggers: [{ on: 'hit', chance: 1, effect: { type: 'heal', amount: 2, target: 'self' } }],

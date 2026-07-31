@@ -133,16 +133,29 @@ export function healPlayer(amount: number, kind: 'combat' | 'passive' = 'combat'
 }
 
 /** Drain HP directly — a TRANSFORM bleed (Red Thirst's out-of-combat bleed).
- *  Bypasses armor (it's your own blood, not an attack) and is FLOORED at 1 HP:
- *  idle bleeding pressures you to keep fighting but never kills outright. Returns
- *  the amount drained. */
-export function bleedPlayer(amount: number): number {
+ *  Bypasses armor (it's your own blood, not an attack). `floorHp` is the value
+ *  it will NOT drain below (default 1) — Red Thirst passes a HALF-HEALTH floor so
+ *  idle bleeding weakens you without dragging you to death's door. If you're
+ *  already at/below the floor (e.g. a fight left you low), it does nothing — it
+ *  drains, never heals. Returns the amount drained. */
+export function bleedPlayer(amount: number, floorHp = 1): number {
   if (dead || amount <= 0) return 0;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return 0;
   const before = player.hp.current;
-  player.hp.current = Math.max(1, player.hp.current - amount);
+  if (before <= floorHp) return 0;
+  player.hp.current = Math.max(floorHp, before - amount);
   return before - player.hp.current;
+}
+
+/** The HP value Red Thirst's rest-bleed will NOT drain below — a fraction of the
+ *  current max, rounded DOWN to a whole heart (min one heart). Read live so a
+ *  vigor swap moves the floor with the ceiling. */
+export function redThirstFloorHp(): number {
+  const heart = CONFIG.RED_THIRST.HEART_HP;
+  const max = computeStats().maxHp;
+  const raw = Math.floor((max * CONFIG.RED_THIRST.FLOOR_PCT) / heart) * heart;
+  return Math.max(heart, raw);
 }
 
 export function isPlayerDead(): boolean {

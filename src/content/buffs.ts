@@ -55,6 +55,22 @@ export const BUFFS: Record<string, BuffSpec> = {
     modifiers: [{ kind: 'damage-multiplier', amount: 1.5 }],
   },
 
+  // BLOOD RUSH — the flask's repurposed draught under Red Thirst. Normal
+  // healing is suppressed by the thirst, so the flask instead pours a short
+  // surge of lifesteal + damage: you can't drink your wounds shut, but you can
+  // drink the FURY to carve them back on the next few blows. Strong lifesteal so
+  // a couple of hits refill fast; damage bump so the window is worth taking.
+  bloodrush: {
+    id: 'bloodrush',
+    displayName: 'BLOOD RUSH',
+    color: 0xff3344,
+    modifiers: [
+      { kind: 'lifesteal-pct', amount: 0.5 },
+      { kind: 'damage-multiplier', amount: 1.25 },
+    ],
+    vfx: { color: 0xff3344, style: 'rise' },
+  },
+
   // Cursed — penalty applied when the player drinks a cursed fountain.
   // Long duration (essentially "the rest of the run") so the player feels
   // the cost. -1 weapon damage AND -1 physical armor: meaningful, but not
