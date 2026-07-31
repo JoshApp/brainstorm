@@ -34,6 +34,13 @@ export interface Interactable {
    *  card so the player can read it before taking. Its rolled affixes, if any. */
   previewItem?: import('../content/items').ItemSpec;
   previewAffixes?: readonly import('../content/affixes').AffixInstance[];
+  /**
+   * What this costs to use, stated so the interact prompt can show a numeric
+   * COST CHIP (−4 ❤, 10 ◎, give 🔑, peril) beside the verb — the player reads
+   * the price before committing, not only the promptKind colour. Reuses the
+   * transaction grammar (content/transactions.ts). Omitted = free (no chip).
+   */
+  cost?: import('../content/transactions').TransactionPrice;
   /** Called when the player presses USE while in range. */
   onUse: () => void;
   /**

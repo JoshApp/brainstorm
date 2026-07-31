@@ -14,6 +14,7 @@ import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unr
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 import { disposeBuiltTree } from '../style/material-registry';
+import { applyBrokenness } from './brokenness';
 
 // Blood altar — a stone block with a CURSED offering floating above
 // it, washed in violet glow. Taking it ALWAYS damages the player
@@ -101,6 +102,14 @@ export function spawnBloodAltar(
   disc.position.y = baseH + topH + 0.005;
   stoneGroup.add(disc);
 
+  // Half-broken treatment — the basin has stood here a long time. Position-seeded
+  // so a re-render of this floor decays it identically. The disc is re-levelled
+  // afterward so the violet glow still reads flat on the (now-leaning) slab.
+  let bs = (((pos.x * 73856093) ^ (pos.z * 19349663)) >>> 0) || 1;
+  const brand = () => { bs = (Math.imul(bs, 1664525) + 1013904223) >>> 0; return bs / 0x100000000; };
+  applyBrokenness(stoneGroup, 0.5, brand);
+  disc.rotation.set(-Math.PI / 2, 0, 0);   // keep the glow disc flat despite the lean
+
   // ── Offered item — separate scene-graph root so destroy can yank
   // only the offering. Mirrors starter-altar's split-roots pattern.
   const offeringSpec = cursedItem.viewmodel ?? cursedItem.dropModel;
@@ -142,6 +151,8 @@ export function spawnBloodAltar(
     labelOffsetY: 0.55,
     promptLabel: 'OFFER',     // you give blood for it — not a plain TAKE
     promptKind: 'bargain',    // violet — a cursed bargain, read the stakes
+    cost: { hp: BLOOD_PRICE_HP },  // shows the "−4 ❤" price chip before you commit
+
     built: {
       group: offerGroup,
       parts: new Map(),

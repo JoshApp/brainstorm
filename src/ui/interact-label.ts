@@ -51,7 +51,9 @@ let labelEl: HTMLDivElement | null = null;
 let iconEl: HTMLDivElement | null = null;
 let textEl: HTMLDivElement | null = null;
 let keycapEl: HTMLDivElement | null = null;  // desktop-only "E" badge
+let costEl: HTMLDivElement | null = null;     // numeric cost chip ("−4 ❤", "10 ◎")
 let currentLabel: string | null = null;
+let currentCostKey: string | null = null;
 let shown = false;  // mirrors opacity 1/0 so we can toggle pointerEvents
 let tapHandler: (() => void) | null = null;
 
@@ -170,7 +172,38 @@ export function ensureInteractLabel(): void {
 
   labelEl.appendChild(actionRow);
 
+  // Cost chip — a second line under the verb stating the price (−4 ❤, 10 ◎,
+  // give 🔑, peril). Hidden when the interactable is free. Reading the cost
+  // BEFORE committing is the whole point (the old UI only hinted via colour).
+  costEl = document.createElement('div');
+  Object.assign(costEl.style, {
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.03em',
+    lineHeight: '1',
+    marginTop: '3px',
+    display: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  labelEl.appendChild(costEl);
+
   document.body.appendChild(labelEl);
+}
+
+/** Format an interactable's cost into a compact chip string + a colour. */
+function formatCost(cost: import('../interactables/types').Interactable['cost']): { text: string; color: string } | null {
+  if (!cost) return null;
+  const parts: string[] = [];
+  if (cost.hp) parts.push(`−${cost.hp} ❤`);
+  if (cost.gold) parts.push(`${cost.gold} ◎`);
+  if (cost.itemId) parts.push(cost.itemId === 'key' ? 'give 🔑' : 'give ✦');
+  if (cost.danger) parts.push('⚔ peril');
+  if (parts.length === 0) return null;
+  // Colour by the dominant cost: HP/danger read blood-red, gold reads amber,
+  // an item tithe reads pale. Matches the transaction grammar's temperature.
+  const color = (cost.hp || cost.danger) ? 'rgba(255, 120, 100, 0.95)'
+    : cost.gold ? 'rgba(255, 210, 110, 0.95)'
+    : 'rgba(190, 205, 220, 0.9)';
+  return { text: parts.join('   '), color };
 }
 
 /** Per-frame update. Pass the current in-range interactable + camera +
@@ -184,6 +217,15 @@ export function updateInteractLabel(
   if (!target || !target.promptLabel) {
     hide();
     return;
+  }
+
+  // Cost chip — refresh only when the (target, cost) changes so we don't thrash.
+  const costKey = `${target.id}:${target.cost ? JSON.stringify(target.cost) : ''}`;
+  if (costEl && costKey !== currentCostKey) {
+    currentCostKey = costKey;
+    const c = formatCost(target.cost);
+    if (c) { costEl.textContent = c.text; costEl.style.color = c.color; costEl.style.display = 'block'; }
+    else { costEl.style.display = 'none'; }
   }
 
   // Refresh icon + text only on label change so we don't thrash innerHTML.
