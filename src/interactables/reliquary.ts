@@ -107,10 +107,9 @@ export function spawnReliquary(
         },
       });
 
-      registerItemPreview(ctx.id, prize, { hideStatsUntilInspect: true });
-      const PREVIEW_RANGE = 4.0;
-
-      const tick = (dt: number, playerPos: THREE.Vector3) => {
+      // The prize's item CARD is the shared item-overlay (via `previewItem`); no
+      // per-reliquary floating label (that was the duplicate display).
+      const tick = (dt: number) => {
         if (opened) {
           // Cage sinks into the pedestal after opening, then stops.
           if (cage.position.y > -BAR_H - 0.3) cage.position.y -= dt * 0.8;
@@ -121,10 +120,6 @@ export function spawnReliquary(
           prizeGroup.rotation.y = phase * 0.6;
           prizeGroup.position.y = pos.y + 0.86 + Math.sin(phase * 1.3) * 0.025;
         }
-        const dx = playerPos.x - pos.x, dz = playerPos.z - pos.z;
-        const inRange = dx * dx + dz * dz < PREVIEW_RANGE * PREVIEW_RANGE;
-        if (prizeGroup) setItemPreviewAnchorAbove(ctx.id, prizeGroup, inRange);
-        setItemPreviewInspected(ctx.id, getInRangeInteractable() === ctx.self);
       };
       return { group, tick };
     },
@@ -134,7 +129,6 @@ export function spawnReliquary(
       // The cage sinks (tick); the prize becomes a pickup on the pedestal.
       if (prizeGroup) { scene.remove(prizeGroup); disposeBuiltTree(prizeGroup); prizeGroup = null; }
       createPickup(scene, new THREE.Vector3(pos.x, 0.9, pos.z), prize);
-      unregisterItemPreview(ctx.id);
       return { itemIds: [prize.id] };
     },
   });

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
-import { getInRangeInteractable } from './system';
 import { spawnEvent } from './event-factory';
 import { tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
@@ -8,9 +7,7 @@ import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
-import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
-import type { EntityId } from '../ecs/types';
 import type { StyleMaterials } from '../style/materials';
 import { disposeBuiltTree } from '../style/material-registry';
 import { applyBrokenness } from './brokenness';
@@ -20,7 +17,10 @@ import { applyBrokenness } from './brokenness';
 // Now built on spawnEvent: the factory owns the id, the −4 ❤ cost chip, the
 // central HP deduction (cost.hp), the bargain transaction emits, and teardown.
 // This file keeps only the bespoke visuals (the leaning basin + floating,
-// bobbing, preview-driven offering) and the effect (burst + grant).
+// bobbing offering) and the effect (burst + grant). The offering's item CARD is
+// the shared item-overlay (via `previewItem` on the interactable) — the same
+// panel every floor pickup + reward uses — so there is ONE display, not the old
+// floating-label + card duplicate.
 //
 // Order note: the factory runs the effect (blood burst + grant) BEFORE paying
 // the HP cost, so the burst still anchors at the altar before a lethal take.
@@ -30,7 +30,6 @@ const BLOOD_PRICE_HP = 4;   // half the base pool — a real bet at high HP, let
 const ROTATE_SPEED = 0.6;
 const BOB_AMPLITUDE = 0.030;
 const BOB_FREQUENCY = 0.7;   // slow, dreamy hover
-const PREVIEW_RANGE = 4.0;   // identify (name+flavour) from a few steps; stats gated on inspect
 
 export function spawnBloodAltar(
   scene: THREE.Object3D,
@@ -43,7 +42,6 @@ export function spawnBloodAltar(
   // Shared across build / onUse / onDestroy.
   let offerGroup!: THREE.Group;
   let discMat!: THREE.MeshBasicMaterial;
-  let previewId: EntityId;
   const baseH = 0.62, topH = 0.08;
   const restingY = baseH + topH + 0.32;
 
@@ -61,7 +59,6 @@ export function spawnBloodAltar(
     previewItem: cursedItem,
     keepBuiltOnDestroy: true,  // the stone basin stays; onDestroy yanks only the offering
     build: (ctx) => {
-      previewId = ctx.id;
       // ── Stone group (stays after the offering is taken) ──
       const stoneGroup = new THREE.Group();
       stoneGroup.position.copy(pos);
@@ -104,19 +101,13 @@ export function spawnBloodAltar(
       offerGroup.rotation.set(0.15, rotY, 0.20);
       scene.add(offerGroup);
 
-      registerItemPreview(ctx.id, cursedItem, { hideStatsUntilInspect: true });
-      const previewY = pos.y + restingY + 0.5;   // STABLE anchor — doesn't bob
-
+      // The item CARD is the shared item-overlay (driven by `previewItem` on the
+      // interactable). No per-altar floating label — that was the duplicate.
       let phase = 0;
-      const tick = (dt: number, playerPos: THREE.Vector3) => {
+      const tick = (dt: number) => {
         phase += dt;
         offerGroup.rotation.y = rotY + phase * ROTATE_SPEED;
         offerGroup.position.y = pos.y + restingY + Math.sin(phase * BOB_FREQUENCY * Math.PI * 2) * BOB_AMPLITUDE;
-        const dx = playerPos.x - pos.x, dz = playerPos.z - pos.z;
-        const inRange = (dx * dx + dz * dz) < PREVIEW_RANGE * PREVIEW_RANGE;
-        setItemPreviewAnchor(ctx.id, pos.x, previewY, pos.z, inRange);
-        // Stats only when THIS altar is the highlighted interactable.
-        setItemPreviewInspected(ctx.id, getInRangeInteractable() === ctx.self);
       };
       return { group: offerGroup, tick };
     },
@@ -135,7 +126,6 @@ export function spawnBloodAltar(
       scene.remove(offerGroup);
       disposeBuiltTree(offerGroup);
       discMat.opacity = 0.18;   // altar reads "spent" but stays as a marker
-      unregisterItemPreview(previewId);
       onDestroy?.();
     },
   });
