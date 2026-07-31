@@ -153,7 +153,7 @@ export function triggerDeath() {
   }
   // Funnel telemetry — where runs end + what kills (the bounce signal). No-op
   // until a telemetry endpoint is configured; no PII (just depth + cause).
-  track('death', { depth, kills, killedBy: killingBlowLabel() });
+  track('death', { depth, kills, killedBy: killingBlowLabel(), itemsFound, elapsedMs });
   // Queue the recorded run tape (deterministic fixed-step runs only) for
   // leaderboard verification — stored offline, uploaded on reconnect. The
   // tape was finalised by finishRun() at the top of the death sequence.

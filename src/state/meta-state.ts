@@ -232,6 +232,12 @@ export function hasAchievement(id: string): boolean {
   return load().achievementsUnlocked.includes(id);
 }
 
+/** Detached read-only snapshot of the whole meta-state — for the telemetry
+ *  export (and any read-only consumer that shouldn't mutate the live object). */
+export function getMetaSnapshot(): MetaState {
+  return JSON.parse(JSON.stringify(load()));
+}
+
 /** Add a loot box to the stash. UI consumes via popStash. */
 export function addStashEntry(tier: Rarity, source: string) {
   const m = load();

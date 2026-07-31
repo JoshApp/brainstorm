@@ -69,7 +69,42 @@ export function breadcrumb(cat: string, msg: string): void {
 /** Record a funnel event (boot, run_start, death…). Also leaves a breadcrumb. */
 export function track(event: string, props: Record<string, unknown> = {}): void {
   breadcrumb('event', event);
+  appendLog(event, props);          // local ring for offline balance export (always on)
   if (sending) send({ event, props: { ...props, ...safeContext() } });
+}
+
+// ── Local event log — the offline balancing surface ─────────────────────────
+// track() events also land in a capped, localStorage-persisted ring so a solo
+// dev can EXPORT their play history and read balance stats offline (delve stats),
+// with NO backend/endpoint configured. Capture-always, same as breadcrumbs; the
+// gated network send above is unchanged. Cleared via clearTelemetryLog().
+const LOG_KEY = 'delve:telemetry-log';
+const MAX_LOG = 1000;
+interface LogEntry { t: number; event: string; props: Record<string, unknown>; }
+let logRing: LogEntry[] | null = null;
+
+function loadLog(): LogEntry[] {
+  if (logRing) return logRing;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]');
+    logRing = Array.isArray(parsed) ? parsed : [];
+  } catch { logRing = []; }
+  return logRing;
+}
+function appendLog(event: string, props: Record<string, unknown>): void {
+  try {
+    const log = loadLog();
+    log.push({ t: Date.now(), event, props });
+    if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+    localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  } catch { /* storage full/disabled — telemetry must never break the game */ }
+}
+/** Read-only copy of the local event ring (for the telemetry export). */
+export function getTelemetryLog(): LogEntry[] { return loadLog().slice(); }
+/** Wipe the local ring (a fresh balancing window). */
+export function clearTelemetryLog(): void {
+  logRing = [];
+  try { localStorage.removeItem(LOG_KEY); } catch { /* ignore */ }
 }
 
 /** Capture an error — breadcrumb always, network send when enabled+under quota.

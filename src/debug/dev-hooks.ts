@@ -75,6 +75,10 @@ export function installDevHooks(deps: DevHookDeps): void {
   // Per-stage GPU breakdown probe — prices bloom/shadow/grade by difference
   // against the native timestamp timer.
   w.__gpuBreakdown = () => import('./gpu-breakdown').then((m) => m.gpuBreakdown(renderer, scene));
+  // Telemetry export — download the local play history (meta + event ring) as
+  // JSON for offline balancing: `__telemetry()` then `npm run delve stats <file>`.
+  w.__telemetry = () => import('./telemetry-export').then((m) => m.exportTelemetry());
+  w.__telemetryClear = () => import('../telemetry/telemetry').then((m) => m.clearTelemetryLog());
   // Pooled-material counts — the pipeline-budget invariant (docs/PIPELINE-BUDGET.md):
   // these must PLATEAU as you descend, not climb per floor. Climbing = a `new Material`
   // leaking past the pools (stdMat for static, createMaterial for models).
