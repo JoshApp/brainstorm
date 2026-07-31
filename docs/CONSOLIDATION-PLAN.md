@@ -1,8 +1,33 @@
 # DELVE — Pre-Build Consolidation Plan
 
-> Status: PROPOSED (2026-07-31). A repo-wide refactor/unify/optimize pass before
+> Status: IN PROGRESS (2026-07-31). A repo-wide refactor/unify/optimize pass before
 > the next content push, synthesized from a four-way parallel audit of the whole
 > `src/` tree (rendering, combat/entities, world/content, UI/infra).
+
+## Progress log
+
+- **Phase 0 — DONE.** Deleted `content/enemy-models.ts`, `level/format-experiment.ts`,
+  the dead GLSL bake in `surface-textures.ts`, and the dead CPU path in
+  `drifting-motes.ts`. −1,331 lines, build/tests green.
+- **Phase 1d — DONE.** `state/persist.ts` (readJSON/writeJSON/readRaw/writeRaw/remove
+  + `KEYS`). Migrated `telemetry.ts` + `meta-state.ts`; rest adopt incrementally.
+- **Phase 3 (composeStrikeDamage) — DONE.** Extracted the crit×multipliers strike
+  math into the tested `damage-math.ts`; melee + ranged share it. +4 tests.
+- **Phase 1c (writable migration) — SKIPPED (won't do).** On inspection the
+  hand-rolled listener modules do NOT fit `writable`: `game-mode` passes
+  `(next, prev)`, `flask` listeners are no-arg, `character` mutates in place
+  (where `writable`'s `Object.is` equality would silently stop notifying). Forcing
+  them on risks notification bugs for a marginal consistency gain. Left as-is —
+  this is a case where the "unify" is worse than the status quo.
+- **Event-factory (separate thread) — effectively complete for the DEALS.**
+  `spawnEvent` + fountain/blood-altar/reliquary migrated. The remaining
+  interactables are either free (no cost → marginal benefit) or bespoke by design
+  (tithe multi-choice sheet, challenge combat-trigger, merchant screen).
+
+Remaining, highest-leverage first: **1a** (particle substrate), **2a** (enemy.ts
+split), **2b** (builder.ts prop-kind dispatch), **2d** (finish weapon-pose→data),
+**1b** (UI toolkit — needs phone). See phases below.
+
 
 ## The finding in one paragraph
 

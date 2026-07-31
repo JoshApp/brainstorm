@@ -109,6 +109,11 @@ import { emit } from '../broadcast/event-bus';
 //   - enemies: array of enemy handles (state machine, ticked each frame)
 //   - playerSpawn: where to put the camera + initial yaw
 
+// ?bigfire=1.4 — event-presence knob for the level-up fire (read once, not per
+// bonfire per floor). >1 scales each bonfire up + boosts its light pool.
+const BIGFIRE = typeof location !== 'undefined'
+  ? (Number(new URLSearchParams(location.search).get('bigfire')) || 1) : 1;
+
 const PILLAR_DEFAULT_SIZE = 0.5;
 
 export interface LiveLevel {
@@ -1354,9 +1359,7 @@ export function buildLevel(
       // Boosts the LIGHT pass below too (fireBoost) so bigger fire = bigger glow.
       let fireBoost = 1;
       if (prop.model.id === 'bonfire') {
-        const bigfire = typeof location !== 'undefined'
-          ? (Number(new URLSearchParams(location.search).get('bigfire')) || 1) : 1;
-        if (bigfire > 1) { built.group.scale.multiplyScalar(bigfire); fireBoost = bigfire; }
+        if (BIGFIRE > 1) { built.group.scale.multiplyScalar(BIGFIRE); fireBoost = BIGFIRE; }
         registerFateFire({
           group: built.group,
           position: new THREE.Vector3(prop.x, gy, prop.z),
