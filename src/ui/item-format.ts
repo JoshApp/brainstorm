@@ -96,10 +96,18 @@ export function formatPassive(p: PassiveSpec): string {
     : base;
 
   const effects = p.trigger.effects.map((e) => {
-    if (e.type === 'damage')   return `${e.amount} damage`;
-    if (e.type === 'heal')     return `heal ${e.amount} HP`;
+    // WHO the effect lands on — the reactive triggers (When damaged) inflict on
+    // the ATTACKER, not the player, but the description used to drop the target,
+    // so "When damaged: Bleed for 4s" read as if YOU bleed. State the subject.
+    const tgt = (e as { target?: string }).target;
+    const on = tgt === 'attacker' ? ' on the attacker'
+      : tgt === 'self' ? ' on yourself'
+      : tgt === 'enemy' ? ' on the foe'
+      : '';
+    if (e.type === 'damage')   return `${e.amount} damage${on}`;
+    if (e.type === 'heal')     return `heal ${e.amount} HP`;   // heal is always self
     if (e.type === 'apply-buff' && e.buffId) {
-      return formatBuffEffect(e.buffId, e.duration ?? 0);
+      return `${formatBuffEffect(e.buffId, e.duration ?? 0)}${on}`;
     }
     return e.type;
   });
