@@ -47,6 +47,14 @@ jobs:
           # set repo var CLERK_PUBLISHABLE_KEY to the pk_live key to go
           # production. Absent → the code falls back to the dev pk_test key.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          # Feedback collector (bug reports → a Supabase REST table). Inert until
+          # BOTH are set: VITE_REPORT_ENDPOINT as a repo VAR (the public
+          # /rest/v1/reports URL) and VITE_REPORT_KEY as a repo SECRET (the anon
+          # key — safe to embed since the table's RLS allows INSERT only). Setup
+          # SQL + the puller are in scripts/reports.ts. Absent → reports fall back
+          # to the share sheet / download, exactly as today.
+          VITE_REPORT_ENDPOINT: ${{ vars.REPORT_ENDPOINT }}
+          VITE_REPORT_KEY: ${{ secrets.REPORT_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
