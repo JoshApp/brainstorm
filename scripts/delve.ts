@@ -165,6 +165,7 @@ switch (cmd) {
   case 'inventory': delegate('inventory'); break;
   case 'stats': delegate('stats'); break;
   case 'reports': delegate('reports'); break;
+  case 'repro': delegate('repro'); break;
   case 'check': check(Number(rest[0]), Number(rest[1] ?? 1)); break;
   case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1']); break;
   case 'weapons': weapons(); break;

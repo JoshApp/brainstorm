@@ -242,6 +242,17 @@ async function main() {
     else if (scenario === 'codex') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showCodex=1`;
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
+    // run-<seed>-<depth>: reproduce a specific procgen floor deterministically
+    // (the same seed+depth a bug report captures — see `delve repro`). Boots
+    // straight onto depth-N of that seed via the seeded-jump path (?dev=1 gate).
+    else if (scenario.startsWith('run-')) {
+      const parts = scenario.split('-');
+      const seedStr = parts[1] ?? '1';
+      const depthStr = parts[2] ?? '1';
+      // autostart=1 enters the seeded-jump boot path (handleAutostart); dev=1
+      // unlocks depth>1. Without autostart the title screen shows instead.
+      url = `http://127.0.0.1:${port}/brainstorm/?autostart=1&seed=${encodeURIComponent(seedStr)}&depth=${encodeURIComponent(depthStr)}&dev=1`;
+    }
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
     // Item viewer: `item-<id>` is sugar for the generic `item`
     // scenario with the requested item id passed via the &item=
