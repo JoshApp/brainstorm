@@ -18,6 +18,9 @@ import { CARDS, dealCards, type CardSpec, type CardCondition, type CardSynergy, 
 import type { Transform } from '../combat/transforms';
 import { grantCard, getHeldCards } from '../state/run-state';
 import { BUFFS } from '../content/buffs';
+import { flashDomainGlow } from './vignette';
+import { broadcastPop } from './broadcast-pop';
+import { domainVisual } from './domain-icons';
 
 const SCREEN_ID = 'card-reading';
 const BASE = import.meta.env.BASE_URL;
@@ -192,10 +195,66 @@ export function openCardReading(
 
   function claimCard(i: number): void {
     picked = true; grantCard(dealt[i].id);
+    const card = dealt[i];
+    // The two unchosen fates sink away; the taken one is DRAWN INTO YOU.
     cols.forEach((c, j) => { if (j !== i) { c.style.opacity = '0'; c.style.transform = 'translateY(28px)'; } });
-    cols[i].style.transform = 'translateY(-14px) scale(1.12)';
     claim.style.pointerEvents = 'none'; claim.style.opacity = '0';
-    setTimeout(close, 560);
+    fateLine.style.opacity = '0';
+
+    // The fate's DOMAIN floods the screen as it enters you (the acquisition
+    // language, tuned strong for a major beat), and the deep marks the taking.
+    const dom = card.domains[0];
+    const accent = dom ? domainVisual(dom).color : 'rgb(206,64,52)';
+    // The flood is fired late, so its bloom lands as the modal closes and washes
+    // over the GAME view (behind the modal it'd be invisible) — the fate's domain
+    // pouring into you as you return to the dark.
+    setTimeout(() => { try { flashDomainGlow(accent, 1); } catch { /* presentation */ } }, 760);
+    try { broadcastPop(claimLine(card.name), card.name.toUpperCase(), 'the fate is taken'); } catch { /* never break the claim */ }
+
+    // The chosen card IGNITES then is pulled down into the delver, dissolving to
+    // embers — "you took it into yourself", not "a menu closed".
+    igniteEmbers(cols[i], accent);
+    cols[i].animate(
+      [
+        { transform: 'translateY(-14px) scale(1.12)', filter: 'brightness(1)', opacity: 1, offset: 0 },
+        { transform: 'translateY(-46px) scale(1.32)', filter: `brightness(1.9) saturate(1.4) drop-shadow(0 0 26px ${accent})`, opacity: 1, offset: 0.28 },
+        { transform: 'translateY(70vh) scale(0.12)', filter: `brightness(2.4) blur(3px) drop-shadow(0 0 30px ${accent})`, opacity: 0, offset: 1 },
+      ],
+      { duration: 900, easing: 'cubic-bezier(0.5, 0, 0.75, 0.2)', fill: 'forwards' },
+    );
+    setTimeout(close, 1000);
+  }
+
+  // A short-lived warm flame-wash + rising embers over the taken card, so it
+  // reads as BURNING as it's drawn in (not just shrinking).
+  function igniteEmbers(host: HTMLElement, accent: string): void {
+    if (!host.style.position) host.style.position = 'relative';
+    const flame = document.createElement('div');
+    Object.assign(flame.style, {
+      position: 'absolute', inset: '-8%', borderRadius: '8px', pointerEvents: 'none',
+      background: `radial-gradient(ellipse at 50% 60%, ${accent} 0%, rgba(255,150,60,0.5) 35%, transparent 70%)`,
+      mixBlendMode: 'screen', opacity: '0',
+    } as Partial<CSSStyleDeclaration>);
+    host.appendChild(flame);
+    flame.animate([{ opacity: 0 }, { opacity: 0.9, offset: 0.3 }, { opacity: 0 }], { duration: 820, easing: 'ease-out' });
+    for (let k = 0; k < 8; k++) {
+      const e = document.createElement('div');
+      const sz = 3 + Math.round((k % 3) * 2);
+      Object.assign(e.style, {
+        position: 'absolute', left: `${18 + (k * 9) % 64}%`, bottom: '32%',
+        width: `${sz}px`, height: `${sz}px`, borderRadius: '50%',
+        background: k % 2 ? accent : 'rgba(255,180,90,0.95)',
+        boxShadow: `0 0 6px ${accent}`, pointerEvents: 'none',
+      } as Partial<CSSStyleDeclaration>);
+      host.appendChild(e);
+      e.animate(
+        [
+          { transform: 'translate(0,0) scale(1)', opacity: 0.95 },
+          { transform: `translate(${(k % 2 ? 1 : -1) * (10 + k * 3)}px, ${-40 - k * 8}px) scale(0.2)`, opacity: 0 },
+        ],
+        { duration: 560 + k * 40, easing: 'ease-out', fill: 'forwards' },
+      );
+    }
   }
 
   function close(): void {
@@ -212,6 +271,21 @@ export function openCardReading(
   for (const { img, id } of fronts) img.src = `${BASE}cards/${id}.webp`;
   document.body.appendChild(root);
   openScreen({ id: SCREEN_ID, root, policy: { layer: 'modal', hidesHud: true, dimsScene: true }, onDismissRequest: close });
+}
+
+// The deep's line as a fate is taken — the voice in the deep, cruel + amused,
+// present-tense. Not the in-world grimdark register; this is IT talking about you.
+const CLAIM_LINES = [
+  (n: string) => `${n} is yours now. It was always going to be.`,
+  (n: string) => `You took ${n} into yourself. The deep felt it go in.`,
+  (n: string) => `${n}. A fine choice, or a fine mistake. I do enjoy both.`,
+  (n: string) => `You wear ${n} now, whether you meant to or not.`,
+];
+let claimLineIdx = 0;
+function claimLine(name: string): string {
+  const f = CLAIM_LINES[claimLineIdx % CLAIM_LINES.length];
+  claimLineIdx++;
+  return f(name);
 }
 
 /** A face <img> filling the flip plane (src set after deal). */

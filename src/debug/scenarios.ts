@@ -194,6 +194,10 @@ export interface Scenario {
   /** Collapse every bonfire in the level to its CLAIMED/spent look on apply
    *  (fate-fire.debugSpendFlames), to snap the "already taken" read. DEV only. */
   spendFire?: boolean;
+
+  /** Open the fate card reading and auto-claim on a loop, to snap the diegetic
+   *  claim beat (card ignites + is drawn in + the deep speaks). DEV only. */
+  cardClaimLoop?: boolean;
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1223,6 +1227,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
     playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
     acquireBeat: 'ring-of-marrow',   // a cursed blood relic — flood + narration
+  },
+
+  // Card-claim — loops the fate reading + auto-claim so a snap catches the
+  // diegetic claim beat (ignite + drawn-in + the deep speaks). `delve snap card-claim`.
+  'card-claim': {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'card-claim', depth: 3, displayName: 'CARD CLAIM', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 4, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 12, d: 12 }, height: 5 }],
+      corridors: [], props: [], torches: [], spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4, lookAt: { x: 0, z: 0, y: 1.2 } },
+    cardClaimLoop: true,
   },
 
   // Spent-fire — a single CLAIMED/spent bonfire, to check the "already taken"
@@ -2389,6 +2408,16 @@ export function applyScenario(
 
   if (scenario.spendFire) {
     void import('../level/fate-fire').then((m) => m.debugSpendFlames(ctx.level.root));
+  }
+
+  if (scenario.cardClaimLoop) {
+    void import('../ui/card-reading').then(({ openCardReading, autoPickFirstCard }) => {
+      const loop = () => {
+        openCardReading({ arcana: 'major', onDone: () => setTimeout(loop, 500) });
+        setTimeout(() => autoPickFirstCard(), 900);   // deal + flip, then claim → burn beat
+      };
+      loop();
+    });
   }
 
   if (scenario.openBugReport) {
