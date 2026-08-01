@@ -322,6 +322,13 @@ export function createCombatSystem(
    *  (nearest enemy in the forward arc) or straight ahead if none. */
   function fireRanged(weapon: ResolvedWeaponStats) {
     if (!weapon.ranged) return;
+    // The shot's stamina cost is paid HERE, once per bolt actually loosed (this
+    // runs at strike, gated to one fire per strike). Soft spend — a low-stamina
+    // shot still goes off and just gasses you; only a visibly-empty bar refuses,
+    // flashing so it reads "you're out" rather than a dead click. Because this
+    // fires at the weapon's cadence (recover = reload), tapping faster than the
+    // fire rate can't drain extra — no shot, no cost.
+    if (!spendStaminaSoft(CONFIG.STAMINA.RANGED_COST)) { flashStaminaBar(); return; }
     // Ranged auto-aim must respect LOS — without this the lock-on
     // would happily snap onto an enemy on the other side of a wall.
     const walkable = getWalkable();
@@ -478,18 +485,11 @@ export function createCombatSystem(
       // action FSM owns this lockout; combo chaining within a swing is still
       // the swing sim's own concern).
       if (!canStartAction('attack')) return;
-      // STAMINA gates the two drawback-free actions the playtest flagged.
-      // Read the resolved weapon once at press time to branch ranged/melee.
-      const pressWeapon = getCurrentWeapon();
-      // RANGED: every shot costs stamina (the crossbow/wand drawback —
-      // "too strong, no ammo, no drawback"). Soft spend — it fires as long as
-      // you have a sliver and just gasses you, so a low-stamina shot still
-      // goes off. It's gated ONLY when the bar is visibly empty, and then the
-      // HUD flashes so the rejected tap reads as "you're out", not a dead tap.
-      if (pressWeapon.ranged && !spendStaminaSoft(CONFIG.STAMINA.RANGED_COST)) {
-        flashStaminaBar();
-        return;
-      }
+      // NOTE: ranged stamina is spent at the actual SHOT (in fireRanged), not
+      // here at the press. Billing the press meant a mashed tap during the
+      // weapon's recover/reload — which fires NO bolt — still drained stamina, so
+      // tapping faster than the fire rate gassed you "regardless of attack speed"
+      // (reported). Spending per fired projectile ties the drain to the cadence.
       // Capture any pending charge for this press — 0 if it was a tap, 0..1 if
       // the player held to charge — plus whether it was a PERFECT release. The
       // strike-phase resolution below reads currentSwingCharge to scale damage,
