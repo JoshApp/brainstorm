@@ -61,6 +61,9 @@ export const ORIGIN_ARCH: ModelSpec = {
     stone: { color: 0x3a363e, roughness: 0.92, metalness: 0.0, flatShading: true, detail: 'dressed' },
     timber: { color: 0x5c4326, roughness: 1.0, metalness: 0.0, flatShading: true },
     iron: { color: 0x17191d, roughness: 0.5, metalness: 0.6, flatShading: true },
+    // Weathered grey plank for the BOARDS nailed across — reads older + rougher
+    // than the door leaves so the seal looks hammered on after, not part of it.
+    board: { color: 0x4a4038, roughness: 1.0, metalness: 0.0, flatShading: true },
     // The hair of dark framing the recessed leaves.
     void: { color: 0x05060a, roughness: 1.0, metalness: 0.0, emissive: 0x05060a, emissiveIntensity: 1.0 },
   },
@@ -90,5 +93,21 @@ export const ORIGIN_ARCH: ModelSpec = {
     // Pull rings — one per leaf, flanking the centre seam.
     { kind: 'torus', pos: [-0.18, 1.04, 0.17], radius: 0.085, tube: 0.022, rot: [Math.PI / 2 - 0.5, 0, 0], mat: 'iron' },
     { kind: 'torus', pos: [0.18, 1.04, 0.17], radius: 0.085, tube: 0.022, rot: [Math.PI / 2 - 0.5, 0, 0], mat: 'iron' },
+
+    // ── SEALED: boarded shut behind you ──────────────────────────────────
+    // Pristine closed doors with pull rings read as "openable"; the player
+    // tried to go back through them. Nail an X of weathered planks across the
+    // whole doorway + a heavy cross-bar so it reads instantly as WHERE YOU CAME
+    // FROM — barred, no way back. (The doors don't open from this side anyway.)
+    { kind: 'box', pos: [0, 1.08, 0.185], size: [2.55, 0.17, 0.06], rot: [0, 0, 0.72], mat: 'board' },
+    { kind: 'box', pos: [0, 1.08, 0.185], size: [2.55, 0.17, 0.06], rot: [0, 0, -0.72], mat: 'board' },
+    // A horizontal barred plank lower down — the deliberate "barred" beat.
+    { kind: 'box', pos: [0, 0.62, 0.20], size: [OPEN_W + 0.30, 0.15, 0.07], mat: 'board' },
+    // Iron nail heads driven where the boards cross the leaves + jamb corners.
+    { kind: 'box', pos: [-0.86, 1.72, 0.22], size: [0.10, 0.10, 0.05], mat: 'iron' },
+    { kind: 'box', pos: [0.86, 1.72, 0.22], size: [0.10, 0.10, 0.05], mat: 'iron' },
+    { kind: 'box', pos: [-0.86, 0.42, 0.22], size: [0.10, 0.10, 0.05], mat: 'iron' },
+    { kind: 'box', pos: [0.86, 0.42, 0.22], size: [0.10, 0.10, 0.05], mat: 'iron' },
+    { kind: 'box', pos: [0, 1.08, 0.24], size: [0.13, 0.13, 0.05], mat: 'iron' },   // the X's centre spike
   ],
 };

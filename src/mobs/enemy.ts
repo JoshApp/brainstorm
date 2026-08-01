@@ -21,6 +21,7 @@ import {
   pushDeflectOpportunity, popDeflectOpportunity, isParryActive, notePlayerDeflected,
 } from '../combat/reactive-defense';
 import { spawnParrySpark } from '../effects/parry-spark';
+import { flashCombatWord, CLASH_GOLD, BREAK_RED } from '../effects/combat-word';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { fireCombatVerb } from '../combat/combat-verbs';
 import { applyBuff } from '../ecs/buffs';
@@ -1319,8 +1320,10 @@ export function createEnemy(
     clearLashTendril();
     setEyeFlare(0);
     // Visual punctuation of the break: a white hit-flash on the body (the
-    // player-side cue — popup/sound/crunch — fires from attack.ts).
+    // player-side cue — popup/sound/crunch — fires from attack.ts). Plus a punch
+    // WORD so the poise-break reads as a decisive beat, not just a stumble.
     coreReactor.hit();
+    flashCombatWord('BROKEN', BREAK_RED);
     state = 'staggered';
     actionFsm.enterStagger(CONFIG.POISE.STAGGER_DURATION);
     phaseTimer = 0;
@@ -1386,6 +1389,9 @@ export function createEnemy(
     // swing breaks it much faster.
     const broke = applyStaggerDamage(getCurrentWeapon().parryPoise ?? CONFIG.DEFLECT.POISE_DAMAGE);
     if (!broke) {
+      // A clean parry that didn't break poise — "TURNED". (A parry that DID
+      // break shows the bigger "BROKEN" from triggerStagger instead.)
+      flashCombatWord('TURNED', CLASH_GOLD);
       currentAbility = null;
       clearAoeTelegraph();
       clearLashTendril();

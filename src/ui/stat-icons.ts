@@ -31,7 +31,9 @@ const COL = {
 } as const;
 
 // ── glyph paths (single-path, filled) ──────────────────────────────────────
-const HEART  = '<path d="M12 21s-6.8-4.4-9.4-8.3C.9 10 1.9 6.3 5.1 5.8c2-.3 3.6 1 3.9 2 .3-1 1.9-2.3 3.9-2 3.2.5 4.2 4.2 2.5 6.9C18.8 16.6 12 21 12 21z"/>';
+// Centred with margin on all sides (x 3..21, y 4.2..20) so it can't clip against
+// the viewBox edge — the previous path touched x≈0.9 / y=21 and read cut off.
+const HEART  = '<path d="M12 20C5 15.5 3 11.5 3 8.5 3 6 5 4.2 7.2 4.2 9.2 4.2 11 5.6 12 7.3 13 5.6 14.8 4.2 16.8 4.2 19 4.2 21 6 21 8.5 21 11.5 19 15.5 12 20Z"/>';
 // a downward dagger — hilt at top, blade to the point
 const BLADE  = '<path d="M12 2l2.2 4.5V14l-2.2 3-2.2-3V6.5L12 2z"/><rect x="8.4" y="14" width="7.2" height="1.8" rx="0.6"/>';
 const SHIELD = '<path d="M12 2l7 2.6v5.7c0 4.5-3 7.9-7 9.7-4-1.8-7-5.2-7-9.7V4.6L12 2z"/>';
@@ -74,8 +76,10 @@ export function statIconEl(icon: StatIcon, px = 12): SVGSVGElement {
   svg.setAttribute('width', String(px));
   svg.setAttribute('height', String(px));
   svg.style.flexShrink = '0';
+  svg.style.display = 'block';   // drop the inline baseline so the glyph can't clip
   svg.style.color = icon.color;
   svg.style.fill = 'currentColor';
+  svg.style.overflow = 'visible';
   svg.innerHTML = icon.path;
   return svg;
 }
