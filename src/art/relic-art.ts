@@ -6,8 +6,17 @@
  * black (a wrapped talisman, a gorged tick, a sealed heart), NOT a framed card.
  *
  *   delve art relic drowned-heart          generate 1
+ *   delve art relic all                    generate EVERY relic (one run each)
  *   delve art relic drowned-heart --n 4    a batch to explore
  *   delve art relic gorged-tick --from r12 --tweak "wetter, more gorged"
+ *
+ * COVERAGE: every relic in content/items.ts (all 56) has a spec here. To run the
+ * FLUX pipeline you need FAL_KEY in .env.local (see scripts/art-backend.ts) — it
+ * is NOT set in the web/cloud container, so generation runs on Josh's machine (or
+ * any box with the key). Recipe: `delve art relic all` → eyeball runs in the
+ * atelier → `delve art promote <id>` the keepers → bake + wire the sprite into
+ * the reliquary plate (the plate already leaves that art seam open; see
+ * ui/reliquary-screen.ts). Until then the plate shows the 3D thumbnail.
  *
  * `art` describes the OBJECT (what it is, not the look — the style layer carries
  * the ink/Mörk Borg register). Prompts are built from the relic's provenance +
@@ -63,5 +72,273 @@ export const RELIC_ART: RelicArtSpec[] = [
     id: 'drowned-heart', name: 'The Drowned Heart', domain: 'blood', accent: 'deep crimson',
     art: 'a waterlogged human heart wrapped in sodden grey funeral cloth, still faintly beating, dark crimson, beads of black water sliding off it, a single object centred on black',
     seed: 4106,
+  },
+
+  // ── BLOOD (Ysolde's leeching kit + the butcher's ring) ──────────────────────
+  {
+    id: 'ring-of-bloodthirst', name: "A butcher's thumb-ring", domain: 'blood', accent: 'dried-blood crimson',
+    art: "a worn brass butcher's thumb-ring, the metal drunk thin where a thumb rode it, a dark crimson stain worked permanently into the band, a single object centred on black",
+    seed: 4110,
+  },
+  {
+    id: 'ysolde-leech-glass', name: 'A leech-glass, cracked', domain: 'blood', accent: 'dark crimson',
+    art: "a cracked apothecary's leech-glass, a single shrivelled starved leech at the bottom, a crimson residue filming the inside of the glass, a single object centred on black",
+    seed: 4111,
+  },
+  {
+    id: 'ysolde-tourniquet', name: 'A tourniquet, stiff with old blood', domain: 'blood', accent: 'black-red',
+    art: 'a leather tourniquet strap gone stiff and black with dried blood, its rusted buckle frozen mid-cinch, a single object centred on black',
+    seed: 4112,
+  },
+  {
+    id: 'ysolde-vein-knife', name: 'Her opened vein-knife', domain: 'blood', accent: 'crimson',
+    art: 'a whisper-thin double-edged vein-knife honed almost to nothing, a single bead of fresh dark crimson welling at the point, a single object centred on black',
+    seed: 4113,
+  },
+
+  // ── BONE (grave-iron, marrow, Maren's kept things) ──────────────────────────
+  {
+    id: 'bone-amulet', name: 'A vertebra on a cord', domain: 'bone', accent: 'cold bone white',
+    art: 'a single yellowed human vertebra strung on a knotted leather cord, worn smooth, still holding the curve of a spine, a single object centred on black',
+    seed: 4200,
+  },
+  {
+    id: 'ring-of-vigor', name: 'A knuckle of the stubborn', domain: 'bone', accent: 'cold bone white',
+    art: 'a ring carved from a finger-knuckle bone, worried glassy-smooth by a restless thumb, pale and stubborn, a single object centred on black',
+    seed: 4201,
+  },
+  {
+    id: 'ring-of-marrow', name: 'The Marrow-Thief', domain: 'bone', accent: 'bruised bone white',
+    art: "a surgeon's ring of hollowed bone, dark marrow welling at its seam, a hair-fine blade set flush inside the band, a single object centred on black",
+    seed: 4202,
+  },
+  {
+    id: 'ring-of-iron', name: 'A band of grave-iron', domain: 'bone', accent: 'cold grey',
+    art: 'a rough ring hammered from a rusted coffin nail, black-scaled iron, the square nail-head still visible where the band closes, a single object centred on black',
+    seed: 4203,
+  },
+  {
+    id: 'stoneskin-locket', name: 'A locket of grey dust', domain: 'bone', accent: 'ashen grey',
+    art: 'a tarnished locket sprung open to a pinch of grey wall-dust packed hard as stone, the hinge itself calcified, a single object centred on black',
+    seed: 4204,
+  },
+  {
+    id: 'thornring', name: 'A ring of fused barbs', domain: 'bone', accent: 'cold iron grey',
+    art: 'a ring of iron barbs fused inward and outward, small hooked thorns bristling from the band, flecked with old rust, a single object centred on black',
+    seed: 4205,
+  },
+  {
+    id: 'maren-thimble', name: 'A tin thimble', domain: 'bone', accent: 'dull pewter',
+    art: 'a dented tin thimble worn thin at the crown, a broken needle still threaded through its dimples with grey gut, a single object centred on black',
+    seed: 4206,
+  },
+  {
+    id: 'maren-prayer-knot', name: 'A prayer knot', domain: 'bone', accent: 'cold bone white',
+    art: 'a short frayed cord tied over and over with dozens of tight desperate knots, grey with handling, a single object centred on black',
+    seed: 4207,
+  },
+  {
+    id: 'maren-milk-tooth', name: 'A milk tooth, kept', domain: 'bone', accent: 'pale bone white',
+    art: "a single small child's milk tooth, kept and polished, resting in a fold of grey cloth, a single object centred on black",
+    seed: 4208,
+  },
+
+  // ── ROT (grave-mould, plague, Cael's slow dying) ────────────────────────────
+  {
+    id: 'acid-tongue', name: 'Acid Tongue', domain: 'rot', accent: 'sickly green',
+    art: 'a long barbed tongue cut from something vast, wet and faintly smoking, the black ground beneath it pitted where the acid drips, a single object centred on black',
+    seed: 4300,
+  },
+  {
+    id: 'grave-mould-clump', name: 'A clump of grave-mould', domain: 'rot', accent: 'sickly green',
+    art: 'a clump of pale green-black grave-mould furred with spores, scraped from the underside of a coffin lid, creeping at its edges, a single object centred on black',
+    seed: 4301,
+  },
+  {
+    id: 'plaguewick', name: 'A wick soaked in bile', domain: 'rot', accent: 'sickly yellow-green',
+    art: 'a lamp-wick soaked stiff and yellow-green with old bile, one end charred, a sickly droplet sweating from it, a single object centred on black',
+    seed: 4302,
+  },
+  {
+    id: 'carrion-tongue', name: "A carrion-bird's tongue", domain: 'rot', accent: 'sickly green',
+    art: "a dried blackened carrion-bird's tongue strung on a length of gut, curled and leathery, a single object centred on black",
+    seed: 4303,
+  },
+  {
+    id: 'cael-black-poultice', name: 'A poultice gone black', domain: 'rot', accent: 'sickly green',
+    art: 'a wad of cloth poultice gone black and wet, never drying, a faint green weep at its folds, a single object centred on black',
+    seed: 4304,
+  },
+  {
+    id: 'cael-grave-earth', name: 'A jar of grave-earth', domain: 'rot', accent: 'sickly green',
+    art: 'a small clay jar of damp grave-earth, its lid ajar and a crusted spoon at the rim, pale roots threading the soil, a single object centred on black',
+    seed: 4305,
+  },
+  {
+    id: 'cael-plague-beak', name: 'The plague-mask beak', domain: 'rot', accent: 'sickly green',
+    art: 'a long curved leather plague-mask beak, cracked, stuffed with herbs turned to green rot, its eye-lenses gone milky, a single object centred on black',
+    seed: 4306,
+  },
+
+  // ── ASH (the ember kept, the martyr burned, Vess's lamps) ───────────────────
+  {
+    id: 'ring-of-ember', name: 'A coal in silver', domain: 'ash', accent: 'ember orange',
+    art: 'a silver ring set with a single live coal that will not die, a low ember glow within, the silver scorched black around the setting, a single object centred on black',
+    seed: 4400,
+  },
+  {
+    id: 'ashen-psalm', name: 'A psalm burned onto slate', domain: 'ash', accent: 'ember orange',
+    art: 'a fractured slate tablet, its carved words burned away to smooth glass, a faint heat-glow still living in the cracks, a single object centred on black',
+    seed: 4401,
+  },
+  {
+    id: 'martyrs-tallow', name: "A candle of martyr's tallow", domain: 'ash', accent: 'ember orange',
+    art: 'a squat candle of pale rendered tallow burning with one tall steady flame, the wax weeping down over a grasping hand-shape, a single object centred on black',
+    seed: 4402,
+  },
+  {
+    id: 'vess-striker', name: 'A flint striker, thumb-worn', domain: 'ash', accent: 'ember orange',
+    art: 'a small steel flint-striker worn bright where a thumb rode it, a fleck of flint clamped in it, a single spark caught leaving the edge, a single object centred on black',
+    seed: 4403,
+  },
+  {
+    id: 'vess-oil-phial', name: 'A phial of lamp oil', domain: 'ash', accent: 'warm amber',
+    art: 'a small stoppered glass phial half-full of amber lamp oil, its cork sealed with wax, a warm glint through the glass, a single object centred on black',
+    seed: 4404,
+  },
+  {
+    id: 'vess-last-wick', name: 'The last wick', domain: 'ash', accent: 'ember orange',
+    art: 'a short length of wick cut from a coat hem, frayed at one end, the other charred and still faintly ember-lit, a single object centred on black',
+    seed: 4405,
+  },
+
+  // ── DAWN (the clean light carried down) ─────────────────────────────────────
+  {
+    id: 'talon-amulet', name: "A falcon's talon", domain: 'dawn', accent: 'radiant pale gold',
+    art: "a single curved falcon's talon capped in pale gold, honed to a needle point, catching a clean high light, a single object centred on black",
+    seed: 4500,
+  },
+  {
+    id: 'jeweler-band', name: 'A lens of pale glass', domain: 'dawn', accent: 'radiant pale gold-white',
+    art: "a jeweller's loupe of pale ground glass in a thin brass band, a single hairline flaw refracting a spark of light, a single object centred on black",
+    seed: 4501,
+  },
+  {
+    id: 'split-iris-amulet', name: 'The Split Iris', domain: 'dawn', accent: 'radiant pale gold-white',
+    art: 'a pale human eye set in gold, its iris split cleanly in two down the centre, still glinting with sight, a single object centred on black',
+    seed: 4502,
+  },
+  {
+    id: 'morningstar-chip', name: 'A chip of the morning star', domain: 'dawn', accent: 'radiant gold-white',
+    art: 'a small jagged fleck of pale radiant stone glinting cold gold-white, a fragment of the light above carried down, a single object centred on black',
+    seed: 4503,
+  },
+  {
+    id: 'cleanest-cut', name: 'The cleanest cut', domain: 'dawn', accent: 'radiant white-gold',
+    art: 'a thin sliver of mirror-bright sword edge, impossibly keen, a single line of white light running its length, a single object centred on black',
+    seed: 4504,
+  },
+
+  // ── GRACE (the mercy carried against the dark) ──────────────────────────────
+  {
+    id: 'mendicants-locket', name: "A mendicant's locket", domain: 'grace', accent: 'soft warm amber',
+    art: 'a plain worn brass locket hanging open and empty, its hinge soft with handling, a faint warm amber gleam inside, a single object centred on black',
+    seed: 4600,
+  },
+  {
+    id: 'chime-of-still-air', name: 'A chime of still air', domain: 'grace', accent: 'soft warm amber',
+    art: 'a small tarnished silver chime hung on a thread, utterly still, a soft amber light held in its cup, a single object centred on black',
+    seed: 4601,
+  },
+  {
+    id: 'patient-aegis', name: 'A shard of the patient aegis', domain: 'grace', accent: 'soft warm amber',
+    art: 'a curved shard of a broken shield-boss, scarred with old blows and worn smooth at the edge, a warm amber sheen on its face, a single object centred on black',
+    seed: 4602,
+  },
+
+  // ── VALOR (the vow that would not kneel — and Aldric's last stand) ──────────
+  {
+    id: 'ring-of-fury', name: 'A cracked signet', domain: 'valor', accent: 'cold steel silver',
+    art: 'a heavy steel signet ring, its crest battered flat and cracked across, the metal bright where it struck stone, a single object centred on black',
+    seed: 4700,
+  },
+  {
+    id: 'bloodbond-ring', name: 'A vow scratched in iron', domain: 'valor', accent: 'cold steel silver',
+    art: 'a plain iron band scratched over with an illegible vow, the marks crossing and recrossing, dark with dried blood in the grooves, a single object centred on black',
+    seed: 4701,
+  },
+  {
+    id: 'oath-scrap', name: 'A scrap of a written oath', domain: 'valor', accent: 'pale steel',
+    art: 'a torn scrap of vellum bearing a broken line of oath, the rest lost to a dark bloodstain, its edges frayed, a single object centred on black',
+    seed: 4702,
+  },
+  {
+    id: 'horn-of-the-brink', name: 'A horn cracked at the mouth', domain: 'valor', accent: 'cold steel silver',
+    art: 'a war-horn of banded bone and steel split along a crack at the mouth, the fracture rimmed with a thin steel light, a single object centred on black',
+    seed: 4703,
+  },
+  {
+    id: 'aldric-pauldron-strap', name: 'A dented pauldron strap', domain: 'valor', accent: 'cold steel silver',
+    art: 'a thick leather pauldron strap with a battered steel buckle, dented deep where blows kept landing, a single object centred on black',
+    seed: 4704,
+  },
+  {
+    id: 'aldric-oath-ring', name: 'His notched oath-ring', domain: 'valor', accent: 'cold steel silver',
+    art: 'a steel oath-ring nearly worn through, its band chiselled with a row of small notches, a cold silver light on the metal, a single object centred on black',
+    seed: 4705,
+  },
+  {
+    id: 'aldric-standard', name: 'The standard he would not drop', domain: 'valor', accent: 'pale gold',
+    art: 'a broken standard-pole clenched in a severed gauntleted fist, a shred of torn banner still knotted at the top, a single object centred on black',
+    seed: 4706,
+  },
+
+  // ── GREED (the hunger that swallows everything) ─────────────────────────────
+  {
+    id: 'eye-of-appetite', name: 'Eye of Appetite', domain: 'greed', accent: 'tarnished gold',
+    art: 'a lidless golden eye ringed in small teeth, its pupil a black gullet, tarnished gold, staring outward and hungry, a single object centred on black',
+    seed: 4800,
+  },
+  {
+    id: 'the-long-hunger', name: 'The Long Hunger', domain: 'greed', accent: 'tarnished gold',
+    art: 'a gaunt gilded ribcage drawn tight over a hollow, a coin-slot mouth sewn shut with gold wire, tarnished and starved, a single object centred on black',
+    seed: 4801,
+  },
+  {
+    id: 'beggars-bowl', name: "A beggar's bowl", domain: 'greed', accent: 'tarnished gold',
+    art: 'a shallow wooden begging-bowl worn paper-thin at the rim by decades of hands, a single tarnished coin in its cup, a single object centred on black',
+    seed: 4802,
+  },
+  {
+    id: 'counting-itch', name: 'The counting itch', domain: 'greed', accent: 'tarnished gold',
+    art: 'a dried severed finger crooked mid-count, the nail long, a smear of tarnished gold-dust on its tip, a single object centred on black',
+    seed: 4803,
+  },
+  {
+    id: 'usurers-seal', name: "A usurer's seal", domain: 'greed', accent: 'tarnished gold',
+    art: 'a heavy brass debt-seal cut with a coiled serpent-and-coin device, old wax still crusted in the die, tarnished gold, a single object centred on black',
+    seed: 4804,
+  },
+
+  // ── FORBIDDEN (what the deep never once caught) ─────────────────────────────
+  {
+    id: 'ring-of-quickening', name: 'A ring worn on no finger', domain: 'forbidden', accent: 'arcane violet',
+    art: 'a thin dark ring found sewn beneath skin, a film of dried flesh still clinging to it, a faint violet gleam along the band, a single object centred on black',
+    seed: 4900,
+  },
+  {
+    id: 'frostgrip-amulet', name: 'A shackle-charm of unlight', domain: 'forbidden', accent: 'arcane violet',
+    art: 'a small blackened shackle-charm rimed with impossible frost, the ice glinting faint violet, its chain-links fused with cold, a single object centred on black',
+    seed: 4901,
+  },
+  {
+    id: 'stolen-heel', name: 'A heel-bone, stolen', domain: 'forbidden', accent: 'arcane violet',
+    art: 'a single pale heel-bone worn smooth as if still running, a faint violet shimmer of motion around it, a single object centred on black',
+    seed: 4902,
+  },
+  {
+    id: 'untouched-oath', name: 'The untouched oath', domain: 'forbidden', accent: 'arcane violet',
+    art: 'a slip of dark parchment bearing an unbroken oath, utterly unmarked and clean, edged in a faint violet light, a single object centred on black',
+    seed: 4903,
   },
 ];

@@ -102,7 +102,7 @@ async function main() {
     console.log(`FRAMES:  ${Object.keys(FRAMES).join('  ')}   ·  'all'`);
     console.log(`TEXTURES:  ${Object.keys(TEXTURES).join('  ')}   ·  'all'`);
     console.log(`\n  delve art card <id> [--n K] [--style s] [--from rX] [--tweak "…"]`);
-    console.log(`  delve art relic <id> [--n K] [--style s] [--from rX] [--tweak "…"]`);
+    console.log(`  delve art relic <id|all> [--n K] [--style s] [--from rX] [--tweak "…"]`);
     console.log(`  delve art frame <key|all> [--n K]`);
     console.log(`  delve art texture <id|all> [--n K] [--from rX] [--tweak "…"]`);
     console.log(`  delve art promote rX   ·   delve art ls [subject]`);
@@ -256,27 +256,34 @@ async function main() {
   }
 
   if (cmd === 'relic') {
-    const spec = RELIC_ART.find((r) => r.id === arg1);
-    if (!spec) { console.error(`no relic '${arg1}'. known: ${RELIC_ART.map((r) => r.id).join(', ')}`); process.exit(1); }
+    // `delve art relic all` — batch every spec (one run each by default; --n K for
+    // a wider explore per relic). Forking (--from) is single-relic only.
+    const specs = (arg1 === 'all')
+      ? RELIC_ART
+      : RELIC_ART.filter((r) => r.id === arg1);
+    if (specs.length === 0) { console.error(`no relic '${arg1}'. known: all · ${RELIC_ART.map((r) => r.id).join(', ')}`); process.exit(1); }
 
     const parent = flags.from ? M.findRun(m, flags.from) : undefined;
     if (flags.from && !parent) { console.error(`no run ${flags.from}`); process.exit(1); }
+    if (arg1 === 'all' && parent) { console.error('--from is single-relic only'); process.exit(1); }
 
     const styleId = (flags.style ?? parent?.style ?? DEFAULT_STYLE) as StyleId;
     const style = STYLES[styleId];
-    const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
     const tweak = flags.tweak;
-    const prompt = parent
-      ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
-      : composeRelicPrompt(style.prompt, spec.art, spec.accent, tweak);
 
-    console.log(`\ndelve art — relic ${spec.id} x${N} · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
+    console.log(`\ndelve art — relic ${arg1} (${specs.length} spec${specs.length > 1 ? 's' : ''} x${N}) · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
     let ok = 0;
-    for (let i = 0; i < N; i++) {
-      const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, style.negative, baseSeed + i, ILLUSTRATION_SIZE.width, ILLUSTRATION_SIZE.height, parent?.id ?? null, tweak);
-      if (r) ok++;
+    for (const spec of specs) {
+      const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
+      const prompt = parent
+        ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
+        : composeRelicPrompt(style.prompt, spec.art, spec.accent, tweak);
+      for (let i = 0; i < N; i++) {
+        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, style.negative, baseSeed + i, ILLUSTRATION_SIZE.width, ILLUSTRATION_SIZE.height, parent?.id ?? null, tweak);
+        if (r) ok++;
+      }
     }
-    console.log(`\n${ok}/${N} run(s) for ${spec.id}.  promote one:  delve art promote <id>`);
+    console.log(`\n${ok} run(s) for relic ${arg1}.  promote:  delve art promote <id>`);
     return;
   }
 
