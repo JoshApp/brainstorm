@@ -100,7 +100,7 @@ function composeCardPrompt(base: string, art: string, accent?: string, tweak?: s
 // seen through any hole" is load-bearing: it tells FLUX to fill a ring's centre
 // with green so the keyer removes it instead of leaving a dark plug.
 const RELIC_SUBJECT =
-  'a single grotesque occult relic object, one lone artefact — a curiosity you would pick up off a corpse — the whole object clearly visible, centred and filling the frame, set against a completely flat uniform BRIGHT CHROMA-KEY GREEN SCREEN background (solid pure green like a film green screen), that same flat green filling every part of the frame the object does not cover, INCLUDING seen through any hole or gap in the object';
+  'a single grotesque occult relic object, one lone artefact — a curiosity you would pick up off a corpse — the whole object clearly visible, centred and filling the frame. THE BACKGROUND IS A FLAT UNIFORM BRIGHT VIVID PURE GREEN CHROMA-KEY SCREEN — pure RGB green (0,255,0), a glowing saturated emerald green screen like a film VFX green screen — the SAME bright pure green filling every part of the frame the object does not cover, INCLUDING seen through any hole or gap in the object. The green is BRIGHT, evenly lit and fully saturated — never teal, never dark, never olive, never muted, never shadowed';
 
 // Always-banned: the card format + any text + any multi-object/scene framing.
 const RELIC_NEG_BASE = [
@@ -173,7 +173,7 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
       'a strict limited grimdark palette of bone white, ash grey, rust and dried-blood crimson, one spot colour, no gloss, no gradient sheen',
       'Darkest Dungeon concept-art meets Mörk Borg, illustrative not rendered, cruel ancient mood',
     ].join(', '),
-    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy, tiny object, lots of empty space, black background, dark background, shadowed background, vignette, gradient background`,
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy, tiny object, lots of empty space, black background, dark background, shadowed background, vignette, gradient background, teal background, teal, dark green background, olive background, muted green, desaturated background, textured background, background scenery, floor, ground under object`,
   },
   // Riff on flat: the same flat shapes but bound by a bold black INK outline +
   // sparse woodblock linework — flat art meeting the original ink register.

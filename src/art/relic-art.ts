@@ -150,8 +150,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   // ── ROT (grave-mould, plague, Cael's slow dying) ────────────────────────────
   {
     id: 'acid-tongue', name: 'Acid Tongue', domain: 'rot', accent: 'sickly green',
-    art: 'a long barbed tongue cut from something vast, wet and faintly smoking, the black ground beneath it pitted where the acid drips, against a flat chroma-key green screen',
-    seed: 4300,
+    art: 'a long barbed severed tongue cut from something vast, glistening wet and faintly smoking, acid sizzling and dripping from its barbed length, floating, against a flat chroma-key green screen',
+    seed: 9300,
+    neg: 'skull, human skull, face, skeleton, head, jaw',
   },
   {
     id: 'grave-mould-clump', name: 'A clump of grave-mould', domain: 'rot', accent: 'sickly green',
