@@ -210,7 +210,11 @@ export function spawnChallengeOffering(
     id,
     position: pos.clone(),
     radius: 1.6,
-    labelOffsetY: 1.0,
+    // Sit the prompt LOW — below the hovering mystery reward (PRIZE_FLOAT_Y 0.72)
+    // — so the stack reads preview-above / action-below, matching the blood-altar
+    // and the unified floor-item overlay. (Was 1.0, which put the prompt ABOVE the
+    // reward: "begin the ritual" on top, the ?-emblem preview below it.)
+    labelOffsetY: 0.4,
     promptLabel: 'begin the ritual',
     promptKind: 'trial',   // blood-red — a blood trial
     cost: { danger: true },  // "⚔ peril" chip — the price is the fight
