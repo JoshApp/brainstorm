@@ -1,0 +1,87 @@
+# Generate relic 2.5D art on GitHub's runners (open network → fal.run reachable,
+# unlike the sandboxed dev container). Manually dispatched. Generates via Flux,
+# bakes the sprites, and pushes the results to the `relic-art` branch so they can
+# be reviewed in a PR (webp renders in the GitHub diff) before merging to main.
+#
+# Needs one repo SECRET: FAL_KEY = <id>:<secret> from fal.ai.
+# Trigger: Actions tab → "relic art" → Run workflow, or via the API.
+
+name: relic art
+
+on:
+  workflow_dispatch:
+    inputs:
+      relics:
+        description: 'Which relics: "all", or space-separated ids (e.g. "gorged-tick bone-amulet")'
+        default: 'all'
+        type: string
+      candidates:
+        description: 'Candidates per relic (1 = auto-ship; >1 = explore, review runs, promote by hand)'
+        default: '1'
+        type: string
+      promote_and_bake:
+        description: 'Auto-promote the newest run per relic and bake sprites (off = generate only, for hand-curation)'
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: relic-art
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # 1. Generate through Flux (fal.ai). Runs are written under public/art/runs
+      #    (gitignored — kept only as a build artifact for review below).
+      - name: Generate
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+        run: npx tsx scripts/art.ts relic ${{ inputs.relics }} --n ${{ inputs.candidates }}
+
+      # 2. Promote newest-per-relic + bake to public/relics/*.webp + regen index.
+      - name: Promote + bake
+        if: ${{ inputs.promote_and_bake }}
+        run: |
+          npx tsx scripts/art-promote-relics.ts ${{ inputs.relics }}
+          npx tsx scripts/bake-relics.ts
+
+      # 3. Upload every raw run PNG so a human can eyeball quality / pick winners.
+      - name: Upload runs for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: relic-runs
+          path: public/art/runs/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      # 4. Push the baked sprites + index to the `relic-art` branch for a PR.
+      - name: Commit sprites to relic-art branch
+        if: ${{ inputs.promote_and_bake }}
+        run: |
+          git config user.name  "delve-art-bot"
+          git config user.email "actions@github.com"
+          git add -f public/relics src/content/relic-art-index.ts
+          if git diff --cached --quiet; then
+            echo "No sprite changes to commit."
+            exit 0
+          fi
+          git checkout -B relic-art
+          git commit \
+            -m "Bake relic 2.5D sprites (Flux)" \
+            -m "Generated via the relic-art workflow. Review the sprites in the diff, then merge to main to ship them into the reliquary + drops." \
+            -m "Patch-area: content"
+          git push --force-with-lease origin relic-art
