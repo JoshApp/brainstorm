@@ -1308,7 +1308,10 @@ function handleAutostart(): boolean {
     if (!s) return false;  // no save → fall through to title for fresh start
     adoptSave(s);
     applyState(s);
-    startRun(s.floorId, s.depth);
+    // Same missing-veil-teardown as the dev-resume branch: startRun raises the
+    // descent cover, so drop the boot veil once it resolves or the opaque veil
+    // strands the descent loading UI + the world beneath it (black screen).
+    void startRun(s.floorId, s.depth).then(hideBootLoading);
     return true;
   }
 
@@ -1577,7 +1580,14 @@ if (handleDebugScreenFlags()) {
   const s = loadSave()!;
   adoptSave(s);
   applyState(s);
-  startRun(s.floorId, s.depth);
+  await startRun(s.floorId, s.depth);
+  // Tear down the opaque boot veil — this resume path is the ONLY boot path that
+  // forgot to, so after a DEV AUTO-UPDATE reload it stayed pinned (z 2000) over
+  // the descent cover + its loading bar (z 50/52) and the revealed world, until
+  // the 7s strand-guard finally ripped it down: the "no loading bar → black →
+  // (bling) → still black" report. startRun already raised the descent cover, so
+  // dropping the veil hands off cleanly to the real descent loading UI.
+  hideBootLoading();
 } else if (handleAutostart()) {
   // Autostart flow ran (DESCEND / CONTINUE / seeded jump). Title is bypassed.
 } else {
