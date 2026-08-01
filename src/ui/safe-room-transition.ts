@@ -157,6 +157,14 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
       dimsScene: false,   // the card IS the full backdrop
       needsBackdrop: false,
       layer: 'title',
+      // Do NOT free the cursor: this card dismisses via the capture-phase
+      // pointerdown below (which works while pointer-locked) + ESC/timer, so it
+      // never needs a cursor. Keeping the lock HELD across the descent means the
+      // screen-manager doesn't release-then-reacquire it on close — which is
+      // exactly what popped the browser's "press ESC / reclaim your cursor"
+      // banner on every descent (desktop). Menus that truly need clicks keep the
+      // default needsCursor:true.
+      needsCursor: false,
     },
     // Keyboard is CONTAINED in the one input scheme: ESC → onDismissRequest,
     // Space/Enter/interact → onConfirm (both gated by the grace window). No
