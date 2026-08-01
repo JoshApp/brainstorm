@@ -1221,6 +1221,22 @@ export const SCENARIOS: Record<string, Scenario> = {
     acquireBeat: 'ring-of-marrow',   // a cursed blood relic — flood + narration
   },
 
+  // Preview-check — player posed CLOSE (~0.8m) to a relic + a potion, facing
+  // them, so the see-before-you-take overlay is in range. `delve snap preview-check`.
+  'preview-check': {
+    freeze: true,
+    hideSword: true,
+    playerPos: { x: 0, z: 1.0, lookAt: { x: 0, z: -3, y: 0.4 } },
+    enemyOverrides: [
+      { index: 0, pos: { x: -12, z: -12 } },
+      { index: 1, pos: { x: 12, z: -12 } },
+      { index: 2, pos: { x: -12, z: 12 } },
+    ],
+    spawnPickups: [
+      { itemId: 'ring-of-marrow', x: 0, z: 0.2 },   // relic, ~0.8m ahead
+    ],
+  },
+
   // Antechamber wraith — looking through the corridor at the boss.
   wraith: {
     freeze: true,

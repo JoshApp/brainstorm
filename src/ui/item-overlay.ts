@@ -1,8 +1,13 @@
 // The floor ITEM OVERLAY — "see before you take". One shared panel that shows the
 // FULL item card (ui/item-card.ts) whenever the focused interactable OFFERS an
-// item (a floor pickup, an altar reward). It FLOATS OVER the item — projected to
-// screen each frame from the world-ui system off getInRangeInteractable(). No
-// per-interactable DOM. Replaces the altar preview's truncated one-liner.
+// item (a floor pickup, an altar reward), driven each frame from the world-ui
+// system off getInRangeInteractable(). No per-interactable DOM.
+//
+// PINNED, not projected: it used to hover the item's projected screen point, but
+// a floor pickup sits at the player's FEET, so that point falls off the bottom of
+// the screen and the card vanished under the TAKE button + thumb (the reported
+// "relics/potions show only TAKE, no card" bug). A fixed anchor — centred, just
+// above the TAKE prompt — reads reliably for floor loot AND altar rewards.
 
 import * as THREE from 'three';
 import { getInRangeInteractable } from '../interactables/system';
@@ -13,16 +18,21 @@ import { itemFraming, applyDomainFrame } from './item-framing';
 
 let panel: HTMLDivElement | null = null;
 let shownId: string | null = null;
-const _v = new THREE.Vector3();
 
 function ensurePanel(): HTMLDivElement {
   if (panel) return panel;
   panel = document.createElement('div');
+  panel.classList.add('game-hud');
   Object.assign(panel.style, {
     position: 'fixed',
-    left: '0', top: '0',
-    // Anchored by its BOTTOM-CENTRE so it hovers just above the item's screen point.
-    transform: 'translate(-50%, -100%)',
+    // PINNED, not projected. A floor pickup sits at the player's feet — its world
+    // point projects off the bottom of the screen, so a "hover over the item"
+    // card vanished under the TAKE button + thumb (that was the see-before-you-
+    // take bug). A fixed anchor — centred, just above the TAKE prompt — reads
+    // reliably for BOTH floor loot and altar rewards and never hides under a thumb.
+    left: '50%',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
+    transform: 'translate(-50%, 0)',
     maxWidth: 'min(320px, 80vw)', width: 'max-content',
     padding: '9px 13px',
     background: THEME.panel,
@@ -67,19 +77,6 @@ export function tickItemOverlay(camera: THREE.Camera, canvas: HTMLCanvasElement)
     if (f) applyDomainFrame(p, f);
   }
 
-  // Project the item's world point (lifted a little) → screen.
-  _v.copy(focus!.position); _v.y += 0.55;
-  _v.project(camera);
-  if (_v.z > 1) { hide(p); return; }   // behind the camera
-
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  const cw = p.offsetWidth, ch = p.offsetHeight;
-  let sx = (_v.x * 0.5 + 0.5) * w;
-  let sy = (-_v.y * 0.5 + 0.5) * h - 12;   // a hair above the point
-  // Keep the whole card on screen (it extends up + is centred on sx).
-  sx = Math.max(cw / 2 + 8, Math.min(w - cw / 2 - 8, sx));
-  sy = Math.max(ch + 10, sy);
-  p.style.left = `${sx}px`;
-  p.style.top = `${sy}px`;
+  // Pinned position (set in ensurePanel) — just fade in.
   p.style.opacity = '1';
 }
