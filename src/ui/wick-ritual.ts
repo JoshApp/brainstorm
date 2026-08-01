@@ -1,4 +1,5 @@
 import { getSettings, updateSettings } from '../settings/settings';
+import { isDesktopLike } from '../controls/platform';
 
 // ── THE WICK RITUAL — diegetic brightness calibration ────────────────
 //
@@ -119,9 +120,10 @@ export function closeWickRitual(onClose?: () => void): void {
   if (!root) return;
   root.remove();
   root = null;
-  // Desktop: hand focus straight back to the game. The confirm click
-  // is a user gesture, so the relock is permitted.
-  document.querySelector('canvas')?.requestPointerLock?.();
+  // Desktop: hand focus straight back to the game. The confirm click is a user
+  // gesture, so the relock is permitted. DESKTOP ONLY — on mobile the request
+  // fires the browser's "to show your cursor…" banner over the game.
+  if (isDesktopLike()) document.querySelector('canvas')?.requestPointerLock?.();
   onClose?.();
 }
 

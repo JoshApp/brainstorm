@@ -18,6 +18,7 @@ import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
 import { showLeaderboard } from './leaderboard-screen';
 import { startAccountUpgrade } from '../net/account-link';
+import { isDesktopLike } from '../controls/platform';
 import { hasCommunityLink, openCommunityLink, COMMUNITY_LABEL } from '../links';
 
 const SCREEN_ID = 'start';
@@ -41,11 +42,14 @@ export interface StartScreenOptions {
 
 let root: HTMLDivElement | null = null;
 
-/** Desktop: capture the mouse for first-person look the moment the
- *  player enters the game — the pointerdown is a user gesture, so the
- *  lock is permitted. No-op on touch. */
+/** Desktop: capture the mouse for first-person look the moment the player
+ *  enters the game — the pointerdown is a user gesture, so the lock is
+ *  permitted. DESKTOP ONLY: on mobile requestPointerLock still fires the
+ *  browser's intrusive "to show your cursor…" banner over the descent (there's
+ *  no mouse to lock), so we never ask for it on a touch device. */
 function lockPointer(): void {
-  try { (document.querySelector('canvas') as HTMLCanvasElement | null)?.requestPointerLock?.(); } catch { /* touch / denied */ }
+  if (!isDesktopLike()) return;
+  try { (document.querySelector('canvas') as HTMLCanvasElement | null)?.requestPointerLock?.(); } catch { /* denied */ }
 }
 
 export function showStartScreen(opts: StartScreenOptions) {
