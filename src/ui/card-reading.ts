@@ -20,6 +20,7 @@ import { grantCard, getHeldCards } from '../state/run-state';
 import { BUFFS } from '../content/buffs';
 import { flashDomainGlow } from './vignette';
 import { broadcastPop } from './broadcast-pop';
+import { showInscription } from './inscription';
 import { domainVisual } from './domain-icons';
 
 const SCREEN_ID = 'card-reading';
@@ -210,6 +211,10 @@ export function openCardReading(
     // pouring into you as you return to the dark.
     setTimeout(() => { try { flashDomainGlow(accent, 1); } catch { /* presentation */ } }, 760);
     try { broadcastPop(claimLine(card.name), card.name.toUpperCase(), 'the fate is taken'); } catch { /* never break the claim */ }
+    // READ the fate as it enters you — the card's identity line rises through the
+    // reading channel (the same inscription trinkets/relics use), fired as the
+    // modal dissolves so it lands on the game view, not behind the card.
+    setTimeout(() => { try { showInscription(card.fate); } catch { /* presentation */ } }, 900);
 
     // The chosen card IGNITES then is pulled down into the delver, dissolving to
     // embers — "you took it into yourself", not "a menu closed".
