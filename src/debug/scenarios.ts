@@ -1296,6 +1296,25 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Relic BILLBOARD showcase — a few arted relics dropped on the floor, viewed
+  // from ~2m back (out of pickup range, so no preview card occludes them), to
+  // eyeball the curved-lit 2.5D billboards standing in the world.
+  // `delve snap relic-drop`.
+  'relic-drop': {
+    freeze: true,
+    hideSword: true,
+    playerPos: { x: 0, z: 1.9, lookAt: { x: 0, z: 0, y: 0.28 } },
+    enemyOverrides: [
+      { index: 0, pos: { x: -14, z: -14 } },
+      { index: 1, pos: { x: 14, z: -14 } },
+      { index: 2, pos: { x: -14, z: 14 } },
+    ],
+    spawnPickups: [
+      { itemId: 'ring-of-marrow', x: -0.55, z: 0.15 },
+      { itemId: 'vess-striker', x: 0.55, z: 0.15 },
+    ],
+  },
+
   // Antechamber wraith — looking through the corridor at the boss.
   wraith: {
     freeze: true,

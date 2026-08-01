@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { groundYAt } from '../level/elevation';
 import { stdMat } from '../style/material-registry';
 import { buildModel, mergeRigidSegments } from '../ecs/build-model';
+import { buildRelicBillboard } from '../effects/relic-billboard';
+import { hasRelicArt } from '../content/relic-art-assets';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { INTERACT_PRIORITY } from './types';
@@ -157,8 +159,14 @@ export function createPickup(
   ring.visible = false;  // toggled on by tick when in range
   pickupGroup.add(ring);
 
-  // ── Item model — bobs + rotates ────────────────────────────────────
-  const built = buildModel(item.dropModel);
+  // ── Item model — bobs + rotates (or a 2.5D billboard for arted relics) ──────
+  // A relic with baked 2.5D art DROPS as a curved, lit, camera-facing billboard
+  // (effects/relic-billboard.ts) instead of its procedural stand-in model — the
+  // same painted object the reliquary shows, standing in the world and shaded by
+  // the torchlight so it reads as solid. It bobs but never spins (the billboard
+  // owns its own facing), and it isn't mesh-merged.
+  const isBillboard = item.kind === 'relic' && hasRelicArt(item.id);
+  const built = isBillboard ? buildRelicBillboard(item) : buildModel(item.dropModel);
   // Lego-merge the item's static meshes into one-per-material. The whole model
   // bobs/rotates as a group (no per-part animation, no name lookups), so this
   // is pure draw-call savings — important when a pack of loot litters the floor,
@@ -166,8 +174,8 @@ export function createPickup(
   // chip into a throttle). ignoreNames: the drop model is usually the weapon's
   // VIEWMODEL, whose parts are named for swing animation — but a pickup never
   // animates parts, so collapse by material regardless of name. Flames/sprites
-  // are still preserved.
-  mergeRigidSegments(built, { ignoreNames: true });
+  // are still preserved. (A billboard is a single mesh — nothing to merge.)
+  if (!isBillboard) mergeRigidSegments(built, { ignoreNames: true });
   // A dropped item neither casts NOR receives shadows. The drop model defaults
   // every part to cast+receive (buildModel), so a litter of loot re-renders into
   // the lamp's 6-face cube map every frame for nothing — measured at ~5-6 draws
@@ -358,9 +366,12 @@ export function createPickup(
           itemZ = nextZ;
         }
         itemY += vy * dt;
-        // Faster spin in the air sells the toss.
-        built.group.rotation.y += ROTATE_SPEED * FLIGHT_SPIN_MUL * dt;
-        built.group.rotation.x += ROTATE_SPEED * FLIGHT_SPIN_MUL * 0.6 * dt;
+        // Faster spin in the air sells the toss — but a billboard never spins
+        // (it always faces the player), so let it fly facing you instead.
+        if (!isBillboard) {
+          built.group.rotation.y += ROTATE_SPEED * FLIGHT_SPIN_MUL * dt;
+          built.group.rotation.x += ROTATE_SPEED * FLIGHT_SPIN_MUL * 0.6 * dt;
+        }
         if (itemY <= restLocalY() && vy < 0) {
           // LAND. Snap to rest height, re-parent the group so the
           // disc / interactable hitbox / future bob centers on the
@@ -402,7 +413,9 @@ export function createPickup(
         t += dt;
         itemY = restLocalY() + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
         built.group.position.y = itemY;
-        built.group.rotation.y += ROTATE_SPEED * dt;
+        // Billboards face the camera (relic-billboard onBeforeRender), everything
+        // else slowly turns on its pedestal.
+        if (!isBillboard) built.group.rotation.y += ROTATE_SPEED * dt;
         if (landPuff > 0) {
           landPuff = Math.max(0, landPuff - dt * 4);  // ~0.25s puff
           const scale = 1 + landPuff * 0.6;
