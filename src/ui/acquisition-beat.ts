@@ -17,16 +17,20 @@
 
 import { on } from '../broadcast/event-bus';
 import { ITEMS, type ItemSpec } from '../content/items';
-import { getItemThumbnail } from './item-thumbnail';
+import { getItemThumbnail, itemImageUrl } from './item-thumbnail';
 import { itemFraming } from './item-framing';
 import { getReliquary } from '../player/reliquary';
 import { flashDomainGlow } from './vignette';
 import { broadcastPop } from './broadcast-pop';
 import { RARITY_COLORS } from '../content/items';
 import { hexCss } from '../style/color-utils';
+import { projectToScreen, flyToHud } from './fly-to-hud';
 
 let lastId = '';
 let lastAt = -1;
+
+// A pale-brass key glyph — the currency-not-gold read the key HUD uses.
+const KEY_GLYPH = `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="rgba(222,198,140,0.98)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.2"/><path d="M11 11l7 7"/><path d="M15.5 15.5l2-2"/><path d="M18 18l2-2"/></svg>`;
 
 export function initAcquisitionBeat(): void {
   on((e) => {
@@ -40,9 +44,22 @@ export function initAcquisitionBeat(): void {
 
     const item = ITEMS[e.itemId];
     if (!item) return;
-    if (item.kind === 'key') return;   // keys have their own HUD counter beat
 
-    try { flyItemToSatchel(item); } catch { /* presentation must never throw */ }
+    // Launch the chip from the object's REAL on-screen spot (projected from its
+    // world position) so the flight is continuous with where it sat — falling
+    // back to lower-centre only if the projection isn't available (headless /
+    // behind camera).
+    const from = (e.worldPos && projectToScreen(e.worldPos))
+      ?? { x: window.innerWidth * 0.5, y: window.innerHeight * 0.48 };
+
+    // Keys fly into the KEY counter (their own currency slot); everything else
+    // flies into the satchel. Same gesture, different destination.
+    if (item.kind === 'key') {
+      try { flyKeyToHud(from); } catch { /* presentation must never throw */ }
+      return;
+    }
+
+    try { flyItemToSatchel(item, from); } catch { /* presentation must never throw */ }
 
     // (The relic's provenance is READ as an inscription — owned by
     // pickup-notification, which routes a relic's flavor through the reading
@@ -62,39 +79,32 @@ export function initAcquisitionBeat(): void {
 /** DEV: fire the full beat for an item on demand (bench/scenario verification). */
 export function debugPlayAcquisitionBeat(item: ItemSpec): void {
   if (!import.meta.env.DEV) return;
-  try { flyItemToSatchel(item); } catch { /* ignore */ }
+  const from = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.48 };
+  try { flyItemToSatchel(item, from); } catch { /* ignore */ }
   if (item.kind === 'relic' && (item.domain || item.rarity === 'cursed')) {
     try { playDomainDeepening(item); } catch { /* ignore */ }
   }
 }
 
 // ── Fly-to-satchel ─────────────────────────────────────────────────────────
-function flyItemToSatchel(item: ItemSpec): void {
+// The item "presents itself" at its floor spot, holds a beat, then arcs into the
+// satchel and shrinks away — the classic pickup read, but starting from where
+// the object actually was. Uses the item's real thumbnail (2.5D relic art when
+// baked, procedural rig otherwise).
+function flyItemToSatchel(item: ItemSpec, from: { x: number; y: number }): void {
   const btn = document.getElementById('inventory-button');
-  const thumb = getItemThumbnail(item);
+  const thumb = itemImageUrl(item) ?? getItemThumbnail(item);
   if (!thumb) return;   // headless / thumbnail rig unavailable
-
-  const vw = window.innerWidth, vh = window.innerHeight;
-  // Start: a touch above screen centre (where the item "presents itself").
-  const start = { x: vw * 0.5, y: vh * 0.44 };
-  // End: the satchel button, or the top-right corner if it isn't mounted yet.
-  const r = btn?.getBoundingClientRect();
-  const end = r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: vw - 40, y: 40 };
-  const dx = end.x - start.x, dy = end.y - start.y;
 
   const accent = itemFraming(item)?.color ?? hexCss(RARITY_COLORS[item.rarity ?? 'mundane']);
 
   const chip = document.createElement('div');
-  chip.classList.add('game-hud');
   Object.assign(chip.style, {
-    position: 'fixed', left: `${start.x}px`, top: `${start.y}px`,
-    width: '76px', height: '76px', marginLeft: '-38px', marginTop: '-38px',
-    borderRadius: '8px', zIndex: '60', pointerEvents: 'none',
+    borderRadius: '8px',
     background: 'rgba(18, 12, 8, 0.82)',
     border: `1.5px solid ${accent}`,
     boxShadow: `0 0 22px ${accent}, 0 6px 18px rgba(0,0,0,0.6)`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    willChange: 'transform, opacity',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
   const img = document.createElement('img');
   img.src = thumb;
@@ -102,38 +112,19 @@ function flyItemToSatchel(item: ItemSpec): void {
     width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated',
   } as Partial<CSSStyleDeclaration>);
   chip.appendChild(img);
-  document.body.appendChild(chip);
 
-  // Pop into view, hold, then arc up-and-into the satchel, shrinking away.
-  const anim = chip.animate(
-    [
-      { transform: 'translate(0px,0px) scale(0.35)', opacity: 0, offset: 0 },
-      { transform: 'translate(0px,0px) scale(1.18)', opacity: 1, offset: 0.14 },
-      { transform: 'translate(0px,0px) scale(1.0)',  opacity: 1, offset: 0.24 },
-      { transform: 'translate(0px,0px) scale(1.0)',  opacity: 1, offset: 0.42 },   // hold
-      { transform: `translate(${dx * 0.5}px,${dy * 0.5 - 46}px) scale(0.72)`, opacity: 0.95, offset: 0.72 }, // arc lift
-      { transform: `translate(${dx}px,${dy}px) scale(0.26)`, opacity: 0.12, offset: 1 },
-    ],
-    { duration: 1000, easing: 'cubic-bezier(0.4, 0.0, 0.2, 1)', fill: 'forwards' },
-  );
-  anim.onfinish = () => {
-    chip.remove();
-    pulseSatchel(btn, accent);
-  };
+  flyToHud({ from, targetEl: btn, node: chip, size: 76, accent, present: true });
 }
 
-/** The satchel button drinks the item in — a quick scale pop + a coloured breath. */
-function pulseSatchel(btn: HTMLElement | null, accent: string): void {
-  if (!btn) return;
-  const prevFilter = btn.style.filter;
-  btn.animate(
-    [
-      { transform: 'scale(1)', filter: prevFilter || 'none' },
-      { transform: 'scale(1.22)', filter: `drop-shadow(0 0 10px ${accent})` },
-      { transform: 'scale(1)', filter: prevFilter || 'none' },
-    ],
-    { duration: 320, easing: 'ease-out' },
-  );
+// ── Fly-to-key-counter ───────────────────────────────────────────────────────
+// A key is pure currency — it flies straight into the key slot (no present-hold),
+// the same continuous flight as gold, just a different destination + glyph.
+function flyKeyToHud(from: { x: number; y: number }): void {
+  const target = document.getElementById('keys-indicator');
+  const glyph = document.createElement('div');
+  glyph.innerHTML = KEY_GLYPH;
+  glyph.style.filter = 'drop-shadow(0 0 5px rgba(222,198,140,0.75))';
+  flyToHud({ from, targetEl: target, node: glyph, size: 34, accent: 'rgba(222,198,140,0.9)' });
 }
 
 // ── Domain deepening ────────────────────────────────────────────────────────

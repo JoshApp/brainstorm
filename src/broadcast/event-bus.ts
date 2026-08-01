@@ -20,7 +20,10 @@ export type GameEvent =
   | { type: 'enemy:dot'; x: number; y: number; z: number; amount: number; color: number }
   | { type: 'player:damaged'; hpLeft: number; amount: number; attacker?: import('../ecs/types').EntityId }
   | { type: 'player:killed' }
-  | { type: 'item:picked-up'; itemId: string; displayName?: string }
+  // `worldPos` is where the picked-up object physically was, so the diegetic
+  // pickup flourish (ui/fly-to-hud.ts) can launch the fly-into-HUD chip from the
+  // object's real on-screen position instead of a fixed screen-centre point.
+  | { type: 'item:picked-up'; itemId: string; displayName?: string; worldPos?: { x: number; y: number; z: number } }
   | { type: 'note:read'; noteBody: string }
   | { type: 'room:cleared'; roomId: string }
   | { type: 'boss:engaged' }
@@ -39,7 +42,9 @@ export type GameEvent =
   | { type: 'gate:raise'; x: number; y: number; z: number }    // winch began lifting it
   | { type: 'gate:settle'; x: number; y: number; z: number }   // grate reached the top
   | { type: 'xp:absorbed' }
-  | { type: 'gold:absorbed' }
+  // `worldPos` = where the coin was absorbed, so the gold fleck flies to the
+  // counter from the coin's real screen position (ui/fly-to-hud.ts).
+  | { type: 'gold:absorbed'; worldPos?: { x: number; y: number; z: number } }
   // ── Tempo moments (combat skill beats; relic triggers subscribe) ──
   | { type: 'player:deflected' }
   | { type: 'player:just-dodged' }

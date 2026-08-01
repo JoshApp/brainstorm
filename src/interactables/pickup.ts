@@ -258,6 +258,11 @@ export function createPickup(
     // means a full bag leaves the potion on the floor for later.
     autoPickup: item.kind === 'consumable' || item.kind === 'key',
     onUse() {
+      // Where the object physically is (nudged up off the floor to the item
+      // body), so the diegetic pickup chip flies into the HUD from the item's
+      // real on-screen spot rather than a canned screen point.
+      const p = interactable.position;
+      const wp = { x: p.x, y: p.y + 0.35, z: p.z };
       // Flask SHARD — fuses into the flask the moment it's touched: +capacity,
       // the new pip arriving filled. Never enters the bag; growth is the event.
       if (item.consumableFlaskCapacity != null) {
@@ -267,7 +272,7 @@ export function createPickup(
         playPickupChime(rarityIdx);
         pickupHaptic(rarityIdx);
         flashPickupGlow(rarityIdx);
-        emit({ type: 'item:picked-up', itemId: item.id });
+        emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
         interactable.destroyed = true;
         return;
       }
@@ -286,7 +291,7 @@ export function createPickup(
         showInWorldMessage('The flask accepts it.');
         playFlaskUncork();
         pickupHaptic(RARITY_INDEX[item.rarity ?? 'mundane']);
-        emit({ type: 'item:picked-up', itemId: item.id });
+        emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
         interactable.destroyed = true;
         return;
       }
@@ -308,7 +313,7 @@ export function createPickup(
       flashPickupGlow(rarityIdx);
       // Emit on the event bus so the run-state's "items found" set + any
       // future listeners (LLM narration of first-discovery, etc.) hear it.
-      emit({ type: 'item:picked-up', itemId: item.id });
+      emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
       // Inventory addition + auto-equip routing. The notification toast
       // listens for the addItem event; equipment routing decides whether
       // to keep the item in the bag.

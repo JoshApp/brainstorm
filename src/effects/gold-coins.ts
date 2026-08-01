@@ -168,7 +168,9 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
       const distSq = tmp.lengthSq();
       if (distSq < ABSORB_RADIUS_SQ) {
         grantGold(c.value);
-        emit({ type: 'gold:absorbed' });
+        // Carry the coin's world position so the HUD fleck launches from where
+        // the coin actually vanished, not a fixed screen point.
+        emit({ type: 'gold:absorbed', worldPos: { x: c.group.position.x, y: c.group.position.y, z: c.group.position.z } });
         c.group.parent?.remove(c.group);
         c.halo.parent?.remove(c.halo);
         coins.splice(i, 1);

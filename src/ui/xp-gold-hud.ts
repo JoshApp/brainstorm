@@ -4,6 +4,7 @@ import { getCount } from '../player/inventory';
 import { KEY_ID } from '../content/drop-tables';
 import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
+import { projectToScreen, flyToHud } from './fly-to-hud';
 
 // Wide ARPG-style XP bar pinned along the BOTTOM edge of the screen,
 // just above the HP pips. The numbers (level + current/next) live
@@ -84,6 +85,7 @@ export function createXpGoldHud(): void {
   // Keys count sits to the LEFT of the gold, hidden while you carry none. Pale
   // brass so it reads as currency-but-not-gold.
   keysEl = document.createElement('div');
+  keysEl.id = 'keys-indicator';   // fly-to-hud target for key pickups
   Object.assign(keysEl.style, {
     color: 'rgba(210, 185, 130, 0.92)',
     display: 'none',
@@ -260,7 +262,7 @@ export function createXpGoldHud(): void {
 
   on((e) => {
     if (e.type === 'xp:absorbed') xpPulseTimer = 0.22;
-    else if (e.type === 'gold:absorbed') { goldPulseTimer = 0.22; spawnGoldFleck(); }
+    else if (e.type === 'gold:absorbed') { goldPulseTimer = 0.22; spawnGoldFleck(e.worldPos); }
     else if (e.type === 'level:up') {
       levelPulseTimer = 0.8;
       levelBloomLeft = LEVEL_BLOOM_DUR;
@@ -270,47 +272,26 @@ export function createXpGoldHud(): void {
 }
 
 // Diegetic "gold drains into the purse": each absorbed coin launches a small
-// gold fleck from near the player (screen-bottom-centre, where world coins
-// stream in) that arcs UP to the gold counter and pops the pulse on arrival —
-// so earning gold reads as coins going somewhere, not a silent number bump.
-// Capped so a big cascade can't flood the DOM.
-let activeFlecks = 0;
-const MAX_FLECKS = 7;
-const FLECK_SVG = `<svg width="12" height="12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="rgba(255,200,90,0.95)" stroke="rgba(255,230,160,0.95)" stroke-width="1"/></svg>`;
+// gold fleck that flies UP into the gold counter, popping the pulse on arrival —
+// so earning gold reads as coins going somewhere, not a silent number bump. The
+// fleck starts from the coin's REAL on-screen position (projected from where it
+// was absorbed) so it's continuous with the coin, not a fake spawn near the
+// bottom edge. Falls back to lower-centre only when the projection is
+// unavailable. Capped so a big cascade can't flood the DOM.
+const FLECK_SVG = `<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="rgba(255,200,90,0.95)" stroke="rgba(255,230,160,0.95)" stroke-width="1"/></svg>`;
 
-function spawnGoldFleck(): void {
-  if (!goldContainer || activeFlecks >= MAX_FLECKS) return;
-  const rect = goldContainer.getBoundingClientRect();
-  if (rect.width === 0) return;   // HUD not laid out yet
-  const targetX = rect.left + 9;
-  const targetY = rect.top + rect.height / 2;
-  const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 90;
-  const startY = window.innerHeight * 0.72;
+function spawnGoldFleck(worldPos?: { x: number; y: number; z: number }): void {
+  const from = (worldPos && projectToScreen(worldPos))
+    ?? { x: window.innerWidth / 2 + (Math.random() - 0.5) * 90, y: window.innerHeight * 0.72 };
 
   const el = document.createElement('div');
   el.innerHTML = FLECK_SVG;
-  Object.assign(el.style, {
-    position: 'fixed', left: `${startX}px`, top: `${startY}px`,
-    pointerEvents: 'none', zIndex: '11', willChange: 'transform, opacity',
-    filter: 'drop-shadow(0 0 4px rgba(255,190,80,0.7))',
-  } as Partial<CSSStyleDeclaration>);
-  document.body.appendChild(el);
-  activeFlecks++;
-
-  // Arc: rise past a control point above the midpoint, then curve into the HUD.
-  const midX = (startX + targetX) / 2 + (Math.random() - 0.5) * 70;
-  const midY = Math.min(startY, targetY) - (70 + Math.random() * 50);
-  const anim = el.animate(
-    [
-      { transform: 'translate(0,0) scale(1)', opacity: 0.95 },
-      { transform: `translate(${midX - startX}px, ${midY - startY}px) scale(0.92)`, opacity: 1, offset: 0.5 },
-      { transform: `translate(${targetX - startX}px, ${targetY - startY}px) scale(0.35)`, opacity: 0 },
-    ],
-    { duration: 420 + Math.random() * 130, easing: 'cubic-bezier(0.45, 0, 0.55, 1)' },
-  );
-  const done = () => { el.remove(); activeFlecks--; goldPulseTimer = 0.22; };
-  anim.onfinish = done;
-  anim.oncancel = done;
+  el.style.filter = 'drop-shadow(0 0 4px rgba(255,190,80,0.7))';
+  flyToHud({
+    from, targetEl: goldContainer, node: el, size: 14,
+    accent: 'rgba(255,200,90,0.9)',
+    onLand: () => { goldPulseTimer = 0.22; },
+  });
 }
 
 function showLevelToast(level: number) {

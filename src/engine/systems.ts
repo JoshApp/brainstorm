@@ -84,6 +84,7 @@ import { updateOutline, updateOutlinePxScale } from '../interactables/outline';
 import { updateInteractLabel } from '../ui/interact-label';
 import { tickItemPreviews } from '../ui/item-preview';
 import { tickItemOverlay } from '../ui/item-overlay';
+import { setFlyContext } from '../ui/fly-to-hud';
 import { tickBossBar } from '../ui/boss-bar';
 import { updateBuffBar } from '../ui/buff-bar';
 import { updateXpGoldHud } from '../ui/xp-gold-hud';
@@ -548,6 +549,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // Tutorial hints — only the tutorial level spawns these; elsewhere this
       // early-returns instantly.
       tickTutorialHints(ctx.realDt, camera, canvas, camera.position);
+      // Publish the live camera+canvas so pickup listeners (fly-to-hud) can
+      // project a world position to screen without threading the camera through
+      // the event bus.
+      setFlyContext(camera, canvas);
       updateInteractLabel(inRange, camera, canvas);
       // Item-preview labels (starter / blood altars) — world→screen projection.
       tickItemPreviews(camera, canvas);
