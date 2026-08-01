@@ -82,13 +82,37 @@ function composeCardPrompt(base: string, art: string, accent?: string, tweak?: s
   return `${base}${accentClause}. ${art}${tweak ? `, ${tweak}` : ''}`;
 }
 
-// Relics reuse the style's ink REGISTER (palette / chiaroscuro / deep-black
-// edges) but are a single occult OBJECT, not a framed tarot card — steer FLUX
-// off the card format so it renders a thing you'd pick up off a corpse.
-function composeRelicPrompt(base: string, art: string, accent?: string, tweak?: string): string {
+// Relics are NOT tarot cards — they're a single occult OBJECT you'd pick up off
+// a corpse, isolated on pure black so the bake keys it clean and floats it as a
+// 2.5D billboard. So a relic does NOT reuse the STYLE's tarot base (which leads
+// "a grimdark tarot illustration" and drags FLUX straight into a bordered card
+// with hallucinated caption text). It carries the ink/woodcut TREATMENT only —
+// palette, chiaroscuro, edges into black — with no card framing anywhere, and a
+// hardened negative that bans the frame + any text outright.
+const RELIC_REGISTER = [
+  'a single grotesque occult relic object, a lone artefact isolated and floating on a pure solid black background',
+  'a museum catalogue specimen plate, the one object centred with empty black all around it',
+  'bold woodcut and ink engraving treatment, heavy black linework and crosshatching, high-contrast graphic and decorative, medieval print and Mörk Borg aesthetic',
+  'palette of bone white and ink black with a single spot colour',
+  'dramatic chiaroscuro, the object emerging from deep black, cruel ancient indifferent mood',
+].join(', ');
+
+// Everything that keeps FLUX off the card format and off text.
+const RELIC_NEGATIVE = [
+  'tarot card, playing card, card, card frame, card border, bordered, parchment card, ornate corners, decorative border, vignette, cartouche, banner, ribbon, nameplate, title plate',
+  'text, letters, lettering, words, caption, label, title, name, numerals, numbers, writing, watermark, signature, inscription',
+  'multiple objects, collage, grid, scene, landscape, background scenery, table, shelf, hand holding it, person',
+  'photorealistic, photograph, 3d render, cgi, glossy, neon, cute, chibi, anime, cartoon',
+].join(', ');
+
+function composeRelicPrompt(art: string, accent?: string, tweak?: string): string {
   const accentClause = accent ? `, the single spot colour a ${accent}` : '';
-  return `${base}${accentClause}. a single grotesque occult relic object, NOT a tarot card, no card, no border, no frame — just the object on a black ground: ${art}${tweak ? `, ${tweak}` : ''}`;
+  return `${RELIC_REGISTER}${accentClause}: ${art}${tweak ? `, ${tweak}` : ''}`;
 }
+
+// A relic is a floating OBJECT, not a portrait card — a square canvas keeps FLUX
+// from composing to a tall tarot format and gives the bake a clean centred crop.
+const RELIC_SIZE = { width: 896, height: 896 } as const;
 
 async function main() {
   const m = M.load();
@@ -270,7 +294,6 @@ async function main() {
     if (specs.length > 1 && parent) { console.error('--from is single-relic only'); process.exit(1); }
 
     const styleId = (flags.style ?? parent?.style ?? DEFAULT_STYLE) as StyleId;
-    const style = STYLES[styleId];
     const tweak = flags.tweak;
 
     console.log(`\ndelve art — relic [${specs.map((s) => s.id).join(', ')}] (${specs.length} spec${specs.length > 1 ? 's' : ''} x${N}) · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
@@ -279,9 +302,9 @@ async function main() {
       const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
       const prompt = parent
         ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
-        : composeRelicPrompt(style.prompt, spec.art, spec.accent, tweak);
+        : composeRelicPrompt(spec.art, spec.accent, tweak);
       for (let i = 0; i < N; i++) {
-        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, style.negative, baseSeed + i, ILLUSTRATION_SIZE.width, ILLUSTRATION_SIZE.height, parent?.id ?? null, tweak);
+        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, RELIC_NEGATIVE, baseSeed + i, RELIC_SIZE.width, RELIC_SIZE.height, parent?.id ?? null, tweak);
         if (r) ok++;
       }
     }
