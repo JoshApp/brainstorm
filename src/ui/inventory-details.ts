@@ -9,7 +9,7 @@ import { SETS } from '../content/sets';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
-import { getItemThumbnail } from './item-thumbnail';
+import { itemImageUrl } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { statModifierIcon, statIconEl } from './stat-icons';
@@ -84,7 +84,7 @@ export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
     flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
   const img = document.createElement('img');
-  img.src = getItemThumbnail(item);
+  img.src = itemImageUrl(item);
   Object.assign(img.style, {
     width: '100%', height: '100%',
     objectFit: 'contain', imageRendering: 'pixelated',

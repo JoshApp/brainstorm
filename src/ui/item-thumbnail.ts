@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import type { ItemSpec } from '../content/items';
 import { disposeBuiltTree } from '../style/material-registry';
+import { relicArtUrl } from '../content/relic-art-assets';
 
 // 3D item thumbnails for the inventory panel. Each item's dropModel gets
 // rendered once to an offscreen canvas, converted to a PNG data URL, and
@@ -98,6 +99,21 @@ export function getItemThumbnail(item: ItemSpec): string {
 
   cache.set(item.id, dataURL);
   return dataURL;
+}
+
+/**
+ * The image URL to show for an item ANYWHERE in the UI (bag, detail header,
+ * reliquary plate). For a relic with a shipped 2.5D sprite this is the baked
+ * Flux art (public/relics/<id>.webp); otherwise it's the procedural 3D thumbnail.
+ * ONE call site for the "art supersedes model" rule, so wiring it here lights up
+ * every surface at once the moment a relic is baked.
+ */
+export function itemImageUrl(item: ItemSpec): string {
+  if (item.kind === 'relic') {
+    const art = relicArtUrl(item.id);
+    if (art) return art;
+  }
+  return getItemThumbnail(item);
 }
 
 // Per-item orientation overrides — apply a rotation BEFORE auto-framing so

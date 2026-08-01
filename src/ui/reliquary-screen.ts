@@ -1,7 +1,7 @@
 import { getReliquary } from '../player/reliquary';
 import { DOMAIN_IDS, getDomain, type DomainId } from '../content/domains';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
-import { getItemThumbnail } from './item-thumbnail';
+import { itemImageUrl } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
 import { buildDetailsColumn } from './inventory-details';
 import { ACCENT, TEXT_DIM, TEXT_FAINT, sectionLabel, type InventoryCtx } from './inventory-shared';
@@ -169,7 +169,7 @@ function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
   cell.title = spec.name;
 
   const thumb = document.createElement('img');
-  thumb.src = getItemThumbnail(spec);
+  thumb.src = itemImageUrl(spec);
   Object.assign(thumb.style, {
     width: `${PLATE_W - 8}px`, height: `${PLATE_W - 8}px`,
     objectFit: 'contain', imageRendering: 'pixelated', pointerEvents: 'none',

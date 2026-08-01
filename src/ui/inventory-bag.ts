@@ -2,7 +2,7 @@ import { getAllItems, removeItem, addItemSilently } from '../player/inventory';
 import { equipFromInventory } from '../player/equipment';
 import { playEquipClick } from '../audio/sfx';
 import { ITEMS, RARITY_COLORS, type ItemSpec } from '../content/items';
-import { getItemThumbnail } from './item-thumbnail';
+import { itemImageUrl } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
 import { CARD_BG, TEXT_DIM, TEXT_FAINT, ACCENT, sectionLabel, type InventoryCtx } from './inventory-shared';
 import { isNewInView } from './item-new-flag';
@@ -82,7 +82,7 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
   // 3D thumbnail on the left — bigger + smooth (was a crunchy 32px). The
   // source render is 128px, so this stays crisp.
   const img = document.createElement('img');
-  img.src = getItemThumbnail(item);
+  img.src = itemImageUrl(item);
   Object.assign(img.style, {
     width: '48px', height: '48px',
     objectFit: 'contain',
