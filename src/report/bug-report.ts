@@ -32,9 +32,10 @@ export interface BugReport {
 }
 
 /** Gather everything for a report. Pure data-collection; the screenshot is
- *  captured now (a fresh render), the rest read from live state. */
-export function buildBugReport(userText: string): BugReport {
-  const frame = captureFrameContext();
+ *  captured now (a fresh render, async WebGPU-safe readback), the rest read from
+ *  live state. */
+export async function buildBugReport(userText: string): Promise<BugReport> {
+  const frame = await captureFrameContext();
   const run = getRunState();
   return {
     build: typeof __BUILD_SHA__ !== 'undefined' ? __BUILD_SHA__ : 'dev',
@@ -161,9 +162,10 @@ async function sendReport(r: BugReport): Promise<string> {
 }
 
 /** Open the report form. Captures the frame on open so the preview shows exactly
- *  what will be sent. */
-export function openBugReport(): void {
-  const report = buildBugReport('');   // capture the frame NOW (before the sheet dims things)
+ *  what will be sent. The capture is an async GPU readback (WebGPU-safe), so we
+ *  await it before building the sheet — a few ms, imperceptible. */
+export async function openBugReport(): Promise<void> {
+  const report = await buildBugReport('');   // capture the frame NOW (before the sheet dims things)
 
   const sheet = createSheet({
     id: 'bug-report',

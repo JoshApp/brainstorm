@@ -4,7 +4,321 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 34",
+    "version": "Build 8",
+    "date": "2026-08-01",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Your sheet speaks in icons now — a heart, a blade, a shield — the same tongue your loot does.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The rite folds away until you want it. The satchel stops shouting every choice at once.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The reliquary lays your relics out as little consecrated plates now, each steeped in its domain. What you took, arranged like evidence.",
+        "area": [
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The satchel sorts itself by affliction now — each thing wears its domain in the list, not just when you open it.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Take a thing now and it flies into your satchel; take a domain relic and the deep floods the dark with it and remarks how the affliction spreads.",
+        "area": [
+          "ui",
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Items now wear their domain — a blood relic bleeds crimson, a cursed thing festers violet. The preview remembers what made it.",
+        "area": [
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Loot speaks in sigils now — a droplet for blood, a flame for ash, a violet star for the cursed. You read a relic's nature at a glance.",
+        "area": [
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The title screen fits a smaller phone, and the dark stops reminding you about your eyes on every floor.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The title screen makes room on a phone — the descent choices stop crowding the footer.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The descent stops flashing the browser's cursor banner in your face. Cross into the dark uninterrupted.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Turn a blade and the dark hears it — TURNED, and BROKEN when a guard gives. The way behind you is boarded shut.",
+        "area": [
+          "combat",
+          "level",
+          "ui"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The dead left more of themselves in the dark — a plaguebearer, a bloodletter, a man who would not kneel. Gather their things.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The keepers left you a way to speak up — a screenshot, your run, and a note, sent from wherever you stand.",
+        "area": [
+          "ui"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 7",
+    "date": "2026-07-31",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Bonfires stop hiding in corners — the fire takes the middle of the room, where you can't miss it.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Poison it and it goes sickly green; burn it and it smoulders. The dungeon's dying now wear their wounds.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The coins find your purse now — each one arcs up and lands with a little glint. Yes, it counts.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dark stops dangling locked gold before it has handed you a single key. The first chest opens.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The altar stops saying it twice — one card for the offering, the price beneath it.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The Hollow Choir stops flailing and starts singing — a two-voice fight that turns deaf to your blows when it means to end you.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The merchant lets you turn a blade over before you pay for it. Tap a ware; see what your gold buys.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The altar shows you a sign, not the spoils — a mystery blade, a mystery ward. Win the trial to learn its name.",
+        "area": [
+          "content",
+          "ui",
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Your gear speaks in sigils now — a heart for life, a blade for harm, a shield for what turns it. Read your loot at a glance.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The reward and the gamble stop huddling in one room. Two choices, two rooms — the floor breathes.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Tithe your true blade and the dark honours it. Try to fob it off with a castoff and it knows.",
+        "area": [
+          "content",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The cards stop hiding their teeth — a fate that rewrites the rules now says so before you take it.",
+        "area": [
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The fallen are fewer now, and they kept better company. What they died holding, you take.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Red Thirst bleeds you to half, not to the bone — and the flask you can't drink for mending pours fury instead.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The cobwebs remember your blade now. Slash the corners; they come apart.",
+        "area": [
+          "combat",
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Your health survives the stairs honestly now — the deep recounts your ceiling from what you carry instead of hoarding the wounds. The stash is gone from the haven.",
+        "area": [
+          "ui",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The item cards say who bleeds now. When your armor bites back, it is the one who struck you that opens up, not you.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead stand out from the stone now, edged in cold light. And the trial stops sending the same three every time — it reaches into the floor's own roster.",
+        "area": [
+          "atmosphere",
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Silver chests open freely now — only gold still wants a key. The gold fountains fill your flask, and a double-tap arms your gear.",
+        "area": [
+          "loot",
+          "level",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Keys leap to your hand now and show themselves beside your gold. The depth wears a skull, and the room where you choose your blade no longer pretends to be a hearth.",
+        "area": [
+          "ui",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The first floor stops taunting you with chests you cannot open. The locks wait for the deep, where the keys are.",
+        "area": [
+          "level",
+          "loot"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Locked chests, the reliquary, and the trial altar name their price before you commit. A key, a key, and your blood in that order.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Altars state their price before you pay it now, and wear their centuries of ruin. The dungeon would rather you knew what it costs.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 6",
+    "date": "2026-07-19",
+    "entries": [
+      {
+        "tag": "content",
+        "text": "The deep's dead left more behind. Sixteen new belongings — a chime that mends what a turned blade spared, a seal that compounds its debt, a tongue that feeds on the festering.",
+        "area": [
+          "content",
+          "loot",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "When the dark eats part of the world while you are away, the deep now admits it and offers the stairs back in.",
+        "area": [
+          "tech"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 5",
     "date": "2026-07-18",
     "entries": [
       {
@@ -42,7 +356,7 @@ export const GENERATED_PATCHLOG = [
     ]
   },
   {
-    "version": "Build 33",
+    "version": "Build 4",
     "date": "2026-07-10",
     "entries": [
       {
@@ -88,7 +402,7 @@ export const GENERATED_PATCHLOG = [
     ]
   },
   {
-    "version": "Build 32",
+    "version": "Build 3",
     "date": "2026-07-09",
     "entries": [
       {
@@ -111,331 +425,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Loot sits square to the room now — turned toward the door, but never at a drunken angle.",
         "area": [
           "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The treasure stops trying to sit in the altar's lap. Big authored things claim their ground first; the loot gives them room.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Drink in peace — a nervous second tap won't spill it, only a dodge or a swing will. Loot turns to face the door you came through, and you no longer descend into a chest sitting on your toes.",
-        "area": [
-          "combat",
-          "level",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The fire finds room to breathe now instead of jamming itself into a corner where you can barely reach it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The slumped dead find a wall to lean on now, and the things meant for the middle of a room actually sit in the middle of it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Walk into a room and the chest is looking at you now — set to face the way you came in, not shoved at the wall at random.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Gold chests go back to being a rumor. The deep stops handing them out like bread, and there is less of everything to trip over.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Fewer dead down here now. The ones you find, you were meant to find."
-      },
-      {
-        "tag": "tune",
-        "text": "The card hangs over the thing itself now, like a label on a hook — you read it where it lies.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Look at a thing on the floor and it tells you what it is now — the whole of it, not a half-line. Whether you take it is still on you.",
-        "area": [
-          "ui",
-          "controls"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The gold chest stops being a bigger box. It sits in its own light now, horned and sigil-marked — the kind of thing you cross a room for, and maybe shouldn't open.",
-        "area": [
-          "level",
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dead lie where they fell now — slumped against the walls, crawling on the open stone. Fewer of them, and every one put there on purpose.",
-        "area": [
-          "level",
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Chests stop breeding in the corners. A floor gets a few, set where they were meant to sit — and a gold one, when it comes, holds court.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The good boxes are locked now. Silver and gold want a key; wood opens for anyone. Spend the key on the wrong one and the dungeon keeps it anyway.",
-        "area": [
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dead stop coughing up swords. Coins, mostly — the odd key — and now and then nothing at all. What you actually want is locked in a box somewhere deeper.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 31",
-    "date": "2026-07-08",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The numbers come back to earth. A heart is worth something again, a heal is a mercy not a flood, and the things down here take more than a single breath to put down.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The rites stop being one trick. A spell is a handful of small cruelties stacked together now — erupt, drain, brand, or simply become something worse for a while.",
-        "area": [
-          "combat",
-          "content",
-          "ui"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The satchel forgets the ten pockets it never needed. A blade, a thing in the off-hand, a garment — and everything else you drag up from the dark simply clings to you.",
-        "area": [
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Hammers land on the new footing — sweep, sweep, and an overhead that catches three. Hold it and the ground remembers the blow.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Blades keep a rhythm now — you cannot spam them faster than they mean to move. Hold one back and it strikes without winding up twice.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Hold the blade back and it lands heavier — a plunge, a driving cut. Strike out of a dodge and it lunges. The dungeon notices the ones who move like that.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Swords learn the new footwork too — a diagonal cut into its mirror into a thrust, a lunge when you press in, a wide sweep when you sidestep.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Every dagger learns the new footwork — thrust, cut, and a finishing flurry, and it leans where you step. The needle remembers how the Harrow moves.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A new blade in the dark — the Harrow does not cut, it rips. Thrust, cut, or shred, depending which way you move. It learns your feet.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 30",
-    "date": "2026-07-07",
-    "entries": [
-      {
-        "tag": "add",
-        "text": "Bleed a thing to death and its wound calls to those beside it. Kill the bleeding and you drink. A pack can unmake itself, if you make the first cut.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The vials are gone from the dark. Your only mercy is the fire — and it mends you whole, once, before it forgets you.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The Howling Edge is a warden's blade now — you take it off something that earned the name, never from a lucky box.",
-        "area": [
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "Deep halls stand as wrecks now — a snapped column, its fallen half beside it — and each room dresses to its purpose: the arena bare, the storeroom cluttered.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dungeon keeps its thresholds clear and stands its pillars in ranks now — rooms look built, not spilled.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Escape now backs out one step at a time — shrug off the note, then close the menu, and only then does it open one. No more double-takes.",
-        "area": [
-          "controls",
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The mage staff no longer drags the whole world into the dark when you draw it — its light was never meant to be the last thing you see.",
-        "area": [
-          "combat",
-          "tech"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Smashed pots stop haunting the floor with an invisible wall — the ground they stood on is yours again.",
-        "area": [
-          "level",
-          "controls"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The clay pots scatter fresh each descent now, never the same corner twice — and never underfoot of what matters.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The deep stages a prize and a bargain in every room worth the trouble now, not just a chosen few.",
-        "area": [
-          "level",
-          "content"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 29",
-    "date": "2026-07-06",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The dungeon stops handing you the same trick twice a floor — one deal, chosen to fit the depth, and never a second heal fountain to spoil it.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The good find sits where the room means your eye to fall now — a real prize on the dais, and never the same twice.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The fire keeps to the far corners now — never the doorway, never the stairs. You will come to it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 28",
-    "date": "2026-07-05",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "The first desperate swig no longer stutters. The dungeon was never going to make drinking easy, but it will make it smooth.",
-        "area": [
-          "combat",
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Every open flame on the floor is now a single stroke of the dungeon's brush.",
-        "area": [
-          "atmosphere",
-          "tech"
         ]
       }
     ]

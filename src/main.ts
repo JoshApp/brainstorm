@@ -65,7 +65,7 @@ import {
   enterInspectMode,   INSPECT_REQUESTED,
 } from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
-import { registerFrameCapture } from './report/frame-capture';
+import { registerFrameCapture, pixelsToPngDataURL } from './report/frame-capture';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { beginArrival, suppressArrivalCeremony } from './player/arrival';
@@ -132,7 +132,7 @@ import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
-import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from './style/render-webgpu';
+import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes, captureDisplayFrame } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
 import { installContextRecovery, installDeviceLossRecovery } from './scene/context-recovery';
 import { markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
@@ -352,9 +352,15 @@ scene.add(camera); // required for the sword (camera child) to render
 // Bug-report frame capture: a fresh render then a canvas read (WebGPU buffers
 // aren't guaranteed to survive present), giving the report a clean game-view
 // screenshot + the camera pose. Registered once; read on demand by the report UI.
-registerFrameCapture(() => {
+registerFrameCapture(async () => {
   let png: string | null = null;
-  try { renderer.render(scene, camera); png = canvas.toDataURL('image/png'); } catch { /* read blocked */ }
+  // captureDisplayFrame renders one frame through the REAL display pipeline into
+  // an offscreen target and reads it back async — the WebGPU-safe path (a WebGPU
+  // canvas.toDataURL reads BLACK). 960px wide keeps the report attachment small.
+  try {
+    const cap = await captureDisplayFrame(renderer, scene, camera, 960);
+    if (cap) png = pixelsToPngDataURL(cap.data, cap.width, cap.height);
+  } catch { /* read blocked */ }
   return {
     png,
     cameraPos: { x: camera.position.x, y: camera.position.y, z: camera.position.z },

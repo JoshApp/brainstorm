@@ -186,6 +186,10 @@ export interface Scenario {
    * the flood/pop/chip mid-flight. DEV only.
    */
   acquireBeat?: string;
+
+  /** Open the bug-report sheet on apply — verifies the frame-capture screenshot
+   *  renders (not black on WebGPU). DEV only. */
+  openBugReport?: boolean;
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1179,6 +1183,24 @@ export const SCENARIOS: Record<string, Scenario> = {
       'bone-amulet',         // bone
       'the-long-hunger',     // cursed / chaos
     ],
+  },
+
+  // Bug-report screenshot check — opens the report sheet over a live floor so a
+  // snap confirms the frame-capture preview isn't black. `delve snap report-lab`.
+  'report-lab': {
+    level: {
+      id: 'report-lab', depth: 2, displayName: 'REPORT LAB', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 6, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 14, d: 14 }, height: 5 }],
+      corridors: [], props: [],
+      torches: [
+        { x: -6, z: 0, wall: 'W', height: 2.6, colorTint: 0xd9772e, intensityMul: 1.1 },
+        { x:  6, z: 0, wall: 'E', height: 2.6, colorTint: 0xd9772e, intensityMul: 1.1 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -4, y: 1.2 } },
+    openBugReport: true,
   },
 
   // Acquisition-beat showcase — the living pickup beat (fly-to-satchel + domain
@@ -2326,6 +2348,11 @@ export function applyScenario(
 
   if (scenario.frameShowcase) {
     renderFrameShowcase(scenario.frameShowcase);
+  }
+
+  if (scenario.openBugReport) {
+    // Delay so the floor has rendered a real frame before the capture fires.
+    setTimeout(() => { void import('../report/bug-report').then((m) => m.openBugReport()); }, 400);
   }
 
   if (scenario.acquireBeat) {
