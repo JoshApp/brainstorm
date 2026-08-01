@@ -91,10 +91,43 @@ function downloadBlob(blob: Blob, name: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Send the report: prefer the native share sheet (attach the screenshot + a
- *  JSON of the full context); fall back to downloading both files. Returns a
- *  short status string for the UI. */
+/** POST the report to the configured collector (a REST endpoint — Supabase
+ *  `/rest/v1/reports` or any store that accepts a JSON insert). Returns true on
+ *  success. Endpoint + anon key come from build-time env (VITE_REPORT_ENDPOINT /
+ *  VITE_REPORT_KEY); unset → no upload (the share/download path carries it). The
+ *  anon key is safe to embed: the table's RLS allows INSERT only. See the puller
+ *  in scripts/reports.ts + the setup note there. */
+async function uploadReport(r: BugReport): Promise<boolean> {
+  const endpoint = import.meta.env.VITE_REPORT_ENDPOINT as string | undefined;
+  if (!endpoint) return false;
+  const key = import.meta.env.VITE_REPORT_KEY as string | undefined;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Supabase REST wants the anon key in BOTH headers; harmless elsewhere.
+        ...(key ? { apikey: key, Authorization: `Bearer ${key}` } : {}),
+        Prefer: 'return=minimal',
+      },
+      // Store the whole report under a single `data` jsonb column — the table
+      // schema stays trivial (id, created_at, data) and the puller reads it back.
+      body: JSON.stringify({ data: r }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Send the report: upload to the collector if configured; otherwise (or on
+ *  failure) prefer the native share sheet, falling back to a file download.
+ *  Returns a short status string for the UI. */
 async function sendReport(r: BugReport): Promise<string> {
+  // Primary: the database. This is what lets the keepers PULL reports into a
+  // worklist without the reporter forwarding anything by hand.
+  if (await uploadReport(r)) return 'Sent to the keepers. Thank you.';
+
   const stamp = r.at;
   const jsonFile = new File([JSON.stringify(r, null, 2)], `delve-report-${stamp}.json`, { type: 'application/json' });
   const pngFile = r.screenshot ? dataUrlToFile(r.screenshot, `delve-report-${stamp}.png`) : null;
