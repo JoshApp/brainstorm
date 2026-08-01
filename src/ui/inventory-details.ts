@@ -14,6 +14,7 @@ import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '.
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { statModifierIcon, statIconEl } from './stat-icons';
 import { domainVisual, domainIconEl, CURSED_VISUAL } from './domain-icons';
+import { itemFraming, applyDomainFrame } from './item-framing';
 import type { StatModifier } from '../combat/modifiers';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getDomain } from '../content/domains';
@@ -108,6 +109,12 @@ export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
   card.appendChild(spacer);
 
   card.appendChild(buildDetailsAction(selection, ctx));
+
+  // DRESS the details card in the item's domain — border + glow only (this card
+  // scrolls, so no absolute wash/watermark that would drift with the content).
+  const framing = itemFraming(item);
+  if (framing) applyDomainFrame(card, framing, { chromeOnly: true });
+
   col.appendChild(card);
   return col;
 }

@@ -9,6 +9,7 @@ import { getInRangeInteractable } from '../interactables/system';
 import { buildItemCard } from './item-card';
 import { THEME } from './theme';
 import { isAnyScreenOpen } from './screen-manager';
+import { itemFraming, applyDomainFrame } from './item-framing';
 
 let panel: HTMLDivElement | null = null;
 let shownId: string | null = null;
@@ -40,6 +41,13 @@ function hide(p: HTMLDivElement): void {
   if (p.style.opacity !== '0') { p.style.opacity = '0'; shownId = null; }
 }
 
+/** Restore the panel's neutral border/shadow before a (re-)frame — the domain
+ *  frame overwrites these, so a plain (domainless) item must fall back to them. */
+function resetPanelChrome(p: HTMLDivElement): void {
+  p.style.border = `1px solid ${THEME.ruleStrong}`;
+  p.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)';
+}
+
 /** Per-frame: float the focused item's full card above it, or fade out. */
 export function tickItemOverlay(camera: THREE.Camera, canvas: HTMLCanvasElement): void {
   const p = ensurePanel();
@@ -51,6 +59,12 @@ export function tickItemOverlay(camera: THREE.Camera, canvas: HTMLCanvasElement)
   if (shownId !== item.id) {
     shownId = item.id;
     p.replaceChildren(buildItemCard(item, { affixes: focus?.previewAffixes, compare: true }));
+    // DRESS the preview in the item's domain — the frame/wash/watermark take the
+    // domain colour so a blood relic glows crimson before it's read. Reset the
+    // panel's default chrome first (replaceChildren cleared old decoration).
+    resetPanelChrome(p);
+    const f = itemFraming(item);
+    if (f) applyDomainFrame(p, f);
   }
 
   // Project the item's world point (lifted a little) → screen.

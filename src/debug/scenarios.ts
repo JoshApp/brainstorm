@@ -28,6 +28,9 @@ import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
+import { buildItemCard } from '../ui/item-card';
+import { itemFraming, applyDomainFrame } from '../ui/item-framing';
+import { THEME } from '../ui/theme';
 
 // DEV-only endless-sparring dummies for the gore-arena scenario. Each splits
 // into the OTHER on death, so killing one respawns the next forever — and it
@@ -165,6 +168,15 @@ export interface Scenario {
    * 'item' scenario row can serve every item via snap arg.
    */
   previewItemId?: string;
+
+  /**
+   * Domain-framing showcase: render the FULL floating item-card (name, effects,
+   * plus the domain frame/wash/watermark from ui/item-framing.ts) for each item
+   * id as a fixed DOM grid over a black scrim. A deterministic snap fixture for
+   * verifying the domain-framed preview treatment without needing an in-range
+   * interactable. DEV only.
+   */
+  frameShowcase?: string[];
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1144,6 +1156,19 @@ export const SCENARIOS: Record<string, Scenario> = {
       { cardId: 'the-hollow-saint', x: -1.7, z: -2.1 }, // major fate drops (bone)
       { cardId: 'red-thirst',       x:  0.0, z: -2.2 }, // blood
       { cardId: 'the-wanderer',     x:  1.7, z: -2.1 }, // wonder (violet)
+    ],
+  },
+
+  // Domain-framing showcase — the floating item cards for one item per domain
+  // family, dressed in their domain frame/wash/watermark. `delve snap frame-lab`.
+  'frame-lab': {
+    freeze: true,
+    hideSword: true,
+    hudOnly: true,
+    frameShowcase: [
+      'ring-of-bloodthirst', // blood
+      'bone-amulet',         // bone
+      'the-long-hunger',     // cursed / chaos
     ],
   },
 
@@ -2272,7 +2297,40 @@ export function applyScenario(
     }
   }
 
+  if (scenario.frameShowcase) {
+    renderFrameShowcase(scenario.frameShowcase);
+  }
+
   if (scenario.freeze) {
     setWorldFrozen(true);
   }
+}
+
+/** DEV fixture: lay out the full framed item cards side by side over a scrim, so
+ *  a snap can verify the domain frame/wash/watermark treatment deterministically. */
+function renderFrameShowcase(ids: string[]): void {
+  const scrim = document.createElement('div');
+  Object.assign(scrim.style, {
+    position: 'fixed', inset: '0', zIndex: '80',
+    background: 'radial-gradient(ellipse at center, rgba(14,9,6,0.92), rgba(4,3,2,0.98))',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '18px',
+    flexWrap: 'wrap', padding: '24px', pointerEvents: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  for (const id of ids) {
+    const item = ITEMS[id];
+    if (!item) continue;
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      maxWidth: 'min(320px, 40vw)', width: 'max-content',
+      padding: '9px 13px', borderRadius: '5px',
+      background: THEME.panel, border: `1px solid ${THEME.ruleStrong}`,
+      color: THEME.text, fontFamily: 'serif', fontSize: '12px', lineHeight: '1.4',
+      boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
+    } as Partial<CSSStyleDeclaration>);
+    panel.appendChild(buildItemCard(item, { compare: false }));
+    const f = itemFraming(item);
+    if (f) applyDomainFrame(panel, f);
+    scrim.appendChild(panel);
+  }
+  document.body.appendChild(scrim);
 }

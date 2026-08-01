@@ -14,6 +14,8 @@ export interface DomainVisual {
   path: string;
   /** CSS colour (the domain's register colour, or the cursed violet). */
   color: string;
+  /** The packed 0xRRGGBB int behind `color`, for alpha tints (frames/glows). */
+  hex: number;
   label: string;
 }
 
@@ -44,7 +46,7 @@ const GLYPH: Record<DomainId, string> = {
 /** The icon + colour + label for a domain. */
 export function domainVisual(id: DomainId): DomainVisual {
   const d = getDomain(id);
-  return { path: GLYPH[id], color: hexCss(d.register.color), label: d.name };
+  return { path: GLYPH[id], color: hexCss(d.register.color), hex: d.register.color, label: d.name };
 }
 
 /** CURSED — its own identity (the chaos): a violet chaos-star. Cursed items are
@@ -53,6 +55,7 @@ export function domainVisual(id: DomainId): DomainVisual {
 export const CURSED_VISUAL: DomainVisual = {
   path: CHAOS,
   color: hexCss(0xc05bd6),
+  hex: 0xc05bd6,
   label: 'Cursed',
 };
 
