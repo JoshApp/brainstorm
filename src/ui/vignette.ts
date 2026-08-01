@@ -105,6 +105,43 @@ export function flashPickupGlow(rarityIndex: number) {
   pickupEl.style.opacity = '0';
 }
 
+// ─── Domain attunement glow ──────────────────────────────────────────
+// A full-screen wash in a DOMAIN's colour — fired when the player deepens
+// their affliction with a domain (a domain relic taken). Unlike the gold
+// pickup bloom this fills the CENTRE too (a brief tint over the whole view,
+// heavier at the edges), so the domain momentarily "floods" the screen. The
+// colour is the domain's register colour; the deep is marking you.
+
+let domainEl: HTMLDivElement | null = null;
+
+function ensureDomain() {
+  if (domainEl) return;
+  ensureElements();
+  domainEl = document.createElement('div');
+  domainEl.id = 'vignette-domain'; domainEl.classList.add('game-hud');
+  Object.assign(domainEl.style, baseStyle());
+  domainEl.style.zIndex = '9';   // above the pickup/damage washes
+  document.body.appendChild(domainEl);
+}
+
+/** Domain flood — a wash in `rgb` (e.g. "rgb(206,64,52)"). `strength` 0..1
+ *  scales peak opacity; a deeper affliction floods harder. */
+export function flashDomainGlow(rgb: string, strength = 1) {
+  ensureDomain();
+  if (!domainEl) return;
+  const s = Math.max(0, Math.min(1, strength));
+  const inner = rgb.replace('rgb(', 'rgba(').replace(')', `, ${(0.14 * s).toFixed(3)})`);
+  const mid = rgb.replace('rgb(', 'rgba(').replace(')', `, ${(0.30 * s).toFixed(3)})`);
+  const edge = rgb.replace('rgb(', 'rgba(').replace(')', `, ${(0.55 * s).toFixed(3)})`);
+  domainEl.style.background =
+    `radial-gradient(ellipse at center, ${inner} 0%, ${mid} 55%, ${edge} 100%)`;
+  domainEl.style.transition = 'none';
+  domainEl.style.opacity = String(0.4 + 0.5 * s);
+  void domainEl.offsetWidth;
+  domainEl.style.transition = 'opacity 900ms ease-out';
+  domainEl.style.opacity = '0';
+}
+
 // ─── Flask heal glow ─────────────────────────────────────────────────
 // The sip landing — a warm GOLD swell from the screen edges (Elden Ring's
 // liquid-light register), unmistakably not the damage red and softer than

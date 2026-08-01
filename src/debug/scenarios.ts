@@ -31,6 +31,8 @@ import { openCharacterScreen } from '../ui/character-screen';
 import { buildItemCard } from '../ui/item-card';
 import { itemFraming, applyDomainFrame } from '../ui/item-framing';
 import { THEME } from '../ui/theme';
+import { debugPlayAcquisitionBeat } from '../ui/acquisition-beat';
+import { addRelic } from '../player/reliquary';
 
 // DEV-only endless-sparring dummies for the gore-arena scenario. Each splits
 // into the OTHER on death, so killing one respawns the next forever — and it
@@ -177,6 +179,13 @@ export interface Scenario {
    * interactable. DEV only.
    */
   frameShowcase?: string[];
+
+  /**
+   * Acquisition-beat showcase: re-fire the living acquisition beat (fly-to-satchel
+   * + domain flood + the deep's remark) for this item on a loop, so a snap catches
+   * the flood/pop/chip mid-flight. DEV only.
+   */
+  acquireBeat?: string;
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1170,6 +1179,24 @@ export const SCENARIOS: Record<string, Scenario> = {
       'bone-amulet',         // bone
       'the-long-hunger',     // cursed / chaos
     ],
+  },
+
+  // Acquisition-beat showcase — the living pickup beat (fly-to-satchel + domain
+  // flood + the deep's word) looped over a live floor. `delve snap acquire-lab`.
+  'acquire-lab': {
+    level: {
+      id: 'acquire-lab', depth: 4, displayName: 'ACQUIRE LAB', fogColor: 0x0c0608,
+      startPos: { x: 0, z: 6, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 14, d: 14 }, height: 5 }],
+      corridors: [], props: [],
+      torches: [
+        { x: -6, z: 0, wall: 'W', height: 2.6, colorTint: 0xd83828, intensityMul: 1.1 },
+        { x:  6, z: 0, wall: 'E', height: 2.6, colorTint: 0xd83828, intensityMul: 1.1 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
+    acquireBeat: 'ring-of-marrow',   // a cursed blood relic — flood + narration
   },
 
   // Antechamber wraith — looking through the corridor at the boss.
@@ -2299,6 +2326,18 @@ export function applyScenario(
 
   if (scenario.frameShowcase) {
     renderFrameShowcase(scenario.frameShowcase);
+  }
+
+  if (scenario.acquireBeat) {
+    const item = ITEMS[scenario.acquireBeat];
+    if (item) {
+      // Seed the reliquary so the affliction count reads >0, then loop the beat
+      // so a snap captures the flood/pop/chip regardless of when it fires.
+      if (item.kind === 'relic') addRelic(item);
+      const fire = () => debugPlayAcquisitionBeat(item);
+      fire();
+      setInterval(fire, 1600);
+    }
   }
 
   if (scenario.freeze) {

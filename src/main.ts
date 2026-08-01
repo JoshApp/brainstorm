@@ -51,6 +51,7 @@ import { initEventLog } from './broadcast/event-log';
 import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
+import { initAcquisitionBeat } from './ui/acquisition-beat';
 import { buildMaterials } from './style/materials';
 import { setMasterBrightness, getViewmodelRoots } from './style/render-frame';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
@@ -1022,6 +1023,9 @@ if (import.meta.env.DEV) {
   initPlayerProfile(); // the behavioral fingerprint the deep reads
   initAIRewards(); // the deep remarks on finds
 }
+// The living acquisition beat — item flies into the satchel, domain relics flood
+// the screen + draw a word from the deep. Player-facing (not the AI prototype).
+initAcquisitionBeat();
 // Drain any queued run tapes (recorded offline) on every connect.
 initRunSync();
 // Launch telemetry — error capture + funnel events. No-op until an endpoint is
