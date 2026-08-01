@@ -28,10 +28,22 @@ type SlotDef = {
 // WEAPON, and the OFF-HAND. Relics aren't slots — they show in the reliquary row
 // below (all collected, all active).
 const SLOTS: SlotDef[] = [
-  { slotId: 'vestment', top: '28%', left: '50%', size: 50, shortLabel: 'VEST', longLabel: 'VESTMENT' },
-  { slotId: 'weapon',   top: '58%', left: '20%', size: 48, shortLabel: 'WPN',  longLabel: 'WEAPON' },
-  { slotId: 'offhand',  top: '58%', left: '80%', size: 48, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
+  { slotId: 'vestment', top: '27%', left: '50%', size: 60, shortLabel: 'VEST', longLabel: 'VESTMENT' },
+  { slotId: 'weapon',   top: '60%', left: '19%', size: 58, shortLabel: 'WPN',  longLabel: 'WEAPON' },
+  { slotId: 'offhand',  top: '60%', left: '81%', size: 58, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
 ];
+
+// A slot-type glyph shown when the slot is EMPTY — reads at a glance far better
+// than a 9px "WPN"/"VEST"/"OFF" caption. Simple line icons, drawn in the dim
+// slot-label colour. (16px viewBox, stroked.)
+const SLOT_ICON: Record<EquipSlot, string> = {
+  // A sword — point up, crossguard, grip.
+  weapon: '<path d="M8 1.5 L8 10 M5.5 10 L10.5 10 M8 10 L8 14.5 M6.5 13 L9.5 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+  // A tunic / vestment — shoulders + body.
+  vestment: '<path d="M5 2 L8 4 L11 2 L13.5 4.5 L11.5 6.5 L11.5 14 L4.5 14 L4.5 6.5 L2.5 4.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
+  // A shield — off-hand.
+  offhand: '<path d="M8 1.5 L13.5 3.5 L13.5 8 Q13.5 12.5 8 14.5 Q2.5 12.5 2.5 8 L2.5 3.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
+};
 
 export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
   const col = document.createElement('div');
@@ -172,28 +184,30 @@ function buildSilhouette(): SVGSVGElement {
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   Object.assign(svg.style, {
     position: 'absolute', inset: '0', width: '100%', height: '100%',
-    opacity: '0.85',
+    opacity: '0.9',
   } as Partial<CSSStyleDeclaration>);
 
+  // A GUIDE, not a mass: faint fill + a clear warm outline so it reads as a
+  // hooded figure the slots hang on, without competing with them (the old near-
+  // opaque dark blob swallowed the slots). Warm hairline stroke = the leather
+  // register of the rest of the HUD.
+  const fill = 'rgba(34, 24, 16, 0.4)';
+  const line = 'rgba(120, 88, 56, 0.7)';
   svg.innerHTML = `
     <!-- Hood drape -->
     <path d="M 50 75 Q 100 20 150 75 L 145 110 Q 100 95 55 110 Z"
-          fill="rgba(20, 14, 10, 0.95)" stroke="rgba(80, 55, 35, 0.5)" stroke-width="1"/>
+          fill="${fill}" stroke="${line}" stroke-width="1.4"/>
     <!-- Head -->
-    <ellipse cx="100" cy="68" rx="28" ry="32" fill="rgba(30, 22, 16, 0.95)"/>
+    <ellipse cx="100" cy="68" rx="28" ry="32" fill="${fill}" stroke="${line}" stroke-width="1.4"/>
     <!-- Body torso -->
     <path d="M 62 110 L 138 110 L 152 215 Q 100 225 48 215 Z"
-          fill="rgba(28, 20, 14, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+          fill="${fill}" stroke="${line}" stroke-width="1.4"/>
     <!-- Arms -->
-    <rect x="32" y="115" width="22" height="110" rx="10"
-          fill="rgba(26, 18, 12, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
-    <rect x="146" y="115" width="22" height="110" rx="10"
-          fill="rgba(26, 18, 12, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <rect x="32" y="115" width="22" height="110" rx="10" fill="${fill}" stroke="${line}" stroke-width="1.4"/>
+    <rect x="146" y="115" width="22" height="110" rx="10" fill="${fill}" stroke="${line}" stroke-width="1.4"/>
     <!-- Legs -->
-    <rect x="68" y="218" width="25" height="92" rx="6"
-          fill="rgba(24, 16, 10, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
-    <rect x="107" y="218" width="25" height="92" rx="6"
-          fill="rgba(24, 16, 10, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <rect x="68" y="218" width="25" height="92" rx="6" fill="${fill}" stroke="${line}" stroke-width="1.4"/>
+    <rect x="107" y="218" width="25" height="92" rx="6" fill="${fill}" stroke="${line}" stroke-width="1.4"/>
   `;
   return svg;
 }
@@ -234,14 +248,25 @@ function buildDollSlot(def: SlotDef, item: ItemSpec | null, ctx: InventoryCtx): 
     } as Partial<CSSStyleDeclaration>);
     wrap.appendChild(img);
   } else {
+    // Empty: a slot-type glyph (reads instantly) over a tiny caption.
+    const stack = document.createElement('div');
+    Object.assign(stack.style, {
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+      color: TEXT_DIM, pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 16 16');
+    icon.setAttribute('width', '22'); icon.setAttribute('height', '22');
+    icon.innerHTML = SLOT_ICON[def.slotId];
+    icon.style.opacity = '0.75';
     const label = document.createElement('div');
     label.textContent = def.shortLabel;
     Object.assign(label.style, {
-      fontSize: '9px', fontWeight: '500',
-      color: TEXT_DIM, letterSpacing: '0.15em', textAlign: 'center',
-      pointerEvents: 'none',
+      fontSize: '7.5px', fontWeight: '600',
+      letterSpacing: '0.14em', textAlign: 'center',
     } as Partial<CSSStyleDeclaration>);
-    wrap.appendChild(label);
+    stack.append(icon, label);
+    wrap.appendChild(stack);
   }
 
   wrap.addEventListener('click', (e) => {
