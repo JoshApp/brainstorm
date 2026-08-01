@@ -1,11 +1,11 @@
-# Relic art generation request — change a value + push to main to fire the
-# `relic art` workflow. Leave `styles=` EMPTY to bake+ship (flat register) to
-# the relic-art branch. List ids in `relics=` for a targeted re-roll, or `all`.
+# Relic art generation request. Leave styles= EMPTY to bake+ship (flat) to the
+# relic-art branch. List ids in relics= for a targeted re-roll (rest seeded from
+# the branch), or `all`.
 #
-# FULL RE-BAKE on the GREENSCREEN pipeline: chroma-green screen + chroma keyer
-# (holes key inside AND out, feathered edges, de-spill, anti-shadow). All 56.
-relics=all
+# DRIFT RE-ROLL: greenscreen keying is good; fix 6 that drifted on the full
+# regen (skulls + a teal backdrop) — harder negatives + fresh seeds.
+relics=jeweler-band morningstar-chip vess-last-wick ring-of-vigor cael-plague-beak chime-of-still-air
 styles=
 candidates=1
 promote_and_bake=true
-nonce=11
+nonce=12

@@ -108,8 +108,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'ring-of-vigor', name: 'A knuckle of the stubborn', domain: 'bone', accent: 'cold bone white',
-    art: 'a ring carved from a finger-knuckle bone, worried glassy-smooth by a restless thumb, pale and stubborn, against a flat chroma-key green screen',
-    seed: 4201,
+    art: 'a plain pale ring band carved from a single smooth finger-knuckle bone, a simple round bone ring worn glassy, against a flat chroma-key green screen',
+    seed: 3014,
+    neg: 'skull, human skull, face, head, teeth, eye socket',
   },
   {
     id: 'ring-of-marrow', name: 'The Marrow-Thief', domain: 'bone', accent: 'bruised bone white',
@@ -182,8 +183,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'cael-plague-beak', name: 'The plague-mask beak', domain: 'rot', accent: 'sickly green',
-    art: 'a long curved leather plague-mask beak, cracked, stuffed with herbs turned to green rot, its eye-lenses gone milky, against a flat chroma-key green screen',
-    seed: 4306,
+    art: 'a long conical leather plague-doctor mask beak, a curved bird-like nose-cone of stitched brown leather, cracked and stuffed with rotted green herbs poking from its tip, two small round glass eye-lenses gone milky at its base, against a flat chroma-key green screen',
+    seed: 3015,
+    neg: 'skull, human skull, skeleton, real bird, real animal, screaming face, teeth',
   },
 
   // ── ASH (the ember kept, the martyr burned, Vess's lamps) ───────────────────
@@ -214,9 +216,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'vess-last-wick', name: 'The last wick', domain: 'ash', accent: 'ember orange',
-    art: 'a short frayed thread of candle-wick cut from a coat hem, one end charred and still faintly ember-lit, a thin curl of grey smoke rising, a tiny humble scrap against a flat chroma-key green screen',
-    seed: 9405,
-    neg: 'skull, human skull, face, skeleton, bone, full candle',
+    art: 'a single short burnt candle-wick stub, just a small charred black thread of string with a faint orange ember glowing at its tip and a thin wisp of smoke, tiny and humble, against a flat chroma-key green screen',
+    seed: 3013,
+    neg: 'skull, human skull, face, skeleton, bone, teeth, full candle, wax',
   },
 
   // ── DAWN (the clean light carried down) ─────────────────────────────────────
@@ -227,9 +229,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'jeweler-band', name: 'A lens of pale glass', domain: 'dawn', accent: 'radiant pale gold-white',
-    art: "a jeweller's loupe of pale ground glass rimmed in a thin tarnished brass band, a single hairline flaw in the lens refracting a cold spark of gold-white light, a small precise instrument against a flat chroma-key green screen",
-    seed: 9501,
-    neg: 'skull, human skull, face, skeleton, bone',
+    art: "a small brass jeweller's magnifying loupe, a round clear glass lens set in a tarnished brass eyepiece ring with a short knurled handle, an optical instrument, a cold gold-white spark in the lens, against a flat chroma-key green screen",
+    seed: 3011,
+    neg: 'skull, human skull, face, skeleton, bone, teeth, eye socket',
   },
   {
     id: 'split-iris-amulet', name: 'The Split Iris', domain: 'dawn', accent: 'radiant pale gold-white',
@@ -238,9 +240,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'morningstar-chip', name: 'A chip of the morning star', domain: 'dawn', accent: 'radiant gold-white',
-    art: 'a small jagged shard of pale radiant stone glinting cold gold-white, a broken fleck of fallen starlight, one sharp splinter against a flat chroma-key green screen',
-    seed: 9503,
-    neg: 'skull, human skull, face, skeleton, flame, fire, mace, morningstar weapon, spiked ball',
+    art: 'a small sharp angular crystal shard, a jagged geometric splinter of pale glowing white-gold mineral like broken quartz, a faceted stone fragment catching cold light, against a flat chroma-key green screen',
+    seed: 3012,
+    neg: 'skull, human skull, face, skeleton, teeth, flame, fire, mace, morningstar weapon, spiked ball, orb, sphere, round',
   },
   {
     id: 'cleanest-cut', name: 'The cleanest cut', domain: 'dawn', accent: 'radiant white-gold',
@@ -256,8 +258,8 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'chime-of-still-air', name: 'A chime of still air', domain: 'grace', accent: 'soft warm amber',
-    art: 'a small tarnished silver chime hung on a thread, utterly still, a soft amber light held in its cup, against a flat chroma-key green screen',
-    seed: 4601,
+    art: 'a small tarnished silver bell-chime hung on a fine thread, utterly still, a soft amber light held in its cup, against a flat chroma-key green screen',
+    seed: 3016,
   },
   {
     id: 'patient-aegis', name: 'A shard of the patient aegis', domain: 'grace', accent: 'soft warm amber',
