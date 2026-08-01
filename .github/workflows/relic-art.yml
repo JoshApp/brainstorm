@@ -9,6 +9,10 @@
 name: relic art
 
 on:
+  # Two ways to fire: the Actions-tab button (workflow_dispatch), OR a push that
+  # touches `.art-request` (so a session that can push but can't dispatch drives
+  # it — write the params into that file and push). Params come from inputs on
+  # dispatch, or from the KEY=VALUE lines of .art-request on push.
   workflow_dispatch:
     inputs:
       relics:
@@ -23,6 +27,10 @@ on:
         description: 'Auto-promote the newest run per relic and bake sprites (off = generate only, for hand-curation)'
         default: true
         type: boolean
+  push:
+    branches: [main]
+    paths:
+      - '.art-request'
 
 permissions:
   contents: write
@@ -45,18 +53,36 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # 0. Resolve params from EITHER the dispatch inputs OR the .art-request file
+      #    (KEY=VALUE lines: relics=, candidates=, promote_and_bake=). Defaults:
+      #    all relics, 1 candidate, promote+bake on.
+      - name: Resolve params
+        id: p
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            relics="${{ inputs.relics }}"; candidates="${{ inputs.candidates }}"; bake="${{ inputs.promote_and_bake }}"
+          else
+            relics="$(sed -n 's/^relics=//p' .art-request | head -1)"
+            candidates="$(sed -n 's/^candidates=//p' .art-request | head -1)"
+            bake="$(sed -n 's/^promote_and_bake=//p' .art-request | head -1)"
+          fi
+          echo "relics=${relics:-all}"           >> "$GITHUB_OUTPUT"
+          echo "candidates=${candidates:-1}"      >> "$GITHUB_OUTPUT"
+          echo "bake=${bake:-true}"               >> "$GITHUB_OUTPUT"
+          echo "Resolved: relics='${relics:-all}' candidates='${candidates:-1}' bake='${bake:-true}'"
+
       # 1. Generate through Flux (fal.ai). Runs are written under public/art/runs
       #    (gitignored — kept only as a build artifact for review below).
       - name: Generate
         env:
           FAL_KEY: ${{ secrets.FAL_KEY }}
-        run: npx tsx scripts/art.ts relic ${{ inputs.relics }} --n ${{ inputs.candidates }}
+        run: npx tsx scripts/art.ts relic ${{ steps.p.outputs.relics }} --n ${{ steps.p.outputs.candidates }}
 
       # 2. Promote newest-per-relic + bake to public/relics/*.webp + regen index.
       - name: Promote + bake
-        if: ${{ inputs.promote_and_bake }}
+        if: ${{ steps.p.outputs.bake == 'true' }}
         run: |
-          npx tsx scripts/art-promote-relics.ts ${{ inputs.relics }}
+          npx tsx scripts/art-promote-relics.ts ${{ steps.p.outputs.relics }}
           npx tsx scripts/bake-relics.ts
 
       # 3. Upload every raw run PNG so a human can eyeball quality / pick winners.
@@ -70,7 +96,7 @@ jobs:
 
       # 4. Push the baked sprites + index to the `relic-art` branch for a PR.
       - name: Commit sprites to relic-art branch
-        if: ${{ inputs.promote_and_bake }}
+        if: ${{ steps.p.outputs.bake == 'true' }}
         run: |
           git config user.name  "delve-art-bot"
           git config user.email "actions@github.com"
