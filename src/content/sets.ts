@@ -71,6 +71,50 @@ export const SETS: Record<string, SetSpec> = {
       { pieces: 3, modifiers: [{ kind: 'max-hp', amount: 3 }, { kind: 'incoming-damage-mult', amount: 0.94 }] },
     ],
   },
+  // Cael — the plaguebearer. Rot: he let the sickness work. The attrition
+  // build — poison bypasses physical armour, so the set answers tanks the way
+  // Vess's fire answers swarms.
+  'cael': {
+    id: 'cael',
+    name: 'What Cael Bore',
+    owner: 'Cael, the plaguebearer',
+    domain: 'rot',
+    bonuses: [
+      { pieces: 2, onHit: { buffId: 'poison', chance: 0.28, duration: 4 } },
+      {
+        pieces: 3,
+        modifiers: [{ kind: 'magic-armor', amount: 1 }],
+        onHit: { buffId: 'poison', chance: 0.45, duration: 5 },
+      },
+    ],
+  },
+  // Ysolde — who bled the dark. Blood: the wound feeds the one who opens it.
+  // The sustain build — bleed to open them, lifesteal to drink it back.
+  'ysolde': {
+    id: 'ysolde',
+    name: 'What Ysolde Drew',
+    owner: 'Ysolde, who bled the dark',
+    domain: 'blood',
+    bonuses: [
+      { pieces: 2, onHit: { buffId: 'bleed', chance: 0.30, duration: 4 } },
+      {
+        pieces: 3,
+        modifiers: [{ kind: 'lifesteal-pct', amount: 0.08 }, { kind: 'weapon-damage', amount: 1 }],
+      },
+    ],
+  },
+  // Aldric — who did not kneel. Valor: hold the line, and the last blow is
+  // yours. The finisher build — crit into a heavier killing strike.
+  'aldric': {
+    id: 'aldric',
+    name: 'What Aldric Held',
+    owner: 'Aldric, who did not kneel',
+    domain: 'valor',
+    bonuses: [
+      { pieces: 2, modifiers: [{ kind: 'crit-chance', amount: 0.06 }] },
+      { pieces: 3, modifiers: [{ kind: 'finisher-damage-mult', amount: 1.35 }, { kind: 'physical-armor', amount: 1 }] },
+    ],
+  },
 };
 
 /**
