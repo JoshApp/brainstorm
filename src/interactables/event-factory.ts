@@ -162,7 +162,15 @@ export function spawnEvent(def: EventDef): Interactable {
       }
       built.tick?.(dt, playerPos);
     },
-    onDestroy: def.onDestroy,
+    onDestroy() {
+      // If the player SAW this deal (offered) and never took it (not used), then
+      // its teardown — walking away, or descending past it — is a REFUSAL. The
+      // deep records what you turn down, same as what you take.
+      if (def.family && offered && !used) {
+        emit({ type: 'transaction:declined', family: def.family, id, itemId: def.previewItem?.id });
+      }
+      def.onDestroy?.();
+    },
   };
   ctx.self = interactable;   // let build()'s tick reference the live interactable
   registerInteractable(interactable);

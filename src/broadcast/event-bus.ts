@@ -54,7 +54,11 @@ export type GameEvent =
   | { type: 'transaction:accepted'; family: import('../content/transactions').TransactionFamily; id: string;
       price: import('../content/transactions').TransactionPrice }
   | { type: 'transaction:resolved'; family: import('../content/transactions').TransactionFamily; id: string;
-      outcome: import('../content/transactions').TransactionOutcome };
+      outcome: import('../content/transactions').TransactionOutcome }
+  // Offered but walked away from — the deal was SEEN and refused (or abandoned on
+  // descent). The deep keeps score of what you turn down, not just what you take.
+  // `itemId` is the offering it dangled, when it dangled one.
+  | { type: 'transaction:declined'; family: import('../content/transactions').TransactionFamily; id: string; itemId?: string };
 
 type Handler = (event: GameEvent) => void;
 

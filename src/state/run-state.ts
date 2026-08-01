@@ -15,6 +15,7 @@ import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
+import { clearChoices, serializeChoices, hydrateChoices, type Choice } from './choices';
 import { resetFlask, restoreFlask, serializeFlask, type FlaskState } from '../player/flask';
 
 const STORAGE_KEY = 'delve:save';
@@ -62,6 +63,9 @@ export interface SaveData {
   /** Per-run phial color → mutation identities (state/phial-identities.ts).
    *  Persisted so a reload keeps what the player has LEARNED. */
   phials?: Record<string, string>;
+  /** The ledger of offerings taken + declined this run (state/choices.ts) — what
+   *  the deep remembers you chose at each fork. Optional for older saves. */
+  choices?: Choice[];
   /** Fate cards held this run (ids into content/cards.ts) — the Spread.
    *  Optional for older saves (treated as empty). */
   cards?: string[];
@@ -119,6 +123,7 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
   // die with their delver.
   clearMutations();
   clearPhialIdentities();
+  clearChoices();
   // Fresh, full flask (a second run in the same session mustn't inherit the
   // last delver's depleted/upgraded flask).
   resetFlask();
@@ -136,6 +141,7 @@ export function adoptSave(save: SaveData) {
   };
   hydrateMutations(save.mutations);
   hydratePhialIdentities(save.phials);
+  hydrateChoices(save.choices);
   restoreFlask(save.flask);   // full base flask when the save predates the field
 }
 
@@ -294,6 +300,7 @@ export function commitFloorEntry(args: {
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
   inMemory.mutations = serializeMutations();   // persist active tainted brands
   inMemory.phials = serializePhialIdentities();  // persist phial knowledge
+  inMemory.choices = serializeChoices();       // persist the ledger of what was taken/refused
   inMemory.flask = serializeFlask();           // persist flask charges/capacity
   persist();
 }
