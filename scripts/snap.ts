@@ -257,6 +257,15 @@ async function main() {
     // the canvas so the WebGL2 fallback gets a null context (black frame). Force the
     // WebGL2 backend up-front — it skips the webgpu context request entirely.
     if (!url.includes('ui-bench.html')) url += (url.includes('?') ? '&' : '?') + 'webgpu=0';
+    // Skip the pipeline PREWARM by default: under the headless swiftshader WebGL2
+    // fallback, warming every pipeline takes far longer than the reveal timeout,
+    // so the descent cover never drops and the shot is just the loading bar. With
+    // nowarm the cover drops immediately and pipelines compile lazily — the post-
+    // reveal wait (waitMs) gives them time, and the frame renders. This is what
+    // makes headless self-verification actually work. Opt back in with --warm.
+    if (!url.includes('nowarm=') && !process.argv.includes('--warm')) {
+      url += '&nowarm=1';
+    }
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output
