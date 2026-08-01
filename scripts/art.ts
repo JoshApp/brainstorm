@@ -95,9 +95,12 @@ function composeCardPrompt(base: string, art: string, accent?: string, tweak?: s
 //
 // The workflow can sweep several: styles=ink specimen oil relief in .art-request.
 
-// Shared subject — the thing itself, isolated, no card. Leads every register.
+// Shared subject — the thing itself, isolated, no card, on a CHROMA GREEN SCREEN
+// so the bake can key it out cleanly by colour (inside holes + outside). "green
+// seen through any hole" is load-bearing: it tells FLUX to fill a ring's centre
+// with green so the keyer removes it instead of leaving a dark plug.
 const RELIC_SUBJECT =
-  'a single grotesque occult relic object, one lone artefact — a curiosity you would pick up off a corpse — isolated and floating centred on a pure solid black background, empty black all around it';
+  'a single grotesque occult relic object, one lone artefact — a curiosity you would pick up off a corpse — the whole object clearly visible, centred and filling the frame, set against a completely flat uniform BRIGHT CHROMA-KEY GREEN SCREEN background (solid pure green like a film green screen), that same flat green filling every part of the frame the object does not cover, INCLUDING seen through any hole or gap in the object';
 
 // Always-banned: the card format + any text + any multi-object/scene framing.
 const RELIC_NEG_BASE = [
@@ -170,7 +173,7 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
       'a strict limited grimdark palette of bone white, ash grey, rust and dried-blood crimson, one spot colour, no gloss, no gradient sheen',
       'Darkest Dungeon concept-art meets Mörk Borg, illustrative not rendered, cruel ancient mood',
     ].join(', '),
-    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy, tiny object, lots of empty space`,
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy, tiny object, lots of empty space, black background, dark background, shadowed background, vignette, gradient background`,
   },
   // Riff on flat: the same flat shapes but bound by a bold black INK outline +
   // sparse woodblock linework — flat art meeting the original ink register.

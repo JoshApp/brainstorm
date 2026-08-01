@@ -43,8 +43,16 @@ const relicIds = new Set(RELIC_ART.map((r) => r.id));
 const browser = await chromium.launch({ executablePath: CHROME });
 const page = await browser.newPage();
 
-// The keyer — runs in the page. Flood-fills near-black from the edges → alpha 0,
-// trims to the opaque bbox, fits into a square, returns a transparent webp.
+// The keyer — runs in the page. CHROMA-keys the flat green screen the relics are
+// generated against → alpha, trims to the opaque bbox, fits into a square,
+// returns a transparent webp. Chroma keying works by COLOUR, so it removes the
+// green EVERYWHERE at once — the outer background AND any enclosed hole (a ring's
+// centre) — which an edge flood-fill can't reach. The alpha is FEATHERED across
+// a "greenness" ramp (anti-aliased edges, not a hard on/off cut → far less
+// jaggy), and green spill on the object's rim is de-spilled so there's no green
+// fringe. Rot relics' sickly DESATURATED green survives: keying measures green
+// DOMINANCE (g minus the stronger of r/b), which pure screen-green has in spades
+// and a muted green does not.
 const keyOut = async (b64: string): Promise<string> =>
   page.evaluate(async ({ b64, OUT_SIZE, QUALITY }) => {
     if (!(globalThis as unknown as { __name?: unknown }).__name) (globalThis as unknown as { __name: (f: unknown) => unknown }).__name = (f) => f;
@@ -53,23 +61,22 @@ const keyOut = async (b64: string): Promise<string> =>
     const src = document.createElement('canvas'); src.width = W; src.height = H;
     const sctx = src.getContext('2d')!; sctx.drawImage(img, 0, 0);
     const id = sctx.getImageData(0, 0, W, H); const px = id.data;
-    const lum = (p: number) => { const i = p * 4; return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; };
 
-    // Edge-connected near-black → transparent. TH: background cut; anything the
-    // flood reaches under it becomes alpha 0. Interior dark (enclosed by lit
-    // object edges) is never reached, so it stays.
-    const TH = 40;
-    const seen = new Uint8Array(W * H);
-    const st: number[] = [];
-    for (let x = 0; x < W; x++) { st.push(x); st.push((H - 1) * W + x); }
-    for (let y = 0; y < H; y++) { st.push(y * W); st.push(y * W + W - 1); }
-    while (st.length) {
-      const p = st.pop()!; if (seen[p]) continue; seen[p] = 1;
-      if (lum(p) >= TH) continue;
-      px[p * 4 + 3] = 0;                         // punch transparent
-      const x = p % W, y = (p - x) / W;
-      if (x > 0) st.push(p - 1); if (x < W - 1) st.push(p + 1);
-      if (y > 0) st.push(p - W); if (y < H - 1) st.push(p + W);
+    // Greenness = how far green dominates the stronger of red/blue. Pure screen
+    // green ≈ 200+, a muted/olive object green ≈ 0-40. Feather alpha between LOW
+    // (fully opaque) and HIGH (fully transparent).
+    const LOW = 48, HIGH = 130;
+    for (let p = 0; p < W * H; p++) {
+      const i = p * 4;
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const greenness = g - Math.max(r, b);
+      let a = 255;
+      if (greenness >= HIGH) a = 0;
+      else if (greenness > LOW) a = Math.round(255 * (1 - (greenness - LOW) / (HIGH - LOW)));
+      px[i + 3] = a;
+      // De-spill: wherever green is winning at all, pull it down to the stronger
+      // of r/b so kept edge pixels don't keep a green rim.
+      if (a > 0 && greenness > 0) px[i + 1] = Math.max(r, b);
     }
     sctx.putImageData(id, 0, 0);
 

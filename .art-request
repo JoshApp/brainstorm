@@ -9,8 +9,12 @@
 #
 # TARGETED RE-ROLL: list only the relic ids to redo. The bake seeds the rest of
 # the set from the relic-art branch first, so only these are overwritten.
-relics=ysolde-tourniquet maren-milk-tooth cael-black-poultice cael-grave-earth ring-of-ember martyrs-tallow vess-last-wick jeweler-band morningstar-chip ring-of-fury bloodbond-ring
+#
+# GREENSCREEN TEST: relics now generate on a chroma-green screen + a chroma
+# keyer (removes bg inside holes AND outside, feathered edges). Test 4 tricky
+# ones: two hollow rings, a rot-green, a bone-white.
+relics=ring-of-iron ring-of-marrow acid-tongue bone-amulet
 styles=
 candidates=1
 promote_and_bake=true
-nonce=8
+nonce=9
