@@ -23,11 +23,12 @@ export function buildBagColumn(ctx: InventoryCtx): HTMLDivElement {
 
   const grid = document.createElement('div');
   Object.assign(grid.style, {
-    // One item per row — bigger icons (recognise the item at a glance,
-    // playtest ask) + room for the full name instead of "sc...". Scrolls.
-    display: 'grid', gridTemplateColumns: '1fr',
-    gap: '5px', alignContent: 'start',
-    overflowY: 'auto', maxHeight: '230px',
+    // Denser: a responsive grid — as many ~155px columns as fit (2 on a phone's
+    // bag width, 1 if it gets narrow), so twice the items are visible at once
+    // while each cell still shows a clear thumbnail + full name.
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
+    gap: '6px', alignContent: 'start',
+    overflowY: 'auto', maxHeight: '300px',
     paddingRight: '4px',
   } as Partial<CSSStyleDeclaration>);
 
@@ -72,19 +73,19 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
     borderRadius: '3px',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
-    gap: '8px',
+    gap: '7px',
     alignItems: 'center',
     cursor: 'pointer',
     boxShadow: selected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}33`,
-    minHeight: '54px',
+    minHeight: '46px',
   } as Partial<CSSStyleDeclaration>);
 
-  // 3D thumbnail on the left — bigger + smooth (was a crunchy 32px). The
-  // source render is 128px, so this stays crisp.
+  // Thumbnail on the left. relics use their baked 2.5D art (itemImageUrl); gear
+  // the 128px procedural render — both stay crisp at 42px.
   const img = document.createElement('img');
   img.src = itemImageUrl(item);
   Object.assign(img.style, {
-    width: '48px', height: '48px',
+    width: '42px', height: '42px',
     objectFit: 'contain',
     flexShrink: '0', pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
@@ -95,7 +96,7 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
     const badge = document.createElement('div');
     badge.textContent = 'NEW';
     Object.assign(badge.style, {
-      position: 'absolute', top: '-6px', right: '-4px',
+      position: 'absolute', top: '-5px', right: '3px',
       padding: '1px 5px', borderRadius: '7px',
       background: 'rgba(255, 150, 70, 0.95)', color: 'rgba(20, 8, 4, 0.95)',
       fontSize: '8px', fontWeight: '700', letterSpacing: '0.08em',

@@ -11,7 +11,7 @@ import { buildCodexContent } from './codex-screen';
 import { FONT_UI } from './hud';
 import { TEXT_PRIMARY, TEXT_DIM, type Selection, type InventoryCtx } from './inventory-shared';
 import { buildStatsColumn } from './inventory-stats';
-import { buildDollColumn } from './inventory-doll';
+import { buildEquippedSlots, buildRiteSlot, buildRelicLink } from './inventory-doll';
 import { buildBagColumn } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
 import { buildReliquaryContent } from './reliquary-screen';
@@ -308,22 +308,22 @@ function renderReliquary() {
   sheet.body.replaceChildren(buildReliquaryContent(ctx));
 }
 
-// ── GEAR columns: stats | doll | bag [ | details ] ───────────────────
-// Landscape-friendly: side-by-side so we never run out of vertical space.
-// The DETAILS column is REVEALED on selection, not always present — the
-// resting state (browsing) is three roomy columns; tapping an item slides
-// the details+action pane in as a fourth. That keeps a phone from showing
-// four dense panes at once when there's nothing to inspect yet. Acting
-// (EQUIP/USE/UNEQUIP) clears the selection and the pane folds back away.
+// ── GEAR: CHARACTER column | BAG [ | DETAILS ] ────────────────────────
+// A cleaner two-zone hierarchy (the old four-column stats|doll|bag|details was
+// dense and the anatomical doll read as murk). LEFT is everything about YOU —
+// the equipped slot strip, your stats, the active rite, the reliquary link,
+// stacked top-to-bottom. RIGHT is the BAG (a denser grid of what you can equip).
+// DETAILS is REVEALED as a third pane only when something is selected, so the
+// resting state is two roomy zones. Acting clears the selection and it folds away.
 function buildColumns(): HTMLDivElement {
   const grid = document.createElement('div');
   const showDetails = selection !== null;
   Object.assign(grid.style, {
     display: 'grid',
-    // Resting: 3 columns, BAG gets the freed room. Selected: 4, DETAILS widest.
-    gridTemplateColumns: showDetails ? '0.5fr 0.82fr 1fr 1.35fr' : '0.62fr 1fr 1.28fr',
-    gap: '10px',
-    alignItems: 'stretch',
+    // Resting: CHARACTER | BAG. Selected: CHARACTER | BAG | DETAILS (widest).
+    gridTemplateColumns: showDetails ? '0.92fr 1fr 1.3fr' : '0.92fr 1.25fr',
+    gap: '12px',
+    alignItems: 'start',
     minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
 
@@ -335,8 +335,17 @@ function buildColumns(): HTMLDivElement {
     openReliquary() { selectTab('reliquary'); },
   };
 
-  grid.appendChild(buildStatsColumn());
-  grid.appendChild(buildDollColumn(ctx));
+  // LEFT — the CHARACTER column: equipped slots, stats, rite, reliquary link.
+  const character = document.createElement('div');
+  Object.assign(character.style, { display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '0' } as Partial<CSSStyleDeclaration>);
+  character.append(
+    buildEquippedSlots(ctx),
+    buildStatsColumn(),
+    buildRiteSlot(ctx),
+    buildRelicLink(ctx),
+  );
+
+  grid.appendChild(character);
   grid.appendChild(buildBagColumn(ctx));
   if (showDetails) grid.appendChild(buildDetailsColumn(ctx));
   return grid;
