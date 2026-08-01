@@ -198,6 +198,10 @@ export interface Scenario {
   /** Open the fate card reading and auto-claim on a loop, to snap the diegetic
    *  claim beat (card ignites + is drawn in + the deep speaks). DEV only. */
   cardClaimLoop?: boolean;
+
+  /** Show this text through the READING channel (inscription.ts) on apply, to
+   *  snap the register. DEV only. */
+  inscription?: string;
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1242,6 +1246,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
     playerPos: { x: 0, z: 4, lookAt: { x: 0, z: 0, y: 1.2 } },
     cardClaimLoop: true,
+  },
+
+  // Inscription — the READING channel over a live floor. `delve snap inscription`.
+  'inscription': {
+    freeze: true,
+    level: {
+      id: 'inscription', depth: 2, displayName: 'INSCRIPTION', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 5, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 12, d: 12 }, height: 5 }],
+      corridors: [],
+      torches: [{ x: -6, z: 0, wall: 'W', height: 2.6, colorTint: 0xd9772e, intensityMul: 1.1 }],
+      spawns: [], doors: [], stairs: [], props: [],
+    },
+    playerPos: { x: 0, z: 5, lookAt: { x: 0, z: 0, y: 1.2 } },
+    inscription: 'Worn on the hand that held the knife. Each kill fed him steadier than the meat did.',
   },
 
   // Spent-fire — a single CLAIMED/spent bonfire, to check the "already taken"
@@ -2408,6 +2427,13 @@ export function applyScenario(
 
   if (scenario.spendFire) {
     void import('../level/fate-fire').then((m) => m.debugSpendFlames(ctx.level.root));
+  }
+
+  if (scenario.inscription) {
+    const text = scenario.inscription;
+    void import('../ui/inscription').then(({ showInscription }) => {
+      showInscription(text, { holdMs: 999999 });   // hold so a snap catches it
+    });
   }
 
   if (scenario.cardClaimLoop) {

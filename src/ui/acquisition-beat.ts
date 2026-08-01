@@ -44,8 +44,13 @@ export function initAcquisitionBeat(): void {
 
     try { flyItemToSatchel(item); } catch { /* presentation must never throw */ }
 
-    // Domain relics are the afflictions — flood + narrate on the NEXT frame, so
-    // the relic has already landed in the reliquary and the count is current.
+    // (The relic's provenance is READ as an inscription — owned by
+    // pickup-notification, which routes a relic's flavor through the reading
+    // channel instead of the terse toast.)
+
+    // Domain relics are the afflictions — flood + the DEEP's remark on the NEXT
+    // frame (a separate voice from the reading), once the relic has landed in the
+    // reliquary and the count is current.
     if (item.kind === 'relic' && (item.domain || item.rarity === 'cursed')) {
       requestAnimationFrame(() => {
         try { playDomainDeepening(item); } catch { /* never break on a beat */ }

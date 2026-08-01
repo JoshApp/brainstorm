@@ -3,6 +3,7 @@ import { ITEMS, RARITY_COLORS } from '../content/items';
 import { DOMAINS } from '../content/domains';
 import { SETS } from '../content/sets';
 import { getReliquary } from '../player/reliquary';
+import { showInscription } from './inscription';
 
 // Brief upper-center label that fades in and out when an item is picked up.
 // Stays warm/dim (in-world register, not broadcast register) so it doesn't
@@ -98,7 +99,10 @@ export function createPickupNotification() {
           }
         }
       }
-      showReveal(name, provenance, accent, HOLD_BY_RARITY[item.rarity ?? 'mundane'] ?? SHOW_MS);
+      // A relic is READ, not toasted — its provenance rises through the reading
+      // channel (inscription.ts), the place speaking. Distinct from the deep's
+      // pop and from the terse name-toast below.
+      showInscription(provenance);
     } else {
       show(name);
     }
