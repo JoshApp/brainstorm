@@ -64,6 +64,14 @@ export default defineConfig({
         // serving dead chunk hashes after a deploy (the "blank until hard refresh"
         // bug). Pairs with the index.html self-heal as belt-and-suspenders.
         cleanupOutdatedCaches: true,
+        // Precache big code chunks too. The default cap is ~2MB, which EXCLUDED
+        // the ~2.3MB world chunk from the install-time precache — so a cold boot
+        // (and every offline boot) re-fetched it from the network, the "loading
+        // stalls after ~80%" the field reported. Raise the cap so the whole app
+        // shell, big chunk included, is precached → instant + fully offline after
+        // the first install. (Deliberately generous; keeps headroom as the chunk
+        // grows through the WebGPU work.)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         //
         // Precache the UI ASSET types too, not just code. The default glob is
         // `**/*.{js,css,html}`, which leaves fonts, the woodcut textures, and the
