@@ -84,30 +84,84 @@ function composeCardPrompt(base: string, art: string, accent?: string, tweak?: s
 
 // Relics are NOT tarot cards — they're a single occult OBJECT you'd pick up off
 // a corpse, isolated on pure black so the bake keys it clean and floats it as a
-// 2.5D billboard. So a relic does NOT reuse the STYLE's tarot base (which leads
-// "a grimdark tarot illustration" and drags FLUX straight into a bordered card
-// with hallucinated caption text). It carries the ink/woodcut TREATMENT only —
-// palette, chiaroscuro, edges into black — with no card framing anywhere, and a
-// hardened negative that bans the frame + any text outright.
-const RELIC_REGISTER = [
-  'a single grotesque occult relic object, a lone artefact isolated and floating on a pure solid black background',
-  'a museum catalogue specimen plate, the one object centred with empty black all around it',
-  'bold woodcut and ink engraving treatment, heavy black linework and crosshatching, high-contrast graphic and decorative, medieval print and Mörk Borg aesthetic',
-  'palette of bone white and ink black with a single spot colour',
-  'dramatic chiaroscuro, the object emerging from deep black, cruel ancient indifferent mood',
-].join(', ');
+// 2.5D billboard. So a relic does NOT reuse the STYLE's tarot base (which drags
+// FLUX into a bordered card with hallucinated caption text). Instead relics have
+// their OWN registers — an art DIRECTION we're prototyping. Every register keeps
+// the one-object-on-black subject + the anti-card/anti-text scaffolding; they
+// differ only in MEDIUM, so we can generate the same relic across several looks
+// and pick the one that reads as a curiosity, not an illustration.
+//
+//   delve art relic <ids> --style specimen        (ink | specimen | oil | relief)
+//
+// The workflow can sweep several: styles=ink specimen oil relief in .art-request.
 
-// Everything that keeps FLUX off the card format and off text.
-const RELIC_NEGATIVE = [
+// Shared subject — the thing itself, isolated, no card. Leads every register.
+const RELIC_SUBJECT =
+  'a single grotesque occult relic object, one lone artefact — a curiosity you would pick up off a corpse — isolated and floating centred on a pure solid black background, empty black all around it';
+
+// Always-banned: the card format + any text + any multi-object/scene framing.
+const RELIC_NEG_BASE = [
   'tarot card, playing card, card, card frame, card border, bordered, parchment card, ornate corners, decorative border, vignette, cartouche, banner, ribbon, nameplate, title plate',
   'text, letters, lettering, words, caption, label, title, name, numerals, numbers, writing, watermark, signature, inscription',
   'multiple objects, collage, grid, scene, landscape, background scenery, table, shelf, hand holding it, person',
-  'photorealistic, photograph, 3d render, cgi, glossy, neon, cute, chibi, anime, cartoon',
 ].join(', ');
+// Added to every register EXCEPT the photographic one (specimen WANTS a photo).
+const RELIC_NEG_NONPHOTO = 'photorealistic, photograph, hyperrealistic, 3d render, cgi, glossy, neon, cute, chibi, anime, cartoon';
 
-function composeRelicPrompt(art: string, accent?: string, tweak?: string): string {
+interface RelicStyle { register: string; negative: string }
+
+const RELIC_STYLES: Record<string, RelicStyle> = {
+  // The current baseline — Mörk Borg woodcut/ink engraving of the object.
+  ink: {
+    register: [
+      RELIC_SUBJECT,
+      'rendered as a bold woodcut and ink engraving, heavy black linework and crosshatching, high-contrast graphic and decorative, medieval print and Mörk Borg aesthetic',
+      'palette of bone white and ink black with a single spot colour',
+      'dramatic chiaroscuro, the object emerging from deep black, cruel ancient indifferent mood',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}`,
+  },
+  // A photographed cursed artefact — cabinet-of-curiosities / museum specimen.
+  // The most "real object you'd pick up" register; deliberately NOT illustration.
+  specimen: {
+    register: [
+      RELIC_SUBJECT,
+      'a museum specimen macro photograph of a cursed artefact from a cabinet of curiosities',
+      'dramatic raking museum spotlight from one side, deep black shadow, hyper-detailed tactile worn surface, aged patina, grime in the crevices',
+      'shallow depth of field, sombre desaturated palette with a single restrained spot colour, funereal and uncanny',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, illustration, drawing, painting, line art, woodcut, cartoon, bright, cheerful, studio white background`,
+  },
+  // A single object painted in tenebrist dark oil — Goya black-paintings register.
+  oil: {
+    register: [
+      RELIC_SUBJECT,
+      'painted as a tenebrist dark oil study of the object in the spirit of Goya black paintings',
+      'loose smeared impasto brushwork, candle-lit from one edge, the object half-swallowed by black, sombre desaturated earth palette with one muted spot colour',
+      'mad and cruel and ancient mood',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, line art, woodcut, flat graphic, clean, bright`,
+  },
+  // The object cast/forged as a tarnished reliquary — engraved bronze + black iron.
+  relief: {
+    register: [
+      RELIC_SUBJECT,
+      'the object cast and forged as a tarnished reliquary artefact of blackened bronze and iron, engraved metal relief, verdigris and rust patina worked into the crevices',
+      'cold raking light catching the worked metal, deep black around it, a single restrained spot colour of corrosion',
+      'ancient sacred and cruel',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, flat line art, woodcut, bright, plastic, shiny new metal`,
+  },
+};
+
+const DEFAULT_RELIC_STYLE = 'ink';
+function relicStyleId(flag?: string): string {
+  return flag && RELIC_STYLES[flag] ? flag : DEFAULT_RELIC_STYLE;
+}
+
+function composeRelicPrompt(styleId: string, art: string, accent?: string, tweak?: string): string {
   const accentClause = accent ? `, the single spot colour a ${accent}` : '';
-  return `${RELIC_REGISTER}${accentClause}: ${art}${tweak ? `, ${tweak}` : ''}`;
+  return `${RELIC_STYLES[styleId].register}${accentClause}: ${art}${tweak ? `, ${tweak}` : ''}`;
 }
 
 // A relic is a floating OBJECT, not a portrait card — a square canvas keeps FLUX
@@ -293,7 +347,11 @@ async function main() {
     if (flags.from && !parent) { console.error(`no run ${flags.from}`); process.exit(1); }
     if (specs.length > 1 && parent) { console.error('--from is single-relic only'); process.exit(1); }
 
-    const styleId = (flags.style ?? parent?.style ?? DEFAULT_STYLE) as StyleId;
+    // Relic art has its OWN registers (RELIC_STYLES), not the tarot STYLES. The
+    // style label is recorded on each run so the manifest / bake can tell an
+    // ink relic from a specimen one.
+    const styleId = relicStyleId(flags.style ?? parent?.style);
+    const relicStyle = RELIC_STYLES[styleId];
     const tweak = flags.tweak;
 
     console.log(`\ndelve art — relic [${specs.map((s) => s.id).join(', ')}] (${specs.length} spec${specs.length > 1 ? 's' : ''} x${N}) · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
@@ -302,9 +360,9 @@ async function main() {
       const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
       const prompt = parent
         ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
-        : composeRelicPrompt(spec.art, spec.accent, tweak);
+        : composeRelicPrompt(styleId, spec.art, spec.accent, tweak);
       for (let i = 0; i < N; i++) {
-        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, RELIC_NEGATIVE, baseSeed + i, RELIC_SIZE.width, RELIC_SIZE.height, parent?.id ?? null, tweak);
+        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, relicStyle.negative, baseSeed + i, RELIC_SIZE.width, RELIC_SIZE.height, parent?.id ?? null, tweak);
         if (r) ok++;
       }
     }

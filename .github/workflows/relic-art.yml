@@ -63,27 +63,48 @@ jobs:
         id: p
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            relics="${{ inputs.relics }}"; candidates="${{ inputs.candidates }}"; bake="${{ inputs.promote_and_bake }}"
+            relics="${{ inputs.relics }}"; candidates="${{ inputs.candidates }}"; bake="${{ inputs.promote_and_bake }}"; styles=""
           else
             relics="$(sed -n 's/^relics=//p' .art-request | head -1)"
             candidates="$(sed -n 's/^candidates=//p' .art-request | head -1)"
             bake="$(sed -n 's/^promote_and_bake=//p' .art-request | head -1)"
+            styles="$(sed -n 's/^styles=//p' .art-request | head -1)"
           fi
           echo "relics=${relics:-all}"           >> "$GITHUB_OUTPUT"
           echo "candidates=${candidates:-1}"      >> "$GITHUB_OUTPUT"
           echo "bake=${bake:-true}"               >> "$GITHUB_OUTPUT"
-          echo "Resolved: relics='${relics:-all}' candidates='${candidates:-1}' bake='${bake:-true}'"
+          echo "styles=${styles}"                 >> "$GITHUB_OUTPUT"
+          echo "Resolved: relics='${relics:-all}' candidates='${candidates:-1}' bake='${bake:-true}' styles='${styles}'"
 
       # 1. Generate through Flux (fal.ai). Runs are written under public/art/runs
       #    (gitignored — kept only as a build artifact for review below).
+      #    STYLE-SWEEP mode: if `styles` is set, generate the relics once per
+      #    register (ink / specimen / oil / relief / …) so we can compare art
+      #    directions. Otherwise a single default-register run.
       - name: Generate
         env:
           FAL_KEY: ${{ secrets.FAL_KEY }}
-        run: npx tsx scripts/art.ts relic ${{ steps.p.outputs.relics }} --n ${{ steps.p.outputs.candidates }}
+        run: |
+          if [ -n "${{ steps.p.outputs.styles }}" ]; then
+            for s in ${{ steps.p.outputs.styles }}; do
+              echo "── style: $s ──"
+              npx tsx scripts/art.ts relic ${{ steps.p.outputs.relics }} --style "$s" --n ${{ steps.p.outputs.candidates }}
+            done
+          else
+            npx tsx scripts/art.ts relic ${{ steps.p.outputs.relics }} --n ${{ steps.p.outputs.candidates }}
+          fi
+
+      # 1b. STYLE-SWEEP: compose a relics × styles comparison contact sheet for
+      #     review (one PNG picks the direction). No bake in this mode.
+      - name: Relic style contact sheet
+        if: ${{ steps.p.outputs.styles != '' }}
+        run: |
+          npx tsx scripts/art-relic-contact.ts "public/art/relic-styles.png" "${{ steps.p.outputs.styles }}" "${{ steps.p.outputs.relics }}"
 
       # 2. Promote newest-per-relic + bake to public/relics/*.webp + regen index.
+      #    Skipped in style-sweep mode (that's exploration, not a ship).
       - name: Promote + bake
-        if: ${{ steps.p.outputs.bake == 'true' }}
+        if: ${{ steps.p.outputs.bake == 'true' && steps.p.outputs.styles == '' }}
         run: |
           npx tsx scripts/art-promote-relics.ts ${{ steps.p.outputs.relics }}
           npx tsx scripts/bake-relics.ts
@@ -97,9 +118,28 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # 4. Push the baked sprites + index to the `relic-art` branch for a PR.
+      # 4a. STYLE-SWEEP: push the comparison contact sheet + raw runs + manifest
+      #     to the `relic-style-test` branch so the direction can be picked from
+      #     the diff (the PNG renders in GitHub). No bake, no ship.
+      - name: Commit style sheet to relic-style-test branch
+        if: ${{ steps.p.outputs.styles != '' }}
+        run: |
+          git config user.name  "delve-art-bot"
+          git config user.email "actions@github.com"
+          git add -f public/art/relic-styles.png public/art/runs
+          if git diff --cached --quiet; then
+            echo "No style-sweep output to commit."
+            exit 0
+          fi
+          git checkout -B relic-style-test
+          git commit \
+            -m "Relic art STYLE SWEEP — compare registers (Flux)" \
+            -m "relic-styles.png is a relics × registers grid: ${{ steps.p.outputs.styles }}. Pick a direction, then bake the winner for all 56."
+          git push --force-with-lease origin relic-style-test
+
+      # 4b. Push the baked sprites + index to the `relic-art` branch for a PR.
       - name: Commit sprites to relic-art branch
-        if: ${{ steps.p.outputs.bake == 'true' }}
+        if: ${{ steps.p.outputs.bake == 'true' && steps.p.outputs.styles == '' }}
         run: |
           git config user.name  "delve-art-bot"
           git config user.email "actions@github.com"

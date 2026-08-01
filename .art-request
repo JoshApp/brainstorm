@@ -1,7 +1,13 @@
 # Relic art generation request — change a value + push to main to fire the
-# `relic art` workflow (generates via Flux on GitHub's runners, opens the
-# `relic-art` branch with sprites). Bump `nonce` to re-fire with same params.
-relics=gorged-tick bone-amulet vess-striker ring-of-marrow the-long-hunger
-candidates=3
-promote_and_bake=true
-nonce=3
+# `relic art` workflow (generates via Flux on GitHub's runners). Bump `nonce`
+# to re-fire with the same params.
+#
+# STYLE SWEEP: set `styles=` (space-separated registers) to generate each relic
+# once per register and push a relics × styles comparison sheet to the
+# `relic-style-test` branch (no bake). Leave `styles=` empty to bake+ship to the
+# `relic-art` branch instead. Registers: ink · specimen · oil · relief.
+relics=gorged-tick ring-of-marrow the-long-hunger
+styles=ink specimen oil relief
+candidates=1
+promote_and_bake=false
+nonce=4
