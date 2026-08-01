@@ -256,22 +256,24 @@ async function main() {
   }
 
   if (cmd === 'relic') {
-    // `delve art relic all` — batch every spec (one run each by default; --n K for
-    // a wider explore per relic). Forking (--from) is single-relic only.
-    const specs = (arg1 === 'all')
+    // `delve art relic all` — every spec. `delve art relic <id> [<id> …]` — one or
+    // MORE ids (space-separated). --n K explores K candidates per relic. Forking
+    // (--from) is single-relic only.
+    const ids = pos.slice(1);   // every positional after 'relic'
+    const specs = ids.includes('all')
       ? RELIC_ART
-      : RELIC_ART.filter((r) => r.id === arg1);
-    if (specs.length === 0) { console.error(`no relic '${arg1}'. known: all · ${RELIC_ART.map((r) => r.id).join(', ')}`); process.exit(1); }
+      : RELIC_ART.filter((r) => ids.includes(r.id));
+    if (specs.length === 0) { console.error(`no relic in '${ids.join(' ')}'. known: all · ${RELIC_ART.map((r) => r.id).join(', ')}`); process.exit(1); }
 
     const parent = flags.from ? M.findRun(m, flags.from) : undefined;
     if (flags.from && !parent) { console.error(`no run ${flags.from}`); process.exit(1); }
-    if (arg1 === 'all' && parent) { console.error('--from is single-relic only'); process.exit(1); }
+    if (specs.length > 1 && parent) { console.error('--from is single-relic only'); process.exit(1); }
 
     const styleId = (flags.style ?? parent?.style ?? DEFAULT_STYLE) as StyleId;
     const style = STYLES[styleId];
     const tweak = flags.tweak;
 
-    console.log(`\ndelve art — relic ${arg1} (${specs.length} spec${specs.length > 1 ? 's' : ''} x${N}) · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
+    console.log(`\ndelve art — relic [${specs.map((s) => s.id).join(', ')}] (${specs.length} spec${specs.length > 1 ? 's' : ''} x${N}) · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
     let ok = 0;
     for (const spec of specs) {
       const baseSeed = Number(flags.seed ?? parent?.seed ?? spec.seed);
@@ -283,7 +285,7 @@ async function main() {
         if (r) ok++;
       }
     }
-    console.log(`\n${ok} run(s) for relic ${arg1}.  promote:  delve art promote <id>`);
+    console.log(`\n${ok} run(s) across ${specs.length} relic(s).  promote:  delve art promote <id>`);
     return;
   }
 

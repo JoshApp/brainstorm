@@ -52,6 +52,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # bake-relics.ts renders the sprite in a headless Chromium (canvas keying);
+      # the runner has none until this installs it.
+      - run: npx playwright install --with-deps chromium
 
       # 0. Resolve params from EITHER the dispatch inputs OR the .art-request file
       #    (KEY=VALUE lines: relics=, candidates=, promote_and_bake=). Defaults:
