@@ -1,13 +1,19 @@
 // The floor ITEM OVERLAY — "see before you take". One shared panel that shows the
 // FULL item card (ui/item-card.ts) whenever the focused interactable OFFERS an
-// item (a floor pickup, an altar reward), driven each frame from the world-ui
-// system off getInRangeInteractable(). No per-interactable DOM.
+// item (a floor pickup, an altar reward, an event deal), driven each frame from
+// the world-ui system off getInRangeInteractable(). No per-interactable DOM — this
+// is THE single-preview system every priced/loot interactable reuses.
 //
-// PINNED, not projected: it used to hover the item's projected screen point, but
-// a floor pickup sits at the player's FEET, so that point falls off the bottom of
-// the screen and the card vanished under the TAKE button + thumb (the reported
-// "relics/potions show only TAKE, no card" bug). A fixed anchor — centred, just
-// above the TAKE prompt — reads reliably for floor loot AND altar rewards.
+// STACKED ABOVE THE PROMPT, IN WORLD: the card rides directly above the TAKE
+// prompt (#interact-label), which itself projects onto the object — so preview +
+// action read as one in-world stack that follows the item. `updateInteractLabel`
+// runs immediately before this in the world-ui tick, so the label's rect is
+// current when we anchor to it. The card is CLAMPED on-screen (kept below the
+// depth header, within the side margins) so a floor pickup at the player's feet —
+// whose prompt sits low — never pushes the card off the top or sides. If the
+// prompt isn't visible (rare), the card falls back to a centred anchor. This
+// fixes both the old off-screen bug AND the "it should float in the world above
+// the take" ask in one positioning pass.
 
 import * as THREE from 'three';
 import { getInRangeInteractable } from '../interactables/system';
@@ -15,6 +21,9 @@ import { buildItemCard } from './item-card';
 import { THEME } from './theme';
 import { isAnyScreenOpen } from './screen-manager';
 import { itemFraming, applyDomainFrame } from './item-framing';
+import { worldToScreen } from './hud';
+import { cachedCanvasRect } from './canvas-rect';
+import type { Interactable } from '../interactables/types';
 
 let panel: HTMLDivElement | null = null;
 let shownId: string | null = null;
@@ -25,14 +34,11 @@ function ensurePanel(): HTMLDivElement {
   panel.classList.add('game-hud');
   Object.assign(panel.style, {
     position: 'fixed',
-    // PINNED, not projected. A floor pickup sits at the player's feet — its world
-    // point projects off the bottom of the screen, so a "hover over the item"
-    // card vanished under the TAKE button + thumb (that was the see-before-you-
-    // take bug). A fixed anchor — centred, just above the TAKE prompt — reads
-    // reliably for BOTH floor loot and altar rewards and never hides under a thumb.
-    left: '50%',
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
-    transform: 'translate(-50%, 0)',
+    // Anchored each frame above the TAKE prompt (left/top set in tickItemOverlay).
+    // translate(-50%, -100%) hangs the card UPWARD from its anchor point, so the
+    // anchor is the card's bottom-centre — sitting it right on top of the prompt.
+    left: '50%', top: '50%',
+    transform: 'translate(-50%, -100%)',
     maxWidth: 'min(320px, 80vw)', width: 'max-content',
     padding: '9px 13px',
     background: THEME.panel,
@@ -45,6 +51,57 @@ function ensurePanel(): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(panel);
   return panel;
+}
+
+// The TAKE prompt (interact-label) projects to the object at labelOffsetY and
+// hangs UP from that point; we clear its height + a gap so the card sits just
+// above it. Estimated, not measured — the prompt block is a fixed icon+verb
+// stack, and projecting deterministically beats reading a sibling's live rect.
+const PROMPT_BLOCK = 60;   // approx height of the icon+verb prompt, px
+const STACK_GAP = 8;
+const DEFAULT_LABEL_OFFSET_Y = 0.6;   // matches interact-label's VERTICAL_OFFSET_WORLD
+// Keep the card clear of the depth header (top) and inside the side margins.
+const TOP_MARGIN = 52;
+const SIDE_MARGIN = 8;
+
+const _tmp = new THREE.Vector3();
+
+/** Project the interactable's prompt anchor to screen, place the card's
+ *  bottom-centre just above the prompt block, and clamp it fully on-screen. */
+function anchorAbovePrompt(
+  p: HTMLDivElement, focus: Interactable, camera: THREE.Camera, canvas: HTMLCanvasElement,
+): void {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // applyDomainFrame() sets position:relative on the panel (to anchor its
+  // watermark) — re-assert fixed so the card stays viewport-anchored, not in
+  // document flow. (Absolute watermark children still anchor to a fixed panel.)
+  p.style.position = 'fixed';
+  // Same world point the TAKE prompt projects to (object pivot + label offset).
+  const offsetY = focus.labelOffsetY ?? DEFAULT_LABEL_OFFSET_Y;
+  _tmp.set(focus.position.x, focus.position.y + offsetY, focus.position.z);
+  const proj = worldToScreen(_tmp, camera, cachedCanvasRect(canvas));
+
+  let anchorX: number, anchorBottomY: number;
+  if (!proj.behind) {
+    anchorX = proj.x;
+    // The prompt hangs up from proj.y by ~PROMPT_BLOCK; sit the card above that.
+    anchorBottomY = proj.y - PROMPT_BLOCK - STACK_GAP;
+  } else {
+    anchorX = vw / 2;
+    anchorBottomY = vh - 150;
+  }
+
+  // Clamp the card's real box on-screen.
+  const cw = p.offsetWidth, ch = p.offsetHeight;
+  const halfW = cw / 2;
+  anchorX = Math.max(halfW + SIDE_MARGIN, Math.min(vw - halfW - SIDE_MARGIN, anchorX));
+  // The card hangs upward (translate -100% Y), so its top = anchorBottomY - ch.
+  // Keep that below the header; and never let its bottom slide off-screen.
+  if (anchorBottomY - ch < TOP_MARGIN) anchorBottomY = TOP_MARGIN + ch;
+  anchorBottomY = Math.min(anchorBottomY, vh - SIDE_MARGIN);
+
+  p.style.left = `${anchorX}px`;
+  p.style.top = `${anchorBottomY}px`;
 }
 
 function hide(p: HTMLDivElement): void {
@@ -77,6 +134,7 @@ export function tickItemOverlay(camera: THREE.Camera, canvas: HTMLCanvasElement)
     if (f) applyDomainFrame(p, f);
   }
 
-  // Pinned position (set in ensurePanel) — just fade in.
+  // Ride above the TAKE prompt, clamped on-screen, then fade in.
+  anchorAbovePrompt(p, focus, camera, canvas);
   p.style.opacity = '1';
 }
