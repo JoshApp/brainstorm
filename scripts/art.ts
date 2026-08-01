@@ -113,7 +113,7 @@ const RELIC_NEG_NONPHOTO = 'photorealistic, photograph, hyperrealistic, 3d rende
 // Kill the studio-product look (the specimen round read as glossy things on a
 // reflective floor). No reflections, no shine, no ground the object sits on — it
 // FLOATS in a void, matte.
-const RELIC_NEG_MATTE = 'reflection, reflective surface, floor reflection, mirror, glossy, gloss, shiny, wet look, studio floor, glass surface, pedestal, the object resting on a surface, cast shadow on the ground';
+const RELIC_NEG_MATTE = 'reflection, reflective surface, floor reflection, mirror, glossy, gloss, shiny, wet look, studio floor, glass surface, pedestal, the object resting on a surface, cast shadow on the ground, drop shadow, contact shadow, ground shadow, soft shadow beneath the object, shadow on the green screen';
 
 interface RelicStyle { register: string; negative: string }
 

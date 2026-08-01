@@ -1,20 +1,11 @@
 # Relic art generation request — change a value + push to main to fire the
-# `relic art` workflow (generates via Flux on GitHub's runners). Bump `nonce`
-# to re-fire with the same params.
+# `relic art` workflow. Leave `styles=` EMPTY to bake+ship (flat register) to
+# the relic-art branch. List ids in `relics=` for a targeted re-roll, or `all`.
 #
-# STYLE SWEEP: set `styles=` (space-separated registers) to generate each relic
-# once per register and push a relics × styles comparison sheet to the
-# `relic-style-test` branch (no bake). Leave `styles=` EMPTY to bake+ship with
-# the default register (flat) to the `relic-art` branch instead.
-#
-# TARGETED RE-ROLL: list only the relic ids to redo. The bake seeds the rest of
-# the set from the relic-art branch first, so only these are overwritten.
-#
-# GREENSCREEN TEST: relics now generate on a chroma-green screen + a chroma
-# keyer (removes bg inside holes AND outside, feathered edges). Test 4 tricky
-# ones: two hollow rings, a rot-green, a bone-white.
-relics=ring-of-iron ring-of-marrow acid-tongue bone-amulet
+# FULL RE-BAKE on the GREENSCREEN pipeline: chroma-green screen + chroma keyer
+# (holes key inside AND out, feathered edges, de-spill, anti-shadow). All 56.
+relics=all
 styles=
 candidates=1
 promote_and_bake=true
-nonce=10
+nonce=11
