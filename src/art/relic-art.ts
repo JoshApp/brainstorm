@@ -40,6 +40,9 @@ export interface RelicArtSpec {
   art: string;
   /** Fixed seed for reproducible regen; fork promising runs with --from/--tweak. */
   seed: number;
+  /** Optional extra negative appended to the register's — for a relic FLUX keeps
+   *  drifting on (e.g. a small abstract object it renders as a skull). */
+  neg?: string;
 }
 
 export const RELIC_ART: RelicArtSpec[] = [
@@ -87,8 +90,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'ysolde-tourniquet', name: 'A tourniquet, stiff with old blood', domain: 'blood', accent: 'black-red',
-    art: 'a leather tourniquet strap gone stiff and black with dried blood, its rusted buckle frozen mid-cinch, a single object centred on black',
-    seed: 4112,
+    art: 'a long leather tourniquet strap gone stiff and black with dried blood, its rusted buckle frozen mid-cinch, coiled loosely, floating isolated and centred on pure black',
+    seed: 9112,
+    neg: 'skull, human skull, face, skeleton, head, bone',
   },
   {
     id: 'ysolde-vein-knife', name: 'Her opened vein-knife', domain: 'blood', accent: 'crimson',
@@ -139,8 +143,8 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'maren-milk-tooth', name: 'A milk tooth, kept', domain: 'bone', accent: 'pale bone white',
-    art: "a single small child's milk tooth, kept and polished, resting in a fold of grey cloth, a single object centred on black",
-    seed: 4208,
+    art: "a single small child's milk tooth, kept and polished to an ivory sheen, floating isolated and centred on pure black",
+    seed: 9208,
   },
 
   // ── ROT (grave-mould, plague, Cael's slow dying) ────────────────────────────
@@ -166,13 +170,14 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'cael-black-poultice', name: 'A poultice gone black', domain: 'rot', accent: 'sickly green',
-    art: 'a wad of cloth poultice gone black and wet, never drying, a faint green weep at its folds, a single object centred on black',
-    seed: 4304,
+    art: 'a wet wadded cloth poultice gone tar-black and glistening, folded and bound with dark twine, a sickly green weep seeping from its folds, a soft shapeless bundle floating isolated and centred on pure black',
+    seed: 9304,
+    neg: 'skull, human skull, face, skeleton, bone',
   },
   {
     id: 'cael-grave-earth', name: 'A jar of grave-earth', domain: 'rot', accent: 'sickly green',
-    art: 'a small clay jar of damp grave-earth, its lid ajar and a crusted spoon at the rim, pale roots threading the soil, a single object centred on black',
-    seed: 4305,
+    art: 'a small sealed clay jar packed with damp grave-earth, its lid ajar, pale roots threading out of the soil at the rim, floating isolated and centred on pure black',
+    seed: 9305,
   },
   {
     id: 'cael-plague-beak', name: 'The plague-mask beak', domain: 'rot', accent: 'sickly green',
@@ -183,8 +188,8 @@ export const RELIC_ART: RelicArtSpec[] = [
   // ── ASH (the ember kept, the martyr burned, Vess's lamps) ───────────────────
   {
     id: 'ring-of-ember', name: 'A coal in silver', domain: 'ash', accent: 'ember orange',
-    art: 'a silver ring set with a single live coal that will not die, a low ember glow within, the silver scorched black around the setting, a single object centred on black',
-    seed: 4400,
+    art: 'a scorched silver ring set with a single live coal that will not die, a low ember glow within, the silver burned black around the setting, floating isolated and centred on pure black',
+    seed: 9400,
   },
   {
     id: 'ashen-psalm', name: 'A psalm burned onto slate', domain: 'ash', accent: 'ember orange',
@@ -193,8 +198,8 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'martyrs-tallow', name: "A candle of martyr's tallow", domain: 'ash', accent: 'ember orange',
-    art: 'a squat candle of pale rendered tallow burning with one tall steady flame, the wax weeping down over a grasping hand-shape, a single object centred on black',
-    seed: 4402,
+    art: 'a squat candle of pale rendered tallow burning with one tall steady flame, the wax weeping down over the shape of a grasping hand, floating isolated and centred on pure black',
+    seed: 9402,
   },
   {
     id: 'vess-striker', name: 'A flint striker, thumb-worn', domain: 'ash', accent: 'ember orange',
@@ -208,8 +213,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'vess-last-wick', name: 'The last wick', domain: 'ash', accent: 'ember orange',
-    art: 'a short length of wick cut from a coat hem, frayed at one end, the other charred and still faintly ember-lit, a single object centred on black',
-    seed: 4405,
+    art: 'a short frayed thread of candle-wick cut from a coat hem, one end charred and still faintly ember-lit, a thin curl of grey smoke rising, a tiny humble scrap floating isolated and centred on pure black',
+    seed: 9405,
+    neg: 'skull, human skull, face, skeleton, bone, full candle',
   },
 
   // ── DAWN (the clean light carried down) ─────────────────────────────────────
@@ -220,8 +226,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'jeweler-band', name: 'A lens of pale glass', domain: 'dawn', accent: 'radiant pale gold-white',
-    art: "a jeweller's loupe of pale ground glass in a thin brass band, a single hairline flaw refracting a spark of light, a single object centred on black",
-    seed: 4501,
+    art: "a jeweller's loupe of pale ground glass rimmed in a thin tarnished brass band, a single hairline flaw in the lens refracting a cold spark of gold-white light, a small precise instrument floating isolated and centred on pure black",
+    seed: 9501,
+    neg: 'skull, human skull, face, skeleton, bone',
   },
   {
     id: 'split-iris-amulet', name: 'The Split Iris', domain: 'dawn', accent: 'radiant pale gold-white',
@@ -230,8 +237,9 @@ export const RELIC_ART: RelicArtSpec[] = [
   },
   {
     id: 'morningstar-chip', name: 'A chip of the morning star', domain: 'dawn', accent: 'radiant gold-white',
-    art: 'a small jagged fleck of pale radiant stone glinting cold gold-white, a fragment of the light above carried down, a single object centred on black',
-    seed: 4503,
+    art: 'a small jagged shard of pale radiant stone glinting cold gold-white, a broken fleck of fallen starlight, one sharp splinter floating isolated and centred on pure black',
+    seed: 9503,
+    neg: 'skull, human skull, face, skeleton, flame, fire, mace, morningstar weapon, spiked ball',
   },
   {
     id: 'cleanest-cut', name: 'The cleanest cut', domain: 'dawn', accent: 'radiant white-gold',
@@ -259,13 +267,14 @@ export const RELIC_ART: RelicArtSpec[] = [
   // ── VALOR (the vow that would not kneel — and Aldric's last stand) ──────────
   {
     id: 'ring-of-fury', name: 'A cracked signet', domain: 'valor', accent: 'cold steel silver',
-    art: 'a heavy steel signet ring, its crest battered flat and cracked across, the metal bright where it struck stone, a single object centred on black',
-    seed: 4700,
+    art: 'a heavy steel signet ring, its crest battered flat and cracked across, the metal bright where it struck stone, floating isolated and centred on pure black',
+    seed: 9700,
   },
   {
     id: 'bloodbond-ring', name: 'A vow scratched in iron', domain: 'valor', accent: 'cold steel silver',
-    art: 'a plain iron band scratched over with an illegible vow, the marks crossing and recrossing, dark with dried blood in the grooves, a single object centred on black',
-    seed: 4701,
+    art: 'a plain dark iron band, its whole surface densely scored and cross-hatched with countless fine random scratches, the grooves dark with dried blood, floating isolated and centred on pure black',
+    seed: 9701,
+    neg: 'text, letters, words, writing, runes, inscription, engraved letters, typography',
   },
   {
     id: 'oath-scrap', name: 'A scrap of a written oath', domain: 'valor', accent: 'pale steel',

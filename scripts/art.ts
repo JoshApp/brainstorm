@@ -416,8 +416,11 @@ async function main() {
       const prompt = parent
         ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
         : composeRelicPrompt(styleId, spec.art, spec.accent, tweak);
+      // A relic FLUX keeps drifting on (skull/text) can carry an extra per-relic
+      // negative on its spec; append it to the register's.
+      const negative = spec.neg ? `${relicStyle.negative}, ${spec.neg}` : relicStyle.negative;
       for (let i = 0; i < N; i++) {
-        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, relicStyle.negative, baseSeed + i, RELIC_SIZE.width, RELIC_SIZE.height, parent?.id ?? null, tweak);
+        const r = await runOne(backend, m, 'relic', spec.id, styleId, prompt, negative, baseSeed + i, RELIC_SIZE.width, RELIC_SIZE.height, parent?.id ?? null, tweak);
         if (r) ok++;
       }
     }

@@ -6,11 +6,11 @@
 # once per register and push a relics × styles comparison sheet to the
 # `relic-style-test` branch (no bake). Leave `styles=` EMPTY to bake+ship with
 # the default register (flat) to the `relic-art` branch instead.
-# Registers: flat (default) · flat-ink · flat-bold · ink · oil · psx.
 #
-# FULL BAKE — all 56 relics, flat register, → relic-art branch for review.
-relics=all
+# TARGETED RE-ROLL: list only the relic ids to redo. The bake seeds the rest of
+# the set from the relic-art branch first, so only these are overwritten.
+relics=ysolde-tourniquet maren-milk-tooth cael-black-poultice cael-grave-earth ring-of-ember martyrs-tallow vess-last-wick jeweler-band morningstar-chip ring-of-fury bloodbond-ring
 styles=
 candidates=1
 promote_and_bake=true
-nonce=7
+nonce=8

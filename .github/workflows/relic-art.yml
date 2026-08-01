@@ -76,6 +76,17 @@ jobs:
           echo "styles=${styles}"                 >> "$GITHUB_OUTPUT"
           echo "Resolved: relics='${relics:-all}' candidates='${candidates:-1}' bake='${bake:-true}' styles='${styles}'"
 
+      # 0b. BAKE mode: seed the working tree with the already-baked sprites +
+      #     index from the relic-art branch, so a TARGETED re-roll (relics=<a
+      #     few>) overwrites only those and keeps the rest of the set. Harmless
+      #     for relics=all (every sprite is re-baked anyway).
+      - name: Seed existing sprites (bake mode)
+        if: ${{ steps.p.outputs.styles == '' }}
+        run: |
+          git fetch origin relic-art || true
+          git checkout origin/relic-art -- public/relics src/content/relic-art-index.ts 2>/dev/null \
+            && echo "seeded from relic-art branch" || echo "no relic-art branch yet — baking fresh"
+
       # 1. Generate through Flux (fal.ai). Runs are written under public/art/runs
       #    (gitignored — kept only as a build artifact for review below).
       #    STYLE-SWEEP mode: if `styles` is set, generate the relics once per
