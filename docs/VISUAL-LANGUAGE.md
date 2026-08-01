@@ -144,3 +144,25 @@ part whose axis has a meaning.
   mood range — the suspected legend-crush mostly comes from warm
   torch/lamp light colours, which are per-room design choices, not a
   post bug. Revisit room hue commitment before blaming the post chain.
+
+## Item visual language — type / stat / domain (added 2026-08)
+
+The player reads a piece of loot at a glance through ONE coherent legend,
+shared across every item surface (inventory details, the floating
+altar/pickup card, the shop preview — all compose `buildDetailsHeader` +
+`describeItem`):
+
+- **Stats** — `src/ui/stat-icons.ts`: a heart for life, a blade for damage,
+  a shield for armour, plus bolt/spark/drop/crack for speed/crit/leech/hazard.
+  Each stat-modifier line leads with its tinted category sigil.
+- **Domains** — `src/ui/domain-icons.ts`: one icon + one colour per domain,
+  drawn in that domain's own `register.color` (blood droplet · bone · rot
+  spore · ash flame · dawn spark · grace halo · valor chevron · greed coin ·
+  forbidden eye). The item-card meta line shows the domain as icon + name.
+- **Cursed** — its own identity (the CHAOS mark): a violet chaos-star.
+  `CURSED_VISUAL`. Cursed is the deep's independent corruption — it can ride a
+  domain or stand alone; a cursed item gets the violet mark + bold CURSED so
+  "something is wrong with this" reads instantly.
+
+Rule: a NEW stat, domain, or rarity that the player must read gets an entry in
+these legends — never a bare text label that blends into the rest.
