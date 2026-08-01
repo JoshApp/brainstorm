@@ -190,6 +190,10 @@ export interface Scenario {
   /** Open the bug-report sheet on apply — verifies the frame-capture screenshot
    *  renders (not black on WebGPU). DEV only. */
   openBugReport?: boolean;
+
+  /** Collapse every bonfire in the level to its CLAIMED/spent look on apply
+   *  (fate-fire.debugSpendFlames), to snap the "already taken" read. DEV only. */
+  spendFire?: boolean;
 }
 
 // ── Perf stress helpers ──────────────────────────────────────────────
@@ -1219,6 +1223,23 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
     playerPos: { x: 0, z: 6, lookAt: { x: 0, z: -2, y: 1.2 } },
     acquireBeat: 'ring-of-marrow',   // a cursed blood relic — flood + narration
+  },
+
+  // Spent-fire — a single CLAIMED/spent bonfire, to check the "already taken"
+  // read against the lit title fire. `delve snap spent-fire`.
+  'spent-fire': {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'spent-fire', depth: 2, displayName: 'SPENT FIRE', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 4, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 12, d: 12 }, height: 5 }],
+      corridors: [],
+      props: [{ kind: 'model', model: BONFIRE, x: 0, y: 0, z: 0 }],
+      torches: [], spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4, lookAt: { x: 0, z: 0, y: 0.5 } },
+    spendFire: true,
   },
 
   // Preview-check — player posed CLOSE (~0.8m) to a relic + a potion, facing
@@ -2364,6 +2385,10 @@ export function applyScenario(
 
   if (scenario.frameShowcase) {
     renderFrameShowcase(scenario.frameShowcase);
+  }
+
+  if (scenario.spendFire) {
+    void import('../level/fate-fire').then((m) => m.debugSpendFlames(ctx.level.root));
   }
 
   if (scenario.openBugReport) {
