@@ -627,14 +627,14 @@ initLevelLoader({
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
 
-    // First-run nudge toward brightness calibration (it moved off the
-    // bonfire into Settings). Fires ONCE — the helper self-gates on
-    // settings.calibrateHintSeen — at the first calm gameplay arrival
-    // (tutorial for new players, depth-N for everyone post-update).
-    // Skip debug scenarios (posed worlds aren't a real arrival).
+    // First-run nudge toward brightness calibration (it moved off the bonfire
+    // into Settings). TUTORIAL-ONLY (Josh): it's a teaching beat for a
+    // first-time player, not something returning players — or repro/test snaps,
+    // which have no scenario so they used to trip it — should meet on every
+    // floor. Still self-gates on calibrateHintSeen, and it's always in Settings.
     if (
       (!import.meta.env.DEV || !getScenarioFromUrl()) &&
-      (level.spec.id === 'tutorial' || level.spec.id.startsWith('depth-') || level.spec.id.startsWith('safe-'))
+      level.spec.id === 'tutorial'
     ) {
       maybeShowCalibrateHint();
     }

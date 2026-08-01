@@ -53,6 +53,10 @@ const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFact
   'phone-portrait': { width: 390,  height: 844 },
   // Slightly larger phone (Pixel 7) landscape.
   'phone-large':    { width: 915,  height: 412 },
+  // TIGHT landscape — a shorter phone, or one showing the browser chrome (URL
+  // bar), which eats vertical space. Josh's device is tighter than the 844×390
+  // preset; this is the "does it still fit with the address bar up" check.
+  'phone-tight':    { width: 800,  height: 340 },
   // iPad mini landscape.
   tablet:           { width: 1024, height: 768 },
 };

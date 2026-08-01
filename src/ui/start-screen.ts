@@ -211,7 +211,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
-    gap: '10px',
+    gap: 'clamp(6px, 1.6vh, 10px)',
     position: 'relative',
     zIndex: '1',
   });
@@ -427,8 +427,10 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
     alignItems: 'center',
     gap: '2px',
     // Hero vs secondary: DESCEND is bigger, glows, dominates; CONTINUE is
-    // a slim muted pill clearly beneath it.
-    padding: primary ? '15px 44px' : '9px 26px',
+    // a slim muted pill clearly beneath it. Vertical padding is height-responsive
+    // (clamp/vh) so the pills compress on a short landscape phone — the 44px
+    // minHeight still guarantees the touch target.
+    padding: primary ? 'clamp(9px, 2.2vh, 15px) 44px' : 'clamp(6px, 1.4vh, 9px) 26px',
     minWidth: primary ? '220px' : '160px',
     minHeight: '44px',
     borderRadius: '36px',
