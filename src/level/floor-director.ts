@@ -102,17 +102,33 @@ export function directFloor(input: DirectorInput): FloorPlan {
     if (fire) sanctumRoomId = fire.roomId;
   }
 
-  // ── DEFINING FIND — a staged reward on a focal loot-marker. ──
-  const find = fillDefiningFind(contentSpots, roles, budget.loot, depth, rand);
+  // SPREAD the major beats across ROOMS: the fire, the find, and the deal each
+  // want the "best" room, so left alone they pile into one room's middle (a
+  // bonfire + a fountain + an altar all centred together — reported). Steer the
+  // find away from the fire's room, and the deal away from BOTH — but only when
+  // the floor has the rooms to spare (fall back to all spots rather than fail to
+  // place on a small floor).
+  const away = (spots: readonly ContentSpot[], rooms: ReadonlySet<string>): readonly ContentSpot[] => {
+    if (rooms.size === 0) return spots;
+    const other = spots.filter((s) => !rooms.has(s.roomId));
+    return other.length > 0 ? other : spots;
+  };
+  const usedRooms = new Set<string>();
+  if (fire) usedRooms.add(fire.roomId);
+
+  // ── DEFINING FIND — a staged reward on a focal loot-marker, away from the fire. ──
+  const find = fillDefiningFind(away(contentSpots, usedRooms), roles, budget.loot, depth, rand);
+  if (find) usedRooms.add(find.spot.roomId);
 
   // ── STAGED DEAL — the floor's QUESTION, variety-filtered so it never spams a
-  //    kind the floor already carries, and never on the find's own marker. ──
+  //    kind the floor already carries, kept off the find's own marker, and out of
+  //    the fire's + find's rooms so the floor's beats don't cluster. ──
   let deal: StagedDeal | null = null;
   if (budget.events.question) {
     const ledger = countDeals(bakedProps);
     const allowed = ALL_DEALS.filter((k) => (ledger[k] ?? 0) < (DEAL_SOFT_CAP[k] ?? Infinity));
     deal = fillQuestion(
-      contentSpots, roles, allowed, depth,
+      away(contentSpots, usedRooms), roles, allowed, depth,
       CONFIG.CONTENT_BUDGET.QUESTION_DEEP_DEPTH, rand, find?.spot ?? null,
     );
   }

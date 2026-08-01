@@ -98,6 +98,40 @@ test('with a clean floor the director CAN stage a fountain', () => {
   assert.ok(fountains > 0, 'a fountain is allowed when the floor has none');
 });
 
+// ── directFloor: SPREAD the major beats across rooms ──
+test('SPREAD: fire, find, and deal land in DIFFERENT rooms when rooms are free', () => {
+  // Three event-capable rooms so each beat can get its own home.
+  const nodes3: RoomNode[] = [
+    { roomId: 'start-0', tags: ['start'], slot: 'start', connections: 1 },
+    { roomId: 'mid-1', tags: ['combat'], slot: 'mid', connections: 3 },
+    { roomId: 'branch-2', tags: ['treasure'], slot: 'branch', connections: 1 },
+    { roomId: 'branch-3', tags: ['treasure'], slot: 'branch', connections: 1 },
+    { roomId: 'exit-4', tags: ['exit'], slot: 'end', connections: 1 },
+  ];
+  const roles3 = assignFloorRoles(nodes3, { isBossFloor: false });
+  let checkedFind = 0, checkedDeal = 0;
+  for (let seed = 0; seed < 400; seed++) {
+    const plan = directFloor({
+      depth: 4, rand: lcg(seed), roles: roles3,
+      fireAnchors: [{ x: 0, z: 0, roomId: 'mid-1' }],
+      fireFallbackCells: [],
+      contentSpots: [spot('mid-1', true), spot('branch-2', true), spot('branch-3', true)],
+      bakedProps: [],
+    });
+    if (plan.fire && plan.find) {
+      checkedFind++;
+      assert.notEqual(plan.find.spot.roomId, plan.fire.roomId, 'find must not share the fire\'s room');
+    }
+    if (plan.fire && plan.find && plan.deal) {
+      checkedDeal++;
+      assert.notEqual(plan.deal.roomId, plan.fire.roomId, 'deal must avoid the fire\'s room');
+      assert.notEqual(plan.deal.roomId, plan.find.spot.roomId, 'deal must avoid the find\'s room');
+    }
+  }
+  assert.ok(checkedFind > 0, 'some floors place both a fire and a find');
+  assert.ok(checkedDeal > 0, 'some floors place a fire, a find, AND a deal');
+});
+
 test('directFloor is deterministic — same inputs + seed → same plan', () => {
   const mk = () => directFloor({
     depth: 5, rand: lcg(4242), roles,
