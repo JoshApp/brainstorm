@@ -72,6 +72,10 @@ export function showStartScreen(opts: StartScreenOptions) {
     WebkitOverflowScrolling: 'touch',
     paddingLeft: 'calc(env(safe-area-inset-left, 0px) + clamp(26px, 6vw, 78px))',
     paddingRight: 'env(safe-area-inset-right, 0px)',
+    // Reserve room for the FIXED bottom-left footer (secondary links) so the last
+    // action pill can never crowd or hide under it on a short landscape phone —
+    // the "cramped on mobile" report. ~46px = footer row + its bottom offset.
+    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 46px)',
     // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.9)',
@@ -119,8 +123,8 @@ export function showStartScreen(opts: StartScreenOptions) {
     flexDirection: 'column',
     alignItems: 'flex-start',
     gap: 'clamp(2px, 1vh, 8px)',
-    padding: 'clamp(8px, 2vh, 20px) clamp(20px, 4vw, 34px)',
-    marginBottom: 'clamp(8px, 2.5vh, 22px)',
+    padding: 'clamp(6px, 1.5vh, 18px) clamp(20px, 4vw, 34px)',
+    marginBottom: 'clamp(6px, 1.8vh, 18px)',
   } as Partial<CSSStyleDeclaration>);
 
   // Descent sigil — a thin engraved double-chevron pointing DOWN: "the way
@@ -146,9 +150,10 @@ export function showStartScreen(opts: StartScreenOptions) {
   title.textContent = 'DELVE';
   Object.assign(title.style, {
     fontFamily: FONT_TITLE, // Cinzel — monumental engraved caps for the masthead
-    // Height-AWARE: a short landscape (browser bar showing) capped the title by
-    // 15vh so it can't shove DESCEND off the bottom; wide screens use 12vw.
-    fontSize: 'clamp(32px, min(12vw, 15vh), 80px)',
+    // Height-AWARE: on a short landscape phone the masthead was crowding the
+    // action pills, so cap tighter by height (13vh) — wide screens still get
+    // 12vw up to 72px. Keeps DELVE monumental without eating the buttons' room.
+    fontSize: 'clamp(30px, min(12vw, 13vh), 72px)',
     letterSpacing: '0.16em',
     color: 'rgba(232, 174, 96, 1)',
     textShadow: [

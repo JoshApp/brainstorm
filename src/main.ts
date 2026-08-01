@@ -1786,7 +1786,14 @@ if (handleDebugScreenFlags()) {
     // Let the boot veil + loading bar paint before the warm blocks the thread (else boot looks frozen).
     await yieldToCover();
     const _t0 = performance.now();
-    try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
+    // ?nowarm=1 skips the boot roster warm too (it's the slow part under the
+    // headless swiftshader fallback — ~44s — which stalled menu/title snaps past
+    // the reveal timeout). Pipelines compile lazily instead; only used for
+    // headless self-verify snaps, never a normal boot.
+    const skipWarm = new URLSearchParams(location.search).get('nowarm') === '1';
+    if (!skipWarm) {
+      try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
+    }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
     // CLEAN FRAME before the veil drops — two layers, because the artifact
     // (warm leftovers / half-compiled title visible through the fading veil)

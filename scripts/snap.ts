@@ -296,7 +296,10 @@ async function main() {
         var el = document.getElementById(id);
         return !el || parseFloat(getComputedStyle(el).opacity) < 0.05;
       }
-      return gone('descent-fade') && gone('descent-title') && gone('descent-loading');
+      // boot-loading: the FIRST-boot veil (precedes the title screen). Bare/title
+      // snaps hang on it, not the descent cover — wait for it too so menu shots
+      // land on the actual menu, not the loading bar.
+      return gone('descent-fade') && gone('descent-title') && gone('descent-loading') && gone('boot-loading');
     })()`, undefined, { timeout: 45_000 }).catch(() => {
       console.log('  [snap] warning: descent cover still up after 45s — capturing anyway');
     });
