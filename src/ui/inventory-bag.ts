@@ -6,6 +6,7 @@ import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
 import { CARD_BG, TEXT_DIM, TEXT_FAINT, ACCENT, sectionLabel, type InventoryCtx } from './inventory-shared';
 import { isNewInView } from './item-new-flag';
+import { domainVisual, domainIconEl, CURSED_VISUAL } from './domain-icons';
 
 // BAG column — every unequipped item, one per row (icon + full name).
 // New pickups get a NEW badge and sort to the top. Tapping a cell selects
@@ -126,11 +127,25 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
   } as Partial<CSSStyleDeclaration>);
   top.append(name, cnt);
 
+  // Kind + domain — the visual language reads at a glance in the list too: a
+  // domain icon (or the cursed chaos-mark) leads the kind, tinted to its colour.
   const kindLabel = document.createElement('div');
-  kindLabel.textContent = item.kind.toUpperCase();
   Object.assign(kindLabel.style, {
+    display: 'flex', alignItems: 'center', gap: '4px',
     fontSize: '9px', letterSpacing: '0.2em', color: TEXT_DIM,
   } as Partial<CSSStyleDeclaration>);
+  if (rarity === 'cursed') {
+    kindLabel.appendChild(domainIconEl(CURSED_VISUAL, 10));
+  } else if (item.domain) {
+    kindLabel.appendChild(domainIconEl(domainVisual(item.domain), 10));
+  }
+  const kindText = document.createElement('span');
+  kindText.textContent = item.domain && rarity !== 'cursed'
+    ? `${item.kind.toUpperCase()} · ${domainVisual(item.domain).label.toUpperCase()}`
+    : rarity === 'cursed'
+    ? `${item.kind.toUpperCase()} · CURSED`
+    : item.kind.toUpperCase();
+  kindLabel.appendChild(kindText);
 
   text.append(top, kindLabel);
   cell.appendChild(text);
