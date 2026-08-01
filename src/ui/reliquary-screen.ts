@@ -5,6 +5,7 @@ import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
 import { buildDetailsColumn } from './inventory-details';
 import { ACCENT, TEXT_DIM, TEXT_FAINT, sectionLabel, type InventoryCtx } from './inventory-shared';
+import { itemFraming, applyDomainFrame } from './item-framing';
 
 // RELIQUARY tab — the oddities collection. Relics are the belongings of dead
 // delvers; they accrete UNCAPPED and all apply, so this screen is a ledger of
@@ -142,8 +143,14 @@ function buildDomainSection(
   return section;
 }
 
+// A relic reads as a 2.5D PLATE — a portrait card dressed in its domain (framed
+// border + wash + the domain sigil watermarked behind the relic art). Assembled
+// from parts we already have (the item thumbnail + the domain frame), so relics
+// get a distinct collected-oddity identity now, with NO external art pipeline —
+// a promoted FLUX/2.5D sprite can later swap in for the thumbnail per relic.
+const PLATE_W = 54, PLATE_H = 68;
+
 function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
-  const SIZE = 44;   // thumb-sized target (UI charter minimum)
   const { spec, count } = stack;
   const rarityHex = hexCss(RARITY_COLORS[spec.rarity ?? 'mundane']);
   const isSelected = ctx.selection?.kind === 'relic' && ctx.selection.item.id === spec.id;
@@ -151,10 +158,10 @@ function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
   const cell = document.createElement('div');
   Object.assign(cell.style, {
     position: 'relative',
-    width: `${SIZE}px`, height: `${SIZE}px`, borderRadius: '3px',
-    border: isSelected ? `2px solid ${ACCENT}` : `1px solid ${rarityHex}`,
-    boxShadow: isSelected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}44`,
-    background: 'rgba(20,14,10,0.6)',
+    width: `${PLATE_W}px`, height: `${PLATE_H}px`, borderRadius: '4px',
+    border: `1px solid ${rarityHex}`,
+    boxShadow: `0 0 6px ${rarityHex}44`,
+    background: 'linear-gradient(180deg, rgba(30,20,14,0.85), rgba(14,9,6,0.9))',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden', cursor: 'pointer',
     touchAction: 'manipulation',
@@ -164,7 +171,7 @@ function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
   const thumb = document.createElement('img');
   thumb.src = getItemThumbnail(spec);
   Object.assign(thumb.style, {
-    width: `${SIZE - 8}px`, height: `${SIZE - 8}px`,
+    width: `${PLATE_W - 8}px`, height: `${PLATE_W - 8}px`,
     objectFit: 'contain', imageRendering: 'pixelated', pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
   cell.appendChild(thumb);
@@ -173,12 +180,22 @@ function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
     const badge = document.createElement('div');
     badge.textContent = `×${count}`;
     Object.assign(badge.style, {
-      position: 'absolute', bottom: '1px', right: '2px',
+      position: 'absolute', bottom: '1px', right: '3px', zIndex: '3',
       fontSize: '9px', fontWeight: '700', color: '#f0d8c0',
       textShadow: '0 1px 2px rgba(0,0,0,0.95)',
       pointerEvents: 'none',
     } as Partial<CSSStyleDeclaration>);
     cell.appendChild(badge);
+  }
+
+  // Dress the plate in its domain — the sigil watermark clips inside the plate,
+  // sitting BEHIND the relic art (a small consecrated card). Selection overrides
+  // the frame with the ember accent so the picked plate still reads as chosen.
+  const framing = itemFraming(spec);
+  if (framing) applyDomainFrame(cell, framing, { intensity: 1.1 });
+  if (isSelected) {
+    cell.style.border = `2px solid ${ACCENT}`;
+    cell.style.boxShadow = `0 0 12px ${ACCENT}`;
   }
 
   cell.addEventListener('click', (e) => {
