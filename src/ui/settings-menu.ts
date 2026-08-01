@@ -16,6 +16,7 @@ import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 import { isDesktopLike } from '../controls/platform';
 import { openWickRitual } from './wick-ritual';
+import { openBugReport } from '../report/bug-report';
 import {
   BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
   type BindableAction,
@@ -749,6 +750,15 @@ function buildRunTab(): HTMLElement[] {
       // (inventory-panel imports settings for the ⚙ tab content).
       closePanel();
       import('./inventory-panel').then(({ openCharacterTab }) => openCharacterTab());
+    },
+  }));
+  out.push(makeRunButton({
+    label: 'REPORT A BUG',
+    description: 'Send the keepers a screenshot of this exact moment, your run details, and a note.',
+    destructive: false,
+    onClick: () => {
+      closePanel();
+      openBugReport();
     },
   }));
   out.push(makeRunButton({

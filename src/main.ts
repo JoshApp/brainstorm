@@ -64,6 +64,7 @@ import {
   enterInspectMode,   INSPECT_REQUESTED,
 } from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
+import { registerFrameCapture } from './report/frame-capture';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { beginArrival, suppressArrivalCeremony } from './player/arrival';
@@ -346,6 +347,19 @@ setWickFillMul(Math.pow(getSettings().wick, 1.5));
 // --- Camera ---
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
+
+// Bug-report frame capture: a fresh render then a canvas read (WebGPU buffers
+// aren't guaranteed to survive present), giving the report a clean game-view
+// screenshot + the camera pose. Registered once; read on demand by the report UI.
+registerFrameCapture(() => {
+  let png: string | null = null;
+  try { renderer.render(scene, camera); png = canvas.toDataURL('image/png'); } catch { /* read blocked */ }
+  return {
+    png,
+    cameraPos: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+    yaw: camera.rotation.y,
+  };
+});
 if (import.meta.env.DEV) initAiGizmos(scene);   // DEV facing gizmos (?aigizmos=1 / ai-lab)
 // LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
 // frame. Wired early so the render system's flushLux has its refs.
