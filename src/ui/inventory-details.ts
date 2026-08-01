@@ -13,6 +13,7 @@ import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply, playFlaskUncork } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { statModifierIcon, statIconEl } from './stat-icons';
+import { domainVisual, domainIconEl, CURSED_VISUAL } from './domain-icons';
 import type { StatModifier } from '../combat/modifiers';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getDomain } from '../content/domains';
@@ -123,20 +124,40 @@ export function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
   const rarity = item.rarity ?? 'mundane';
   const rarityHex = hexCss(RARITY_COLORS[rarity]);
 
+  // Meta line, now in the shared VISUAL LANGUAGE: rarity in its rarity colour
+  // (cursed gets the violet chaos-mark + label — "something is wrong with this"),
+  // kind, then the domain as its icon + name in the domain's register colour.
+  // One coherent legend across type / rarity / domain.
   const meta = document.createElement('div');
-  meta.textContent = `${rarity.toUpperCase()} · ${item.kind.toUpperCase()}`;
   Object.assign(meta.style, {
-    fontSize: '9px', color: TEXT_DIM, letterSpacing: '0.22em',
-    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+    display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap',
+    fontSize: '9px', color: TEXT_DIM, letterSpacing: '0.20em', minWidth: '0',
   } as Partial<CSSStyleDeclaration>);
-  // Domain-tagged items (relics) name their domain in its register colour —
-  // the same accent the pickup reveal used, so the ledger matches the moment.
+  if (rarity === 'cursed') {
+    meta.appendChild(domainIconEl(CURSED_VISUAL, 11));
+    const r = document.createElement('span');
+    r.textContent = 'CURSED';
+    r.style.color = CURSED_VISUAL.color;
+    r.style.fontWeight = '700';
+    meta.appendChild(r);
+  } else {
+    const r = document.createElement('span');
+    r.textContent = rarity.toUpperCase();
+    r.style.color = rarityHex;
+    meta.appendChild(r);
+  }
+  const kindEl = document.createElement('span');
+  kindEl.textContent = `· ${item.kind.toUpperCase()}`;
+  meta.appendChild(kindEl);
   if (item.domain) {
-    const dom = getDomain(item.domain);
-    const span = document.createElement('span');
-    span.textContent = ` · ${dom.name.toUpperCase()}`;
-    span.style.color = hexCss(dom.register.color);
-    meta.appendChild(span);
+    const dv = domainVisual(item.domain);
+    const sep = document.createElement('span'); sep.textContent = '·';
+    meta.appendChild(sep);
+    meta.appendChild(domainIconEl(dv, 11));
+    const d = document.createElement('span');
+    d.textContent = dv.label.toUpperCase();
+    d.style.color = dv.color;
+    meta.appendChild(d);
   }
 
   const name = document.createElement('div');
