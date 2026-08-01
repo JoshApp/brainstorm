@@ -66,38 +66,76 @@ export function buildDollColumn(ctx: InventoryCtx): HTMLDivElement {
   return col;
 }
 
-/** The RITE slot — your one ACTIVE (docs/BUILD-ECONOMY.md), fired with Hunger.
- *  Chips list every rite with its Hunger cost (the cadence: cheap = often, dear
- *  = a big, rare erupt); tap to equip. Until rites are FOUND in the deep, all
- *  are selectable here so the active lane is playable. */
+// The rite picker defaults COLLAPSED — the doll column was a wall of every-rite
+// chips even though only ONE is active. Collapsed shows the equipped rite as a
+// single line; tapping reveals the full chip list to change it. Module-level so
+// the state survives the panel's rebuild-on-select. (docs/BUILD-ECONOMY.md: the
+// rite is your one ACTIVE, fired with Hunger.)
+let riteExpanded = false;
+
+/** The RITE slot — compact by default (current rite + a change affordance),
+ *  expanding to the full chip list on tap. Cheap = often, dear = a big, rare
+ *  erupt; all are selectable here until rites are FOUND in the deep. */
 function buildRiteSlot(ctx: InventoryCtx): HTMLDivElement {
   const wrap = document.createElement('div');
   Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '6px' } as Partial<CSSStyleDeclaration>);
-  wrap.appendChild(sectionLabel('RITE · THE ACTIVE'));
   const equipped = getEquippedRite();
-  const chips = document.createElement('div');
-  Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '4px' } as Partial<CSSStyleDeclaration>);
-  for (const spec of Object.values(RITES)) {
-    const isOn = spec.id === equipped;
-    const chip = document.createElement('button');
-    chip.textContent = `${spec.name} · ${spec.hungerCost}`;
-    chip.title = spec.fate;
-    Object.assign(chip.style, {
-      fontSize: '10px', padding: '3px 7px', borderRadius: '3px', cursor: 'pointer',
-      fontFamily: 'serif', letterSpacing: '0.03em', touchAction: 'manipulation',
-      border: `1px solid ${isOn ? ACCENT : 'rgba(80,60,40,0.4)'}`,
-      background: isOn ? 'rgba(120,30,20,0.35)' : 'rgba(20,14,10,0.5)',
-      color: isOn ? '#f0d8c0' : TEXT_DIM,
-    } as Partial<CSSStyleDeclaration>);
-    chip.addEventListener('click', () => { equipRite(isOn ? null : spec.id); ctx.select(ctx.selection); });
-    chips.appendChild(chip);
-  }
-  wrap.appendChild(chips);
   const spec = equipped ? RITES[equipped] : undefined;
+
+  // Header row: label + a right-aligned expand/collapse toggle.
+  const head = document.createElement('div');
+  Object.assign(head.style, { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '6px' } as Partial<CSSStyleDeclaration>);
+  head.appendChild(sectionLabel('RITE · THE ACTIVE'));
+  const toggle = document.createElement('button');
+  toggle.textContent = riteExpanded ? 'done' : 'change';
+  Object.assign(toggle.style, {
+    fontSize: '9px', letterSpacing: '0.14em', padding: '2px 6px', borderRadius: '3px',
+    border: '1px solid rgba(80,60,40,0.4)', background: 'transparent', color: TEXT_DIM,
+    cursor: 'pointer', touchAction: 'manipulation', flexShrink: '0',
+  } as Partial<CSSStyleDeclaration>);
+  toggle.addEventListener('click', (e) => { e.stopPropagation(); riteExpanded = !riteExpanded; ctx.select(ctx.selection); });
+  head.appendChild(toggle);
+  wrap.appendChild(head);
+
+  if (riteExpanded) {
+    // Full picker — every rite as a chip, tap to equip/clear.
+    const chips = document.createElement('div');
+    Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '4px' } as Partial<CSSStyleDeclaration>);
+    for (const s of Object.values(RITES)) {
+      const isOn = s.id === equipped;
+      const chip = document.createElement('button');
+      chip.textContent = `${s.name} · ${s.hungerCost}`;
+      chip.title = s.fate;
+      Object.assign(chip.style, {
+        fontSize: '10px', padding: '3px 7px', borderRadius: '3px', cursor: 'pointer',
+        fontFamily: 'serif', letterSpacing: '0.03em', touchAction: 'manipulation',
+        border: `1px solid ${isOn ? ACCENT : 'rgba(80,60,40,0.4)'}`,
+        background: isOn ? 'rgba(120,30,20,0.35)' : 'rgba(20,14,10,0.5)',
+        color: isOn ? '#f0d8c0' : TEXT_DIM,
+      } as Partial<CSSStyleDeclaration>);
+      chip.addEventListener('click', () => { equipRite(isOn ? null : s.id); ctx.select(ctx.selection); });
+      chips.appendChild(chip);
+    }
+    wrap.appendChild(chips);
+  } else {
+    // Collapsed — just the equipped rite, one line, tap to open the picker.
+    const current = document.createElement('button');
+    current.textContent = spec ? `${spec.name} · ${spec.hungerCost} hunger` : 'none — the meter goes quiet';
+    Object.assign(current.style, {
+      textAlign: 'left', fontSize: '11px', fontFamily: 'serif', letterSpacing: '0.03em',
+      padding: '5px 8px', borderRadius: '3px', cursor: 'pointer', touchAction: 'manipulation',
+      border: `1px solid ${spec ? ACCENT : 'rgba(80,60,40,0.4)'}`,
+      background: spec ? 'rgba(120,30,20,0.28)' : 'rgba(20,14,10,0.5)',
+      color: spec ? '#f0d8c0' : TEXT_DIM,
+    } as Partial<CSSStyleDeclaration>);
+    current.addEventListener('click', (e) => { e.stopPropagation(); riteExpanded = true; ctx.select(ctx.selection); });
+    wrap.appendChild(current);
+  }
+
   const fate = document.createElement('div');
-  fate.textContent = spec ? `"${spec.fate}"` : 'no rite — the meter goes quiet';
+  fate.textContent = spec ? `"${spec.fate}"` : '';
   Object.assign(fate.style, { fontSize: '10px', fontStyle: 'italic', color: TEXT_DIM, lineHeight: '1.35' } as Partial<CSSStyleDeclaration>);
-  wrap.appendChild(fate);
+  if (spec) wrap.appendChild(fate);
   return wrap;
 }
 
