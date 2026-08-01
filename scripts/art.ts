@@ -107,6 +107,10 @@ const RELIC_NEG_BASE = [
 ].join(', ');
 // Added to every register EXCEPT the photographic one (specimen WANTS a photo).
 const RELIC_NEG_NONPHOTO = 'photorealistic, photograph, hyperrealistic, 3d render, cgi, glossy, neon, cute, chibi, anime, cartoon';
+// Kill the studio-product look (the specimen round read as glossy things on a
+// reflective floor). No reflections, no shine, no ground the object sits on — it
+// FLOATS in a void, matte.
+const RELIC_NEG_MATTE = 'reflection, reflective surface, floor reflection, mirror, glossy, gloss, shiny, wet look, studio floor, glass surface, pedestal, the object resting on a surface, cast shadow on the ground';
 
 interface RelicStyle { register: string; negative: string }
 
@@ -119,7 +123,7 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
       'palette of bone white and ink black with a single spot colour',
       'dramatic chiaroscuro, the object emerging from deep black, cruel ancient indifferent mood',
     ].join(', '),
-    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}`,
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}`,
   },
   // A photographed cursed artefact — cabinet-of-curiosities / museum specimen.
   // The most "real object you'd pick up" register; deliberately NOT illustration.
@@ -140,7 +144,31 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
       'loose smeared impasto brushwork, candle-lit from one edge, the object half-swallowed by black, sombre desaturated earth palette with one muted spot colour',
       'mad and cruel and ancient mood',
     ].join(', '),
-    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, line art, woodcut, flat graphic, clean, bright`,
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, line art, woodcut, flat graphic, clean, bright`,
+  },
+  // AKIN TO THE GAME — a low-poly PS1-era render, flat-shaded untextured
+  // primitive geometry, torch-lit in a void: relics that look like they belong
+  // in DELVE's own renderer (Lunacid / Cruelty Squad). Matte, no reflections.
+  psx: {
+    register: [
+      RELIC_SUBJECT,
+      'rendered as a low-poly PlayStation-1 era 3D game asset, chunky faceted primitive geometry, flat-shaded and untextured, hard vertex lighting, a single warm torch light from one side falling into black',
+      'low resolution and dithered, aliased jagged edges, limited dark grimdark palette with one spot colour, PS1 survival-horror aesthetic, Lunacid and Cruelty Squad look',
+      'crude and cruel and ancient, matte surfaces',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_MATTE}, photorealistic, photograph, hyperrealistic, smooth high-poly, subsurface scattering, ray tracing, detailed realistic textures, painterly, oil painting, woodcut, line art, ornate detail`,
+  },
+  // A flat matte hand-painted illustration — the "art" option: bold graphic
+  // shapes, limited grimdark palette, poster-like, no gloss. Darkest Dungeon
+  // meets Mörk Borg, but a single OBJECT, not a card.
+  flat: {
+    register: [
+      RELIC_SUBJECT,
+      'a flat matte hand-painted illustration of the object, bold graphic shapes and confident brush marks, hard-edged and poster-like',
+      'a strict limited grimdark palette of bone white, ash grey, rust and dried-blood crimson, one spot colour, no gloss, no gradient sheen',
+      'Darkest Dungeon concept-art meets Mörk Borg, illustrative not rendered, cruel ancient mood',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy`,
   },
   // The object cast/forged as a tarnished reliquary — engraved bronze + black iron.
   relief: {
