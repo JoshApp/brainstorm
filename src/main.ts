@@ -1757,10 +1757,13 @@ if (handleDebugScreenFlags()) {
     suppressArrivalCeremony();
     suppressNextDescentTitle();
     await startRun('title-vignette');
-    // Look DOWN a touch — the fire sits low on the floor close ahead, so a level
-    // gaze clips it at the bottom; this lifts it into frame. (The title pauses the
-    // world, so input never overwrites this pitch.)
-    camera.rotation.x = -0.22;
+    // Look DOWN — the fire sits low on the floor close ahead, so a level gaze
+    // clips it at the bottom. A stronger downward tilt lifts the bonfire UP into
+    // the open space above (playtest: too low, empty headroom). (The title pauses
+    // the world, so input never overwrites this pitch; set both the module pitch
+    // and the live rotation so it holds whether or not the camera system ticks.)
+    setCameraPitch(-0.35);
+    camera.rotation.x = -0.35;
   }
   // Wait until pipeline compiling has SETTLED (the scene rendered everything it's going to)
   // or maxMs elapses. DEV uses the compile guard's total (precise); prod has no counter, so
