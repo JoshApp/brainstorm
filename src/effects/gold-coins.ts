@@ -18,8 +18,9 @@ const WARMUP_ORIGIN = new THREE.Vector3(0, 0.5, 0);
 // moment you see either the round face or a thin slice, the way a real
 // spinning coin reads in arcade pickup HUDs. Bob gently while at rest.
 //
-// Player walks within PICKUP_RADIUS → coin switches to homing and
-// streams into the chest. Absorb grants coin.value gold (NOT 1).
+// Player walks within PICKUP_RADIUS → the coin is collected where it lies and
+// flies STRAIGHT to the gold counter (via the fly-to-hud fleck). Grants
+// coin.value gold (NOT 1).
 
 interface Coin {
   /** Positioned root. Spins around its own Y axis for the visible flicker. */
@@ -28,14 +29,12 @@ interface Coin {
   vel: THREE.Vector3;
   age: number;
   settled: boolean;
-  homing: boolean;
   phase: number;
   /** Gold granted on absorb. Bundles multiple gold per coin. */
   value: number;
 }
 
 const coins: Coin[] = [];
-const tmp = new THREE.Vector3();
 
 const GRAVITY = -9.5;
 const FLOOR_REST = 0.12;          // group center sits this high ABOVE THE GROUND — disc radius ≈ 0.085 below
@@ -45,13 +44,6 @@ const floorYAt = (x: number, z: number) => groundYAt(x, z) + FLOOR_REST;
  *  end up halfway through one. Same approach as item pickups (pickup.ts). */
 const COIN_FLIGHT_RADIUS = 0.05;
 const PICKUP_RADIUS_SQ = 1.8 * 1.8;
-const ABSORB_RADIUS_SQ = 0.55 * 0.55;
-const HOMING_BIAS_Y = -0.4;
-const HOMING_MAX_SPEED = 15;
-// Exponential blend rate toward the desired-velocity. Higher = snappier
-// convergence (more "tracking"); lower = more "drifting toward." 8 is
-// fast enough that a 1m gap closes in ~0.15s with no orbit risk.
-const HOMING_BLEND_RATE = 8;
 const SETTLED_TIMEOUT = 22;
 /** Max gold per coin. Killing a wraith for 25g → 3 coins of ~8-9g each. */
 const MAX_GOLD_PER_COIN = 12;
@@ -144,7 +136,6 @@ export function spawnGoldCoins(
       ),
       age: 0,
       settled: false,
-      homing: false,
       phase: Math.random() * Math.PI * 2,
       value,
     });
@@ -158,44 +149,6 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     c.age += dt;
-
-    if (c.homing) {
-      tmp.set(
-        playerPos.x - c.group.position.x,
-        playerPos.y + HOMING_BIAS_Y - c.group.position.y,
-        playerPos.z - c.group.position.z,
-      );
-      const distSq = tmp.lengthSq();
-      if (distSq < ABSORB_RADIUS_SQ) {
-        grantGold(c.value);
-        // Carry the coin's world position so the HUD fleck launches from where
-        // the coin actually vanished, not a fixed screen point.
-        emit({ type: 'gold:absorbed', worldPos: { x: c.group.position.x, y: c.group.position.y, z: c.group.position.z } });
-        c.group.parent?.remove(c.group);
-        c.halo.parent?.remove(c.halo);
-        coins.splice(i, 1);
-        continue;
-      }
-      // Blend velocity TOWARD a desired-velocity pointing at the player.
-      // The old code added acceleration without damping, so a coin could
-      // build momentum, overshoot the moving player, and orbit forever
-      // like a satellite. Blending against a desired-velocity vector
-      // gives critically-damped homing — velocity always trends toward
-      // straight-at-player at speedCap, can't sustain orbital momentum.
-      const inv = 1 / Math.sqrt(distSq);
-      const desiredX = tmp.x * inv * HOMING_MAX_SPEED;
-      const desiredY = tmp.y * inv * HOMING_MAX_SPEED;
-      const desiredZ = tmp.z * inv * HOMING_MAX_SPEED;
-      const k = 1 - Math.exp(-HOMING_BLEND_RATE * dt);
-      c.vel.x += (desiredX - c.vel.x) * k;
-      c.vel.y += (desiredY - c.vel.y) * k;
-      c.vel.z += (desiredZ - c.vel.z) * k;
-      c.group.position.addScaledVector(c.vel, dt);
-      // Spin fast as the coin streams in — extra sell on the absorb.
-      c.group.rotation.y += dt * 16;
-      c.halo.position.copy(c.group.position);
-      continue;
-    }
 
     if (!c.settled) {
       c.vel.y += GRAVITY * dt;
@@ -245,17 +198,32 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
       // so the disc inside cycles face → edge → face. Plus a tiny bob.
       c.group.rotation.y += dt * 2.6;
       c.group.position.y = floorYAt(c.group.position.x, c.group.position.z) + Math.sin(c.age * 2.5 + c.phase) * 0.020;
-      if (c.age > SETTLED_TIMEOUT) c.homing = true;
+      // Old coins that were never walked over drift into the purse anyway.
+      if (c.age > SETTLED_TIMEOUT) { collectCoin(c, i); continue; }
     }
 
     c.halo.position.set(c.group.position.x, c.group.position.y + 0.05, c.group.position.z);
 
+    // Walk near a settled coin → it leaps STRAIGHT to the gold counter: the fleck
+    // launches from the coin's real spot and flies into the HUD, no home-to-player
+    // detour (the coin never converges on you first).
     if (c.settled) {
       const dx = playerPos.x - c.group.position.x;
       const dz = playerPos.z - c.group.position.z;
-      if (dx * dx + dz * dz < PICKUP_RADIUS_SQ) c.homing = true;
+      if (dx * dx + dz * dz < PICKUP_RADIUS_SQ) { collectCoin(c, i); continue; }
     }
   }
+}
+
+/** Collect a coin where it lies: grant its gold, fire the HUD fleck from the
+ *  coin's world position straight to the counter (via gold:absorbed → the
+ *  fly-to-hud fleck), then retire the 3D coin. */
+function collectCoin(c: Coin, i: number): void {
+  grantGold(c.value);
+  emit({ type: 'gold:absorbed', worldPos: { x: c.group.position.x, y: c.group.position.y, z: c.group.position.z } });
+  c.group.parent?.remove(c.group);
+  c.halo.parent?.remove(c.halo);
+  coins.splice(i, 1);
 }
 
 /** Retire every active coin. Called on level swap. */
