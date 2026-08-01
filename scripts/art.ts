@@ -158,17 +158,42 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
     ].join(', '),
     negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_MATTE}, photorealistic, photograph, hyperrealistic, smooth high-poly, subsurface scattering, ray tracing, detailed realistic textures, painterly, oil painting, woodcut, line art, ornate detail`,
   },
-  // A flat matte hand-painted illustration — the "art" option: bold graphic
-  // shapes, limited grimdark palette, poster-like, no gloss. Darkest Dungeon
-  // meets Mörk Borg, but a single OBJECT, not a card.
+  // A flat matte hand-painted illustration — the CHOSEN "art" direction. Bold
+  // graphic shapes, limited grimdark palette, poster-like, no gloss. Darkest
+  // Dungeon meets Mörk Borg, but a single OBJECT, not a card. The object reads
+  // BIG — it fills the frame (Josh: items can be bigger).
   flat: {
     register: [
       RELIC_SUBJECT,
       'a flat matte hand-painted illustration of the object, bold graphic shapes and confident brush marks, hard-edged and poster-like',
+      'the object LARGE and filling most of the frame, big and bold and centred, generous scale',
       'a strict limited grimdark palette of bone white, ash grey, rust and dried-blood crimson, one spot colour, no gloss, no gradient sheen',
       'Darkest Dungeon concept-art meets Mörk Borg, illustrative not rendered, cruel ancient mood',
     ].join(', '),
-    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy`,
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, ornate fine detail, busy, tiny object, lots of empty space`,
+  },
+  // Riff on flat: the same flat shapes but bound by a bold black INK outline +
+  // sparse woodblock linework — flat art meeting the original ink register.
+  'flat-ink': {
+    register: [
+      RELIC_SUBJECT,
+      'a flat matte illustration of the object bound by a bold confident black ink outline, with sparse woodblock ink linework defining the forms inside',
+      'the object LARGE and filling most of the frame, big and bold and centred',
+      'strict limited grimdark palette of bone white, ash grey and one spot colour, flat fills inside hard black contours, no gloss',
+      'Mörk Borg woodblock meets Darkest Dungeon, graphic and cruel',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, fine ornate detail, busy, tiny object`,
+  },
+  // Riff on flat: maximally reduced — a huge, near-emblematic poster of the
+  // object, very few flat colours, brutal high contrast.
+  'flat-bold': {
+    register: [
+      RELIC_SUBJECT,
+      'a boldly reduced flat graphic poster of the object, huge and filling the frame edge to edge, only a few flat colours, brutal high contrast, minimal detail',
+      'strict palette — bone white, ink black and one bold spot colour, hard flat shapes, no shading, no gradient, almost a graphic emblem or icon of the object',
+      'stark and cruel and ancient',
+    ].join(', '),
+    negative: `${RELIC_NEG_BASE}, ${RELIC_NEG_NONPHOTO}, ${RELIC_NEG_MATTE}, smooth render, realistic, photographic, fine detail, busy, midtones, soft gradient, tiny object, lots of empty background`,
   },
   // The object cast/forged as a tarnished reliquary — engraved bronze + black iron.
   relief: {

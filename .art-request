@@ -6,8 +6,8 @@
 # once per register and push a relics × styles comparison sheet to the
 # `relic-style-test` branch (no bake). Leave `styles=` empty to bake+ship to the
 # `relic-art` branch instead. Registers: ink · specimen · oil · relief.
-relics=gorged-tick ring-of-marrow the-long-hunger
-styles=ink oil psx flat
+relics=gorged-tick ring-of-marrow ysolde-vein-knife maren-milk-tooth
+styles=flat flat-ink flat-bold
 candidates=1
 promote_and_bake=false
-nonce=5
+nonce=6
