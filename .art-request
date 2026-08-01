@@ -1,0 +1,7 @@
+# Relic art generation request — change a value + push to main to fire the
+# `relic art` workflow (generates via Flux on GitHub's runners, opens the
+# `relic-art` branch with sprites). Bump `nonce` to re-fire with same params.
+relics=gorged-tick bone-amulet vess-striker ring-of-marrow the-long-hunger
+candidates=3
+promote_and_bake=true
+nonce=1
