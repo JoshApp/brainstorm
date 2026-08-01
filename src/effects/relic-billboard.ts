@@ -27,8 +27,8 @@ import { DOMAINS } from '../content/domains';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import type { BuiltModel } from '../ecs/build-model';
 
-const BILL_W = 0.54;      // billboard width (m)
-const BILL_H = 0.54;      // billboard height (m)
+const BILL_W = 0.64;      // billboard width (m) — relics read bigger on the floor
+const BILL_H = 0.64;      // billboard height (m)
 const SEG = 20;           // horizontal subdivisions — enough for a smooth curve
 const CURVE_DEPTH = 0.14; // how far the edges bow back toward the object (m)
 

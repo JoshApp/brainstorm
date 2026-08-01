@@ -80,18 +80,20 @@ const keyOut = async (b64: string): Promise<string> =>
     }
     sctx.putImageData(id, 0, 0);
 
-    // Opaque bounding box (a small alpha guard against stray specks).
+    // SOLID-object bounding box — a HIGH alpha threshold so a faint contact
+    // shadow / feathered halo doesn't inflate the box (which would push the
+    // object off-centre and shrink it). Matches scripts/refit-relics.ts.
     let minX = W, maxX = 0, minY = H, maxY = 0;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      if (px[(y * W + x) * 4 + 3] > 24) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      if (px[(y * W + x) * 4 + 3] >= 110) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
     }
     if (maxX < minX) { minX = 0; minY = 0; maxX = W - 1; maxY = H - 1; }   // nothing keyed — keep all
     const bw = maxX - minX + 1, bh = maxY - minY + 1;
 
-    // Fit the trimmed object into a square with a small margin.
+    // Fit the trimmed object into a square, filling most of it.
     const out = document.createElement('canvas'); out.width = OUT_SIZE; out.height = OUT_SIZE;
     const octx = out.getContext('2d')!; octx.imageSmoothingQuality = 'high';
-    const margin = 0.92, scale = (OUT_SIZE * margin) / Math.max(bw, bh);
+    const margin = 0.96, scale = (OUT_SIZE * margin) / Math.max(bw, bh);
     const dw = bw * scale, dh = bh * scale;
     octx.drawImage(src, minX, minY, bw, bh, (OUT_SIZE - dw) / 2, (OUT_SIZE - dh) / 2, dw, dh);
     return out.toDataURL('image/webp', QUALITY);
