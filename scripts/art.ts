@@ -207,7 +207,9 @@ const RELIC_STYLES: Record<string, RelicStyle> = {
   },
 };
 
-const DEFAULT_RELIC_STYLE = 'ink';
+// flat is the chosen relic art direction (Josh, after 3 comparison rounds) — the
+// register the bake path uses when no --style is given.
+const DEFAULT_RELIC_STYLE = 'flat';
 function relicStyleId(flag?: string): string {
   return flag && RELIC_STYLES[flag] ? flag : DEFAULT_RELIC_STYLE;
 }
