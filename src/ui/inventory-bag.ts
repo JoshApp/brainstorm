@@ -152,7 +152,9 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
 
   cell.addEventListener('click', (e) => {
     e.stopPropagation();
-    ctx.select({ kind: 'bag', item });
+    // Toggle: re-tapping the selected item folds the details pane away (back to
+    // the roomy 3-column resting state).
+    ctx.select(selected ? null : { kind: 'bag', item });
   });
 
   // Double-click / double-tap = equip (skips select → tap EQUIP). Gear only;

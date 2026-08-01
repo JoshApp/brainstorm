@@ -308,15 +308,20 @@ function renderReliquary() {
   sheet.body.replaceChildren(buildReliquaryContent(ctx));
 }
 
-// ── GEAR columns: stats | doll | bag | details ───────────────────────
-// Landscape-friendly: side-by-side so we never run out of vertical space;
-// the details column on the far right is always present (EQUIP / USE /
-// UNEQUIP never get cut off).
+// ── GEAR columns: stats | doll | bag [ | details ] ───────────────────
+// Landscape-friendly: side-by-side so we never run out of vertical space.
+// The DETAILS column is REVEALED on selection, not always present — the
+// resting state (browsing) is three roomy columns; tapping an item slides
+// the details+action pane in as a fourth. That keeps a phone from showing
+// four dense panes at once when there's nothing to inspect yet. Acting
+// (EQUIP/USE/UNEQUIP) clears the selection and the pane folds back away.
 function buildColumns(): HTMLDivElement {
   const grid = document.createElement('div');
+  const showDetails = selection !== null;
   Object.assign(grid.style, {
     display: 'grid',
-    gridTemplateColumns: '0.55fr 0.9fr 1fr 1.25fr',
+    // Resting: 3 columns, BAG gets the freed room. Selected: 4, DETAILS widest.
+    gridTemplateColumns: showDetails ? '0.5fr 0.82fr 1fr 1.35fr' : '0.62fr 1fr 1.28fr',
     gap: '10px',
     alignItems: 'stretch',
     minHeight: '0',
@@ -333,6 +338,6 @@ function buildColumns(): HTMLDivElement {
   grid.appendChild(buildStatsColumn());
   grid.appendChild(buildDollColumn(ctx));
   grid.appendChild(buildBagColumn(ctx));
-  grid.appendChild(buildDetailsColumn(ctx));
+  if (showDetails) grid.appendChild(buildDetailsColumn(ctx));
   return grid;
 }

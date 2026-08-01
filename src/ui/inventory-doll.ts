@@ -246,7 +246,8 @@ function buildDollSlot(def: SlotDef, item: ItemSpec | null, ctx: InventoryCtx): 
 
   wrap.addEventListener('click', (e) => {
     e.stopPropagation();
-    ctx.select(item ? { kind: 'slot', slotId: def.slotId, item } : null);
+    // Toggle a filled slot's details pane; an empty slot just clears.
+    ctx.select(item && !isSelected ? { kind: 'slot', slotId: def.slotId, item } : null);
   });
 
   return wrap;
