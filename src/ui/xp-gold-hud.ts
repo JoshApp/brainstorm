@@ -133,10 +133,10 @@ export function createXpGoldHud(): void {
   // rather than living inside the chunky band, so the bar itself
   // stays unobtrusive while still being readable. HP pips sit
   // comfortably above it.
-  // XP/levels disabled for now (#102) — build the gold + keys HUD above, but skip
-  // the whole XP bar (no dead progress bar while it's turned off).
-  if (!LEVELS_ENABLED) return;
-
+  // XP/levels disabled for now (#102) — the gold + keys HUD above is always
+  // built + bound (below); only the XP bar itself is gated off so there's no
+  // dead progress bar while levels are turned off.
+  if (LEVELS_ENABLED) {
   xpContainer = document.createElement('div');
   xpContainer.id = 'xp-bar-hud'; xpContainer.classList.add('game-hud');
   Object.assign(xpContainer.style, {
@@ -239,9 +239,12 @@ export function createXpGoldHud(): void {
     transition: 'opacity 320ms ease-out, transform 480ms cubic-bezier(0.2, 0.7, 0.2, 1)',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(levelToast);
+  }  // end if (LEVELS_ENABLED) — XP bar DOM
 
   // Data → DOM: bound to the HUD stores (synced each frame), so the bar,
   // level label and gold re-render only when their value actually changes.
+  // The xp bind is null-safe (bails when the bar wasn't built); the gold + keys
+  // binds ALWAYS run — that HUD renders whether or not levels are enabled.
   bind(xpStore, ({ level, inLevel, next }: XpState) => {
     if (!xpLevelEl || !xpFillEl || !xpFractionEl) return;
     xpLevelEl.textContent = `LVL ${level}`;
@@ -321,7 +324,10 @@ function showLevelToast(level: number) {
  *  is store-bound in createXpGoldHud; this just eases the on-event flourishes
  *  (xp/gold absorb, level-up) back to rest. */
 export function updateXpGoldHud(dt: number): void {
-  if (!goldEl || !xpFillEl || !xpLevelEl || !xpFractionEl) return;
+  // Gold + keys are the always-on HUD — only bail if THAT is missing. The XP
+  // elements may be null (levels disabled, #102); their flourishes are guarded
+  // individually below so the keys poll + gold pulse still run without them.
+  if (!goldEl) return;
 
   // Keys — cheap poll of the inventory count (small bag); refresh the chip only
   // when it changes. Hidden while you carry none so it doesn't clutter.
@@ -334,13 +340,15 @@ export function updateXpGoldHud(dt: number): void {
     }
   }
 
-  // Pulse decays.
-  if (xpPulseTimer > 0) {
-    xpPulseTimer -= dt;
-    const t = Math.max(0, xpPulseTimer / 0.22);
-    xpFractionEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.92 + t * 0.08})`;
-  } else {
-    xpFractionEl.style.color = 'rgba(220, 240, 255, 0.92)';
+  // Pulse decays. XP flourishes only run when the bar exists (levels on).
+  if (xpFractionEl) {
+    if (xpPulseTimer > 0) {
+      xpPulseTimer -= dt;
+      const t = Math.max(0, xpPulseTimer / 0.22);
+      xpFractionEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.92 + t * 0.08})`;
+    } else {
+      xpFractionEl.style.color = 'rgba(220, 240, 255, 0.92)';
+    }
   }
   if (goldPulseTimer > 0) {
     goldPulseTimer -= dt;
@@ -351,14 +359,16 @@ export function updateXpGoldHud(dt: number): void {
     goldEl.style.transform = 'scale(1)';
     goldEl.style.color = 'rgba(255, 210, 110, 0.9)';
   }
-  if (levelPulseTimer > 0) {
-    levelPulseTimer -= dt;
-    const t = Math.max(0, levelPulseTimer / 0.8);
-    xpLevelEl.style.transform = `scale(${1 + t * 0.25})`;
-    xpLevelEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.98})`;
-  } else {
-    xpLevelEl.style.transform = 'scale(1)';
-    xpLevelEl.style.color = 'rgba(220, 240, 255, 0.98)';
+  if (xpLevelEl) {
+    if (levelPulseTimer > 0) {
+      levelPulseTimer -= dt;
+      const t = Math.max(0, levelPulseTimer / 0.8);
+      xpLevelEl.style.transform = `scale(${1 + t * 0.25})`;
+      xpLevelEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.98})`;
+    } else {
+      xpLevelEl.style.transform = 'scale(1)';
+      xpLevelEl.style.color = 'rgba(220, 240, 255, 0.98)';
+    }
   }
 
   // Floating "+N" gold tick: holds at rest while coins land (GOLD_TICK_LEFT
