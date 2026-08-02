@@ -54,6 +54,14 @@ export interface EnemySpec {
   /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
    *  treatment (the bar finds the live boss enemy by this). */
   isBoss?: boolean;
+  /** MINIBOSS flag — a named elite that is a LESSER set-piece than an act boss.
+   *  Shares the grand-encounter machinery (the bar, the deferred reward, the
+   *  rest-fire on death) but at a smaller register: an amber bar (not blood-red),
+   *  a MINOR-arcana bonfire that does NOT gate the descent, and no fog-wall
+   *  seal. Mutually exclusive with isBoss (a foe is one tier or the other). Lives
+   *  in dedicated miniboss ARENAS on non-boss floors — never in the act-end
+   *  slot. See mobs/boss-encounter.ts (tier) + effects/boss-bonfire.ts (minor). */
+  miniboss?: boolean;
   /** Stay dormant (no perception / aggro / attacks) until the boss
    *  ENCOUNTER is engaged — i.e. the player crosses the fog gate. Souls-
    *  style: the fight begins on commitment, not on line-of-sight. Requires

@@ -28,7 +28,9 @@ export const ROLE = {
   light:  ['rat', 'skirmisher', 'carrion-hound'],
   heavy:  ['skeleton', 'ooze', 'ghoul', 'stoneguard'],
   ranged: ['plague-spore', 'sump-wisp', 'acolyte', 'acid-spitter'],
-  elite:  ['spider', 'defiler', 'wraith'],
+  // NOTE: 'wraith' is NOT here — it's the Hollow Choir MINIBOSS now, spawned only
+  // in dedicated miniboss arenas, never rolled into a normal elite slot.
+  elite:  ['spider', 'defiler'],
 } as const;
 
 export type Role = keyof typeof ROLE;

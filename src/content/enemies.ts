@@ -476,13 +476,17 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // Drops the first fabled-rarity weapon plus other rare loot.
   wraith: {
     id: 'wraith',
-    dropTable: 'boss',
+    dropTable: 'miniboss',
     bloodAmount: 0.0,
     name: 'wraith',
-    // BOSS — only ever spawned via the 'B' boss slot (never in roll tables),
-    // so the boss treatment lives right on the spec. Bigger, far tankier than
-    // trash, and named, so it reads as a set-piece, not a stray mob.
-    isBoss: true,
+    // MINIBOSS (task #17) — The Hollow Choir is a named ELITE set-piece, one tier
+    // below an act boss: it earns the grand-encounter bar + a rest-fire on death,
+    // but an amber bar (not blood-red), a MINOR-arcana fire that doesn't gate the
+    // stairs, and no fog-wall seal. It lives ONLY in dedicated miniboss ARENAS
+    // (vault tag 'miniboss', non-boss floors) — never in roll tables or as a
+    // random room guardian (which was the old bug: a full boss bar in a pillar
+    // room). Two-phase fight below makes it a real mid-run wall.
+    miniboss: true,
     bossName: 'The Hollow Choir',
     hp: 1,                  // unused — phases own the HP pool now
     moveSpeed: 1.5,         // slow drift in phase 1

@@ -204,7 +204,11 @@ export interface Enemy extends Damageable {
   faction: FactionId;
   /** True for boss enemies — drives the boss bar (see ui/boss-bar.ts). */
   isBoss: boolean;
-  /** Boss bar display name (only meaningful when isBoss). */
+  /** True for MINIBOSS enemies — a named elite set-piece, a lesser tier than a
+   *  boss (amber bar, minor rest-fire on death, no descent gate). Both isBoss
+   *  and miniboss run through the same grand-encounter container. */
+  miniboss: boolean;
+  /** Boss/miniboss bar display name (only meaningful when isBoss || miniboss). */
   bossName: string;
   group: THREE.Group;
   /** Live alias of group.position — satisfies Damageable for the unified
@@ -789,7 +793,7 @@ export function createEnemy(
   let aggression = CONFIG.ENEMY_AI.INTENT.MOOD_TARGET_BASE + personality.boldness * 0.2;
   let decisionTimer = gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN;   // desync the first decision
   let currentIntent: IntentChoice = { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false };
-  const useIntent = !spec.isBoss;
+  const useIntent = !spec.isBoss && !spec.miniboss;   // set-piece foes keep tuned pressure
   // Feint (telegraph-the-wait): while HOLDING the ring, fake a lunge now and then
   // so a waiting mob reads as coiled, not frozen. `feintCd` counts down between
   // feints; `feintT` runs a feint (-1 = idle).
@@ -1219,7 +1223,9 @@ export function createEnemy(
       // "loot when the fight is over, not mid-fight" rule: a king that dies while
       // its brood still lives, or a prince cut down mid-fight, must not litter
       // the floor with the boss hoard before the room is clear.
-      if (!spec.isBoss) {
+      // Minibosses defer too — their reward erupts with the rest-fire on
+      // encounter-complete (same rule as bosses, one tier down).
+      if (!spec.isBoss && !spec.miniboss) {
         const bundle = rollDropTable(spec.dropTable ?? 'enemy', getCurrentDepth(), gameRng);
         const N = bundle.items.length;
         bundle.items.forEach((item, i) => {
@@ -3090,6 +3096,7 @@ export function createEnemy(
     kind: spec.id,
     faction: spec.faction ?? DEFAULT_FACTION,
     isBoss: !!spec.isBoss,
+    miniboss: !!spec.miniboss,
     bossName: spec.bossName ?? spec.name,
     group: container,
     position: container.position,

@@ -23,6 +23,7 @@ export type RoomRole =
   | 'sanctum'   // the bonfire's OWN room; prominent, staged, no fight
   | 'finish'    // holds the way down — a bare exit, never a destination
   | 'quiet'     // a deliberately empty dread room (reserved for a pacing layer)
+  | 'miniboss'  // a named-elite arena (the miniboss owns the room; no trash, no deal)
   | 'boss';     // the boss arena
 
 /** What a role PERMITS. The build passes read these; they don't read the role. */
@@ -50,6 +51,9 @@ export const ROLE_CAPS: Record<RoomRole, RoleCaps> = {
   sanctum:  { allowCombat: false, allowBonfire: true,  allowEvent: false, allowLoot: false, bonfirePref: 5 },
   finish:   { allowCombat: true,  allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
   quiet:    { allowCombat: false, allowBonfire: true,  allowEvent: true,  allowLoot: true,  bonfirePref: 4 },
+  // A miniboss arena is the elite's stage: no injected trash, no deal, no found
+  // fire (the miniboss GIVES a fire on death). Loot rides its deferred reward.
+  miniboss: { allowCombat: false, allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
   boss:     { allowCombat: false, allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
 };
 
@@ -90,6 +94,9 @@ function classify(node: RoomNode, opts: { isBossFloor: boolean }): RoomRole {
       return 'feature';
     case 'mid':
     default:
+      // A deliberately-injected miniboss arena keeps its role (the tag IS trusted
+      // here — composeFloor only stamps it on a slot it means as the elite stage).
+      if (node.tags.includes('miniboss')) return 'miniboss';
       // A mid whose vault is a calm shape reads as feature; otherwise it's a
       // fight room. Tags are only a hint here, which is exactly what we want.
       if (node.tags.includes('treasure') || node.tags.includes('encounter')) return 'feature';

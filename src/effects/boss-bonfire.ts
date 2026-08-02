@@ -41,16 +41,25 @@ const SOUL_COLOR = 0x9cff3a;   // the king's core-green — his essence
 // bigger pool — so it reads as the major, run-defining rest it is (it's the one
 // that deals the major arcana now; the safe-room fire stepped down to a minor).
 const BOSS_FIRE_SCALE = 1.5;
+// A MINIBOSS fire is smaller than the boss's grand hearth but still grander than
+// a found rest-fire — it reads as an earned, lesser reward. Its souls are the
+// pale silver-blue of the spectral foe that died, not the king's green.
+const MINI_FIRE_SCALE = 1.15;
+const MINI_SOUL_COLOR = 0xa8c8ff;
 
 /** Spawn the emerging boss bonfire at `pos` (ground height). Owns its own rise
  *  animation + soul VFX, then becomes a shared fate rest-fire. `fromPos` (the
  *  boss's death spot, when given) is where the death-energy STREAM originates —
  *  the souls flow from there into the rising fire, guiding the eye from the fallen
  *  boss to the reward. `depth` reserved for future depth-scaled presence. */
-export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _depth: number, fromPos?: THREE.Vector3): void {
+export function spawnBossBonfire(
+  scene: THREE.Object3D, pos: THREE.Vector3, _depth: number, fromPos?: THREE.Vector3,
+  opts: { minor?: boolean } = {},
+): void {
+  const minor = opts.minor === true;
   const built = buildModel(BONFIRE);
   const group = built.group;
-  group.scale.setScalar(BOSS_FIRE_SCALE);
+  group.scale.setScalar(minor ? MINI_FIRE_SCALE : BOSS_FIRE_SCALE);
   group.position.set(pos.x, pos.y - RISE_DIST, pos.z);   // start buried
   scene.add(group);
 
@@ -83,7 +92,7 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
   scene.add(soulRoot);
   const soulMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: SOUL_COLOR,
+    color: minor ? MINI_SOUL_COLOR : SOUL_COLOR,
     transparent: true,
     opacity: 0,
     blending: THREE.AdditiveBlending,
@@ -186,12 +195,14 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
         playWhoosh();
         kickShake(0.2, 0.4);
         kickJolt(0, -1, 0, 0.22, 0.55, 5);
-        // Hand the settled model to the shared fate rest-fire. isBig: heals to
-        // full, deals a MAJOR arcana, and seals the descent until drawn.
+        // Hand the settled model to the shared fate rest-fire. A boss fire is
+        // BIG (heals to full, MAJOR arcana, seals the descent until drawn); a
+        // miniboss fire is a MINOR draw that heals + refills but never gates the
+        // stairs — a reward, not a checkpoint you must claim to leave.
         registerFateFire({
           group,
           position: pos.clone(),
-          isBig: true,
+          isBig: !minor,
           dimLight: (f) => { spentFactor = f; },
         });
         // Remove this throwaway animator (the fate-fire owns the fire now).

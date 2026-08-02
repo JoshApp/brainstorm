@@ -430,6 +430,22 @@ export function composeFloor(
   tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');
   const midPool = middleVaultPool(depth);
 
+  // MINIBOSS ARENA injection (task #17) — rarely, a NON-boss floor stages a named
+  // elite (the Hollow Choir) in a dedicated roomy arena. At most one per floor,
+  // depth-gated, and only when an eligible arena vault exists. We stamp ONE middle
+  // slot with the 'miniboss' tag (the mid-fill branch honours it below, and
+  // floor-roles trusts the tag on that slot to make it a clean, trash-free stage).
+  const MINIBOSS_MIN_DEPTH = 4;
+  const MINIBOSS_CHANCE = 0.28;
+  const minibossPool = vaultsForTag('miniboss', depth);
+  if (!opts.isBossFloor && depth >= MINIBOSS_MIN_DEPTH && middleCount >= 1
+      && minibossPool.length > 0 && rand() < MINIBOSS_CHANCE) {
+    // Pick a middle slot (indices 1..middleCount) — bias toward a LATER middle so
+    // the arena sits deeper in the floor, past a warm-up room or two.
+    const slot = 1 + Math.min(middleCount - 1, Math.floor(rand() * middleCount * 0.6) + Math.floor(middleCount / 2));
+    tagSeq[Math.min(slot, middleCount)] = 'miniboss';
+  }
+
   // ── 2. Place spine vaults along a WINDING 2D path ──────────────
   const placed: PlacedVault[] = [];
   const corridors: CorridorPlacement[] = [];
@@ -458,6 +474,11 @@ export function composeFloor(
         ? pool.find((v) => v.id === opts.preferredBossVaultId)
         : undefined;
       vault = preferred ?? weightedPick(pool, rand);
+    } else if (tag === 'miniboss') {
+      // A deliberately-stamped miniboss slot: draw from the arena pool (guaranteed
+      // non-empty when the slot was stamped). This is the ONE middle whose tag is
+      // trusted, not a weighting hint.
+      vault = weightedPick(minibossPool, rand);
     } else {
       // MIDDLE: tags demoted to a weighting hint — draw from the union pool.
       vault = midPool.length > 0

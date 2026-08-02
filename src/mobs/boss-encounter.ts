@@ -27,10 +27,17 @@ export const BOSS_ENCOUNTER_ID = 'boss';
 //     death (before this tick), so the king dying never trips completion.
 //   - resetBossEncounter()   — on level load.
 
+export type GrandTier = 'boss' | 'miniboss';
+
 let members: Enemy[] = [];
 let engaged = false;
 let completed = false;
 let phase = 1;
+// The tier of THIS floor's set-piece fight, read off the first registered body.
+// Boss floors register a boss; a miniboss arena registers a miniboss. The two
+// never share a floor, so one container serves both — the tier just varies the
+// bar colour + the reward (major vs minor rest-fire, gate vs no-gate).
+let tier: GrandTier = 'boss';
 const completeListeners = new Set<() => void>();
 // Handle into the unified Encounter registry. The boss fight IS an Encounter:
 // engage = activate, all-bodies-down = complete. Registered on engage (which
@@ -52,9 +59,17 @@ export function advanceBossPhase(): void {
   emit({ type: 'boss:phase', phase });
 }
 
-/** Register a boss body with the current encounter (king + each split child). */
+/** Register a set-piece body with the current encounter (the boss/miniboss +
+ *  each split child). The FIRST body registered sets the tier for the floor. */
 export function registerBossMember(e: Enemy): void {
+  if (members.length === 0) tier = e.miniboss ? 'miniboss' : 'boss';
   members.push(e);
+}
+
+/** The tier of this floor's set-piece fight — 'boss' (act-end) or 'miniboss'
+ *  (arena on a normal floor). Drives the bar colour + the reward fire. */
+export function grandEncounterTier(): GrandTier {
+  return tier;
 }
 
 /** Mark the fight as joined (the player committed). Gates completion so an
@@ -136,6 +151,7 @@ export function resetBossEncounter(): void {
   engaged = false;
   completed = false;
   phase = 1;
+  tier = 'boss';
   completeListeners.clear();
   encounter = null;   // the registry itself is wiped by the build's clearEncounters
 }

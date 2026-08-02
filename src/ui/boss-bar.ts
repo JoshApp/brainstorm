@@ -3,7 +3,7 @@ import { bind } from './hud';
 import { isBossEngaged, levelHasFogWall } from './boss-engagement';
 import {
   liveBossMembers, engageBossEncounter, isBossEncounterEngaged,
-  isBossEncounterComplete, tickBossEncounter,
+  isBossEncounterComplete, tickBossEncounter, grandEncounterTier,
 } from '../mobs/boss-encounter';
 import { ENEMIES } from '../content/enemies';
 import { bossSpecForEnemy } from '../content/bosses';
@@ -126,12 +126,22 @@ function render(s: BossState) {
   // Multiple bosses (the split princes) → thinner, narrower bars so the
   // stack reads as "lesser" than the king's single wide bar.
   const multi = n > 1;
+  // Tier tint — an act boss burns blood-red; a miniboss (a named elite, one tier
+  // down) reads amber-gold, matching its lesser rest-fire. Set per-render since a
+  // pooled row can serve either fight across level loads.
+  const mini = s.tier === 'miniboss';
+  const fillGrad = mini
+    ? 'linear-gradient(to bottom, rgba(210,150,40,0.98), rgba(150,95,18,0.98))'
+    : 'linear-gradient(to bottom, rgba(170,30,24,0.98), rgba(110,16,14,0.98))';
+  const trackBorder = mini ? 'rgba(180,130,50,0.55)' : 'rgba(150, 40, 30, 0.55)';
   for (let i = 0; i < barRows.length; i++) {
     const row = barRows[i];
     if (i >= n) { row.track.style.display = 'none'; continue; }
     row.track.style.display = 'block';
     row.track.style.height = multi ? '6px' : '9px';
     row.track.style.width = multi ? '64%' : '100%';
+    row.fill.style.background = fillGrad;
+    row.track.style.borderColor = trackBorder;
     const bar = s.bars[i];
     const pct = bar.max > 0 ? Math.max(0, Math.min(1, bar.hp / bar.max)) * 100 : 0;
     row.fill.style.width = `${pct}%`;
@@ -151,6 +161,7 @@ let fadeTimer = -1;          // >= 0 while counting down the post-death linger
 let faded = false;           // terminal: linger finished, bar stays hidden
 let lastName = '';
 let lastBars: { hp: number; max: number }[] = [];
+let lastTier: 'boss' | 'miniboss' = 'boss';
 // Beat between CROSSING the fog gate and the boss REVEAL. You commit (the gate
 // seals), walk a few steps into the arena over only the boss's floor-shadow —
 // then the encounter engages all at once: the boss drops, the bar slams in, the
@@ -191,8 +202,9 @@ export function tickBossBar(dt: number): void {
       const bars = members.map((b) => ({ hp: Math.max(0, b.hp), max: b.maxHp }));
       lastName = members[0].bossName;
       lastBars = bars.map((b) => ({ hp: 0, max: b.max }));   // empty copies for the linger
+      lastTier = grandEncounterTier();
       fadeTimer = -1;
-      bossStore.set({ visible: true, name: members[0].bossName, bars });
+      bossStore.set({ visible: true, name: members[0].bossName, bars, tier: lastTier });
     }
     return;
   }
@@ -206,13 +218,13 @@ export function tickBossBar(dt: number): void {
   if (faded) return;
   if (fadeTimer < 0) {
     fadeTimer = DEATH_LINGER;
-    bossStore.set({ visible: true, name: lastName, bars: lastBars });
+    bossStore.set({ visible: true, name: lastName, bars: lastBars, tier: lastTier });
   }
   fadeTimer -= dt;
   if (fadeTimer <= 0) {
     faded = true;
     fadeTimer = -1;
-    bossStore.set({ visible: false, name: '', bars: [] });
+    bossStore.set({ visible: false, name: '', bars: [], tier: lastTier });
   }
 }
 
@@ -225,6 +237,7 @@ export function resetBossBar(): void {
   engageCountdown = -1;
   lastName = '';
   lastBars = [];
+  lastTier = 'boss';
   hideBossIntro();
-  bossStore.set({ visible: false, name: '', bars: [] });
+  bossStore.set({ visible: false, name: '', bars: [], tier: 'boss' });
 }

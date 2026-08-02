@@ -17,7 +17,7 @@ import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
 import { createPickup } from '../interactables/pickup';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { kickShake } from '../combat/screen-shake';
-import { registerBossMember, advanceBossPhase, onBossEncounterComplete } from '../mobs/boss-encounter';
+import { registerBossMember, advanceBossPhase, onBossEncounterComplete, grandEncounterTier } from '../mobs/boss-encounter';
 import { spawnBossBonfire } from '../effects/boss-bonfire';
 import { setBossPresentation } from '../mobs/boss-cinematics';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
@@ -2216,9 +2216,9 @@ export function buildLevel(
     // Only player-THREATS count toward a room's clear gate — neutral vermin
     // (maggots) get real room membership but never hold a door shut.
     if (roomId && threatensPlayer(enemySpec.faction)) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
-    // Every boss body (the king + each split child) joins the one boss
-    // encounter, so "boss done" means ALL of them are dead.
-    if (e.isBoss) registerBossMember(e);
+    // Every set-piece body (boss/miniboss + each split child) joins the one
+    // grand encounter, so "fight done" means ALL of them are dead.
+    if (e.isBoss || e.miniboss) registerBossMember(e);
     return e;
   }
 
@@ -2242,10 +2242,10 @@ export function buildLevel(
     };
   }
 
-  // Deferred boss reward — the boss's hoard is held back from its own death drop
-  // (enemy.ts suppresses it for isBoss) and erupts here when the whole encounter
-  // ends, beside the rising bonfire. Captured from the authored boss spawn +
-  // its final death position.
+  // Deferred set-piece reward — the boss/miniboss hoard is held back from its own
+  // death drop (enemy.ts suppresses it for isBoss || miniboss) and erupts here
+  // when the whole encounter ends, beside the rising bonfire. Captured from the
+  // authored spawn + its final death position.
   let bossRewardSpec: EnemySpec | null = null;
   let bossDeathPos: THREE.Vector3 | null = null;
   let bossRoomId: string | null = null;
@@ -2260,7 +2260,7 @@ export function buildLevel(
     // Remember where each boss body fell — the king dies LAST (warded until its
     // brood is cleared), so this ends up holding the king's spot, which is where
     // the reward + bonfire erupt on encounter completion.
-    if (deadSpec.isBoss) bossDeathPos = deathPos.clone();
+    if (deadSpec.isBoss || deadSpec.miniboss) bossDeathPos = deathPos.clone();
     const split = deadSpec.splitsInto;
     if (!split) return;
     const childBase = ENEMIES[split.enemyId];
@@ -2328,7 +2328,7 @@ export function buildLevel(
     // — without this they're never a `liveBossMember`, so the boss bar never
     // engages and a dormant boss stays asleep forever. (The split helper
     // registers spawned children; this is the missing initial-spawn case.)
-    if (enemy.isBoss) { registerBossMember(enemy); bossRewardSpec = enemySpec; bossRoomId = roomId; }
+    if (enemy.isBoss || enemy.miniboss) { registerBossMember(enemy); bossRewardSpec = enemySpec; bossRoomId = roomId; }
   }
 
   // ── AMBIENT MAGGOTS — the dungeon's vermin (task #76) ────────────────────
@@ -2340,7 +2340,7 @@ export function buildLevel(
   if (ENEMIES['maggot']) {
     const magRng = rngFromSeed(hashStringToSeed(`maggots:${spec.id}:${levelDepth}`));
     const startRoomId = findRoomContaining(spec.startPos.x, spec.startPos.z, spec.rooms);
-    const bossMaggotSpawn = spec.spawns.find((s) => ENEMIES[s.enemyId]?.isBoss);
+    const bossMaggotSpawn = spec.spawns.find((s) => ENEMIES[s.enemyId]?.isBoss || ENEMIES[s.enemyId]?.miniboss);
     const bossRoomIdForMaggots = bossMaggotSpawn
       ? findRoomContaining(bossMaggotSpawn.x, bossMaggotSpawn.z, spec.rooms) : null;
     let placed = 0;
@@ -2376,9 +2376,11 @@ export function buildLevel(
       const safe = walkable.resolveSpawn(centre.x, centre.z, 0.5);
       const at = new THREE.Vector3(safe.x, groundYAt(safe.x, safe.z), safe.z);
       const fell = bossDeathPos ? bossDeathPos.clone() : at.clone();
-      // The bonfire emerges here (rumble + the boss's souls streaming in from
-      // where it fell), then becomes a REST fire that heals + deals a major arcana.
-      spawnBossBonfire(root, at.clone(), levelDepth, fell);
+      // The bonfire emerges here (rumble + the fallen foe's souls streaming in
+      // from where it fell), then becomes a REST fire. A boss gives a MAJOR fire
+      // (gates the descent); a miniboss gives a MINOR one (a reward, no gate).
+      const minorFire = grandEncounterTier() === 'miniboss';
+      spawnBossBonfire(root, at.clone(), levelDepth, fell, { minor: minorFire });
       // The deferred hoard — the boss's whole 'boss' drop table, erupting around
       // the new fire on their own arcs (gold flies to the counter).
       const bundle = rollDropTable(rewardSpec.dropTable ?? 'boss', levelDepth, gameRng);

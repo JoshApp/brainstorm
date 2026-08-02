@@ -75,16 +75,19 @@ export interface BossState {
   visible: boolean;
   name: string;
   bars: BossBar[];
+  /** Fight tier — 'boss' (blood-red bar) vs 'miniboss' (amber bar). Drives the
+   *  bar's colour so a named elite reads as a lesser threat than an act boss. */
+  tier: 'boss' | 'miniboss';
 }
 function bossEq(a: BossState, b: BossState): boolean {
-  if (a.visible !== b.visible || a.name !== b.name || a.bars.length !== b.bars.length) return false;
+  if (a.visible !== b.visible || a.name !== b.name || a.tier !== b.tier || a.bars.length !== b.bars.length) return false;
   for (let i = 0; i < a.bars.length; i++) {
     if (a.bars[i].hp !== b.bars[i].hp || a.bars[i].max !== b.bars[i].max) return false;
   }
   return true;
 }
 export const bossStore = writable<BossState>(
-  { visible: false, name: '', bars: [] },
+  { visible: false, name: '', bars: [], tier: 'boss' },
   bossEq,
 );
 

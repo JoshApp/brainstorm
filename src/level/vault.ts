@@ -30,6 +30,7 @@ export type VaultTag =
   | 'combat'       // Regular fight room.
   | 'treasure'     // Loot-focused. Light combat or none.
   | 'encounter'    // Non-combat — fountain, altar, lore corpse, etc.
+  | 'miniboss'     // Roomy arena holding a named ELITE (a miniboss). Non-boss floors.
   | 'boss'         // Boss antechamber. Last vault on deep floors.
   | 'exit';        // Last vault. Contains the stairs '/'.
 

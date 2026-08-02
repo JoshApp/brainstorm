@@ -562,11 +562,12 @@ const ENCOUNTER_RITUAL: Vault = {
   ],
 };
 
-// Pillared inner chamber framing a single wraith + chest. The four
+// Pillared inner chamber framing a single defiler guardian + chest. The four
 // pillars read as "the thing was contained here" — they don't actually
 // block the player, but they enclose the eye on the centerpiece.
 // Player has to commit to the fight to claim the chest behind the
-// guardian.
+// guardian. (Was a wraith — the wraith is now the Hollow Choir MINIBOSS and
+// lives only in dedicated miniboss arenas, never as a random room guardian.)
 const ENCOUNTER_PRISON: Vault = {
   id: 'encounter-prison',
   tags: ['encounter'],
@@ -586,16 +587,13 @@ const ENCOUNTER_PRISON: Vault = {
   minDepth: 2,   // wraith is a real threat — keep off depth 1
   weight: 1,
   torchTint: TORCH_BLOOD,
-  // The lone wraith guardian — cell-bound, no world-coord math.
-  // (Migration also fixes a 0.5m z drift the previous absolute-
-  // coord entry had — should sit at cell (2,4) which is z=0,
-  // not z=-0.5.)
+  // The lone defiler guardian — cell-bound, no world-coord math.
   cellProps: {
-    // Wraith guardian + the four pillars that enclose it + the chest
+    // Guardian + the four pillars that enclose it + the chest
     // behind. All cell-bound, in reading order top→bottom.
     '2,2': [{ kind: 'pillar' }],
     '9,2': [{ kind: 'pillar' }],
-    '2,4': [{ kind: 'spawn', enemyId: 'wraith' }],
+    '2,4': [{ kind: 'spawn', enemyId: 'defiler' }],
     '9,4': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
     '2,6': [{ kind: 'pillar' }],
     '9,6': [{ kind: 'pillar' }],
@@ -757,6 +755,82 @@ const ENCOUNTER_TRAPPED: Vault = {
   torchTint: TORCH_GREEN,
   cellProps: {
     '4,4': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
+  },
+};
+
+// ── MINIBOSS arenas (task #17) ─────────────────────────────────────
+// Roomy chambers that stage the Hollow Choir (a wraith miniboss). Josh: "we need
+// more miniboss arenas so the player has space to fight it." Bigger + more open
+// than a normal combat room — the spectral fight wants distance to read its
+// telegraphed bolts and phase-2 lunges. No 'X'/'B' — the wraith is placed by an
+// explicit cellProps spawn, and the floor-roles 'miniboss' role keeps the budget
+// from seeding trash in here (a clean, one-foe stage). Pale spectral torchlight.
+
+// Broad pillared hall — four columns frame a wide killing floor, a lone wraith
+// adrift at its centre. The pillars break line-of-sight just enough that its
+// bolt-chords have geometry to sidestep behind.
+const MINIBOSS_HALL: Vault = {
+  id: 'miniboss-hall',
+  tags: ['miniboss'],
+  map: [
+    '################',
+    '#..............#',
+    '#..*........*..#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..*........*..#',
+    '#..............#',
+    '################',
+  ],
+  lightTier: 'dim',
+  minDepth: 4,
+  weight: 1,
+  torchTint: TORCH_PALE,
+  cellProps: {
+    // Four pillars enclosing the arena eye + the wraith adrift at centre.
+    '3,3': [{ kind: 'pillar' }],
+    '12,3': [{ kind: 'pillar' }],
+    '3,8': [{ kind: 'pillar' }],
+    '12,8': [{ kind: 'pillar' }],
+    '8,5': [{ kind: 'spawn', enemyId: 'wraith' }],
+  },
+};
+
+// Open round-ish cell — no pillars, pure space. A colonnade of wall torches rings
+// a bare floor so the fight is all spacing + dodging, nowhere to hide from the
+// choir. The widest arena; reads as a consecrated ruin.
+const MINIBOSS_SANCTUM: Vault = {
+  id: 'miniboss-sanctum',
+  tags: ['miniboss'],
+  map: [
+    '##############',
+    '#....*..*....#',
+    '#............#',
+    '#............#',
+    '#*..........*#',
+    '#............#',
+    '#............#',
+    '#*..........*#',
+    '#............#',
+    '#............#',
+    '#....*..*....#',
+    '##############',
+  ],
+  lightTier: 'dim',
+  minDepth: 5,
+  weight: 1,
+  torchTint: TORCH_PALE,
+  props: [
+    // A single pale god ray falling on the arena centre — the wraith stands lit,
+    // a set-piece (lighting-as-signal: an uncommon light means SOMETHING is here).
+    { kind: 'model', model: RAY_PALE, x: 0, y: 0, z: 0, rotY: 0.2 },
+  ],
+  cellProps: {
+    '6,5': [{ kind: 'spawn', enemyId: 'wraith' }],
   },
 };
 
@@ -1217,6 +1291,7 @@ export const VAULTS: Vault[] = [
   TREASURE_RELIQUARY, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
   ENCOUNTER_ARENA, CHALLENGE_ARENA, ENCOUNTER_OSSUARY,
+  MINIBOSS_HALL, MINIBOSS_SANCTUM,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];
