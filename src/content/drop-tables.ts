@@ -49,7 +49,23 @@ export const GROUPS: Record<string, ItemGroup> = {
 };
 
 // ── ENTRIES / POOLS / TABLES ────────────────────────────────────────────────
-type RarityFloor = Rarity | ((depth: number) => Rarity);
+// A rarity FLOOR clamps a rolled tier UP to at least this. It can be a fixed
+// tier, or a function of depth (+ the roll rand, for a SOFT floor).
+type RarityFloor = Rarity | ((depth: number, rand: () => number) => Rarity);
+
+/** SOFT rarity floor (docs: loot-design "hybrid curve"). Instead of snapping the
+ *  "at least rare" guarantee on at one depth — which stacks every source into a
+ *  visible CLIFF (the audit's D3 jump) — this RAMPS it in across a band: below
+ *  `start` the floor is `low`; from `start`→`full` the chance of the `high` floor
+ *  climbs linearly 0→1; at/after `full` it's a hard `high` floor. The transition
+ *  becomes a felt CLIMB, not a wall. Consumes one rand — deterministic per seed. */
+function rampFloor(start: number, full: number, low: Rarity = 'uncommon', high: Rarity = 'rare') {
+  return (depth: number, rand: () => number): Rarity => {
+    if (depth >= full) return high;
+    if (depth < start) return low;
+    return rand() < (depth - start) / (full - start) ? high : low;
+  };
+}
 
 /** One weighted possibility inside a pool. Exactly one of gold/key/from/table may
  *  be set; a bare `{ weight }` is "nothing" (the miss chance). */
@@ -120,19 +136,28 @@ export const TABLES: Record<string, LootTable> = {
   'chest-silver': T({ emptyGold: 12, entries: [
     { from: 'gear', bias: 2, weight: 70 }, { from: 'relics', bias: 2, weight: 30 },
   ] }),
+  // Gold chest's rare floor ramps in d2→d6 (was a hard snap at d3) so the
+  // uncommon→rare transition reads as a climb, not a cliff.
   'chest-gold':   T({ emptyGold: 20, entries: [
-    { from: 'relics', bias: 4, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') },
+    { from: 'relics', bias: 4, minRarity: rampFloor(2, 6) },
   ] }),
+
+  // ── EARLY SPARK — the first-descent gift (loot-director, floors 1-2). ──
+  // Research: an early "free notable" is the strongest first-session retention
+  // lever (the Hooked model's first satisfying payoff / variable-reward onboarding).
+  // A guaranteed uncommon+ RELIC = your first build piece, so floor 1 isn't a
+  // reward-dead intro. Deliberately a relic (a build seed), not raw power.
+  'spark': T({ emptyGold: 8, entries: [{ from: 'relics', bias: 2, minRarity: 'uncommon' }] }),
 
   // ── BOSSES — a relic reward. ──
   'miniboss': T({ emptyGold: 12, entries: [{ from: 'relics', bias: 3, minRarity: 'uncommon' }] }),
   'boss':     T({ emptyGold: 25, entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
 
   // ── EVENTS / DEALS — single-item sources. ──
-  'defining-find': T({ entries: [{ from: 'gear', bias: 4, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') }] }),
+  'defining-find': T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   'merchant':      T({ entries: [{ from: 'gear', bias: 2 }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
-  'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') }] }),
+  'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   // A fallen delver is now a RARE find (loot-director drops the per-floor odds),
   // so what they died holding is a real reward, not a scrap: a fair purse AND a
   // biased uncommon-or-better piece — gear usually, a relic often enough to be a
@@ -141,8 +166,8 @@ export const TABLES: Record<string, LootTable> = {
   'corpse':        T({ pools: [
     { entries: [{ gold: [5, 12] }] },
     { entries: [
-      { from: 'gear',   bias: 3, weight: 62, minRarity: (d) => (d >= 3 ? 'rare' : 'uncommon') },
-      { from: 'relics', bias: 3, weight: 38, minRarity: (d) => (d >= 4 ? 'rare' : 'uncommon') },
+      { from: 'gear',   bias: 3, weight: 62, minRarity: rampFloor(3, 8) },
+      { from: 'relics', bias: 3, weight: 38, minRarity: rampFloor(4, 9) },
     ] },
   ] } as LootTable),
   // A bone-shrine set-piece you SEARCH — a little gold, and a fair chance of gear
@@ -179,7 +204,7 @@ function rollGroup(entry: LootEntry, depth: number, rand: () => number): ItemSpe
     const pool = g.items.map((id) => ITEMS[id]).filter((it): it is ItemSpec => !!it && isIncluded(it));
     return pool.length ? pool[Math.floor(rand() * pool.length)] : null;
   }
-  const minRarity = typeof entry.minRarity === 'function' ? entry.minRarity(depth) : entry.minRarity;
+  const minRarity = typeof entry.minRarity === 'function' ? entry.minRarity(depth, rand) : entry.minRarity;
   return rollLoot(
     { depth, bias: entry.bias ?? g.bias, minRarity, category: g.kinds ? [...g.kinds] : undefined, pool: g.tag },
     rand,

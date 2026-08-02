@@ -11,6 +11,7 @@ import type { PropSpec } from './types';
 import type { ChestTier } from '../interactables/chest';
 import type { CorpsePose } from '../content/corpses';
 import { rollChestLoot, rollMimic, rollChestTier } from './decor-defaults';
+import { rollDropTable } from '../content/drop-tables';
 import { roomFor, type RoomBox } from './placement';
 
 type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
@@ -78,7 +79,9 @@ function shuffled<T>(arr: readonly T[], rand: () => number): T[] {
 export function distributeLoot(props: PropSpec[], depth: number, rand: () => number, rooms: readonly RoomBox[]): PropSpec[] {
   const anchors = props.filter((p): p is Anchor => p.kind === 'loot-anchor');
   const kept = props.filter((p) => p.kind !== 'loot-anchor');
-  if (anchors.length === 0) return props;
+  // A floor with no anchors still gets its early SPARK (upgraded onto whatever
+  // chest the vaults authored) — the gift must never miss for lack of a marker.
+  if (anchors.length === 0) return ensureSpark(props, depth, rand);
 
   const majors = shuffled(anchors.filter((a) => a.prominence === 'major'), rand);
   const minors = shuffled(anchors.filter((a) => a.prominence === 'minor'), rand);
@@ -160,7 +163,39 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
     }
   }
 
+  // EARLY SPARK (floors 1-2) — guarantee a relic, the first-descent gift. Prefer
+  // to upgrade a chest we're already placing (director find, else a vault chest);
+  // if the floor truly has none, inject a spark chest at a free anchor so the gift
+  // never misses. Applied AFTER the gate so the spark is never sealed behind an
+  // offering (a floor-1 delver must always reach it).
+  if (depth <= 2) {
+    const upgraded = sparkifyFirstChest(content, depth, rand) || sparkifyFirstChest(kept, depth, rand);
+    if (!upgraded) {
+      const a = take(minors, majors);
+      if (a) content.push(makeChest(a, 'wood', depth, rand, true));
+    }
+  }
+
   return [...kept, ...content, ...gateProps];
+}
+
+/** Rewrite the first openable (non-mimic) chest in `props` into the early SPARK —
+ *  a wood, ungated chest holding a guaranteed relic. Returns true if one was
+ *  found + upgraded. Mutates in place. */
+function sparkifyFirstChest(props: PropSpec[], depth: number, rand: () => number): boolean {
+  const idx = props.findIndex((p): p is Extract<PropSpec, { kind: 'chest' }> => p.kind === 'chest' && !p.mimic);
+  if (idx < 0) return false;
+  const c = props[idx] as Extract<PropSpec, { kind: 'chest' }>;
+  props[idx] = { ...c, tier: 'wood', mimic: false, gateId: undefined, loot: rollDropTable('spark', depth, rand) };
+  return true;
+}
+
+/** No-anchor path: still guarantee the early spark by upgrading whatever chest a
+ *  vault authored (best effort — a floor with zero chests + zero anchors, very
+ *  rare, simply has none to upgrade). */
+function ensureSpark(props: PropSpec[], depth: number, rand: () => number): PropSpec[] {
+  if (depth <= 2) sparkifyFirstChest(props, depth, rand);
+  return props;
 }
 
 /** A fallen delver at an anchor, POSED by its surroundings — the pose-by-context
@@ -172,7 +207,14 @@ function makeCorpse(a: Anchor, rand: () => number): PropSpec {
   return { kind: 'corpse', x: a.x, z: a.z, rotY: a.rotY, facing: a.facing, pose };
 }
 
-function makeChest(a: Anchor, tier: ChestTier, depth: number, rand: () => number): PropSpec {
+function makeChest(a: Anchor, tier: ChestTier, depth: number, rand: () => number, spark = false): PropSpec {
+  // The EARLY SPARK (floors 1-2): a humble WOOD chest — always openable, never a
+  // mimic, never key-locked — holding a guaranteed relic (your first build piece).
+  // Wood so a keyless floor-1 delver can always reach it; the reward is in the
+  // contents, not the shell. See drop-tables 'spark' + docs loot-design.
+  if (spark) {
+    return { kind: 'chest', x: a.x, z: a.z, rotY: a.rotY, facing: a.facing, tier: 'wood', mimic: false, loot: rollDropTable('spark', depth, rand) };
+  }
   const mimic = rollMimic(tier, rand);
   return {
     kind: 'chest',
