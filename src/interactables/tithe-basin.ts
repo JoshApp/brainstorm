@@ -279,7 +279,10 @@ export function spawnTitheBasin(
     position: pos.clone(),
     radius: 1.5,
     labelOffsetY: 1.1,
-    promptLabel: 'TITHE',
+    // 'CHOOSE', not 'TITHE' — the prompt has to read that pressing it opens a
+    // DECISION (blood / gold / your weapon), not that it commits a fixed cost on
+    // the spot. The three tithes + their prices live in the sheet behind it.
+    promptLabel: 'CHOOSE',
     promptKind: 'unknown',   // pale — a gamble, the outcome hidden
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
