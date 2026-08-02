@@ -35,6 +35,8 @@ DELVE — creator suite (author · preview · debug · play)
   MODELS & CONTENT
   delve list [vaults|mobs|items]    what can I point the tools at?
   delve inventory [--json f|--md f] FULL catalog (all families + include-flag status)
+  delve audit [--floors N|--json f]  THEORETICAL telemetry — sweep the generator, read
+                                      the loot economy + research-grounded health flags
   delve stats <bundle.json>         balance tables from an in-game telemetry export
   delve reports [--limit N|--dump]  pull player-filed bug reports from the collector
   delve weapons                     weapon stat table — derived reach · class · arc
@@ -163,6 +165,7 @@ switch (cmd) {
   case undefined: case 'help': case '--help': index(); break;
   case 'list': list(rest[0]); break;
   case 'inventory': delegate('inventory'); break;
+  case 'audit': delegate('audit'); break;
   case 'stats': delegate('stats'); break;
   case 'reports': delegate('reports'); break;
   case 'repro': delegate('repro'); break;
