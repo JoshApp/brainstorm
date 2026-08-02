@@ -1315,6 +1315,15 @@ export function composeFloor(
 
   // Build the intermediate LevelSpec — props / torches will be
   // mutated by the decoration pipeline below.
+  // MINIBOSS GATE (Josh) — a floor that staged a miniboss arena SEALS its descent
+  // until the miniboss falls (the same 'boss-defeated' unlock the act bosses use;
+  // the miniboss registers in the shared grand-encounter container, so
+  // isBossEncounterComplete() flips on its death). You must clear the named elite
+  // to go deeper — no slipping past it. Spectral silver-blue seal to match it.
+  if (placed.some((pv) => pv.vault.tags.includes('miniboss'))) {
+    for (const s of stairs) s.unlock = { kind: 'boss-defeated', color: 0xa8c8ff };
+  }
+
   const result: LevelSpec = {
     id: opts.id,
     depth,

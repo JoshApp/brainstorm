@@ -491,10 +491,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hp: 1,                  // unused — phases own the HP pool now
     moveSpeed: 1.5,         // slow drift in phase 1
     attackDamage: 2,        // mirrored by per-ability damage below
-    // Long attempt range so it engages with its bolt "choir" from across the
-    // cathedral; the per-ability minRange/maxRange bands govern which tool it
-    // reaches for. strike/windup/recover below still feed the audio sizing +
-    // the debug poser + the default-ability fallback.
+    // Long ATTEMPT range so it engages with its bolts once aggroed; the
+    // per-ability minRange/maxRange bands govern which tool it reaches for.
+    // (SIGHT range — how early it wakes — is tuned near the bottom of the spec.)
     attackRange: 12,
     strikeRange: 2.0,
     windupTime: 0.95,       // long, readable telegraph
@@ -651,11 +650,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     eyeMaterialName: 'eyes',
     presence: 'spectral',       // continuous bob + sway so it never reads as a statue
     phasing: true,              // ghost — drifts through pillars/altars/chests
-    // Wraith sees ECHO of you — basically supernatural perception. Long
-    // range, wide cone, but small hearing radius (no body to feel
-    // footsteps). Long lose-sight: it follows even if you break LOS.
-    sightRange: 12,
-    sightConeHalfAngle: 1.3,    // ~75° half / 150° total
+    // SIGHT is SHORT now (Josh: it woke from across the floor before you'd even
+    // entered the arena). It only stirs once you're properly inside, in front of
+    // it — then its long attack bands let the bolt "choir" reach across the room
+    // once the fight is joined. Long lose-sight so it still hunts through LOS
+    // breaks once awake; small hearing radius (no body to feel footsteps).
+    sightRange: 5,
+    sightConeHalfAngle: 0.95,   // ~54° half / 108° total — a delver in front, not one slipping the mouth
     hearingRange: 1.5,
     loseSightTime: 7,
     xp: 25,

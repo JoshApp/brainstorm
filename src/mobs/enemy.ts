@@ -817,6 +817,12 @@ export function createEnemy(
   // for now, read whatever rotation is on the container right now.
   let homeYaw = 0;                   // filled in on first idle-tick
   let homeYawSet = false;
+  // Ambient WANDER (non-hostile vermin — maggots): a slow crawl between random
+  // nearby points with a grub wriggle, so they read as ALIVE, not props. Home is
+  // the spawn spot; the crawl stays within a small radius of it.
+  let homeX = 0, homeZ = 0, homeSet = false;
+  let wanderX = 0, wanderZ = 0, wanderActive = false, wanderPause = 0, wanderTimer = 0;
+  const wrigglePhase = gameRng() * Math.PI * 2;
   // Inside-aura state — how long the player has been inside us +
   // when the next dot tick is due. Resets to 0 when player leaves.
   let auraInsideTime = 0;
@@ -2545,6 +2551,45 @@ export function createEnemy(
           applyIdleEyes();
           applyTilt(0);
           built.group.position.y = 0;
+          break;
+        }
+        // ── AMBIENT WANDER (non-hostile vermin) ────────────────────────────
+        // A maggot never hunts; instead of standing frozen it crawls slowly
+        // between random spots near its spawn, wriggling as it goes — living
+        // atmosphere. Paused between crawls with an in-place squirm.
+        if (!hostileToPlayer) {
+          if (!homeSet) { homeX = container.position.x; homeZ = container.position.z; homeSet = true; }
+          const wt = performance.now() / 1000;
+          applyIdleEyes();
+          applyTilt(0);
+          if (wanderPause > 0) {
+            wanderPause -= dt;
+            container.rotation.y += Math.sin(wt * 3.0 + wrigglePhase) * dt * 0.5;   // idle squirm
+            built.group.position.y = Math.abs(Math.sin(wt * 2.4 + wrigglePhase)) * 0.006;
+            break;
+          }
+          if (!wanderActive) {
+            const a = gameRng() * Math.PI * 2;
+            const r = 0.4 + gameRng() * 1.2;
+            wanderX = homeX + Math.cos(a) * r;
+            wanderZ = homeZ + Math.sin(a) * r;
+            wanderActive = true; wanderTimer = 0;
+          }
+          wanderTimer += dt;
+          const wdx = wanderX - container.position.x, wdz = wanderZ - container.position.z;
+          if (Math.hypot(wdx, wdz) < 0.14 || wanderTimer > 3) {
+            wanderActive = false;
+            wanderPause = 0.7 + gameRng() * 1.6;   // rest + wriggle between crawls
+            built.group.position.y = 0;
+            break;
+          }
+          moveTowards(wanderX, wanderZ, moveSpeed, dt, walkable, nav);
+          // Ease yaw toward travel + a side-to-side wriggle (the grub crawl).
+          const targetYaw = Math.atan2(wdx, wdz) + Math.PI;
+          let dyw = targetYaw - container.rotation.y;
+          while (dyw > Math.PI) dyw -= Math.PI * 2; while (dyw < -Math.PI) dyw += Math.PI * 2;
+          container.rotation.y += dyw * Math.min(1, dt * 2.5) + Math.sin(wt * 8 + wrigglePhase) * dt * 0.9;
+          built.group.position.y = Math.abs(Math.sin(wt * 9 + wrigglePhase)) * 0.008;
           break;
         }
         // Shared aggro pickup — if a fellow mob has broadcast an alert
