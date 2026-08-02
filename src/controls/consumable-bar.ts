@@ -62,6 +62,10 @@ let flaskEl: HTMLButtonElement | null = null;
 let flaskPips: HTMLDivElement | null = null;   // charge pips — one per capacity, lit while held
 let flaskIcon: HTMLDivElement | null = null;   // re-rendered on charge change (liquid level)
 let ringEl: SVGCircleElement | null = null;    // drink-progress ring (tickFlaskDrinkUi)
+
+/** The flask button element, for fly-to-HUD targets (e.g. the fountain refill
+ *  streaming gold INTO the flask). Null before the HUD mounts / headless. */
+export function getFlaskButtonEl(): HTMLElement | null { return flaskEl; }
 let ringCircumference = 0;
 let ringWasDrinking = false;
 let ringSawSip = false;

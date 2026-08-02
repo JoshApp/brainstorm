@@ -8,6 +8,8 @@ import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
 import { addCharges } from '../player/flask';
 import { playHealSlurp } from '../audio/sfx';
 import { showInscription } from '../ui/inscription';
+import { flyToHud, projectToScreen } from '../ui/fly-to-hud';
+import { getFlaskButtonEl } from '../controls/consumable-bar';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
 import { getMutationIds } from '../state/run-mutations';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
@@ -185,6 +187,10 @@ export function spawnFountain(
         // not a heal. (Was a green partial-heal; the flask is your real mend.)
         const added = addCharges(1);
         playHealSlurp();
+        // DIEGETIC REFILL — the gold water POURS into the flask: a shower of gold
+        // flecks streams from the basin up into the flask HUD button, the same
+        // fly-to-HUD language gold/keys use, so the charge visibly arrives.
+        if (added > 0) goldRefillStream(pos);
         showInscription(added > 0
           ? 'The gold water fills your flask. One more mercy for the dark.'
           : 'The gold water beads on a full flask, and is gone.');
@@ -207,6 +213,28 @@ export function spawnFountain(
       return { hpDelta: healed };
     },
   });
+}
+
+// A shower of gold flecks from the basin up into the flask HUD button — the
+// diegetic "the charge arrived" read, staggered so it POURS rather than pops.
+function goldRefillStream(pos: THREE.Vector3): void {
+  const target = getFlaskButtonEl();
+  const src = projectToScreen({ x: pos.x, y: pos.y + 0.85, z: pos.z })
+    ?? { x: window.innerWidth * 0.5, y: window.innerHeight * 0.55 };
+  for (let i = 0; i < 6; i++) {
+    const jx = ((i * 53) % 40) - 20, jy = ((i * 31) % 26) - 13;   // deterministic scatter
+    window.setTimeout(() => {
+      const fleck = document.createElement('div');
+      Object.assign(fleck.style, {
+        borderRadius: '50%',
+        background: 'radial-gradient(circle at 40% 35%, rgba(255,236,170,1), rgba(255,176,54,0.7) 70%, rgba(255,150,40,0) 100%)',
+        boxShadow: '0 0 9px rgba(255,200,90,0.9)',
+      } as Partial<CSSStyleDeclaration>);
+      try {
+        flyToHud({ from: { x: src.x + jx, y: src.y + jy }, targetEl: target, node: fleck, size: 13, accent: 'rgba(255,205,95,0.95)', durationMs: 640 });
+      } catch { /* presentation must never break the drink */ }
+    }, i * 70);
+  }
 }
 
 // Roll one tainted mutation, apply it, reconcile current HP against any
