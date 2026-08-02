@@ -7,6 +7,7 @@ import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
 import { getMoveMul, getTurnMul } from '../combat/swing-agency';
+import { getPlayerMoveSpeedMult } from '../combat/modifiers';
 import { getDrinkMoveMul } from '../player/flask-drink';
 import { getExhaustionHeave } from '../combat/exhaustion-feedback';
 import { getStumbleOffset } from '../combat/camera-stumble';
@@ -125,9 +126,10 @@ export function updateCamera(
 
     if (lenSq > 0) {
       // Aura-driven slow (e.g. inside the boiling king's body) × attack
-      // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0). Both
+      // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0) ×
+      // BUILD move-speed (swift vestments / relics / cards / haste buffs). All
       // multiplicative so they compose uniformly on MOVE_SPEED.
-      const speed = CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * dt;
+      const speed = CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * getPlayerMoveSpeedMult() * dt;
       const scale = speed / Math.sqrt(lenSq);
       moveX *= scale;
       moveZ *= scale;

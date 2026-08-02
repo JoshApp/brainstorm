@@ -290,6 +290,14 @@ export function aggregateSpeed(entityId: EntityId): { move: number; action: numb
   return { move, action };
 }
 
+/** The PLAYER's aggregated move-speed multiplier (from vestments / relics / cards
+ *  / buffs). 1.0 when unmodified. Read by the camera each move frame so a
+ *  swift-boots vestment actually moves you faster — the item side of the same
+ *  move-speed-mult the enemy chill uses. */
+export function getPlayerMoveSpeedMult(): number {
+  return aggregateSpeed('player').move;
+}
+
 /**
  * Walk every source of TRIGGERED PASSIVES for an entity. Sister to
  * aggregateModifiers — same idea, different shape:

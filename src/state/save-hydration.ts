@@ -45,9 +45,9 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
       // The sheathed alternate weapon (task #96) — restore it as the sidearm,
       // not a gear slot, so a two-weapon loadout survives a resume.
       if (slot === 'sidearm') { if (itemId && ITEMS[itemId]) setSidearm(ITEMS[itemId]); continue; }
-      // Only the 3 CURRENT slots hydrate — a legacy save's helmet/ring1/etc.
-      // are dropped (the item system changed to weapon/offhand/vestment + relics).
-      if (slot !== 'weapon' && slot !== 'offhand' && slot !== 'vestment') continue;
+      // Only the CURRENT slots hydrate (weapon/offhand + two vestments) — a
+      // legacy save's helmet/ring1/etc. are dropped.
+      if (slot !== 'weapon' && slot !== 'offhand' && slot !== 'vestment' && slot !== 'vestment2') continue;
       // A saved id the registry no longer knows (retired item) restores as
       // EMPTY — except the weapon, which falls back to the rusted sword below.
       if (itemId && ITEMS[itemId]) setSlot(slot as EquipSlot, ITEMS[itemId]);

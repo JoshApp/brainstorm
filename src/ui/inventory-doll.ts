@@ -15,17 +15,20 @@ import { EMPTY_BORDER, ACCENT, TEXT_DIM, CARD_BG, sectionLabel, type InventoryCt
 
 type SlotDef = { slotId: EquipSlot; label: string };
 
-// THREE gear slots (docs/BUILD-ECONOMY.md): the VESTMENT, the WEAPON, the OFF-HAND.
+// Gear slots: the WEAPON, TWO VESTMENTS (build-defining worn pieces), the OFF-HAND.
 const SLOTS: SlotDef[] = [
-  { slotId: 'weapon',   label: 'WEAPON' },
-  { slotId: 'vestment', label: 'VESTMENT' },
-  { slotId: 'offhand',  label: 'OFF-HAND' },
+  { slotId: 'weapon',    label: 'WEAPON' },
+  { slotId: 'vestment',  label: 'VESTMENT' },
+  { slotId: 'vestment2', label: 'VESTMENT' },
+  { slotId: 'offhand',   label: 'OFF-HAND' },
 ];
 
 // Slot-type glyph for an EMPTY slot — reads at a glance. 16px viewBox, stroked.
+const VESTMENT_GLYPH = '<path d="M5 2 L8 4 L11 2 L13.5 4.5 L11.5 6.5 L11.5 14 L4.5 14 L4.5 6.5 L2.5 4.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>';
 const SLOT_ICON: Record<EquipSlot, string> = {
   weapon: '<path d="M8 1.5 L8 10 M5.5 10 L10.5 10 M8 10 L8 14.5 M6.5 13 L9.5 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
-  vestment: '<path d="M5 2 L8 4 L11 2 L13.5 4.5 L11.5 6.5 L11.5 14 L4.5 14 L4.5 6.5 L2.5 4.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
+  vestment: VESTMENT_GLYPH,
+  vestment2: VESTMENT_GLYPH,
   offhand: '<path d="M8 1.5 L13.5 3.5 L13.5 8 Q13.5 12.5 8 14.5 Q2.5 12.5 2.5 8 L2.5 3.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
 };
 

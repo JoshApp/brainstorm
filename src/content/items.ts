@@ -683,6 +683,43 @@ export const ITEMS: Record<string, ItemSpec> = {
     ],
     drop: { minDepth: 4 },
   },
+  // ── VESTMENTS v2 (task #99) — worn build pieces defined by a UNIQUE EFFECT,
+  //    NOT armour stats. With two vestment slots now, these are mix-and-match
+  //    "how you play" picks: fast, or leeching, or a duelist — you commit to two.
+  'quicksilver-anklets': {
+    id: 'quicksilver-anklets',
+    kind: 'vestment',
+    rarity: 'uncommon',
+    name: 'Quicksilver Anklets',
+    flavor: 'The dark is slower than you, for once.',
+    dropModel: SHROUD_STEP_BOOTS,
+    // Pure speed — no defence, no cost. The clean mobility pick.
+    modifiers: [{ kind: 'move-speed-mult', amount: 1.18 }],
+  },
+  'leech-mantle': {
+    id: 'leech-mantle',
+    kind: 'vestment',
+    rarity: 'rare',
+    name: 'Leech Mantle',
+    flavor: 'It drinks what you spill from them, and gives a little back.',
+    dropModel: TATTERED_CLOAK,
+    // Sustain build enabler — a slice of every blow returns as life.
+    modifiers: [{ kind: 'lifesteal-pct', amount: 0.06 }],
+  },
+  'duelists-gloves': {
+    id: 'duelists-gloves',
+    kind: 'vestment',
+    rarity: 'rare',
+    name: "Duelist's Gloves",
+    flavor: 'Every seam sits where a killing grip needs it.',
+    dropModel: LEATHER_GLOVES,
+    // A crit build in a worn slot — more crits, harder crits.
+    modifiers: [
+      { kind: 'crit-chance', amount: 0.12 },
+      { kind: 'crit-mult', amount: 0.30 },
+    ],
+  },
+
   // ── CONTENT EXPANSION ─────────────────────────────────────────────
   // Variety pass — each item carries a clear identity (defensive /
   // mobility / offensive / hybrid) so the player has a build choice at

@@ -20,18 +20,26 @@ import { addRelic, getReliquary } from './reliquary';
 // The actual "what's in inventory" tracking lives in src/player/inventory.ts —
 // this module only owns what's CURRENTLY EQUIPPED. Pickup logic decides
 // auto-equip; whatever doesn't auto-equip stays in inventory.
-export type EquipSlot = 'weapon' | 'offhand' | 'vestment';
+// TWO vestment slots (task #99). Vestments are no longer "armour stat sticks" —
+// they're worn build pieces defined by UNIQUE EFFECTS (movespeed, lifesteal, a
+// crit charm, and yes sometimes armour), mix-and-matched across the two slots.
+// 'vestment' is the first slot (kept by name for save compatibility); 'vestment2'
+// the second. Both are full members of `slots`, so their modifiers / on-hits /
+// set-pieces flow through the aggregation exactly like the first one always did.
+export type EquipSlot = 'weapon' | 'offhand' | 'vestment' | 'vestment2';
 
 export interface Equipment {
-  weapon:   ItemSpec | null;
-  offhand:  ItemSpec | null;
-  vestment: ItemSpec | null;
+  weapon:    ItemSpec | null;
+  offhand:   ItemSpec | null;
+  vestment:  ItemSpec | null;
+  vestment2: ItemSpec | null;
 }
 
 const slots: Equipment = {
-  weapon:   null,
-  offhand:  null,
-  vestment: null,
+  weapon:    null,
+  offhand:   null,
+  vestment:  null,
+  vestment2: null,
 };
 
 // ── Affix sidecar ────────────────────────────────────────────────────
@@ -40,7 +48,7 @@ const slots: Equipment = {
 // Aggregated by src/combat/modifiers.ts into the central stat pipeline,
 // and read by the inventory panel to display "scimitar of the keening".
 const slotAffixes: Record<EquipSlot, AffixInstance[]> = {
-  weapon: [], offhand: [], vestment: [],
+  weapon: [], offhand: [], vestment: [], vestment2: [],
 };
 
 // ── The sheathed alternate (weapon loadout — task #96) ───────────────
@@ -218,7 +226,9 @@ export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boo
       if (!sidearm) { setSidearm(item, affixes); return true; }
       return false;
     case 'offhand':  return autoFillSingle('offhand', item, affixes);
-    case 'vestment': return autoFillSingle('vestment', item, affixes);
+    // A vestment fills the first free of the two slots (either, both build-defining).
+    case 'vestment':
+      return autoFillSingle('vestment', item, affixes) || autoFillSingle('vestment2', item, affixes);
     // Relics COLLECT into the reliquary — never a slot, always applies.
     case 'relic':    addRelic(item, affixes); return true;
     case 'consumable':
@@ -240,7 +250,7 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
   switch (kind) {
     case 'weapon':     return ['weapon'];
     case 'offhand':    return ['offhand'];
-    case 'vestment':   return ['vestment'];
+    case 'vestment':   return ['vestment', 'vestment2'];
     // relics don't occupy a slot — they collect into the reliquary.
     case 'relic':
     case 'consumable':
@@ -266,7 +276,8 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
     switch (item.kind) {
       case 'weapon':   slot = 'weapon'; break;
       case 'offhand':  slot = 'offhand'; break;
-      case 'vestment': slot = 'vestment'; break;
+      // Equip into the first FREE vestment slot; if both full, replace the first.
+      case 'vestment': slot = slots.vestment ? (slots.vestment2 ? 'vestment' : 'vestment2') : 'vestment'; break;
       // Equipping a relic from the bag = collecting it (no slot, no displacement).
       case 'relic':    addRelic(item); return null;
       case 'consumable':
