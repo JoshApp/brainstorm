@@ -9,7 +9,7 @@ import { engageBoss, registerFogWall } from '../ui/boss-engagement';
 import { BOSS_ENCOUNTER_ID } from '../mobs/boss-encounter';
 import { onEncounterComplete } from '../encounters/registry';
 import { setPlayerInvulnerable } from '../player/health';
-import { kickShake } from '../combat/screen-shake';
+import { kickShake, kickJolt } from '../combat/screen-shake';
 import { playWhoosh } from '../audio/sfx';
 import { startFogWalkthrough } from '../player/fog-walkthrough';
 import { openingNormal, openingEndpoints } from '../level/opening';
@@ -163,7 +163,8 @@ export function spawnBossMist(
         setMistOpen(false);   // curtain re-solidifies — sealed in
         interactable.promptLabel = '';  // hide the prompt from the arena side
         playWhoosh();
-        kickShake(0.10, 0.25);
+        kickShake(0.14, 0.3);
+        kickJolt(0, -1, 0, 0.16, 0.4, 6);   // the seal slams down — the floor takes it
       }
       prevSign = sign;
     },

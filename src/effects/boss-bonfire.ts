@@ -6,7 +6,7 @@ import { registerInteractable } from '../interactables/system';
 import { registerLight } from '../scene/light-pool';
 import { generateEntityId } from '../ecs/world';
 import { getTexture } from '../style/procedural-textures';
-import { kickShake } from '../combat/screen-shake';
+import { kickShake, kickJolt } from '../combat/screen-shake';
 import { playImpact, playGateRaise, playWhoosh } from '../audio/sfx';
 
 // ── THE BOSS BONFIRE — it rises from the ground where the boss fell ──────────
@@ -96,9 +96,12 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
     souls.push({ spr, a0, r0, y0, spin: 1.4 + (i % 3) * 0.5 });
   }
 
-  // The break-surface beat.
+  // The break-surface beat — the floor HEAVES up as the fire punches through:
+  // an upward directional jolt (the ground bulges) layered over the rattle, so
+  // this reads as the earth moving, not just a camera shake.
   playImpact(pos);
   kickShake(0.34, 0.5);
+  kickJolt(0, 1, 0, 0.26, 0.7, 5);   // heave UP, ring out ~4 bounces
 
   let t = 0;
   let shakePulse = 0;
@@ -126,9 +129,15 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
       group.position.y = baseY - RISE_DIST * (1 - ease);
       riseFactor = 0.12 + 0.88 * ease;
 
-      // Rumble pulses on the way up (every ~0.3s), tapering as it settles.
+      // Ground-thud pulses on the way up (every ~0.34s), tapering as it settles:
+      // a rattle plus a small vertical jolt so the earth SHUDDERS while the mass
+      // climbs, not just a flat vibration.
       shakePulse -= dt;
-      if (shakePulse <= 0 && t < 0.92) { kickShake(0.10 * (1 - t) + 0.05, 0.18); shakePulse = 0.3; }
+      if (shakePulse <= 0 && t < 0.92) {
+        kickShake(0.10 * (1 - t) + 0.05, 0.18);
+        kickJolt(0, -1, 0, 0.09 * (1 - t) + 0.03, 0.26, 6);
+        shakePulse = 0.34;
+      }
 
       // Souls spiral IN + DOWN into the pit, brightening then guttering out as
       // they arrive. Their whole life is the rise window.
@@ -149,10 +158,12 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
         for (const s of souls) { soulRoot.remove(s.spr); (s.spr.material as THREE.Material).dispose(); }
         scene.remove(soulRoot);
         soulMat.dispose();
-        // The fire TAKES — a rising whoosh + a settling thud.
+        // The fire TAKES — a rising whoosh + a settling thud as the whole mass
+        // slams home into the floor (a heavy DOWN jolt under the rattle).
         playGateRaise(pos);
         playWhoosh();
         kickShake(0.2, 0.4);
+        kickJolt(0, -1, 0, 0.22, 0.55, 5);
         // Hand the settled model to the shared fate rest-fire. isBig: heals to
         // full, deals a MAJOR arcana, and seals the descent until drawn.
         registerFateFire({
