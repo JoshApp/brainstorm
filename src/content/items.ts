@@ -894,6 +894,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: STEADY_TONIC,
     consumableBuff: { buffId: 'regen-pulse', duration: 3.0 },   // ~7 HP over time (was 6s/~13 — playtest: too strong)
     carryLimit: 2,
+    // DISABLED — consumables are being reworked; the regeneration tonic doesn't
+    // drop for now. Definition kept for old saves + the revisit.
+    drop: { noDrop: true },
   },
   // ── REACTIVE EQUIPMENT ────────────────────────────────────────────
   // Two new design verbs in play here:
@@ -1726,7 +1729,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: MURKY_PHIAL,
     consumableMutation: true,
     carryLimit: 2,
-    drop: { weight: 2, minDepth: 2 },
+    // DISABLED — consumables are being reworked; the mutation phials ("suspicious
+    // vials") don't drop for now. Definition kept for old saves + the revisit.
+    drop: { noDrop: true },
   },
   'black-phial': {
     id: 'black-phial',
@@ -1737,7 +1742,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: BLACK_PHIAL,
     consumableMutation: true,
     carryLimit: 2,
-    drop: { weight: 2, minDepth: 3 },
+    drop: { noDrop: true },   // DISABLED — consumable rework (see murky-phial)
   },
   'pale-phial': {
     id: 'pale-phial',
@@ -1748,7 +1753,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: PALE_PHIAL,
     consumableMutation: true,
     carryLimit: 2,
-    drop: { weight: 2, minDepth: 4 },
+    drop: { noDrop: true },   // DISABLED — consumable rework (see murky-phial)
   },
   // LEGACY — retired from every drop table (Estus Stage 2, LOOT-PUNCHLIST #3).
   // The definition survives so an old save still holding vials can drink them;
@@ -1805,6 +1810,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: BERSERK_POTION,
     consumableBuff: { buffId: 'berserk', duration: 8.0 },
     carryLimit: 3,
+    // DISABLED — consumables are being reworked; the berserk vial doesn't drop
+    // for now. Definition kept for old saves + the revisit.
+    drop: { noDrop: true },
   },
 };
 
