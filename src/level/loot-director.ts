@@ -22,6 +22,12 @@ const MIN_CHEST_SPACING = 4.5;
  *  loot reads as a SECONDARY position in the room, not stacked on the event (#69). */
 const BLOCKER_CLEARANCE = 3.0;
 
+// GATED LOOT (#74) — how often a floor seals a chest-room behind a MAKE THE
+// OFFERING shrine, and the earliest depth it may appear (floor 1 stays taught +
+// unlocked). Rare + special: at most one gated room per floor.
+const GATE_CHANCE = 0.22;
+const GATE_MIN_DEPTH = 2;
+
 // Every EVENT centrepiece + blocker a loot piece must stand clear of. Was missing
 // tithe-basin / reliquary / blood-altar / starter-altar / tome-pillar, which is
 // why chests kept landing on basins and reliquaries. 'model' covers the bonfire.
@@ -126,7 +132,32 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
     if (a) content.push(makeCorpse(a, rand));
   }
 
-  return [...kept, ...content];
+  // GATED LOOT (#74) — rarely, seal one room's chests behind a MAKE THE OFFERING
+  // shrine at the room centre. Bind every chest in the chosen room (the director's
+  // find in `kept` + these anchor chests) to the gate so they release together.
+  const gateProps: PropSpec[] = [];
+  if (depth >= GATE_MIN_DEPTH && rand() < GATE_CHANCE) {
+    const chests = [...content, ...kept].filter(
+      (p): p is Extract<PropSpec, { kind: 'chest' }> => p.kind === 'chest',
+    );
+    const byRoom = new Map<RoomBox, Array<Extract<PropSpec, { kind: 'chest' }>>>();
+    for (const c of chests) {
+      const r = roomFor(c.x, c.z, rooms);
+      if (!r) continue;
+      const arr = byRoom.get(r) ?? [];
+      arr.push(c); byRoom.set(r, arr);
+    }
+    // Seal the room holding the MOST chests — an offering that frees several reads best.
+    const best = [...byRoom.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+    if (best) {
+      const [room, roomChests] = best;
+      const gateId = `gate-loot-${Math.round(room.cx * 10)}_${Math.round(room.cz * 10)}`;
+      for (const c of roomChests) c.gateId = gateId;
+      gateProps.push({ kind: 'gate-offering', x: room.cx, z: room.cz, gateId });
+    }
+  }
+
+  return [...kept, ...content, ...gateProps];
 }
 
 /** A fallen delver at an anchor, POSED by its surroundings — the pose-by-context

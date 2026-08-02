@@ -20,6 +20,10 @@ import type { StyleMaterials } from '../style/materials';
 // is skipped loot, never a trap. Built on spawnEvent like the other shrines.
 
 const SEAL_COLOR = 0x8a4bd6;   // violet — matches the sealed-chest seal-disc
+// The toll the room asks to break its seals — a modest GOLD offering, so the
+// gate is a real decision (pay to claim the hoard, or leave it) rather than a
+// free unlock. Skippable: broke or unwilling, you just walk past the sealed loot.
+const GATE_COST_GOLD = 25;
 
 export function spawnGateOffering(
   scene: THREE.Object3D,
@@ -48,6 +52,7 @@ export function spawnGateOffering(
     radius: 1.6,
     promptLabel: 'MAKE THE OFFERING',
     promptKind: 'bargain',       // violet — a bargain with the room
+    cost: { gold: GATE_COST_GOLD },   // shows the "25 ◎" chip; the factory deducts it
     family: 'bargain',
     build: () => {
       const group = new THREE.Group();

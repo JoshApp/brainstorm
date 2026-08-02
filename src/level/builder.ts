@@ -26,6 +26,7 @@ import { buildModel } from '../ecs/build-model';
 import { isPooledGeometry } from '../scene/geometry-pool';
 import { deferGpuDispose } from '../style/render-webgpu';
 import { spawnChest } from '../interactables/chest';
+import { spawnGateOffering } from '../interactables/gate-offering';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
@@ -1465,7 +1466,15 @@ export function buildLevel(
         prop.tier,
         prop.mimic ?? false,
         onMimic,
+        prop.gateId,   // #74: sealed until this room's gate offering is taken
       );
+    } else if (prop.kind === 'gate-offering') {
+      // The centrepiece of a gated loot room — taking it releases every chest
+      // sharing its gateId. Blocks like a low plinth (shots fly over).
+      spawnGateOffering(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.gateId);
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.42, yTop: gy + 0.6,
+      });
     } else if (prop.kind === 'stash-chest') {
       spawnStashChest(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0);
       obstacles.push({

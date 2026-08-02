@@ -282,7 +282,16 @@ export type PropSpec =
        *  untouched: the OPEN prompt still fires when the player is
        *  in range. */
       noCollision?: boolean;
+      /** EVENT LOCK (#74): the encounter id of a gate offering in this room. The
+       *  chest is SEALED until that offering is taken. Set by the loot director
+       *  when it rolls a gated room; the matching gate-offering prop carries the
+       *  same id. */
+      gateId?: string;
     }
+  // 'gate-offering' = a MAKE THE OFFERING shrine that seals every chest sharing
+  // its gateId until taken (#74 event-gating, loot-lock). The room centrepiece
+  // for a gated loot room.
+  | { kind: 'gate-offering'; x: number; z: number; rotY?: number; gateId: string }
   // 'stash-chest' = the meta-progression stash entry point. Lives in
   // the safe room. Interacting opens the stash UI (loot boxes saved
   // across runs).
