@@ -118,7 +118,10 @@ export function spawnTrinketMerchant(
     promptLabel: 'BARTER',
     labelOffsetY: 1.6,
     onUse() {
-      openShopScreen(stock);
+      openShopScreen(stock, {
+        title: 'THE RELIC-KEEPER',
+        emptyLine: 'The reliquary is spent. Come back with fuller pockets, or deeper.',
+      });
     },
     built,
   });

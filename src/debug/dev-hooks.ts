@@ -130,6 +130,17 @@ export function installDevHooks(deps: DevHookDeps): void {
     if (next) loadLevel(next);
     return next ?? null;
   };
+  // __shop('merchant'|'reliquary') — open the shop HUD with rolled stock + a
+  // purse of gold, for previewing the shop screen (snap) without walking a stall.
+  w.__shop = async (table?: string) => {
+    const [{ rollShopStock }, { openShopScreen }, { grantGold }] = await Promise.all([
+      import('../content/shop'), import('../ui/shop-screen'), import('../state/run-state'),
+    ]);
+    grantGold(500);
+    const t = table === 'reliquary' ? 'reliquary' : 'merchant';
+    openShopScreen(rollShopStock(3, 5, undefined, t as never),
+      t === 'reliquary' ? { title: 'THE RELIC-KEEPER' } : {});
+  };
   // Nav-grid debug overlay — window.__navDebug() / ?navdebug=1 / press N.
   initNavOverlay(scene, () => getLevel() as never);
   w.__navDebug = (on?: boolean) => setNavOverlay(on);

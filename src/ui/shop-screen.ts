@@ -1,7 +1,9 @@
-// The merchant buy-panel. A mobile sheet (menu-shell) listing the stall's
-// wares: name (rarity-tinted), price, BUY. Buying spends run gold and drops the
-// item into the bag (the same addItem a pickup uses). Sold wares stay sold for
-// the life of the stall (the ShopWare.sold flag the interactable holds).
+// The merchant shop — a proper mobile shop HUD (not a text list). Two panes:
+// a rarity-framed WARES GRID (tap a tile to select) and a PREVIEW panel that
+// shows the selected ware's full card (the same buildItemCard the inventory +
+// pickups use) with a big BUY action stating the price + your gold. Buying
+// spends run gold and routes the item (relics → reliquary, else → bag). Sold
+// wares stay sold for the life of the stall (the ShopWare.sold flag).
 
 import { createSheet, menuButton } from './menu-shell';
 import { emit } from '../broadcast/event-bus';
@@ -9,166 +11,260 @@ import { getGold, spendGold, grantGold } from '../state/run-state';
 import { addItem } from '../player/inventory';
 import { addRelic } from '../player/reliquary';
 import { wareItem, type ShopWare } from '../content/shop';
-import { RARITY_COLORS, ITEMS, type Rarity } from '../content/items';
-import { describeItem } from './inventory-details';
+import { RARITY_COLORS, ITEMS } from '../content/items';
+import { buildItemCard } from './item-card';
 import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
+import { THEME, FONT_UI } from './theme';
+import { playEquipClick } from '../audio/sfx';
 
-const RARITY_TINT: Record<Rarity, string> = {
-  mundane: '#b9b2a6',
-  uncommon: '#6fcf7f',
-  rare: '#5aa9ff',
-  cursed: '#c07ad0',
-  fabled: '#e8b84b',
-};
+export interface ShopScreenOpts {
+  /** Sheet title — the vendor's name (defaults to the wandering merchant). */
+  title?: string;
+  /** Empty-stall line, in the vendor's voice. */
+  emptyLine?: string;
+}
 
-export function openShopScreen(stock: ShopWare[]): void {
+export function openShopScreen(stock: ShopWare[], opts: ShopScreenOpts = {}): void {
   const sheet = createSheet({
     id: 'merchant-shop',
-    title: 'THE WANDERING MERCHANT',
-    width: 480,
+    title: opts.title ?? 'THE WANDERING MERCHANT',
+    width: 560,
     policy: { pausesWorld: true, needsBackdrop: true },
   });
 
-  // Gold on hand — kept current as you buy.
-  const goldLine = document.createElement('div');
-  Object.assign(goldLine.style, {
-    textAlign: 'right', color: '#e8b84b', fontFamily: 'ui-monospace, monospace',
-    fontSize: '13px', letterSpacing: '.08em', marginBottom: '10px',
+  // ── Gold on hand — a header strip, kept current as you buy. ──
+  const goldStrip = document.createElement('div');
+  Object.assign(goldStrip.style, {
+    flex: '0 0 auto', display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+    gap: '6px', color: THEME.amber, fontFamily: 'ui-monospace, monospace',
+    fontSize: '13px', letterSpacing: '.06em', marginBottom: '4px',
   } as Partial<CSSStyleDeclaration>);
-  const refreshGold = () => { goldLine.textContent = `${getGold()} gold`; };
-  sheet.body.appendChild(goldLine);
+  const goldVal = document.createElement('span');
+  goldStrip.append(coinGlyph(), goldVal);
+  const refreshGold = () => { goldVal.textContent = `${getGold()}`; };
+  sheet.body.appendChild(goldStrip);
 
   if (stock.length === 0) {
     const empty = document.createElement('div');
-    Object.assign(empty.style, { color: '#6b727c', fontStyle: 'italic', padding: '12px 2px' } as Partial<CSSStyleDeclaration>);
-    empty.textContent = 'the merchant has nothing for you.';
+    Object.assign(empty.style, { color: THEME.dim, fontStyle: 'italic', padding: '18px 2px', fontFamily: 'Georgia, serif' } as Partial<CSSStyleDeclaration>);
+    empty.textContent = opts.emptyLine ?? 'The stall is bare. Nothing here is for you.';
     sheet.body.appendChild(empty);
+    sheet.footer.appendChild(menuButton('LEAVE', () => sheet.close(), { primary: true }));
+    refreshGold();
+    sheet.open();
+    return;
   }
 
-  for (const ware of stock) sheet.body.appendChild(makeRow(ware, refreshGold));
+  // The body owns no scroll — the two panes each scroll internally so the BUY
+  // action stays pinned in view no matter how tall a card is (a long weapon
+  // card must not push BUY below the fold on a short landscape screen).
+  sheet.body.style.overflowY = 'hidden';
+
+  // ── Two panes: wares grid (left) + preview (right). Wraps to stacked on a
+  //    very narrow screen; side-by-side on landscape (uses the width). ──
+  const panes = document.createElement('div');
+  Object.assign(panes.style, {
+    flex: '1 1 auto', minHeight: '0', display: 'flex', flexWrap: 'wrap',
+    gap: '12px', alignItems: 'stretch', overflow: 'hidden',
+  } as Partial<CSSStyleDeclaration>);
+  sheet.body.appendChild(panes);
+
+  // GRID pane — scrolls its tiles if the stall is large.
+  const gridPane = document.createElement('div');
+  Object.assign(gridPane.style, {
+    flex: '1 1 190px', minWidth: '150px', minHeight: '0', overflowY: 'auto', touchAction: 'pan-y',
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(74px, 1fr))',
+    gridAutoRows: 'min-content', gap: '8px', alignContent: 'start',
+  } as Partial<CSSStyleDeclaration>);
+  panes.appendChild(gridPane);
+
+  // PREVIEW pane — card scrolls, BUY pinned at the bottom.
+  const previewPane = document.createElement('div');
+  Object.assign(previewPane.style, {
+    flex: '1 1 230px', minWidth: '200px', minHeight: '0', display: 'flex', flexDirection: 'column',
+    gap: '8px', padding: '10px', borderRadius: '3px',
+    background: THEME.raised, border: `1px solid ${THEME.rule}`,
+  } as Partial<CSSStyleDeclaration>);
+  panes.appendChild(previewPane);
+
+  const previewBody = document.createElement('div');
+  Object.assign(previewBody.style, { flex: '1 1 auto', minHeight: '0', overflowY: 'auto', touchAction: 'pan-y' } as Partial<CSSStyleDeclaration>);
+  const buyBtn = menuButton('BUY', () => buySelected(), { primary: true });
+  buyBtn.style.width = '100%';
+  previewPane.append(previewBody, buyBtn);
+
+  // ── Selection state ──
+  interface Tile { el: HTMLDivElement; ware: ShopWare; markSold: () => void; setSelected: (on: boolean) => void }
+  const tiles: Tile[] = [];
+  let selected: ShopWare | null = null;
+
+  function renderPreview(): void {
+    previewBody.innerHTML = '';
+    if (!selected) {
+      const hint = document.createElement('div');
+      Object.assign(hint.style, { color: THEME.dim, fontStyle: 'italic', fontSize: '12px', padding: '8px 2px', fontFamily: 'Georgia, serif' } as Partial<CSSStyleDeclaration>);
+      hint.textContent = 'Choose a ware to inspect it.';
+      previewBody.appendChild(hint);
+      buyBtn.style.display = 'none';
+      return;
+    }
+    const item = wareItem(selected);
+    if (item) previewBody.appendChild(buildItemCard(item, { compare: true }));
+    buyBtn.style.display = 'block';
+    refreshBuy();
+  }
+
+  function refreshBuy(): void {
+    if (!selected) return;
+    const afford = getGold() >= selected.price;
+    if (selected.sold) {
+      buyBtn.textContent = 'SOLD';
+      buyBtn.disabled = true; buyBtn.style.opacity = '0.45';
+    } else {
+      buyBtn.innerHTML = '';
+      buyBtn.append('BUY  ·  ', coinGlyph(), ` ${selected.price}`);
+      buyBtn.disabled = !afford;
+      buyBtn.style.opacity = afford ? '1' : '0.5';
+    }
+  }
+
+  function select(ware: ShopWare): void {
+    if (selected === ware) return;
+    selected = ware;
+    for (const t of tiles) t.setSelected(t.ware === ware);
+    playEquipClick();
+    renderPreview();
+  }
+
+  function buySelected(): void {
+    const ware = selected;
+    if (!ware || ware.sold) return;
+    if (getGold() < ware.price) { flashDenied(buyBtn); return; }
+    spendGold(ware.price);
+    const spec = ITEMS[ware.itemId];
+    if (spec?.kind === 'relic') {
+      addRelic(spec);
+      emit({ type: 'item:picked-up', itemId: ware.itemId });
+    } else if (!addItem(ware.itemId)) {
+      grantGold(ware.price); flashDenied(buyBtn); return;   // refused at carry cap — refund
+    }
+    emit({ type: 'transaction:accepted', family: 'priced', id: `shop:${ware.itemId}`, price: { gold: ware.price } });
+    emit({ type: 'transaction:resolved', family: 'priced', id: `shop:${ware.itemId}`, outcome: { itemIds: [ware.itemId] } });
+    ware.sold = true;
+    for (const t of tiles) if (t.ware === ware) t.markSold();
+    refreshGold();
+    refreshBuy();
+  }
+
+  // Build the tiles.
+  for (const ware of stock) {
+    const tile = makeTile(ware, () => select(ware));
+    tiles.push(tile);
+    gridPane.appendChild(tile.el);
+  }
 
   sheet.footer.appendChild(menuButton('LEAVE', () => sheet.close(), { primary: true }));
+
+  // Open with the first still-available ware previewed (or the first ware).
+  select(stock.find((w) => !w.sold) ?? stock[0]);
   refreshGold();
   sheet.open();
 }
 
-function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
+// ── A single ware TILE — rarity-framed thumbnail, price badge, name, sold state. ──
+function makeTile(ware: ShopWare, onSelect: () => void): { el: HTMLDivElement; ware: ShopWare; markSold: () => void; setSelected: (on: boolean) => void } {
   const item = wareItem(ware);
-  // The row + its (collapsed) preview live in one wrapper so tapping the row
-  // expands a stat panel BELOW it — "see what you buy before you buy it".
-  const wrap = document.createElement('div');
-  Object.assign(wrap.style, { borderBottom: '1px solid #1c1e22' } as Partial<CSSStyleDeclaration>);
+  const rarityHex = hexCss(RARITY_COLORS[ware.rarity]);
 
-  const row = document.createElement('div');
-  Object.assign(row.style, {
-    display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '10px 4px', cursor: item ? 'pointer' : 'default',
+  const el = document.createElement('div');
+  Object.assign(el.style, {
+    display: 'flex', flexDirection: 'column', gap: '3px', cursor: 'pointer',
+    userSelect: 'none', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
   } as Partial<CSSStyleDeclaration>);
 
-  // Small rarity-framed thumbnail — the stall reads as wares, not a text list.
-  const rarityHex = hexCss(RARITY_COLORS[ware.rarity]);
-  const thumb = document.createElement('div');
-  Object.assign(thumb.style, {
-    width: '38px', height: '38px', flexShrink: '0',
-    background: 'rgba(20, 14, 10, 0.7)', border: `1.5px solid ${rarityHex}`,
-    borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  // Thumbnail frame.
+  const frame = document.createElement('div');
+  Object.assign(frame.style, {
+    position: 'relative', width: '100%', aspectRatio: '1 / 1',
+    background: 'radial-gradient(ellipse at 50% 35%, rgba(40,28,18,0.9), rgba(12,8,6,0.95))',
+    border: `1.5px solid ${rarityHex}`, borderRadius: '3px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    transition: 'box-shadow .12s ease, transform .12s ease',
   } as Partial<CSSStyleDeclaration>);
   if (item) {
     const img = document.createElement('img');
     img.src = getItemThumbnail(item);
-    Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' } as Partial<CSSStyleDeclaration>);
-    thumb.appendChild(img);
+    Object.assign(img.style, { width: '82%', height: '82%', objectFit: 'contain', imageRendering: 'pixelated' } as Partial<CSSStyleDeclaration>);
+    frame.appendChild(img);
   }
-
-  const info = document.createElement('div');
-  info.style.flex = '1';
-  info.style.minWidth = '0';
-  const name = document.createElement('div');
-  Object.assign(name.style, { color: RARITY_TINT[ware.rarity], fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as Partial<CSSStyleDeclaration>);
-  name.textContent = ware.name;
-  const sub = document.createElement('div');
-  Object.assign(sub.style, { color: '#6b727c', fontSize: '11px', fontStyle: 'italic' } as Partial<CSSStyleDeclaration>);
-  // A "tap to inspect" affordance replaces the flavour teaser — the full flavor
-  // + stats live in the preview panel now.
-  sub.textContent = item ? 'tap to inspect' : ware.rarity;
-  info.append(name, sub);
-
-  const price = document.createElement('div');
-  Object.assign(price.style, { color: '#e8b84b', fontFamily: 'ui-monospace, monospace', fontSize: '13px', minWidth: '54px', textAlign: 'right' } as Partial<CSSStyleDeclaration>);
-  price.textContent = `${ware.price}g`;
-
-  // menuButton stops click propagation itself, so tapping BUY never toggles the row.
-  const buyBtn = menuButton('BUY', () => buy(), { small: true });
-
-  // ── Preview panel — thumbnail-backed stat readout, lazily built, toggled by
-  //    tapping the row. Reuses describeItem so the shop speaks the SAME stat
-  //    language (icons + lines) as the inventory. ──
-  const preview = document.createElement('div');
-  Object.assign(preview.style, {
-    display: 'none', flexDirection: 'column', gap: '4px',
-    padding: '2px 6px 12px 50px',   // indent under the thumbnail column
+  // Price badge, bottom-right of the frame.
+  const badge = document.createElement('div');
+  Object.assign(badge.style, {
+    position: 'absolute', right: '2px', bottom: '2px',
+    display: 'flex', alignItems: 'center', gap: '2px',
+    padding: '1px 4px', borderRadius: '2px',
+    background: 'rgba(8,6,4,0.85)', color: THEME.amber,
+    fontFamily: 'ui-monospace, monospace', fontSize: '10px', lineHeight: '1.2',
   } as Partial<CSSStyleDeclaration>);
-  let previewBuilt = false;
-  function buildPreview(): void {
-    if (previewBuilt || !item) return;
-    previewBuilt = true;
-    if (item.flavor) {
-      const fl = document.createElement('div');
-      fl.textContent = item.flavor;
-      Object.assign(fl.style, { color: '#8a7a68', fontSize: '11px', fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: '1.3', marginBottom: '3px' } as Partial<CSSStyleDeclaration>);
-      preview.appendChild(fl);
-    }
-    for (const line of describeItem(item)) preview.appendChild(line);
-  }
-  let open = false;
-  function toggle(): void {
-    if (!item) return;
-    open = !open;
-    if (open) buildPreview();
-    preview.style.display = open ? 'flex' : 'none';
-    sub.textContent = open ? 'tap to close' : 'tap to inspect';
-  }
-  row.addEventListener('click', toggle);
+  badge.append(coinGlyph(9), `${ware.price}`);
+  frame.appendChild(badge);
+  // SOLD scrim.
+  const scrim = document.createElement('div');
+  Object.assign(scrim.style, {
+    position: 'absolute', inset: '0', display: 'none', alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(6,4,3,0.66)', color: THEME.dim, fontFamily: FONT_UI,
+    fontSize: '11px', letterSpacing: '.18em', fontWeight: '700',
+  } as Partial<CSSStyleDeclaration>);
+  scrim.textContent = 'SOLD';
+  frame.appendChild(scrim);
 
-  function setSold(): void {
-    buyBtn.textContent = 'SOLD';
-    buyBtn.disabled = true;
-    buyBtn.style.opacity = '0.4';
-    buyBtn.style.cursor = 'default';
-    wrap.style.opacity = '0.45';
-  }
-  function deny(): void {
-    // brief red flash on the price to say "can't".
-    const prev = price.style.color;
-    price.style.color = '#d05a5a';
-    setTimeout(() => { price.style.color = prev; }, 350);
-  }
-  function buy(): void {
-    if (ware.sold) return;
-    if (getGold() < ware.price) { deny(); return; }
-    spendGold(ware.price);
-    const spec = ITEMS[ware.itemId];
-    if (spec?.kind === 'relic') {
-      // A bought RELIC collects into the reliquary (the trinket merchant's wares),
-      // not the bag — and fires the pickup beat so the domain-binding plays.
-      addRelic(spec);
-      emit({ type: 'item:picked-up', itemId: ware.itemId });
-    } else if (!addItem(ware.itemId)) {
-      // addItem can refuse a consumable at its carry cap — refund if so.
-      grantGold(ware.price); deny(); return;
-    }
-    // Unified transaction stream: a purchase is the PRICED family —
-    // goods visible, cost stated, no strings (content/transactions.ts).
-    emit({ type: 'transaction:accepted', family: 'priced', id: `shop:${ware.itemId}`, price: { gold: ware.price } });
-    emit({ type: 'transaction:resolved', family: 'priced', id: `shop:${ware.itemId}`, outcome: { itemIds: [ware.itemId] } });
-    ware.sold = true;
-    setSold();
-    refreshGold();
-  }
+  // Name under the tile.
+  const name = document.createElement('div');
+  Object.assign(name.style, {
+    color: rarityHex, fontFamily: FONT_UI, fontSize: '10px', lineHeight: '1.15',
+    textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis',
+    display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', minHeight: '24px',
+  } as Partial<CSSStyleDeclaration>);
+  name.textContent = ware.name;
 
-  if (ware.sold) setSold();
-  row.append(thumb, info, price, buyBtn);
-  wrap.append(row, preview);
-  return wrap;
+  el.append(frame, name);
+  el.addEventListener('click', (e) => { e.stopPropagation(); onSelect(); });
+
+  const markSold = () => { scrim.style.display = 'flex'; el.style.opacity = '0.6'; };
+  const setSelected = (on: boolean) => {
+    // Selected reads three ways so it's unambiguous at every rarity (a gray
+    // mundane glow alone is too faint on the dark slab): an amber SELECT ring
+    // over the rarity border, a lift, and a warm background wash.
+    frame.style.boxShadow = on
+      ? `inset 0 0 0 2px ${THEME.amber}, 0 0 16px ${rarityHex}66, 0 3px 8px rgba(0,0,0,0.5)`
+      : 'none';
+    frame.style.transform = on ? 'translateY(-2px)' : 'none';
+    frame.style.background = on
+      ? `radial-gradient(ellipse at 50% 30%, rgba(70,48,24,0.95), rgba(16,10,6,0.95))`
+      : 'radial-gradient(ellipse at 50% 35%, rgba(40,28,18,0.9), rgba(12,8,6,0.95))';
+    name.style.opacity = on ? '1' : '0.72';
+    name.style.fontWeight = on ? '600' : '400';
+  };
+  if (ware.sold) markSold();
+  setSelected(false);
+
+  return { el, ware, markSold, setSelected };
+}
+
+// A small inline coin glyph (matches the gold HUD's currency read).
+function coinGlyph(size = 11): HTMLElement {
+  const s = document.createElement('span');
+  Object.assign(s.style, {
+    display: 'inline-block', width: `${size}px`, height: `${size}px`, borderRadius: '50%',
+    background: 'radial-gradient(circle at 35% 30%, #ffe08a, #d59a2a 70%, #9c6a15)',
+    boxShadow: 'inset 0 0 1px rgba(0,0,0,0.5)', verticalAlign: '-1px', flexShrink: '0',
+  } as Partial<CSSStyleDeclaration>);
+  return s;
+}
+
+function flashDenied(btn: HTMLButtonElement): void {
+  const prev = btn.style.color;
+  btn.style.color = '#e07070';
+  setTimeout(() => { btn.style.color = prev; }, 320);
 }
