@@ -133,7 +133,12 @@ watch_rc=$?
 # Push the session branch to origin too so it tracks the promoted tip — keeps
 # the stop-hook's "N unpushed commits" check quiet. Skip-on-error (the rebase
 # path above may have already force-pushed it).
-git push origin "$orig_branch" 2>/dev/null || true
+#
+# SKIP_PREPUSH: this pushes the EXACT commit the main push above just validated
+# (typecheck + full test suite) — re-running the pre-push hook here just doubles
+# every deploy's wall-time (~50s → ~100s) for zero added safety. The main push is
+# the deploy gate and keeps its hook; this trailing sync does not need it.
+SKIP_PREPUSH=1 git push origin "$orig_branch" 2>/dev/null || true
 
 # Definitive, greppable verdict on the FINAL line — so a deploy's outcome is never
 # inferred from a (maskable) exit code. `npm run live | tail` swallows the real
