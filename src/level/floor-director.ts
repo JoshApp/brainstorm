@@ -131,10 +131,23 @@ export function directFloor(input: DirectorInput): FloorPlan {
   if (budget.events.question) {
     const ledger = countDeals(bakedProps);
     const allowed = ALL_DEALS.filter((k) => (ledger[k] ?? 0) < (DEAL_SOFT_CAP[k] ?? Infinity));
-    deal = fillQuestion(
-      away(contentSpots, usedRooms), roles, allowed, depth,
-      CONFIG.CONTENT_BUDGET.QUESTION_DEEP_DEPTH, rand, find?.spot ?? null, avoid,
-    );
+    // HARD RULE: a deal (fountain / basin / altar) is a MAJOR event, and the fire
+    // is one too — they must NEVER share a room (a small room with a bonfire AND a
+    // choice basin reads cramped + robotic). So the deal's pool EXCLUDES the fire's
+    // room entirely; it prefers a room with neither fire nor find, but may fall
+    // back into the find's room (loot, not a second major). If the only spots left
+    // are in the fire's room, the floor simply gets no second event — better than a
+    // crammed one.
+    const fireRoom = fire?.roomId;
+    const offFire = contentSpots.filter((s) => s.roomId !== fireRoom);
+    const preferred = offFire.filter((s) => !usedRooms.has(s.roomId));
+    const dealPool = preferred.length > 0 ? preferred : offFire;
+    if (dealPool.length > 0) {
+      deal = fillQuestion(
+        dealPool, roles, allowed, depth,
+        CONFIG.CONTENT_BUDGET.QUESTION_DEEP_DEPTH, rand, find?.spot ?? null, avoid,
+      );
+    }
   }
 
   return { budget, fire, fireCell, sanctumRoomId, find, deal };

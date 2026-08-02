@@ -146,7 +146,7 @@ import { initBladeTrail } from './effects/blade-trail';
 import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
-import { createRiteButton } from './controls/rite-button';
+import { LEVELS_ENABLED } from './state/leveling';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
 import { createHealthHearts } from './ui/health-hearts';
@@ -956,6 +956,9 @@ onScreenStateChanged(() => {
   _wasPausedByScreen = pausedNow;
 });
 createConsumableBar();
+// Rite button hidden until rites are properly built (Josh) — the seam stays,
+// but the HUD affordance is off so it doesn't imply a finished feature.
+// (createRiteButton() intentionally not called; re-enable when rites land — #98.)
 // Weapon-swap chip — one-tap draw of the sheathed alternate (task #96). Created
 // alongside the flask (same HUD lifecycle) so it survives the screen-manager
 // setup. Gated on NOT mid-swing so a swap can't interrupt a committed attack; the
@@ -964,7 +967,6 @@ createWeaponSwapChip(() => {
   if (weapon.isSwinging) return;         // finish the swing first
   if (swapWeapons()) { playEquipClick(); pulseWeaponSwapChip(); }
 });
-createRiteButton();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
 createSettingsMenu();
@@ -1166,7 +1168,9 @@ createHpBar();
 createStaminaBar();
 createHealthHearts();
 createStaminaArc();
-createXpSigil();
+// XP/levels disabled (#102) — skip the level sigil (the bottom-right number)
+// entirely so there's no dead level indicator while it's off.
+if (LEVELS_ENABLED) createXpSigil();
 createBossBar();
 createBuffBar();
 createChargeRing();
