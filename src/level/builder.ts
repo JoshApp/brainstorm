@@ -120,6 +120,10 @@ const BIGFIRE = typeof location !== 'undefined'
 
 const PILLAR_DEFAULT_SIZE = 0.5;
 
+// Reusable bbox scratch for measuring a prop's geometry top (the projectile
+// ceiling default). Module-level so the level-build loop allocates nothing per prop.
+const _propBox = new THREE.Box3();
+
 export interface LiveLevel {
   spec: LevelSpec;
   walkable: WalkableRegion;
@@ -1326,6 +1330,15 @@ export function buildLevel(
         const angle = prop.rotY ?? 0;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
+        // Projectile ceiling when a collision shape declares no explicit height:
+        // use the prop's ACTUAL geometry top (world-space bbox) rather than
+        // Infinity, so a bolt flying ABOVE a low prop (a thing lying on the
+        // floor, a stump, low debris) sails over instead of being eaten. A tall
+        // structural column still measures tall and keeps blocking. This is the
+        // 3D hit-test the projectile pass already wanted (containsProjectile reads
+        // yTop) — it was only ever missing a sane default. Computed once per prop.
+        _propBox.setFromObject(built.group);
+        const geomTop = Number.isFinite(_propBox.max.y) ? _propBox.max.y + 0.05 : gy + 2.0;
         for (const shape of shapes) {
           const ox = shape.ox ?? 0;
           const oz = shape.oz ?? 0;
@@ -1334,8 +1347,9 @@ export function buildLevel(
           const woz = -sa * ox + ca * oz;
           const cx = prop.x + wox;
           const cz = prop.z + woz;
+          const yTop = shape.height === undefined ? geomTop : gy + shape.height;
           if (shape.kind === 'circle') {
-            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, yTop: shape.height === undefined ? Infinity : gy + shape.height, dashable: shape.dashable });
+            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, yTop, dashable: shape.dashable });
           } else {
             // Swap halfW/halfD if rotation is perpendicular (±π/2).
             const swap = Math.abs(ca) < 0.5;
@@ -1345,7 +1359,7 @@ export function buildLevel(
               kind: 'aabb',
               minX: cx - hw, maxX: cx + hw,
               minZ: cz - hd, maxZ: cz + hd,
-              yTop: shape.height === undefined ? Infinity : gy + shape.height,
+              yTop,
               dashable: shape.dashable,
             });
           }
