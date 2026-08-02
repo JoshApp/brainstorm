@@ -1560,26 +1560,25 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     xp: 60,                          // significant haul — earns the depth
-    // SUMMON GATE — at 25% HP lost the king WARDS itself (untouchable) and
-    // spews three boiling-princes. You can't burst it past the ward; you have
-    // to cut the brood down first, then the ward breaks and the king is open
-    // again. The fight ends only when the king AND all three princes are dead
-    // (they join the boss encounter). Replaces the old death-split so the adds
-    // are a MID-FIGHT wall, not a post-mortem cleanup.
-    summonGate: { atHpFrac: 0.75, enemyId: 'boiling-prince', count: 3, radius: 1.9 },
+    // SUMMON GATE — at 25% HP lost the king SPLITS, spitting three boiling-
+    // princes. It's only untouchable for the brief spit itself (a phase-
+    // transition-style invuln window); the instant the split lands it's
+    // vulnerable again, even with the princes still up. The fight ends when the
+    // king AND all three princes are dead (they join the boss encounter).
+    // Replaces the old death-split so the adds arrive MID-FIGHT.
+    summonGate: { atHpFrac: 0.75, enemyId: 'boiling-prince', count: 3, radius: 1.9, invulnTime: 0.9 },
   },
 
   // Boiling Prince — the children of the king. Smaller, faster, no
-  // further splitting. They are the king's WARD: while any prince lives the
-  // king is untouchable, so cutting them down is the whole job of the add
-  // phase.
+  // further splitting. They spill out mid-fight when the king splits, extra
+  // pressure while you keep working the king down.
   'boiling-prince': {
     id: 'boiling-prince',
     name: 'boiling prince',
     // No tileChar — only spawned via the king's summonGate (mid-fight, at
     // 25% HP lost). Each prince is a boss, so the boss bar tracks all three
-    // (as three smaller bars). While any prince lives the king is warded; the
-    // fight ends only when the king AND every prince is dead.
+    // (as three smaller bars). The fight ends only when the king AND every
+    // prince is dead.
     isBoss: true,
     bossName: 'Spawn of the King',
     hp: 4,

@@ -335,12 +335,14 @@ export interface EnemySpec {
 
   /**
    * SUMMON GATE (boss add-phase). When the enemy's HP first falls to or below
-   * `atHpFrac` of its max, it WARDS ITSELF — becoming invulnerable — and summons
-   * `count` bodies of `enemyId` around it. It stays warded (no damage lands, the
-   * hit reads as a metallic clang) until every summoned body is dead, then the
-   * ward breaks and it's vulnerable again. Because the adds join the boss
-   * encounter, the FIGHT only ends when the boss AND all its summoned adds are
-   * down — you can't burst the boss past its ward, you have to clear the brood.
+   * `atHpFrac` of its max, it SPLITS OFF a brood: `count` bodies of `enemyId`
+   * scatter out around it. During the split itself the boss is briefly
+   * untouchable — a short invuln window (`invulnTime`) covering the spit
+   * animation, exactly like a phase transition — and a blow in that window
+   * clangs off. The instant the window closes the boss is vulnerable again,
+   * EVEN while its brood still lives; the adds are extra threats, not a damage
+   * lock. Because the adds join the boss encounter, the FIGHT still only ends
+   * when the boss AND all its summoned adds are down.
    *
    * One gate per boss for now (fires once). The add spec should be a normal
    * killable body (it needn't be a boss, but flagging it isBoss gives it a bar).
@@ -352,6 +354,8 @@ export interface EnemySpec {
     count: number;
     /** Radial scatter distance for the summoned bodies. Default 1.6m. */
     radius?: number;
+    /** Seconds the boss is untouchable while it spits the brood. Default 0.9s. */
+    invulnTime?: number;
   };
 
   // --- Multi-phase boss ---

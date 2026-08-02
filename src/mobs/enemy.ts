@@ -535,16 +535,16 @@ export function createEnemy(
   let currentMaxHp = initialHp;
   let currentAbilities = initialAbilities;
 
-  // SUMMON GATE — the boss's mid-fight add wall (spec.summonGate). Fires once
-  // when HP first drops to/below atHpFrac: the boss WARDS itself (takeDamage
-  // returns 0, the hit clangs) and calls onSummon to spawn its brood. The ward
-  // lifts the instant every summoned body is dead (polled in update()). See
-  // the summonGate doc in enemy-types.ts.
+  // SUMMON GATE — the boss's mid-fight split (spec.summonGate). Fires once when
+  // HP first drops to/below atHpFrac: the boss spits its brood (onSummon) and is
+  // untouchable ONLY for a brief invuln window covering the spit itself
+  // (summonInvulnTimer, ticked down in update) — like a phase transition. The
+  // instant the window closes it's vulnerable again, even with the brood still
+  // alive. See the summonGate doc in enemy-types.ts.
   const summonGate = spec.summonGate ?? null;
   const onSummon = options?.onSummon;
   let summonFired = false;
-  let warded = false;
-  let summonedAdds: Enemy[] = [];
+  let summonInvulnTimer = 0;
   // Per-phase partBreaks: tracks which thresholds have fired so we
   // don't re-hide parts every tick. Reset on phase entry.
   let firedPartBreaks = new Set<number>();
@@ -636,38 +636,27 @@ export function createEnemy(
     phaseTimer = 0;
   }
 
-  // ── SUMMON GATE — the boss wards itself and spews its brood ─────────────────
-  // Fired once from takeDamage when HP first crosses summonGate.atHpFrac. The
-  // ward holds (takeDamage returns 0) until every summoned body is dead, polled
-  // in update() by pollSummonWard.
+  // ── SUMMON GATE — the boss splits, briefly untouchable ─────────────────────
+  // Fired once from takeDamage when HP first crosses summonGate.atHpFrac: spit
+  // the brood and raise a SHORT invuln window (summonInvulnTimer) covering the
+  // spit — a hit in that window clangs off. update() ticks the window down; the
+  // instant it hits 0 the boss is open again, brood alive or not.
   function fireSummonGate(): void {
     if (!summonGate || summonFired) return;
     summonFired = true;
-    warded = true;
-    summonedAdds = onSummon ? onSummon(summonGate, container.position.clone()) : [];
-    // Nothing spawned (missing builder hook / bad enemyId) → don't lock the boss
-    // in an unbreakable ward forever.
-    if (summonedAdds.length === 0) { warded = false; return; }
-    coreReactor.hit();                                   // a bright flare as the ward slams up
+    const spawned = onSummon ? onSummon(summonGate, container.position.clone()) : [];
+    if (spawned.length === 0) return;   // nothing spawned — no split beat, stay vulnerable
+    summonInvulnTimer = summonGate.invulnTime ?? 0.9;
+    coreReactor.hit();                                   // a bright flare as it splits
     playEnemyWindup('medium', container.position);       // a summoning roar
-    playSurfaceHit('metal', container.position);         // the ward rings closed
+    playSurfaceHit('metal', container.position);         // the split rings out
     kickShake(0.30, 0.5);
   }
-  // Warded-hit feedback: the blow glances off. A metallic clang + a whisper of
-  // shake, but NO core flare / wound-cry (those read as "I hurt it").
-  function wardHitReact(): void {
+  // Split-window hit feedback: the blow glances off mid-spit. A metallic clang +
+  // a whisper of shake, but NO core flare / wound-cry (those read as "I hurt it").
+  function summonHitReact(): void {
     playSurfaceHit('metal', container.position);
     kickShake(0.06, 0.12);
-  }
-  // Poll each frame while warded: the instant the whole brood is down the ward
-  // breaks and the boss is open again.
-  function pollSummonWard(): void {
-    if (!warded) return;
-    if (summonedAdds.some((a) => a.alive)) return;
-    warded = false;
-    coreReactor.hit();                                   // the core flares open — vulnerable
-    playEnemyDeath('small', container.position);         // a wet shudder as the ward fails
-    kickShake(0.16, 0.3);
   }
 
   // Register combat stats so the damage pipeline knows this enemy's armor +
@@ -1078,10 +1067,10 @@ export function createEnemy(
     // Multi-phase boss: invuln window on phase entry (e.g. the
     // skeleton's downed-and-rising animation).
     if (phases && phaseInvulnTimer > 0) return 0;
-    // SUMMON-GATE ward: while the boss's brood lives it is untouchable. The blow
-    // lands as a metallic clang (no wound, no wound-cry) so the player LEARNS to
-    // cut the adds down first rather than pounding a warded body.
-    if (warded) { wardHitReact(); return 0; }
+    // SUMMON-GATE split window: untouchable for the brief spit only. The blow
+    // clangs off (no wound, no wound-cry); the window closes a beat later and the
+    // boss is open again whether or not its brood still lives.
+    if (summonInvulnTimer > 0) { summonHitReact(); return 0; }
     const entity = getEntity(entityId);
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
@@ -2238,9 +2227,13 @@ export function createEnemy(
     // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
     if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
 
-    // Summon-gate ward: break it the instant the brood is dead (the king keeps
-    // fighting while warded — no early return — it just can't be hurt).
-    if (warded) pollSummonWard();
+    // Summon-gate split window: tick the brief invuln down; when it closes the
+    // core flares open to signal "vulnerable again". The boss keeps fighting
+    // throughout — the window only blocks damage, not AI.
+    if (summonInvulnTimer > 0) {
+      summonInvulnTimer = Math.max(0, summonInvulnTimer - dt);
+      if (summonInvulnTimer === 0) coreReactor.hit();
+    }
 
     // Phase-transition collapse — ease the body into the crawl pose while
     // he's down. He's INERT here (early return skips all AI/movement/
@@ -3136,7 +3129,7 @@ export function createEnemy(
     // reward for breaking poise, which is what makes the stagger game matter.
     // A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
     get executable() {
-      if (!aliveLocal || phaseInvulnTimer > 0 || warded) return false;
+      if (!aliveLocal || phaseInvulnTimer > 0 || summonInvulnTimer > 0) return false;
       return state === 'staggered';
     },
     aiDebug(): AiDebug {
