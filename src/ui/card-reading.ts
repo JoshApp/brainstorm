@@ -21,6 +21,7 @@ import { BUFFS } from '../content/buffs';
 import { flashDomainGlow } from './vignette';
 import { showInscription } from './inscription';
 import { domainVisual } from './domain-icons';
+import { playCardClaim } from '../effects/card-claim';
 
 const SCREEN_ID = 'card-reading';
 const BASE = import.meta.env.BASE_URL;
@@ -196,39 +197,39 @@ export function openCardReading(
   function claimCard(i: number): void {
     picked = true; grantCard(dealt[i].id);
     const card = dealt[i];
-    // The two unchosen fates sink away; the taken one is DRAWN INTO YOU.
+    // The two unchosen fates sink away; the taken one flares, then the SCREEN
+    // DISSOLVES back to the game world where the card is drawn into you FOR REAL
+    // (a world-space quad that burns + absorbs — see effects/card-claim).
     cols.forEach((c, j) => { if (j !== i) { c.style.opacity = '0'; c.style.transform = 'translateY(28px)'; } });
     claim.style.pointerEvents = 'none'; claim.style.opacity = '0';
     fateLine.style.opacity = '0';
 
-    // The fate's DOMAIN floods the screen as it enters you (the acquisition
-    // language, tuned strong for a major beat), and the deep marks the taking.
     const dom = card.domains[0];
     const accent = dom ? domainVisual(dom).color : 'rgb(206,64,52)';
-    // The flood is fired late, so its bloom lands as the modal closes and washes
-    // over the GAME view (behind the modal it'd be invisible) — the fate's domain
-    // pouring into you as you return to the dark.
-    setTimeout(() => { try { flashDomainGlow(accent, 1); } catch { /* presentation */ } }, 760);
-    // NO top-right pop (that channel is reserved for achievements + genuine
-    // firsts) — taking a fate is diegetic: the domain flood + the reading-channel
-    // inscription carry it, not an out-of-run notification.
-    // READ the fate as it enters you — the card's identity line rises through the
-    // reading channel (the same inscription trinkets/relics use), fired as the
-    // modal dissolves so it lands on the game view, not behind the card.
-    setTimeout(() => { try { showInscription(card.fate); } catch { /* presentation */ } }, 900);
 
-    // The chosen card IGNITES then is pulled down into the delver, dissolving to
-    // embers — "you took it into yourself", not "a menu closed".
+    // A brief DOM flare on the chosen card — a bright inhale — before the reading
+    // dissolves and hands the moment to the world. Short (the hero beat is the
+    // 3D card in the dark, not this).
     igniteEmbers(cols[i], accent);
     cols[i].animate(
       [
         { transform: 'translateY(-14px) scale(1.12)', filter: 'brightness(1)', opacity: 1, offset: 0 },
-        { transform: 'translateY(-46px) scale(1.32)', filter: `brightness(1.9) saturate(1.4) drop-shadow(0 0 26px ${accent})`, opacity: 1, offset: 0.28 },
-        { transform: 'translateY(70vh) scale(0.12)', filter: `brightness(2.4) blur(3px) drop-shadow(0 0 30px ${accent})`, opacity: 0, offset: 1 },
+        { transform: 'translateY(-30px) scale(1.28)', filter: `brightness(2.1) saturate(1.4) drop-shadow(0 0 30px ${accent})`, opacity: 1, offset: 0.6 },
+        { transform: 'translateY(-30px) scale(1.34)', filter: `brightness(2.6) blur(2px) drop-shadow(0 0 34px ${accent})`, opacity: 0, offset: 1 },
       ],
-      { duration: 900, easing: 'cubic-bezier(0.5, 0, 0.75, 0.2)', fill: 'forwards' },
+      { duration: 460, easing: 'cubic-bezier(0.4, 0, 0.7, 0.4)', fill: 'forwards' },
     );
-    setTimeout(close, 1000);
+
+    // Close the reading, THEN raise the world card — the screen returns to the
+    // dark and the fate appears there in front of you, burning, pulled in.
+    setTimeout(() => {
+      close();
+      try { playCardClaim(card.id, accent); } catch { /* presentation must never break the claim */ }
+      // The domain floods the game view + the deep reads the fate as it enters
+      // you — timed to the world card's ignite/absorb, not a menu close.
+      try { flashDomainGlow(accent, 1); } catch { /* presentation */ }
+      setTimeout(() => { try { showInscription(card.fate); } catch { /* presentation */ } }, 520);
+    }, 470);
   }
 
   // A short-lived warm flame-wash + rising embers over the taken card, so it
