@@ -383,6 +383,18 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   return spec;
 }
 
+// Prop kinds that are ROOM-CENTREPIECE EVENTS — the interactable set-pieces the
+// player reads as "something happens here". Secondary lootables (chests,
+// corpses) must keep clear of these rather than stack on them (#69). Pillars are
+// blockers, not events, but count here so loot never lands inside one either.
+const EVENT_PROP_KINDS = new Set<string>([
+  'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
+  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'pillar',
+]);
+// How far a secondary lootable is kept from a room's event centrepiece (m). In a
+// room too small to reach it, the placer takes the farthest cell it can.
+const EVENT_CLEARANCE_M = 3.0;
+
 /** Compose a LevelSpec for the given floor depth. */
 export function composeFloor(
   depth: number,
@@ -979,9 +991,31 @@ export function composeFloor(
       // Collect this room's open cells, tracking the most CENTRAL one — the
       // auto-derived focal spot when the vault authored none.
       const cx = W / 2, cz = D / 2;
+      // This room's authored EVENT centrepieces (fountain/altar/basin/…, already
+      // expanded into `props` earlier this iteration). Secondary content derives
+      // a spot that keeps CLEAR of these so loot never stacks on the event (#69).
+      const roomMinX = pv.offsetX - W / 2, roomMaxX = pv.offsetX + W / 2;
+      const roomMinZ = pv.offsetZ - D / 2, roomMaxZ = pv.offsetZ + D / 2;
+      const eventAnchors: Array<{ x: number; z: number }> = [];
+      for (const pp of props as Array<{ kind?: string; x?: number; z?: number }>) {
+        if (typeof pp.x !== 'number' || typeof pp.z !== 'number') continue;
+        if (!EVENT_PROP_KINDS.has(pp.kind ?? '')) continue;
+        if (pp.x < roomMinX || pp.x > roomMaxX || pp.z < roomMinZ || pp.z > roomMaxZ) continue;
+        eventAnchors.push({ x: pp.x, z: pp.z });
+      }
+      const clearOfEvents = (x: number, z: number): number =>
+        eventAnchors.length === 0 ? Infinity
+          : Math.min(...eventAnchors.map((e) => Math.hypot(x - e.x, z - e.z)));
+
       const roomCells: Array<{ x: number; z: number; isHint: boolean; wallAdj: number; centrality: number }> = [];
       let central: { col: number; row: number; x: number; z: number } | null = null;
       let centralDist = Infinity;
+      // Secondary marker: the spot for loot when the room's centre is already an
+      // event. Maximises clearance from the event(s) (capped, so beyond "clear
+      // enough" it stops caring), then prefers the more central of the clear
+      // cells so it reads as a deliberate secondary position, not a wall-jam.
+      let secondary: { col: number; row: number; x: number; z: number } | null = null;
+      let secondaryScore = -Infinity;
       for (const cell of enumerateOpenCells(region, isFloor, occ)) {
         const x = cell.col + 0.5 - W / 2 + pv.offsetX;
         const z = cell.row + 0.5 - D / 2 + pv.offsetZ;
@@ -995,14 +1029,19 @@ export function composeFloor(
         // rectangle the centre IS the max-visibility, min-door-adjacency spot.
         roomCells.push({ x, z, isHint: hintCells.has(`${cell.col},${cell.row}`), wallAdj: wallAdjacency(cell.col, cell.row, isFloor), centrality: -d });
         if (d < centralDist) { centralDist = d; central = { col: cell.col, row: cell.row, x, z }; }
+        const score = Math.min(clearOfEvents(x, z), EVENT_CLEARANCE_M) * 1000 - d;
+        if (score > secondaryScore) { secondaryScore = score; secondary = { col: cell.col, row: cell.row, x, z }; }
       }
       // AUTO-DERIVED MARKER (docs/FLOOR-DIRECTOR.md — geometry proposes, an
       // authored 'spot' overrides). A content-eligible room that declared no spot
-      // gets an implicit focal marker at its most central open cell, so the
-      // director's find / deal can land in ANY eligible room across the whole
-      // library — no per-vault annotation, self-maintaining for new vaults.
-      const derived = !hasAuthoredSpot && (roomCaps.allowLoot || roomCaps.allowEvent) && central
-        ? central : null;
+      // gets an implicit focal marker so the director's find / deal can land in
+      // ANY eligible room — no per-vault annotation. If the room ALREADY holds an
+      // authored event centrepiece, the marker is the event-CLEAR secondary spot
+      // (so the find/deal is a secondary position, not a stack); otherwise it's
+      // the central cell (the room's own centrepiece for a fire / deal / find).
+      const markerCell = eventAnchors.length > 0 ? (secondary ?? central) : central;
+      const derived = !hasAuthoredSpot && (roomCaps.allowLoot || roomCaps.allowEvent) && markerCell
+        ? markerCell : null;
       if (derived) {
         occ.reserve(derived.col, derived.row, 'floor', 'feature');
         contentSpots.push({ x: derived.x, z: derived.z, roomId: pv.roomId, focal: true });

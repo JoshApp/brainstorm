@@ -104,12 +104,18 @@ const CENTER_SNAP_DIST = 1.2;
  *  room's true centre. Run BEFORE the director, so it places chests around their
  *  FINAL positions (a centre-snapped altar can't then land on a chest). */
 export function resolveStatics(props: PropSpec[], rooms: readonly RoomBox[]): void {
+  // Only ONE centrepiece per room may claim true centre — else two set-pieces
+  // authored near the middle (a pillar + an altar) both snap to the identical
+  // (cx,cz) and render as a perfect overlap (#69). The first wins the centre; a
+  // second stays at its authored, already-off-centre spot.
+  const centreClaimed = new Set<RoomBox>();
   for (const p of props) {
     if (p.kind !== 'pillar' && p.kind !== 'altar' && p.kind !== 'fountain') continue;
     const room = roomFor(p.x, p.z, rooms);
     if (!room) continue;
-    if (Math.hypot(p.x - room.cx, p.z - room.cz) <= CENTER_SNAP_DIST) {
+    if (Math.hypot(p.x - room.cx, p.z - room.cz) <= CENTER_SNAP_DIST && !centreClaimed.has(room)) {
       p.x = room.cx; p.z = room.cz;
+      centreClaimed.add(room);
     }
   }
 }

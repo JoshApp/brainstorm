@@ -18,8 +18,18 @@ type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
 /** Minimum metres between two placed pieces — keeps them from clustering even if
  *  two anchors sit close. */
 const MIN_CHEST_SPACING = 4.5;
-/** Keep a director chest this far from an authored set-piece (altar, ossuary…). */
-const BLOCKER_CLEARANCE = 2.6;
+/** Keep a director chest this far from an event centrepiece (altar, basin…), so
+ *  loot reads as a SECONDARY position in the room, not stacked on the event (#69). */
+const BLOCKER_CLEARANCE = 3.0;
+
+// Every EVENT centrepiece + blocker a loot piece must stand clear of. Was missing
+// tithe-basin / reliquary / blood-altar / starter-altar / tome-pillar, which is
+// why chests kept landing on basins and reliquaries. 'model' covers the bonfire.
+const EVENT_BLOCKERS = new Set([
+  'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
+  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'pillar', 'model',
+  'corpse', 'stash-chest',
+]);
 
 // The L4D-style Director budget — anchors are POTENTIAL spots; this decides how
 // many pieces actually fill this floor. The COUNT lives here; each chest's TIER
@@ -66,10 +76,10 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   const used = new Set<Anchor>();
   const placed: { x: number; z: number }[] = [];
 
-  // Authored SET-PIECES the director keeps chests clear of (never on an altar).
-  const BLOCKER_KINDS = new Set(['altar', 'pillar', 'fountain', 'model', 'corpse', 'stash-chest', 'challenge-offering', 'merchant']);
+  // Authored SET-PIECES + events the director keeps chests clear of (never on an
+  // altar, basin, fire…).
   const blockers = kept
-    .filter((p) => BLOCKER_KINDS.has(p.kind))
+    .filter((p) => EVENT_BLOCKERS.has(p.kind))
     .map((p) => p as unknown as { x: number; z: number });
 
   const farEnough = (a: Anchor) =>
@@ -79,7 +89,7 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   // PER-ROOM BIG-CONTENT budget (Layer 1): a small room gets ONE big thing, a
   // larger one 2–3. The FIRE + any authored event already in a room COUNT against
   // it, so the director won't add a chest to a room that's already spoken for.
-  const BIG_KINDS = new Set(['chest', 'altar', 'fountain', 'challenge-offering', 'merchant', 'reliquary', 'stash-chest']);
+  const BIG_KINDS = new Set(['chest', 'altar', 'blood-altar', 'starter-altar', 'fountain', 'challenge-offering', 'merchant', 'reliquary', 'tithe-basin', 'tome-pillar', 'stash-chest']);
   const isBigFire = (p: PropSpec) => p.kind === 'model' && (p as unknown as { model?: { id?: string } }).model?.id === 'bonfire';
   const bigLeft = new Map<RoomBox, number>();
   for (const r of rooms) bigLeft.set(r, r.w * r.d < 50 ? 1 : r.w * r.d < 100 ? 2 : 3);
