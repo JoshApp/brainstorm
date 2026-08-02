@@ -115,10 +115,14 @@ export function directFloor(input: DirectorInput): FloorPlan {
   };
   const usedRooms = new Set<string>();
   if (fire) usedRooms.add(fire.roomId);
+  // Points staged content must not crowd — the fire first; the find joins it once
+  // placed. Keeps a reward chest off the bonfire even when a small floor forces
+  // them into the same room (the room's offset marker gives it somewhere to go).
+  const avoid: Array<{ x: number; z: number }> = fire ? [{ x: fire.x, z: fire.z }] : [];
 
   // ── DEFINING FIND — a staged reward on a focal loot-marker, away from the fire. ──
-  const find = fillDefiningFind(away(contentSpots, usedRooms), roles, budget.loot, depth, rand);
-  if (find) usedRooms.add(find.spot.roomId);
+  const find = fillDefiningFind(away(contentSpots, usedRooms), roles, budget.loot, depth, rand, avoid);
+  if (find) { usedRooms.add(find.spot.roomId); avoid.push({ x: find.x, z: find.z }); }
 
   // ── STAGED DEAL — the floor's QUESTION, variety-filtered so it never spams a
   //    kind the floor already carries, kept off the find's own marker, and out of
@@ -129,7 +133,7 @@ export function directFloor(input: DirectorInput): FloorPlan {
     const allowed = ALL_DEALS.filter((k) => (ledger[k] ?? 0) < (DEAL_SOFT_CAP[k] ?? Infinity));
     deal = fillQuestion(
       away(contentSpots, usedRooms), roles, allowed, depth,
-      CONFIG.CONTENT_BUDGET.QUESTION_DEEP_DEPTH, rand, find?.spot ?? null,
+      CONFIG.CONTENT_BUDGET.QUESTION_DEEP_DEPTH, rand, find?.spot ?? null, avoid,
     );
   }
 

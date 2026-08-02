@@ -49,6 +49,22 @@ export interface StagedDeal {
 const SHALLOW_DEALS: readonly DealKind[] = ['fountain', 'tithe-basin'];
 const DEEP_DEALS: readonly DealKind[] = ['blood-altar', 'altar'];
 
+/** Keep staged content this far from an AVOID point (the fire, another beat) so a
+ *  reward chest never lands jammed against the bonfire (#69). Mirrors the
+ *  loot-director's event clearance. */
+const AVOID_CLEARANCE = 3.0;
+
+/** Points the staged content should stand clear of (the fire, an already-placed
+ *  beat). Empty = no constraint. */
+export type AvoidPoint = { x: number; z: number };
+
+/** Min distance from `s` to any avoid point (Infinity when there are none). */
+function clearOf(s: { x: number; z: number }, avoid: readonly AvoidPoint[]): number {
+  let m = Infinity;
+  for (const a of avoid) m = Math.min(m, Math.hypot(s.x - a.x, s.z - a.z));
+  return m;
+}
+
 /**
  * Stage the floor's ONE question (a deal) onto a marker. Mirrors
  * {@link fillDefiningFind}: eligible = a `spot` in an EVENT-permitting room,
@@ -65,6 +81,7 @@ export function fillQuestion(
   deepDepth: number,
   rand: () => number,
   exclude?: ContentSpot | null,
+  avoid: readonly AvoidPoint[] = [],
 ): StagedDeal | null {
   if (allowed.length === 0) return null;
 
@@ -72,6 +89,13 @@ export function fillQuestion(
     (s) => roles.caps(s.roomId).allowEvent && s !== exclude,
   );
   if (eligible.length === 0) return null;
+
+  // Keep the deal clear of the fire / the find (a deal jammed against the
+  // bonfire reads as a pile) — but only if some spot stays eligible after.
+  if (avoid.length > 0) {
+    const clear = eligible.filter((s) => clearOf(s, avoid) >= AVOID_CLEARANCE);
+    if (clear.length > 0) eligible = clear;
+  }
 
   // SMART PLACEMENT (not blind dedup): don't drop the floor's question into the
   // SAME ROOM as its reward (the find) — a chest and a fountain crammed together
@@ -121,14 +145,23 @@ export function fillDefiningFind(
   budget: { definingFind: boolean; minRarity: Rarity },
   depth: number,
   rand: () => number,
+  avoid: readonly AvoidPoint[] = [],
 ): DefiningFind | null {
   if (!budget.definingFind) return null;
 
-  const eligible = spots.filter((s) => roles.caps(s.roomId).allowLoot);
+  let eligible = spots.filter((s) => roles.caps(s.roomId).allowLoot);
   if (eligible.length === 0) return null;
 
-  // Prefer focal spots; fall back to ordinary ones only if the floor has no
-  // focal marker in a loot room.
+  // Keep the reward CLEAR of the fire (a chest crammed against the bonfire reads
+  // as a pile). Prefer spots ≥ clearance; a room forced to share with the fire
+  // now carries an offset marker (vault-compose), so "clear" usually still holds.
+  if (avoid.length > 0) {
+    const clear = eligible.filter((s) => clearOf(s, avoid) >= AVOID_CLEARANCE);
+    if (clear.length > 0) eligible = clear;
+  }
+
+  // Prefer focal spots; fall back to ordinary ones (incl. the offset marker) only
+  // if the floor has no clear focal marker in a loot room.
   const focal = eligible.filter((s) => s.focal);
   const pool = focal.length > 0 ? focal : eligible;
   const spot = pool.length === 1 ? pool[0] : pool[Math.floor(rand() * pool.length)];

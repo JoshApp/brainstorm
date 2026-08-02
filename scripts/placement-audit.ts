@@ -74,6 +74,7 @@ let multiEventRooms = 0;                    // ≥2 events in one room
 let eventOverlaps = 0;                      // event↔event closer than OVERLAP_M
 const nearestDists: number[] = [];          // per event-room: nearest loot distance
 const examples: string[] = [];
+const pairCounts = new Map<string, number>();   // "event↔loot" → cluster count
 
 for (let n = 0; n < FLOORS; n++) {
   const depth = 1 + (n % MAX_DEPTH);
@@ -116,8 +117,10 @@ for (let n = 0; n < FLOORS; n++) {
         nearest = Math.min(nearest, d);
         if (d < CLUSTER_M) {
           eventLootClusters++;
+          const pk = `${e.label} ↔ ${l.label}`;
+          pairCounts.set(pk, (pairCounts.get(pk) ?? 0) + 1);
           if (examples.length < EXAMPLES) {
-            examples.push(`d${depth} #${n} room ${roomId}: ${e.label} ↔ ${l.label} = ${d.toFixed(2)}m`);
+            examples.push(`d${depth} #${n} room ${roomId}: ${pk} = ${d.toFixed(2)}m`);
           }
         }
       }
@@ -138,6 +141,8 @@ console.log(`Rooms with ≥2 events:             ${multiEventRooms}`);
 console.log(`  event↔event overlaps < ${OVERLAP_M}m:   ${eventOverlaps}`);
 console.log(`\nNearest event→loot distance (event-rooms holding loot):`);
 console.log(`  min ${q(0)}m · p25 ${q(0.25)}m · median ${q(0.5)}m · p75 ${q(0.75)}m · max ${q(1)}m`);
+console.log(`\nCluster breakdown by pair (< ${CLUSTER_M}m) — altar↔corpse is the intentional altar-ritual:`);
+for (const [pk, c] of [...pairCounts.entries()].sort((a, b) => b[1] - a[1])) console.log(`  ${c.toString().padStart(3)}  ${pk}`);
 console.log(`\nExample clusters (event↔loot < ${CLUSTER_M}m):`);
 for (const e of examples) console.log(`  ${e}`);
 console.log('');
