@@ -62,6 +62,7 @@ import { aggregateSpeed } from '../combat/modifiers';
 import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, playSurfaceHit, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
+import { LEVELS_ENABLED } from '../state/leveling';
 import { createBlobShadow } from '../effects/blob-shadow';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
@@ -1345,7 +1346,9 @@ export function createEnemy(
       // instant — the immediate debris pop is what made it read as "shatters
       // while standing rigid"; the collapse is deferred so it FALLS first.
       essenceRigY = essenceRigYDefault;
-      essenceTotal = spec.xp ?? 1;
+      // XP/levels disabled (#102) → no essence wisps (they granted XP). Souls will
+      // revive this as soul-shed later. Zeroing here no-ops both spawn loops.
+      essenceTotal = LEVELS_ENABLED ? (spec.xp ?? 1) : 0;
       essenceSpawned = 0;
       // (Gold now rides the unified drop table above — see rollDropTable.)
     }

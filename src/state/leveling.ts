@@ -11,6 +11,13 @@
 
 export const XP_PER_LEVEL = 10;
 
+// TEMPORARILY DISABLED (task #102): XP + levels are turned off — they granted no
+// stat points anyway, and we're reintroducing this as the SOULS currency later
+// (#100). A single reversible flag gates the three visible bits: grantXp becomes
+// a no-op, the XP bar isn't built, and kills stop shedding wisps. Flip to true to
+// restore the old behaviour instantly.
+export const LEVELS_ENABLED = false;
+
 /** Cumulative XP needed to BE at level L (i.e. to finish level L-1). */
 export function xpFloorForLevel(level: number): number {
   if (level <= 1) return 0;

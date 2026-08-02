@@ -11,7 +11,7 @@
 
 import type { EquipSlot } from '../player/equipment';
 import { emit } from '../broadcast/event-bus';
-import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
+import { levelForXp, xpInLevel, xpForNextLevel, LEVELS_ENABLED } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
@@ -146,6 +146,7 @@ export function adoptSave(save: SaveData) {
 }
 
 export function grantXp(amount: number): void {
+  if (!LEVELS_ENABLED) return;   // XP/levels disabled for now (#102) — no accrual, no level:up
   if (!inMemory || amount <= 0) return;
   const beforeLevel = getLevel();
   inMemory.xp += amount;

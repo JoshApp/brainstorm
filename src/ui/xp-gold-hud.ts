@@ -1,5 +1,6 @@
 import { on } from '../broadcast/event-bus';
 import { xpStore, goldStore, type XpState } from '../state/hud-stores';
+import { LEVELS_ENABLED } from '../state/leveling';
 import { getCount } from '../player/inventory';
 import { KEY_ID } from '../content/drop-tables';
 import { hudStyleStore, getHudStyle } from './hud-style';
@@ -132,6 +133,10 @@ export function createXpGoldHud(): void {
   // rather than living inside the chunky band, so the bar itself
   // stays unobtrusive while still being readable. HP pips sit
   // comfortably above it.
+  // XP/levels disabled for now (#102) — build the gold + keys HUD above, but skip
+  // the whole XP bar (no dead progress bar while it's turned off).
+  if (!LEVELS_ENABLED) return;
+
   xpContainer = document.createElement('div');
   xpContainer.id = 'xp-bar-hud'; xpContainer.classList.add('game-hud');
   Object.assign(xpContainer.style, {
