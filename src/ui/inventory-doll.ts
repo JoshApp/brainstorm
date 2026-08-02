@@ -15,12 +15,14 @@ import { EMPTY_BORDER, ACCENT, TEXT_DIM, CARD_BG, sectionLabel, type InventoryCt
 
 type SlotDef = { slotId: EquipSlot; label: string };
 
-// Gear slots: the WEAPON, TWO VESTMENTS (build-defining worn pieces), the OFF-HAND.
-const SLOTS: SlotDef[] = [
-  { slotId: 'weapon',    label: 'WEAPON' },
-  { slotId: 'vestment',  label: 'VESTMENT' },
-  { slotId: 'vestment2', label: 'VESTMENT' },
-  { slotId: 'offhand',   label: 'OFF-HAND' },
+// Gear slots, grouped by how they're worn (see buildEquippedSlots):
+//   ARMS — both weapons (drawn + sidearm) side by side, the OFF-HAND beneath.
+//   WORN — the two vestments (build-defining worn pieces) together on the right.
+const WEAPON_SLOT:  SlotDef = { slotId: 'weapon',    label: 'WEAPON' };
+const OFFHAND_SLOT: SlotDef = { slotId: 'offhand',   label: 'OFF-HAND' };
+const VEST_SLOTS: SlotDef[] = [
+  { slotId: 'vestment',  label: 'VESTMENT I' },
+  { slotId: 'vestment2', label: 'VESTMENT II' },
 ];
 
 // Slot-type glyph for an EMPTY slot — reads at a glance. 16px viewBox, stroked.
@@ -32,23 +34,57 @@ const SLOT_ICON: Record<EquipSlot, string> = {
   offhand: '<path d="M8 1.5 L13.5 3.5 L13.5 8 Q13.5 12.5 8 14.5 Q2.5 12.5 2.5 8 L2.5 3.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
 };
 
-/** The EQUIPPED slot strip — three tiles in a row. */
+/** The EQUIPPED slots — two grouped panels: ARMS (both weapons over the off-hand)
+ *  on the left, WORN (the two vestments) on the right. The grouping reads the way
+ *  the loadout is used — your hands vs. what you wear — instead of a flat strip. */
 export function buildEquippedSlots(ctx: InventoryCtx): HTMLDivElement {
   const col = document.createElement('div');
   Object.assign(col.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
   col.appendChild(sectionLabel('EQUIPPED'));
 
-  const row = document.createElement('div');
-  Object.assign(row.style, { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '7px' } as Partial<CSSStyleDeclaration>);
   const eq = getEquipment();
-  // Weapon (drawn) FIRST, then the SIDEARM (sheathed) beside it — both weapons of
-  // the loadout are visible now, not just the drawn one — then the vestments +
-  // off-hand.
-  row.appendChild(buildSlotTile(SLOTS[0], eq.weapon, ctx));      // WEAPON (drawn)
-  row.appendChild(buildSidearmTile(ctx));                        // SIDEARM (sheathed)
-  for (const def of SLOTS.slice(1)) row.appendChild(buildSlotTile(def, eq[def.slotId], ctx));
-  col.appendChild(row);
+  const panels = document.createElement('div');
+  Object.assign(panels.style, {
+    display: 'grid', gridTemplateColumns: '1.08fr 1fr', gap: '10px', alignItems: 'center',
+  } as Partial<CSSStyleDeclaration>);
+
+  // ── ARMS — both weapons in a row, the off-hand beneath them. ──
+  const arms = groupPanel('ARMS');
+  const wpnRow = twoColRow();
+  wpnRow.appendChild(buildSlotTile(WEAPON_SLOT, eq.weapon, ctx));   // drawn
+  wpnRow.appendChild(buildSidearmTile(ctx));                        // sheathed
+  arms.appendChild(wpnRow);
+  arms.appendChild(buildSlotTile(OFFHAND_SLOT, eq.offhand, ctx));   // full-width beneath
+
+  // ── WORN — the two vestments side by side. ──
+  const worn = groupPanel('WORN');
+  const vestRow = twoColRow();
+  for (const def of VEST_SLOTS) vestRow.appendChild(buildSlotTile(def, eq[def.slotId], ctx));
+  worn.appendChild(vestRow);
+
+  panels.append(arms, worn);
+  col.appendChild(panels);
   return col;
+}
+
+/** A labelled sub-group (ARMS / WORN) — a faint caption over a stack of tiles. */
+function groupPanel(caption: string): HTMLDivElement {
+  const p = document.createElement('div');
+  Object.assign(p.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
+  const cap = document.createElement('div');
+  cap.textContent = caption;
+  Object.assign(cap.style, {
+    fontSize: '8px', letterSpacing: '0.24em', color: TEXT_DIM, fontWeight: '600', paddingLeft: '1px',
+  } as Partial<CSSStyleDeclaration>);
+  p.appendChild(cap);
+  return p;
+}
+
+/** A two-column tile row (weapons; vestments). */
+function twoColRow(): HTMLDivElement {
+  const r = document.createElement('div');
+  Object.assign(r.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' } as Partial<CSSStyleDeclaration>);
+  return r;
 }
 
 /** The SIDEARM tile — the sheathed second weapon of the loadout (task #96).
