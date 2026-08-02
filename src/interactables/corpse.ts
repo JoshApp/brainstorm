@@ -7,6 +7,8 @@ import { emit } from '../broadcast/event-bus';
 import { whisper, dismissWhisper } from '../ui/whisper';
 import { showNote } from '../ui/note-card';
 import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
+import { registerLight } from '../scene/light-pool';
+import { getTexture } from '../style/procedural-textures';
 import { createPickup } from './pickup';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import type { FallenDelver } from '../content/corpses';
@@ -72,6 +74,33 @@ export function spawnCorpse(
     glint.rotation.x = -Math.PI / 2.6;
     glint.renderOrder = 2;
     built.group.add(glint);
+  }
+
+  // SOUL-GLOW (#70) — a fallen delver is a RARE, notable find now, so it earns a
+  // faint COLD light: a low, slow-pulsing blue that reads "something is here" from
+  // across the dark (lighting doctrine) AND lifts the body's brown silhouette off
+  // the stone. Plus a small soul-mote drifting above it. Cleared with the level.
+  const SOUL_COLOR = 0x7aa0d8;
+  registerLight({
+    id: generateEntityId('corpse-soul'), category: 'pickup', priority: 'low',
+    position: new THREE.Vector3(pos.x, pos.y + 0.5, pos.z),
+    color: SOUL_COLOR, intensity: 0.85, distance: 3.2, decay: 1.7,
+    getIntensity: () => { const t = performance.now() / 1000; return 0.85 * (0.75 + 0.25 * Math.sin(t * 1.6)); },
+  });
+  {
+    const moteMat = new THREE.SpriteMaterial({
+      map: getTexture('fire-wisp'), color: SOUL_COLOR, transparent: true,
+      opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
+    });
+    const mote = new THREE.Sprite(moteMat);
+    mote.scale.set(0.3, 0.3, 0.3);
+    mote.position.set(pos.x, pos.y + 0.75, pos.z);
+    mote.onBeforeRender = () => {
+      const t = performance.now() / 1000;
+      mote.position.y = pos.y + 0.72 + Math.sin(t * 0.9) * 0.08;
+      moteMat.opacity = 0.35 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.6));
+    };
+    parent.add(mote);
   }
 
   let epitaphSpoken = false;

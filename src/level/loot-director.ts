@@ -54,7 +54,10 @@ function rollBudget(depth: number, rand: () => number): LootBudget {
   // Fallen delvers are now a RARE find (was 28%/floor) — a body you stumble on
   // every few floors, not clutter — and they carry a real reward for it (see the
   // upgraded 'corpse' drop table). Rarity is what makes the loot feel earned.
-  const corpse = rand() < 0.14 ? 1 : 0;
+  // A fallen delver is a RARE, notable find now (#70) — every few floors, not
+  // most of them — so each one lands as a highlight (its own soul-glow + a real
+  // reward) instead of atmospheric clutter.
+  const corpse = rand() < 0.07 ? 1 : 0;
   return { chestTiers, corpse };
 }
 

@@ -30,11 +30,13 @@ export type CorpseDecay = 'fleshy' | 'skeletal';
 // recolouring the body (the warm-key/cold-accent contrast). darkReactive keeps
 // it subtle in torchlight and stronger in the dark, where the body would
 // otherwise disappear.
-const CORPSE_RIM = { color: 0x9ab8d8, power: 2.4, intensity: 0.55, darkReactive: 0.85 } as const;
+// Stronger cold rim so the silhouette reads against dark stone from a distance
+// (#70 — a fallen delver is a notable find, not floor-coloured clutter).
+const CORPSE_RIM = { color: 0xbcd4f0, power: 2.2, intensity: 0.95, darkReactive: 0.9 } as const;
 
 const MATERIALS = {
   // Ashen dead flesh — cold grey-umber, NOT warm brown (warm read as mud).
-  flesh:   { color: 0x8a7d69, roughness: 0.95, metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
+  flesh:   { color: 0x8f8c96, roughness: 0.95, metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
   // Mirrors ossuary PALE_BONE exactly so the whole bone family shares one
   // warmed pipeline and matches the skeleton roster's look.
   bone:    { color: 0xc2b69c, roughness: 0.92, flatShading: 'auto' as const, chroma: 1.8, rim: CORPSE_RIM },
