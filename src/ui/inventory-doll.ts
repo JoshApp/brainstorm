@@ -1,4 +1,4 @@
-import { getEquipment, type EquipSlot } from '../player/equipment';
+import { getEquipment, getSidearm, swapWeapons, type EquipSlot } from '../player/equipment';
 import { getReliquary } from '../player/reliquary';
 import { getEquippedRite, equipRite } from '../state/run-state';
 import { RITES } from '../content/rites';
@@ -41,9 +41,68 @@ export function buildEquippedSlots(ctx: InventoryCtx): HTMLDivElement {
   const row = document.createElement('div');
   Object.assign(row.style, { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '7px' } as Partial<CSSStyleDeclaration>);
   const eq = getEquipment();
-  for (const def of SLOTS) row.appendChild(buildSlotTile(def, eq[def.slotId], ctx));
+  // Weapon (drawn) FIRST, then the SIDEARM (sheathed) beside it — both weapons of
+  // the loadout are visible now, not just the drawn one — then the vestments +
+  // off-hand.
+  row.appendChild(buildSlotTile(SLOTS[0], eq.weapon, ctx));      // WEAPON (drawn)
+  row.appendChild(buildSidearmTile(ctx));                        // SIDEARM (sheathed)
+  for (const def of SLOTS.slice(1)) row.appendChild(buildSlotTile(def, eq[def.slotId], ctx));
   col.appendChild(row);
   return col;
+}
+
+/** The SIDEARM tile — the sheathed second weapon of the loadout (task #96).
+ *  Shows it beside the drawn weapon; tapping SWAPS the two (draws the sidearm),
+ *  the same one-tap swap as the HUD chip. Empty when you carry only one weapon. */
+function buildSidearmTile(ctx: InventoryCtx): HTMLDivElement {
+  const item = getSidearm();
+  const tile = document.createElement('div');
+  const filled = !!item;
+  const rarityHex = item ? hexCss(RARITY_COLORS[item.rarity ?? 'mundane']) : null;
+  Object.assign(tile.style, {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+    padding: '7px 4px 5px', borderRadius: '4px', cursor: filled ? 'pointer' : 'default',
+    position: 'relative',
+    background: filled ? CARD_BG : 'rgba(20, 14, 10, 0.45)',
+    border: filled ? `1.5px solid ${rarityHex}` : EMPTY_BORDER,
+    boxShadow: filled ? `0 0 7px ${rarityHex}44` : 'none',
+    touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
+  } as Partial<CSSStyleDeclaration>);
+
+  const face = document.createElement('div');
+  Object.assign(face.style, { width: '100%', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '0' } as Partial<CSSStyleDeclaration>);
+  if (filled && item) {
+    const img = document.createElement('img');
+    img.src = getItemThumbnail(item);
+    Object.assign(img.style, { width: '92%', height: '92%', objectFit: 'contain', pointerEvents: 'none', opacity: '0.9' } as Partial<CSSStyleDeclaration>);
+    face.appendChild(img);
+    // A ⇄ swap hint in the corner.
+    const swap = document.createElement('div');
+    swap.textContent = '⇄';
+    Object.assign(swap.style, { position: 'absolute', top: '3px', right: '5px', fontSize: '11px', color: ACCENT, opacity: '0.85' } as Partial<CSSStyleDeclaration>);
+    tile.appendChild(swap);
+  } else {
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('width', '26'); icon.setAttribute('height', '26');
+    icon.innerHTML = SLOT_ICON.weapon;
+    icon.style.color = TEXT_DIM; icon.style.opacity = '0.5';
+    face.appendChild(icon);
+  }
+  tile.appendChild(face);
+
+  const label = document.createElement('div');
+  label.textContent = filled ? 'SIDEARM · SWAP' : 'SIDEARM';
+  Object.assign(label.style, {
+    fontSize: '7.5px', fontWeight: '600', letterSpacing: '0.10em',
+    color: filled ? rarityHex! : TEXT_DIM, textAlign: 'center',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+  } as Partial<CSSStyleDeclaration>);
+  tile.appendChild(label);
+
+  if (filled) {
+    tile.addEventListener('click', (e) => { e.stopPropagation(); swapWeapons(); ctx.select(null); });
+  }
+  return tile;
 }
 
 function buildSlotTile(def: SlotDef, item: ItemSpec | null, ctx: InventoryCtx): HTMLDivElement {

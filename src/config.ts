@@ -867,7 +867,10 @@ export const CONFIG = {
     // chance one appears (deeper in, a rest/card-draw fire). 1.0 = a fire every
     // floor (the old always-on threshold fire); 0 = fires only at safe rooms.
     // The harbor/post-boss fire is unaffected (always present). Tune on feel.
-    MINOR_FIRE_CHANCE: 0.5,
+    // Was 0.5 (a fire every OTHER floor — the audit + Josh: too frequent, a rest
+    // that common stops being a beat). 0.28 ≈ a found fire every ~3-4 floors, so
+    // reaching one is a small relief again, not routine.
+    MINOR_FIRE_CHANCE: 0.28,
     // DEFINING FIND = the floor's one STAGED reward — rolled with a rarity floor
     // and dropped on a focal `spot` marker (the dais), not sprayed. Only lands
     // if the floor offers an eligible focal marker, so authoring gates scarcity;
