@@ -242,12 +242,16 @@ export const desktopScheme: InputScheme = {
 
       if (isTap) {
         // NOT locked yet → this click's only job is to enter mouse-look.
-        // Request pointer lock UNCONDITIONALLY (never gate it on the tap
-        // arbiter — that's what broke re-focusing after Esc: an empty tap
-        // now "consumes" without a target, so the old !consumed branch
-        // skipped the lock request). A focusing click never attacks.
+        // Request pointer lock (never gate it on the tap arbiter — that's what
+        // broke re-focusing after Esc: an empty tap now "consumes" without a
+        // target, so the old !consumed branch skipped the lock request). A
+        // focusing click never attacks. But pointer lock IS mouse-look, so only
+        // on a DESKTOP-like device: a touch-synthesized ghost mouseup that slips
+        // past touchWasRecent() must never fire the cursor-lock request on a
+        // phone (it pops a browser pointer-lock banner mid-run — reported on
+        // relic pickup). isDesktopLike is false whenever the device has touch.
         if (!pointerLocked) {
-          canvas.requestPointerLock?.();
+          if (isDesktopLike()) canvas.requestPointerLock?.();
           cancelCharge();
           return;
         }

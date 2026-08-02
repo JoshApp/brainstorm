@@ -31,6 +31,12 @@ const BILL_W = 0.64;      // billboard width (m) — relics read bigger on the f
 const BILL_H = 0.64;      // billboard height (m)
 const SEG = 20;           // horizontal subdivisions — enough for a smooth curve
 const CURVE_DEPTH = 0.14; // how far the edges bow back toward the object (m)
+// Look-angle TILT: the board pitches back a FRACTION of the camera's elevation
+// so a relic on the floor, viewed from a standing/looking-down angle, shows its
+// FACE instead of a thin top edge — but never fully flattens, so it still reads
+// as planted upright. 0 = pure upright billboard; 1 = full lay-flat-to-camera.
+const TILT_FACTOR = 0.7;
+const MAX_TILT = 1.05;    // clamp (~60°) so it tilts to greet you, never lies down
 
 // ── Texture cache ────────────────────────────────────────────────────────────
 // Each relic gets TWO textures from its one sprite: the albedo (the art) and a
@@ -161,14 +167,28 @@ export function buildRelicBillboard(item: ItemSpec): BuiltModel {
   mesh.position.y = BILL_H / 2;
 
   const group = new THREE.Group();
+  // YXZ so the YAW (Y) is applied first and the PITCH (X) then tilts about the
+  // board's own horizontal axis — a "face the camera, then lean back" billboard,
+  // not a world-axis tilt that would skew as it turns.
+  group.rotation.order = 'YXZ';
   group.add(mesh);
 
-  // Y-BILLBOARD: onBeforeRender hands us the live camera every frame — yaw the
-  // group so the sprite faces the player but stays upright (no pitch/roll). The
-  // parent (pickupGroup) is unrotated, so local yaw == world yaw.
+  // Y-BILLBOARD + LOOK-ANGLE TILT: onBeforeRender hands us the live camera every
+  // frame. Yaw to face the player; then pitch back a fraction of the camera's
+  // elevation so a floor relic greets a looking-down view with its face, not its
+  // edge. The parent (pickupGroup) is unrotated, so local yaw == world yaw.
   mesh.onBeforeRender = (_r, _s, camera) => {
     group.getWorldPosition(_wp);
-    group.rotation.set(0, Math.atan2(camera.position.x - _wp.x, camera.position.z - _wp.z), 0);
+    const dx = camera.position.x - _wp.x;
+    const dy = camera.position.y - _wp.y;
+    const dz = camera.position.z - _wp.z;
+    const yaw = Math.atan2(dx, dz);
+    const dh = Math.hypot(dx, dz) || 1e-4;
+    // Camera elevation above the board; tilt the face UP toward it (negative
+    // pitch in this frame), scaled + clamped so it leans, never lies flat.
+    const elev = Math.atan2(dy, dh);
+    const pitch = Math.max(-MAX_TILT, Math.min(MAX_TILT, -elev * TILT_FACTOR));
+    group.rotation.set(pitch, yaw, 0);
   };
 
   return {

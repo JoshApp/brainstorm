@@ -21,7 +21,6 @@ import { getItemThumbnail, itemImageUrl } from './item-thumbnail';
 import { itemFraming } from './item-framing';
 import { getReliquary } from '../player/reliquary';
 import { flashDomainGlow } from './vignette';
-import { broadcastPop } from './broadcast-pop';
 import { RARITY_COLORS } from '../content/items';
 import { hexCss } from '../style/color-utils';
 import { projectToScreen, flyToHud } from './fly-to-hud';
@@ -146,30 +145,10 @@ function playDomainDeepening(item: ItemSpec): void {
   const count = afflictionCount(item);
   // Strength climbs with the count but saturates — a floor, then escalation.
   const strength = Math.min(1, 0.55 + (count - 1) * 0.15);
+  // ONLY the diegetic screen flood — the domain's colour washes in as the relic
+  // marks you. NO top-right pop: that channel (the voice in the deep) is reserved
+  // for achievements + genuinely new beats, not routine mid-run pickups. The
+  // relic's own provenance still reads through the centred inscription channel
+  // (pickup-notification), which is the in-world register a pickup should use.
   flashDomainGlow(f.color, strength);
-
-  const { title, header } = deepeningLine(f.label, count);
-  broadcastPop(title, f.label.toUpperCase(), header);
-}
-
-// The voice in the deep — cruel, amused, present-tense. `domain` is the label
-// ("Blood", "Rot", "Cursed"). Escalates: root → hold → saturation.
-function deepeningLine(domain: string, count: number): { title: string; header: string } {
-  const d = domain.toLowerCase();
-  if (count <= 1) {
-    return {
-      title: `The ${d} takes root in you. It will ask for more.`,
-      header: 'an affliction begins',
-    };
-  }
-  if (count <= 3) {
-    return {
-      title: `Your ${d} deepens. The deep can smell it on you now.`,
-      header: 'the affliction deepens',
-    };
-  }
-  return {
-    title: `You are more ${d} than delver. It is delighted.`,
-    header: 'the affliction takes hold',
-  };
 }

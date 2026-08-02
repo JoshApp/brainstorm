@@ -7,7 +7,7 @@ import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
 import { addCharges } from '../player/flask';
 import { playHealSlurp } from '../audio/sfx';
-import { showNote } from '../ui/note-card';
+import { showInscription } from '../ui/inscription';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
 import { getMutationIds } from '../state/run-mutations';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
@@ -185,7 +185,7 @@ export function spawnFountain(
         // not a heal. (Was a green partial-heal; the flask is your real mend.)
         const added = addCharges(1);
         playHealSlurp();
-        showNote(added > 0
+        showInscription(added > 0
           ? 'The gold water fills your flask. One more mercy for the dark.'
           : 'The gold water beads on a full flask, and is gone.');
         return {};
@@ -197,7 +197,7 @@ export function spawnFountain(
       healPlayer(Math.ceil(getPlayerMaxHp() / 2), 'passive');   // environmental heal — a TRANSFORM may suppress it
       const healed = getPlayerMaxHp() - before;
       playHealSlurp();
-      showNote(
+      showInscription(
         healed > 0
           ? (variant === 'rest'
               ? 'The water is clean. Something in you settles.'
