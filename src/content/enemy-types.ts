@@ -334,27 +334,28 @@ export interface EnemySpec {
   };
 
   /**
-   * SUMMON GATE (boss add-phase). When the enemy's HP first falls to or below
-   * `atHpFrac` of its max, it SPLITS OFF a brood: `count` bodies of `enemyId`
-   * scatter out around it. During the split itself the boss is briefly
-   * untouchable — a short invuln window (`invulnTime`) covering the spit
-   * animation, exactly like a phase transition — and a blow in that window
-   * clangs off. The instant the window closes the boss is vulnerable again,
-   * EVEN while its brood still lives; the adds are extra threats, not a damage
-   * lock. Because the adds join the boss encounter, the FIGHT still only ends
-   * when the boss AND all its summoned adds are down.
+   * SUMMON GATE (boss add-phase). As the boss is worn down it SPITS its brood
+   * ONE AT A TIME — a body of `enemyId` at each of `count` evenly-spaced HP
+   * thresholds from `atHpFrac` on down (count=3, atHpFrac=0.75 → spawns at 75%,
+   * 50%, 25%). Each spit briefly makes the boss untouchable (`invulnTime`, a
+   * phase-transition-style clang window covering the split); the instant it
+   * closes the boss is open again, EVEN while its brood lives — the adds are
+   * mounting pressure, not a damage lock. Because the adds join the boss
+   * encounter, the FIGHT still only ends when the boss AND every add are down.
    *
-   * One gate per boss for now (fires once). The add spec should be a normal
-   * killable body (it needn't be a boss, but flagging it isBoss gives it a bar).
+   * The add spec should be a normal killable body (it needn't be a boss, but
+   * flagging it isBoss gives it a bar).
    */
   summonGate?: {
-    /** Fire when hp / maxHp drops to/below this fraction (e.g. 0.75 = 25% lost). */
+    /** The FIRST (highest) spawn threshold as a fraction of max HP; the rest step
+     *  down evenly to 0 (e.g. 0.75 with count 3 → 0.75, 0.5, 0.25). */
     atHpFrac: number;
     enemyId: string;
+    /** Total adds spawned over the fight — one per HP threshold. */
     count: number;
-    /** Radial scatter distance for the summoned bodies. Default 1.6m. */
+    /** Radial scatter distance for a summoned body. Default 1.6m. */
     radius?: number;
-    /** Seconds the boss is untouchable while it spits the brood. Default 0.9s. */
+    /** Seconds the boss is untouchable while it spits ONE add. Default 0.9s. */
     invulnTime?: number;
   };
 

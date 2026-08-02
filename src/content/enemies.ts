@@ -1560,13 +1560,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     xp: 60,                          // significant haul — earns the depth
-    // SUMMON GATE — at 25% HP lost the king SPLITS, spitting three boiling-
-    // princes. It's only untouchable for the brief spit itself (a phase-
-    // transition-style invuln window); the instant the split lands it's
-    // vulnerable again, even with the princes still up. The fight ends when the
-    // king AND all three princes are dead (they join the boss encounter).
-    // Replaces the old death-split so the adds arrive MID-FIGHT.
-    summonGate: { atHpFrac: 0.75, enemyId: 'boiling-prince', count: 3, radius: 1.9, invulnTime: 0.9 },
+    // SUMMON GATE — the king spits a boiling-prince ONE AT A TIME as you wear him
+    // down: at 75%, 50%, and 25% HP. Each spit is a brief untouchable clang
+    // window; the instant it closes he's open again, even with princes up. The
+    // fight ends when the king AND every prince is dead. Adds mount gradually
+    // rather than all three landing at once.
+    summonGate: { atHpFrac: 0.75, enemyId: 'boiling-prince', count: 3, radius: 1.9, invulnTime: 0.8 },
   },
 
   // Boiling Prince — the children of the king. Smaller, faster, no

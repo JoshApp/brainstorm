@@ -37,12 +37,20 @@ const SOUL_COUNT = 14;    // acid-green wisps that pour into the pit
 const SOUL_RING = 2.4;    // radius the souls start out at (m)
 const SOUL_COLOR = 0x9cff3a;   // the king's core-green — his essence
 
+// A boss bonfire is a GRANDER fire than the found rest-fires — bigger stack,
+// bigger pool — so it reads as the major, run-defining rest it is (it's the one
+// that deals the major arcana now; the safe-room fire stepped down to a minor).
+const BOSS_FIRE_SCALE = 1.5;
+
 /** Spawn the emerging boss bonfire at `pos` (ground height). Owns its own rise
- *  animation + soul VFX, then becomes a shared fate rest-fire. `depth` is
- *  reserved for future depth-scaled presence; unused today. */
-export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _depth: number): void {
+ *  animation + soul VFX, then becomes a shared fate rest-fire. `fromPos` (the
+ *  boss's death spot, when given) is where the death-energy STREAM originates —
+ *  the souls flow from there into the rising fire, guiding the eye from the fallen
+ *  boss to the reward. `depth` reserved for future depth-scaled presence. */
+export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _depth: number, fromPos?: THREE.Vector3): void {
   const built = buildModel(BONFIRE);
   const group = built.group;
+  group.scale.setScalar(BOSS_FIRE_SCALE);
   group.position.set(pos.x, pos.y - RISE_DIST, pos.z);   // start buried
   scene.add(group);
 
@@ -57,13 +65,13 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
     category: 'environment',
     position: new THREE.Vector3(pos.x, pos.y + 0.55, pos.z),
     color: 0xffb066,
-    intensity: 30,
-    distance: 6.5,
-    decay: 2.2,
+    intensity: 40,
+    distance: 8.0,
+    decay: 2.0,
     getIntensity: () => {
       const t = performance.now() / 1000;
       const flicker = 1 + 0.10 * (0.6 * Math.sin(t * 5.1 + p1) + 0.4 * Math.sin(t * 8.7 + p2));
-      return 30 * riseFactor * spentFactor * flicker;
+      return 40 * riseFactor * spentFactor * flicker;
     },
   });
 
@@ -82,18 +90,29 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
     depthWrite: false,
     fog: false,
   });
-  interface Soul { spr: THREE.Sprite; a0: number; r0: number; y0: number; spin: number; }
+  // Where the souls START (soulRoot-local). With a death spot, they gather at the
+  // fallen boss and STREAM to the fire; without one, they rise from a ring around
+  // the pit. `+ index jitter` so the stream reads as a shoal, not a single point.
+  const streamFrom = fromPos ? new THREE.Vector3(fromPos.x - pos.x, 1.1, fromPos.z - pos.z) : null;
+  interface Soul { spr: THREE.Sprite; ox: number; oy: number; oz: number; a0: number; spin: number; }
   const souls: Soul[] = [];
   for (let i = 0; i < SOUL_COUNT; i++) {
     const spr = new THREE.Sprite(soulMat.clone());
     const s = 0.28 + (i % 3) * 0.06;
     spr.scale.set(s, s, s);
     const a0 = (i / SOUL_COUNT) * Math.PI * 2;
-    const r0 = SOUL_RING * (0.8 + (i % 4) * 0.08);
-    const y0 = 1.2 + (i % 5) * 0.18;
-    spr.position.set(Math.cos(a0) * r0, y0, Math.sin(a0) * r0);
+    let ox: number, oy: number, oz: number;
+    if (streamFrom) {
+      ox = streamFrom.x + Math.cos(a0) * 0.5;
+      oy = streamFrom.y + (i % 5) * 0.14;
+      oz = streamFrom.z + Math.sin(a0) * 0.5;
+    } else {
+      const r0 = SOUL_RING * (0.8 + (i % 4) * 0.08);
+      ox = Math.cos(a0) * r0; oy = 1.2 + (i % 5) * 0.18; oz = Math.sin(a0) * r0;
+    }
+    spr.position.set(ox, oy, oz);
     soulRoot.add(spr);
-    souls.push({ spr, a0, r0, y0, spin: 1.4 + (i % 3) * 0.5 });
+    souls.push({ spr, ox, oy, oz, a0, spin: 1.4 + (i % 3) * 0.5 });
   }
 
   // The break-surface beat — the floor HEAVES up as the fire punches through:
@@ -139,15 +158,18 @@ export function spawnBossBonfire(scene: THREE.Object3D, pos: THREE.Vector3, _dep
         shakePulse = 0.34;
       }
 
-      // Souls spiral IN + DOWN into the pit, brightening then guttering out as
-      // they arrive. Their whole life is the rise window.
+      // Souls STREAM from their origin (the boss's death spot, or a ring) into the
+      // pit, curling as they go and guttering out as they arrive. Their whole life
+      // is the rise window.
       const soulOpacity = Math.sin(Math.min(1, t * 1.15) * Math.PI);   // 0→1→0 over the rise
       for (const s of souls) {
         const k = 1 - ease;                              // 1 at start → 0 settled
-        const ang = s.a0 + t * s.spin * Math.PI;         // wind inward
-        const r = s.r0 * k;                              // collapse to centre
-        const y = 0.15 + (s.y0 - 0.15) * k;              // sink toward the pit mouth
-        s.spr.position.set(Math.cos(ang) * r, y, Math.sin(ang) * r);
+        const swirl = s.a0 + t * s.spin * Math.PI;       // curl the path so it isn't a straight line
+        const curl = 0.35 * k;                           // sideways wobble, fading as it nears the fire
+        const x = s.ox * k + Math.cos(swirl) * curl;
+        const z = s.oz * k + Math.sin(swirl) * curl;
+        const y = 0.15 + (s.oy - 0.15) * k;              // sink toward the pit mouth
+        s.spr.position.set(x, y, z);
         (s.spr.material as THREE.SpriteMaterial).opacity = soulOpacity;
       }
 

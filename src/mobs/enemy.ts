@@ -543,7 +543,7 @@ export function createEnemy(
   // alive. See the summonGate doc in enemy-types.ts.
   const summonGate = spec.summonGate ?? null;
   const onSummon = options?.onSummon;
-  let summonFired = false;
+  let summonsFired = 0;   // adds spat so far — one per HP threshold
   let summonInvulnTimer = 0;
   // Per-phase partBreaks: tracks which thresholds have fired so we
   // don't re-hide parts every tick. Reset on phase entry.
@@ -636,21 +636,25 @@ export function createEnemy(
     phaseTimer = 0;
   }
 
-  // ── SUMMON GATE — the boss splits, briefly untouchable ─────────────────────
-  // Fired once from takeDamage when HP first crosses summonGate.atHpFrac: spit
-  // the brood and raise a SHORT invuln window (summonInvulnTimer) covering the
-  // spit — a hit in that window clangs off. update() ticks the window down; the
-  // instant it hits 0 the boss is open again, brood alive or not.
+  // ── SUMMON GATE — the boss spits ONE add per HP threshold, briefly untouchable ──
+  // Thresholds step down evenly from atHpFrac (count=3, atHpFrac=0.75 → 0.75, 0.5,
+  // 0.25). The Nth-add threshold: atHpFrac * (count - summonsFired) / count. Each
+  // spit raises a SHORT invuln window (a clang window); update() ticks it down and
+  // the boss is open again the instant it closes, brood alive or not.
+  function nextSummonThreshold(): number {
+    if (!summonGate) return -1;
+    return summonGate.atHpFrac * (summonGate.count - summonsFired) / summonGate.count;
+  }
   function fireSummonGate(): void {
-    if (!summonGate || summonFired) return;
-    summonFired = true;
+    if (!summonGate || summonsFired >= summonGate.count) return;
     const spawned = onSummon ? onSummon(summonGate, container.position.clone()) : [];
     if (spawned.length === 0) return;   // nothing spawned — no split beat, stay vulnerable
+    summonsFired++;
     summonInvulnTimer = summonGate.invulnTime ?? 0.9;
     coreReactor.hit();                                   // a bright flare as it splits
     playEnemyWindup('medium', container.position);       // a summoning roar
     playSurfaceHit('metal', container.position);         // the split rings out
-    kickShake(0.30, 0.5);
+    kickShake(0.26, 0.45);
   }
   // Split-window hit feedback: the blow glances off mid-spit. A metallic clang +
   // a whisper of shake, but NO core flare / wound-cry (those read as "I hurt it").
@@ -1075,10 +1079,12 @@ export function createEnemy(
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
-    // Fire the summon gate the first time this hit drops HP to/below the
-    // threshold (but not on the killing blow — the threshold is well above 0).
-    if (summonGate && !summonFired && entity.hp.current > 0
-        && entity.hp.current <= currentMaxHp * summonGate.atHpFrac) {
+    // Fire the NEXT summon threshold whenever this hit crosses it (one add per
+    // threshold, spat one at a time as the boss is worn down). `while` so a big
+    // hit that vaults two thresholds still owes both adds; never on a killing blow
+    // (the lowest threshold is well above 0).
+    while (summonGate && summonsFired < summonGate.count && entity.hp.current > 0
+        && entity.hp.current <= currentMaxHp * nextSummonThreshold()) {
       fireSummonGate();
     }
     // DEV training arena: floor HP at 1 so the sparring partner never dies —

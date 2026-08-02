@@ -19,7 +19,6 @@ import type { Transform } from '../combat/transforms';
 import { grantCard, getHeldCards } from '../state/run-state';
 import { BUFFS } from '../content/buffs';
 import { flashDomainGlow } from './vignette';
-import { broadcastPop } from './broadcast-pop';
 import { showInscription } from './inscription';
 import { domainVisual } from './domain-icons';
 
@@ -210,7 +209,9 @@ export function openCardReading(
     // over the GAME view (behind the modal it'd be invisible) — the fate's domain
     // pouring into you as you return to the dark.
     setTimeout(() => { try { flashDomainGlow(accent, 1); } catch { /* presentation */ } }, 760);
-    try { broadcastPop(claimLine(card.name), card.name.toUpperCase(), 'the fate is taken'); } catch { /* never break the claim */ }
+    // NO top-right pop (that channel is reserved for achievements + genuine
+    // firsts) — taking a fate is diegetic: the domain flood + the reading-channel
+    // inscription carry it, not an out-of-run notification.
     // READ the fate as it enters you — the card's identity line rises through the
     // reading channel (the same inscription trinkets/relics use), fired as the
     // modal dissolves so it lands on the game view, not behind the card.

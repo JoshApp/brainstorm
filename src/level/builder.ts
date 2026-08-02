@@ -1390,8 +1390,13 @@ export function buildLevel(
         registerFateFire({
           group: built.group,
           position: new THREE.Vector3(prop.x, gy, prop.z),
-          // the harbor's big fire gates descent; small vault fires don't
-          isBig: /safe|harbor|foyer/i.test(spec.id ?? '') || (prop.scale ?? 1) >= 1.3,
+          // The MAJOR fate (+ descent gate) now belongs to the BOSS bonfire that
+          // erupts on the kill — so a post-boss SAFE ROOM / harbor fire steps down
+          // to a MINOR rest-fire (still heals + refills, deals a minor arcana, no
+          // gate). The foyer's opening fire and any deliberately-scaled big fire
+          // keep the major.
+          isBig: !/safe|harbor/i.test(spec.id ?? '')
+            && (/foyer/i.test(spec.id ?? '') || (prop.scale ?? 1) >= 1.3),
           dimLight: (f) => { bonfireDim = f; },
         });
       }
@@ -2210,17 +2215,15 @@ export function buildLevel(
     return (gate: NonNullable<EnemySpec['summonGate']>, atPos: THREE.Vector3): Enemy[] => {
       const childBase = ENEMIES[gate.enemyId];
       if (!childBase) return [];
+      // ONE add per call — the boss spits them one at a time across HP thresholds
+      // (enemy.ts drives the cadence). Fling it out in a random direction.
       const r = gate.radius ?? 1.6;
-      const out: Enemy[] = [];
-      for (let i = 0; i < gate.count; i++) {
-        const angle = (i / gate.count) * Math.PI * 2 + gameRng() * 0.4;
-        const cos = Math.cos(angle), sin = Math.sin(angle);
-        const child = spawnInto(childBase, new THREE.Vector3(atPos.x + cos * r, 0, atPos.z + sin * r), roomId);
-        child.applyKnockback(cos, sin, 5.0);   // flung out of the parent as it wards up
-        out.push(child);
-      }
-      kickShake(0.3, 0.45);
-      return out;
+      const angle = gameRng() * Math.PI * 2;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const child = spawnInto(childBase, new THREE.Vector3(atPos.x + cos * r, 0, atPos.z + sin * r), roomId);
+      child.applyKnockback(cos, sin, 5.0);   // flung out of the parent as it splits
+      kickShake(0.24, 0.4);
+      return [child];
     };
   }
 
@@ -2230,6 +2233,7 @@ export function buildLevel(
   // its final death position.
   let bossRewardSpec: EnemySpec | null = null;
   let bossDeathPos: THREE.Vector3 | null = null;
+  let bossRoomId: string | null = null;
 
   // Fired right after an enemy dies in enemy.ts:takeDamage. Handles
   // splitsInto — spawns N children scattered in a small ring around
@@ -2309,25 +2313,29 @@ export function buildLevel(
     // — without this they're never a `liveBossMember`, so the boss bar never
     // engages and a dormant boss stays asleep forever. (The split helper
     // registers spawned children; this is the missing initial-spawn case.)
-    if (enemy.isBoss) { registerBossMember(enemy); bossRewardSpec = enemySpec; }
+    if (enemy.isBoss) { registerBossMember(enemy); bossRewardSpec = enemySpec; bossRoomId = roomId; }
   }
 
   // When the whole boss encounter ends (king + every summoned prince dead), the
   // held-back hoard erupts and a bonfire RISES from the arena floor — the boss's
-  // essence poured into a rest-fire the delver earns. Both anchor at the king's
-  // final spot. Registered once per floor, only when a boss actually spawned.
+  // essence poured into a rest-fire the delver earns. Registered once per floor,
+  // only when a boss actually spawned.
   if (bossRewardSpec) {
     const rewardSpec = bossRewardSpec;
     onBossEncounterComplete(() => {
-      const fell = (bossDeathPos ?? new THREE.Vector3(spec.startPos.x, 0, spec.startPos.z));
-      // The king can die anywhere it roamed — snap the fire onto a reachable
-      // cell so the REST prompt (and the gated descent) is never marooned on a
-      // hazard void or inside a pillar.
-      const safe = walkable.resolveSpawn(fell.x, fell.z, 0.5);
+      // The fire rises at the ARENA CENTRE (the boss's room), not wherever the
+      // boss happened to die — a central, always-reachable spot so the reward is
+      // never marooned in a corner or a hazard void. The boss's DEATH SPOT is the
+      // stream origin: its green death-energy flows from where it fell into the
+      // rising fire, guiding the eye there.
+      const bossRoom = bossRoomId ? spec.rooms.find((r) => r.id === bossRoomId) : undefined;
+      const centre = bossRoom ? { x: bossRoom.rect.x, z: bossRoom.rect.z } : { x: spec.startPos.x, z: spec.startPos.z };
+      const safe = walkable.resolveSpawn(centre.x, centre.z, 0.5);
       const at = new THREE.Vector3(safe.x, groundYAt(safe.x, safe.z), safe.z);
-      // The bonfire emerges here (rumble + the king's souls coalescing into it),
-      // then becomes a REST fire that heals + deals a major arcana.
-      spawnBossBonfire(root, at.clone(), levelDepth);
+      const fell = bossDeathPos ? bossDeathPos.clone() : at.clone();
+      // The bonfire emerges here (rumble + the boss's souls streaming in from
+      // where it fell), then becomes a REST fire that heals + deals a major arcana.
+      spawnBossBonfire(root, at.clone(), levelDepth, fell);
       // The deferred hoard — the boss's whole 'boss' drop table, erupting around
       // the new fire on their own arcs (gold flies to the counter).
       const bundle = rollDropTable(rewardSpec.dropTable ?? 'boss', levelDepth, gameRng);
