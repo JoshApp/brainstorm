@@ -72,6 +72,33 @@ export function setSidearm(item: ItemSpec | null, affixes: AffixInstance[] = [])
   notify();
 }
 
+/** Swap a NEW weapon into the sheathed slot, returning whatever was there
+ *  (+ its affixes) so the caller can drop it back into the world. The drawn
+ *  weapon is untouched. Used by the ground-equip swap-or-leave flow. */
+export function replaceSidearmReturning(
+  item: ItemSpec, affixes: AffixInstance[] = [],
+): { item: ItemSpec | null; affixes: AffixInstance[] } {
+  const prev = { item: sidearm, affixes: sidearmAffixes };
+  sidearm = item;
+  sidearmAffixes = item ? affixes : [];
+  notify();
+  return prev;
+}
+
+/** Swap a NEW item into a slot, returning the displaced occupant (+ affixes).
+ *  Same contract as replaceSidearmReturning but for the `slots`-backed slots
+ *  (drawn weapon, offhand, both vestments). The ground-equip compare uses this
+ *  to eject the chosen piece onto the floor. */
+export function replaceSlotReturning(
+  slot: EquipSlot, item: ItemSpec, affixes: AffixInstance[] = [],
+): { item: ItemSpec | null; affixes: AffixInstance[] } {
+  const prev = { item: slots[slot], affixes: slotAffixes[slot] };
+  slots[slot] = item;
+  slotAffixes[slot] = affixes;
+  notify();
+  return prev;
+}
+
 /** Draw the sheathed weapon — exchange it with the wielded one (+ its affixes).
  *  The drawn weapon is always `slots.weapon`, so combat + the viewmodel listener
  *  pick up the change for free. Returns true if a swap happened (needs at least

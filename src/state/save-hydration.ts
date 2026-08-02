@@ -27,6 +27,11 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
       // armor/rings). Skip anything the registry no longer knows — a ghost
       // entry would render as a nameless, unusable row.
       if (!ITEMS[id]) continue;
+      // Gear no longer lives in the bag (it equips from the world) — a legacy
+      // save that stashed a spare weapon/vestment there drops it on restore;
+      // the equipped slots below carry the loadout that matters.
+      const k = ITEMS[id].kind;
+      if (k === 'weapon' || k === 'offhand' || k === 'vestment') continue;
       for (let i = 0; i < count; i++) addItemSilently(id);
     }
   }

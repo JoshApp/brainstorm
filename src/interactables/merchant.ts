@@ -113,7 +113,7 @@ export function spawnMerchant(
     promptLabel: 'TRADE',
     labelOffsetY: 1.6,
     onUse() {
-      openShopScreen(stock);
+      openShopScreen(stock, { gearDrop: { scene: parent, pos } });
     },
     built,
   });

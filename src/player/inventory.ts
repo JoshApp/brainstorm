@@ -38,6 +38,13 @@ export function isAtCarryLimit(itemId: string): boolean {
  *  instead of the plain base name. Returns false (and adds nothing) when
  *  the item is at its carry cap — callers leave the world pickup in place. */
 export function addItem(itemId: string, displayName?: string): boolean {
+  // The bag holds consumables, keys, and quest oddments — never gear. Weapons,
+  // offhands and vestments equip straight from the world (player/ground-equip.ts)
+  // and never sit in a bag to be juggled. This is the hard backstop: if a stray
+  // caller tries to bag a piece of gear, refuse it here rather than let a phantom
+  // weapon accumulate somewhere the player can't wear it.
+  const kind = ITEMS[itemId]?.kind;
+  if (kind === 'weapon' || kind === 'offhand' || kind === 'vestment') return false;
   if (isAtCarryLimit(itemId)) return false;
   counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
   emit({ type: 'item:picked-up', itemId, displayName });

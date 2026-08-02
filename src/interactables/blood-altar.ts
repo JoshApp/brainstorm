@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { spawnEvent } from './event-factory';
-import { tryAutoEquip } from '../player/equipment';
-import { addItem, removeItem } from '../player/inventory';
-import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
+import { groundEquip } from '../player/ground-equip';
+import { dropGearPickup } from './pickup';
+import { rollItemInstance } from '../player/item-instance';
 import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
@@ -116,9 +116,16 @@ export function spawnBloodAltar(
       // next), then grant + auto-equip.
       const burstY = pos.y + baseH + topH + 0.30;
       spawnBloodBurst(scene, pos.x, burstY, pos.z);
+      // The cursed gift equips straight from the altar (no bag): an empty slot
+      // takes it; full slots open the swap-or-leave compare and the piece you
+      // shed drops onto the altar's stone. A relic collects into the reliquary.
       const inst = rollItemInstance(cursedItem);
-      addItem(cursedItem.id, instanceDisplayName(inst));
-      if (tryAutoEquip(cursedItem, inst.affixes)) removeItem(cursedItem.id);   // moved to a slot — drop the bag copy
+      groundEquip({
+        item: cursedItem,
+        affixes: inst.affixes,
+        onEquipped: () => {},
+        dropDisplaced: (dItem, dAff) => dropGearPickup(scene, pos, dItem, dAff),
+      });
       playEquipClick();
       return { itemIds: [cursedItem.id], hpDelta: -BLOOD_PRICE_HP };
     },

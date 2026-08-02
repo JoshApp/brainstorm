@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import {
   setSlot, getEquipped, setSidearm, getSidearm, swapWeapons, tryAutoEquip,
+  replaceSlotReturning, replaceSidearmReturning,
 } from '../src/player/equipment';
 import { ITEMS } from '../src/content/items';
 
@@ -60,6 +61,29 @@ test('swap with only one weapon still works (draws from empty hand)', () => {
 test('swap is a no-op when carrying no weapon at all', () => {
   reset();
   assert.equal(swapWeapons(), false);
+});
+
+// ── Ground-equip swap-or-leave primitives (#97) ──────────────────────
+// The compare screen ejects the chosen occupant by calling these: install the
+// new piece, hand back the one it displaced so the caller can drop it on the
+// floor.
+
+test('replaceSlotReturning installs the new weapon and returns the displaced one', () => {
+  reset();
+  setSlot('weapon', ITEMS[A]);
+  const prev = replaceSlotReturning('weapon', ITEMS[B]);
+  assert.equal(getEquipped('weapon')?.id, B, 'new weapon is drawn');
+  assert.equal(prev.item?.id, A, 'old weapon handed back to be dropped');
+});
+
+test('replaceSidearmReturning swaps the sheathed slot, drawn hand untouched', () => {
+  reset();
+  setSlot('weapon', ITEMS[A]);
+  setSidearm(ITEMS[B]);
+  const prev = replaceSidearmReturning(ITEMS[C]);
+  assert.equal(getSidearm()?.id, C, 'new weapon sheathed');
+  assert.equal(prev.item?.id, B, 'old sidearm handed back');
+  assert.equal(getEquipped('weapon')?.id, A, 'drawn weapon never moved');
 });
 
 reset();

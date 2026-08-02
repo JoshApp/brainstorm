@@ -153,6 +153,9 @@ export interface Scenario {
   selectRelicId?: string;
   /** Open the character sheet (for UI snaps). */
   openCharacterScreen?: boolean;
+  /** Fill both weapon slots, then open the ground-equip SWAP-OR-LEAVE compare
+   *  with a third found weapon (for snapping the equip-compare screen). */
+  equipCompare?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
   /** RAW PointLights added straight to the scene, BYPASSING the light pool —
@@ -1526,6 +1529,18 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // The ground-equip SWAP-OR-LEAVE compare (#97): two weapons carried, a third
+  // found → the sheet opens to choose which to shed. `delve snap equip-compare`.
+  'equip-compare': {
+    freeze: true,
+    equipCompare: true,
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // The RELIQUARY tab populated across domains, with duplicate stacks —
   // the oddities-collection snap. Relics route to the reliquary through
   // the same tryAutoEquip path real pickups use.
@@ -2463,6 +2478,18 @@ export function applyScenario(
   }
   if (scenario.openCharacterScreen) {
     openCharacterScreen();
+  }
+
+  if (scenario.equipCompare) {
+    // Pose the swap-or-leave compare: two weapons already carried, a third
+    // found → the sheet opens choosing which to shed. DEV snap only.
+    void Promise.all([import('../player/ground-equip'), import('../content/items')])
+      .then(([{ groundEquip }, { ITEMS }]) => {
+        const weps = Object.values(ITEMS).filter((i) => i.kind === 'weapon');
+        setSlot('weapon', weps[0]);
+        setSidearm(weps[1]);
+        groundEquip({ item: weps[2], affixes: [], onEquipped: () => {}, dropDisplaced: () => {} });
+      });
   }
 
   // ── Item viewer ───────────────────────────────────────────────────

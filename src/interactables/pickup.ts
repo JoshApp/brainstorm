@@ -7,10 +7,11 @@ import { hasRelicArt } from '../content/relic-art-assets';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { INTERACT_PRIORITY } from './types';
-import { addItem, removeItem, isAtCarryLimit } from '../player/inventory';
+import { addItem, isAtCarryLimit } from '../player/inventory';
 import { showInWorldMessage } from '../ui/pickup-notification';
-import { tryAutoEquip } from '../player/equipment';
-import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
+import { groundEquip } from '../player/ground-equip';
+import { rollItemInstance } from '../player/item-instance';
+import type { AffixInstance } from '../content/affixes';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime, playDenied, playFlaskUncork } from '../audio/sfx';
@@ -20,6 +21,7 @@ import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/active-level';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { registerWarmup } from '../content/warmup-registry';
+import { gameRng } from '../engine/rng';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -96,6 +98,10 @@ export function createPickup(
   pos: THREE.Vector3,
   item: ItemSpec,
   launch?: PickupLaunch,
+  // Gear ejected by a swap keeps its identity: instead of re-rolling affixes
+  // when re-taken, this dropped pickup carries the SAME rolled affixes it had on
+  // the body. Undefined (a fresh floor drop) rolls at take-time as before.
+  presetAffixes?: AffixInstance[],
 ) {
   const rarityColor = RARITY_COLORS[item.rarity ?? 'mundane'];
 
@@ -310,36 +316,43 @@ export function createPickup(
         playDenied();
         return;
       }
+      const rarityIdx = RARITY_INDEX[item.rarity ?? 'mundane'];
+
+      // GEAR (weapon / offhand / vestment / relic) — no bag. It goes straight
+      // onto the body via the ground-equip path: an empty slot takes it
+      // instantly; full slots open a swap-or-leave compare; a relic collects.
+      // The pickup feel fires only when it actually LANDS (onEquipped) — a
+      // LEAVE leaves the stone quiet and the item where it lay.
+      if (item.kind !== 'consumable' && item.kind !== 'key') {
+        // Ejected gear keeps its rolled affixes; a fresh floor drop rolls now.
+        const affixes = presetAffixes ?? rollItemInstance(item).affixes;
+        groundEquip({
+          item,
+          affixes,
+          onEquipped: () => {
+            playPickupChime(rarityIdx);
+            pickupHaptic(rarityIdx);
+            flashPickupGlow(rarityIdx);
+            emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
+            interactable.destroyed = true;
+          },
+          dropDisplaced: (dItem, dAff) => dropGearPickup(scene, interactable.position, dItem, dAff),
+        });
+        return;
+      }
+
       // Pickup feel — a rarity ladder across three channels so a real find
       // lands as an EVENT without a celebratory UI pop (the dungeon doesn't
       // cheer). Audio: rarity-tinted toll + low resonant swell / held tone
       // on rare+. Haptic: a soft tick for mundane → a strong double-thunk
       // for fabled. Screen: a deep-amber edge bloom on uncommon+ only.
-      const rarityIdx = RARITY_INDEX[item.rarity ?? 'mundane'];
       playPickupChime(rarityIdx);
       pickupHaptic(rarityIdx);
       flashPickupGlow(rarityIdx);
       // Emit on the event bus so the run-state's "items found" set + any
       // future listeners (LLM narration of first-discovery, etc.) hear it.
       emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
-      // Inventory addition + auto-equip routing. The notification toast
-      // listens for the addItem event; equipment routing decides whether
-      // to keep the item in the bag.
-      if (item.kind !== 'consumable') {
-        // Roll affixes now and pass them through to the equipment
-        // sidecar. Decorated name (base + suffixes) feeds the pickup
-        // toast so the player sees "scimitar of the keening" if a
-        // suffix rolled. V1 limitation: if auto-equip fails (slot
-        // already filled), the affixes are discarded and the bagged
-        // item shows its plain name — proper bag-resident affix
-        // preservation lands with the full inventory rewrite.
-        const inst = rollItemInstance(item);
-        const displayName = instanceDisplayName(inst);
-        addItem(item.id, displayName);
-        if (tryAutoEquip(item, inst.affixes)) removeItem(item.id);
-      } else {
-        addItem(item.id);
-      }
+      addItem(item.id);
       interactable.destroyed = true;
     },
     tick(dt: number) {
@@ -441,6 +454,28 @@ export function createPickup(
     built: { ...built, group: pickupGroup },
   };
   registerInteractable(interactable);
+}
+
+// Eject a displaced piece of gear back onto the floor when a swap replaces it
+// (ground-equip's dropDisplaced). A gentle random toss so it arcs out a short
+// way instead of landing dead-centre on the pickup it just replaced — the same
+// physics a fountain pop uses. Its affixes ride along so re-taking it restores
+// the exact piece you set down.
+export function dropGearPickup(
+  scene: THREE.Object3D,
+  pos: THREE.Vector3,
+  item: ItemSpec,
+  affixes: readonly AffixInstance[],
+) {
+  const ang = gameRng() * Math.PI * 2;
+  const speed = 1.1 + gameRng() * 0.5;
+  createPickup(
+    scene,
+    pos.clone(),
+    item,
+    { velocity: new THREE.Vector3(Math.cos(ang) * speed, 2.4, Math.sin(ang) * speed), startHeight: 0.7 },
+    [...affixes],
+  );
 }
 
 // Warm the loot-litter pipelines at boot: the floor disc is a SHARED stdMat per
