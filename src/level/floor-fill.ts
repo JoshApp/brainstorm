@@ -160,10 +160,12 @@ export function fillDefiningFind(
     if (clear.length > 0) eligible = clear;
   }
 
-  // Prefer focal spots; fall back to ordinary ones (incl. the offset marker) only
-  // if the floor has no clear focal marker in a loot room.
-  const focal = eligible.filter((s) => s.focal);
-  const pool = focal.length > 0 ? focal : eligible;
+  // A reward chest is a SECONDARY read — the centre of a room is the event's, not
+  // the loot's (#69). So prefer the varied off-centre SECONDARY spots and pick one
+  // at random for run-to-run variety (#72); fall back to a focal cell only when a
+  // room offers no secondary (tiny rooms, event rooms with a single clear marker).
+  const secondary = eligible.filter((s) => !s.focal);
+  const pool = secondary.length > 0 ? secondary : eligible;
   const spot = pool.length === 1 ? pool[0] : pool[Math.floor(rand() * pool.length)];
 
   // The 'defining-find' pool (drop-tables.ts) owns the bias / rarity floor /

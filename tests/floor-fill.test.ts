@@ -61,13 +61,22 @@ test('the find lands in the loot room, not the finish room', () => {
   assert.equal(r!.roomId, 'branch-3');
 });
 
-test('FOCAL spots are preferred over ordinary ones', () => {
-  // ordinary spot in combat (eligible) + focal spot in branch (eligible).
+test('SECONDARY (off-centre) spots are preferred over focal ones for the reward', () => {
+  // The room centre (focal) is the EVENT's; a reward chest is a SECONDARY read
+  // (#69/#72), so the find prefers the non-focal spot. Secondary in vault-1,
+  // focal in branch-3 → the find takes the secondary every time.
   const spots = [spot('vault-1', false), spot('branch-3', true)];
   for (let seed = 0; seed < 30; seed++) {
     const r = fillDefiningFind(spots, roles, GRANT, 5, lcg(seed));
-    assert.equal(r!.roomId, 'branch-3', `seed ${seed} should pick the focal spot`);
+    assert.equal(r!.roomId, 'vault-1', `seed ${seed} should pick the secondary spot`);
   }
+});
+
+test('the find falls back to a focal spot when no secondary exists', () => {
+  // Only focal spots available → the reward still places (tiny/event rooms).
+  const r = fillDefiningFind([spot('branch-3', true)], roles, GRANT, 5, lcg(4));
+  assert.ok(r, 'expected a find');
+  assert.equal(r!.roomId, 'branch-3');
 });
 
 test('a combat room permits loot (role-gating is by CAPS, not name)', () => {

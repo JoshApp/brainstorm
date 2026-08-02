@@ -75,6 +75,7 @@ let eventOverlaps = 0;                      // event↔event closer than OVERLAP
 const nearestDists: number[] = [];          // per event-room: nearest loot distance
 const examples: string[] = [];
 const pairCounts = new Map<string, number>();   // "event↔loot" → cluster count
+const lootFromCentre: number[] = [];         // each loot's distance from its room centre (variety/off-centre proxy)
 
 for (let n = 0; n < FLOORS; n++) {
   const depth = 1 + (n % MAX_DEPTH);
@@ -97,6 +98,7 @@ for (let n = 0; n < FLOORS; n++) {
     const bucket = byRoom.get(room.id) ?? { events: [], loot: [] };
     (c.kind === 'event' ? bucket.events : bucket.loot).push({ x: xz.x, z: xz.z, label: c.label });
     byRoom.set(room.id, bucket);
+    if (c.kind === 'loot') lootFromCentre.push(Math.hypot(xz.x - room.rect.x, xz.z - room.rect.z));
   }
 
   for (const [roomId, { events, loot }] of byRoom) {
@@ -141,6 +143,11 @@ console.log(`Rooms with ≥2 events:             ${multiEventRooms}`);
 console.log(`  event↔event overlaps < ${OVERLAP_M}m:   ${eventOverlaps}`);
 console.log(`\nNearest event→loot distance (event-rooms holding loot):`);
 console.log(`  min ${q(0)}m · p25 ${q(0.25)}m · median ${q(0.5)}m · p75 ${q(0.75)}m · max ${q(1)}m`);
+lootFromCentre.sort((a, b) => a - b);
+const lq = (f: number) => lootFromCentre.length ? lootFromCentre[Math.floor(f * (lootFromCentre.length - 1))].toFixed(2) : 'n/a';
+const lmean = lootFromCentre.length ? (lootFromCentre.reduce((s, v) => s + v, 0) / lootFromCentre.length) : 0;
+console.log(`\nLoot distance from its room CENTRE (off-centre + spread = variety, #72):`);
+console.log(`  mean ${lmean.toFixed(2)}m · p10 ${lq(0.1)}m · median ${lq(0.5)}m · p90 ${lq(0.9)}m`);
 console.log(`\nCluster breakdown by pair (< ${CLUSTER_M}m) — altar↔corpse is the intentional altar-ritual:`);
 for (const [pk, c] of [...pairCounts.entries()].sort((a, b) => b[1] - a[1])) console.log(`  ${c.toString().padStart(3)}  ${pk}`);
 console.log(`\nExample clusters (event↔loot < ${CLUSTER_M}m):`);

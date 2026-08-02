@@ -1016,14 +1016,13 @@ export function composeFloor(
       // cells so it reads as a deliberate secondary position, not a wall-jam.
       let secondary: { col: number; row: number; x: number; z: number } | null = null;
       let secondaryScore = -Infinity;
-      // OFFSET marker: a deliberate SECONDARY position for loot in a room whose
-      // centre is a CENTREPIECE (the director's fire, an authored event) — a spot
-      // tucked AGAINST A WALL, as far from the room centre as the room allows and
-      // clear of authored events. Because the fire prefers the open centre, a
-      // wall-hugging offset maximises the separation the fill can't otherwise
-      // guarantee (markers are derived before the fire is chosen) (#69).
-      let offset: { col: number; row: number; x: number; z: number } | null = null;
-      let offsetScore = -Infinity;
+      // SECONDARY POOL: a set of candidate off-centre positions for LOOT — tucked
+      // toward the walls, clear of the room centre and of any authored event. We
+      // emit SEVERAL (dispersed) rather than one so the reward lands somewhere
+      // DIFFERENT each run instead of the same fixed cell — variety without losing
+      // the centrepiece/secondary discipline (#72). The room centre stays the
+      // event's; the pool is where a chest goes.
+      const secondaryPool: Array<{ col: number; row: number; x: number; z: number; score: number }> = [];
       for (const cell of enumerateOpenCells(region, isFloor, occ)) {
         const x = cell.col + 0.5 - W / 2 + pv.offsetX;
         const z = cell.row + 0.5 - D / 2 + pv.offsetZ;
@@ -1040,11 +1039,14 @@ export function composeFloor(
         const eventClear = Math.min(clearOfEvents(x, z), EVENT_CLEARANCE_M);
         const score = eventClear * 1000 - d;
         if (score > secondaryScore) { secondaryScore = score; secondary = { col: cell.col, row: cell.row, x, z }; }
-        // Offset: as far from the room centre as possible, hugging a wall, clear
-        // of events — the maximal separation from a central-ish fire.
+        // Pool candidate: off-centre (a secondary read) AND clear of events. Score
+        // rewards wall-hugging + distance from centre, so picks favour tucked-away
+        // spots — but we keep MANY and disperse below, for run-to-run variety.
         const distC = Math.hypot(x - pv.offsetX, z - pv.offsetZ);
-        const offScore = eventClear * 100 + distC * 30 + wallAdjacency(cell.col, cell.row, isFloor) * 40;
-        if (offScore > offsetScore) { offsetScore = offScore; offset = { col: cell.col, row: cell.row, x, z }; }
+        if (distC >= 1.6 && clearOfEvents(x, z) >= 2.5) {
+          const poolScore = distC * 30 + wallAdjacency(cell.col, cell.row, isFloor) * 40;
+          secondaryPool.push({ col: cell.col, row: cell.row, x, z, score: poolScore });
+        }
       }
       // AUTO-DERIVED MARKER (docs/FLOOR-DIRECTOR.md — geometry proposes, an
       // authored 'spot' overrides). A content-eligible room that declared no spot
@@ -1060,22 +1062,34 @@ export function composeFloor(
         occ.reserve(derived.col, derived.row, 'floor', 'feature');
         contentSpots.push({ x: derived.x, z: derived.z, roomId: pv.roomId, focal: true });
       }
-      // Secondary (non-focal) OFFSET spot — only for an event-less loot room (its
-      // centre is a would-be centrepiece for a fire, so loot needs a clear spot
-      // elsewhere) and only when it's meaningfully off the focal cell (≥1.6m). The
-      // fill prefers focal, so this is used only when the find/deal is steered off
-      // the fire (its avoid-clearance) and needs a place to land.
-      const offsetSpot = !hasAuthoredSpot && roomCaps.allowLoot && eventAnchors.length === 0
-        && offset && derived && Math.hypot(offset.x - derived.x, offset.z - derived.z) >= 1.6
-        ? offset : null;
-      if (offsetSpot) {
-        occ.reserve(offsetSpot.col, offsetSpot.row, 'floor', 'feature');
-        contentSpots.push({ x: offsetSpot.x, z: offsetSpot.z, roomId: pv.roomId, focal: false });
+      // SECONDARY SPOTS (non-focal) — the varied off-centre pool for loot. Emitted
+      // for an event-less loot room (its centre is a would-be fire centrepiece, so
+      // loot belongs off it). DISPERSE-pick up to MAX_SECONDARY from the candidates:
+      // greedily take the highest-scored that's ≥ SPREAD from every spot already
+      // taken (and off the focal cell), so the pool spans the room's corners rather
+      // than clustering — a different one gets filled each run (#72).
+      const secondarySpots: Array<{ col: number; row: number; x: number; z: number }> = [];
+      if (!hasAuthoredSpot && roomCaps.allowLoot && eventAnchors.length === 0 && derived) {
+        const MAX_SECONDARY = 4, SPREAD = 2.2;
+        const ranked = secondaryPool.sort((a, b) => b.score - a.score);
+        for (const c of ranked) {
+          if (secondarySpots.length >= MAX_SECONDARY) break;
+          if (Math.hypot(c.x - derived.x, c.z - derived.z) < 1.6) continue;   // off the centrepiece
+          if (secondarySpots.every((p) => Math.hypot(p.x - c.x, p.z - c.z) >= SPREAD)) {
+            secondarySpots.push({ col: c.col, row: c.row, x: c.x, z: c.z });
+          }
+        }
+      }
+      const secondaryKeys = new Set<string>();
+      for (const s of secondarySpots) {
+        occ.reserve(s.col, s.row, 'floor', 'feature');
+        contentSpots.push({ x: s.x, z: s.z, roomId: pv.roomId, focal: false });
+        secondaryKeys.add(`${s.x},${s.z}`);
       }
       for (const c of roomCells) {
-        // Keep the derived focal + offset cells out of the enemy pool.
+        // Keep the derived focal + every secondary cell out of the enemy pool.
         if (derived && c.x === derived.x && c.z === derived.z) continue;
-        if (offsetSpot && c.x === offsetSpot.x && c.z === offsetSpot.z) continue;
+        if (secondaryKeys.has(`${c.x},${c.z}`)) continue;
         spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint, wallAdj: c.wallAdj, centrality: c.centrality });
       }
     }
