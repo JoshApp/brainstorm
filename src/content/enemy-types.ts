@@ -6,6 +6,7 @@
 
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { ContentStatus } from './content-status';
+import type { FactionId } from './factions';
 import type { DamageType } from '../combat/damage';
 import type { Ability } from './abilities';
 import type { CreatureSpec } from './creature-types';
@@ -26,6 +27,13 @@ export interface EnemySpec {
   /** Include-flag: omit = 'release'. 'dev'/'draft' gate this out of a normal
    *  production build (see content-status.ts). */
   status?: ContentStatus;
+
+  /** Which side this creature is on (content/factions.ts). Omitted = 'hollow',
+   *  the hostile horde that hunts the player — so every existing enemy stays a
+   *  threat with no edit. Set 'vermin' for neutral ambient life (maggots): it
+   *  never aggros the player and never gates a room-clear, but the player can
+   *  still kill it. The mechanism that lets systems count "what is what". */
+  faction?: FactionId;
 
   /** What this creature spills when cut. Defaults to mortal red.
    *  Oozes run ichor-green; skeletons shed pale dust (see bloodAmount). */

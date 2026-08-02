@@ -13,6 +13,7 @@ import { spawnFlungPart, COLLAPSE_PRESET } from '../effects/flung-parts';
 import { getDeathSink } from '../debug/death-debug';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
+import { DEFAULT_FACTION, threatensPlayer, type FactionId } from '../content/factions';
 import {
   resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS, isDeflectable,
   type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
@@ -197,6 +198,9 @@ export interface Enemy extends Damageable {
   entityId: EntityId;
   /** Spec id from src/content/enemies.ts ('rat', 'skirmisher', etc.). */
   kind: string;
+  /** Which side it's on (content/factions.ts). Drives whether it counts as a
+   *  player-threat for room-clear. 'vermin' = neutral ambient life. */
+  faction: FactionId;
   /** True for boss enemies — drives the boss bar (see ui/boss-bar.ts). */
   isBoss: boolean;
   /** Boss bar display name (only meaningful when isBoss). */
@@ -830,6 +834,11 @@ export function createEnemy(
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
 
+  // Faction gate — a mob only HUNTS the player if its faction is hostile to the
+  // delver. A neutral (vermin) never aggros: sight is ignored, shared alerts are
+  // ignored, and taking a hit doesn't make it give chase. It just lives there.
+  const hostileToPlayer = threatensPlayer(spec.faction);
+
   // Per-spec aggro params with defaults.
   const sightRange = spec.sightRange ?? 7;
   const sightRangeSq = sightRange * sightRange;
@@ -1151,7 +1160,7 @@ export function createEnemy(
         breakMorale();
       }
     }
-    if (state !== 'fleeing'
+    if (hostileToPlayer && state !== 'fleeing'
         && (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning')) {
       state = 'chasing';
       phaseTimer = 0;
@@ -2332,7 +2341,7 @@ export function createEnemy(
     // until loseSightTime seconds pass with no LOS AND we've transitioned
     // out of mid-attack states (winding/striking/recovering finish before
     // we drop aggro).
-    const seesPlayer = !dormant && canSeePlayer(playerPos, walkable);
+    const seesPlayer = hostileToPlayer && !dormant && canSeePlayer(playerPos, walkable);
     if (seesPlayer) {
       timeSinceLOS = 0;
       lastSeenPos.copy(playerPos);
@@ -2533,7 +2542,7 @@ export function createEnemy(
         // and we're inside its radius, join the fight. Sets lastSeenPos
         // to the alert location so 'searching' / 'chasing' have a
         // direction to head even if we don't currently have LOS.
-        const alert = sampleAlert(container.position.x, container.position.z);
+        const alert = hostileToPlayer ? sampleAlert(container.position.x, container.position.z) : null;
         if (alert) {
           aggroed = true;
           lastSeenPos.set(alert.x, 0, alert.z);
@@ -2623,7 +2632,7 @@ export function createEnemy(
       case 'returning': {
         // Returning home also picks up alerts — if combat reignites
         // before we've reached our post, turn back around.
-        const returnAlert = sampleAlert(container.position.x, container.position.z);
+        const returnAlert = hostileToPlayer ? sampleAlert(container.position.x, container.position.z) : null;
         if (returnAlert) {
           aggroed = true;
           lastSeenPos.set(returnAlert.x, 0, returnAlert.z);
@@ -3076,6 +3085,7 @@ export function createEnemy(
   return {
     entityId,
     kind: spec.id,
+    faction: spec.faction ?? DEFAULT_FACTION,
     isBoss: !!spec.isBoss,
     bossName: spec.bossName ?? spec.name,
     group: container,

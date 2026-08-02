@@ -777,6 +777,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   maggot: {
     id: 'maggot',
     name: 'maggot',
+    faction: 'vermin',      // NEUTRAL — never aggros you, never gates a room (but you can still squish it)
     bloodColor: 0xcabf7a,   // pale larval ichor — not mortal red
     bloodAmount: 0.5,
     hp: 1,                  // a squish

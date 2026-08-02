@@ -21,6 +21,7 @@ import { registerBossMember, advanceBossPhase, onBossEncounterComplete } from '.
 import { spawnBossBonfire } from '../effects/boss-bonfire';
 import { setBossPresentation } from '../mobs/boss-cinematics';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
+import { threatensPlayer } from '../content/factions';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { isPooledGeometry } from '../scene/geometry-pool';
@@ -2200,7 +2201,9 @@ export function buildLevel(
     );
     enemies.push(e);
     roomByEntity.set(e.entityId, roomId);
-    if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    // Only player-THREATS count toward a room's clear gate — neutral vermin
+    // (maggots) get real room membership but never hold a door shut.
+    if (roomId && threatensPlayer(enemySpec.faction)) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
     // Every boss body (the king + each split child) joins the one boss
     // encounter, so "boss done" means ALL of them are dead.
     if (e.isBoss) registerBossMember(e);
@@ -2308,7 +2311,7 @@ export function buildLevel(
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
     roomByEntity.set(enemy.entityId, roomId);
-    if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    if (roomId && threatensPlayer(enemySpec.faction)) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
     // Authored boss spawns (the king) MUST join the encounter container too
     // — without this they're never a `liveBossMember`, so the boss bar never
     // engages and a dormant boss stays asleep forever. (The split helper
@@ -2318,9 +2321,10 @@ export function buildLevel(
 
   // ── AMBIENT MAGGOTS — the dungeon's vermin (task #76) ────────────────────
   // Harmless larval crawlers sprinkled through the floor as living atmosphere.
-  // Spawned with roomId=null so they are NEVER counted by any room-clear gate —
-  // you never have to hunt a grub to open a door. Skips the entrance room and
-  // the boss arena (kept clean), caps per floor, deterministic per floor seed.
+  // They get REAL room membership — the faction system (content/factions.ts) is
+  // what keeps them from gating a door: 'vermin' never counts as a player-threat,
+  // so a sealed combat room ignores them (and they never aggro you). No placement
+  // hack. Skips the entrance room and the boss arena, caps per floor, seeded.
   if (ENEMIES['maggot']) {
     const magRng = rngFromSeed(hashStringToSeed(`maggots:${spec.id}:${levelDepth}`));
     const startRoomId = findRoomContaining(spec.startPos.x, spec.startPos.z, spec.rooms);
@@ -2337,7 +2341,7 @@ export function buildLevel(
       for (let i = 0; i < n && placed < MAX_MAGGOTS; i++) {
         const px = room.rect.x + (magRng() - 0.5) * Math.max(0, room.rect.w - 1.4);
         const pz = room.rect.z + (magRng() - 0.5) * Math.max(0, room.rect.d - 1.4);
-        spawnInto(ENEMIES['maggot'], new THREE.Vector3(px, 0, pz), null);
+        spawnInto(ENEMIES['maggot'], new THREE.Vector3(px, 0, pz), room.id);
         placed++;
       }
     }
@@ -2665,7 +2669,8 @@ export function buildLevel(
         tick: () => {
           let alive = 0;
           for (const en of enemies) {
-            if (roomByEntity.get(en.entityId) === roomId && en.alive) alive++;
+            // Neutral vermin (maggots) never hold the gate — only player-threats.
+            if (roomByEntity.get(en.entityId) === roomId && en.alive && threatensPlayer(en.faction)) alive++;
           }
           if (alive === 0) handle.complete();
         },
@@ -2708,7 +2713,8 @@ export function buildLevel(
     for (const [roomId, count] of aliveByRoom) {
       let stillAlive = 0;
       for (const enemy of enemies) {
-        if (roomByEntity.get(enemy.entityId) === roomId && enemy.alive) stillAlive++;
+        // Match the seal-count basis: only player-threats keep a room "uncleared".
+        if (roomByEntity.get(enemy.entityId) === roomId && enemy.alive && threatensPlayer(enemy.faction)) stillAlive++;
       }
       if (stillAlive === 0 && count > 0) {
         aliveByRoom.set(roomId, 0);
