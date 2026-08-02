@@ -94,23 +94,12 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── THE BONFIRE — the heart of the room (centre, on the path) ───
-      // V5 recentres the whole chamber on the fire. It sits dead on the
-      // walk-line between spawn and the descent, so you cannot leave
-      // without passing it: this is where you REST (the level-up menu,
-      // ui/levelup-menu.ts) and turn earned levels into strength. Scaled
-      // up from the per-floor fire so it reads as the grand hearth of the
-      // refuge. The REST interactable is wired by builder.ts off the
-      // 'bonfire' model id — same path as every dungeon-floor fire, so
-      // authoring it here is all it takes. Slight rotY so the sword
-      // landmark catches the eye at an angle rather than edge-on. The
-      // fire stands on a raised stone dais (below) — y=0.30 sits it on
-      // the plinth's top — and is scaled up to read as the grand hearth.
+      // ── THE COLD HEARTH (Josh: remove the grand bonfire) — the BOSS now gives
+      // the rest-fire on its defeat, so a second grand hearth in the very next
+      // refuge is redundant. The dais STAYS as an empty, unlit hearth — a place a
+      // fire once was — with the benches drawn round it. Healing here is the gamble
+      // fountain; the fate came from the boss fire.
       { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0.3 },
-      { kind: 'model', model: BONFIRE, x: 0, y: 0.30, z: 0.3, rotY: 0.5, scale: 1.45 },
-      // Stone benches drawn in around the dais — the hearth circle. They
-      // sell "sit here" literally now: the fire is the rest. No collision
-      // (the player walks around them).
       { kind: 'model', model: STONE_BENCH, x: -2.6, y: 0, z: 0.3, rotY: Math.PI / 2 },
       { kind: 'model', model: STONE_BENCH, x:  2.6, y: 0, z: 0.3, rotY: -Math.PI / 2 },
 
@@ -151,11 +140,10 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       { kind: 'model', model: FLOOR_CANDLE, x: -1.3, y: 0, z: -1.4 },
       { kind: 'model', model: FLOOR_CANDLE, x:  1.3, y: 0, z: -1.4 },
 
-      // Warm floor glow at the spawn end (greets the player) and a
-      // stronger one under the bonfire so the centre reads as the hot
-      // heart of the room.
+      // Warm floor glow at the spawn end (greets the player). The hearth glow
+      // that used to sit under the bonfire is gone with the fire — a COLD hearth
+      // shouldn't glow hot (the dais reads as an unlit, spent hearth now).
       { kind: 'model', model: SAFE_FLOOR_GLOW_SPAWN,  x: 0, y: 0, z: 3.6 },
-      { kind: 'model', model: SAFE_FLOOR_GLOW_HEARTH, x: 0, y: 0, z: 0.3 },
     ],
 
     torches: [
@@ -192,8 +180,6 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
 
 // Lazy imports — keep this module's top-level surface small.
 import { FLOOR_CANDLE } from '../content/candle';
-import { BONFIRE } from '../content/bonfire';
 import { floorGlow } from '../content/light-props';
 const SAFE_FLOOR_GLOW_SPAWN  = floorGlow(0xffb070);
-const SAFE_FLOOR_GLOW_HEARTH = floorGlow(0xff9050);
 void ITEMS;
