@@ -353,6 +353,9 @@ export type PropSpec =
   // 'trinket-merchant' = the relic-keeper. Buys use gold; wares are RELICS that
   // collect into the reliquary (buy into a domain build).
   | { kind: 'trinket-merchant'; x: number; z: number; rotY?: number }
+  // 'blacksmith' = the forge. TEMPER the drawn weapon for gold (persists on the
+  // blade across floors — state/weapon-temper.ts). Gold's upgrade sink.
+  | { kind: 'blacksmith'; x: number; z: number; rotY?: number }
   // 'tithe-basin' = the UNKNOWN-family altar: place blood/gold/your
   // weapon in the hollow, the dungeon decides what you were worth.
   | { kind: 'tithe-basin'; x: number; z: number }

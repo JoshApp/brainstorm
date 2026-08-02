@@ -139,6 +139,9 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // Gold buys relics here (they collect into the reliquary): the domain-build
       // sink to the gear merchant's gear.
       { kind: 'trinket-merchant', x: -3.0, z: -2.8, rotY: Math.PI },
+      // The blacksmith — back-CENTRE, completing the row of three vendors.
+      // TEMPER your drawn weapon for gold; the edge persists across floors.
+      { kind: 'blacksmith', x: 0, z: -3.0, rotY: Math.PI },
 
       // ── Candles ─────────────────────────────────────────────────────
       // Flank the approach between the front fixtures and the central

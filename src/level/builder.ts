@@ -57,6 +57,7 @@ import { bindLight as bindRoomMoodLight, bindFlame as bindRoomMoodFlame, clearRo
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant, spawnTrinketMerchant } from '../interactables/merchant';
+import { spawnBlacksmith } from '../interactables/blacksmith';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
@@ -1594,6 +1595,12 @@ export function buildLevel(
       spawnTrinketMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.35, yTop: gy + 1.6,
+      });
+    } else if (prop.kind === 'blacksmith') {
+      spawnBlacksmith(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
+      // Wider footprint than a merchant — the anvil + forge flank the smith.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.5, yTop: gy + 1.6,
       });
     } else if (prop.kind === 'tome-pillar') {
       spawnTomePillar(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0);

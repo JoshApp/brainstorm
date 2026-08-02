@@ -14,6 +14,7 @@ import { emit } from '../broadcast/event-bus';
 import { levelForXp, xpInLevel, xpForNextLevel, LEVELS_ENABLED } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
+import { clearTemper, serializeTemper, hydrateTemper } from './weapon-temper';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
 import { clearChoices, serializeChoices, hydrateChoices, type Choice } from './choices';
 import { resetFlask, restoreFlask, serializeFlask, type FlaskState } from '../player/flask';
@@ -60,6 +61,9 @@ export interface SaveData {
    *  Permanent for the run, cleared on death. Optional for older saves
    *  (treated as empty). */
   mutations?: string[];
+  /** Blacksmith weapon-temper levels (item id → level). Persists a forged
+   *  blade's edge across floors. Optional for older saves. */
+  temper?: Record<string, number>;
   /** Per-run phial color → mutation identities (state/phial-identities.ts).
    *  Persisted so a reload keeps what the player has LEARNED. */
   phials?: Record<string, string>;
@@ -122,6 +126,7 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
   // Fresh run = no inherited mutations. Any prior run's tainted brands
   // die with their delver.
   clearMutations();
+  clearTemper();          // a new delver's weapons are un-forged
   clearPhialIdentities();
   clearChoices();
   // Fresh, full flask (a second run in the same session mustn't inherit the
@@ -140,6 +145,7 @@ export function adoptSave(save: SaveData) {
     riteId: save.riteId ?? 'hemorrhage',   // v1 default; becomes a found drop later
   };
   hydrateMutations(save.mutations);
+  hydrateTemper(save.temper);
   hydratePhialIdentities(save.phials);
   hydrateChoices(save.choices);
   restoreFlask(save.flask);   // full base flask when the save predates the field
@@ -300,6 +306,7 @@ export function commitFloorEntry(args: {
   inMemory.equipment = { ...args.equipment };
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
   inMemory.mutations = serializeMutations();   // persist active tainted brands
+  inMemory.temper = serializeTemper();         // persist blacksmith weapon upgrades
   inMemory.phials = serializePhialIdentities();  // persist phial knowledge
   inMemory.choices = serializeChoices();       // persist the ledger of what was taken/refused
   inMemory.flask = serializeFlask();           // persist flask charges/capacity
