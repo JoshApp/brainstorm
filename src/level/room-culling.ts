@@ -295,7 +295,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // their static assignment) so we don't fight that path.
     for (const it of getAllInteractables()) {
       const g = it.built?.group as THREE.Object3D | undefined;
-      if (!g || g.userData?.dbgKind === 'prop') continue;
+      // Skip props (handled by static per-rect assignment) AND doors (boundary
+      // objects that animate in place — a single-rect cull at the doorway can
+      // wrongly hide a sealing gate; they always render, ~1 draw each).
+      if (!g || g.userData?.dbgKind === 'prop' || g.userData?.dbgKind === 'door') continue;
       const node = rectAt(nodes, it.position.x, it.position.z);
       const vis = !node || visible.has(node.id);
       if (g.visible !== vis) g.visible = vis;

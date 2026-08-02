@@ -89,6 +89,14 @@ export function spawnDoor(
   // rotates on Y; for a portcullis it sits at the door center and slides
   // on Y. `raisedY` is how far up a portcullis travels when open.
   const group = new THREE.Group();
+  // Tag so the room culler never occlusion-culls a door. A door sits ON a room
+  // boundary and ANIMATES in place (a gate drops/rises); the runtime cull that
+  // hides dropped loot resolves an object to ONE rect by position, and at a
+  // doorway that resolution is fragile (junctions, arena sub-rooms) — it could
+  // hide the very gate you're sealed behind (the "trap springs, no gate visible"
+  // bug). Doors are a handful per floor and merge to ~1 draw each, so always
+  // rendering them is cheap and correct.
+  group.userData.dbgKind = 'door';
   const raisedY = Math.max(0.1, height - GATE_RAISED_PEEK);
   // Doors sit on the ground under their line — fittings install on flat
   // mouth aprons, so one sample is the whole truth.
