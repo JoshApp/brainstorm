@@ -130,11 +130,19 @@ export const TABLES: Record<string, LootTable> = {
   },
 
   // ── CHESTS — wood free/common, silver gear+relic, gold a guaranteed relic. ──
+  // Gear is deliberately NOT the default anymore: with ground-equip every found
+  // weapon/vestment is a considered swap, not bag fodder, so a chest raining gear
+  // every floor became a stream of compare-prompts. The share now leans to
+  // consumables + keys + relics (the build, no compare), and every chest gear roll
+  // is floored uncommon→rare (rampFloor(1,6)) — the mundane trash tier never drops
+  // from a chest, and quality climbs as you descend.
   'chest-wood':   T({ emptyGold: 6, entries: [
-    { from: 'gear', bias: 0, weight: 60 }, { from: 'consumables', weight: 25 }, { key: 1, weight: 15 },
+    { from: 'gear', bias: 0, weight: 34, minRarity: rampFloor(1, 6) },
+    { from: 'consumables', weight: 34 }, { key: 1, weight: 20 }, { weight: 12 },
   ] }),
   'chest-silver': T({ emptyGold: 12, entries: [
-    { from: 'gear', bias: 2, weight: 70 }, { from: 'relics', bias: 2, weight: 30 },
+    { from: 'gear', bias: 2, weight: 48, minRarity: rampFloor(1, 6) },
+    { from: 'relics', bias: 2, weight: 52 },
   ] }),
   // Gold chest's rare floor ramps in d2→d6 (was a hard snap at d3) so the
   // uncommon→rare transition reads as a climb, not a cliff.
@@ -155,7 +163,7 @@ export const TABLES: Record<string, LootTable> = {
 
   // ── EVENTS / DEALS — single-item sources. ──
   'defining-find': T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
-  'merchant':      T({ entries: [{ from: 'gear', bias: 2 }] }),
+  'merchant':      T({ entries: [{ from: 'gear', bias: 2, minRarity: rampFloor(1, 6) }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
   'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   // A fallen delver is now a RARE find (loot-director drops the per-floor odds),
@@ -174,7 +182,7 @@ export const TABLES: Record<string, LootTable> = {
   // or a relic among the dead's leavings.
   'ossuary':       T({ pools: [
     { entries: [{ gold: [3, 8] }] },
-    { entries: [{ from: 'gear', bias: 1, weight: 45 }, { from: 'relics', bias: 1, weight: 15 }, { weight: 40 }] },
+    { entries: [{ from: 'gear', bias: 1, weight: 32, minRarity: rampFloor(1, 6) }, { from: 'relics', bias: 1, weight: 18 }, { weight: 50 }] },
   ] } as LootTable),
   'cursed':        T({ entries: [{ from: 'cursed', bias: 4 }] }),
   // CRITTER — ambient life (maggots) that drops NOTHING. A squished grub is
