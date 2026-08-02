@@ -4,16 +4,23 @@ import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
-import { createSheet, menuButton } from '../ui/menu-shell';
-import { getEquipped } from '../player/equipment';
+import { getEquipped, getSidearm } from '../player/equipment';
+import type { ItemSpec } from '../content/items';
+import { RARITY_COLORS } from '../content/items';
 import { getGold, spendGold } from '../state/run-state';
+import { getCount } from '../player/inventory';
+import { KEY_ID } from '../content/drop-tables';
 import {
   getTemperLevel, canTemper, temperWeapon, MAX_TEMPER_LEVEL,
-  TEMPER_DAMAGE_PER_LEVEL,
+  TEMPER_DAMAGE_PER_LEVEL, temperDamageBonus,
 } from '../state/weapon-temper';
 import { playEquipClick, playImpact } from '../audio/sfx';
 import { showInscription } from '../ui/inscription';
-import { FONT_UI } from '../ui/theme';
+import { THEME, FONT_UI } from '../ui/theme';
+import { hexCss } from '../style/color-utils';
+import { openPickerScreen, coinGlyph, makeGoldReadout, type PickerTile } from '../ui/shop-shell';
+import { buildItemCard } from '../ui/item-card';
+import { getItemThumbnail } from '../ui/item-thumbnail';
 
 // THE BLACKSMITH — a hooded smith at a lit forge + anvil. Unlike the merchant
 // (which SELLS), the smith TEMPERS the weapon in your hand: spend gold to raise
@@ -123,65 +130,122 @@ export function spawnBlacksmith(
   });
 }
 
+// The carried weapons the forge can work — the drawn blade + the sheathed
+// sidearm (task #96 loadout). Slot label is the tile id so two same-id weapons
+// don't collide; the temper itself keys by weapon id.
+function forgeWeapons(): Array<{ slot: string; label: string; weapon: ItemSpec }> {
+  const out: Array<{ slot: string; label: string; weapon: ItemSpec }> = [];
+  const drawn = getEquipped('weapon');
+  if (drawn) out.push({ slot: 'drawn', label: 'Drawn', weapon: drawn });
+  const side = getSidearm();
+  if (side) out.push({ slot: 'sheathed', label: 'Sheathed', weapon: side });
+  return out;
+}
+
 function openForgeSheet(pos: THREE.Vector3, depth: number): void {
-  const sheet = createSheet({ id: 'forge', title: 'THE FORGE' });
+  const gold = makeGoldReadout(getGold, () => getCount(KEY_ID));
+  const weaponFor = (slot: string) => forgeWeapons().find((w) => w.slot === slot)?.weapon ?? null;
+  const costOf = (w: ItemSpec) => temperCost(getTemperLevel(w.id), depth);
 
-  const note = document.createElement('div');
-  Object.assign(note.style, {
-    color: '#8a8079', fontSize: '12px', fontStyle: 'italic',
-    padding: '4px 2px 12px', lineHeight: '1.5', fontFamily: FONT_UI,
+  const handle = openPickerScreen({
+    id: 'forge',
+    title: 'THE FORGE',
+    headerRight: gold.el,
+    emptyLine: 'You carry no blade for the fire. Come back with steel to work.',
+    tiles: () => forgeWeapons().map((w): PickerTile => {
+      const lvl = getTemperLevel(w.weapon.id);
+      const maxed = lvl >= MAX_TEMPER_LEVEL;
+      const badge = document.createElement('span');
+      badge.textContent = maxed ? '★MAX' : `+${lvl}`;
+      return {
+        id: w.slot, name: w.weapon.name, accentHex: hexCss(RARITY_COLORS[w.weapon.rarity ?? 'mundane']),
+        thumbUrl: getItemThumbnail(w.weapon), badge,
+      };
+    }),
+    renderDetail: (slot) => {
+      const w = weaponFor(slot);
+      const wrap = document.createElement('div');
+      if (!w) return wrap;
+      Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
+      wrap.appendChild(buildItemCard(w));
+      wrap.appendChild(forgePreview(w, depth));
+      return wrap;
+    },
+    action: {
+      render: (slot) => {
+        const w = slot ? weaponFor(slot) : null;
+        if (!w) return 'TEMPER';
+        if (!canTemper(w.id)) return 'FULLY TEMPERED';
+        const el = document.createElement('span');
+        el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.gap = '6px';
+        el.append('TEMPER  ·  ', coinGlyph(13), ` ${costOf(w)}  →  +${TEMPER_DAMAGE_PER_LEVEL}`);
+        return el;
+      },
+      enabled: (slot) => {
+        const w = slot ? weaponFor(slot) : null;
+        return !!w && canTemper(w.id) && getGold() >= costOf(w);
+      },
+    },
+    onAct: (slot) => {
+      const w = weaponFor(slot);
+      if (!w || !canTemper(w.id)) return;
+      const c = costOf(w);
+      if (getGold() < c) return;
+      spendGold(c);
+      const lvl = temperWeapon(w.id);
+      playEquipClick();
+      playImpact(pos);   // the hammer-fall
+      showInscription(lvl >= MAX_TEMPER_LEVEL
+        ? 'The blade will take no more. It is as sharp as the dark allows.'
+        : 'Steel sings on the anvil. The edge remembers the blow.');
+      gold.update();
+      handle.refresh();
+    },
+  });
+}
+
+/** The "see what would change" block — current forge level + damage, and the
+ *  NEXT temper's effect (base → tempered), or a maxed note. */
+function forgePreview(w: ItemSpec, depth: number): HTMLElement {
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    marginTop: '2px', padding: '8px 10px', borderRadius: '3px',
+    background: 'rgba(255,120,40,0.06)', border: `1px solid ${THEME.rule}`,
+    display: 'flex', flexDirection: 'column', gap: '5px', fontFamily: FONT_UI,
   } as Partial<CSSStyleDeclaration>);
-  sheet.body.appendChild(note);
 
-  const line = document.createElement('div');
-  Object.assign(line.style, { color: '#d8c8a8', fontSize: '13px', padding: '2px 2px 8px', fontFamily: FONT_UI } as Partial<CSSStyleDeclaration>);
-  sheet.body.appendChild(line);
+  const head = document.createElement('div');
+  Object.assign(head.style, { color: THEME.ember, fontSize: '11px', letterSpacing: '0.16em', fontWeight: '700' } as Partial<CSSStyleDeclaration>);
+  head.textContent = 'AT THE FORGE';
+  box.appendChild(head);
 
-  const btn = menuButton('TEMPER', () => temper());
-  sheet.body.appendChild(btn);
+  const lvl = getTemperLevel(w.id);
+  const bonus = temperDamageBonus(w.id);
+  const baseDmg = w.weapon?.damage ?? 0;
+  const curDmg = baseDmg + bonus;
 
-  const cost = () => {
-    const w = getEquipped('weapon');
-    return w ? temperCost(getTemperLevel(w.id), depth) : 0;
-  };
+  const lvlLine = document.createElement('div');
+  Object.assign(lvlLine.style, { color: THEME.dim, fontSize: '12px' } as Partial<CSSStyleDeclaration>);
+  lvlLine.textContent = `Temper  ${lvl} / ${MAX_TEMPER_LEVEL}`;
+  box.appendChild(lvlLine);
 
-  function refresh(): void {
-    const w = getEquipped('weapon');
-    if (!w) {
-      note.textContent = 'You hold no blade for the fire. Draw a weapon first.';
-      line.textContent = '';
-      btn.disabled = true; btn.style.opacity = '0.35';
-      return;
-    }
-    const lvl = getTemperLevel(w.id);
-    const dmg = lvl * TEMPER_DAMAGE_PER_LEVEL;
-    note.textContent = 'The smith takes the blade from your hand and asks for coin. What returns is keener.';
-    line.textContent = lvl >= MAX_TEMPER_LEVEL
-      ? `${w.name} — tempered to the limit (+${dmg} damage).`
-      : `${w.name} — temper ${lvl}/${MAX_TEMPER_LEVEL}  (+${dmg} damage now)`;
-    const c = cost();
-    const maxed = !canTemper(w.id);
-    const afford = getGold() >= c;
-    btn.textContent = maxed ? 'FULLY TEMPERED' : `TEMPER  ·  ${c}g  →  +${TEMPER_DAMAGE_PER_LEVEL}`;
-    btn.disabled = maxed || !afford;
-    btn.style.opacity = (maxed || !afford) ? '0.4' : '1';
+  const change = document.createElement('div');
+  Object.assign(change.style, { color: THEME.text, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' } as Partial<CSSStyleDeclaration>);
+  if (lvl >= MAX_TEMPER_LEVEL) {
+    change.textContent = `Damage ${curDmg} — tempered to the limit.`;
+  } else {
+    const from = document.createElement('span'); from.textContent = `Damage ${curDmg}`;
+    const arrow = document.createElement('span'); arrow.textContent = '→'; arrow.style.color = THEME.ember;
+    const to = document.createElement('span'); to.textContent = `${curDmg + TEMPER_DAMAGE_PER_LEVEL}`;
+    Object.assign(to.style, { color: '#8fe08a', fontWeight: '700' } as Partial<CSSStyleDeclaration>);
+    change.append(from, arrow, to);
   }
+  box.appendChild(change);
+  return box;
+}
 
-  function temper(): void {
-    const w = getEquipped('weapon');
-    if (!w || !canTemper(w.id)) return;
-    const c = temperCost(getTemperLevel(w.id), depth);
-    if (getGold() < c) return;
-    spendGold(c);
-    const lvl = temperWeapon(w.id);
-    playEquipClick();
-    playImpact(pos);   // the hammer-fall
-    showInscription(lvl >= MAX_TEMPER_LEVEL
-      ? 'The blade will take no more. It is as sharp as the dark allows.'
-      : 'Steel sings on the anvil. The edge remembers the blow.');
-    refresh();
-  }
-
-  refresh();
-  sheet.open();
+/** DEV: open the forge sheet directly (window.__forge) without walking a smith. */
+export function openForgeSheetForDebug(): void {
+  if (!import.meta.env.DEV) return;
+  openForgeSheet(new THREE.Vector3(0, 0, 0), 3);
 }

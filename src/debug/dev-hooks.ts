@@ -141,6 +141,14 @@ export function installDevHooks(deps: DevHookDeps): void {
     openShopScreen(rollShopStock(3, 5, undefined, t as never),
       t === 'reliquary' ? { title: 'THE RELIC-KEEPER' } : {});
   };
+  // __forge() — open the blacksmith forge screen (with gold) for previewing.
+  w.__forge = async () => {
+    const [{ openForgeSheetForDebug }, { grantGold }] = await Promise.all([
+      import('../interactables/blacksmith'), import('../state/run-state'),
+    ]);
+    grantGold(500);
+    openForgeSheetForDebug();
+  };
   // Nav-grid debug overlay — window.__navDebug() / ?navdebug=1 / press N.
   initNavOverlay(scene, () => getLevel() as never);
   w.__navDebug = (on?: boolean) => setNavOverlay(on);
