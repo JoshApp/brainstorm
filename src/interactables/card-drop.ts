@@ -74,7 +74,16 @@ export function spawnCardDrop(scene: THREE.Object3D, pos: THREE.Vector3, cardId:
   front.position.z = 0.005;
   const back = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: cardTex(`${BASE}cards/back.webp`), transparent: true, side: THREE.FrontSide, toneMapped: false }));
   back.rotation.y = Math.PI; back.position.z = -0.005;
-  cardMesh.add(front, back);
+  // Domain aura — a soft accent-tinted glow behind the card, so a floor fate
+  // carries its DOMAIN colour as a halo-frame the way the reading frames it.
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'), color: accent,
+    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
+    depthWrite: false, fog: false, toneMapped: false,
+  }));
+  halo.scale.set(CARD_W * 2.1, CARD_H * 1.5, 1);
+  halo.position.z = -0.02;
+  cardMesh.add(halo, front, back);
   cardMesh.position.y = REST_Y;
   group.add(cardMesh);
 

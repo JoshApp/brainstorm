@@ -20,7 +20,7 @@ import { grantCard, getHeldCards } from '../state/run-state';
 import { BUFFS } from '../content/buffs';
 import { flashDomainGlow } from './vignette';
 import { showInscription } from './inscription';
-import { domainVisual } from './domain-icons';
+import { domainVisual, domainIconEl } from './domain-icons';
 import { playCardClaim } from '../effects/card-claim';
 
 const SCREEN_ID = 'card-reading';
@@ -46,6 +46,11 @@ const CARD_H = 'clamp(150px, min(60vh, 46vw), 360px)';
 const AMBER = 'rgba(232, 188, 120, 0.98)';
 // safe-area-aware edge padding (landscape notches live on the sides)
 const PAD_X = 'max(18px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))';
+
+/** `rgba(...)` from a packed 0xRRGGBB int + alpha — for domain-tinted frames. */
+function rgbaHex(hex: number, a: number): string {
+  return `rgba(${(hex >> 16) & 255}, ${(hex >> 8) & 255}, ${hex & 255}, ${a})`;
+}
 
 /** Readable phrase for a conditional's predicate (BRINK). */
 function conditionPhrase(c: CardCondition): string {
@@ -146,16 +151,26 @@ export function openCardReading(
     Object.assign(col.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(4px,1vh,9px)', cursor: 'pointer', opacity: '0', transition: 'transform 0.18s, opacity 0.22s', perspective: '1000px', willChange: 'transform' } as Partial<CSSStyleDeclaration>);
     cols.push(col);
 
+    // Domain identity — the card's first domain gives it a themed FRAME (a
+    // tinted inner rim + outer aura) and a sigil badge, so its domain reads at a
+    // glance before any text. Domain-less "true arcana" fall back to pale amber.
+    const dom = card.domains[0];
+    const dv = dom ? domainVisual(dom) : null;
+    const frameHex = dv ? dv.hex : 0xe8c47a;
+
     const flip = document.createElement('div');
-    Object.assign(flip.style, { position: 'relative', flex: '0 0 auto', height: CARD_H, aspectRatio: CARD_ASPECT, transformStyle: 'preserve-3d', transform: 'rotateY(180deg)', transition: 'transform 0.55s cubic-bezier(0.2,0.8,0.2,1)' } as Partial<CSSStyleDeclaration>);
+    Object.assign(flip.style, { position: 'relative', flex: '0 0 auto', height: CARD_H, aspectRatio: CARD_ASPECT, transformStyle: 'preserve-3d', transform: 'rotateY(180deg)', transition: 'transform 0.55s cubic-bezier(0.2,0.8,0.2,1)', borderRadius: '7px', boxShadow: `inset 0 0 0 2px ${rgbaHex(frameHex, 0.72)}, inset 0 0 13px ${rgbaHex(frameHex, 0.32)}, 0 0 17px ${rgbaHex(frameHex, 0.42)}` } as Partial<CSSStyleDeclaration>);
     const front = faceImg();
     fronts.push({ img: front, id: card.id });
     flip.append(faceBack(), front);
     col.appendChild(flip);
 
     const name = document.createElement('div');
-    name.textContent = card.name;
-    Object.assign(name.style, { fontFamily: FONT_SERIF, fontWeight: '600', fontSize: 'clamp(13px,2.4vw,19px)', color: '#e8d8b8', textAlign: 'center', lineHeight: '1.1', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+    Object.assign(name.style, { fontFamily: FONT_SERIF, fontWeight: '600', fontSize: 'clamp(13px,2.4vw,19px)', color: '#e8d8b8', textAlign: 'center', lineHeight: '1.1', flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' } as Partial<CSSStyleDeclaration>);
+    if (dv) name.appendChild(domainIconEl(dv, 15));   // the domain sigil, tinted
+    const nameText = document.createElement('span');
+    nameText.textContent = card.name;
+    name.appendChild(nameText);
     col.appendChild(name);
 
     const fx = document.createElement('div');
