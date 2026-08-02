@@ -2316,6 +2316,33 @@ export function buildLevel(
     if (enemy.isBoss) { registerBossMember(enemy); bossRewardSpec = enemySpec; bossRoomId = roomId; }
   }
 
+  // ── AMBIENT MAGGOTS — the dungeon's vermin (task #76) ────────────────────
+  // Harmless larval crawlers sprinkled through the floor as living atmosphere.
+  // Spawned with roomId=null so they are NEVER counted by any room-clear gate —
+  // you never have to hunt a grub to open a door. Skips the entrance room and
+  // the boss arena (kept clean), caps per floor, deterministic per floor seed.
+  if (ENEMIES['maggot']) {
+    const magRng = rngFromSeed(hashStringToSeed(`maggots:${spec.id}:${levelDepth}`));
+    const startRoomId = findRoomContaining(spec.startPos.x, spec.startPos.z, spec.rooms);
+    const bossMaggotSpawn = spec.spawns.find((s) => ENEMIES[s.enemyId]?.isBoss);
+    const bossRoomIdForMaggots = bossMaggotSpawn
+      ? findRoomContaining(bossMaggotSpawn.x, bossMaggotSpawn.z, spec.rooms) : null;
+    let placed = 0;
+    const MAX_MAGGOTS = 6;
+    for (const room of spec.rooms) {
+      if (placed >= MAX_MAGGOTS) break;
+      if (room.id === startRoomId || room.id === bossRoomIdForMaggots) continue;
+      if (magRng() > 0.42) continue;                 // ~42% of eligible rooms get a nest
+      const n = 1 + Math.floor(magRng() * 3);        // a small cluster of 1..3
+      for (let i = 0; i < n && placed < MAX_MAGGOTS; i++) {
+        const px = room.rect.x + (magRng() - 0.5) * Math.max(0, room.rect.w - 1.4);
+        const pz = room.rect.z + (magRng() - 0.5) * Math.max(0, room.rect.d - 1.4);
+        spawnInto(ENEMIES['maggot'], new THREE.Vector3(px, 0, pz), null);
+        placed++;
+      }
+    }
+  }
+
   // When the whole boss encounter ends (king + every summoned prince dead), the
   // held-back hoard erupts and a bonfire RISES from the arena floor — the boss's
   // essence poured into a rest-fire the delver earns. Registered once per floor,

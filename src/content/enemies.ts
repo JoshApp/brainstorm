@@ -767,6 +767,73 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // No splitsInto — recursion terminator.
   },
 
+  // ── MAGGOT — the dungeon's ambient vermin. A weak, PASSIVE larval crawler:
+  // it barely knows you're there (near-blind, near-deaf), does no harm (a
+  // pathetic gnaw for 0), and dies to a single touch. It is atmosphere you can
+  // squish — the deep is a body, and bodies have grubs. Spawned AMBIENT (never a
+  // room-clear member, so it can't seal a door), NOT in the encounter packs.
+  // Later (task #76): they eat nearby corpses and EVOLVE into something with a
+  // bite. For now they only squirm. Drops nothing (the 'critter' table).
+  maggot: {
+    id: 'maggot',
+    name: 'maggot',
+    bloodColor: 0xcabf7a,   // pale larval ichor — not mortal red
+    bloodAmount: 0.5,
+    hp: 1,                  // a squish
+    poise: 1,               // no stagger resistance — anything staggers it
+    moveSpeed: 0.55,        // a slow, blind crawl (player MOVE_SPEED 2.5 — trivially outpaced)
+    attackDamage: 0,        // PASSIVE — a harmless gnaw; it does not threaten you
+    attackRange: 0.55,
+    strikeRange: 0.5,
+    windupTime: 0.7,
+    strikeTime: 0.14,
+    recoverTime: 0.9,
+    // A segmented grub on the legless 'blob' skeleton — a row of fat pale
+    // ovoids low along the ground, tapering to a blunt dark-mawed head (−Z).
+    creature: {
+      id: 'maggot',
+      archetype: 'blob',
+      proportions: { height: 0.16, girth: 0.13 },
+      materials: {
+        // Sickly larval cream, faintly translucent + wet-rimmed.
+        flesh: { color: 0xcabd92, roughness: 0.5, flatShading: 'auto', transparent: true, opacity: 0.93,
+          rim: { color: 0xe6dbaa, power: 2, intensity: 0.35, darkReactive: 0.4 } },
+        dark:  { color: 0x241c12, roughness: 0.85 },   // the maw
+        eyes:  { color: 0x14100a, emissive: 0x000000, emissiveIntensity: 0 },  // lightless specks
+      },
+      eyes: { material: 'eyes', emissive: 0 },
+      flash: { material: 'flesh' },
+      skin: [
+        // Body segments, tail (+Z) → fat middle → blunt head (−Z).
+        { kind: 'sphere', joint: 'core', radius: 0.070, scale: [0.9, 0.8, 1.0],  pos: [0, 0.00, 0.115], jitter: 0.010, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.088, scale: [0.95, 0.85, 1.0], pos: [0, 0.005, 0.045], jitter: 0.010, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.098, scale: [1.0, 0.9, 1.0],  pos: [0, 0.010, -0.035], jitter: 0.010, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.084, scale: [0.95, 0.85, 1.0], pos: [0, 0.005, -0.115], jitter: 0.010, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.058, scale: [0.9, 0.85, 1.05], pos: [0, 0.00, -0.185], jitter: 0.008, mat: 'flesh' },
+        // Dark maw + two tiny lightless eye specks at the head end.
+        { kind: 'sphere', joint: 'core', radius: 0.017, pos: [0, -0.012, -0.225], mat: 'dark' },
+        { kind: 'sphere', joint: 'core', radius: 0.010, pos: [-0.028, 0.016, -0.205], mat: 'eyes' },
+        { kind: 'sphere', joint: 'core', radius: 0.010, pos: [0.028, 0.016, -0.205], mat: 'eyes' },
+      ],
+    },
+    baseEyeEmissive: 0,
+    collisionRadius: 0.13,
+    // Player walks straight over grubs — being bodyblocked by a maggot is absurd.
+    noPlayerCollision: true,
+    tiltPartName: 'core',
+    flashMaterialName: 'flesh',
+    eyeMaterialName: 'eyes',
+    presence: 'gelatinous',    // soft, boneless squirm
+    // Near-blind, near-deaf — it only stirs toward you point-blank, and forgets
+    // you the moment you step off. This is what makes it read as PASSIVE.
+    sightRange: 2.2,
+    sightConeHalfAngle: 1.5,
+    hearingRange: 1.3,
+    loseSightTime: 1.5,
+    dropTable: 'critter',      // ambient life — squishing it yields nothing
+    xp: 1,
+  },
+
   // Acid spitter — the HOLDER. The deliberate foil to the acolyte: where
   // the acolyte runs from you, the spitter plants and refuses to move,
   // lobbing acid on a fast cadence so the longer you stay at range the

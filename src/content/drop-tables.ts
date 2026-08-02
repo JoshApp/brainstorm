@@ -152,6 +152,9 @@ export const TABLES: Record<string, LootTable> = {
     { entries: [{ from: 'gear', bias: 1, weight: 45 }, { from: 'relics', bias: 1, weight: 15 }, { weight: 40 }] },
   ] } as LootTable),
   'cursed':        T({ entries: [{ from: 'cursed', bias: 4 }] }),
+  // CRITTER — ambient life (maggots) that drops NOTHING. A squished grub is
+  // atmosphere, not loot; a single no-op entry + zero empty-gold guarantees it.
+  'critter':       { pools: [{ entries: [{ weight: 1 }] }], emptyGold: 0 } as LootTable,
 };
 
 export type DropTableId = keyof typeof TABLES;
