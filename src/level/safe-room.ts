@@ -135,6 +135,10 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // The merchant — a hooded trader tucked at the back-right, the
       // harbor's gold sink. Faces the fire so you find them as you arrive.
       { kind: 'merchant', x: 3.0, z: -2.8, rotY: Math.PI },
+      // The relic-keeper — the trinket merchant, mirrored at the back-LEFT.
+      // Gold buys relics here (they collect into the reliquary): the domain-build
+      // sink to the gear merchant's gear.
+      { kind: 'trinket-merchant', x: -3.0, z: -2.8, rotY: Math.PI },
 
       // ── Candles ─────────────────────────────────────────────────────
       // Flank the approach between the front fixtures and the central

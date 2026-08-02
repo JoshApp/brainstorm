@@ -56,7 +56,7 @@ import { openingEndpoints } from './opening';
 import { bindLight as bindRoomMoodLight, bindFlame as bindRoomMoodFlame, clearRoomMoodBindings } from './room-mood';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
-import { spawnMerchant } from '../interactables/merchant';
+import { spawnMerchant, spawnTrinketMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
@@ -1587,6 +1587,11 @@ export function buildLevel(
     } else if (prop.kind === 'merchant') {
       spawnMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       // Slim footprint — step around the hooded figure on the path.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.35, yTop: gy + 1.6,
+      });
+    } else if (prop.kind === 'trinket-merchant') {
+      spawnTrinketMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.35, yTop: gy + 1.6,
       });

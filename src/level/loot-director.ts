@@ -33,7 +33,7 @@ const GATE_MIN_DEPTH = 2;
 // why chests kept landing on basins and reliquaries. 'model' covers the bonfire.
 const EVENT_BLOCKERS = new Set([
   'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
-  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'pillar', 'model',
+  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'trinket-merchant', 'pillar', 'model',
   'corpse', 'stash-chest',
 ]);
 

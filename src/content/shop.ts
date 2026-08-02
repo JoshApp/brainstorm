@@ -37,15 +37,20 @@ export function priceFor(item: ItemSpec, depth: number): number {
 
 /** Roll a merchant's stock for a depth — `count` distinct wares from the loot
  *  pool, priced. `rand` is injectable so tests are deterministic; gameplay
- *  passes the run RNG so a run's shops are reproducible from its seed. */
-export function rollShopStock(depth: number, count = 3, rand: () => number = gameRng): ShopWare[] {
+ *  passes the run RNG so a run's shops are reproducible from its seed. `table`
+ *  picks the pool: 'merchant' (gear, default) or 'reliquary' (the trinket
+ *  merchant's relics). */
+export function rollShopStock(
+  depth: number, count = 3, rand: () => number = gameRng,
+  table: 'merchant' | 'reliquary' = 'merchant',
+): ShopWare[] {
   const wares: ShopWare[] = [];
   const seen = new Set<string>();
   // Bias 2 = "mid richness" so a shop skews a touch better than a floor drop
   // without handing out fabled gear cheaply. Over-roll a little to fill `count`
   // distinct ids even when the roller repeats.
   for (let attempts = 0; attempts < count * 6 && wares.length < count; attempts++) {
-    const item = rollDropItem('merchant', depth, rand);
+    const item = rollDropItem(table, depth, rand);
     if (!item || seen.has(item.id)) continue;
     seen.add(item.id);
     wares.push({

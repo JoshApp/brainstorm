@@ -67,3 +67,59 @@ export function spawnMerchant(
     built,
   });
 }
+
+// The RELIC-KEEPER — the trinket merchant. Same silhouette as the trader, but
+// its wealth reads ARCANE not golden: a violet-lit charm on the staff, cold
+// amethyst trim, a witch-light in the hood. Stock is drawn from the reliquary
+// pool and a purchase COLLECTS into the reliquary (shop-screen routes relics),
+// so this is where you buy INTO a domain build with gold.
+export const RELIC_KEEPER_MODEL: ModelSpec = {
+  id: 'relic-keeper',
+  materials: {
+    robe: { color: 0x1c1622, roughness: 0.98, metalness: 0.0, flatShading: 'auto' },
+    trim: { color: 0x7a5ca8, roughness: 0.5, metalness: 0.7, flatShading: 'auto' },
+    glow: { color: 0x14081c, emissive: 0xb066ff, emissiveIntensity: 1.7, roughness: 1.0 },
+    eyes: { color: 0x000000, emissive: 0xc79bff, emissiveIntensity: 1.3, roughness: 1.0 },
+  },
+  parts: [
+    { name: 'body', kind: 'capsule', pos: [0, 0.68, 0], radius: 0.27, height: 0.70, mat: 'robe', jitter: 0.02 },
+    { name: 'hood', kind: 'sphere', pos: [0, 1.30, 0], radius: 0.30, scale: [1.0, 1.08, 1.0], mat: 'robe', jitter: 0.02 },
+    { kind: 'sphere', pos: [-0.10, 1.32, -0.23], radius: 0.035, mat: 'eyes' },
+    { kind: 'sphere', pos: [ 0.10, 1.32, -0.23], radius: 0.035, mat: 'eyes' },
+    // Amethyst band at the waist.
+    { kind: 'torus', pos: [0, 0.96, 0], rot: [Math.PI / 2, 0, 0], radius: 0.28, tube: 0.025, mat: 'trim' },
+    // Staff with a floating relic-charm at the top (the witch-light).
+    { kind: 'cylinder', pos: [0.34, 0.62, 0.06], radius: 0.018, height: 1.30, mat: 'trim' },
+    { kind: 'sphere', pos: [0.34, 1.36, 0.06], radius: 0.07, mat: 'glow' },
+    // A ring of tiny charms hanging off the staff (relics for sale).
+    { kind: 'torus', pos: [0.34, 1.14, 0.06], rot: [Math.PI / 2, 0, 0], radius: 0.08, tube: 0.012, mat: 'trim' },
+  ],
+};
+
+/** Spawn the relic-keeper (trinket merchant). Stock is relics; buying collects
+ *  into the reliquary. `depth` drives the roll. */
+export function spawnTrinketMerchant(
+  parent: THREE.Object3D,
+  pos: THREE.Vector3,
+  rotY: number,
+  depth: number,
+): void {
+  const built = buildModel(RELIC_KEEPER_MODEL);
+  built.group.position.copy(pos);
+  built.group.rotation.y = rotY;
+  parent.add(built.group);
+
+  const stock = rollShopStock(depth, 3, undefined, 'reliquary');
+
+  registerInteractable({
+    id: generateEntityId('relic-keeper'),
+    position: pos.clone(),
+    radius: 1.4,
+    promptLabel: 'BARTER',
+    labelOffsetY: 1.6,
+    onUse() {
+      openShopScreen(stock);
+    },
+    built,
+  });
+}

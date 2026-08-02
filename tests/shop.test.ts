@@ -57,5 +57,16 @@ test('spendGold guards affordability', () => {
   assert.equal(spendGold(0), false, 'zero/negative is a no-op');
 });
 
+test('the trinket merchant stocks RELICS (reliquary table)', () => {
+  // Deterministic rand so the roll is stable; assert every ware is a relic.
+  let s = 12345;
+  const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
+  const stock = rollShopStock(6, 3, rand, 'reliquary');
+  assert.ok(stock.length > 0, 'trinket stock should not be empty');
+  for (const ware of stock) {
+    assert.equal(ITEMS[ware.itemId]?.kind, 'relic', `${ware.itemId} should be a relic`);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

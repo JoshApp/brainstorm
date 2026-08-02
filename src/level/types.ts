@@ -350,6 +350,9 @@ export type PropSpec =
   // 'merchant' = the wandering hooded trader. Walk up to open the buy-panel
   // and spend run gold on wares rolled from the loot pool for the depth.
   | { kind: 'merchant'; x: number; z: number; rotY?: number }
+  // 'trinket-merchant' = the relic-keeper. Buys use gold; wares are RELICS that
+  // collect into the reliquary (buy into a domain build).
+  | { kind: 'trinket-merchant'; x: number; z: number; rotY?: number }
   // 'tithe-basin' = the UNKNOWN-family altar: place blood/gold/your
   // weapon in the hollow, the dungeon decides what you were worth.
   | { kind: 'tithe-basin'; x: number; z: number }

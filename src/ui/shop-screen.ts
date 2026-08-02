@@ -7,8 +7,9 @@ import { createSheet, menuButton } from './menu-shell';
 import { emit } from '../broadcast/event-bus';
 import { getGold, spendGold, grantGold } from '../state/run-state';
 import { addItem } from '../player/inventory';
+import { addRelic } from '../player/reliquary';
 import { wareItem, type ShopWare } from '../content/shop';
-import { RARITY_COLORS, type Rarity } from '../content/items';
+import { RARITY_COLORS, ITEMS, type Rarity } from '../content/items';
 import { describeItem } from './inventory-details';
 import { getItemThumbnail } from './item-thumbnail';
 import { hexCss } from '../style/color-utils';
@@ -147,8 +148,16 @@ function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
     if (ware.sold) return;
     if (getGold() < ware.price) { deny(); return; }
     spendGold(ware.price);
-    // addItem can refuse a consumable that's at its carry cap — refund if so.
-    if (!addItem(ware.itemId)) { grantGold(ware.price); deny(); return; }
+    const spec = ITEMS[ware.itemId];
+    if (spec?.kind === 'relic') {
+      // A bought RELIC collects into the reliquary (the trinket merchant's wares),
+      // not the bag — and fires the pickup beat so the domain-binding plays.
+      addRelic(spec);
+      emit({ type: 'item:picked-up', itemId: ware.itemId });
+    } else if (!addItem(ware.itemId)) {
+      // addItem can refuse a consumable at its carry cap — refund if so.
+      grantGold(ware.price); deny(); return;
+    }
     // Unified transaction stream: a purchase is the PRICED family —
     // goods visible, cost stated, no strings (content/transactions.ts).
     emit({ type: 'transaction:accepted', family: 'priced', id: `shop:${ware.itemId}`, price: { gold: ware.price } });
