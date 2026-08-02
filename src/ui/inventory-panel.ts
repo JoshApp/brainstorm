@@ -142,7 +142,7 @@ function isOpen(): boolean { return !!sheet; }
 function toggle() { isOpen() ? close() : open('gear'); }
 
 /** Programmatic open — debug snaps + the I hotkey. */
-export function openInventoryPanel(tab: 'gear' | 'reliquary' = 'gear') { open(tab); }
+export function openInventoryPanel(tab: Tab = 'gear') { open(tab); }
 
 /** Open straight to the CHARACTER tab (desktop C / settings button). */
 export function openCharacterTab() { open('character'); }

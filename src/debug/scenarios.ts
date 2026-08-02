@@ -142,7 +142,7 @@ export interface Scenario {
   /** Programmatically open the inventory panel for the snap. */
   openInventoryPanel?: boolean;
   /** Which tab the panel opens on (default 'gear'). */
-  inventoryTab?: 'gear' | 'reliquary';
+  inventoryTab?: 'gear' | 'reliquary' | 'character' | 'codex' | 'settings';
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
   /** Select a collected relic in the RELIQUARY tab (snap scenarios). */
@@ -1293,6 +1293,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
     spawnPickups: [
       { itemId: 'ring-of-marrow', x: 0, z: 0.2 },   // relic, ~0.8m ahead
+    ],
+  },
+
+  // Settings screen (the ⚙ tab of the unified menu) — for the settings-menu
+  // crispness snap. `delve snap settings`.
+  settings: {
+    freeze: true,
+    hideSword: true,
+    openInventoryPanel: true,
+    inventoryTab: 'settings',
+    enemyOverrides: [
+      { index: 0, pos: { x: -14, z: -14 } },
+      { index: 1, pos: { x: 14, z: -14 } },
+      { index: 2, pos: { x: -14, z: 14 } },
     ],
   },
 

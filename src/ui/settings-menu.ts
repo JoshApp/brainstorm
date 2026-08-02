@@ -742,6 +742,7 @@ function buildRunTab(): HTMLElement[] {
     label: 'CHARACTER',
     description: 'View attributes + proficiencies. Spend points at safe rooms.',
     destructive: false,
+    icon: 'character',
     onClick: () => {
       // Route to the CHARACTER TAB of the unified menu rather than a
       // separate sheet (no stacked overlay). closePanel() is a no-op when
@@ -756,6 +757,7 @@ function buildRunTab(): HTMLElement[] {
     label: 'REPORT A BUG',
     description: 'Send the keepers a screenshot of this exact moment, your run details, and a note.',
     destructive: false,
+    icon: 'bug',
     onClick: () => {
       closePanel();
       openBugReport();
@@ -765,6 +767,7 @@ function buildRunTab(): HTMLElement[] {
     label: 'QUIT TO MENU',
     description: 'Return to the title screen. Your run is saved.',
     destructive: false,
+    icon: 'door',
     onClick: () => {
       closePanel();
       runActions!.quitToMenu();
@@ -774,6 +777,7 @@ function buildRunTab(): HTMLElement[] {
     label: 'ABANDON RUN',
     description: 'Discard this run. Inventory, depth, and progress are lost.',
     destructive: true,
+    icon: 'skull',
     onClick: () => {
       closePanel();
       runActions!.abandonRun();
@@ -783,15 +787,28 @@ function buildRunTab(): HTMLElement[] {
     label: 'EXIT GAME',
     description: 'Close the game tab. (On mobile, returns to the home screen.)',
     destructive: false,
+    icon: 'power',
     onClick: () => runActions!.exitGame(),
   }));
   return out;
 }
 
+// Leading glyphs for the run-action buttons — a person, a bug, a door, a skull,
+// a power symbol. A distinguishing icon reads far faster than five near-identical
+// centred all-caps labels. 16px viewBox, stroked in the button's own colour.
+const RUN_ICON = {
+  character: '<circle cx="8" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 14 Q3 9 8 9 Q13 9 13 14" fill="none" stroke="currentColor" stroke-width="1.3"/>',
+  bug: '<ellipse cx="8" cy="9" rx="3.2" ry="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 5 L8 3 M6.5 3.5 L5.5 2 M9.5 3.5 L10.5 2 M4.8 7 L2.5 6 M11.2 7 L13.5 6 M4.8 9.5 L2.3 9.5 M11.2 9.5 L13.7 9.5 M4.8 12 L2.8 13.2 M11.2 12 L13.2 13.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>',
+  door: '<path d="M4 2.5 L4 13.5 L9 13.5 L9 2.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 8 L14 8 M12 6 L14 8 L12 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+  skull: '<path d="M8 1.5 C4.4 1.5 2.5 4 2.5 7 C2.5 9 3.5 10 4 10.5 L4 13 L12 13 L12 10.5 C12.5 10 13.5 9 13.5 7 C13.5 4 11.6 1.5 8 1.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="6" cy="7" r="1.2" fill="currentColor"/><circle cx="10" cy="7" r="1.2" fill="currentColor"/>',
+  power: '<path d="M8 2 L8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 4.5 A5 5 0 1 0 11 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+} as const;
+
 interface RunButtonOpts {
   label: string;
   description: string;
   destructive: boolean;
+  icon: keyof typeof RUN_ICON;
   onClick: () => void;
 }
 
@@ -803,15 +820,16 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
   Object.assign(wrap.style, {
     display: 'flex',
     flexDirection: 'column',
-    gap: '3px',
+    gap: '2px',
   } as Partial<CSSStyleDeclaration>);
 
   const button = document.createElement('button');
-  button.textContent = opts.label;
   const baseBg = opts.destructive ? 'rgba(60, 18, 12, 0.7)' : 'rgba(40, 28, 20, 0.7)';
-  const baseBorder = opts.destructive ? 'rgba(200, 80, 60, 0.55)' : 'rgba(180, 130, 90, 0.5)';
-  const baseColor = opts.destructive ? 'rgba(255, 190, 170, 0.95)' : 'rgba(230, 200, 170, 0.95)';
+  const baseBorder = opts.destructive ? 'rgba(200, 80, 60, 0.6)' : 'rgba(180, 130, 90, 0.5)';
+  const baseColor = opts.destructive ? 'rgba(255, 175, 155, 0.96)' : 'rgba(230, 200, 170, 0.95)';
   Object.assign(button.style, {
+    // Left-aligned icon + label — scannable, not a generic centred OK button.
+    display: 'flex', alignItems: 'center', gap: '10px',
     padding: '9px 14px',
     background: baseBg,
     border: `1px solid ${baseBorder}`,
@@ -820,7 +838,8 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '11px',
     fontWeight: '600',
-    letterSpacing: '0.22em',
+    letterSpacing: '0.2em',
+    textAlign: 'left',
     cursor: 'pointer',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -828,6 +847,13 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
     touchAction: 'manipulation',
     transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
   } as Partial<CSSStyleDeclaration>);
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('width', '16'); icon.setAttribute('height', '16');
+  icon.innerHTML = RUN_ICON[opts.icon];
+  icon.style.flexShrink = '0';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = opts.label;
+  button.append(icon, labelEl);
   wrap.appendChild(button);
 
   const desc = document.createElement('div');
@@ -835,7 +861,7 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
   Object.assign(desc.style, {
     fontSize: '10px',
     color: 'rgba(180, 140, 100, 0.7)',
-    paddingLeft: '2px',
+    paddingLeft: '28px',   // align under the label, past the icon
   } as Partial<CSSStyleDeclaration>);
   wrap.appendChild(desc);
 
@@ -854,14 +880,14 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
     e.stopPropagation();
     if (!armed) {
       armed = true;
-      button.textContent = 'TAP AGAIN TO CONFIRM';
+      labelEl.textContent = 'TAP AGAIN TO CONFIRM';
       button.style.background = 'rgba(120, 30, 22, 0.85)';
       button.style.borderColor = 'rgba(255, 120, 80, 0.85)';
       button.style.color = 'rgba(255, 230, 220, 0.98)';
       if (armTimer !== undefined) clearTimeout(armTimer);
       armTimer = window.setTimeout(() => {
         armed = false;
-        button.textContent = opts.label;
+        labelEl.textContent = opts.label;
         button.style.background = baseBg;
         button.style.borderColor = baseBorder;
         button.style.color = baseColor;
