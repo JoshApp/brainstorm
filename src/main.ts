@@ -19,6 +19,7 @@ import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
 import { attachLampArm } from './player/lamp-arm';
 import { initBreath } from './effects/breath';
 import { initCardClaim } from './effects/card-claim';
+import { initDomainBind } from './effects/domain-bind';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
@@ -762,6 +763,10 @@ initBreath(camera);
 // The world-space "fate drawn into you" beat — a chosen card materialises in
 // front of the eyes, burns, and is pulled into the player (see effects/card-claim).
 initCardClaim(camera);
+
+// The shared "binding with a domain" beat — a domain sigil + rune-ring drawn into
+// the chest, played by BOTH fate claims and trinket pickups (see effects/domain-bind).
+initDomainBind(camera);
 
 // The world-scale model to fling to the floor on death — tracked from the
 // equipped weapon. Drop model (correct world size + depth) over the

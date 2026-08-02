@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
+import type { DomainId } from '../content/domains';
+import { bindToDomain } from './domain-bind';
 
 // THE FATE, TAKEN INTO YOU — the diegetic close of a reading.
 //
@@ -51,11 +53,15 @@ function cardTex(url: string): THREE.Texture {
 interface Ember { spr: THREE.Sprite; ox: number; oy: number; vx: number; vy: number; }
 
 /** Play the world-space "fate drawn into you" beat for `cardId`, tinted `accentHex`
- *  (the card's domain colour). No-op if the camera isn't wired yet or in headless. */
-export function playCardClaim(cardId: string, accentHex: string): void {
+ *  (the card's domain colour). If `domain` is given, the shared domain-binding
+ *  beat plays UNDER the burning card (the sigil + rune-ring), so a fate claim and
+ *  a trinket pickup read as the same act of binding. No-op headless / pre-boot. */
+export function playCardClaim(cardId: string, accentHex: string, domain?: DomainId): void {
   const camera = cameraRef;
   if (!camera || typeof document === 'undefined') return;
   const accent = new THREE.Color(accentHex);
+  // The domain binds under the card (the reading already floods, so no flood here).
+  if (domain) { try { bindToDomain(domain, { withFlood: false }); } catch { /* presentation */ } }
 
   // A rig on the camera; everything sits in its local frame so a look-around
   // carries the whole beat with the view.

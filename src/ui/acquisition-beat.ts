@@ -21,6 +21,7 @@ import { getItemThumbnail, itemImageUrl } from './item-thumbnail';
 import { itemFraming } from './item-framing';
 import { getReliquary } from '../player/reliquary';
 import { flashDomainGlow } from './vignette';
+import { bindToDomain } from '../effects/domain-bind';
 import { RARITY_COLORS } from '../content/items';
 import { hexCss } from '../style/color-utils';
 import { projectToScreen, flyToHud } from './fly-to-hud';
@@ -145,10 +146,16 @@ function playDomainDeepening(item: ItemSpec): void {
   const count = afflictionCount(item);
   // Strength climbs with the count but saturates — a floor, then escalation.
   const strength = Math.min(1, 0.55 + (count - 1) * 0.15);
-  // ONLY the diegetic screen flood — the domain's colour washes in as the relic
-  // marks you. NO top-right pop: that channel (the voice in the deep) is reserved
-  // for achievements + genuinely new beats, not routine mid-run pickups. The
-  // relic's own provenance still reads through the centred inscription channel
-  // (pickup-notification), which is the in-world register a pickup should use.
-  flashDomainGlow(f.color, strength);
+  // A domain trinket BINDS you to its domain — the SAME beat a fate claim plays
+  // (sigil + rune-ring drawn into the chest), so the two systems read as one act
+  // of binding. The bind owns the colour flood. Cursed relics have no domain, so
+  // they fall back to the flat chaos-violet wash (no domain to bind to).
+  // NO top-right pop: that channel (the voice in the deep) is reserved for
+  // achievements + genuinely new beats. The relic's provenance still reads through
+  // the centred inscription channel (pickup-notification).
+  if (item.domain) {
+    try { bindToDomain(item.domain, { strength }); } catch { flashDomainGlow(f.color, strength); }
+  } else {
+    flashDomainGlow(f.color, strength);
+  }
 }

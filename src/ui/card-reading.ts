@@ -224,7 +224,7 @@ export function openCardReading(
     // dark and the fate appears there in front of you, burning, pulled in.
     setTimeout(() => {
       close();
-      try { playCardClaim(card.id, accent); } catch { /* presentation must never break the claim */ }
+      try { playCardClaim(card.id, accent, card.domains[0]); } catch { /* presentation must never break the claim */ }
       // The domain floods the game view + the deep reads the fate as it enters
       // you — timed to the world card's ignite/absorb, not a menu close.
       try { flashDomainGlow(accent, 1); } catch { /* presentation */ }
