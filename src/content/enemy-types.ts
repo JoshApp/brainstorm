@@ -333,6 +333,27 @@ export interface EnemySpec {
     radius?: number;
   };
 
+  /**
+   * SUMMON GATE (boss add-phase). When the enemy's HP first falls to or below
+   * `atHpFrac` of its max, it WARDS ITSELF — becoming invulnerable — and summons
+   * `count` bodies of `enemyId` around it. It stays warded (no damage lands, the
+   * hit reads as a metallic clang) until every summoned body is dead, then the
+   * ward breaks and it's vulnerable again. Because the adds join the boss
+   * encounter, the FIGHT only ends when the boss AND all its summoned adds are
+   * down — you can't burst the boss past its ward, you have to clear the brood.
+   *
+   * One gate per boss for now (fires once). The add spec should be a normal
+   * killable body (it needn't be a boss, but flagging it isBoss gives it a bar).
+   */
+  summonGate?: {
+    /** Fire when hp / maxHp drops to/below this fraction (e.g. 0.75 = 25% lost). */
+    atHpFrac: number;
+    enemyId: string;
+    count: number;
+    /** Radial scatter distance for the summoned bodies. Default 1.6m. */
+    radius?: number;
+  };
+
   // --- Multi-phase boss ---
   /**
    * Phase progression. When set, the enemy starts in phase[0] (its HP,

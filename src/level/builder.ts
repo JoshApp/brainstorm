@@ -14,8 +14,11 @@ import { installPropHeightAO } from '../style/surface-ao';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
+import { createPickup } from '../interactables/pickup';
+import { spawnGoldCoins } from '../effects/gold-coins';
 import { kickShake } from '../combat/screen-shake';
-import { registerBossMember, advanceBossPhase } from '../mobs/boss-encounter';
+import { registerBossMember, advanceBossPhase, onBossEncounterComplete } from '../mobs/boss-encounter';
+import { spawnBossBonfire } from '../effects/boss-bonfire';
 import { setBossPresentation } from '../mobs/boss-cinematics';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
@@ -39,7 +42,7 @@ import { spawnCorpse } from '../interactables/corpse';
 import { spawnWallRune } from '../interactables/wall-rune';
 import { pickFallen } from '../content/corpses';
 import { pickWallMark } from '../content/wall-marks';
-import { rollDropItem } from '../content/drop-tables';
+import { rollDropItem, rollDropTable } from '../content/drop-tables';
 import { registerSearchable } from '../interactables/searchable';
 import type { ItemSpec } from '../content/items';
 import { spawnFitting } from '../interactables/fitting';
@@ -2176,6 +2179,35 @@ export function buildLevel(
     return e;
   }
 
+  // SUMMON-GATE hook factory — the boss calls this when it wards itself. Spawns
+  // its brood into the same sealed room (so room-clear + the boss encounter both
+  // count them) and hands the bodies back so the boss can watch them: its ward
+  // lifts when they're all dead. Mirrors the splitsInto scatter, but MID-fight.
+  function makeOnSummon(roomId: string | null) {
+    return (gate: NonNullable<EnemySpec['summonGate']>, atPos: THREE.Vector3): Enemy[] => {
+      const childBase = ENEMIES[gate.enemyId];
+      if (!childBase) return [];
+      const r = gate.radius ?? 1.6;
+      const out: Enemy[] = [];
+      for (let i = 0; i < gate.count; i++) {
+        const angle = (i / gate.count) * Math.PI * 2 + gameRng() * 0.4;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const child = spawnInto(childBase, new THREE.Vector3(atPos.x + cos * r, 0, atPos.z + sin * r), roomId);
+        child.applyKnockback(cos, sin, 5.0);   // flung out of the parent as it wards up
+        out.push(child);
+      }
+      kickShake(0.3, 0.45);
+      return out;
+    };
+  }
+
+  // Deferred boss reward — the boss's hoard is held back from its own death drop
+  // (enemy.ts suppresses it for isBoss) and erupts here when the whole encounter
+  // ends, beside the rising bonfire. Captured from the authored boss spawn +
+  // its final death position.
+  let bossRewardSpec: EnemySpec | null = null;
+  let bossDeathPos: THREE.Vector3 | null = null;
+
   // Fired right after an enemy dies in enemy.ts:takeDamage. Handles
   // splitsInto — spawns N children scattered in a small ring around
   // the death position. Roomid comes from where the PARENT was
@@ -2183,6 +2215,10 @@ export function buildLevel(
   // door-clear bookkeeping (kill the parent → kids spawn in the same
   // sealed combat room → you have to kill them too).
   const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3, deadEntityId: string) => {
+    // Remember where each boss body fell — the king dies LAST (warded until its
+    // brood is cleared), so this ends up holding the king's spot, which is where
+    // the reward + bonfire erupt on encounter completion.
+    if (deadSpec.isBoss) bossDeathPos = deathPos.clone();
     const split = deadSpec.splitsInto;
     if (!split) return;
     const childBase = ENEMIES[split.enemyId];
@@ -2231,25 +2267,59 @@ export function buildLevel(
     // wall, scan outward for the nearest free spot. Without this, mobs
     // can spawn stuck inside a prop and never move.
     const resolved = walkable.resolveSpawn(s.x, s.z, enemySpec.collisionRadius);
+    // Room membership uses the resolved position so a mob nudged across
+    // a doorway is attributed to the room it actually ended up in. Computed
+    // BEFORE createEnemy so the summon hook can hand its brood the same room.
+    const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
     const enemy = createEnemy(
       root,
       new THREE.Vector3(resolved.x, groundYAt(resolved.x, resolved.z), resolved.z),
       enemySpec,
       onEnemyDeath,
-      { dormant: s.dormant },
+      { dormant: s.dormant, onSummon: makeOnSummon(roomId) },
     );
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
-    // Room membership uses the resolved position so a mob nudged across
-    // a doorway is attributed to the room it actually ended up in.
-    const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
     roomByEntity.set(enemy.entityId, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
     // Authored boss spawns (the king) MUST join the encounter container too
     // — without this they're never a `liveBossMember`, so the boss bar never
     // engages and a dormant boss stays asleep forever. (The split helper
     // registers spawned children; this is the missing initial-spawn case.)
-    if (enemy.isBoss) registerBossMember(enemy);
+    if (enemy.isBoss) { registerBossMember(enemy); bossRewardSpec = enemySpec; }
+  }
+
+  // When the whole boss encounter ends (king + every summoned prince dead), the
+  // held-back hoard erupts and a bonfire RISES from the arena floor — the boss's
+  // essence poured into a rest-fire the delver earns. Both anchor at the king's
+  // final spot. Registered once per floor, only when a boss actually spawned.
+  if (bossRewardSpec) {
+    const rewardSpec = bossRewardSpec;
+    onBossEncounterComplete(() => {
+      const fell = (bossDeathPos ?? new THREE.Vector3(spec.startPos.x, 0, spec.startPos.z));
+      // The king can die anywhere it roamed — snap the fire onto a reachable
+      // cell so the REST prompt (and the gated descent) is never marooned on a
+      // hazard void or inside a pillar.
+      const safe = walkable.resolveSpawn(fell.x, fell.z, 0.5);
+      const at = new THREE.Vector3(safe.x, groundYAt(safe.x, safe.z), safe.z);
+      // The bonfire emerges here (rumble + the king's souls coalescing into it),
+      // then becomes a REST fire that heals + deals a major arcana.
+      spawnBossBonfire(root, at.clone(), levelDepth);
+      // The deferred hoard — the boss's whole 'boss' drop table, erupting around
+      // the new fire on their own arcs (gold flies to the counter).
+      const bundle = rollDropTable(rewardSpec.dropTable ?? 'boss', levelDepth, gameRng);
+      const N = bundle.items.length;
+      bundle.items.forEach((item, i) => {
+        const angle = (N > 1 ? (i / N) * Math.PI * 2 : gameRng() * Math.PI * 2) + (gameRng() - 0.5) * 0.5;
+        const hs = 1.6 + gameRng() * 0.6;
+        const launchVel = new THREE.Vector3(Math.cos(angle) * hs, 3.8 + gameRng() * 0.5, Math.sin(angle) * hs);
+        createPickup(root, at.clone(), item, { velocity: launchVel });
+      });
+      if (bundle.gold > 0) {
+        const coinOrigin = at.clone(); coinOrigin.y += 0.6;
+        spawnGoldCoins(root, coinOrigin, bundle.gold);
+      }
+    });
   }
 
   // --- Doors ---------------------------------------------------------

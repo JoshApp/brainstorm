@@ -1560,22 +1560,26 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     xp: 60,                          // significant haul — earns the depth
-    // Death = bursts into three smaller slimes. The fight isn't over
-    // yet; the prince spec terminates the recursion (no splitsInto on
-    // it). 0.8m scatter radius spreads them around the corpse.
-    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 1.6 },
+    // SUMMON GATE — at 25% HP lost the king WARDS itself (untouchable) and
+    // spews three boiling-princes. You can't burst it past the ward; you have
+    // to cut the brood down first, then the ward breaks and the king is open
+    // again. The fight ends only when the king AND all three princes are dead
+    // (they join the boss encounter). Replaces the old death-split so the adds
+    // are a MID-FIGHT wall, not a post-mortem cleanup.
+    summonGate: { atHpFrac: 0.75, enemyId: 'boiling-prince', count: 3, radius: 1.9 },
   },
 
   // Boiling Prince — the children of the king. Smaller, faster, no
-  // further splitting. They're cleanup — the king's last gasp before
-  // the room unseals.
+  // further splitting. They are the king's WARD: while any prince lives the
+  // king is untouchable, so cutting them down is the whole job of the add
+  // phase.
   'boiling-prince': {
     id: 'boiling-prince',
     name: 'boiling prince',
-    // No tileChar — only spawned via the king's splitsInto.
-    // The split stays part of the boss fight: each prince is a boss, so
-    // the boss bar tracks all three (as three smaller bars). The fight
-    // ends only when the last prince dies.
+    // No tileChar — only spawned via the king's summonGate (mid-fight, at
+    // 25% HP lost). Each prince is a boss, so the boss bar tracks all three
+    // (as three smaller bars). While any prince lives the king is warded; the
+    // fight ends only when the king AND every prince is dead.
     isBoss: true,
     bossName: 'Spawn of the King',
     hp: 4,

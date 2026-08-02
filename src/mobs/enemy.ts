@@ -58,7 +58,7 @@ import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { fireDeathPayoffs } from '../combat/death-payoffs';
 import { aggregateSpeed } from '../combat/modifiers';
-import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
+import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, playSurfaceHit, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { createBlobShadow } from '../effects/blob-shadow';
@@ -319,8 +319,14 @@ export function createEnemy(
   spec: EnemySpec,
   onDeath?: EnemyOnDeath,
   /** Optional spawn-time flags. `dormant: true` skips perception
-   *  + AI + idle animation until the boss-engagement flag flips. */
-  options?: { dormant?: boolean },
+   *  + AI + idle animation until the boss-engagement flag flips.
+   *  `onSummon` is the SUMMON-GATE hook: when the boss wards itself it calls
+   *  this to spawn its brood into the live level, and the builder returns the
+   *  spawned bodies so the boss can watch them (its ward lifts when all die). */
+  options?: {
+    dormant?: boolean;
+    onSummon?: (gate: NonNullable<EnemySpec['summonGate']>, atPos: THREE.Vector3) => Enemy[];
+  },
 ): Enemy {
   tagPerfEvent(`spawn:${spec.id}`);   // perf timeline (no-op unless the dashcam rolls)
   // Container: world position + yaw to face player.
@@ -528,6 +534,17 @@ export function createEnemy(
   // Per-phase mutable state (so we can reassign on transition).
   let currentMaxHp = initialHp;
   let currentAbilities = initialAbilities;
+
+  // SUMMON GATE — the boss's mid-fight add wall (spec.summonGate). Fires once
+  // when HP first drops to/below atHpFrac: the boss WARDS itself (takeDamage
+  // returns 0, the hit clangs) and calls onSummon to spawn its brood. The ward
+  // lifts the instant every summoned body is dead (polled in update()). See
+  // the summonGate doc in enemy-types.ts.
+  const summonGate = spec.summonGate ?? null;
+  const onSummon = options?.onSummon;
+  let summonFired = false;
+  let warded = false;
+  let summonedAdds: Enemy[] = [];
   // Per-phase partBreaks: tracks which thresholds have fired so we
   // don't re-hide parts every tick. Reset on phase entry.
   let firedPartBreaks = new Set<number>();
@@ -618,6 +635,41 @@ export function createEnemy(
     state = 'chasing';
     phaseTimer = 0;
   }
+
+  // ── SUMMON GATE — the boss wards itself and spews its brood ─────────────────
+  // Fired once from takeDamage when HP first crosses summonGate.atHpFrac. The
+  // ward holds (takeDamage returns 0) until every summoned body is dead, polled
+  // in update() by pollSummonWard.
+  function fireSummonGate(): void {
+    if (!summonGate || summonFired) return;
+    summonFired = true;
+    warded = true;
+    summonedAdds = onSummon ? onSummon(summonGate, container.position.clone()) : [];
+    // Nothing spawned (missing builder hook / bad enemyId) → don't lock the boss
+    // in an unbreakable ward forever.
+    if (summonedAdds.length === 0) { warded = false; return; }
+    coreReactor.hit();                                   // a bright flare as the ward slams up
+    playEnemyWindup('medium', container.position);       // a summoning roar
+    playSurfaceHit('metal', container.position);         // the ward rings closed
+    kickShake(0.30, 0.5);
+  }
+  // Warded-hit feedback: the blow glances off. A metallic clang + a whisper of
+  // shake, but NO core flare / wound-cry (those read as "I hurt it").
+  function wardHitReact(): void {
+    playSurfaceHit('metal', container.position);
+    kickShake(0.06, 0.12);
+  }
+  // Poll each frame while warded: the instant the whole brood is down the ward
+  // breaks and the boss is open again.
+  function pollSummonWard(): void {
+    if (!warded) return;
+    if (summonedAdds.some((a) => a.alive)) return;
+    warded = false;
+    coreReactor.hit();                                   // the core flares open — vulnerable
+    playEnemyDeath('small', container.position);         // a wet shudder as the ward fails
+    kickShake(0.16, 0.3);
+  }
+
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
   // EnemySpec override per-enemy.
@@ -1026,10 +1078,20 @@ export function createEnemy(
     // Multi-phase boss: invuln window on phase entry (e.g. the
     // skeleton's downed-and-rising animation).
     if (phases && phaseInvulnTimer > 0) return 0;
+    // SUMMON-GATE ward: while the boss's brood lives it is untouchable. The blow
+    // lands as a metallic clang (no wound, no wound-cry) so the player LEARNS to
+    // cut the adds down first rather than pounding a warded body.
+    if (warded) { wardHitReact(); return 0; }
     const entity = getEntity(entityId);
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
+    // Fire the summon gate the first time this hit drops HP to/below the
+    // threshold (but not on the killing blow — the threshold is well above 0).
+    if (summonGate && !summonFired && entity.hp.current > 0
+        && entity.hp.current <= currentMaxHp * summonGate.atHpFrac) {
+      fireSummonGate();
+    }
     // DEV training arena: floor HP at 1 so the sparring partner never dies —
     // hit flash, poise/stagger, and aggro all still fire above. Inert in prod
     // (the flag's setter ANDs with DEV).
@@ -1144,7 +1206,15 @@ export function createEnemy(
       // one named table: gold + the odd key/consumable, or (elites/bosses) a
       // relic. No per-enemy pool arrays; a mob just names its tier. Items pop out
       // of the corpse on their own arcs; gold flies to the counter below.
-      {
+      //
+      // BOSSES DEFER their reward: a boss (the king, its princes, any boss body)
+      // drops NOTHING on its own death — the hoard spawns once when the whole
+      // boss ENCOUNTER completes (builder's onBossEncounterComplete), erupting
+      // beside the bonfire that rises from the arena floor. This is the
+      // "loot when the fight is over, not mid-fight" rule: a king that dies while
+      // its brood still lives, or a prince cut down mid-fight, must not litter
+      // the floor with the boss hoard before the room is clear.
+      if (!spec.isBoss) {
         const bundle = rollDropTable(spec.dropTable ?? 'enemy', getCurrentDepth(), gameRng);
         const N = bundle.items.length;
         bundle.items.forEach((item, i) => {
@@ -2168,6 +2238,10 @@ export function createEnemy(
     // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
     if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
 
+    // Summon-gate ward: break it the instant the brood is dead (the king keeps
+    // fighting while warded — no early return — it just can't be hurt).
+    if (warded) pollSummonWard();
+
     // Phase-transition collapse — ease the body into the crawl pose while
     // he's down. He's INERT here (early return skips all AI/movement/
     // abilities) and already invulnerable (phaseInvulnTimer gate above), so
@@ -3062,7 +3136,7 @@ export function createEnemy(
     // reward for breaking poise, which is what makes the stagger game matter.
     // A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
     get executable() {
-      if (!aliveLocal || phaseInvulnTimer > 0) return false;
+      if (!aliveLocal || phaseInvulnTimer > 0 || warded) return false;
       return state === 'staggered';
     },
     aiDebug(): AiDebug {
