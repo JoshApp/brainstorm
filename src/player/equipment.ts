@@ -43,6 +43,40 @@ const slotAffixes: Record<EquipSlot, AffixInstance[]> = {
   weapon: [], offhand: [], vestment: [],
 };
 
+// ── The sheathed alternate (weapon loadout — task #96) ───────────────
+// A SECOND weapon the delver carries but isn't wielding. Deliberately NOT a
+// member of `slots`, so it contributes ZERO stats / on-hits / set-pieces while
+// sheathed (a holstered blade shouldn't buff you) — it simply isn't in the
+// aggregation pipeline. `swapWeapons()` exchanges it with the drawn `weapon`
+// slot, so all combat/stat code keeps reading `slots.weapon` (the drawn one)
+// unchanged. Carry cap: at most weapon + sidearm = TWO weapons on the body.
+let sidearm: ItemSpec | null = null;
+let sidearmAffixes: AffixInstance[] = [];
+
+/** The sheathed alternate weapon (null if only carrying one). */
+export function getSidearm(): ItemSpec | null { return sidearm; }
+export function getSidearmAffixes(): readonly AffixInstance[] { return sidearmAffixes; }
+
+/** Carry a weapon as the sheathed alternate. Replaces whatever was sheathed. */
+export function setSidearm(item: ItemSpec | null, affixes: AffixInstance[] = []): void {
+  sidearm = item;
+  sidearmAffixes = item ? affixes : [];
+  notify();
+}
+
+/** Draw the sheathed weapon — exchange it with the wielded one (+ its affixes).
+ *  The drawn weapon is always `slots.weapon`, so combat + the viewmodel listener
+ *  pick up the change for free. Returns true if a swap happened (needs at least
+ *  one weapon on the body). */
+export function swapWeapons(): boolean {
+  if (!sidearm && !slots.weapon) return false;
+  const w = slots.weapon, wa = slotAffixes.weapon;
+  slots.weapon = sidearm; slotAffixes.weapon = sidearmAffixes;
+  sidearm = w; sidearmAffixes = wa;
+  notify();
+  return true;
+}
+
 type EquipListener = (eq: Readonly<Equipment>) => void;
 const listeners = new Set<EquipListener>();
 
@@ -176,7 +210,13 @@ export function getPlayerOnHits(): PlayerOnHit[] {
  */
 export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   switch (item.kind) {
-    case 'weapon':   return autoFillSingle('weapon', item, affixes);
+    // A found weapon fills the drawn hand if empty, else the sheathed slot if
+    // empty (so a second weapon becomes your alternate automatically). Both full
+    // → false, caller leaves it in the bag (the swap-or-leave cap is a follow-up).
+    case 'weapon':
+      if (autoFillSingle('weapon', item, affixes)) return true;
+      if (!sidearm) { setSidearm(item, affixes); return true; }
+      return false;
     case 'offhand':  return autoFillSingle('offhand', item, affixes);
     case 'vestment': return autoFillSingle('vestment', item, affixes);
     // Relics COLLECT into the reliquary — never a slot, always applies.

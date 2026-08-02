@@ -26,7 +26,7 @@ import {
   noteRunDiscovery,
 } from './meta-state';
 import { getAllItems } from '../player/inventory';
-import { getEquipment } from '../player/equipment';
+import { getEquipment, getSidearm } from '../player/equipment';
 import { getPlayerHp } from '../player/health';
 import { getCurrentDepth } from '../level/loader';
 
@@ -63,6 +63,10 @@ export function initRunStateListeners() {
       for (const [slot, item] of Object.entries(eq)) {
         if (item) eqSnapshot[slot] = item.id;
       }
+      // The sheathed alternate weapon rides the same snapshot (task #96) so a
+      // two-weapon loadout survives a floor reload / resume.
+      const sa = getSidearm();
+      if (sa) eqSnapshot['sidearm'] = sa.id;
       const depth = getCurrentDepth();
       // Crossing into the FIRST depth of an act — snapshot kills/xp/gold
       // so the safe-room transition card at the end of the act can show

@@ -21,7 +21,8 @@ import { initBreath } from './effects/breath';
 import { initCardClaim } from './effects/card-claim';
 import { initDomainBind } from './effects/domain-bind';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
-import { setSlot, onEquipmentChanged } from './player/equipment';
+import { setSlot, onEquipmentChanged, swapWeapons } from './player/equipment';
+import { createWeaponSwapChip, pulseWeaponSwapChip } from './controls/weapon-swap-chip';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { runWarmupPassWebGPU } from './content/warmup-pass';
@@ -72,7 +73,7 @@ import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { beginArrival, suppressArrivalCeremony } from './player/arrival';
 import { initChasmPresence } from './effects/chasm-presence';
-import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
+import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio, playEquipClick } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { type LiveLevel } from './level/builder';
@@ -794,6 +795,7 @@ onEquipmentChanged((eq) => {
   }
 });
 
+
 // --- Combat ---
 // Combat queries enemies via a getter so the system follows level swaps —
 // after descent the new floor's enemies become attackable without
@@ -954,6 +956,14 @@ onScreenStateChanged(() => {
   _wasPausedByScreen = pausedNow;
 });
 createConsumableBar();
+// Weapon-swap chip — one-tap draw of the sheathed alternate (task #96). Created
+// alongside the flask (same HUD lifecycle) so it survives the screen-manager
+// setup. Gated on NOT mid-swing so a swap can't interrupt a committed attack; the
+// equipment listener swaps the viewmodel + combat weapon for free on notify().
+createWeaponSwapChip(() => {
+  if (weapon.isSwinging) return;         // finish the swing first
+  if (swapWeapons()) { playEquipClick(); pulseWeaponSwapChip(); }
+});
 createRiteButton();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.

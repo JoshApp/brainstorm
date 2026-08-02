@@ -21,7 +21,7 @@ import { ITEMS } from '../content/items';
 import { BONFIRE } from '../content/bonfire';
 import { buildModel } from '../ecs/build-model';
 import { interpSync } from '../engine/render-interp';
-import { setSlot, tryAutoEquip } from '../player/equipment';
+import { setSlot, tryAutoEquip, setSidearm } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
 import { spawnCardDrop } from '../interactables/card-drop';
@@ -139,6 +139,8 @@ export interface Scenario {
   applyPlayerBuff?: { id: string; duration: number };
   /** Equip a weapon by item id at startup (so snaps can show different viewmodels). */
   equipWeaponId?: string;
+  /** Sheathe an alternate weapon by id (shows the loadout swap chip — #96). */
+  sidearmId?: string;
   /** Add items to inventory and auto-equip rings/armor (for inventory-panel snaps). */
   giveItems?: string[];
   /** Programmatically open the inventory panel for the snap. */
@@ -2369,6 +2371,12 @@ export function applyScenario(
       // main.ts listener — same code path as a real pickup.
       setSlot('weapon', item);
     }
+  }
+
+  // Sheathe an alternate weapon so the swap chip shows (loadout preview #96).
+  if (scenario.sidearmId) {
+    const alt = ITEMS[scenario.sidearmId];
+    if (alt) setSidearm(alt);
   }
 
   if (scenario.triggerDeath) {

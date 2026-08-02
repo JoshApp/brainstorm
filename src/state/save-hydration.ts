@@ -1,6 +1,6 @@
 import { clearInventory, addItemSilently } from '../player/inventory';
 import { clearReliquary } from '../player/reliquary';
-import { setSlot, type EquipSlot } from '../player/equipment';
+import { setSlot, setSidearm, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
 import { syncMaxHp } from '../player/health';
@@ -15,9 +15,11 @@ import type { loadSave } from './run-state';
 // and captures none of main's orchestration state.
 
 export function applyState(saveData: ReturnType<typeof loadSave>) {
-  // Reset inventory + reliquary.
+  // Reset inventory + reliquary + the sheathed alternate (a fresh run, or a save
+  // that predates the loadout, carries no sidearm — clear any stale one first).
   clearInventory();
   clearReliquary();
+  setSidearm(null);
   // Hydrate inventory from save (or empty for new run).
   if (saveData) {
     for (const [id, count] of Object.entries(saveData.inventory)) {
@@ -40,6 +42,9 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
       // Legacy saves carry an equipped oil-lamp offhand — drop it so the
       // slot frees up now that the lamp is baked in.
       if (slot === 'offhand' && itemId === 'oil-lamp') continue;
+      // The sheathed alternate weapon (task #96) — restore it as the sidearm,
+      // not a gear slot, so a two-weapon loadout survives a resume.
+      if (slot === 'sidearm') { if (itemId && ITEMS[itemId]) setSidearm(ITEMS[itemId]); continue; }
       // Only the 3 CURRENT slots hydrate — a legacy save's helmet/ring1/etc.
       // are dropped (the item system changed to weapon/offhand/vestment + relics).
       if (slot !== 'weapon' && slot !== 'offhand' && slot !== 'vestment') continue;
