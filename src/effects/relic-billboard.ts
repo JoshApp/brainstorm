@@ -33,22 +33,77 @@ const SEG = 20;           // horizontal subdivisions — enough for a smooth cur
 const CURVE_DEPTH = 0.14; // how far the edges bow back toward the object (m)
 
 // ── Texture cache ────────────────────────────────────────────────────────────
-const texCache = new Map<string, THREE.Texture>();
+// Each relic gets TWO textures from its one sprite: the albedo (the art) and a
+// NORMAL MAP derived from the art's luminance. The normal map is the bas-relief
+// escalation — it makes the torch shade the relic's SURFACE DETAIL (the ridges of
+// a ring, the barbs of a tongue), not just the overall curve, so the flat sprite
+// reads as a real 3D object under DELVE's dynamic light.
+interface RelicTex { albedo: THREE.Texture; normal: THREE.Texture }
+const texCache = new Map<string, RelicTex>();
 let loader: THREE.TextureLoader | null = null;
 
-function relicTexture(id: string): THREE.Texture | null {
+function relicTextures(id: string): RelicTex | null {
   const url = relicArtUrl(id);
   if (!url) return null;
   let t = texCache.get(id);
-  if (!t) {
-    loader ??= new THREE.TextureLoader();
-    t = loader.load(url);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    t.generateMipmaps = true;
-    texCache.set(id, t);
-  }
+  if (t) return t;
+
+  loader ??= new THREE.TextureLoader();
+  // Normal map — a blank texture filled once the albedo image decodes (linear
+  // colour space; flat-up default (0.5,0.5,1) until then).
+  const normal = new THREE.Texture();
+  normal.colorSpace = THREE.NoColorSpace;
+  normal.anisotropy = 4;
+
+  const albedo = loader.load(url, (loaded) => {
+    try {
+      const img = loaded.image as CanvasImageSource & { width: number; height: number };
+      normal.image = buildNormalCanvas(img);
+      normal.needsUpdate = true;
+    } catch { /* normal map is a bonus — never break the pickup on it */ }
+  });
+  albedo.colorSpace = THREE.SRGBColorSpace;
+  albedo.anisotropy = 4;
+  albedo.generateMipmaps = true;
+
+  t = { albedo, normal };
+  texCache.set(id, t);
   return t;
+}
+
+// Derive a tangent-space normal map from the sprite's luminance (weighted by
+// alpha so the transparent background reads flat). A Sobel gradient → surface
+// slope: brighter = raised, so painted highlights and edges become relief the
+// scene light can rake across. Runs once per relic, cached.
+function buildNormalCanvas(img: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
+  const W = img.width, H = img.height;
+  const src = document.createElement('canvas'); src.width = W; src.height = H;
+  const sctx = src.getContext('2d')!; sctx.drawImage(img, 0, 0);
+  const d = sctx.getImageData(0, 0, W, H).data;
+  const height = new Float32Array(W * H);
+  for (let i = 0, p = 0; p < W * H; p++, i += 4) {
+    const a = d[i + 3] / 255;
+    height[p] = ((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255) * a;
+  }
+  const at = (x: number, y: number) => height[Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))];
+
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  const octx = out.getContext('2d')!;
+  const nd = octx.createImageData(W, H);
+  const STRENGTH = 2.2;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * STRENGTH;
+    const dy = (at(x, y + 1) - at(x, y - 1)) * STRENGTH;
+    let nx = -dx, ny = -dy, nz = 1;
+    const inv = 1 / Math.hypot(nx, ny, nz); nx *= inv; ny *= inv; nz *= inv;
+    const i = (y * W + x) * 4;
+    nd.data[i] = (nx * 0.5 + 0.5) * 255;
+    nd.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+    nd.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+    nd.data[i + 3] = 255;
+  }
+  octx.putImageData(nd, 0, 0);
+  return out;
 }
 
 // ── Curved geometry (shared — the bow is the same for every relic) ───────────
@@ -76,24 +131,27 @@ const _wp = new THREE.Vector3();
 /** Build a curved, lit, camera-facing billboard for a relic that has baked 2.5D
  *  art. Shaped like a BuiltModel so the pickup path can consume it unchanged. */
 export function buildRelicBillboard(item: ItemSpec): BuiltModel {
-  const tex = relicTexture(item.id) ?? undefined;
+  const tex = relicTextures(item.id);
   const accent = item.domain
     ? DOMAINS[item.domain].register.color
     : RARITY_COLORS[item.rarity ?? 'mundane'];
 
   const mat = stdMat({
-    map: tex,
+    map: tex?.albedo,
+    // The bas-relief: torchlight shades the sprite's own surface detail.
+    normalMap: tex?.normal,
+    normalScale: new THREE.Vector2(0.85, 0.85),
     transparent: true,
     alphaTest: 0.5,
     roughness: 0.82,
     metalness: 0.0,
     side: THREE.DoubleSide,            // the bowed edges show their back faces
     // Faint self-glow so it reads in the dark from a distance; low enough that
-    // the LIT shading across the curve still dominates up close (where the depth
-    // has to sell). Tinted by the relic's domain.
+    // the LIT shading (curve + normal-map relief) still dominates up close where
+    // the depth has to sell. Tinted by the relic's domain.
     emissive: accent,
-    emissiveMap: tex,
-    emissiveIntensity: 0.16,   // low — enough to read in the dark; the LIT curve carries the depth
+    emissiveMap: tex?.albedo,
+    emissiveIntensity: 0.16,
     fog: true,
   });
 
