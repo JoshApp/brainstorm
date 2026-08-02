@@ -1570,7 +1570,7 @@ export function buildLevel(
       // No collision — the plate is flat with the floor. The DAMAGE is
       // the trap. Walking through is the point.
     } else if (prop.kind === 'fountain') {
-      spawnFountain(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
+      spawnFountain(root, new THREE.Vector3(prop.x, gy + (prop.y ?? 0), prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, yTop: gy + 0.85,

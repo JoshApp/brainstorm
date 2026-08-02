@@ -346,7 +346,10 @@ export type PropSpec =
   //                                          Faustian bargain between acts.
   // One-use per fountain.
   | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing;
-      variant?: 'gamble' | 'rest' | 'tainted' }
+      variant?: 'gamble' | 'rest' | 'tainted' | 'sanctuary';
+      /** Optional Y lift above the floor — for a fountain raised onto a pedestal
+       *  (the safe-haven basin sits on the central dais). Default 0 = on the floor. */
+      y?: number }
   // 'merchant' = the wandering hooded trader. Walk up to open the buy-panel
   // and spend run gold on wares rolled from the loot pool for the depth.
   | { kind: 'merchant'; x: number; z: number; rotY?: number }

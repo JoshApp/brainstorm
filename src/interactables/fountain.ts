@@ -5,7 +5,7 @@ import { spawnEvent } from './event-factory';
 import { gameRng } from '../engine/rng';
 import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
-import { addCharges } from '../player/flask';
+import { addCharges, refillFlask } from '../player/flask';
 import { playHealSlurp } from '../audio/sfx';
 import { showInscription } from '../ui/inscription';
 import { flyToHud, projectToScreen } from '../ui/fly-to-hud';
@@ -37,7 +37,11 @@ import { applyMutationWithFeedback } from '../player/apply-mutation';
 // liquid drains visually. A short note pops describing what happened —
 // in-world voice, never numbers.
 
-export type FountainVariant = 'gamble' | 'rest' | 'tainted';
+//   'sanctuary' (SAFE HAVEN): REST. The between-acts basin on the central
+//                       pedestal — a FULL restore: heals to full AND refills
+//                       every flask charge. The one unambiguous kindness the
+//                       dark allows, before you carry everything back down.
+export type FountainVariant = 'gamble' | 'rest' | 'tainted' | 'sanctuary';
 
 interface VariantStyle {
   liquidColor: number;
@@ -61,6 +65,13 @@ const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
     lightColor:     0xffc890,
     promptLabel:    'REST',
     promptKind:     'neutral',  // safe refuge water
+  },
+  sanctuary: {
+    liquidColor:    0x2a2a1a,
+    liquidEmissive: 0xfff0c0,   // pale gold-white — a holy, full-restore water
+    lightColor:     0xffe6b0,
+    promptLabel:    'REST',
+    promptKind:     'neutral',
   },
   tainted: {
     liquidColor:    0x2a0a0a,
@@ -181,6 +192,17 @@ export function spawnFountain(
       if (variant === 'tainted') {
         const mutationId = applyTaintedDrink();
         return { mutationId };
+      }
+      if (variant === 'sanctuary') {
+        // The safe-haven basin: a FULL restore — heal to full AND refill every
+        // flask charge. The gold-fill stream plays for the flask top-up.
+        const before = getPlayerHp();
+        healPlayer(getPlayerMaxHp(), 'passive');
+        refillFlask();
+        playHealSlurp();
+        goldRefillStream(pos);
+        showInscription('The basin takes the whole weight of the road. You rise whole, your flask full.');
+        return { hpDelta: getPlayerMaxHp() - before };
       }
       if (variant === 'gamble') {
         // The golden fountain refills ONE flask charge — a found Estus draught,

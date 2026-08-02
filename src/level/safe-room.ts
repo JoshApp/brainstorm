@@ -5,25 +5,20 @@ import { ITEMS } from '../content/items';
 // Safe room — the calm chamber between dungeon floors. No enemies, no
 // traps, every interactable visible from the spawn end.
 //
-// V5 layout (the "bonfire is the centrepiece" pass):
-//   - 9 × 11m chamber, ceiling 2.8m (kept from V3 — cozy proportions
-//     that earned their keep).
-//   - THE BONFIRE on the central axis, dead on the walk-line between
-//     spawn and the descent — you can't leave without passing it.
-//     This is the room's heart: REST at it to level (the level-up
-//     menu). Scaled up + ringed by two stone benches as the hearth
-//     circle. Replaces V4's decorative iron brazier.
-//   - TOME PILLAR pulled off-axis to the front-left flank — a quiet
-//     REVIEW station you pass on the way in, no longer the centre.
-//   - GREEN FOUNTAIN mirrors it front-right (heal to full). STASH +
-//     MERCHANT sit at the back corners.
-//   - 6 wall torches, ALL warm amber. Candles frame the approach + the
-//     descent.
-//
-// Future fixtures (placeholders to wire later):
-//   - Smith pedestal (upgrade a weapon)
-//   - Vendor stall (buy a one-off consumable / scroll)
-//   - Mystery NPC slot (LLM-driven encounter)
+// V6 layout (the "healing basin on the pedestal" pass — Josh):
+//   - 9 × 11m chamber, ceiling 2.8m (kept from V3 — cozy proportions).
+//   - THE SANCTUARY BASIN dead centre, raised on the two-step stone dais
+//     (the PEDESTAL), on the walk-line between spawn and descent — you
+//     can't leave without passing it. REST for a FULL restore: heal to
+//     full AND refill every flask charge ('sanctuary' fountain variant).
+//     A warm holy glow pools beneath. The room's heart.
+//   - THE VENDORS arranged AROUND the basin, each facing in: merchant on
+//     the west flank, relic-keeper on the east, blacksmith in the back-
+//     left corner (forge to the wall). A market refuge.
+//   - Benches drawn up south of the basin; candles frame approach +
+//     descent; 6 warm-amber wall torches.
+//   - REMOVED: the tome-pillar (study lectern) + the old cold hearth —
+//     the boss's fire carries the fate now, the basin the mending.
 
 // Stone bench — simple slab on two short stubs. Built inline rather
 // than added to the content/ library since it only appears here.
@@ -100,55 +95,40 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── THE COLD HEARTH (Josh: remove the grand bonfire) — the BOSS now gives
-      // the rest-fire on its defeat, so a second grand hearth in the very next
-      // refuge is redundant. The dais STAYS as an empty, unlit hearth — a place a
-      // fire once was — with the benches drawn round it. Healing here is the gamble
-      // fountain; the fate came from the boss fire.
-      { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0.3 },
-      { kind: 'model', model: STONE_BENCH, x: -2.6, y: 0, z: 0.3, rotY: Math.PI / 2 },
-      { kind: 'model', model: STONE_BENCH, x:  2.6, y: 0, z: 0.3, rotY: -Math.PI / 2 },
+      // ── THE SANCTUARY BASIN (V6 — Josh: heal-all fountain on the central
+      // pedestal). The dais is the RAISED PLINTH; the healing basin sits ON it,
+      // dead centre on the walk-line from spawn to descent — you can't leave
+      // without passing it. REST here for a FULL restore: heal to full AND refill
+      // every flask charge (the 'sanctuary' variant). The one plain kindness
+      // between acts. A warm holy glow pools beneath it. (The tome-pillar / study
+      // lectern is removed; the boss's fire carries the fate now.)
+      { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0 },
+      { kind: 'fountain', x: 0, z: 0, y: 0.30, rotY: 0, variant: 'sanctuary' },
+      { kind: 'model', model: SAFE_FLOOR_GLOW_BASIN, x: 0, y: 0, z: 0 },
 
-      // ── TOME PILLAR (front-left flank) — REVIEW your delver ──────────
-      // Moved off the central axis (it used to be the centrepiece): the
-      // fire owns the room now, the book is a quiet station you pass on
-      // the way in. STUDY reflects your build; it never spends.
-      { kind: 'tome-pillar', x: -2.7, z: 2.6, rotY: Math.PI / 2 },
+      // ── THE VENDORS — arranged around the basin so the room reads as a market
+      // refuge, each facing inward toward the water + the arriving delver. ──
+      // Merchant on the WEST flank (gold → gear), facing east across the basin.
+      { kind: 'merchant', x: -3.15, z: 0.4, rotY: -Math.PI / 2 },
+      // Relic-keeper on the EAST flank (gold → relics), mirroring the merchant.
+      { kind: 'trinket-merchant', x: 3.15, z: 0.4, rotY: Math.PI / 2 },
+      // Blacksmith in the back-LEFT corner, his coal forge against the wall,
+      // angled in toward the basin. TEMPER your drawn weapon; the edge persists.
+      { kind: 'blacksmith', x: -2.9, z: -2.9, rotY: -2.4 },
 
-      // ── GREEN FOUNTAIN (front-right flank, mirror of the tome) ──────
-      // Sickly green basin — looks suspect, drinks clean. Always heals
-      // to full. (The 'gamble' variant.)
-      {
-        kind: 'fountain',
-        x: 2.7, z: 2.6,
-        rotY: -Math.PI / 2,
-        variant: 'gamble',
-      },
-
-      // (Stash removed from the safe room — Josh, 2026-07-31.)
-
-      // The merchant — a hooded trader tucked at the back-right, the
-      // harbor's gold sink. Faces the fire so you find them as you arrive.
-      { kind: 'merchant', x: 3.0, z: -2.8, rotY: Math.PI },
-      // The relic-keeper — the trinket merchant, mirrored at the back-LEFT.
-      // Gold buys relics here (they collect into the reliquary): the domain-build
-      // sink to the gear merchant's gear.
-      { kind: 'trinket-merchant', x: -3.0, z: -2.8, rotY: Math.PI },
-      // The blacksmith — back-CENTRE, completing the row of three vendors.
-      // TEMPER your drawn weapon for gold; the edge persists across floors.
-      { kind: 'blacksmith', x: 0, z: -3.0, rotY: Math.PI },
+      // ── Benches — drawn up south of the basin, a place to sit by the water as
+      // you arrive, framing the approach. ──
+      { kind: 'model', model: STONE_BENCH, x: -1.7, y: 0, z: 2.2, rotY: 0 },
+      { kind: 'model', model: STONE_BENCH, x:  1.7, y: 0, z: 2.2, rotY: 0 },
 
       // ── Candles ─────────────────────────────────────────────────────
-      // Flank the approach between the front fixtures and the central
-      // path, then frame the descent behind the fire.
-      { kind: 'model', model: FLOOR_CANDLE, x: -1.6, y: 0, z: 2.8 },
-      { kind: 'model', model: FLOOR_CANDLE, x:  1.6, y: 0, z: 2.8 },
-      { kind: 'model', model: FLOOR_CANDLE, x: -1.3, y: 0, z: -1.4 },
-      { kind: 'model', model: FLOOR_CANDLE, x:  1.3, y: 0, z: -1.4 },
+      // Frame the approach at the spawn end, then the descent behind the basin.
+      { kind: 'model', model: FLOOR_CANDLE, x: -1.5, y: 0, z: 3.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  1.5, y: 0, z: 3.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x: -1.2, y: 0, z: -1.3 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  1.2, y: 0, z: -1.3 },
 
-      // Warm floor glow at the spawn end (greets the player). The hearth glow
-      // that used to sit under the bonfire is gone with the fire — a COLD hearth
-      // shouldn't glow hot (the dais reads as an unlit, spent hearth now).
+      // Warm floor glow at the spawn end (greets the player).
       { kind: 'model', model: SAFE_FLOOR_GLOW_SPAWN,  x: 0, y: 0, z: 3.6 },
     ],
 
@@ -188,4 +168,7 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
 import { FLOOR_CANDLE } from '../content/candle';
 import { floorGlow } from '../content/light-props';
 const SAFE_FLOOR_GLOW_SPAWN  = floorGlow(0xffb070);
+// A warmer, paler holy glow pooling under the sanctuary basin — the healing
+// water reads as the room's one bright, kind light.
+const SAFE_FLOOR_GLOW_BASIN  = floorGlow(0xffe6b0);
 void ITEMS;
