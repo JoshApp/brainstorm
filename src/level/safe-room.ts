@@ -84,6 +84,12 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     // descent at the far end. Spawn pulled close to the south wall so
     // there's zero chance of overlapping the stair footprint.
     startPos: { x: 0, z: 4.0, yaw: 0 },
+    // Opt OUT of the builder's auto threshold bonfire (builder.ts). The safe
+    // room deliberately has NO fire now — the boss gives the rest-fire on its
+    // defeat, and this refuge is a COLD hearth (the dais). Without this flag,
+    // removing the authored bonfire (d4465c4) let the builder's fallback fire
+    // reappear dead-ahead of the spawn — the "small bonfire" that shouldn't be here.
+    composerManagedFires: true,
     rooms: [
       {
         id: 'safe-chamber',
