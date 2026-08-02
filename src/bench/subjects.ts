@@ -21,6 +21,8 @@ import { LURKER } from '../content/clutter';
 import { SKELETON_KEY } from '../content/skeleton-key';
 import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
+import { MERCHANT_MODEL, RELIC_KEEPER_MODEL } from '../interactables/merchant';
+import { BLACKSMITH_MODEL } from '../interactables/blacksmith';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -98,6 +100,9 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'chest-silver': { label: 'Chest — iron-bound silver (keyed)', spec: CHEST_IRON },
   'chest-gold':   { label: 'Chest — gold, occult sigil + horns (imposing prize)', spec: CHEST_BOSS },
   'relic-bundle': { label: 'Relic bundle — cord-wrapped talisman, bone shard + branded sigil (relic placeholder)', spec: RELIC_BUNDLE },
+  'merchant':      { label: 'The wandering merchant — hooded trader, pack + lantern staff', spec: MERCHANT_MODEL },
+  'relic-keeper':  { label: 'The relic-keeper — trinket merchant, arcane charms', spec: RELIC_KEEPER_MODEL },
+  'blacksmith':    { label: 'The blacksmith — smith at anvil + coal forge', spec: BLACKSMITH_MODEL },
 };
 
 // Pre-composed subjects — hand + object compositions that AREN'T weapons
