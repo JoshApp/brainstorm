@@ -26,6 +26,8 @@ import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
 import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
+import { spawnGateOffering } from '../interactables/gate-offering';
+import { spawnChest } from '../interactables/chest';
 import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
 import { buildItemCard } from '../ui/item-card';
@@ -161,6 +163,8 @@ export interface Scenario {
   spawnCards?: Array<{ cardId: string; x: number; z: number }>;
   /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
   spawnShrouded?: Array<{ x: number; z: number; depth?: number }>;
+  /** Spawn a GATE OFFERING + chests sealed behind it (#74 event-gating test). */
+  gatedLoot?: { gate: { x: number; z: number }; chests: Array<{ x: number; z: number }> };
   /**
    * Item viewer: float a single item's dropModel at eye level in front
    * of the camera, slowly rotating. For previewing weapon/armor/ring
@@ -1329,6 +1333,23 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // GATE OFFERING + sealed chests (#74). The two chests wear the violet seal;
+  // taking the offering (centre) releases them. `delve snap gated-loot`.
+  'gated-loot': {
+    freeze: true,
+    hideSword: true,
+    playerPos: { x: 0, z: 3.4, lookAt: { x: 0, z: 0, y: 0.4 } },
+    gatedLoot: {
+      gate: { x: 0, z: 0 },
+      chests: [{ x: -1.7, z: -0.4 }, { x: 1.7, z: -0.4 }],
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -14, z: -14 } },
+      { index: 1, pos: { x: 14, z: -14 } },
+      { index: 2, pos: { x: -14, z: 14 } },
+    ],
+  },
+
   // Antechamber wraith — looking through the corridor at the boss.
   wraith: {
     freeze: true,
@@ -2410,6 +2431,16 @@ export function applyScenario(
     const scene = ctx.camera.parent as THREE.Scene;
     for (const s of scenario.spawnShrouded) {
       spawnShroudedRelic(scene, new THREE.Vector3(s.x, 0, s.z), s.depth ?? 5);
+    }
+  }
+
+  if (scenario.gatedLoot) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    const gateId = 'gated-loot-test';
+    // Offering first so the chests read the encounter as sealed at spawn.
+    spawnGateOffering(scene, new THREE.Vector3(scenario.gatedLoot.gate.x, 0, scenario.gatedLoot.gate.z), 0, gateId);
+    for (const c of scenario.gatedLoot.chests) {
+      spawnChest(scene, new THREE.Vector3(c.x, 0, c.z), 0, { items: [ITEMS['flask-draught']].filter(Boolean), gold: 40 }, 'silver', false, undefined, gateId);
     }
   }
 

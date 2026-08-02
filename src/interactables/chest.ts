@@ -14,6 +14,9 @@ import { playChestOpen, playEquipClick } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
 import { emit } from '../broadcast/event-bus';
+import { isEncounterComplete } from '../encounters/registry';
+import { stdMat } from '../style/material-registry';
+import { getTexture } from '../style/procedural-textures';
 
 export type ChestTier = 'wood' | 'silver' | 'gold';
 
@@ -61,6 +64,11 @@ export function spawnChest(
   tier: ChestTier = 'wood',
   isMimic: boolean = false,
   onMimic?: (worldPos: THREE.Vector3) => void,
+  /** EVENT LOCK (#74): while this encounter is not complete, the chest is SEALED
+   *  — it can't be opened, and a violet seal-glow marks it. Taking the room's
+   *  gate offering (which completes the encounter) releases every chest bound to
+   *  it. You can always walk away — a sealed chest is skipped loot, not a trap. */
+  gateId?: string,
 ) {
   // KEY GATE: a locked GOLD chest must not appear before the run has produced
   // its first key — you shouldn't meet a chamber you can't open with no chance
@@ -85,6 +93,25 @@ export function spawnChest(
       color: 0xffb040, intensity: 2.0, distance: 5.5, decay: 1.9,
       getIntensity: () => { const t = performance.now() / 1000; return 2.0 * (1 + 0.08 * Math.sin(t * 4.7)); },
     });
+  }
+
+  // EVENT LOCK (#74) — while the gate encounter is unresolved the chest is
+  // SEALED: a violet seal-disc marks it, and onUse refuses. Taking the room's
+  // offering completes the encounter and every bound chest releases together.
+  let gated = !!gateId && !isEncounterComplete(gateId);
+  let sealDisc: THREE.Mesh | null = null;
+  if (gated && gateId) {
+    const sealMat = stdMat({
+      map: getTexture('fire-wisp'), color: 0x8a4bd6, emissive: 0x8a4bd6, emissiveIntensity: 1.1,
+      transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, fog: false, depthWrite: false,
+    });
+    sealDisc = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 1.35), sealMat);
+    sealDisc.rotation.x = -Math.PI / 2;
+    sealDisc.position.set(pos.x, pos.y + 0.02, pos.z);
+    scene.add(sealDisc);
+    // Release is POLLED in tick (isEncounterComplete) rather than a bus
+    // subscription — the chest has no teardown hook, so a listener would leak
+    // across floors; a per-frame Map lookup while sealed is cheaper anyway.
   }
 
   const hinge = built.slots.get('hinge');
@@ -113,6 +140,13 @@ export function spawnChest(
     cost: tier === 'gold' ? { itemId: KEY_ID } : undefined,
     onUse() {
       if (state !== 'closed') return;
+      // EVENT-GATED: sealed until the room's offering is taken. Skippable — you
+      // can leave it — but not openable while the seal holds.
+      if (gated) {
+        showInWorldMessage('Sealed. An offering holds it.');
+        playEquipClick();
+        return;
+      }
       // Only GOLD is LOCKED — it costs a key (wood + silver are free). A gold
       // mimic costs one too, so a free-opening chest never tells on itself.
       if (tier === 'gold') {
@@ -136,6 +170,19 @@ export function spawnChest(
       if (isMimic && lidPart) lidPart.position.y = lidBaseY;
     },
     tick(dt: number) {
+      // EVENT LOCK release — the room's offering completed the gate; drop the
+      // seal (polled, not subscribed — see the seal setup above).
+      if (gated && gateId && isEncounterComplete(gateId)) {
+        gated = false;
+        if (sealDisc) { scene.remove(sealDisc); sealDisc = null; }
+        playEquipClick();
+      }
+      if (sealDisc) {
+        // Faint violet breath so the seal reads as live magic, not decor.
+        const m = sealDisc.material as THREE.MeshStandardMaterial;
+        m.emissiveIntensity = 0.9 + 0.4 * (0.5 + 0.5 * Math.sin(breathT * 3));
+        breathT += dt;
+      }
       // Idle breathing on a mimic's lid — slow vertical bob + a
       // sympathetic micro-rotation through the hinge. Stops the
       // moment the chest opens.
