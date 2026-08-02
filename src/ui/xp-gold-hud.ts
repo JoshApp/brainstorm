@@ -83,15 +83,17 @@ export function createXpGoldHud(): void {
     alignItems: 'center',
     gap: '12px',
   } as Partial<CSSStyleDeclaration>);
-  // Keys count sits to the LEFT of the gold, hidden while you carry none. Pale
-  // brass so it reads as currency-but-not-gold.
+  // Keys count sits to the LEFT of the gold — always shown (reads as a standing
+  // resource slot beside the purse, `0` included), so the player always knows
+  // where their keys will appear. Pale brass so it reads as currency-but-not-gold.
   keysEl = document.createElement('div');
   keysEl.id = 'keys-indicator';   // fly-to-hud target for key pickups
   Object.assign(keysEl.style, {
     color: 'rgba(210, 185, 130, 0.92)',
-    display: 'none',
+    display: 'block',
     transition: 'transform 180ms ease-out',
   } as Partial<CSSStyleDeclaration>);
+  keysEl.innerHTML = `${SVG_KEY}0`;   // seed so it renders before the first poll
   // Gold gets its own span so per-frame innerHTML rewrites don't wipe the keys.
   goldEl = document.createElement('div');
   goldEl.style.transition = 'transform 180ms ease-out, color 180ms ease-out';
@@ -335,8 +337,8 @@ export function updateXpGoldHud(dt: number): void {
     const keys = getCount(KEY_ID);
     if (keys !== prevKeys) {
       prevKeys = keys;
-      keysEl.style.display = keys > 0 ? 'block' : 'none';
-      if (keys > 0) keysEl.innerHTML = `${SVG_KEY}${keys}`;
+      // Always shown, `0` included — the keys slot is a standing part of the HUD.
+      keysEl.innerHTML = `${SVG_KEY}${keys}`;
     }
   }
 
