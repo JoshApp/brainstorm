@@ -76,17 +76,14 @@ export function groundEquip(ctx: GroundEquipCtx): void {
 /** Try to slot the item into a free slot for its kind. Weapons prefer the
  *  drawn hand, then the sheathed slot; vestments take either free slot. */
 function fillEmpty(item: ItemSpec, affixes: AffixInstance[]): boolean {
+  // One weapon, no sidearm, no vestments (all cut). A weapon just replaces the
+  // one you hold; the off-hand still fills if empty. Everything else is a no-op.
   switch (item.kind) {
     case 'weapon':
-      if (!getEquipped('weapon')) { setSlotWithAffixes('weapon', item, affixes); return true; }
-      if (!getSidearm())          { setSidearm(item, affixes); return true; }
-      return false;
+      setSlotWithAffixes('weapon', item, affixes);
+      return true;
     case 'offhand':
       if (!getEquipped('offhand')) { setSlotWithAffixes('offhand', item, affixes); return true; }
-      return false;
-    case 'vestment':
-      if (!getEquipped('vestment'))  { setSlotWithAffixes('vestment', item, affixes); return true; }
-      if (!getEquipped('vestment2')) { setSlotWithAffixes('vestment2', item, affixes); return true; }
       return false;
     default:
       return false;

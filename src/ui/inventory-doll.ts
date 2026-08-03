@@ -34,57 +34,15 @@ const SLOT_ICON: Record<EquipSlot, string> = {
   offhand: '<path d="M8 1.5 L13.5 3.5 L13.5 8 Q13.5 12.5 8 14.5 Q2.5 12.5 2.5 8 L2.5 3.5 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>',
 };
 
-/** The EQUIPPED slots — two grouped panels: ARMS (both weapons over the off-hand)
- *  on the left, WORN (the two vestments) on the right. The grouping reads the way
- *  the loadout is used — your hands vs. what you wear — instead of a flat strip. */
+/** The EQUIPPED slots. The loadout is now a single WEAPON (you carry one, it's the
+ *  character) — the sidearm/weapon-swap, both vestments, and the separate off-hand
+ *  slot are cut; the active (the RITE) is shown by buildRiteSlot below this. */
 export function buildEquippedSlots(ctx: InventoryCtx): HTMLDivElement {
   const col = document.createElement('div');
   Object.assign(col.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
-  col.appendChild(sectionLabel('EQUIPPED'));
-
-  const eq = getEquipment();
-  const panels = document.createElement('div');
-  Object.assign(panels.style, {
-    display: 'grid', gridTemplateColumns: '1.08fr 1fr', gap: '10px', alignItems: 'center',
-  } as Partial<CSSStyleDeclaration>);
-
-  // ── ARMS — both weapons in a row, the off-hand beneath them. ──
-  const arms = groupPanel('ARMS');
-  const wpnRow = twoColRow();
-  wpnRow.appendChild(buildSlotTile(WEAPON_SLOT, eq.weapon, ctx));   // drawn
-  wpnRow.appendChild(buildSidearmTile(ctx));                        // sheathed
-  arms.appendChild(wpnRow);
-  arms.appendChild(buildSlotTile(OFFHAND_SLOT, eq.offhand, ctx));   // full-width beneath
-
-  // ── WORN — the two vestments side by side. ──
-  const worn = groupPanel('WORN');
-  const vestRow = twoColRow();
-  for (const def of VEST_SLOTS) vestRow.appendChild(buildSlotTile(def, eq[def.slotId], ctx));
-  worn.appendChild(vestRow);
-
-  panels.append(arms, worn);
-  col.appendChild(panels);
+  col.appendChild(sectionLabel('WEAPON'));
+  col.appendChild(buildSlotTile(WEAPON_SLOT, getEquipment().weapon, ctx));
   return col;
-}
-
-/** A labelled sub-group (ARMS / WORN) — a faint caption over a stack of tiles. */
-function groupPanel(caption: string): HTMLDivElement {
-  const p = document.createElement('div');
-  Object.assign(p.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
-  const cap = document.createElement('div');
-  cap.textContent = caption;
-  Object.assign(cap.style, {
-    fontSize: '8px', letterSpacing: '0.24em', color: TEXT_DIM, fontWeight: '600', paddingLeft: '1px',
-  } as Partial<CSSStyleDeclaration>);
-  p.appendChild(cap);
-  return p;
-}
-
-/** A two-column tile row (weapons; vestments). */
-function twoColRow(): HTMLDivElement {
-  const r = document.createElement('div');
-  Object.assign(r.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' } as Partial<CSSStyleDeclaration>);
-  return r;
 }
 
 /** The SIDEARM tile — the sheathed second weapon of the loadout (task #96).
