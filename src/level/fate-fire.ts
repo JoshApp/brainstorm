@@ -46,28 +46,19 @@ export function registerFateFire(o: FateFireOpts): void {
     built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
     onUse() {
-      if (drawn) return; // a spent fire has nothing left to deal
-      // The harbor's big fire (post-boss, gates the stairs) deals a MAJOR arcana
-      // — the rare, weighty act-break fork. Small found fires deal MINORS.
-      openCardReading({
-        arcana: o.isBig ? 'major' : 'minor',
-        onDone: (picked) => {
-          if (!picked || drawn) return;
-          drawn = true;
-          // A found fire is a small top-up, not the full reset (that lives at the
-          // safe-haven basin now). Resting RECHARGES ONE FLASK CHARGE — or, if the
-          // flask is already full, the charge's worth of HP is poured straight into
-          // you instead, so the rest is never wasted. Once per fire (the `drawn`
-          // guard). docs/BUILD-ECONOMY.md.
-          const f = getFlask();
-          if (f.charges < f.capacity) addCharges(1);
-          else healPlayer(f.healPerCharge, 'passive');
-          spendFlame(flames);
-          o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
-          interactable.promptLabel = ''; // spent — no rest prompt
-          if (o.isBig) clearFateGate();
-        },
-      });
+      if (drawn) return; // a spent fire has nothing left to give
+      // FATES ARE DISABLED — the fire no longer deals a card. It's a plain REST:
+      // RECHARGE ONE FLASK CHARGE, or — if the flask is already full — pour the
+      // charge's worth of HP straight into you, so the rest is never wasted. Once
+      // per fire (the `drawn` guard). The full reset lives at the safe-haven basin.
+      drawn = true;
+      const f = getFlask();
+      if (f.charges < f.capacity) addCharges(1);
+      else healPlayer(f.healPerCharge, 'passive');
+      spendFlame(flames);
+      o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
+      interactable.promptLabel = ''; // spent — no rest prompt
+      if (o.isBig) clearFateGate();
     },
     destroyed: false,
   };
