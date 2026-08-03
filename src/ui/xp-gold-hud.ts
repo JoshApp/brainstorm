@@ -83,21 +83,10 @@ export function createXpGoldHud(): void {
     alignItems: 'center',
     gap: '12px',
   } as Partial<CSSStyleDeclaration>);
-  // Keys count sits to the LEFT of the gold — always shown (reads as a standing
-  // resource slot beside the purse, `0` included), so the player always knows
-  // where their keys will appear. Pale brass so it reads as currency-but-not-gold.
-  keysEl = document.createElement('div');
-  keysEl.id = 'keys-indicator';   // fly-to-hud target for key pickups
-  Object.assign(keysEl.style, {
-    color: 'rgba(210, 185, 130, 0.92)',
-    display: 'block',
-    transition: 'transform 180ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  keysEl.innerHTML = `${SVG_KEY}0`;   // seed so it renders before the first poll
-  // Gold gets its own span so per-frame innerHTML rewrites don't wipe the keys.
+  // KEYS ARE CUT — the key HUD is gone; only the gold purse remains.
   goldEl = document.createElement('div');
   goldEl.style.transition = 'transform 180ms ease-out, color 180ms ease-out';
-  goldContainer.append(keysEl, goldEl);
+  goldContainer.append(goldEl);
   document.body.appendChild(goldContainer);
 
   // Floating "+N" gold tick — sits just under the gold counter, rises + fades.
@@ -330,17 +319,6 @@ export function updateXpGoldHud(dt: number): void {
   // elements may be null (levels disabled, #102); their flourishes are guarded
   // individually below so the keys poll + gold pulse still run without them.
   if (!goldEl) return;
-
-  // Keys — cheap poll of the inventory count (small bag); refresh the chip only
-  // when it changes. Hidden while you carry none so it doesn't clutter.
-  if (keysEl) {
-    const keys = getCount(KEY_ID);
-    if (keys !== prevKeys) {
-      prevKeys = keys;
-      // Always shown, `0` included — the keys slot is a standing part of the HUD.
-      keysEl.innerHTML = `${SVG_KEY}${keys}`;
-    }
-  }
 
   // Pulse decays. XP flourishes only run when the bar exists (levels on).
   if (xpFractionEl) {

@@ -3,9 +3,6 @@ import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import type { DropResult } from '../content/drop-tables';
-import { KEY_ID } from '../content/drop-tables';
-import { getCount, removeItem } from '../player/inventory';
-import { hasSeenKey } from '../state/key-progress';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerInteractable, unregisterInteractable } from './system';
 import { registerLight, unregisterLight } from '../scene/light-pool';
@@ -70,13 +67,6 @@ export function spawnChest(
    *  it. You can always walk away — a sealed chest is skipped loot, not a trap. */
   gateId?: string,
 ) {
-  // KEY GATE: a locked GOLD chest must not appear before the run has produced
-  // its first key — you shouldn't meet a chamber you can't open with no chance
-  // at a key yet (the "gold chamber in the first room" bug). Until a key has
-  // been seen, a gold chest reads + opens as a free SILVER one. Catches gold
-  // chests from every source (rolled or vault-authored), at the one build site.
-  if (tier === 'gold' && !hasSeenKey()) tier = 'silver';
-
   const built = buildModel(TIER_MODEL[tier]);
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
@@ -134,10 +124,8 @@ export function spawnChest(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: 'OPEN',
-    // Only GOLD chests are locked now (Josh: "not every chest needs a key").
-    // Wood + silver are free gear; keys route to the rare gold prize. Show the
-    // "give 🔑" cost up front on gold so the player knows before walking up.
-    cost: tier === 'gold' ? { itemId: KEY_ID } : undefined,
+    // KEYS ARE CUT — every chest opens freely now (event-gated chests still wait
+    // for their offering, but nothing costs a key).
     onUse() {
       if (state !== 'closed') return;
       // EVENT-GATED: sealed until the room's offering is taken. Skippable — you
@@ -146,16 +134,6 @@ export function spawnChest(
         showInWorldMessage('Sealed. An offering holds it.');
         playEquipClick();
         return;
-      }
-      // Only GOLD is LOCKED — it costs a key (wood + silver are free). A gold
-      // mimic costs one too, so a free-opening chest never tells on itself.
-      if (tier === 'gold') {
-        if (getCount(KEY_ID) <= 0) {
-          showInWorldMessage('Locked. It wants a key.');
-          playEquipClick();
-          return;
-        }
-        removeItem(KEY_ID);
       }
       state = 'opening';
       openTimer = 0;

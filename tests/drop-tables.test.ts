@@ -38,7 +38,7 @@ test('enemies drop ONLY the small layer — gold, key, or consumable (never gear
   }
 });
 
-test('enemy is mostly gold, keys occasional', () => {
+test('enemy is mostly gold, and keys never drop (keys are cut)', () => {
   let goldRolls = 0, keyRolls = 0;
   const rand = seeded(42);
   for (let i = 0; i < 300; i++) {
@@ -47,7 +47,7 @@ test('enemy is mostly gold, keys occasional', () => {
     if (r.items.some((it) => it.kind === 'key')) keyRolls++;
   }
   assert.ok(goldRolls > 240, `gold on most kills (${goldRolls}/300)`);
-  assert.ok(keyRolls > 0 && keyRolls < 90, `keys occasional, not flooding (${keyRolls}/300)`);
+  assert.equal(keyRolls, 0, `keys are cut — none should ever drop (${keyRolls}/300)`);
 });
 
 test('relic-gated sources never leak a weapon (gold chest = relics only)', () => {

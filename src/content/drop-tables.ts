@@ -42,7 +42,12 @@ export interface ItemGroup {
 
 export const GROUPS: Record<string, ItemGroup> = {
   consumables: { kinds: CONSUMABLE_KINDS },
-  gear:        { kinds: GEAR_KINDS },
+  // WEAPONS + VESTMENTS NO LONGER DROP. The direction is one evolving weapon (you
+  // start with it, it grows — never a floor-drop to swap), and vestments are cut.
+  // So the 'gear' group now yields TRINKETS: every "gear" drop in the tables below
+  // becomes a build-piece (relic), which is the loot economy for now. GEAR_KINDS
+  // is kept only as a reference for the (dormant) equip infra.
+  gear:        { kinds: RELIC_KINDS },
   relics:      { kinds: RELIC_KINDS },
   'boss-loot': { tag: 'boss', bias: 4 },
   cursed:      { tag: 'cursed', bias: 4 },
@@ -106,17 +111,16 @@ const T = (d: TableDef): LootTable =>
 export const TABLES: Record<string, LootTable> = {
   // ── The SMALL layer — enemies + vases. Gold ALWAYS (its own pool), key + the
   //    odd consumable as separate chance pools. ──
+  // KEYS ARE CUT — no key pools anywhere. Chests open freely now.
   'enemy': {
     pools: [
       { entries: [{ gold: [1, 3] }] },
-      { entries: [{ key: 1, weight: 8 }, { weight: 92 }] },
       { entries: [{ from: 'consumables', weight: 5 }, { weight: 95 }] },
     ],
   },
   'enemy-elite': {
     pools: [
       { entries: [{ gold: [3, 7] }] },
-      { entries: [{ key: 1, weight: 40 }, { weight: 60 }] },
       { entries: [{ from: 'consumables', weight: 30 }, { weight: 70 }] },
     ],
   },
@@ -124,7 +128,6 @@ export const TABLES: Record<string, LootTable> = {
   'vase': {
     pools: [
       { entries: [{ gold: [1, 2] }] },
-      { entries: [{ key: 1, weight: 2 }, { weight: 98 }] },
       { entries: [{ from: 'consumables', weight: 3 }, { weight: 97 }] },
     ],
   },
@@ -137,8 +140,8 @@ export const TABLES: Record<string, LootTable> = {
   // is floored uncommon→rare (rampFloor(1,6)) — the mundane trash tier never drops
   // from a chest, and quality climbs as you descend.
   'chest-wood':   T({ emptyGold: 6, entries: [
-    { from: 'gear', bias: 0, weight: 34, minRarity: rampFloor(1, 6) },
-    { from: 'consumables', weight: 34 }, { key: 1, weight: 20 }, { weight: 12 },
+    { from: 'gear', bias: 0, weight: 40, minRarity: rampFloor(1, 6) },
+    { from: 'consumables', weight: 44 }, { weight: 16 },
   ] }),
   'chest-silver': T({ emptyGold: 12, entries: [
     { from: 'gear', bias: 2, weight: 48, minRarity: rampFloor(1, 6) },
