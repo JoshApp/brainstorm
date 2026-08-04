@@ -831,6 +831,24 @@ const combat = createCombatSystem(
 initRites({
   getCenter: () => camera.position,
   getEnemies: () => currentLevel?.enemies ?? [],
+  // Facing on the floor plane — the camera's forward, flattened.
+  getFacing: () => {
+    const f = new THREE.Vector3();
+    camera.getWorldDirection(f);
+    return { x: f.x, z: f.z };
+  },
+  // A blink lands ONLY where a dodge could land. canDashOver is the dodge's own
+  // gate (valid floor at the landing, no wall or solid obstacle across the path),
+  // so re-using it means the rite can never reach through stone or drop the
+  // player inside a pillar — and it stays correct if the movement rules change.
+  canReach: (x, z) => {
+    const walkable = currentLevel?.walkable;
+    return !!walkable && walkable.canDashOver(camera.position.x, camera.position.z, x, z, 0.3);
+  },
+  teleport: (x, z) => {
+    camera.position.x = x;
+    camera.position.z = z;
+  },
 });
 
 // Player-action FSM — the single AUTHORITY for combat action arbitration.

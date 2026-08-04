@@ -7,6 +7,9 @@
 //   npm test
 
 import assert from 'node:assert/strict';
+import {
+  enterStillness, tickStillness, getStillnessTimeScale, isStillnessActive, resetStillness,
+} from '../src/combat/rite-stillness';
 import { RITES, resolveRite, type RiteEffect } from '../src/content/rites';
 
 let passed = 0, failed = 0;
@@ -66,6 +69,68 @@ test('composable non-nova rite: zealotry morph ADDS effects (heal + lifesteal)',
   assert.ok(built.length > base.length, 'commitment adds effects');
   assert.ok(built.some((e) => e.kind === 'heal'), 'gains a heal at 2+');
   assert.ok(built.some((e) => e.kind === 'selfBuff' && e.buff === 'bloodthirst'), 'gains lifesteal at 4');
+});
+
+// ── THE LANE THAT ISN'T AN ERUPT ────────────────────────────────────────────
+// The vocabulary was nova/cost/heal/selfBuff, so five rites read as one rite at
+// five sizes. These pin the two kinds that change how a fight is PLAYED.
+
+test('the catalog has rites that deal no damage at all', () => {
+  const nonDamaging = Object.values(RITES).filter(
+    (r) => resolveRite(r, 6).every((e) => e.kind !== 'nova'),
+  );
+  assert.ok(nonDamaging.length >= 2,
+    'every rite still ends a fight faster — the active lane is one idea in five costumes');
+});
+
+test('THE LONG SECOND holds the world and never the player', () => {
+  const r = resolveRite(RITES['longsecond'], 0);
+  const st = r.find((e) => e.kind === 'stillness');
+  assert.ok(st && st.kind === 'stillness', 'no stillness effect');
+  assert.ok(st.kind === 'stillness' && st.seconds > 0 && st.seconds <= 4,
+    'a stillness you can plan inside is a stillness that trivialises the room');
+  assert.ok(RITES['longsecond'].hungerCost >= 80,
+    'the strongest thing in the catalog must cost nearly the whole meter');
+});
+
+test('the held world snaps back to normal on its own', () => {
+  resetStillness();
+  assert.equal(getStillnessTimeScale(), 1, 'the world was slow before anything cast');
+  enterStillness(1.0, 0.1);
+  assert.ok(getStillnessTimeScale() < 0.5, 'the world did not actually slow');
+  assert.equal(isStillnessActive(), true);
+  tickStillness(2.0);
+  assert.equal(getStillnessTimeScale(), 1, 'the world never came back — the run is now unplayable');
+  assert.equal(isStillnessActive(), false);
+});
+
+test('a second cast extends rather than truncating what you had', () => {
+  // The failure this prevents: casting again near the end of a Stillness
+  // restarting a SHORTER timer and cutting the window off early.
+  resetStillness();
+  enterStillness(4.0, 0.1);
+  enterStillness(1.0, 0.1);
+  tickStillness(1.5);
+  assert.equal(isStillnessActive(), true, 'the shorter cast cut the longer one short');
+  resetStillness();
+});
+
+test('a floor load never arrives with the world still held', () => {
+  enterStillness(30, 0.1);
+  resetStillness();
+  assert.equal(getStillnessTimeScale(), 1);
+});
+
+test('STEP-THROUGH is movement, and it grows into more movement', () => {
+  const base = resolveRite(RITES['stepthrough'], 0);
+  const built = resolveRite(RITES['stepthrough'], 2);
+  const dist = (es: ReturnType<typeof resolveRite>) =>
+    es.reduce((n, e) => n + (e.kind === 'blink' ? e.distance : 0), 0);
+  assert.ok(dist(base) > 0, 'the blink has no distance');
+  assert.ok(dist(built) > dist(base), 'commitment does not carry you further');
+  assert.ok(base.every((e) => e.kind !== 'cost'), 'a traversal verb must not cost blood to use');
+  assert.ok(RITES['stepthrough'].hungerCost < RITES['longsecond'].hungerCost / 2,
+    'cheap enough to lean on is the whole point');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

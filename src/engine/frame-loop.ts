@@ -11,6 +11,7 @@ import { getGameMode, isPlaying } from '../state/game-mode';
 import { getTimeScale, tickDeath } from '../player/death';
 import { tickBulletTime, getWorldTimeScale } from '../combat/reactive-defense';
 import { tickBossSlowmo, getBossSlowmoTimeScale } from '../combat/boss-slowmo';
+import { tickStillness, getStillnessTimeScale } from '../combat/rite-stillness';
 import { tickPlayerAction } from '../combat/player-action';
 import { tickArrival } from '../player/arrival';
 import { tickChasmPresence } from '../effects/chasm-presence';
@@ -148,10 +149,11 @@ function advanceSimStep(dt: number): void {
   tickDeath(dt);
   tickBulletTime(dt);
   tickBossSlowmo(dt);
+  tickStillness(dt);
   const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-  const scaledDt = dt * baseScale * getWorldTimeScale();
+  const scaledDt = dt * baseScale * getWorldTimeScale() * getStillnessTimeScale();
   const playerDt = dt * baseScale;
-  const fxDt = dt * getWorldTimeScale();
+  const fxDt = dt * getWorldTimeScale() * getStillnessTimeScale();
   if (!isWorldPaused()) tickPlayerAction(playerDt);
   const paused = isWorldPaused();
   if (paused) { deps.input.lookDx = 0; deps.input.lookDy = 0; }
@@ -171,9 +173,9 @@ function presentPass(realDt: number): void {
   const baseScale = getTimeScale() * getBossSlowmoTimeScale();
   runSystems(PRESENT_SYSTEMS, {
     realDt,
-    scaledDt: realDt * baseScale * getWorldTimeScale(),
+    scaledDt: realDt * baseScale * getWorldTimeScale() * getStillnessTimeScale(),
     playerDt: realDt * baseScale,
-    fxDt: realDt * getWorldTimeScale(),
+    fxDt: realDt * getWorldTimeScale() * getStillnessTimeScale(),
     paused: isWorldPaused(),
     mode: getGameMode(),
     playing: isPlaying(),
@@ -240,18 +242,19 @@ function tickInner() {
     tickDeath(realDt);
     tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
     tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
+    tickStillness(realDt);   // and the rite's held world, for the same reason
     // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
     // player included). worldScale = the reactive-defense bullet-time, which
     // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
     // they crawl while the player keeps acting at full speed (the asymmetric
     // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
     const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-    const scaledDt = realDt * baseScale * getWorldTimeScale();
+    const scaledDt = realDt * baseScale * getWorldTimeScale() * getStillnessTimeScale();
     const playerDt = realDt * baseScale;
     // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
     // dust hangs with the world during a perfect-dodge dip but never stutters on
     // a hit-pause/death freeze (those aren't in getWorldTimeScale).
-    const fxDt = realDt * getWorldTimeScale();
+    const fxDt = realDt * getWorldTimeScale() * getStillnessTimeScale();
     // Advance the player-action FSM on the PLAYER clock, BEFORE input is
     // processed below, so a committed dodge/parry that expires this frame frees
     // the next action immediately.

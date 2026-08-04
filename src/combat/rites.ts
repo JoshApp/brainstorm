@@ -15,12 +15,28 @@ import { bleedPlayer, healPlayer } from '../player/health';
 import { get } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { kickShake } from './screen-shake';
+import { enterStillness } from './rite-stillness';
 
 interface RiteDeps {
   /** Player position source (the erupt centre). */
   getCenter: () => { x: number; z: number };
   /** Live enemy list on the current floor. */
   getEnemies: () => readonly Enemy[];
+  /**
+   * Where the player is FACING, as a unit vector on the floor plane. Supplied by
+   * the caller because the rite layer has no camera.
+   */
+  getFacing?: () => { x: number; z: number };
+  /**
+   * Could the player legally end up at (x,z) from where they are? Expected to
+   * refuse anything a DODGE would refuse — no through-walls, no inside-a-pillar
+   * — so a rite can never reach somewhere the movement rules wouldn't. Split
+   * from `teleport` so the "can I?" and the "do it" are one question asked
+   * twice, never two implementations that can disagree.
+   */
+  canReach?: (x: number, z: number) => boolean;
+  /** Put the player at (x,z). Only ever called for a spot canReach approved. */
+  teleport?: (x: number, z: number) => void;
 }
 
 let deps: RiteDeps | null = null;
@@ -55,6 +71,14 @@ export function tryActivateRite(): boolean {
   if (!spec || getHunger() < spec.hungerCost) return false;
 
   const effects = resolveRite(spec, heldDomainCount(getHeldCards(), spec.domain));
+
+  // A rite whose ONLY effect is a step you cannot take is a dead press that eats
+  // your meter — you stand flush against a wall, tap, and the bar empties for
+  // nothing. Refuse it up front instead: the Hunger stays banked and the button
+  // stays live. (Only blink-only rites qualify; anything that also erupts, heals
+  // or buffs always does something, so it always fires.)
+  if (effects.every((e) => e.kind === 'blink') && !anyBlinkWouldLand(effects)) return false;
+
   spendHunger(spec.hungerCost);
 
   const center = deps.getCenter();
@@ -65,11 +89,45 @@ export function tryActivateRite(): boolean {
       case 'heal':     if (eff.hp > 0) healPlayer(eff.hp, 'combat'); break;
       case 'selfBuff': if (player) applyBuff(player, eff.buff, eff.duration, 'player'); break;
       case 'nova':     runNova(eff, center); break;
+      case 'stillness': enterStillness(eff.seconds, eff.deep); break;
+      case 'blink':    runBlink(eff); break;
     }
   }
 
   kickShake(0.55, 0.18);   // the rite punches the screen
   return true;
+}
+
+/** BLINK handler — step forward through whatever is in the way. */
+function runBlink(eff: Extract<RiteEffect, { kind: 'blink' }>): void {
+  blinkStep(eff.distance, true);
+}
+
+/** Would ANY of these blinks move the player at all? Probes without committing. */
+function anyBlinkWouldLand(effects: readonly RiteEffect[]): boolean {
+  return effects.some((e) => e.kind === 'blink' && blinkStep(e.distance, false));
+}
+
+/**
+ * One blink probe. Walks the distance back in steps and takes the furthest
+ * landing that holds. `commit: false` asks the same question without moving —
+ * one code path, so the "can I?" and the "do it" can never disagree.
+ */
+function blinkStep(distance: number, commit: boolean): boolean {
+  if (!deps?.canReach || !deps.teleport || !deps.getFacing) return false;
+  const c = deps.getCenter();
+  const f = deps.getFacing();
+  const len = Math.hypot(f.x, f.z) || 1;
+  const nx = f.x / len, nz = f.z / len;
+  const STEPS = 6;
+  for (let i = STEPS; i >= 1; i--) {
+    const d = (distance * i) / STEPS;
+    const x = c.x + nx * d, z = c.z + nz * d;
+    if (!deps.canReach(x, z)) continue;
+    if (commit) deps.teleport(x, z);
+    return true;
+  }
+  return false;
 }
 
 /** NOVA handler — damage everyone in radius, brand them with a buff if the effect

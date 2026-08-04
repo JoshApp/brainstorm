@@ -27,7 +27,19 @@ export type RiteEffect =
   | { kind: 'heal'; hp: number }
   // Empower yourself — apply a buff to the PLAYER. Flows through the same
   // modifier pipeline as an item, just time-boxed. e.g. 'berserk', 'ironhide'.
-  | { kind: 'selfBuff'; buff: string; duration: number };
+  | { kind: 'selfBuff'; buff: string; duration: number }
+  // STOP THE WORLD. Scales the world clock — enemies, projectiles, ambient FX —
+  // and never the player's, so you act at full speed through a room that has
+  // forgotten how. `seconds` is REAL time; `deep` is the floor (0.12 = 12%
+  // speed). Rides combat/rite-stillness.ts, which is the reactive-defense
+  // bullet-time asymmetry made deliberate and paid for.
+  | { kind: 'stillness'; seconds: number; deep?: number }
+  // STEP THROUGH. Teleport up to `distance` metres along your facing, landing on
+  // the far side of whatever is between. Uses the DODGE's own walkability probe,
+  // so a blink can never put you somewhere a dodge couldn't: no through-walls,
+  // no landing inside a pillar. Falls short rather than failing when the full
+  // distance is blocked — the rite always does SOMETHING for its Hunger.
+  | { kind: 'blink'; distance: number };
 
 /** A morph tier (the active lane's RESONANCE): hold >= `atLeast` cards of the
  *  rite's domain and these escalations apply, cumulatively — reshaping the
@@ -125,6 +137,41 @@ export const RITES: Record<string, RiteSpec> = {
     morph: [
       { atLeast: 2, add: [{ kind: 'heal', hp: 3 }] },
       { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'bloodthirst', duration: 6 }] },
+    ],
+  },
+
+  // ── THE LANE THAT ISN'T AN ERUPT ────────────────────────────────────────────
+  // Every rite above ends a fight faster. These two change how it is PLAYED,
+  // which is the gap the vocabulary had: five rites that were one rite at five
+  // sizes. Neither of them deals a point of damage.
+
+  // FREQUENT — the step through. Cheap enough to lean on as movement, which is
+  // the point: it is a traversal verb that happens to be a defensive one, and it
+  // can never put you anywhere a dodge couldn't (the same walkability probe).
+  // Morph turns it from an escape into a repositioning tool and finally into a
+  // way to be somewhere you should not be able to reach.
+  stepthrough: {
+    id: 'stepthrough', name: 'Step-Through', domain: 'grace', hungerCost: 18,
+    fate: 'The distance was never as fixed as it looked.',
+    effects: [{ kind: 'blink', distance: 4.0 }],
+    morph: [
+      { atLeast: 2, add: [{ kind: 'blink', distance: 1.5 }] },
+      { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'ironhide', duration: 2.5 }] },
+    ],
+  },
+
+  // BIG — the held second. The room forgets how to move and you do not. Priced
+  // near the top of the meter deliberately: it is the strongest thing in the
+  // catalog precisely because it doesn't kill anything, it just hands you a
+  // fight you were losing. Short — a Stillness you can plan inside is a
+  // Stillness that trivialises the room.
+  longsecond: {
+    id: 'longsecond', name: 'The Long Second', domain: 'forbidden', hungerCost: 88,
+    fate: 'Everything stops. You are not everything.',
+    effects: [{ kind: 'stillness', seconds: 2.6, deep: 0.12 }],
+    morph: [
+      { atLeast: 2, add: [{ kind: 'stillness', seconds: 3.6, deep: 0.10 }] },
+      { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'berserk', duration: 4 }] },
     ],
   },
 };
