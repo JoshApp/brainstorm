@@ -186,6 +186,18 @@ export type RoomSpec = {
    * with no corridors (a hand-authored vault, a single-room level).
    */
   entranceDir?: Vec2;
+  /**
+   * What this room IS, as a room-types.ts id (`trove`, `shop`, `sanctum`, …).
+   * Only set for a room the floor plan PROMOTED to a role — the connective
+   * majority carries nothing, which is the point: a room with a type on it is a
+   * room with a reason to exist.
+   *
+   * Stamped so the fact survives composition. Every later reader — the audit
+   * pass counting what a floor actually staged, a debug overlay, a future pass
+   * that wants to dress a shop differently — asks the spec instead of
+   * re-deriving the plan from the seed.
+   */
+  roomType?: string;
   /** How many waves this room's arena gauntlet runs (1-3, default 3). A room
    *  sealed by a MODIFIER (an ambush, a guarded reward) is a BEAT, not the
    *  arena room's full trial, so the composer asks for fewer. */

@@ -24,6 +24,7 @@ import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles';
 import { planCentrepiece } from './centrepieces';
 import { assignModifiers } from './room-modifiers';
+import { signatureFor, signatureLightDensity, tintRoomTorches } from './room-signature';
 import { planFloor, requiredLeafCount } from './floor-plan';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
@@ -820,6 +821,9 @@ export function composeFloor(
       // sub-room so a logical-only attribution room answers the same as its
       // parent geometry.
       if (roomEntrance) r.entranceDir = roomEntrance;
+      // What this room IS, if the plan gave it a job. See RoomSpec.roomType.
+      const promotedType = rolePlan.assigned.get(pv.roomId);
+      if (promotedType) r.roomType = promotedType;
       // A room sealed by a MODIFIER runs a SHORTER gauntlet than the arena
       // room's full trial — an ambush should bite and be over.
       const mw = modPlan.byRoom.get(pv.roomId)?.waves;
@@ -1032,7 +1036,17 @@ export function composeFloor(
     // ── Lighting pass — wall torches by intent. Blocks on wall (torch dedup) +
     // void (don't hang a torch over a hole); a torch by/above a floor feature is
     // intended, so it does NOT block on the floor layer. Reserve placed torches.
-    const procTorches = lightingPass(pv.vault, resolvedPalette, occ.blocked('wall', 'void'), rand);
+    // A room with a SIGNATURE (see room-signature.ts) is lit at least sparsely,
+    // whatever the palette wanted — the signature recolours fixtures and can't
+    // conjure them, so a staged room with no sconces makes no promise at all. A
+    // `dark` room is left alone: its darkness IS its promise.
+    const promotedType = rolePlan.assigned.get(pv.roomId);
+    const roomSig = promotedType ? signatureFor(promotedType) : undefined;
+    const isDarkRoom = modPlan.byRoom.get(pv.roomId)?.kind === 'dark';
+    const litPalette = roomSig && !isDarkRoom
+      ? { ...resolvedPalette, light: { ...resolvedPalette.light, density: signatureLightDensity(resolvedPalette.light.density) } }
+      : resolvedPalette;
+    const procTorches = lightingPass(pv.vault, litPalette, occ.blocked('wall', 'void'), rand);
     for (const t of procTorches) {
       torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
       occ.reserve(Math.round(t.x - 0.5 + W / 2), Math.round(t.z - 0.5 + D / 2), 'wall', 'torch');
@@ -1115,6 +1129,18 @@ export function composeFloor(
         if (m.kind === 'model' && m.model?.id === 'bonfire') plannedFireProp = pc;
       }
       props.push(...placedPiece.props);
+
+      // ── ATMOSPHERE SIGNATURE — what this room looks like from the doorway ──
+      // Recolour the fixtures this room already has (see room-signature.ts). The
+      // fill-light pass averages torch tint per room rect, so ambient, walls and
+      // chandeliers all fall in line behind the hue for free. Runs AFTER the
+      // lighting pass so it catches every fixture, authored or sprinkled.
+      //
+      // A `dark` room is exempt: its whole point is that the lights are out, and
+      // a signature would be recolouring nothing while promising something.
+      if (roomSig && !isDarkRoom) {
+        tintRoomTorches(roomSig, { x: pv.offsetX, z: pv.offsetZ, w: W, d: D }, torches);
+      }
     }
 
     // ── MODIFIER: `hazard` — the floor itself is the danger ────────────────

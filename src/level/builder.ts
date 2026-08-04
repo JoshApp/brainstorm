@@ -2002,8 +2002,12 @@ export function buildLevel(
     const procCount = mine.filter((t) => t.procedural).length;
     if (procCount === 0 && mine.length > 0) continue;
     if (buildRng() >= 0.35) continue;
+    // Read the room's mood BEFORE the swap, not after. The sprinkler's torches
+    // carry the act tint and the room's atmosphere signature (room-signature.ts);
+    // averaging only what SURVIVES the removal hands a signature room a set of
+    // default-warm stubs and quietly erases the promise its colour was making.
+    const tint = averageTorchTintInRect(mine, { ...rect, w: rect.w + 0.9, d: rect.d + 0.9 }) ?? undefined;
     spec.torches = spec.torches.filter((t) => !(t.procedural && inRoom(t)));
-    const tint = averageTorchTintInRect(spec.torches, rect) ?? undefined;
     const horizontal = rect.w >= rect.d;
     const RAKE_OFF = 0.10;   // tighter than the torch's 0.18 — grazing is the point
     for (const [frac, side] of [[0.33, -1], [0.67, 1]] as Array<[number, number]>) {

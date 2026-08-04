@@ -82,6 +82,37 @@ character. One saturated hue per room; two hues only at a genuine
 boundary or event. The fill-light auto-tint (builder.ts) keeps all
 sources in agreement once a vault commits.
 
+### The atmosphere signature — hues are ASSIGNED now
+
+As of 2026-08, four of those five hues are SPOKEN FOR. A room the floor
+plan promotes to a role retints its own wall fixtures
+(`src/level/room-signature.ts`), and because the fill-light pass averages
+torch tint per room rect, the ambient, the walls and the chandeliers all
+follow. What spills out of a corridor mouth is the room announcing
+itself — Isaac marks its doors; we have no map, so the light is the mark.
+
+| Hue          | Room     | The promise                     |
+| ------------ | -------- | ------------------------------- |
+| gold, bright | `trove`  | a gift, laid out                |
+| ember, DIM   | `sanctum`| dark, with one warm heart       |
+| violet       | `shop`   | someone is trading down here    |
+| blood-red    | `arena`  | this one is a fight             |
+| sickly-green | `trap`   | something here is wrong         |
+
+Three rules follow, and breaking any of them costs the whole system:
+
+- **Don't spend an assigned hue on decoration.** A violet corridor for
+  mood now reads as "shop this way" and lies to the player.
+- **Only a type that always means the same thing gets a signature.**
+  `feature` stages anything from a blood bargain to a free relic, so it
+  has none on purpose. A signature is a promise; a room that can't keep
+  it doesn't get one.
+- **A signed room is lit at least sparsely** (`signatureLightDensity`) —
+  the signature recolours fixtures, it can't conjure them. The one
+  exception is the `dark` modifier, whose darkness is its own promise.
+
+Moonlight-blue is unassigned and stays free for vault-authored mood.
+
 ## Light placement (unchanged, see CLAUDE.md + god-ray.ts)
 
 God rays anchor content; colored floor glows mark hot spots; never
