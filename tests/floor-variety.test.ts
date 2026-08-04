@@ -88,8 +88,10 @@ test('A SILVER CHEST IS NOT A TRINKET DISPENSER', () => {
     }
     if (!silver) continue;
     const rate = withRelic / silver;
-    assert.ok(rate <= 0.4,
-      `depth ${depth}: ${(rate * 100).toFixed(0)}% of silver chests hold a relic — that is a guarantee wearing a roll's clothes`);
+    // The LADDER has to read: gold holds a relic ~30-45% of the time, so silver
+    // has to sit clearly under it or the key stops being worth spending.
+    assert.ok(rate <= 0.20,
+      `depth ${depth}: ${(rate * 100).toFixed(0)}% of silver chests hold a relic — too close to gold's promise`);
   }
 });
 

@@ -23,6 +23,7 @@ import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/active-level';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { registerWarmup } from '../content/warmup-registry';
+import { requestThumbnail } from '../ui/item-thumbnail';
 import { gameRng } from '../engine/rng';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
@@ -105,6 +106,9 @@ export function createPickup(
   // the body. Undefined (a fresh floor drop) rolls at take-time as before.
   presetAffixes?: AffixInstance[],
 ) {
+  // Draw this item's inventory thumbnail NOW, on idle, while it is lying on the
+  // floor — not on the frame somebody picks it up. See item-thumbnail.ts.
+  requestThumbnail(item);
   const rarityColor = RARITY_COLORS[item.rarity ?? 'mundane'];
 
   // Wrap everything in one group so destroy is a single scene.remove().

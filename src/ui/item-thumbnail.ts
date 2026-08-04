@@ -116,6 +116,77 @@ export function itemImageUrl(item: ItemSpec): string {
   return getItemThumbnail(item);
 }
 
+// ── GENERATING ONE OF THESE IS NOT FREE ──────────────────────────────────────
+//
+// Measured in-browser: the first call costs ~260ms and EVERY new item id costs
+// 150-240ms after that — a WebGL context on the first call, then a model build,
+// a render and a toDataURL (a GPU→CPU sync plus a PNG encode) on each one. That
+// was happening ON THE FRAME YOU TOUCH AN ITEM, because the acquisition beat
+// asks for the thumbnail to fly into the satchel. Hence "picking up an ember
+// kinda lags the game shortly" — and it wasn't the ember, it was any item this
+// session hadn't drawn yet.
+//
+// 107 items × ~200ms is 21 seconds, so pre-generating everything at load is not
+// the answer either. The answer is WHEN, not whether:
+//
+//   - the RIG warms once during loading, not on the first pickup;
+//   - a thumbnail is generated when the item is SPAWNED into the world, on idle
+//     time, so it is ready long before you walk over to it;
+//   - the gameplay-frame caller never generates. It takes what's cached, and if
+//     nothing is, it shows a rarity glyph and asks for one to be made.
+//
+// The inventory panel still calls the synchronous version deliberately: you are
+// standing in a menu with the world paused, and a hitch there costs nothing.
+
+/** Build the offscreen rig NOW (during loading), so the first real thumbnail
+ *  doesn't pay for a WebGL context on a gameplay frame. */
+export function warmThumbnailRig(): void {
+  ensureRig();
+}
+
+/** The cached thumbnail, or null. NEVER generates — safe on a gameplay frame. */
+export function peekItemThumbnail(item: ItemSpec): string | null {
+  if (item.kind === 'relic') {
+    const art = relicArtUrl(item.id);
+    if (art) return art;
+  }
+  return cache.get(item.id) ?? null;
+}
+
+// Idle generation queue. Deduped, and drained a couple at a time so a floor that
+// spawns twenty pickups doesn't stall a frame trying to be helpful.
+const pending: ItemSpec[] = [];
+const queued = new Set<string>();
+let pumping = false;
+
+/** Ask for this item's thumbnail to exist SOON. Called where items enter the
+ *  world (a pickup lands, a stall lays out its wares), never where one is
+ *  taken. Cheap and idempotent. */
+export function requestThumbnail(item: ItemSpec): void {
+  if (cache.has(item.id) || queued.has(item.id)) return;
+  if (item.kind === 'relic' && relicArtUrl(item.id)) return;   // baked art, nothing to render
+  queued.add(item.id);
+  pending.push(item);
+  pump();
+}
+
+function pump(): void {
+  if (pumping || pending.length === 0) return;
+  pumping = true;
+  const idle = (cb: () => void) => {
+    const ric = (globalThis as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
+    if (ric) ric(cb, { timeout: 2000 }); else setTimeout(cb, 0);
+  };
+  idle(() => {
+    // ONE per idle slice. Each is ~200ms of blocking work; two in a slice is a
+    // dropped frame even when the browser said there was room.
+    const next = pending.shift();
+    pumping = false;
+    if (next) { try { getItemThumbnail(next); } catch { /* a thumbnail is never worth throwing over */ } }
+    pump();
+  });
+}
+
 // Per-item orientation overrides — apply a rotation BEFORE auto-framing so
 // the item presents its "best side" to the camera. Defaults are fine for
 // most items; this is the escape hatch for ones that need a different pose.

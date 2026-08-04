@@ -17,7 +17,7 @@
 
 import { on } from '../broadcast/event-bus';
 import { ITEMS, type ItemSpec } from '../content/items';
-import { getItemThumbnail, itemImageUrl } from './item-thumbnail';
+import { peekItemThumbnail, requestThumbnail } from './item-thumbnail';
 import { itemFraming } from './item-framing';
 import { getReliquary } from '../player/reliquary';
 import { flashDomainGlow } from './vignette';
@@ -93,8 +93,13 @@ export function debugPlayAcquisitionBeat(item: ItemSpec): void {
 // baked, procedural rig otherwise).
 function flyItemToSatchel(item: ItemSpec, from: { x: number; y: number }): void {
   const btn = document.getElementById('inventory-button');
-  const thumb = itemImageUrl(item) ?? getItemThumbnail(item);
-  if (!thumb) return;   // headless / thumbnail rig unavailable
+  // NEVER generate here. This runs on the frame you touched the item, and
+  // generating a thumbnail costs 150-260ms (see item-thumbnail.ts) — the hitch
+  // Josh felt when picking up an ember. Take what's cached; if the item somehow
+  // wasn't warmed when it spawned, ask for one and fly a plain accent chip this
+  // time. A beat that stutters is worse than a beat without a picture.
+  const thumb = peekItemThumbnail(item);
+  if (!thumb) requestThumbnail(item);
 
   const accent = itemFraming(item)?.color ?? hexCss(RARITY_COLORS[item.rarity ?? 'mundane']);
 
@@ -106,12 +111,24 @@ function flyItemToSatchel(item: ItemSpec, from: { x: number; y: number }): void 
     boxShadow: `0 0 22px ${accent}, 0 6px 18px rgba(0,0,0,0.6)`,
     display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
-  const img = document.createElement('img');
-  img.src = thumb;
-  Object.assign(img.style, {
-    width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated',
-  } as Partial<CSSStyleDeclaration>);
-  chip.appendChild(img);
+  if (thumb) {
+    const img = document.createElement('img');
+    img.src = thumb;
+    Object.assign(img.style, {
+      width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated',
+    } as Partial<CSSStyleDeclaration>);
+    chip.appendChild(img);
+  } else {
+    // No picture yet — the chip is still a chip. Rarity-tinted, so the beat
+    // still reads as "you got something, and it was THIS good".
+    const glyph = document.createElement('div');
+    Object.assign(glyph.style, {
+      width: '46%', height: '46%', borderRadius: '2px',
+      border: `2px solid ${accent}`, boxShadow: `0 0 10px ${accent}`,
+      transform: 'rotate(45deg)',
+    } as Partial<CSSStyleDeclaration>);
+    chip.appendChild(glyph);
+  }
 
   flyToHud({ from, targetEl: btn, node: chip, size: 76, accent, present: true });
 }

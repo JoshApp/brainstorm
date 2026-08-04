@@ -137,6 +137,7 @@ import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, tickLightPool } from './scene/light-pool';
 import { applyAmbientWick, startAmbientLight, stopAmbientLight } from './settings/ambient-light';
+import { warmThumbnailRig, requestThumbnail } from './ui/item-thumbnail';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes, captureDisplayFrame } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
@@ -350,6 +351,9 @@ setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);
 setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
 applyAmbientWick();
+// The item-thumbnail rig makes its own little WebGL context. Build it during
+// loading; on the first pickup it cost ~100ms of a gameplay frame.
+warmThumbnailRig();
 // Ask the phone how bright the room is, if it will say. Fire-and-forget: on the
 // (very common) device with no readable sensor this resolves having done
 // nothing, and the wick stays exactly where the player set it.
@@ -800,6 +804,11 @@ onEquipmentChanged((eq) => {
   weapon.equip(eq.weapon?.viewmodel ?? null);
   heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
   setCurrentWeapon(eq.weapon?.weapon ?? FIST_STATS, eq.weapon?.id);
+  // Warm the thumbnails for what's ON you. Anything picked up off the floor was
+  // warmed where it spawned, but a STARTING weapon never lay on a floor — and
+  // the weapon-swap chip renders mid-fight, which is the one place a 200ms
+  // thumbnail generate would be felt.
+  for (const it of [eq.weapon, eq.offhand]) if (it) requestThumbnail(it);
   if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
     // Real offhand gear (shield / focus). Drop the lantern to the hip so
     // the item takes the hand; the lamp's light is unchanged.

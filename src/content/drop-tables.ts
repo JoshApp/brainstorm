@@ -233,11 +233,17 @@ export const TABLES: Record<string, LootTable> = {
   // piece. It is a roll now, not a certainty — and the rest of the weight pays
   // the currencies a silver chest pays anywhere else, so finding it is never a
   // waste even when it isn't a trinket.
+  //
+  // THE LADDER HAS TO READ. A silver chest is where this find lands, and gold
+  // holds a relic ~45% of the time — so silver at 30% made the two tiers nearly
+  // the same promise and the key stopped being worth spending. 15% keeps the
+  // surprise (a silver box CAN pay out) while leaving the gap that makes gold a
+  // destination: roughly one in seven, against gold's one in two.
   'defining-find': T({ emptyGold: 12, entries: [
-    { from: 'relics', bias: 4, weight: 30, minRarity: rampFloor(2, 7) },
-    { from: 'keys',    weight: 26 },
-    { from: 'embers',  weight: 22 },
-    { gold: [10, 22],  weight: 22 },
+    { from: 'relics', bias: 4, weight: 15, minRarity: rampFloor(2, 7) },
+    { from: 'keys',    weight: 30 },
+    { from: 'embers',  weight: 27 },
+    { gold: [10, 22],  weight: 28 },
   ] }),
   'merchant':      T({ entries: [{ from: 'gear', bias: 2, minRarity: rampFloor(1, 6) }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
