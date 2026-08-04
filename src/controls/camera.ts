@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
 import { getWindedMoveMul, isDashingOver, resolveDashOverLanding } from '../combat/dash';
+import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset } from '../player/vault-step';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
@@ -154,6 +155,21 @@ export function updateCamera(
       );
       const stepDx = finalPos.x - camera.position.x;
       const stepDz = finalPos.z - camera.position.z;
+
+      // THE VAULT STEP (player/vault-step.ts). The honest trigger is a walk
+      // that got BLOCKED: the player pushed into something and the world said
+      // no. If the thing in the way is one the DODGE could clear, and there's
+      // floor beyond it, step over instead of standing there. Never in combat,
+      // never mid-dodge — the dodge always wins.
+      const wantedDist = Math.hypot(moveX, moveZ);
+      const gotDist = Math.hypot(stepDx, stepDz);
+      if (!isVaulting() && wantedDist > 1e-4 && gotDist < wantedDist * 0.4) {
+        tryVaultStep(
+          camera.position.x, camera.position.z,
+          moveX, moveZ, PLAYER_RADIUS, walkable,
+        );
+      }
+
       camera.position.x = finalPos.x;
       camera.position.z = finalPos.z;
 
@@ -208,6 +224,14 @@ export function updateCamera(
     }
   }
 
+  // --- The vault step carries the player ---
+  // A vault owns position for its short duration: it's a committed stride over
+  // something, so the arc must not be fought by the joystick mid-flight.
+  {
+    const vp = vaultPosition();
+    if (vp) { camera.position.x = vp.x; camera.position.z = vp.z; }
+  }
+
   // --- Dash-over undershoot rescue ---
   // A validated vault normally overshoots the 1m obstacle, but a no-input dash
   // can die inside it. Once the vault window closes, if we're still standing in
@@ -224,7 +248,8 @@ export function updateCamera(
   // sloped corridor raises/lowers the eye continuously.
   camera.position.y = CONFIG.PLAYER_HEIGHT
     + groundYAt(camera.position.x, camera.position.z)
-    + getArrivalHeightOffset();
+    + getArrivalHeightOffset()
+    + vaultHeightOffset();   // the arc over a knee-high obstacle
 
   // Exhaustion chest-heave — a subtle breath-driven bob + pitch when winded, so
   // "out of breath" is FELT in the view, not read off a bar. 0 when rested; the

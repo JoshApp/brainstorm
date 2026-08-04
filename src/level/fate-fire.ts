@@ -14,6 +14,8 @@ import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
 import { grantEmber } from '../player/ember';
+import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
+import { refillFlask } from '../player/flask';
 import { flashHearthEmbrace } from '../ui/vignette';
 import { spawnStatusTextHere } from '../ui/damage-numbers';
 
@@ -21,6 +23,10 @@ import { spawnStatusTextHere } from '../ui/damage-numbers';
  *  flesh-warm for health, flask-gold for charges. */
 /** Borrowed life — the same amber the ember hearts use on the bar. */
 const HEARTH_EMBER_COLOR = 'rgba(255, 176, 74, 0.98)';
+/** The refuge fire's two lines — flesh-warm for the mend, flask-gold for the
+ *  charges, so they read apart at a glance. */
+const HEARTH_MEND_COLOR = 'rgba(255, 214, 170, 0.98)';
+const HEARTH_FLASK_COLOR = 'rgba(255, 198, 92, 0.98)';
 import { CONFIG } from '../config';
 
 interface FateFireOpts {
@@ -29,6 +35,19 @@ interface FateFireOpts {
   position: THREE.Vector3;
   /** The harbor fire: gates descent until drawn. Small fires pass false. */
   isBig: boolean;
+  /**
+   * THE REFUGE FIRE — the great fire in a safe room, between acts.
+   *
+   * The two kinds of fire mean different things and should not be confused:
+   * a fire in the DEEP lends you life you didn't have (ember), while the fire
+   * in the REFUGE gives back the life you spent — a full mend and a full flask.
+   * One is a gift with a catch, the other is the game being plainly kind, once,
+   * in the one place that is safe.
+   *
+   * That split is also what keeps the flask honest: it has exactly one refill
+   * point in the whole run, and it's the place you were going to stop at anyway.
+   */
+  haven?: boolean;
   /** Dim the prop's pooled light toward embers when spent. */
   dimLight?: (factor: number) => void;
 }
@@ -68,10 +87,21 @@ export function registerFateFire(o: FateFireOpts): void {
       // flat beat you can route toward instead of a variable-value pit stop —
       // and it gives the ember economy one dependable source that isn't a
       // bargain, which is what lets the bargains be genuinely cruel.
-      const gained = grantEmber(CONFIG.BONFIRE.EMBER);
-      flashHearthEmbrace();
       const at = o.position.clone();
-      spawnStatusTextHere(at, gained > 0 ? `+${gained} EMBER` : 'ALREADY BURNING', HEARTH_EMBER_COLOR);
+      if (o.haven) {
+        // THE REFUGE. Whole again, flask full — the road so far is forgiven.
+        const before = getPlayerHp();
+        healPlayer(getPlayerMaxHp(), 'passive');
+        const mended = Math.max(0, Math.round(getPlayerHp() - before));
+        refillFlask();
+        flashHearthEmbrace();
+        if (mended > 0) spawnStatusTextHere(at, `+${mended} MENDED`, HEARTH_MEND_COLOR);
+        spawnStatusTextHere(at.clone().setY(at.y + 0.42), 'FLASK FULL', HEARTH_FLASK_COLOR);
+      } else {
+        const gained = grantEmber(CONFIG.BONFIRE.EMBER);
+        flashHearthEmbrace();
+        spawnStatusTextHere(at, gained > 0 ? `+${gained} EMBER` : 'ALREADY BURNING', HEARTH_EMBER_COLOR);
+      }
       spendFlame(flames);
       o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
       interactable.promptLabel = ''; // spent — no rest prompt

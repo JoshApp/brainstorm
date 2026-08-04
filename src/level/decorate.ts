@@ -93,11 +93,20 @@ export function decorateFloor(
   rand: () => number,
   tint: number,
   root: THREE.Object3D,
-  // Stair footprints in world XZ AABB form. Cells whose center falls
-  // inside any footprint are skipped — sigils + cracks + rubble would
-  // otherwise float in mid-air above the cut floor where the stairwell
-  // descends.
-  stairFootprints: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [],
+  /**
+   * KEEP-OUT rectangles in world XZ. A cell whose centre falls in any of them
+   * is not decorated at all. Three things use it, for the same reason — clutter
+   * is the cheapest thing on the floor and the first thing that should yield:
+   *
+   *   - STAIR FOOTPRINTS: rubble would float in mid-air over the cut where the
+   *     stairwell descends.
+   *   - CLEAN ROOMS (room-types.ts `clean`): a trove's whole job is that you
+   *     can see three things and choose; anything else on that floor is in the
+   *     way, and this pass runs long after the composer's own decor gate.
+   *   - INTERACTABLES: a chest that opens into a rubble pile, an offering with
+   *     debris growing out of its plinth. Things stuck inside things.
+   */
+  keepOut: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [],
 ): void {
   const rows = grid.length;
   const cols = Math.max(...grid.map(r => r.length));
@@ -109,8 +118,8 @@ export function decorateFloor(
     return grid[r]?.[c] ?? ' ';
   };
   const isFloor = (c: number, r: number): boolean => FLOOR_CHARS.has(cellChar(c, r));
-  const inStairFootprint = (wx: number, wz: number): boolean => {
-    for (const f of stairFootprints) {
+  const inKeepOut = (wx: number, wz: number): boolean => {
+    for (const f of keepOut) {
       if (wx >= f.minX && wx <= f.maxX && wz >= f.minZ && wz <= f.maxZ) return true;
     }
     return false;
@@ -130,7 +139,7 @@ export function decorateFloor(
       if (!FLOOR_CHARS.has(ch)) continue;
       const cellWx = originX + c + 0.5;
       const cellWz = originZ + r + 0.5;
-      if (inStairFootprint(cellWx, cellWz)) continue;
+      if (inKeepOut(cellWx, cellWz)) continue;
       if (NO_DECORATE_CHARS.has(ch)) continue;
       const wx = originX + c + 0.5;
       const wz = originZ + r + 0.5;

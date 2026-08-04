@@ -99,6 +99,20 @@ export interface RoomTypeDef {
   event: boolean;
   /** May minor loot — chests, pickups, breakables — dress this room? */
   minorLoot: boolean;
+  /**
+   * THE FLOOR IS A STAGE. Nothing scattered, nothing underfoot: no procedural
+   * decor, no furnishing, no rubble, no traps, no carved voids. Only what the
+   * room's centrepiece deliberately places.
+   *
+   * This is a stronger statement than `minorLoot: false`, and it needs to be
+   * separate from it. A trove already refused loot and still ended up with
+   * pillars in front of its outer offerings and a crack across its floor,
+   * because decor, carve and the hazard modifier are different passes that each
+   * asked a different question. `clean` is the one answer all of them read: if
+   * the whole point of the room is that you can see three things and choose
+   * between them, then anything else on that floor is in the way.
+   */
+  clean: boolean;
   /** May a found bonfire settle here, and how strongly does it want to? */
   fire: boolean;
   firePref: number;
@@ -116,7 +130,7 @@ export const ROOM_TYPES = {
   // You arrive here. Safe, marked, never a fight and never a deal.
   entrance: {
     kind: 'structural', bookend: true, centrepiece: 'none',
-    enemies: false, event: false, minorLoot: true, fire: false, firePref: 0,
+    enemies: false, event: false, clean: false, minorLoot: true, fire: false, firePref: 0,
     modifiers: [],
   },
   // Holds the way down. A threshold, never a destination — but it can be the
@@ -124,19 +138,19 @@ export const ROOM_TYPES = {
   // PRICED: `finish + toll` is the blood door.
   finish: {
     kind: 'structural', bookend: true, centrepiece: 'descent',
-    enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
+    enemies: true, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: ['ambush', 'toll'],
   },
   // The elite's stage. No injected trash, no deal, no found fire — the miniboss
   // IS the content, and it gives a fire when it dies.
   miniboss: {
     kind: 'structural', bookend: false, centrepiece: 'miniboss',
-    enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
+    enemies: false, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
   boss: {
     kind: 'structural', bookend: false, centrepiece: 'boss',
-    enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
+    enemies: false, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
 
@@ -144,7 +158,7 @@ export const ROOM_TYPES = {
   // A calm pocket that hosts a question: a deal, or a defining find.
   feature: {
     kind: 'role', bookend: false, centrepiece: 'bargain',
-    enemies: true, event: true, minorLoot: true, fire: true, firePref: 3,
+    enemies: true, event: true, clean: false, minorLoot: true, fire: true, firePref: 3,
     modifiers: ['ambush', 'contested', 'toll', 'hazard', 'gated'],
   },
   // The bonfire's room. Staged, prominent — and NOT always safe. A fire is the
@@ -155,14 +169,14 @@ export const ROOM_TYPES = {
   // so an unmodified fire stays the clean breath it's meant to be.
   sanctum: {
     kind: 'role', bookend: false, centrepiece: 'fire',
-    enemies: false, event: false, minorLoot: false, fire: true, firePref: 5,
+    enemies: false, event: false, clean: false, minorLoot: false, fire: true, firePref: 5,
     modifiers: ['ambush', 'contested'],
   },
   // The floor's guaranteed choice — several offerings, take one. A reward room
   // is a BREATH: no enemies, no hazards. It may be sealed behind an offering.
   trove: {
     kind: 'role', bookend: false, centrepiece: 'offerings',
-    enemies: false, event: false, minorLoot: false, fire: false, firePref: 1,
+    enemies: false, event: false, clean: true, minorLoot: false, fire: false, firePref: 1,
     // You may have to FIGHT for the offerings (contested) or PAY to reach them
     // (toll) — but the room is never sprung on you. A reward you walked into
     // honestly stays a breath; the cost is always one you saw coming.
@@ -171,7 +185,7 @@ export const ROOM_TYPES = {
   // You never fight beside a vendor. No modifiers, at all, ever.
   shop: {
     kind: 'role', bookend: false, centrepiece: 'merchant',
-    enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
+    enemies: false, event: false, clean: true, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
   // A gauntlet room: waves, each one answered with a reward. Its identity IS the
@@ -179,27 +193,27 @@ export const ROOM_TYPES = {
   // may have to pay your way in.
   arena: {
     kind: 'role', bookend: false, centrepiece: 'gauntlet',
-    enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
+    enemies: true, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: ['toll', 'hazard'],
   },
   // The hazard and the prize it guards. Can also be waiting for you.
   trap: {
     kind: 'role', bookend: false, centrepiece: 'hazard',
-    enemies: true, event: false, minorLoot: true, fire: false, firePref: 0,
+    enemies: true, event: false, clean: false, minorLoot: true, fire: false, firePref: 0,
     modifiers: ['ambush', 'contested'],
   },
 
   // ── PLAIN — the connective majority, no centrepiece ────────────────
   combat: {
     kind: 'plain', bookend: false, centrepiece: 'none',
-    enemies: true, event: true, minorLoot: true, fire: true, firePref: 1,
+    enemies: true, event: true, clean: false, minorLoot: true, fire: true, firePref: 1,
     modifiers: ['ambush', 'hazard', 'dark'],
   },
   // A deliberately empty dread room. Its whole job is to be nothing — so the
   // only thing it tolerates is the dark getting worse.
   quiet: {
     kind: 'plain', bookend: false, centrepiece: 'none',
-    enemies: false, event: true, minorLoot: true, fire: true, firePref: 4,
+    enemies: false, event: true, clean: false, minorLoot: true, fire: true, firePref: 4,
     modifiers: ['dark', 'hazard'],
   },
 } as const satisfies Record<string, RoomTypeDef>;

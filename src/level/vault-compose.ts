@@ -489,6 +489,30 @@ const HAZARD_SPREAD_M = 3.2;
  *  EVENT_PROP_KINDS — a room with a couple of vases and a corpse in it is dressed,
  *  not empty; a room with nothing but wall grime is empty. Read by the
  *  every-room-earns-its-walk pass in the combat budget. */
+/**
+ * FLOOR CLUTTER — model ids the elbow-room sweep may delete when they crowd
+ * something interactive. Matched by PREFIX, because the decor pass mints ids
+ * with baked dimensions (`corner-mound-large`).
+ *
+ * An allowlist rather than "any model", deliberately: `model` also covers the
+ * trove's own floor glows, doorframes, archways, the bonfire and every lit
+ * fixture. Sweeping by KIND would delete the gold glow from underneath the
+ * offering it was placed to light — the fix eating the thing it was fixing.
+ * Everything here is rubble: it fills space, and space is exactly what an
+ * interactable needs.
+ */
+const CLUTTER_MODEL_PREFIXES = [
+  'rubble', 'stone-shards', 'ash-mound', 'corner-mound', 'ruined-column',
+  'fallen-pillar', 'iron-bars', 'cobweb', 'wall-pile', 'ossuary-niche',
+];
+
+function isFloorClutter(p: PropSpec): boolean {
+  if (p.kind === 'vase') return true;
+  if (p.kind !== 'model') return false;
+  const id = (p as { model?: { id?: string } }).model?.id ?? '';
+  return CLUTTER_MODEL_PREFIXES.some((pre) => id.startsWith(pre));
+}
+
 const PRESENCE_PROP_KINDS = new Set<string>([
   'chest', 'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
   'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'offering', 'stash-chest',
@@ -894,6 +918,11 @@ export function composeFloor(
     // where the slot asks. `hazard`-modified rooms keep their traps — that
     // modifier is the room asking FOR them.
     const typeHere = roomType(rolePlan.assigned.get(pv.roomId) ?? roles.role(pv.roomId));
+    // THE FLOOR IS A STAGE (room-types.ts `clean`). One answer that decor,
+    // furnishing, carving and the hazard modifier all read, instead of four
+    // passes each asking a different question and a trove ending up with
+    // pillars in front of its outer offerings and a crack across its middle.
+    const cleanRoom = typeHere.clean;
     const { map: populated, spawns: cellSpawns, features: cellFeatures } = populateTemplate(
       pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette, allowBoss,
       {
@@ -947,7 +976,14 @@ export function composeFloor(
     }
     rooms.push(...sub.rooms);
     corridorRooms.push(...sub.corridors);
-    props.push(...sub.props);
+    // A CLEAN room takes nothing underfoot, INCLUDING what the tilemap authored.
+    // A vault's `^` spike tiles come straight out of the parser, so the earlier
+    // gates (which cover the rolled `?` slot and the hazard modifier) never see
+    // them — and a trove promoted onto a trap-marked vault got spikes between
+    // its offerings. The room type is the final word.
+    props.push(...(cleanRoom
+      ? sub.props.filter((p) => p.kind !== 'spike-trap' && !isFloorClutter(p))
+      : sub.props));
     torches.push(...sub.torches);
     spawns.push(...sub.spawns);
     if (sub.doors) doors.push(...sub.doors);
@@ -1196,7 +1232,7 @@ export function composeFloor(
     // around. Anywhere the floor is a stage, a void has to be AUTHORED: a vault
     // can still declare its own (the machinery is untouched), and that one will
     // be there because someone meant it.
-    const stagedHere = rolePlan.assigned.has(pv.roomId) || isBookend(roles.role(pv.roomId));
+    const stagedHere = cleanRoom || rolePlan.assigned.has(pv.roomId) || isBookend(roles.role(pv.roomId));
     const procVoids = stagedHere
       ? []
       : carvePass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall'), rand);
@@ -1240,7 +1276,7 @@ export function composeFloor(
     // stays bare (room-decor.ts roleDecorPolicy). The STYLE (pillared / ruined)
     // still comes from the palette; the role decides HOW MUCH. Depth drives the
     // decay of the ruined colonnade inside decorPass.
-    const decorTier = roleDecorPolicy(roles.role(pv.roomId)).pillars;
+    const decorTier = cleanRoom ? 'off' : roleDecorPolicy(roles.role(pv.roomId)).pillars;
     const decorPalette = { ...resolvedPalette, decor: { ...resolvedPalette.decor, density: decorTier } };
     const procDecor = decorPass(pv.vault, decorPalette, occ.blocked('floor', 'wall', 'void'), rand, depth);
     for (const p of procDecor) {
@@ -1328,7 +1364,7 @@ export function composeFloor(
     // Spike traps dressed THROUGH the room rather than ringed around a prize
     // (that's the trap room's centrepiece). Placed on the room's open interior
     // and spread apart, so crossing means picking a line, not threading a maze.
-    if (modPlan.byRoom.get(pv.roomId)?.kind === 'hazard') {
+    if (modPlan.byRoom.get(pv.roomId)?.kind === 'hazard' && !cleanRoom) {
       const spots: Array<{ col: number; row: number; x: number; z: number }> = [];
       for (let row = 2; row < D - 2; row++) {
         for (let col = 2; col < W - 2; col++) {
@@ -1717,7 +1753,14 @@ export function composeFloor(
       if (arr) arr.push(c); else byRoom.set(c.roomId, [c]);
     }
     const b = CONFIG.CONTENT_BUDGET;
+    const cleanRooms = new Set(
+      placed.filter((pv) => roomType(rolePlan.assigned.get(pv.roomId) ?? roles.role(pv.roomId)).clean)
+        .map((pv) => pv.roomId),
+    );
     for (const [roomId, cells] of byRoom) {
+      // A staged floor takes nothing scattered — not even the every-room-earns-
+      // its-walk floor below. Its centrepiece IS the reason to have walked in.
+      if (cleanRooms.has(roomId)) continue;
       const mul = roleDecorPolicy(roles.role(roomId)).furnishMul;
       cells.sort((a, b2) => b2.wallAdj - a.wallAdj);   // edge-hug
       let n = Math.min(
@@ -1829,6 +1872,9 @@ export function composeFloor(
   const placedProps = distributeLoot(forDirector, depth, rand, roomBoxes);
   resolveContent(placedProps, roomBoxes);
 
+
+
+
   // Build the intermediate LevelSpec — props / torches will be
   // mutated by the decoration pipeline below.
   // MINIBOSS GATE (Josh) — a floor that staged a miniboss arena SEALS its descent
@@ -1889,6 +1935,43 @@ export function composeFloor(
   resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
+
+  // ── ELBOW ROOM — clear the dressing off anything you have to touch ────
+  //
+  // Decor, furnishing, debris and the interactables all place through the same
+  // occupancy grid, but they don't all reserve the same footprint: a prop
+  // reserves the CELL it stands on, while its MODEL can be a metre wide and its
+  // approach wider still. So an offering ends up with a rubble pile growing out
+  // of its plinth, a chest opens into a pillar, and a merchant stands inside his
+  // own cobwebs — things stuck inside things.
+  //
+  // Rather than teach every pass a different footprint, this is one sweep at the
+  // end: anything PURELY DECORATIVE within a radius of anything INTERACTIVE is
+  // simply removed. Decor is the cheapest thing on the floor and the only one
+  // with nothing to lose — it exists to fill space, so the space it must not
+  // fill is the space around a decision.
+  {
+    const INTERACT_CLEAR_M = 1.25;   // model half-width + a step to stand in
+    const anchors: Array<{ x: number; z: number }> = [];
+    for (const p of result.props as Array<{ kind?: string; x?: number; z?: number }>) {
+      if (!PRESENCE_PROP_KINDS.has(p.kind ?? '') || p.kind === 'vase') continue;
+      if (typeof p.x !== 'number' || typeof p.z !== 'number') continue;
+      anchors.push({ x: p.x, z: p.z });
+    }
+    if (anchors.length > 0) {
+      const before = result.props.length;
+      const kept = result.props.filter((p) => {
+        if (!isFloorClutter(p)) return true;
+        const q = p as { x?: number; z?: number };
+        if (typeof q.x !== 'number' || typeof q.z !== 'number') return true;
+        return !anchors.some((a) => Math.hypot(a.x - q.x!, a.z - q.z!) < INTERACT_CLEAR_M);
+      });
+      if (kept.length !== before) { result.props.length = 0; result.props.push(...kept); }
+    }
+  }
+
+
+
   // PROGRESSION GUARANTEE — two-phase safety net.
   //
   //  Phase 1 (preferred): nudge every collision-bearing prop out of

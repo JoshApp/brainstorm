@@ -71,6 +71,16 @@ import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
+import { roomType } from './room-types';
+
+/** Prop kinds the procgen decoration pass must keep an apron clear around —
+ *  anything the player walks up to and uses. Debris crowding one of these is the
+ *  "things stuck inside things" report. */
+const DECOR_KEEPOUT_KINDS = new Set<string>([
+  'chest', 'stash-chest', 'altar', 'blood-altar', 'starter-altar', 'challenge-offering',
+  'fountain', 'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'trinket-merchant',
+  'blacksmith', 'offering', 'corpse', 'searchable', 'spike-trap',
+]);
 import { seedBuildRng, buildRng, gameRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft } from '../scene/threshold-draft';
 import { installFrameFittings } from './frame';
@@ -1416,6 +1426,9 @@ export function buildLevel(
           // to a MINOR rest-fire (still heals + refills, deals a minor arcana, no
           // gate). The foyer's opening fire and any deliberately-scaled big fire
           // keep the major.
+          // The great fire in a refuge RESTORES rather than lends — see
+          // FateFireOpts.haven. It's also the flask's only refill in a run.
+          haven: /safe|harbor/i.test(spec.id ?? ''),
           isBig: !/safe|harbor/i.test(spec.id ?? '')
             && (/foyer/i.test(spec.id ?? '') || (prop.scale ?? 1) >= 1.3),
           dimLight: (f) => { bonfireDim = f; },
@@ -2188,7 +2201,27 @@ export function buildLevel(
   // rubble in a few draw calls instead of dozens of individual meshes.
   if (spec.procgenDecor) {
     const d = spec.procgenDecor;
-    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root, stairFootprintAabbs);
+    // KEEP-OUT: the stair cuts, plus two things this pass is far enough
+    // downstream to have been ignoring — CLEAN rooms (a trove/shop floor is a
+    // stage; see room-types.ts `clean`) and a small apron around everything you
+    // can interact with (so a chest doesn't open into a rubble pile). Clutter is
+    // the cheapest thing on the floor, so clutter is what yields.
+    const keepOut = [...stairFootprintAabbs];
+    for (const room of spec.rooms) {
+      if (room.logicalOnly || !room.roomType || !roomType(room.roomType).clean) continue;
+      keepOut.push({
+        minX: room.rect.x - room.rect.w / 2, maxX: room.rect.x + room.rect.w / 2,
+        minZ: room.rect.z - room.rect.d / 2, maxZ: room.rect.z + room.rect.d / 2,
+      });
+    }
+    const APRON = 1.25;   // model half-width + a step to stand in
+    for (const p of spec.props) {
+      if (!DECOR_KEEPOUT_KINDS.has(p.kind)) continue;
+      const q = p as { x?: number; z?: number };
+      if (typeof q.x !== 'number' || typeof q.z !== 'number') continue;
+      keepOut.push({ minX: q.x - APRON, maxX: q.x + APRON, minZ: q.z - APRON, maxZ: q.z + APRON });
+    }
+    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root, keepOut);
   }
 
   // --- Per-floor fog tint ---

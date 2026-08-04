@@ -805,6 +805,17 @@ export const CONFIG = {
   // to be DRUNK, which costs you a window. Counting only the bar overstates how
   // much you have, so the bar comes down and the flask carries more of it. Lower
   // here means a hit lands harder and a rest matters more.
+  /**
+   * THE VAULT STEP — walking over knee-high obstacles instead of stopping dead.
+   * See player/vault-step.ts, and note the hard rule there: the dodge always
+   * wins, so this never fires while dodging or in combat.
+   */
+  VAULT: {
+    ENABLED: true,
+    /** How long the step takes. Short: it's a stride, not a stunt, and every
+     *  frame of it is a frame the player isn't steering. */
+    DURATION_S: 0.34,
+  },
   PLAYER_HP_MAX: 5,
   /**
    * WHAT BLOOD COSTS — as a FRACTION of your max pool, never as a flat number.

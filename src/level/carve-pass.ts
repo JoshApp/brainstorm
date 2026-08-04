@@ -96,66 +96,74 @@ export function carvePass(
     case 'fissured': {
       const candidates = findInteriorCells(vault.map);
       const free = candidates.filter((c) => !occupiedCells.has(`${c.col},${c.row}`));
-      const target = targetCount(palette.carve.style, palette.carve.density, free.length);
-      if (target === 0 || free.length === 0) return [];
-
+      if (free.length === 0) return [];
       const W = vault.map[0]?.length ?? 0;
       const D = vault.map.length;
 
-      // A FISSURE IS A LINE, NOT A DOT.
+      // A CHASM IS AN OBSTACLE, NOT A TEXTURE.
       //
-      // This used to punch an independent 0.8m square at each stride-sampled
-      // cell, so what a floor actually showed was single stray potholes
-      // scattered around at random — which reads as a generator artefact, not
-      // as something that cracked the stone. Each seed now GROWS along one axis
-      // into a short run and emits ONE rect covering it, so a crack has a
-      // direction and a length you can see and walk around.
+      // Scattered cracks — even well-shaped ones — change nothing about how you
+      // move through a room; you walk around them without noticing you did.
+      // What a hole in the floor is actually GOOD at is making you choose a
+      // side, and that only happens if it lies ACROSS your path and is long
+      // enough that going around costs you something.
       //
-      // Deterministic (same map + density → same cracks): the axis and the
-      // target length come from the seed cell's own coordinates, not from rng.
-      // The pass has never taken rng and the composer relies on that.
-      const WIDTH = 0.8;         // across the crack — still leaves a standable rim
-      const MIN_RUN = 2, MAX_RUN = 4;
-      const used = new Set<string>();
+      // So a fissured room gets ONE deliberate rift, spanning the room's LONG
+      // axis (the direction you have the most room to route around in), with a
+      // CROSSING left in it — a walkable ledge you have to find and commit to.
+      // Two spans and a gap, not a pothole. Everything downstream still sees
+      // ordinary void rects, so nothing else in the pipeline changes.
+      //
+      // Deterministic: which lane it sits in and where the crossing falls come
+      // from the room's own dimensions. The pass has never taken rng and the
+      // composer relies on that.
       const isFree = (col: number, row: number) =>
-        !used.has(`${col},${row}`)
-        && !occupiedCells.has(`${col},${row}`)
+        !occupiedCells.has(`${col},${row}`)
         && free.some((c) => c.col === col && c.row === row);
 
-      const stride = free.length / target;
+      const horiz = W >= D;               // the rift runs along the LONG axis
+      const across = horiz ? D : W;       // the short axis it has to sit within
+      const along = horiz ? W : D;
+      // Needs a room with something to route around in: too small and the rift
+      // is a wall, not a choice.
+      if (along < 6 || across < 5) return [];
+
+      // The lane: offset from centre so the two sides are UNEQUAL — a rift down
+      // the exact middle is a symmetrical non-decision. Deterministic offset.
+      const lane = Math.floor(across / 2) + ((along + across) % 2 === 0 ? -1 : 1);
+      if (lane < 2 || lane > across - 3) return [];
+
+      // Walk the lane, splitting at the crossing. Cells that aren't free (a
+      // pillar, an authored prop, the stair) simply end the current span, which
+      // is how the rift naturally breaks around what the room already contains.
+      const CROSS_AT = Math.floor(along * 0.5) + ((along % 3) - 1);   // roughly mid, nudged
+      const CROSS_WIDTH = 2;                                          // cells you can walk
+      const WIDTH = 1.1;   // across the rift — too wide to stride, must be rounded
       const out: WalkableRect[] = [];
-      for (let i = 0; i < target; i++) {
-        const seed = free[Math.min(Math.floor(i * stride), free.length - 1)];
-        if (!isFree(seed.col, seed.row)) continue;
-        // Along the room's own grain, alternating by seed parity so a room gets
-        // cracks in both directions rather than a comb.
-        const horiz = ((seed.col + seed.row) & 1) === 0;
-        const want = MIN_RUN + ((seed.col * 3 + seed.row * 5) % (MAX_RUN - MIN_RUN + 1));
-        // Grow from the seed in both directions until blocked or long enough.
-        let lo = 0, hi = 0;
-        while (hi - lo + 1 < want) {
-          const grewHi = isFree(seed.col + (horiz ? hi + 1 : 0), seed.row + (horiz ? 0 : hi + 1));
-          if (grewHi) { hi++; if (hi - lo + 1 >= want) break; }
-          const grewLo = isFree(seed.col + (horiz ? lo - 1 : 0), seed.row + (horiz ? 0 : lo - 1));
-          if (grewLo) lo--;
-          if (!grewHi && !grewLo) break;
-        }
-        const len = hi - lo + 1;
-        for (let k = lo; k <= hi; k++) {
-          used.add(horiz ? `${seed.col + k},${seed.row}` : `${seed.col},${seed.row + k}`);
-        }
-        // Centre of the run, in vault-local metres.
-        const midCol = seed.col + (horiz ? (lo + hi) / 2 : 0);
-        const midRow = seed.row + (horiz ? 0 : (lo + hi) / 2);
+      let runStart = -1;
+      const flush = (endExcl: number) => {
+        const len = endExcl - runStart;
+        if (runStart < 0 || len < 2) { runStart = -1; return; }   // a 1-cell hole is a pothole
+        const mid = runStart + len / 2 - 0.5;
         out.push({
-          x: midCol + 0.5 - W / 2,
-          z: midRow + 0.5 - D / 2,
-          w: horiz ? len - 0.2 : WIDTH,
-          d: horiz ? WIDTH : len - 0.2,
+          x: (horiz ? mid : lane) + 0.5 - W / 2,
+          z: (horiz ? lane : mid) + 0.5 - D / 2,
+          w: horiz ? len - 0.15 : WIDTH,
+          d: horiz ? WIDTH : len - 0.15,
         });
+        runStart = -1;
+      };
+      for (let i = 1; i < along - 1; i++) {
+        const inCrossing = i >= CROSS_AT && i < CROSS_AT + CROSS_WIDTH;
+        const usable = !inCrossing
+          && (horiz ? isFree(i, lane) : isFree(lane, i));
+        if (usable) { if (runStart < 0) runStart = i; }
+        else flush(i);
       }
+      flush(along - 1);
       return out;
     }
+
     // Stubs — see header comment. Add candidate logic + sizing rule
     // per style.
     case 'pit-cluster':

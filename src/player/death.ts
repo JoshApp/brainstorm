@@ -15,6 +15,7 @@ import { dumpInteractTrace } from '../debug/interact-trace';
 import { killingBlowLabel, getDamageRecap } from './damage-recap';
 import { setGameMode } from '../state/game-mode';
 import { tickWeaponDrops } from './weapon-drop';
+import { cancelVaultStep } from './vault-step';
 
 // Death sequence — Dark-Souls-esque collapse + world freeze.
 //
@@ -119,6 +120,7 @@ export function triggerDeath() {
   // BEFORE the camera starts its collapse, so you watch your blade fall
   // away as you go down. Captured here (hands still up) so the spawn
   // transform is the held pose, not the collapsed one.
+  cancelVaultStep();   // never leave a stride mid-arc through the death camera
   onDeathStart?.();
   setPersistentVignette(1, CONFIG.DEATH_VIGNETTE_DARKEN_MS);
   const epitaph = showDeathOverlay();

@@ -16,6 +16,7 @@ import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
 } from './geometry-cull';
+import { roomType } from './room-types';
 
 // =====================================================================
 // LEVEL DECORATION PIPELINE
@@ -108,6 +109,19 @@ interface RoomContext {
  * Mutates spec.props and spec.torches. Must run BEFORE
  * applySurfaceClutter so the surface pass sees the final shape.
  */
+/**
+ * Does this room refuse scattered dressing entirely? (room-types.ts `clean`.)
+ *
+ * These two passes run on the FINAL LevelSpec, long after the composer's own
+ * decor gates, and they were the last producers still filling a trove with
+ * ruined columns and a shop with rubble. A staged room's floor is the thing the
+ * player is meant to read; the columns this pass places are exactly what stood
+ * in front of the outer two offerings.
+ */
+function isCleanRoom(room: { logicalOnly?: boolean; roomType?: string }): boolean {
+  return !!room.roomType && !room.logicalOnly && roomType(room.roomType).clean;
+}
+
 export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
   // 1. Archway emission. Walks every corridor, finds where it
   //    meets a room, drops a framed gate. De-duped so a shared
@@ -130,6 +144,7 @@ export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
   const out: PropSpec[] = [];
   const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
+    if (isCleanRoom(room)) continue;   // the floor is a stage — see isCleanRoom
     const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
     const hasCentrepiece = centrepiecePoints.some(
       (p) => p.x >= ctx.minX && p.x <= ctx.maxX && p.z >= ctx.minZ && p.z <= ctx.maxZ,
@@ -166,6 +181,7 @@ export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
   const out: PropSpec[] = [];
   const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
+    if (isCleanRoom(room)) continue;   // the floor is a stage — see isCleanRoom
     const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
     surfacePass(ctx, out, rand);
   }
