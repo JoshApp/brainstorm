@@ -1,5 +1,7 @@
 import type { WeaponStats } from '../content/items';
 import { resolveWeaponStats, type ResolvedWeaponStats } from '../content/weapon-classes';
+import { applyScars } from '../content/scars';
+import { getScars } from '../state/weapon-scars';
 
 // Currently-equipped weapon stats. Combat + the sword viewmodel read
 // from here every frame; the resolve runs PER QUERY so that mid-run
@@ -23,13 +25,23 @@ export const FIST_STATS: WeaponStats = {
 };
 
 let rawSpec: WeaponStats = FIST_STATS;
+// The ITEM id behind those stats, so the weapon's SCARS can be looked up. Stats
+// alone are anonymous — two rusted swords resolve identically, but only the one
+// you carried to the forge remembers anything.
+let rawItemId: string | undefined;
 
 export function getCurrentWeapon(): ResolvedWeaponStats {
-  return resolveWeaponStats(rawSpec);
+  // FORM scars shape the swing itself — reach, cone, cadence, weight — after
+  // class defaults, proficiency and attributes have had their say, so a scar
+  // composes with a weapon it was never authored against. EDGE and DEBT scars
+  // are NOT here: they emit StatModifiers and ride the stat pipeline
+  // (combat/modifiers.ts) like everything else. See content/scars.ts.
+  return applyScars(resolveWeaponStats(rawSpec), getScars(rawItemId));
 }
 
-export function setCurrentWeapon(stats: WeaponStats) {
+export function setCurrentWeapon(stats: WeaponStats, itemId?: string) {
   rawSpec = stats;
+  rawItemId = itemId;
 }
 
 // Hold-to-charge — applied to ALL weapon classes now. Melee classes

@@ -32,6 +32,8 @@ import { grantEmber } from '../player/ember';
 import type { ItemSpec } from '../content/items';
 import { spawnChest } from '../interactables/chest';
 import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
+import { openForgeSheetForDebug } from '../interactables/blacksmith';
+import { grantGold } from '../state/run-state';
 import { openCharacterScreen } from '../ui/character-screen';
 import { buildItemCard } from '../ui/item-card';
 import { itemFraming, applyDomainFrame } from '../ui/item-framing';
@@ -148,6 +150,11 @@ export interface Scenario {
   giveItems?: string[];
   /** Programmatically open the inventory panel for the snap. */
   openInventoryPanel?: boolean;
+  /** Open the blacksmith's forge sheet (temper + the scar offer) for the snap. */
+  openForge?: boolean;
+  /** Purse the delver starts the scenario with — so a shop sheet's action bar
+   *  snaps in its AFFORDABLE state rather than greyed out. */
+  giveGold?: number;
   /** Which tab the panel opens on (default 'gear'). */
   inventoryTab?: 'gear' | 'reliquary' | 'character' | 'codex' | 'settings';
   /** Pre-select an inventory item id so the details panel shows on snap. */
@@ -1525,6 +1532,14 @@ export const SCENARIOS: Record<string, Scenario> = {
       { itemId: 'guttering-ember', x: 0, z: 0.6 },
     ],
   },
+  // THE FORGE, with the scar offer open — the temper line, then the two things
+  // the fire will do to the blade instead. `delve snap forge-scars`.
+  'forge-scars': {
+    freeze: true,
+    hudOnly: true,
+    giveGold: 400,
+    openForge: true,
+  },
   // Consumable hotbar with a healthy stack of consumables — the flask +
   // satellite icons + count badges visible.
   'hud-hotbar': {
@@ -2553,6 +2568,10 @@ export function applyScenario(
 
   if (scenario.openInventoryPanel) {
     openInventoryPanel(scenario.inventoryTab ?? 'gear');
+  }
+  if (scenario.giveGold) grantGold(scenario.giveGold);
+  if (scenario.openForge) {
+    openForgeSheetForDebug();
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);

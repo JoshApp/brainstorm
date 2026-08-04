@@ -3,6 +3,8 @@ import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
 import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '../player/equipment';
 import { temperDamageBonus } from '../state/weapon-temper';
+import { getScars } from '../state/weapon-scars';
+import { scarModifiers } from '../content/scars';
 import { getReliquary } from '../player/reliquary';
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
@@ -146,6 +148,11 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // (state/weapon-temper.ts). Zero when un-forged.
     const temper = temperDamageBonus(getEquipment().weapon?.id);
     if (temper > 0) out.push({ kind: 'weapon-damage', amount: temper });
+    // SCARS — what the DRAWN weapon remembers (content/scars.ts). EDGE and DEBT
+    // scars emit ordinary StatModifiers, so they compose here exactly like an
+    // affix or a card; FORM scars aren't here at all — they shape the swing
+    // itself, in player/current-weapon.ts.
+    out.push(...scarModifiers(getScars(getEquipment().weapon?.id)));
     // Run-lifetime tainted-fountain mutations — permanent for the rest of
     // the run, gone on death. Composes through this pipeline identically
     // to anything else.

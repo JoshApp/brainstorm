@@ -14,6 +14,9 @@ import {
   getTemperLevel, canTemper, temperWeapon, MAX_TEMPER_LEVEL,
   TEMPER_DAMAGE_PER_LEVEL, temperDamageBonus,
 } from '../state/weapon-temper';
+import { getScars, canTakeScar, applyScar, offerableScars } from '../state/weapon-scars';
+import { SCARS, scarDpsFactor, SCAR_LANE_COLOR, SCAR_LANE_LABEL, type ScarSpec } from '../content/scars';
+import { resolveWeaponStats } from '../content/weapon-classes';
 import { playEquipClick, playImpact } from '../audio/sfx';
 import { showInscription } from '../ui/inscription';
 import { THEME, FONT_UI } from '../ui/theme';
@@ -92,6 +95,41 @@ function temperCost(level: number, depth: number): number {
   return Math.max(5, Math.round(scaled / 5) * 5);
 }
 
+// ── SCARS AT THE FORGE ───────────────────────────────────────────────────────
+// The smith's two offers, side by side: TEMPER is the cheap, boring, always-there
+// option (a keener edge, one more point), and a SCAR is the expensive one that
+// changes what the weapon IS. Keeping the boring option is deliberate — it is
+// what makes the interesting one read as a choice rather than as the only thing
+// on the menu.
+//
+// He offers at most two, and never a lane the blade has already spent
+// (state/weapon-scars.ts owns that rule). The pick is DETERMINISTIC in the
+// weapon and the depth, so closing the sheet and reopening it doesn't reroll
+// the offer into something better — the fire says what it says.
+
+const SCAR_COST_BASE = 110;
+const SCARS_OFFERED = 2;
+
+function scarCost(weaponId: string, depth: number): number {
+  const spent = getScars(weaponId).length;
+  const scaled = SCAR_COST_BASE * (1 + spent * 0.6) * (1 + Math.max(0, depth - 1) * 0.06);
+  return Math.max(10, Math.round(scaled / 10) * 10);
+}
+
+/** A stable small hash — the offer must not move when the sheet is reopened. */
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+function scarOffer(weaponId: string, depth: number): ScarSpec[] {
+  return offerableScars(weaponId)
+    .map((id) => SCARS[id])
+    .sort((a, b) => hash(a.id + weaponId + depth) - hash(b.id + weaponId + depth))
+    .slice(0, SCARS_OFFERED);
+}
+
 /** Spawn a blacksmith at a floor position. `depth` drives the temper price. */
 export function spawnBlacksmith(
   parent: THREE.Object3D,
@@ -146,6 +184,11 @@ function openForgeSheet(pos: THREE.Vector3, depth: number): void {
   const gold = makeGoldReadout(getGold, () => getCount(KEY_ID));
   const weaponFor = (slot: string) => forgeWeapons().find((w) => w.slot === slot)?.weapon ?? null;
   const costOf = (w: ItemSpec) => temperCost(getTemperLevel(w.id), depth);
+  // Which scar the player has their finger on, if any. Null = they're looking at
+  // a plain temper. Cleared whenever they switch weapons, so a scar chosen for
+  // the drawn blade can't be burned into the sheathed one by accident.
+  let chosenScar: string | null = null;
+  let lastSlot: string | null = null;
 
   const handle = openPickerScreen({
     id: 'forge',
@@ -166,29 +209,64 @@ function openForgeSheet(pos: THREE.Vector3, depth: number): void {
       const w = weaponFor(slot);
       const wrap = document.createElement('div');
       if (!w) return wrap;
+      if (slot !== lastSlot) { chosenScar = null; lastSlot = slot; }
       Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
       wrap.appendChild(buildItemCard(w));
       wrap.appendChild(forgePreview(w, depth));
+      const offer = scarOffer(w.id, depth);
+      if (offer.length) {
+        wrap.appendChild(scarOfferBlock(w, offer, depth, () => chosenScar, (id) => {
+          // Tapping the chosen one again backs out to a plain temper.
+          chosenScar = chosenScar === id ? null : id;
+          playEquipClick();
+          handle.refresh();
+        }));
+      }
       return wrap;
     },
     action: {
       render: (slot) => {
         const w = slot ? weaponFor(slot) : null;
         if (!w) return 'TEMPER';
-        if (!canTemper(w.id)) return 'FULLY TEMPERED';
         const el = document.createElement('span');
         el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.gap = '6px';
+        if (chosenScar) {
+          const spec = SCARS[chosenScar];
+          el.append('BURN IN  ·  ', coinGlyph(13), ` ${scarCost(w.id, depth)}  →  ${spec?.name ?? ''}`);
+          return el;
+        }
+        if (!canTemper(w.id)) return 'FULLY TEMPERED';
         el.append('TEMPER  ·  ', coinGlyph(13), ` ${costOf(w)}  →  +${TEMPER_DAMAGE_PER_LEVEL}`);
         return el;
       },
       enabled: (slot) => {
         const w = slot ? weaponFor(slot) : null;
-        return !!w && canTemper(w.id) && getGold() >= costOf(w);
+        if (!w) return false;
+        if (chosenScar) return canTakeScar(w.id, chosenScar) && getGold() >= scarCost(w.id, depth);
+        return canTemper(w.id) && getGold() >= costOf(w);
       },
     },
     onAct: (slot) => {
       const w = weaponFor(slot);
-      if (!w || !canTemper(w.id)) return;
+      if (!w) return;
+      // A SCAR is the irreversible one — it is checked and paid through the same
+      // door every other offer site uses (state/weapon-scars.ts), so the
+      // one-per-lane rule can't be forgotten here.
+      if (chosenScar) {
+        const c = scarCost(w.id, depth);
+        if (!canTakeScar(w.id, chosenScar) || getGold() < c) return;
+        const spec = SCARS[chosenScar];
+        spendGold(c);
+        applyScar(w.id, chosenScar);
+        chosenScar = null;
+        playEquipClick();
+        playImpact(pos);
+        showInscription(spec?.fate ?? 'The steel takes the mark.');
+        gold.update();
+        handle.refresh();
+        return;
+      }
+      if (!canTemper(w.id)) return;
       const c = costOf(w);
       if (getGold() < c) return;
       spendGold(c);
@@ -202,6 +280,117 @@ function openForgeSheet(pos: THREE.Vector3, depth: number): void {
       handle.refresh();
     },
   });
+}
+
+/** THE FIRE OFFERS — the scar rows. Selecting one arms the action bar; it is
+ *  never applied by the tap that selects it, because a scar is permanent and
+ *  a mis-tap on a phone must not be able to spend it. */
+function scarOfferBlock(
+  w: ItemSpec,
+  offer: ScarSpec[],
+  depth: number,
+  chosen: () => string | null,
+  onPick: (id: string) => void,
+): HTMLElement {
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: FONT_UI,
+  } as Partial<CSSStyleDeclaration>);
+
+  const head = document.createElement('div');
+  Object.assign(head.style, {
+    color: THEME.ember, fontSize: '11px', letterSpacing: '0.16em', fontWeight: '700',
+  } as Partial<CSSStyleDeclaration>);
+  head.textContent = 'THE FIRE OFFERS';
+  box.appendChild(head);
+
+  const base = getCurrentWeaponStatsFor(w);
+  for (const scar of offer) {
+    const on = chosen() === scar.id;
+    const accent = SCAR_LANE_COLOR[scar.klass];
+    const row = document.createElement('button');
+    Object.assign(row.style, {
+      textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: '3px',
+      background: on ? 'rgba(255,150,60,0.14)' : 'rgba(0,0,0,0.28)',
+      border: `1px solid ${on ? accent : THEME.rule}`,
+      display: 'flex', flexDirection: 'column', gap: '3px', fontFamily: FONT_UI,
+    } as Partial<CSSStyleDeclaration>);
+    row.onclick = () => onPick(scar.id);
+
+    const top = document.createElement('div');
+    Object.assign(top.style, { display: 'flex', alignItems: 'center', gap: '7px' } as Partial<CSSStyleDeclaration>);
+    const lane = document.createElement('span');
+    Object.assign(lane.style, {
+      color: accent, fontSize: '9px', letterSpacing: '0.14em', fontWeight: '700',
+      border: `1px solid ${accent}`, borderRadius: '2px', padding: '1px 4px',
+    } as Partial<CSSStyleDeclaration>);
+    lane.textContent = SCAR_LANE_LABEL[scar.klass];
+    const nm = document.createElement('span');
+    Object.assign(nm.style, { color: THEME.text, fontSize: '13px', fontWeight: '700' } as Partial<CSSStyleDeclaration>);
+    nm.textContent = scar.name;
+    // Net POWER — one honest number for "is this actually stronger", measured
+    // through the same function the ceiling test measures with, so the player
+    // and the audit are never reading different arithmetic.
+    const power = document.createElement('span');
+    const dps = Math.round((scarDpsFactor(scar, base) - 1) * 100);
+    Object.assign(power.style, {
+      marginLeft: 'auto', fontSize: '11px', fontWeight: '700',
+      color: dps > 0 ? '#8fe08a' : dps < 0 ? '#c96a4a' : THEME.dim,
+    } as Partial<CSSStyleDeclaration>);
+    power.textContent = `${dps >= 0 ? '+' : '−'}${Math.abs(dps)}% power`;
+    const price = document.createElement('span');
+    Object.assign(price.style, { color: THEME.dim, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } as Partial<CSSStyleDeclaration>);
+    price.append(coinGlyph(11), ` ${scarCost(w.id, depth)}`);
+    top.append(lane, nm, power, price);
+    row.appendChild(top);
+
+    // What it DOES, measured through the same function the ceiling test uses —
+    // so the number the player reads is the number the audit checked.
+    const effect = document.createElement('div');
+    Object.assign(effect.style, { color: '#8fe08a', fontSize: '12px' } as Partial<CSSStyleDeclaration>);
+    effect.textContent = describeScar(scar, base);
+    row.appendChild(effect);
+
+    // The blade's own line. In-world register — the place does not joke.
+    const fate = document.createElement('div');
+    Object.assign(fate.style, { color: THEME.dim, fontSize: '11.5px', fontStyle: 'italic', fontFamily: 'Georgia, serif' } as Partial<CSSStyleDeclaration>);
+    fate.textContent = scar.fate;
+    row.appendChild(fate);
+
+    box.appendChild(row);
+  }
+  return box;
+}
+
+/** The resolved stats a scar would be applied ON TOP OF — the real resolve, so
+ *  the preview can't drift from the swing. */
+function getCurrentWeaponStatsFor(w: ItemSpec) {
+  return resolveWeaponStats(w.weapon ?? { reach: 1.3, coneHalfAngle: 0.55, damage: 1, critChance: 0, critMultiplier: 1 });
+}
+
+/** One line of plain mechanics per scar — what changes, in the player's units. */
+function describeScar(scar: ScarSpec, _base: ReturnType<typeof getCurrentWeaponStatsFor>): string {
+  const bits: string[] = [];
+  const pct = (mul: number) => {
+    const p = Math.round((mul - 1) * 100);
+    return `${p >= 0 ? '+' : '−'}${Math.abs(p)}%`;
+  };
+  if (scar.form) {
+    const f = scar.form;
+    if (f.coneMul) bits.push(`${pct(f.coneMul)} sweep`);
+    if (f.reachMul) bits.push(`${pct(f.reachMul)} reach`);
+    if (f.attackSpeedMul) bits.push(`${pct(f.attackSpeedMul)} speed`);
+    if (f.staggerMul) bits.push(`${pct(f.staggerMul)} stagger`);
+  }
+  if (scar.onHit) bits.push(`${Math.round(scar.onHit.chance * 100)}% ${scar.onHit.buffId} on hit`);
+  for (const m of scar.modifiers ?? []) {
+    if (m.kind === 'damage-multiplier') bits.push(`${pct(m.amount)} damage`);
+    else if (m.kind === 'weapon-damage') bits.push(`${m.amount >= 0 ? '+' : ''}${m.amount} damage`);
+    else if (m.kind === 'crit-mult') bits.push(`+${m.amount.toFixed(2)} crit power`);
+    else if (m.kind === 'crit-chance') bits.push(`+${Math.round(m.amount * 100)}% crit`);
+    else if (m.kind === 'max-hp') bits.push(`${m.amount} max health`);
+  }
+  return bits.join('  ·  ');
 }
 
 /** The "see what would change" block — current forge level + damage, and the

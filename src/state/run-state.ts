@@ -15,6 +15,7 @@ import { levelForXp, xpInLevel, xpForNextLevel, LEVELS_ENABLED } from './levelin
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
 import { clearTemper, serializeTemper, hydrateTemper } from './weapon-temper';
+import { clearScars, serializeScars, hydrateScars } from './weapon-scars';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
 import { clearChoices, serializeChoices, hydrateChoices, type Choice } from './choices';
 import { resetFlask, restoreFlask, serializeFlask, type FlaskState } from '../player/flask';
@@ -65,6 +66,9 @@ export interface SaveData {
   /** Blacksmith weapon-temper levels (item id → level). Persists a forged
    *  blade's edge across floors. Optional for older saves. */
   temper?: Record<string, number>;
+  /** Scars burned into weapons this run (item id → scar ids). What the blade
+   *  REMEMBERS — see docs/WEAPON-EVOLUTION.md. Optional for older saves. */
+  scars?: Record<string, string[]>;
   /** Per-run phial color → mutation identities (state/phial-identities.ts).
    *  Persisted so a reload keeps what the player has LEARNED. */
   phials?: Record<string, string>;
@@ -132,6 +136,7 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
   // die with their delver.
   clearMutations();
   clearTemper();          // a new delver's weapons are un-forged
+  clearScars();           // and unscarred — the history is the delver's, not the steel's
   clearPhialIdentities();
   clearChoices();
   // Fresh, full flask (a second run in the same session mustn't inherit the
@@ -151,6 +156,7 @@ export function adoptSave(save: SaveData) {
   };
   hydrateMutations(save.mutations);
   hydrateTemper(save.temper);
+  hydrateScars(save.scars);
   hydratePhialIdentities(save.phials);
   hydrateChoices(save.choices);
   restoreFlask(save.flask);   // full base flask when the save predates the field
@@ -312,6 +318,7 @@ export function commitFloorEntry(args: {
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
   inMemory.mutations = serializeMutations();   // persist active tainted brands
   inMemory.temper = serializeTemper();         // persist blacksmith weapon upgrades
+  inMemory.scars = serializeScars();           // persist what each blade remembers
   inMemory.phials = serializePhialIdentities();  // persist phial knowledge
   inMemory.choices = serializeChoices();       // persist the ledger of what was taken/refused
   inMemory.flask = serializeFlask();           // persist flask charges/capacity

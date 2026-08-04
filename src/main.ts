@@ -799,7 +799,7 @@ onEquipmentChanged((eq) => {
   // Starter-chamber default until the player takes from an altar.
   weapon.equip(eq.weapon?.viewmodel ?? null);
   heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
-  setCurrentWeapon(eq.weapon?.weapon ?? FIST_STATS);
+  setCurrentWeapon(eq.weapon?.weapon ?? FIST_STATS, eq.weapon?.id);
   if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
     // Real offhand gear (shield / focus). Drop the lantern to the hip so
     // the item takes the hand; the lamp's light is unchanged.
