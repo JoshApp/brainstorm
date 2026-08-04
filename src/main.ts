@@ -21,7 +21,7 @@ import { initBreath } from './effects/breath';
 import { initCardClaim } from './effects/card-claim';
 import { initDomainBind } from './effects/domain-bind';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
-import { setSlot, onEquipmentChanged, swapWeapons } from './player/equipment';
+import { setSlot, onEquipmentChanged, swapWeapons, getEquipment } from './player/equipment';
 import { createWeaponSwapChip, pulseWeaponSwapChip } from './controls/weapon-swap-chip';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
@@ -113,7 +113,9 @@ import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { showNameEntry } from './ui/name-entry-screen';
-import { addItemSilently } from './player/inventory';
+import { addItemSilently, getAllItems } from './player/inventory';
+import { getReliquary } from './player/reliquary';
+import { setOwnedItemsProvider } from './content/loot';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
 import { initAiGizmos } from './debug/ai-gizmos';
@@ -352,6 +354,18 @@ applyAmbientWick();
 // (very common) device with no readable sensor this resolves having done
 // nothing, and the wick stays exactly where the player set it.
 if (getSettings().autoWick) void startAmbientLight();
+
+// UNIQUENESS — tell the loot roller what the player already carries, so a set
+// piece (or anything else flagged one-of-a-kind) stops re-dropping. Injected
+// rather than imported by content/loot.ts, which is pure and loads headless in
+// the tools; without this registration nothing is owned and rolls are unchanged.
+setOwnedItemsProvider(() => {
+  const ids = new Set<string>();
+  for (const r of getReliquary()) ids.add(r.spec.id);
+  for (const e of getAllItems()) ids.add(e.id);
+  for (const slot of Object.values(getEquipment())) if (slot) ids.add(slot.id);
+  return ids;
+});
 
 // --- Camera ---
 const camera = createFirstPersonCamera();

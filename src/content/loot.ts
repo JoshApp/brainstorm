@@ -99,12 +99,17 @@ function pickFromBand(
   rand: () => number,
   allow: Set<ItemKind> | null = null,
   pool: string | null = null,
+  /** When false, an item the player already holds is still eligible. Used for
+   *  the last-resort relaxation so a chest never opens empty. */
+  respectUnique = true,
 ): ItemSpec | null {
+  const owned = respectUnique ? ownedIds() : null;
   const ok = (e: LootEntry) =>
     e.minDepth <= depth
     && (!allow || allow.has(e.kind))
     // General roll (pool null) → only un-pooled items. Pool roll → only that pool.
-    && (pool === null ? e.pool === undefined : e.pool === pool);
+    && (pool === null ? e.pool === undefined : e.pool === pool)
+    && !(owned && owned.has(e.id) && isUniqueItem(ITEMS[e.id]));
   let total = 0;
   for (const e of band) if (ok(e)) total += e.weight;
   if (total <= 0) return null;
@@ -164,20 +169,56 @@ function scanBands(
   idx: LootIndex, depth: number, rand: () => number,
   start: number, floorIdx: number, allow: Set<ItemKind> | null,
   pool: string | null = null,
+  respectUnique = true,
 ): ItemSpec | null {
+  const pick = (i: number) =>
+    pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool, respectUnique);
   for (let i = start; i >= floorIdx; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
+    const item = pick(i);
     if (item) return item;
   }
   for (let i = start + 1; i < RARITY_ORDER.length; i++) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
+    const item = pick(i);
     if (item) return item;
   }
   for (let i = floorIdx - 1; i >= 0; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow, pool);
+    const item = pick(i);
     if (item) return item;
   }
   return null;
+}
+
+// ── UNIQUENESS — a thing you already own is not a reward ──────────────
+//
+// A set PIECE is the case that forced this. Membership is by distinct relic
+// (content/sets.ts), so a second copy of a set piece advances nothing: it pays
+// out its own small modifiers and otherwise reads as the dungeon repeating
+// itself at exactly the moment you were hoping for the piece you're missing.
+// Anything that is one-of-a-kind by design says so and stops re-dropping.
+//
+// The owned set is INJECTED rather than imported: this module is pure content
+// and is loaded headless by the tools, which have no run state. Nothing
+// registers a provider → nothing is owned → behaviour is exactly as before.
+
+let ownedProvider: (() => ReadonlySet<string>) | null = null;
+
+/** Tell the loot roller what the player is already carrying. Called once at
+ *  boot; pass null to clear (level teardown, tests). */
+export function setOwnedItemsProvider(fn: (() => ReadonlySet<string>) | null): void {
+  ownedProvider = fn;
+}
+
+function ownedIds(): ReadonlySet<string> | null {
+  if (!ownedProvider) return null;
+  try { return ownedProvider(); } catch { return null; }
+}
+
+/** Is this item one-of-a-kind? Explicit `unique` wins; otherwise anything that
+ *  belongs to a SET is unique by construction, because a duplicate can never
+ *  advance the set it belongs to. */
+export function isUniqueItem(item: ItemSpec | undefined): boolean {
+  if (!item) return false;
+  return item.unique ?? item.setId !== undefined;
 }
 
 /**
@@ -209,6 +250,15 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
   if (allow && !ctx.strictCategory) {
     const any = scanBands(idx, depth, rand, start, floorIdx, null, pool);
     if (any) return any;
+  }
+  // LAST RESORT — a chest must not open empty. If uniqueness is what emptied
+  // the pool (a deep run that has collected most of a narrow category), hand
+  // back a duplicate rather than nothing. Rare by construction, and a repeat
+  // relic is still worth its own modifiers.
+  const dup = scanBands(idx, depth, rand, start, floorIdx, allow, pool, false);
+  if (dup) return dup;
+  if (allow && !ctx.strictCategory) {
+    return scanBands(idx, depth, rand, start, floorIdx, null, pool, false);
   }
   return null;
 }

@@ -8,7 +8,7 @@
 // under tsx in Node.
 
 import assert from 'node:assert/strict';
-import { rollLoot, rollRarity } from '../src/content/loot';
+import { rollLoot, rollRarity, isUniqueItem, setOwnedItemsProvider } from '../src/content/loot';
 import { ITEMS, RARITY_ORDER, type Rarity } from '../src/content/items';
 
 let passed = 0;
@@ -156,6 +156,54 @@ test('category relaxes rather than returning null when nothing matches', () => {
 test('RARITY_ORDER covers every rarity once, ascending', () => {
   assert.equal(RARITY_ORDER.length, 5);
   assert.deepEqual([...RARITY_ORDER], ['mundane', 'uncommon', 'rare', 'cursed', 'fabled']);
+});
+
+
+// ── UNIQUENESS (2026-08) — a thing you already own is not a reward ──────
+// A set piece is unique by construction: membership is by DISTINCT piece, so a
+// duplicate advances nothing and reads as the dungeon repeating itself.
+test('a set piece is unique by default, without saying so', () => {
+  const setPiece = Object.values(ITEMS).find((i) => i.setId !== undefined);
+  assert.ok(setPiece, 'no set pieces in the registry — this test has gone stale');
+  assert.equal(isUniqueItem(setPiece), true);
+});
+
+test('an ordinary item is not unique', () => {
+  const plain = Object.values(ITEMS).find((i) => i.setId === undefined && i.unique === undefined);
+  assert.ok(plain);
+  assert.equal(isUniqueItem(plain), false);
+});
+
+test('an explicit flag beats the set-piece default in both directions', () => {
+  assert.equal(isUniqueItem({ setId: 's', unique: false } as never), false);
+  assert.equal(isUniqueItem({ unique: true } as never), true);
+});
+
+test('what you already carry stops being offered', () => {
+  const setPiece = Object.values(ITEMS).find((i) => i.setId !== undefined)!;
+  setOwnedItemsProvider(() => new Set([setPiece.id]));
+  try {
+    let seen = false;
+    for (let i = 0; i < 400; i++) {
+      const got = rollLoot({ depth: 9, bias: 4 }, mulberry32(i * 131 + 7));
+      if (got?.id === setPiece.id) { seen = true; break; }
+    }
+    assert.equal(seen, false, `${setPiece.id} was offered again after being collected`);
+  } finally {
+    setOwnedItemsProvider(null);
+  }
+});
+
+test('a chest never opens empty just because you own a lot', () => {
+  // Own EVERYTHING. The roller must still hand something back rather than null —
+  // a repeat is worth its own modifiers; an empty chest is a bug.
+  setOwnedItemsProvider(() => new Set(Object.keys(ITEMS)));
+  try {
+    const got = rollLoot({ depth: 5, bias: 2 }, mulberry32(99));
+    assert.ok(got, 'rollLoot returned null with a fully-collected player');
+  } finally {
+    setOwnedItemsProvider(null);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

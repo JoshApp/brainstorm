@@ -363,6 +363,15 @@ export interface ItemSpec {
    *  enough pieces of the same set activates that set's threshold
    *  bonuses. Omit on items that belong to no set. */
   setId?: string;
+  /**
+   * ONE-OF-A-KIND: once the player holds it, the loot roller stops offering it.
+   * Defaults to true for anything with a `setId` — set membership is by DISTINCT
+   * piece (content/sets.ts), so a duplicate advances nothing and reads as the
+   * dungeon repeating itself at exactly the wrong moment. Set false to let a
+   * set piece drop again anyway; set true on a non-set item that should still
+   * only ever be found once.
+   */
+  unique?: boolean;
   /** The domain this item belongs to — one of the nine ABSTRACTS in
    *  content/domains.ts (its fantasy / register / affinity palette). The tag
    *  lets the starter altar deal one weapon per domain, biases the deep's
