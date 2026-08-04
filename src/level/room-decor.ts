@@ -35,6 +35,14 @@ export function roleDecorPolicy(role: RoomRole): RoomDecorPolicy {
     case 'finish':   return { pillars: 'off',      furnishMul: 0.2 };   // a bare exit
     case 'quiet':    return { pillars: 'standard', furnishMul: 1.0 };   // dressed for dread
     case 'boss':     return { pillars: 'off',      furnishMul: 0.4 };   // the arena stays clear
+    // ── Role rooms. Each reads as its own KIND of space, not generic dressing:
+    // a trove is staged and bare so the offerings hold the eye; a shop is a
+    // cluttered stall; an arena is swept clear to fight in; a trap room is
+    // furnished enough to hide what it's for.
+    case 'trove':    return { pillars: 'light',    furnishMul: 0.3 };
+    case 'shop':     return { pillars: 'light',    furnishMul: 1.6 };
+    case 'arena':    return { pillars: 'off',      furnishMul: 0.25 };
+    case 'trap':     return { pillars: 'standard', furnishMul: 1.2 };
     default:         return { pillars: 'standard', furnishMul: 1.0 };
   }
 }

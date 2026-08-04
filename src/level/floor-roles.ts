@@ -15,18 +15,12 @@
 // `sanctum` for the bonfire pass to DESIGNATE and `quiet` for a later pacing
 // layer — both already carry caps so the seam is ready.
 
-import { roomType } from './room-types';
+import { ROOM_TYPES, roomType, assignableTypes, type RoomTypeId } from './room-types';
 
-/** The job a room does on its floor. */
-export type RoomRole =
-  | 'entrance'  // the player spawns here — a safe beat, never a fight or a deal
-  | 'combat'    // a fight room; the combat budget seeds here
-  | 'feature'   // a calm pocket — hosts a question (deal) or a defining find
-  | 'sanctum'   // the bonfire's OWN room; prominent, staged, no fight
-  | 'finish'    // holds the way down — a bare exit, never a destination
-  | 'quiet'     // a deliberately empty dread room (reserved for a pacing layer)
-  | 'miniboss'  // a named-elite arena (the miniboss owns the room; no trash, no deal)
-  | 'boss';     // the boss arena
+/** The job a room does on its floor. This IS the room-type id — one vocabulary,
+ *  not two that drift apart. See level/room-types.ts for what each one means and
+ *  what it tolerates. */
+export type RoomRole = RoomTypeId;
 
 /** What a role PERMITS. The build passes read these; they don't read the role. */
 export interface RoleCaps {
@@ -52,7 +46,7 @@ export interface RoleCaps {
 //
 // To change floor feel, edit ROOM_TYPES — not this.
 export const ROLE_CAPS: Record<RoomRole, RoleCaps> = Object.fromEntries(
-  (['entrance', 'combat', 'feature', 'sanctum', 'finish', 'quiet', 'miniboss', 'boss'] as RoomRole[])
+  (Object.keys(ROOM_TYPES) as RoomRole[])
     .map((role) => {
       const t = roomType(role);
       return [role, {
@@ -134,4 +128,85 @@ export function assignFloorRoles(
     designate: (id, role) => { if (roles.has(id)) roles.set(id, role); },
     entries: () => roles,
   };
+}
+
+// ── Role-room assignment (the second pass) ───────────────────────────
+// classify() above gives every room its STRUCTURAL job. This pass then promotes
+// a FEW of the ordinary ones into role rooms — the floor's trove, its shop, an
+// arena — from a small budget.
+//
+// The budget is the whole point. A landmark only reads as a landmark when most
+// rooms aren't one, so this deliberately upgrades 1-3 rooms and leaves the rest
+// as connective tissue. Isaac's own ratio is ~3-5 special against ~8-10 plain.
+
+/** Rooms this pass may promote — the ones with no structural identity of their
+ *  own. Everything else (entrance, finish, the arenas, a designated sanctum) is
+ *  already doing a job that must not be overwritten. */
+const PROMOTABLE: ReadonlySet<RoomRole> = new Set<RoomRole>(['combat', 'feature']);
+
+/** What may be rolled onto a floor, and from what depth. The trove is handled
+ *  separately (it's guaranteed, not rolled). Weight is relative. */
+const ROLLED_ROLES: ReadonlyArray<{ role: RoomRole; minDepth: number; weight: number }> = [
+  { role: 'shop',  minDepth: 2, weight: 3 },
+  { role: 'trap',  minDepth: 2, weight: 2 },
+  { role: 'arena', minDepth: 3, weight: 2 },
+];
+
+export interface RoleRoomPlan {
+  /** roomId → the role it was promoted to. Empty when nothing qualified. */
+  assigned: ReadonlyMap<string, RoomRole>;
+}
+
+/**
+ * Promote a few ordinary rooms into role rooms. PURE — rand is injected, no
+ * scene — so the floor's shape is unit-testable and reproducible per seed.
+ *
+ * A floor gets ONE guaranteed trove (its dependable build offering, so the run
+ * stays plannable) plus 0-2 rolled extras. Boss floors get none: the boss IS the
+ * floor's event, and a shop next door would undercut it.
+ */
+export function assignRoleRooms(
+  roles: FloorRoles,
+  nodes: readonly RoomNode[],
+  opts: { depth: number; rand: () => number; isBossFloor?: boolean },
+): RoleRoomPlan {
+  const assigned = new Map<string, RoomRole>();
+  if (opts.isBossFloor) return { assigned };
+
+  // Candidates, quiet-end first: a dead-end spur is a better home for a reward
+  // or a vendor than a room you merely pass through.
+  const candidates = nodes
+    .filter((n) => PROMOTABLE.has(roles.role(n.roomId)))
+    .sort((a, b) => a.connections - b.connections);
+  if (candidates.length === 0) return { assigned };
+
+  const take = (role: RoomRole): boolean => {
+    const pick = candidates.find((n) => !assigned.has(n.roomId));
+    if (!pick) return false;
+    assigned.set(pick.roomId, role);
+    roles.designate(pick.roomId, role);
+    return true;
+  };
+
+  // 1. The guaranteed trove — the floor's dependable choice.
+  take('trove');
+
+  // 2. Rolled extras. Leave at least one ordinary room behind so a floor never
+  //    becomes wall-to-wall landmarks (the muddiness we're fixing).
+  const spare = Math.max(0, candidates.length - assigned.size - 1);
+  const extras = Math.min(spare, opts.rand() < 0.45 ? 2 : 1);
+  const pool = ROLLED_ROLES.filter((r) => opts.depth >= r.minDepth);
+  const used = new Set<RoomRole>();
+  for (let i = 0; i < extras; i++) {
+    const open = pool.filter((r) => !used.has(r.role) && assignableTypes().includes(r.role as never));
+    if (open.length === 0) break;
+    const total = open.reduce((s, r) => s + r.weight, 0);
+    let roll = opts.rand() * total;
+    let chosen = open[open.length - 1];
+    for (const r of open) { roll -= r.weight; if (roll <= 0) { chosen = r; break; } }
+    if (!take(chosen.role)) break;
+    used.add(chosen.role);
+  }
+
+  return { assigned };
 }

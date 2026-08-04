@@ -21,7 +21,7 @@ import { CONFIG } from '../config';
 import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
-import { assignFloorRoles, type RoomNode } from './floor-roles';
+import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
 import { wallAdjacency, roleDecorPolicy } from './room-decor';
@@ -621,15 +621,20 @@ export function composeFloor(
   const spineEndIdx = tagSeq.length - 1;
   const connCount = placed.map(() => 0);
   for (const c of corridors) { connCount[c.fromIdx]++; connCount[c.toIdx]++; }
-  const roles = assignFloorRoles(
-    placed.map((pv, i): RoomNode => ({
-      roomId: pv.roomId,
-      tags: pv.vault.tags,
-      slot: i === 0 ? 'start' : i === spineEndIdx ? 'end' : i > spineEndIdx ? 'branch' : 'mid',
-      connections: connCount[i] ?? 0,
-    })),
-    { isBossFloor: opts.isBossFloor === true },
-  );
+  const roleNodes = placed.map((pv, i): RoomNode => ({
+    roomId: pv.roomId,
+    tags: pv.vault.tags,
+    slot: i === 0 ? 'start' : i === spineEndIdx ? 'end' : i > spineEndIdx ? 'branch' : 'mid',
+    connections: connCount[i] ?? 0,
+  }));
+  const roles = assignFloorRoles(roleNodes, { isBossFloor: opts.isBossFloor === true });
+  // Second pass: promote a FEW ordinary rooms into role rooms — the floor's one
+  // guaranteed trove, plus 0-2 rolled extras (a shop, an arena, a trap). Most
+  // rooms stay connective on purpose; a landmark only reads as one when most
+  // rooms aren't. See floor-roles.assignRoleRooms.
+  assignRoleRooms(roles, roleNodes, {
+    depth, rand, isBossFloor: opts.isBossFloor === true,
+  });
 
   // ── 4. Parse each vault and translate to world coords ──────────
   const rooms: RoomSpec[] = [];
