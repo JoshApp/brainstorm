@@ -1,3 +1,5 @@
+import type { TransactionPrice } from '../content/transactions';
+
 // ROOM TYPES — what a room IS, what it may host, and what may happen in it.
 //
 // A finished room is built in LAYERS, and this table is what each pass consults
@@ -35,19 +37,43 @@ export type Centrepiece =
   | 'offerings'   // a trove — take one of several
   | 'merchant'    // a vendor and their wares
   | 'bargain'     // a deal paid in blood
-  | 'trial'       // reward as bait: take it and the room answers
+  | 'gauntlet'    // waves, each one answered with a reward
   | 'hazard'      // the trap, and the prize it guards
   | 'fire'        // a place to rest
   | 'descent'     // the way down
   | 'miniboss'
   | 'boss';
 
-/** Layered ON TOP of identity. Never replaces the centrepiece. */
+/**
+ * Layered ON TOP of identity. Never replaces the centrepiece.
+ *
+ * The two combat modifiers differ by TRIGGER, and they feel different because of
+ * it: `ambush` fires when you ENTER (you walked into it), `contested` fires when
+ * you TAKE (you reached for it). Same enemies, opposite emotions — one is a trap
+ * sprung on you, the other a price you chose to pay.
+ */
 export type RoomModifier =
-  | 'ambush'   // the doors seal and the room fills — the trap that was a fountain
-  | 'hazard'   // floor traps dressed through the room
-  | 'gated'    // sealed until an offering is made
-  | 'dark';    // the lights are out in here
+  | 'ambush'     // ON ENTER: the doors seal and the room fills
+  | 'contested'  // ON TAKE: the centrepiece is guarded — reach for it and answer for it
+  | 'toll'       // ON ENTER: the way in is priced — coin, key, or blood
+  | 'hazard'     // floor traps dressed through the room
+  | 'gated'      // sealed until an offering is made elsewhere
+  | 'dark';      // the lights are out in here
+
+/**
+ * A modifier as ACTUALLY APPLIED to a room. The type table says what a room may
+ * tolerate; this says what it got and on what terms. Parameters live here rather
+ * than in the table because the same modifier is priced differently on floor 2
+ * and floor 9 — the table declares tolerance, placement declares terms.
+ */
+export interface AppliedModifier {
+  kind: RoomModifier;
+  /** For 'toll' — what the way in costs. Routed through the same central applier
+   *  every other priced thing uses (interactables/event-factory). */
+  price?: TransactionPrice;
+  /** For 'ambush' / 'contested' — how many waves answer. */
+  waves?: number;
+}
 
 export interface RoomTypeDef {
   kind: RoomKind;
@@ -80,11 +106,12 @@ export const ROOM_TYPES = {
     modifiers: [],
   },
   // Holds the way down. A threshold, never a destination — but it can be the
-  // last thing standing between you and the stairs.
+  // last thing standing between you and the stairs, and the way down can be
+  // PRICED: `finish + toll` is the blood door.
   finish: {
     kind: 'structural', centrepiece: 'descent',
     enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
-    modifiers: ['ambush'],
+    modifiers: ['ambush', 'toll'],
   },
   // The elite's stage. No injected trash, no deal, no found fire — the miniboss
   // IS the content, and it gives a fire when it dies.
@@ -104,7 +131,7 @@ export const ROOM_TYPES = {
   feature: {
     kind: 'role', centrepiece: 'bargain',
     enemies: true, event: true, minorLoot: true, fire: true, firePref: 3,
-    modifiers: ['ambush', 'hazard', 'gated'],
+    modifiers: ['ambush', 'contested', 'toll', 'hazard', 'gated'],
   },
   // The bonfire's own room — staged, prominent, never a fight.
   sanctum: {
@@ -117,7 +144,10 @@ export const ROOM_TYPES = {
   trove: {
     kind: 'role', centrepiece: 'offerings',
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 1,
-    modifiers: ['gated'],
+    // You may have to FIGHT for the offerings (contested) or PAY to reach them
+    // (toll) — but the room is never sprung on you. A reward you walked into
+    // honestly stays a breath; the cost is always one you saw coming.
+    modifiers: ['contested', 'toll', 'gated'],
   },
   // You never fight beside a vendor. No modifiers, at all, ever.
   shop: {
@@ -125,32 +155,33 @@ export const ROOM_TYPES = {
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
-  // Reward as bait — taking it seals the room and answers. The ambush isn't a
-  // modifier here; it IS the centrepiece.
-  trial: {
-    kind: 'role', centrepiece: 'trial',
-    enemies: true, event: true, minorLoot: false, fire: false, firePref: 0,
-    modifiers: ['hazard'],
+  // A gauntlet room: waves, each one answered with a reward. Its identity IS the
+  // fighting — which is why this is a TYPE and "fight for the thing" is not. You
+  // may have to pay your way in.
+  arena: {
+    kind: 'role', centrepiece: 'gauntlet',
+    enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
+    modifiers: ['toll', 'hazard'],
   },
   // The hazard and the prize it guards. Can also be waiting for you.
   trap: {
     kind: 'role', centrepiece: 'hazard',
     enemies: true, event: false, minorLoot: true, fire: false, firePref: 0,
-    modifiers: ['ambush'],
+    modifiers: ['ambush', 'contested'],
   },
 
   // ── PLAIN — the connective majority, no centrepiece ────────────────
   combat: {
     kind: 'plain', centrepiece: 'none',
     enemies: true, event: true, minorLoot: true, fire: true, firePref: 1,
-    modifiers: ['ambush', 'hazard'],
+    modifiers: ['ambush', 'hazard', 'dark'],
   },
   // A deliberately empty dread room. Its whole job is to be nothing — so the
   // only thing it tolerates is the dark getting worse.
   quiet: {
     kind: 'plain', centrepiece: 'none',
     enemies: false, event: true, minorLoot: true, fire: true, firePref: 4,
-    modifiers: ['dark'],
+    modifiers: ['dark', 'hazard'],
   },
 } as const satisfies Record<string, RoomTypeDef>;
 

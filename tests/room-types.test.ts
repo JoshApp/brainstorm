@@ -53,10 +53,28 @@ test('every type declares exactly one centrepiece slot (zero or one, never many)
 
 test('a shop refuses EVERY modifier — you never fight beside a vendor', () => {
   assert.equal(ROOM_TYPES.shop.modifiers.length, 0);
-  for (const mod of ['ambush', 'hazard', 'gated', 'dark'] as const) {
+  for (const mod of ['ambush', 'contested', 'toll', 'hazard', 'gated', 'dark'] as const) {
     assert.equal(acceptsModifier('shop', mod), false, `shop accepted ${mod}`);
   }
   assert.equal(ROOM_TYPES.shop.enemies, false, 'a shop must never seed enemies');
+});
+
+test('a reward room can be fought for or paid for, but never sprung on you', () => {
+  // contested (reach for it and answer) and toll (pay the way in) are costs you
+  // SEE COMING. ambush is sprung — a trove must never do that.
+  assert.equal(acceptsModifier('trove', 'contested'), true);
+  assert.equal(acceptsModifier('trove', 'toll'), true);
+  assert.equal(acceptsModifier('trove', 'ambush'), false, 'a trove must never ambush');
+});
+
+test('the priced descent exists — finish accepts a toll (the blood door)', () => {
+  assert.equal(acceptsModifier('finish', 'toll'), true);
+});
+
+test('the arena is a TYPE, not a modifier — its identity is the gauntlet', () => {
+  assert.equal(ROOM_TYPES.arena.centrepiece, 'gauntlet');
+  assert.equal(ROOM_TYPES.arena.kind, 'role');
+  assert.equal(ROOM_TYPES.arena.enemies, true);
 });
 
 test('reward rooms are a breath — no enemies in the trove or the sanctum', () => {
@@ -79,6 +97,7 @@ test('structural arenas take no modifiers — the fight is the room', () => {
 test('only role kinds are assignable; structural and plain are not', () => {
   const assignable = assignableTypes();
   assert.ok(assignable.includes('trove'), 'trove should be assignable');
+  assert.ok(assignable.includes('arena'), 'arena should be assignable');
   assert.ok(assignable.includes('shop'), 'shop should be assignable');
   assert.ok(!assignable.includes('boss'), 'boss is placed, never assigned');
   assert.ok(!assignable.includes('combat'), 'combat is the fallback, never assigned');
