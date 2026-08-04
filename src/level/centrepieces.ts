@@ -36,6 +36,21 @@ export interface CentrepieceSite {
   /** Is this world point standable, unclaimed floor? Supplied by the composer,
    *  which owns the occupancy view. */
   free: (x: number, z: number) => boolean;
+  /**
+   * Unit vector from the room's centre toward the way IN, if the composer knows
+   * one. This is what lets a staged room face the player instead of facing north.
+   *
+   * A presentation only reads if it's composed from where the viewer stands: a
+   * row of offerings should spread LEFT-TO-RIGHT across your view as you walk in
+   * (so you take all three in at a glance and choose), and a shopkeeper should be
+   * behind his wares with the goods between you and him. Laid out on a fixed
+   * world axis instead, the same row becomes a queue you walk down and the stall
+   * is something you approach from the side or the back.
+   *
+   * Absent (a room with no corridor, a hand-authored vault) → fall back to the
+   * room's own proportions.
+   */
+  entranceDir?: { x: number; z: number };
 }
 
 export interface CentrepieceCtx {
@@ -56,6 +71,9 @@ const EMPTY: PlacedCentrepiece = { props: [], claimed: [] };
 /** A choice needs an alternative. Below this the trove isn't a trove. */
 const MIN_TROVE_OFFERINGS = 2;
 
+/** How far behind the counter the keeper stands (m). */
+const STALL_DEPTH = 1.5;
+
 /** The trove's signature. Warm gold — deliberately the ONE hue the dungeon's
  *  own palette never produces, so a glimpse of it down a side passage reads as
  *  "something is being offered" before anything is legible. */
@@ -74,7 +92,7 @@ export function planCentrepiece(
   const piece: Centrepiece = roomType(roleId).centrepiece;
   switch (piece) {
     case 'offerings': return planTrove(site, ctx);
-    case 'merchant':  return planMerchant(site);
+    case 'merchant':  return planMerchant(site, ctx);
     case 'gauntlet':  return planGauntlet(site);
     case 'hazard':    return planHazard(site, ctx);
     case 'fire':      return planFire(site);
@@ -111,11 +129,18 @@ function planTrove(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiec
   const wantN = CONFIG.CENTREPIECE.TROVE_OFFERINGS;
   // Try the long axis first (a row reads best down the room's length), then the
   // short one, then fewer stones. First layout where every slot is open wins.
-  const longAxis: 'x' | 'z' = site.w >= site.d ? 'x' : 'z';
+  // ACROSS THE APPROACH, not along it. The row runs perpendicular to the way in,
+  // so the three stones land LEFT / MIDDLE / RIGHT in your view the moment you
+  // step through the door — one glance, three options, a choice. Laid out along
+  // the approach instead, the same three stones are a corridor you walk down and
+  // the comparison never happens.
+  const acrossFirst = site.entranceDir
+    ? (Math.abs(site.entranceDir.x) >= Math.abs(site.entranceDir.z) ? 'z' : 'x')
+    : (site.w >= site.d ? 'x' : 'z');
   let slots: Array<{ x: number; z: number }> | null = null;
   outer:
   for (let n = wantN; n >= MIN_TROVE_OFFERINGS; n--) {
-    for (const axis of [longAxis, longAxis === 'x' ? 'z' : 'x'] as const) {
+    for (const axis of [acrossFirst, acrossFirst === 'x' ? 'z' : 'x'] as const) {
       const trial = lineSlots(site, n, gap, axis);
       if (trial.every((s) => site.free(s.x, s.z))) { slots = trial; break outer; }
     }
@@ -137,7 +162,10 @@ function planTrove(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiec
     }
     if (!item) continue;
     taken.add(item.id);
-    props.push({ kind: 'offering', x: s.x, z: s.z, itemId: item.id, groupId, style: 'pedestal' });
+    props.push({
+      kind: 'offering', x: s.x, z: s.z, itemId: item.id, groupId, style: 'pedestal',
+      rotY: facingEntrance(site),
+    });
   }
   if (props.length === 0) return EMPTY;
 
@@ -178,12 +206,77 @@ function planConsolationChest(site: CentrepieceSite, ctx: CentrepieceCtx): Place
 
 // ── The rest: one prop, one cell ─────────────────────────────────────
 
-function planMerchant(site: CentrepieceSite): PlacedCentrepiece {
+/**
+ * A STALL: the keeper stands behind his goods, and the goods face you.
+ *
+ * The merchant used to be a lone figure in the middle of a room whose entire
+ * stock lived in a menu. A shop should read as a shop from the doorway — wares
+ * laid out, a man behind them — so the keeper steps BACK from the room's centre
+ * (away from the way in) and the stock stands in a row between you and him,
+ * across your approach exactly like the trove's. You walk up to the counter.
+ *
+ * The goods are offerings with a price tag: the offering system already routes
+ * costs through the same central applier as every other priced thing, so a stall
+ * is a trove you have to pay for — no second mechanism.
+ */
+function planMerchant(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiece {
   if (!site.free(site.x, site.z)) return EMPTY;
-  return {
-    props: [{ kind: 'merchant', x: site.x, z: site.z }],
-    claimed: [{ x: site.x, z: site.z }],
-  };
+  const dir = site.entranceDir ?? { x: 0, z: -1 };
+  // The keeper stands a step BEYOND the counter, on the far side from the door.
+  const keep = { x: site.x - dir.x * STALL_DEPTH, z: site.z - dir.z * STALL_DEPTH };
+  const props: PropSpec[] = [];
+  const claimed: Array<{ x: number; z: number }> = [];
+
+  if (site.free(keep.x, keep.z)) {
+    props.push({ kind: 'merchant', x: keep.x, z: keep.z, rotY: facingEntrance(site) });
+    claimed.push(keep);
+  } else {
+    props.push({ kind: 'merchant', x: site.x, z: site.z, rotY: facingEntrance(site) });
+    claimed.push({ x: site.x, z: site.z });
+  }
+
+  // THE COUNTER — wares across the approach, between you and him.
+  const gap = CONFIG.CENTREPIECE.OFFERING_MIN_SPACING;
+  const across: 'x' | 'z' = Math.abs(dir.x) >= Math.abs(dir.z) ? 'z' : 'x';
+  const groupId = `stall:${site.roomId}`;
+  const stalls = lineSlots(site, CONFIG.CENTREPIECE.STALL_WARES, gap, across);
+  const taken = new Set<string>();
+  for (const s of stalls) {
+    if (!site.free(s.x, s.z)) continue;
+    let item = null;
+    for (let attempt = 0; attempt < 6 && !item; attempt++) {
+      const rolled = rollDropItem('merchant', ctx.depth, ctx.rand);
+      if (rolled && !taken.has(rolled.id)) item = rolled;
+    }
+    if (!item) continue;
+    taken.add(item.id);
+    props.push({
+      kind: 'offering', x: s.x, z: s.z, itemId: item.id, groupId, style: 'ground',
+      rotY: facingEntrance(site),
+      // Priced, and you may buy MORE THAN ONE — a stall isn't a choice of one,
+      // it's a shelf. `picks` is carried on the spawn side; the cost is what
+      // makes it a shop rather than a gift.
+      costGold: shopPrice(item.rarity, ctx.depth),
+    });
+    claimed.push(s);
+  }
+  return { props, claimed };
+}
+
+/** What a stall charges. Scales with rarity and depth — deeper goods cost more
+ *  because you have more coin by then, not because they're better value. */
+function shopPrice(rarity: string | undefined, depth: number): number {
+  const tier = rarity === 'fabled' ? 4 : rarity === 'cursed' ? 3
+    : rarity === 'rare' ? 3 : rarity === 'uncommon' ? 2 : 1;
+  return Math.round((14 + tier * 16) * (1 + depth * 0.08));
+}
+
+/** rotY that turns a prop to face the way IN. Everything a room stages should
+ *  look at the player, not at north. */
+function facingEntrance(site: CentrepieceSite): number {
+  const d = site.entranceDir;
+  if (!d) return 0;
+  return Math.atan2(d.x, d.z);
 }
 
 /**

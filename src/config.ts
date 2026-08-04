@@ -950,6 +950,8 @@ export const CONFIG = {
     // against each other. Stand them within a glance of one another.
     OFFERING_MIN_SPACING: 1.8,
     // TRAP ROOM — spikes ringed around the prize, at this radius.
+    /** How many goods a stall lays on its counter. */
+    STALL_WARES: 3,
     HAZARD_RING_RADIUS: 1.9,
     HAZARD_RING_SPIKES: 4,
   },

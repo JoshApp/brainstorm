@@ -1618,11 +1618,20 @@ export function buildLevel(
           yTop: gy + (prop.style === 'ground' ? 0.2 : 0.75),
         };
         obstacles.push(obs);
+        // A PRICED offering is a stall's ware — you may buy several, so the
+        // group's pick allowance is its whole shelf rather than one-and-close.
+        const priced = (prop.costGold ?? 0) > 0;
         spawnOffering(
-          { item: offered, pos: new THREE.Vector3(prop.x, gy, prop.z), rotY: prop.rotY ?? 0 },
           {
-            kind: 'trove', scene: root, materials,
+            item: offered, pos: new THREE.Vector3(prop.x, gy, prop.z), rotY: prop.rotY ?? 0,
+            cost: priced ? { gold: prop.costGold } : undefined,
+          },
+          {
+            kind: priced ? 'stall' : 'trove', scene: root, materials,
             groupId: prop.groupId, style: prop.style ?? 'pedestal',
+            family: priced ? 'priced' : undefined,
+            picks: priced ? 99 : 1,
+            promptLabel: priced ? 'BUY' : undefined,
             onTaken: prop.guarded ? springGuard(prop.x, prop.z) : undefined,
           },
         );

@@ -105,21 +105,59 @@ test('ONE notable thing per room — the #64 cap, enforced by construction', () 
     for (let seed = 1; seed <= 12; seed++) {
       const out = planCentrepiece(role, site(), { depth: 5, rand: seeded(seed) });
       const notable = out.props.filter((p) => NOTABLE.has(p.kind));
-      // A trove is ONE choice made of several stones — that's one notable thing,
-      // not three. Everything else must be a single prop.
-      const count = role === 'trove' ? new Set(
-        (notable as Array<{ groupId?: string }>).map((p) => p.groupId ?? 'solo'),
-      ).size : notable.length;
-      assert.equal(count, 1, `${role} seed ${seed}: staged ${count} notable things`);
+      // A trove is ONE choice however many stones carry it, and a stall is ONE
+      // shop — a keeper plus the counter he stands behind. Neither is three or
+      // four landmarks. Everything else must be a single prop.
+      if (role === 'trove') {
+        const choices = new Set(
+          (notable as Array<{ groupId?: string }>).map((p) => p.groupId ?? 'solo'),
+        ).size;
+        assert.equal(choices, 1, `trove seed ${seed}: ${choices} separate choices`);
+      } else if (role === 'shop') {
+        const keepers = notable.filter((p) => p.kind === 'merchant').length;
+        const counters = new Set(
+          (notable.filter((p) => p.kind === 'offering') as Array<{ groupId: string }>)
+            .map((p) => p.groupId),
+        ).size;
+        assert.equal(keepers, 1, `shop seed ${seed}: ${keepers} keepers`);
+        assert.ok(counters <= 1, `shop seed ${seed}: ${counters} separate counters`);
+      } else {
+        assert.equal(notable.length, 1, `${role} seed ${seed}: staged ${notable.length} notable things`);
+      }
     }
   }
 });
 
-test('a shop stages a merchant; an arena stages the trial altar', () => {
-  const shop = planCentrepiece('shop', site(), { depth: 5, rand: seeded(2) });
-  assert.deepEqual(shop.props.map((p) => p.kind), ['merchant']);
+test('a shop is a STALL: the keeper behind, his priced wares in front', () => {
+  // A shop should read as a shop from the doorway — goods laid out, a man behind
+  // them — rather than a lone figure whose entire stock lives in a menu.
+  const shop = planCentrepiece('shop', site({ entranceDir: { x: 0, z: 1 } }),
+    { depth: 5, rand: seeded(2) });
+  const keeper = shop.props.find((p) => p.kind === 'merchant') as { z: number } | undefined;
+  const wares = shop.props.filter((p) => p.kind === 'offering') as Array<{ x: number; z: number; costGold?: number }>;
+  assert.ok(keeper, 'a stall needs its keeper');
+  assert.ok(wares.length > 0, 'a stall needs wares on the counter');
+  // Entrance is at +Z, so the keeper stands BEHIND the counter (lower z).
+  assert.ok(keeper.z < wares[0].z, 'the keeper must stand behind his goods');
+  for (const w of wares) assert.ok((w.costGold ?? 0) > 0, 'a ware without a price is a gift');
+  // The counter runs ACROSS the approach, so the goods spread left-to-right.
+  assert.ok(new Set(wares.map((w) => w.x)).size > 1, 'wares should spread across, not queue up');
+});
+
+test('an arena stages the trial altar', () => {
   const arena = planCentrepiece('arena', site(), { depth: 5, rand: seeded(2) });
   assert.deepEqual(arena.props.map((p) => p.kind), ['challenge-offering']);
+});
+
+test('a trove row runs ACROSS the way in — left, middle, right at a glance', () => {
+  // Entering along +Z means the row must spread along X, so all three land in
+  // your view at once instead of becoming a corridor you walk down.
+  const out = planCentrepiece('trove', site({ entranceDir: { x: 0, z: 1 } }),
+    { depth: 5, rand: seeded(4) });
+  const stones = out.props.filter((p) => p.kind === 'offering') as Array<{ x: number; z: number }>;
+  assert.ok(stones.length >= 2);
+  assert.equal(new Set(stones.map((s) => s.z)).size, 1, 'the row should share one depth');
+  assert.ok(new Set(stones.map((s) => s.x)).size > 1, 'the row should spread across X');
 });
 
 test('a trap room rings its prize with spikes — the reward is defended, not hidden', () => {

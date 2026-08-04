@@ -1044,8 +1044,27 @@ export function composeFloor(
     };
     const promoted = rolePlan.assigned.get(pv.roomId);
     if (promoted) {
+      // THE WAY IN — a unit vector from the room's centre toward its corridor
+      // mouth. A staged room has to be composed from where the player STANDS, so
+      // everything the centrepiece places (a row of offerings, a shopkeeper and
+      // his counter) can be laid out across the approach and turned to face it.
+      // Averaged when a room has several mouths; undefined when it has none.
+      let ex = 0, ez = 0, mouths = 0;
+      for (const c of corridors) {
+        const other = c.fromIdx === i ? c.toIdx : c.toIdx === i ? c.fromIdx : -1;
+        if (other < 0) continue;
+        ex += c.rect.x - pv.offsetX;
+        ez += c.rect.z - pv.offsetZ;
+        mouths++;
+      }
+      const mag = Math.hypot(ex, ez);
+      const entranceDir = mouths > 0 && mag > 1e-3
+        ? { x: ex / mag, z: ez / mag }
+        : undefined;
+
       const placedPiece = planCentrepiece(promoted, {
         roomId: pv.roomId, x: pv.offsetX, z: pv.offsetZ, w: W, d: D, free: freeAt,
+        entranceDir,
       }, { depth, rand });
       for (const c of placedPiece.claimed) {
         const { col, row } = toCell(c.x, c.z);

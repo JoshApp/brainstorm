@@ -198,6 +198,11 @@ export type PropSpec =
       groupId: string;
       /** Presentation: a waist-high plinth, or a slab set into the floor. */
       style?: 'pedestal' | 'ground';
+      /** GOLD price. Set by a merchant's stall — an offering you must buy rather
+       *  than one you're given. Routed through the same central cost applier as
+       *  every other priced thing, so a stall is a trove with a price tag and not
+       *  a second mechanism. */
+      costGold?: number;
       /** CONTESTED (room modifier): reaching for this seals the room and the
        *  waves come. Same enemies an ambush would bring; opposite emotion —
        *  you chose this. */
