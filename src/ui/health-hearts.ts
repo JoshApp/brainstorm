@@ -33,11 +33,16 @@ const PER_ROW = 10;
 // Health fraction at/below which the row pulses (your last heart-ish).
 const LOW_BLINK_FRAC = 0.25;
 
+// Ember hearts: the same silhouette as yours, in coal-amber — legible as health
+// at a glance, unmistakably not your blood.
+const EMBER_FILL = 'rgba(255, 176, 74, 0.96)';
+const EMBER_STROKE = 'rgba(122, 60, 12, 0.9)';
+
 let root: HTMLDivElement | null = null;
 let bar: HTMLDivElement | null = null;   // inner wrapper that carries the low-HP pulse
 let hearts: HeartSvg[] = [];
-let emberRow: HTMLDivElement | null = null;
-let builtEmberPips = -1;
+let emberHearts: HeartSvg[] = [];
+let builtEmberHearts = -1;
 let unsubEmber: (() => void) | null = null;
 let builtMax = -1;
 let prevHp = Infinity;   // last rendered hp — detects a fresh wound to re-alarm
@@ -114,41 +119,28 @@ export function createHealthHearts(): void {
 
   bind(hpStore, render);
 
-  // THE EMBER row — borrowed life, rendered ABOVE the hearts (column-reverse, so
-  // appended last = highest). Deliberately a DIFFERENT shape and colour from a
-  // heart: these aren't yours, they're on loan from the deep, and they're spent
-  // before your own blood. See player/ember.ts.
-  emberRow = document.createElement('div');
-  Object.assign(emberRow.style, {
-    display: 'flex', gap: `${HEART_GAP}px`, alignItems: 'center',
-  } as Partial<CSSStyleDeclaration>);
-  bar.appendChild(emberRow);
-  unsubEmber = onEmberChanged(renderEmber);
-  renderEmber();
+  // THE EMBER — borrowed life. Same heart, different colour, ON THE SAME ROW,
+  // appended after your own: the bar reads left-to-right as [yours][borrowed],
+  // and since damage wipes from the RIGHT, the ember visibly burns off first.
+  // One bar, one read. See player/ember.ts.
+  unsubEmber = onEmberChanged(() => {
+    if (emberHeartCount() !== builtEmberHearts) buildHearts(builtMax);
+    renderEmberFill();
+  });
 }
 
-/** One ember pip per HEART_HP of borrowed life — a small amber lozenge. */
-function renderEmber(): void {
-  if (!emberRow) return;
-  const pips = Math.ceil(getEmber() / HEART_HP);
-  if (pips === builtEmberPips) return;
-  builtEmberPips = pips;
-  emberRow.replaceChildren();
-  emberRow.style.marginBottom = pips > 0 ? '3px' : '0';
-  const svgNs = 'http://www.w3.org/2000/svg';
-  for (let i = 0; i < pips; i++) {
-    const el = document.createElementNS(svgNs, 'svg');
-    el.setAttribute('viewBox', '0 0 24 24');
-    el.setAttribute('width', '15'); el.setAttribute('height', '15');
-    const d = document.createElementNS(svgNs, 'path');
-    // A struck-spark lozenge — reads as a coal, not an organ.
-    d.setAttribute('d', 'M12 2 L18 12 L12 22 L6 12 Z');
-    d.setAttribute('fill', 'rgba(255, 186, 96, 0.95)');
-    d.setAttribute('stroke', 'rgba(120, 62, 16, 0.9)');
-    d.setAttribute('stroke-width', '1.5');
-    el.appendChild(d);
-    el.style.filter = 'drop-shadow(0 0 4px rgba(255,150,60,0.75))';
-    emberRow.appendChild(el);
+/** Whole ember hearts to draw (each spans HEART_HP, like a real one). */
+function emberHeartCount(): number {
+  return Math.ceil(getEmber() / HEART_HP);
+}
+
+/** Fill the ember hearts from the current ember pool — same right-to-left wipe
+ *  the real hearts use, so a half-spent ember heart reads as a half heart. */
+function renderEmberFill(): void {
+  const ember = getEmber();
+  for (let i = 0; i < emberHearts.length; i++) {
+    const frac = Math.max(0, Math.min(1, (ember - i * HEART_HP) / HEART_HP));
+    emberHearts[i].clip.setAttribute('width', String(24 * frac));
   }
 }
 
@@ -182,13 +174,27 @@ function buildHearts(max: number): void {
     }
     bar.appendChild(row);
   }
-  // The rebuild above wiped the bar, ember row included — put it back on top and
-  // force a re-render (a max-HP change must not silently eat your borrowed life).
-  if (emberRow) {
-    bar.appendChild(emberRow);
-    builtEmberPips = -1;
-    renderEmber();
+  // EMBER hearts ride the END of the last row, after your own — borrowed life
+  // sits where damage reaches first. Kept in their own array so render()'s
+  // colour pass (which tints real hearts red/warning/critical) never touches
+  // them: an ember heart is always amber, whatever your health is doing.
+  emberHearts = [];
+  const emberCount = emberHeartCount();
+  if (emberCount > 0) {
+    const lastRow = bar.lastElementChild as HTMLDivElement | null;
+    const row = lastRow ?? bar.appendChild(document.createElement('div'));
+    for (let i = 0; i < emberCount; i++) {
+      const h = buildHeart(idx + i);
+      h.fill.setAttribute('fill', EMBER_FILL);
+      h.fill.setAttribute('stroke', EMBER_STROKE);
+      h.frame.setAttribute('stroke', EMBER_STROKE);
+      h.el.style.filter = 'drop-shadow(0 0 5px rgba(255,150,60,0.55))';
+      emberHearts.push(h);
+      row.appendChild(h.el);
+    }
   }
+  builtEmberHearts = emberCount;
+  renderEmberFill();
   builtMax = max;
 }
 
@@ -314,8 +320,8 @@ export function disposeHealthHearts(): void {
   root = null;
   bar = null;
   hearts = [];
-  emberRow = null;
-  builtEmberPips = -1;
+  emberHearts = [];
+  builtEmberHearts = -1;
   builtMax = -1;
   prevHp = Infinity;
   wasLow = false;
