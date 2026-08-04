@@ -209,7 +209,7 @@ const COMBAT_CHOKE: Vault = {
     '##########',
   ],
   lightTier: 'dim',
-  minDepth: 2,
+  minDepth: 1,
   cellProps: {
     // The acolyte that anchored this room.
     '7,2': [{ kind: 'spawn', enemyId: 'acolyte' }],
@@ -244,7 +244,7 @@ const COMBAT_HALL: Vault = {
     '#*..........*..#',
     '################',
   ],
-  minDepth: 3,
+  minDepth: 2,
   weight: 2,
   props: [
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
@@ -299,7 +299,7 @@ const COMBAT_ARENA: Vault = {
     '#....*....*..#',
     '##############',
   ],
-  minDepth: 2,
+  minDepth: 1,
   weight: 1,
   torchTint: TORCH_BLOOD,
   cellProps: {
@@ -380,7 +380,7 @@ const TREASURE_CACHE: Vault = {
     '#......#',
     '########',
   ],
-  minDepth: 3,
+  minDepth: 2,
   torchTint: TORCH_GOLD,
   cellProps: {
     '2,2': [{ kind: 'loot-anchor', prominence: 'minor', facing: { kind: 'wall-away' } }],
@@ -530,7 +530,7 @@ const ENCOUNTER_CORPSES: Vault = {
     '############',
   ],
   lightTier: 'dark',
-  minDepth: 2,
+  minDepth: 1,
   torchTint: TORCH_GREEN,
   cellProps: {
     '2,2': [{ kind: 'loot-anchor', prominence: 'minor' }],
@@ -556,7 +556,7 @@ const ENCOUNTER_RITUAL: Vault = {
     '############',
   ],
   lightTier: 'dim',
-  minDepth: 3,
+  minDepth: 2,
   weight: 1,
   torchTint: TORCH_GREEN,
   props: [
@@ -1049,7 +1049,7 @@ const COMBAT_CROSS: Vault = {
     '############',
   ],
   lightTier: 'dim',
-  minDepth: 2,
+  minDepth: 1,
   weight: 2,
   // PROTOTYPE: coherent pack instead of 3 independent X rolls. A swarm —
   // fast weak bodies that overwhelm the cross's narrow arms.
@@ -1106,7 +1106,7 @@ const ENCOUNTER_OSSUARY: Vault = {
     '############',
   ],
   lightTier: 'dark',
-  minDepth: 2,
+  minDepth: 1,
   weight: 1,
   torchTint: TORCH_GREEN,
   cellProps: {
@@ -1137,7 +1137,7 @@ const COMBAT_PITS: Vault = {
     '############',
   ],
   lightTier: 'dim',
-  minDepth: 3,
+  minDepth: 2,
   weight: 1,
 };
 
@@ -1238,7 +1238,7 @@ const CHASM_BRIDGE: Vault = {
     '################',
   ],
   lightTier: 'dim',
-  minDepth: 3,
+  minDepth: 2,
   weight: 1,
   torchTint: TORCH_PALE,
   // Two voids flanking a 3m central bridge (x∈[-1.5,1.5]), with ~2m walkable

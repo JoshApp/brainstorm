@@ -50,7 +50,13 @@ test('an empty marker list → no find', () => {
 test('a focal marker in a loot-permitting room yields a find with loot', () => {
   const r = fillDefiningFind([spot('branch-3', true)], roles, GRANT, 5, lcg(7));
   assert.ok(r, 'expected a find');
-  assert.ok(r!.loot && typeof r!.loot.id === 'string', 'find carries a real item');
+  // The find carries a CHEST BUNDLE, not a lone item. It used to be a single
+  // ItemSpec, which meant every branch of its table that wasn't an item silently
+  // became "no find at all" — and the branch that was an item was always a relic.
+  // A staged chest is worth walking to when it holds something; what that
+  // something is, is a roll.
+  assert.ok(r!.loot, 'find carries no bundle');
+  assert.ok(r!.loot.items.length > 0 || r!.loot.gold > 0, 'the staged chest is empty');
   assert.equal(r!.roomId, 'branch-3');
 });
 

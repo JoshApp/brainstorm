@@ -198,6 +198,11 @@ export type RoomSpec = {
    * re-deriving the plan from the seed.
    */
   roomType?: string;
+  /** Which VAULT TEMPLATE this room was stamped from (vault-library id). Purely
+   *  informational — nothing in the build reads it — but it is the only way an
+   *  audit can ask "how much variety does a floor actually have", which is the
+   *  question that found the depth-1 pool of three. */
+  vaultId?: string;
   /** How many waves this room's arena gauntlet runs (1-3, default 3). A room
    *  sealed by a MODIFIER (an ambush, a guarded reward) is a BEAT, not the
    *  arena room's full trial, so the composer asks for fewer. */

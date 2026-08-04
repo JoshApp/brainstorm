@@ -219,7 +219,26 @@ export const TABLES: Record<string, LootTable> = {
   'boss':     T({ emptyGold: 25, entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
 
   // ── EVENTS / DEALS — single-item sources. ──
-  'defining-find': T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
+  // THE STAGED FIND — the director's chest, one per floor, always silver.
+  //
+  // This entry used to be a single 'gear' roll, and because the 'gear' group is
+  // aliased to RELIC_KINDS while weapon drops are off, that made it a GUARANTEED
+  // trinket. Measured on composed floors: 99% of depth-1 silver chests held a
+  // relic. The comment at its placement site (vault-compose) already said this
+  // was "a second guaranteed build source on every floor" and had been fixed —
+  // but only the LOCK was changed, not the guarantee. DESIGN-METHOD §3: a rule
+  // about the final state has to be checked against the final state.
+  //
+  // A staged find should be worth walking to and should SOMETIMES be a build
+  // piece. It is a roll now, not a certainty — and the rest of the weight pays
+  // the currencies a silver chest pays anywhere else, so finding it is never a
+  // waste even when it isn't a trinket.
+  'defining-find': T({ emptyGold: 12, entries: [
+    { from: 'relics', bias: 4, weight: 30, minRarity: rampFloor(2, 7) },
+    { from: 'keys',    weight: 26 },
+    { from: 'embers',  weight: 22 },
+    { gold: [10, 22],  weight: 22 },
+  ] }),
   'merchant':      T({ entries: [{ from: 'gear', bias: 2, minRarity: rampFloor(1, 6) }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
   // TROVE — the floor's guaranteed choice, rolled three times onto three stones.

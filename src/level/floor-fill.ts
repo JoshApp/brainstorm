@@ -8,7 +8,7 @@
 // which one actually gets the reward this run — "staged but varied".
 
 import type { FloorRoles } from './floor-roles';
-import { rollDropItem } from '../content/drop-tables';
+import { rollDropTable, type DropResult } from '../content/drop-tables';
 import type { ItemSpec, Rarity } from '../content/items';
 
 /** A harvested content marker in world space, ready for the fill to resolve. */
@@ -28,7 +28,15 @@ export interface DefiningFind {
   z: number;
   roomId: string;
   facing?: number;
-  loot: ItemSpec;
+  /** The WHOLE bundle the chest holds — gold included.
+   *
+   *  This used to be a single ItemSpec via rollDropItem, which silently discards
+   *  keys and gold and returns null for anything that isn't a takeable item. The
+   *  consequence: the table's weights were a fiction (a 'keys' weight just meant
+   *  "no find this floor"), and among the finds that DID appear the item was a
+   *  relic 60% of the time on top of the floor's other build sources. A chest
+   *  holds a bundle; model it as one. */
+  loot: DropResult;
   /** The marker this find claimed — so the director can keep the deal off it. */
   spot: ContentSpot;
 }
@@ -179,8 +187,9 @@ export function fillDefiningFind(
   // The 'defining-find' pool (drop-tables.ts) owns the bias / rarity floor /
   // gear-only filter now — a potion is never a defining find, and the reward
   // scales with depth. A null roll (empty band) means no find.
-  const loot = rollDropItem('defining-find', depth, rand);
-  if (!loot) return null;
+  const loot = rollDropTable('defining-find', depth, rand);
+  // A find that holds literally nothing isn't worth staging a chest for.
+  if (!loot.items.length && loot.gold <= 0) return null;
 
   return { x: spot.x, z: spot.z, roomId: spot.roomId, facing: spot.facing, loot, spot };
 }

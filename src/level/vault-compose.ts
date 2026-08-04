@@ -569,6 +569,17 @@ export function composeFloor(
   for (let i = 0; i < middleCount; i++) tagSeq.push('combat');   // placeholder; see midPool
   tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');
   const midPool = middleVaultPool(depth);
+  // DRAW WITHOUT REPLACEMENT. A floor is ~5 middle rooms drawn from a pool that
+  // is ELEVEN vaults deep at depth 1, so an independent weighted pick per slot
+  // does exactly what independence means: it repeats. Measured before this,
+  // treasure-altar was 19% of every room on depth 1 and two fresh runs shared
+  // 57% of their vaults — which is the "new runs look the same" report.
+  //
+  // The bag is Tetris's 7-bag: shuffle the pool, deal it out, reshuffle only
+  // when it's empty. Weights still bias WHICH vaults are in a bag's order (a
+  // heavier vault sits earlier more often), but nothing can appear twice while
+  // an unused vault is still on the table.
+  const midBag = makeVaultBag(midPool, rand);
 
   // MINIBOSS ARENA injection (task #17) — rarely, a NON-boss floor stages a named
   // elite (the Hollow Choir) in a dedicated roomy arena. At most one per floor,
@@ -628,10 +639,11 @@ export function composeFloor(
       // trusted, not a weighting hint.
       vault = weightedPick(minibossPool, rand);
     } else {
-      // MIDDLE: tags demoted to a weighting hint — draw from the union pool.
-      vault = midPool.length > 0
-        ? weightedPick(midPool, rand).vault
-        : weightedPick(VAULTS.filter((v) => v.tags.includes('combat')), rand);
+      // MIDDLE: tags demoted to a weighting hint — draw from the union pool,
+      // WITHOUT REPLACEMENT (see midBag). An independent weighted pick per slot
+      // put treasure-altar in 19% of every depth-1 room; a floor is five rooms
+      // drawn from a pool of eleven, so "independent" means "repeats".
+      vault = midBag.draw() ?? weightedPick(VAULTS.filter((v) => v.tags.includes('combat')), rand);
     }
     const dims = vaultDims(vault);
 
@@ -962,6 +974,7 @@ export function composeFloor(
     const roomEntrance = entranceDirFor(i);
     for (const r of sub.rooms) {
       r.elevation = elevations[i];
+      r.vaultId = pv.vault.id;   // provenance, for the variety audit
       // Which way this room FACES — see RoomSpec.entranceDir. Stamped on every
       // sub-room so a logical-only attribution room answers the same as its
       // parent geometry.
@@ -1725,7 +1738,7 @@ export function composeFloor(
       // director's staged find, openable.
       props.push({
         kind: 'chest', x: plan.find.x, z: plan.find.z,
-        tier: 'silver', loot: { gold: 0, items: [plan.find.loot] }, facing: { kind: 'wall-away' },
+        tier: 'silver', loot: plan.find.loot, facing: { kind: 'wall-away' },
       });
     }
 
@@ -2406,6 +2419,42 @@ function middleVaultPool(depth: number): Array<{ vault: Vault; weight: number }>
     }
   }
   return [...byId.values()];
+}
+
+/**
+ * A no-repeat draw over a weighted pool — the fix for "every floor is the same
+ * three rooms". Deals the whole pool before any vault can come back, so a floor
+ * gets `min(rooms, pool.length)` DISTINCT vaults by construction rather than by
+ * luck. Order within a bag is a weighted shuffle, so a heavier vault still tends
+ * to land earlier (and therefore appears on short floors more often) — the
+ * weights keep meaning what they meant.
+ *
+ * Deterministic in `rand`, so a seed still reproduces its floor exactly.
+ */
+function makeVaultBag(pool: Array<{ vault: Vault; weight?: number }>, rand: () => number) {
+  let bag: Vault[] = [];
+  const refill = () => {
+    const rest = pool.slice();
+    bag = [];
+    while (rest.length) {
+      const total = rest.reduce((s, v) => s + (v.weight ?? 1), 0);
+      let r = rand() * total;
+      let idx = rest.length - 1;
+      for (let i = 0; i < rest.length; i++) {
+        r -= rest[i].weight ?? 1;
+        if (r <= 0) { idx = i; break; }
+      }
+      bag.push(rest.splice(idx, 1)[0].vault);
+    }
+  };
+  return {
+    /** Next vault, or null when the pool was empty to begin with. */
+    draw(): Vault | null {
+      if (!pool.length) return null;
+      if (!bag.length) refill();
+      return bag.shift() ?? null;
+    },
+  };
 }
 
 function weightedPick<T extends { weight?: number }>(pool: T[], rand: () => number): T {
