@@ -1143,6 +1143,9 @@ export function buildLevel(
   // voluntary 'offering' trigger (set on the door spec below) instead of a
   // trap that slams on entry.
   const offeringRooms = new Set<string>();
+  // Rooms whose centrepiece is guarded (the CONTESTED modifier). Their gates use
+  // the same voluntary 'offering' trigger — nothing slams until you reach.
+  const guardedRooms = new Set<string>();
   // Tag a static decoration group so the per-room static-merge pass
   // (batchStaticFixtures) folds it into one mesh per material — the single
   // biggest draw-call win on procgen floors, where loose `model`/`altar` decor
@@ -1153,6 +1156,18 @@ export function buildLevel(
   // mesh that STILL carries that archway's own glow material (registerArchwayGlow
   // animates the material, which the merged mesh shares — so it still pulses by
   // the player's distance to THAT gate). Pillars are merged separately above.
+  // CONTESTED (room modifier) — the room's centrepiece is GUARDED. Reaching for
+  // it activates the room's arena encounter, which slams the portcullises the
+  // composer already installed on every opening and starts the waves. Same
+  // machinery the challenge altar uses; the difference is entirely in what
+  // pulls the trigger — there, a trial you accepted; here, a reward you took.
+  const springGuard = (x: number, z: number): (() => void) | undefined => {
+    const rid = findRoomContaining(x, z, spec.rooms);
+    if (!rid) return undefined;
+    guardedRooms.add(rid);
+    return () => activateEncounter(arenaEncounterId(rid));
+  };
+
   const markMergeStatic = (obj: THREE.Object3D): void => {
     obj.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1478,6 +1493,7 @@ export function buildLevel(
         prop.mimic ?? false,
         onMimic,
         prop.gateId,   // #74: sealed until this room's gate offering is taken
+        prop.guarded ? springGuard(prop.x, prop.z) : undefined,
       );
     } else if (prop.kind === 'gate-offering') {
       // The centrepiece of a gated loot room — taking it releases every chest
@@ -1607,6 +1623,7 @@ export function buildLevel(
           {
             kind: 'trove', scene: root, materials,
             groupId: prop.groupId, style: prop.style ?? 'pedestal',
+            onTaken: prop.guarded ? springGuard(prop.x, prop.z) : undefined,
           },
         );
       }
@@ -2448,7 +2465,8 @@ export function buildLevel(
       // An arena gate whose room holds a challenge offering becomes a
       // voluntary 'offering' trigger — it won't slam on entry; the offering
       // starts the trial. Otherwise it's the default trap (slam on cross).
-      unlock: d.unlock?.kind === 'arena' && d.unlock.roomIds.some((r) => offeringRooms.has(r))
+      unlock: d.unlock?.kind === 'arena'
+        && d.unlock.roomIds.some((r) => offeringRooms.has(r) || guardedRooms.has(r))
         ? { ...d.unlock, trigger: 'offering' as const }
         : d.unlock,
     });
@@ -2568,11 +2586,16 @@ export function buildLevel(
       for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
       return { spawns: [...counts].map(([enemyId, count]) => ({ enemyId, count })) };
     };
-    const waves: WaveSpec[] = [
+    // The full trial is three escalating waves. A room sealed by a MODIFIER
+    // asks for fewer (RoomSpec.arenaWaves) — an ambush should bite and be over,
+    // not become the arena room it isn't. Rolls stay identical either way, so
+    // the short version is the same fight with its tail cut, not a different one.
+    const allWaves: WaveSpec[] = [
       toWave(rollFloorEnemies(depth, 2, 'light', arenaRng)),
       toWave(rollFloorEnemies(depth, 3, 'medium', arenaRng)),
       toWave(rollFloorEnemies(depth, 3, 'heavy', arenaRng)),
     ];
+    const waves = allWaves.slice(0, Math.max(1, Math.min(3, room.arenaWaves ?? 3)));
     let handle: EncounterHandle;
     const controller = createArenaController({
       roomId,
@@ -2605,7 +2628,13 @@ export function buildLevel(
   // Perimeter trap arenas: the auto-installed gates carry the arena unlock,
   // but wave registration keys off rooms — register each trap room.
   for (const room of spec.rooms) {
-    if (room.perimeterFitting === 'arena-trap') registerArenaForRoom(room.id);
+    // 'arena-trap' slams on cross; 'arena-portcullis' waits for something the
+    // player CHOSE to touch. Both need their waves registered — a portcullis
+    // room without a challenge altar is a `contested` reward, sealed by the act
+    // of reaching for it.
+    if (room.perimeterFitting === 'arena-trap' || room.perimeterFitting === 'arena-portcullis') {
+      registerArenaForRoom(room.id);
+    }
   }
 
   // ARENA EXTERNAL-OPENING SEAL — while the arena's encounter is ACTIVE,

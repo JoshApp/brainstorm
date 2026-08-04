@@ -174,6 +174,10 @@ export interface OfferingOpts {
   /** Override what taking does. Default routes the item the same way a floor
    *  pickup would (relics collect, gear equips, consumables bag). */
   onTake?: (item: ItemSpec, affixes: AffixInstance[], pos: THREE.Vector3) => void;
+  /** Fired AFTER a take resolves, whatever route the item took. A side effect,
+   *  not a replacement for acquisition (that's `onTake`) — used by the
+   *  CONTESTED room modifier to spring the room's seal on the act of reaching. */
+  onTaken?: (item: ItemSpec) => void;
   /** Per-offering cleanup (e.g. the caller removing a collision AABB). */
   onDestroy?: () => void;
 }
@@ -285,6 +289,7 @@ export function spawnOffering(offering: Offering, opts: OfferingOpts): void {
         const affixes = [...(offering.affixes ?? [])];
         if (spec.onTake) spec.onTake(offering.item, affixes, pos);
         else defaultTake(offering.item, affixes, spec.scene, pos);
+        spec.onTaken?.(offering.item);
         playEquipClick();
         emit({ type: 'item:picked-up', itemId: offering.item.id, worldPos: { x: pos.x, y: pos.y + restY, z: pos.z } });
         if (spec.family) {

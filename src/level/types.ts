@@ -168,6 +168,10 @@ export type RoomSpec = {
    *  'lit' ×1 (default), 'dim' ×0.55, 'dark' ×0. Corridors are always
    *  'dim' (threshold sconces carry their ends). */
   lightTier?: 'lit' | 'dim' | 'dark';
+  /** How many waves this room's arena gauntlet runs (1-3, default 3). A room
+   *  sealed by a MODIFIER (an ambush, a guarded reward) is a BEAT, not the
+   *  arena room's full trial, so the composer asks for fewer. */
+  arenaWaves?: number;
 };
 
 export type PropSpec =
@@ -194,6 +198,10 @@ export type PropSpec =
       groupId: string;
       /** Presentation: a waist-high plinth, or a slab set into the floor. */
       style?: 'pedestal' | 'ground';
+      /** CONTESTED (room modifier): reaching for this seals the room and the
+       *  waves come. Same enemies an ambush would bring; opposite emotion —
+       *  you chose this. */
+      guarded?: boolean;
     }
   // 'model' = any ModelSpec placed in the world as static decoration.
   // Defaults to NO COLLISION — pure visuals. Use for relics, debris,
@@ -290,6 +298,9 @@ export type PropSpec =
        *  instead of dropping loot. Procgen rolls this with a small
        *  per-tier probability. */
       mimic?: boolean;
+      /** CONTESTED (room modifier): opening this seals the room and the waves
+       *  come. The prize was never hidden — only defended. */
+      guarded?: boolean;
       /** Set by the corridor-clearance post-process when a chest's
        *  position overlaps a corridor rect. Builder skips collision
        *  push for the chest so the player can walk through it — the

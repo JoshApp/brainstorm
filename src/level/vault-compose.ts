@@ -23,6 +23,7 @@ import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles';
 import { planCentrepiece } from './centrepieces';
+import { assignModifiers } from './room-modifiers';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
 import { wallAdjacency, roleDecorPolicy } from './room-decor';
@@ -396,6 +397,13 @@ const EVENT_PROP_KINDS = new Set<string>([
 // room too small to reach it, the placer takes the farthest cell it can.
 const EVENT_CLEARANCE_M = 3.0;
 
+// The `hazard` MODIFIER — traps dressed through a room (distinct from the trap
+// ROOM, whose spikes ring its prize). Spread far enough apart that a player can
+// always pick a line between them; a trap you can't avoid is just damage.
+const HAZARD_SPREAD_M = 3.2;
+const HAZARD_MIN = 2;
+const HAZARD_MAX = 4;
+
 /** Compose a LevelSpec for the given floor depth. */
 export function composeFloor(
   depth: number,
@@ -636,6 +644,28 @@ export function composeFloor(
   const rolePlan = assignRoleRooms(roles, roleNodes, {
     depth, rand, isBossFloor: opts.isBossFloor === true,
   });
+  // Third pass: 0-2 rooms get a MODIFIER — what happens around their centrepiece
+  // (the doors seal, the lights are out, the floor is trapped, the reward is
+  // guarded). Layered ON TOP of identity, never replacing it, and always within
+  // what the room's type tolerates. See level/room-modifiers.ts.
+  const modPlan = assignModifiers(roles, roleNodes, {
+    depth, rand, isBossFloor: opts.isBossFloor === true,
+  });
+
+  // Which SEAL a room needs, if any. The two combat modifiers differ by TRIGGER,
+  // and the fitting is how that difference becomes real:
+  //   - `arena-trap`       slams when you CROSS into the room  → ambush
+  //   - `arena-portcullis` slams when the encounter is ACTIVATED by something you
+  //                        chose to touch → the arena's trial altar, and a
+  //                        `contested` room's centrepiece when you reach for it.
+  // Same enemies, opposite emotions: one is sprung on you, the other you asked for.
+  const perimeterFittingFor = (roomId: string): 'arena-portcullis' | 'arena-trap' | undefined => {
+    if (rolePlan.assigned.get(roomId) === 'arena') return 'arena-portcullis';
+    const mod = modPlan.byRoom.get(roomId)?.kind;
+    if (mod === 'ambush') return 'arena-trap';
+    if (mod === 'contested') return 'arena-portcullis';
+    return undefined;
+  };
 
   // ── 4. Parse each vault and translate to world coords ──────────
   const rooms: RoomSpec[] = [];
@@ -706,19 +736,27 @@ export function composeFloor(
       ceilingStyle: ceil.style,
       ceilingRise: ceil.rise,
       wallVariant: pv.vault.wallVariant,
-      // A room PROMOTED to an arena needs the seal its vault never declared:
-      // every entrance the composer cuts becomes a portcullis, and the trial
-      // altar's encounter slams them in unison. Without this the gauntlet would
-      // summon its waves into a room you could simply walk out of.
-      perimeterFitting: rolePlan.assigned.get(pv.roomId) === 'arena'
-        ? 'arena-portcullis' : pv.vault.perimeterFitting,
-      lightTier: pv.vault.lightTier,
+      // A promoted or modified room may need a SEAL its vault never declared —
+      // without one a gauntlet would summon waves into a room you can walk out
+      // of. See perimeterFittingFor above for which seal and why.
+      perimeterFitting: perimeterFittingFor(pv.roomId) ?? pv.vault.perimeterFitting,
+      // A `dark` room simply loses its lights — the build already knows how to
+      // render an unlit room, so the modifier is a one-word override, not a
+      // lighting special case.
+      lightTier: modPlan.byRoom.get(pv.roomId)?.kind === 'dark'
+        ? 'dark' : pv.vault.lightTier,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
       depth,
     });
     // Whole-vault elevation: the main room AND its logical sub-rooms sit
     // on one plateau (rooms are internally flat — see RoomSpec.elevation).
-    for (const r of sub.rooms) r.elevation = elevations[i];
+    for (const r of sub.rooms) {
+      r.elevation = elevations[i];
+      // A room sealed by a MODIFIER runs a SHORTER gauntlet than the arena
+      // room's full trial — an ambush should bite and be over.
+      const mw = modPlan.byRoom.get(pv.roomId)?.waves;
+      if (mw !== undefined) r.arenaWaves = mw;
+    }
     rooms.push(...sub.rooms);
     corridorRooms.push(...sub.corridors);
     props.push(...sub.props);
@@ -953,18 +991,22 @@ export function composeFloor(
     // cell the centrepiece took. The one-per-room cap is structural — a room has
     // one centrepiece field, so it gets one call (#64: no more bonfire + fountain
     // + altar stacked in a middle).
+    const toCell = (x: number, z: number) => ({
+      col: Math.floor(x - pv.offsetX + W / 2),
+      row: Math.floor(z - pv.offsetZ + D / 2),
+    });
+    const toWorld = (col: number, row: number) => ({
+      x: col + 0.5 - W / 2 + pv.offsetX,
+      z: row + 0.5 - D / 2 + pv.offsetZ,
+    });
+    const freeAt = (x: number, z: number): boolean => {
+      const { col, row } = toCell(x, z);
+      const ch = populated[row]?.[col];
+      return (ch === '.' || ch === ',')
+        && !occ.has(col, row, 'floor') && !occ.has(col, row, 'void');
+    };
     const promoted = rolePlan.assigned.get(pv.roomId);
     if (promoted) {
-      const toCell = (x: number, z: number) => ({
-        col: Math.floor(x - pv.offsetX + W / 2),
-        row: Math.floor(z - pv.offsetZ + D / 2),
-      });
-      const freeAt = (x: number, z: number): boolean => {
-        const { col, row } = toCell(x, z);
-        const ch = populated[row]?.[col];
-        return (ch === '.' || ch === ',')
-          && !occ.has(col, row, 'floor') && !occ.has(col, row, 'void');
-      };
       const placedPiece = planCentrepiece(promoted, {
         roomId: pv.roomId, x: pv.offsetX, z: pv.offsetZ, w: W, d: D, free: freeAt,
       }, { depth, rand });
@@ -972,7 +1014,44 @@ export function composeFloor(
         const { col, row } = toCell(c.x, c.z);
         occ.reserve(col, row, 'floor', 'feature');
       }
+      // CONTESTED — the centrepiece is guarded. The seal is already installed
+      // (perimeterFittingFor gave this room a portcullis); marking the props is
+      // what tells the build WHICH act springs it. Reaching for the reward is
+      // the trigger, which is the whole difference from an ambush.
+      if (modPlan.byRoom.get(pv.roomId)?.kind === 'contested') {
+        for (const p of placedPiece.props) {
+          if (p.kind === 'offering' || p.kind === 'chest') p.guarded = true;
+        }
+      }
       props.push(...placedPiece.props);
+    }
+
+    // ── MODIFIER: `hazard` — the floor itself is the danger ────────────────
+    // Spike traps dressed THROUGH the room rather than ringed around a prize
+    // (that's the trap room's centrepiece). Placed on the room's open interior
+    // and spread apart, so crossing means picking a line, not threading a maze.
+    if (modPlan.byRoom.get(pv.roomId)?.kind === 'hazard') {
+      const spots: Array<{ col: number; row: number; x: number; z: number }> = [];
+      for (let row = 2; row < D - 2; row++) {
+        for (let col = 2; col < W - 2; col++) {
+          const { x, z } = toWorld(col, row);
+          if (!freeAt(x, z)) continue;
+          if (spots.every((s2) => Math.hypot(s2.x - x, s2.z - z) >= HAZARD_SPREAD_M)) {
+            spots.push({ col, row, x, z });
+          }
+        }
+      }
+      // Shuffle so the traps aren't always the same scan-order cells, then take
+      // a small handful — enough to make the room a decision, not a minefield.
+      for (let k = spots.length - 1; k > 0; k--) {
+        const j = Math.floor(rand() * (k + 1));
+        [spots[k], spots[j]] = [spots[j], spots[k]];
+      }
+      const n = Math.min(spots.length, HAZARD_MIN + Math.floor(rand() * (HAZARD_MAX - HAZARD_MIN + 1)));
+      for (let k = 0; k < n; k++) {
+        occ.reserve(spots[k].col, spots[k].row, 'floor', 'feature');
+        props.push({ kind: 'spike-trap', x: spots[k].x, z: spots[k].z });
+      }
     }
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;

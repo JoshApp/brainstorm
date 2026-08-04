@@ -73,6 +73,40 @@ tags that already exist (`start`/`combat`/`boss`/`exit`):
 Safe start, no-major-in-stairwell, and prominent bonfire all fall out of role
 rules — not special cases.
 
+### 2a. BUILT (2026-08): roles are room TYPES, and a room is built in layers
+
+The role vocabulary above is now the room-TYPE table (`src/level/room-types.ts`)
+— one vocabulary, not two that drift. A finished room is assembled in four
+layers, and each pass consults the table instead of arguing with the others:
+
+| Layer | Owns | Where |
+|---|---|---|
+| **1. Identity** | what the room IS. Structural types are PLACED (a boss arena must be shaped like one), role types are ASSIGNED to any room that qualifies, plain types are the connective majority. | `room-types.ts` · `floor-roles.ts assignRoleRooms` |
+| **2. Centrepiece** | the ONE notable thing. Capped at one **by construction** — a type has a single `centrepiece` field, so it gets a single placement call. This is the structural fix for the "bonfire + fountain + altar stacked in one middle" bug. Most rooms have NONE. | `centrepieces.ts planCentrepiece` |
+| **3. Modifiers** | what HAPPENS around the centrepiece. Layered on, never replacing identity: the fountain room whose doors seal and fill with the dead is `feature + ambush`, not a new type. | `room-modifiers.ts assignModifiers` |
+| **4. Minor** | enemies as texture, breakables, clutter, small loot — per the type's allowances. | the budget passes below |
+
+Two properties make this a system rather than a pile of flags:
+
+- **A type declares what it is AND WHAT IT ISN'T.** `modifiers: []` on a shop
+  means you never fight beside a vendor, and no amount of budget pressure may
+  decide otherwise. A trove accepts `contested` and `toll` (costs you see
+  coming) but refuses `ambush` — a reward you walked into honestly stays a
+  breath. That refusal is DATA, not a special case buried in a pass.
+- **Trigger is the design, not the enemies.** `ambush` fires when you ENTER,
+  `contested` when you TAKE. Same waves, opposite emotions — one is sprung on
+  you, the other is a price you chose. In the build that's the difference
+  between an `arena-trap` perimeter (slams on cross) and an `arena-portcullis`
+  one (waits for something you touched).
+
+**Restraint is the budget.** One guaranteed trove per floor plus 0-2 rolled
+role rooms; at most 2 modified rooms, one modifier each; nothing at all on
+depth 1 or a boss floor. A landmark only reads as a landmark when most rooms
+aren't one.
+
+**To change floor feel, edit `ROOM_TYPES`** — add a type, or flip what an
+existing one tolerates. `ROLE_CAPS` and every build pass derive from it.
+
 ---
 
 ## 3. The three budget lines

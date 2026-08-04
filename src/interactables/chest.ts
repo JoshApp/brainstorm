@@ -66,6 +66,10 @@ export function spawnChest(
    *  gate offering (which completes the encounter) releases every chest bound to
    *  it. You can always walk away — a sealed chest is skipped loot, not a trap. */
   gateId?: string,
+  /** CONTESTED (room modifier): fired the moment the chest is opened, BEFORE
+   *  the loot spills. The prize was never hidden — only defended — so the room
+   *  seals and the waves come as a consequence of you reaching for it. */
+  onOpened?: () => void,
 ) {
   const built = buildModel(TIER_MODEL[tier]);
   built.group.position.copy(pos);
@@ -138,6 +142,9 @@ export function spawnChest(
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';
+      // CONTESTED: springs before the lid finishes — the fight starts as you
+      // reach, not after you've pocketed the reward.
+      onOpened?.();
       playChestOpen();
       recordChestOpened();
       // Economy-lane hook: Greed relics trigger on this (ecs/triggers.ts).
