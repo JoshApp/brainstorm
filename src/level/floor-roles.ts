@@ -172,7 +172,14 @@ export interface RoleRoomPlan {
 export function assignRoleRooms(
   roles: FloorRoles,
   nodes: readonly RoomNode[],
-  opts: { depth: number; rand: () => number; isBossFloor?: boolean; plan?: FloorPlan },
+  opts: {
+    depth: number; rand: () => number; isBossFloor?: boolean; plan?: FloorPlan;
+    /** Rooms this pass may NOT promote, whatever their structural role. The
+     *  composer passes the rooms whose VAULT already bakes a major event — a
+     *  staged room gets a clean chamber or it isn't staged, because two events
+     *  in one room means neither is the reason you walked in. */
+    unavailable?: ReadonlySet<string>;
+  },
 ): RoleRoomPlan {
   const assigned = new Map<string, RoomRole>();
   if (opts.isBossFloor) return { assigned };
@@ -187,7 +194,8 @@ export function assignRoleRooms(
   // uninterrupted attention, does it change the room's RULES (an arena seals),
   // is it spatially greedy. And the inverse matters as much: a FIRE is better
   // stumbled into than routed to, and a TRAP on a dead end is one nobody springs.
-  const promotable = nodes.filter((n) => PROMOTABLE.has(roles.role(n.roomId)));
+  const promotable = nodes.filter((n) =>
+    PROMOTABLE.has(roles.role(n.roomId)) && !opts.unavailable?.has(n.roomId));
   if (promotable.length === 0) return { assigned };
 
   // RESERVE — keep at least HALF the floor's content rooms ordinary. The ratio

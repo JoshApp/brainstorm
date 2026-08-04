@@ -25,6 +25,7 @@ import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles'
 import { planCentrepiece } from './centrepieces';
 import { assignModifiers } from './room-modifiers';
 import { signatureFor, signatureLightDensity, tintRoomTorches } from './room-signature';
+import { roomType } from './room-types';
 import { planFloor, requiredLeafCount } from './floor-plan';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
@@ -399,6 +400,33 @@ const EVENT_PROP_KINDS = new Set<string>([
 // room too small to reach it, the placer takes the farthest cell it can.
 const EVENT_CLEARANCE_M = 3.0;
 
+/**
+ * Does this vault BAKE a major event into its own template — an altar, a basin,
+ * a reliquary, a merchant?
+ *
+ * Such a room is already ABOUT something, so it must not be promoted to a role
+ * room on top of that. A trove needs a clean stage: its offerings are the reason
+ * you walked in, and a hand-authored blood altar in the same chamber makes two
+ * events compete for the same room and the same eye. (This is how a trove came
+ * to be built around a tithe basin — the promotion never asked what the vault
+ * already contained.)
+ */
+function vaultBakesMajorEvent(vault: Vault): boolean {
+  const isMajor = (kind: string) => EVENT_PROP_KINDS.has(kind) && kind !== 'pillar';
+  for (const p of vault.props ?? []) {
+    if (p.kind === 'group') {
+      const group = PROP_GROUPS[p.groupId];
+      if (group?.children.some((c) => isMajor(c.prop.kind))) return true;
+    } else if (isMajor(p.kind)) {
+      return true;
+    }
+  }
+  for (const entries of Object.values(vault.cellProps ?? {})) {
+    if ((entries ?? []).some((e) => isMajor(e.kind))) return true;
+  }
+  return false;
+}
+
 // The `hazard` MODIFIER — traps dressed through a room (distinct from the trap
 // ROOM, whose spikes ring its prize). Spread far enough apart that a player can
 // always pick a line between them; a trap you can't avoid is just damage.
@@ -703,6 +731,9 @@ export function composeFloor(
   // rooms aren't. See floor-roles.assignRoleRooms.
   const rolePlan = assignRoleRooms(roles, roleNodes, {
     depth, rand, isBossFloor: opts.isBossFloor === true, plan,
+    // Rooms whose VAULT is already about something (see vaultBakesMajorEvent).
+    // A staged room gets a clean chamber or it isn't staged.
+    unavailable: new Set(placed.filter((pv) => vaultBakesMajorEvent(pv.vault)).map((pv) => pv.roomId)),
   });
   // Third pass: 0-2 rooms get a MODIFIER — what happens around their centrepiece
   // (the doors seal, the lights are out, the floor is trapped, the reward is
@@ -783,8 +814,20 @@ export function composeFloor(
     // fall through to a rolled-enemy spawn — guards against a
     // duplicate boss in a pre-arena room.
     const allowBoss = opts.isBossFloor === true && pv.vault.tags.includes('boss');
+    // What the ROOM tolerates decides what its blind `$` / `?` slots may become.
+    // A vault template is authored without knowing it'll be this floor's trove,
+    // so without this a promoted room grew a rolled chest beside its offerings
+    // and spikes across its shop floor. The type table already says no; this is
+    // where the slot asks. `hazard`-modified rooms keep their traps — that
+    // modifier is the room asking FOR them.
+    const typeHere = roomType(rolePlan.assigned.get(pv.roomId) ?? roles.role(pv.roomId));
     const { map: populated, spawns: cellSpawns, features: cellFeatures } = populateTemplate(
       pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette, allowBoss,
+      {
+        minorLoot: typeHere.minorLoot,
+        hazards: typeHere.minorLoot || modPlan.byRoom.get(pv.roomId)?.kind === 'hazard'
+          || typeHere.centrepiece === 'hazard',
+      },
     );
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
@@ -911,6 +954,17 @@ export function composeFloor(
       }
     }
 
+    // BAKED FURNITURE, in vault-local coords — every prop the VAULT itself
+    // authored (`vault.props`, groups expanded). Collected here and filed into
+    // the occupancy grid the moment it exists, a few lines below.
+    //
+    // This used to be the biggest hole in the placement model. `cellProps` and
+    // the `$`/`?` feature slots were reserved; a vault's own `props` array never
+    // was, so every pass that asks occupancy "is this cell free?" — decor,
+    // enemies, content markers, the centrepiece — answered YES over an authored
+    // altar. That is how a trove's middle offering came to sit at 0.00m from a
+    // baked tithe basin. Reserve it once here and the whole class is closed.
+    const bakedLocal: Array<{ kind: string; x: number; z: number }> = [];
     if (pv.vault.props) {
       // Vault-local rect for clearance culling — used to drop group
       // children that would clip into a wall.
@@ -923,6 +977,10 @@ export function composeFloor(
           // translate to WORLD via the vault's offset.
           const expanded = expandGroup(p, vaultRect);
           for (const child of expanded) {
+            const c = child as { kind: string; x?: number; z?: number };
+            if (typeof c.x === 'number' && typeof c.z === 'number') {
+              bakedLocal.push({ kind: c.kind, x: c.x, z: c.z });
+            }
             const tp = translateProp(child, pv.offsetX, pv.offsetZ);
             if (tp.kind === 'model') tp._dbg = `group:${p.groupId}@${pv.vault.id}`;
             props.push(tp);
@@ -940,6 +998,10 @@ export function composeFloor(
             roomId: p.roomId ?? pv.roomId,
           });
         } else {
+          const pp = p as { kind: string; x?: number; z?: number };
+          if (typeof pp.x === 'number' && typeof pp.z === 'number') {
+            bakedLocal.push({ kind: pp.kind, x: pp.x, z: pp.z });
+          }
           const tp = translateProp(p, pv.offsetX, pv.offsetZ);
           if (tp.kind === 'model') tp._dbg = `vault:${pv.vault.id}`;
           props.push(tp);
@@ -979,6 +1041,25 @@ export function composeFloor(
     }
     for (const cs of cellSpawns) occ.reserve(cs.col, cs.row, 'floor', 'spawn');                 // X enemies + B boss
     for (const cf of cellFeatures) occ.reserveWithApproach(cf.col, cf.row, 'floor', 'feature'); // $ ? altars/chests/fountains + approach
+    // The vault's own authored furniture (collected as `bakedLocal` above). An
+    // INTERACTABLE also claims its approach, exactly as a `$`/`?` slot does —
+    // you have to be able to walk up to a basin, and nothing may be staged on
+    // the step in front of it.
+    {
+      const bw = pv.vault.map[0]?.length ?? 0;
+      const bd = pv.vault.map.length;
+      for (const b of bakedLocal) {
+        const layer = propLayer(b.kind);
+        if (!layer) continue;                     // decals / cobwebs coexist with anything
+        const col = Math.floor(b.x + bw / 2);
+        const row = Math.floor(b.z + bd / 2);
+        if (layer === 'floor' && EVENT_PROP_KINDS.has(b.kind)) {
+          occ.reserveWithApproach(col, row, layer, 'feature');
+        } else {
+          occ.reserve(col, row, layer, 'authored');
+        }
+      }
+    }
     // Map '*' wall torches (sub.torches: world coords with WALL_OFFSET; reverse-
     // map to cell via ±0.5 rounding so corner-cell *'s dedup) onto the wall layer.
     const W = pv.vault.map[0]?.length ?? 0;

@@ -287,7 +287,23 @@ export function populateTemplate(
    *  vault accidentally spawning a second boss in a pre-arena
    *  room. composeFloor opts only the boss-tagged vault in. */
   allowBossExpansion: boolean = true,
+  /**
+   * What the ROOM ITSELF tolerates, from its room-type (level/room-types.ts).
+   * A vault's `$` and `?` slots are authored blind — the template has no idea it
+   * will be promoted to the floor's trove or its shop — so a room that declares
+   * `minorLoot: false` was still getting a rolled chest wedged beside its
+   * offerings, and a room that declares no hazards still grew spikes. The type
+   * table is the authority on what may happen in a room; this is where a slot
+   * asks it.
+   *
+   * Both rolls still HAPPEN when refused, and their results are discarded. The
+   * rng sequence is shared with the rest of the floor's layout, so skipping a
+   * roll would reshuffle every room downstream of a promotion.
+   */
+  roomCaps: { minorLoot?: boolean; hazards?: boolean } = {},
 ): PopulatedTemplate {
+  const allowMinorLoot = roomCaps.minorLoot !== false;
+  const allowHazards = roomCaps.hazards !== false;
   // Encounter / event multipliers — both default to 1.0 (current
   // behaviour) so existing seeds reproduce when the palette is
   // omitted. < 1.0 gates the slot's fill via an extra rand() — the
@@ -359,7 +375,7 @@ export function populateTemplate(
         out += '.';
         if (eventMul < 1.0 && rand() >= eventMul) {
           // gated out — empty
-        } else if (rand() < Math.min(0.8, 0.5 + depth * 0.02)) {
+        } else if (rand() < Math.min(0.8, 0.5 + depth * 0.02) && allowMinorLoot) {
           features.push({ col: colIdx, row: rowIdx, prop: { kind: 'chest', x: 0, z: 0 } });
         }
       } else if (ch === '?') {
@@ -372,7 +388,7 @@ export function populateTemplate(
         if (eventMul < 1.0 && rand() >= eventMul) {
           out += '.';
         } else {
-          out += rand() < 0.44 ? '^' : '.';
+          out += (rand() < 0.44 && allowHazards) ? '^' : '.';
         }
       } else {
         out += ch;

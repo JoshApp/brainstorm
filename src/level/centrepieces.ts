@@ -222,18 +222,34 @@ function planConsolationChest(site: CentrepieceSite, ctx: CentrepieceCtx): Place
 function planMerchant(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiece {
   if (!site.free(site.x, site.z)) return EMPTY;
   const dir = site.entranceDir ?? { x: 0, z: -1 };
-  // The keeper stands a step BEYOND the counter, on the far side from the door.
-  const keep = { x: site.x - dir.x * STALL_DEPTH, z: site.z - dir.z * STALL_DEPTH };
   const props: PropSpec[] = [];
   const claimed: Array<{ x: number; z: number }> = [];
+  // `site.free` only knows what the COMPOSER reserved before this plan started —
+  // it cannot see a cell THIS plan claimed a moment ago. Without that memory the
+  // keeper, when his setback cell was blocked, fell back onto the room's centre
+  // and the middle ware landed on top of him (reported: a shopkeeper standing
+  // inside his own stock).
+  const open = (x: number, z: number) =>
+    site.free(x, z) && claimed.every((c) => Math.hypot(c.x - x, c.z - z) >= 0.9);
 
-  if (site.free(keep.x, keep.z)) {
-    props.push({ kind: 'merchant', x: keep.x, z: keep.z, rotY: facingEntrance(site) });
-    claimed.push(keep);
-  } else {
-    props.push({ kind: 'merchant', x: site.x, z: site.z, rotY: facingEntrance(site) });
-    claimed.push({ x: site.x, z: site.z });
+  // THE KEEPER stands BEYOND the counter, on the far side from the door. Try the
+  // intended setback first, then nearer/further, then a step to either side —
+  // anything rather than collapsing onto the spot the wares want. A shop with
+  // nowhere to stand its keeper is no shop at all, so that case bails.
+  const lat = { x: -dir.z, z: dir.x };   // perpendicular to the approach
+  let keeper: { x: number; z: number } | null = null;
+  outer: for (const back of [STALL_DEPTH, STALL_DEPTH * 0.7, STALL_DEPTH * 1.35]) {
+    for (const side of [0, 1, -1]) {
+      const c = {
+        x: site.x - dir.x * back + lat.x * side,
+        z: site.z - dir.z * back + lat.z * side,
+      };
+      if (open(c.x, c.z)) { keeper = c; break outer; }
+    }
   }
+  if (!keeper) return EMPTY;
+  props.push({ kind: 'merchant', x: keeper.x, z: keeper.z, rotY: facingEntrance(site) });
+  claimed.push(keeper);
 
   // THE COUNTER — wares across the approach, between you and him.
   const gap = CONFIG.CENTREPIECE.OFFERING_MIN_SPACING;
@@ -242,7 +258,7 @@ function planMerchant(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrep
   const stalls = lineSlots(site, CONFIG.CENTREPIECE.STALL_WARES, gap, across);
   const taken = new Set<string>();
   for (const s of stalls) {
-    if (!site.free(s.x, s.z)) continue;
+    if (!open(s.x, s.z)) continue;
     let item = null;
     for (let attempt = 0; attempt < 6 && !item; attempt++) {
       const rolled = rollDropItem('merchant', ctx.depth, ctx.rand);
