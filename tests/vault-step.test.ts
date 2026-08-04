@@ -41,9 +41,24 @@ test('a real wall is still a wall', () => {
   assert.equal(isVaulting(), false);
 });
 
-test('brushing an obstacle sideways does not vault', () => {
-  // The player has to be genuinely pushing INTO it, not grazing past.
-  assert.equal(tryVaultStep(0, 0, 0.05, 0.05, 0.3, CLEAR), false);
+test('A REAL FRAME DELTA VAULTS — the bug that made this a no-op for its whole life', () => {
+  // The caller passes THIS FRAME'S movement: speed × dt, about 0.056m at a walk.
+  // Every test in this file used to hand it a unit vector, so a guard that
+  // rejected anything under 0.35m looked correct here and rejected literally
+  // every call in the game. The vault never fired once. Feed it what the game
+  // feeds it.
+  const STEP = 0.056;
+  assert.equal(tryVaultStep(0, 0, 0, STEP, 0.3, CLEAR), true,
+    'a per-frame walk delta was refused — the feature is a no-op again');
+});
+
+test('a diagonal frame delta vaults too', () => {
+  // 0.04² + 0.04² ≈ 0.056 — the same walk, held at 45°.
+  assert.equal(tryVaultStep(0, 0, 0.04, 0.04, 0.3, CLEAR), true);
+});
+
+test('a zero move never vaults', () => {
+  assert.equal(tryVaultStep(0, 0, 0, 0, 0.3, CLEAR), false);
 });
 
 test('a vault in flight does not restart itself', () => {

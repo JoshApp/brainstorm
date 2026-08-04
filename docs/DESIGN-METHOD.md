@@ -78,6 +78,29 @@ now runs every cell through `composeStrikeDamage`; `hurtbox.ts` already exported
 `ROLE_DEFAULT_MUL` for exactly this reason. Assume the same rot is elsewhere and
 check before trusting a report you didn't just write.
 
+### The same rot in a unit test: feeding it values the caller never sends
+
+The vault step shipped with eleven passing tests and **never fired once in the
+game**. Its guard rejected any move shorter than 0.35m, "so you have to be
+walking into it, not brushing past" — but the caller passes *this frame's*
+movement delta, which is speed × dt, about 0.056m at a walk. Every real call was
+refused. Every test passed, because every test handed it a unit vector.
+
+The test didn't fail to catch the bug; it **agreed with** it. Both the guard and
+the test were written in one sitting from the same wrong idea of what the caller
+sends, so they confirmed each other. Green.
+
+**A unit test has to feed the values the real caller feeds.** If you can't say
+what units and magnitude arrive at a function in production — per-frame or
+per-second, normalised or scaled, fraction or count — you cannot write a
+meaningful test for it, and the one you do write will encode your guess. Two
+cheap habits: state the units in the parameter's doc comment (`~0.05m at a
+walk`), and where a magnitude matters, put a real one in the test with the
+arithmetic that produced it written next to it.
+
+Same family as §4's stale constants: a number is meaningless without its units,
+whether it's a config value or an argument.
+
 ---
 
 ## 3. A constraint about the final state must be checked against the final state
@@ -185,7 +208,7 @@ that request lets the work check itself.
 
 - Bonuses add, penalties multiply, crit multiplies once.
 - Player-controlled condition + multiplicative payoff = broken. Always.
-- Every audit tool calls the real function.
+- Every audit tool calls the real function; every unit test feeds the caller's real values.
 - Check final-state rules against the final state.
 - Costs in another system's units are fractions.
 - Simulate to find outliers, then go and feel the ones that survive.

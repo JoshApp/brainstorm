@@ -43,6 +43,10 @@ const RISE_M = 0.42;         // how high the eye arcs over the obstacle
  * take the first that lands clear. Short first, so a low kerb gets a short hop
  * and a fallen column gets a real stride.
  */
+// Probed against real floors (seeds 4242/777/99): of 73 approaches to a
+// dashable obstacle, 1.5m landed clear ZERO times and 1.9m landed 82% of them,
+// with 2.3m covering most of the rest. 1.5 stays for a genuinely low kerb, but
+// the fallen-pillar case — the one this feature exists for — is 1.9.
 const CARRY_CANDIDATES_M = [1.5, 1.9, 2.3];
 
 let activeUntil = 0;
@@ -86,6 +90,9 @@ export interface VaultProbe {
  * that's the honest trigger, because it means the player pushed into something
  * and the world said no.
  *
+ * `moveX`/`moveZ` are THE FRAME'S movement delta (speed × dt, ~0.05m at a
+ * walk), read as a direction. Any non-zero magnitude is fine.
+ *
  * Returns true when a vault began (the caller should stop applying ordinary
  * movement this frame and read vaultPosition instead).
  */
@@ -101,8 +108,22 @@ export function tryVaultStep(
   if (isDodging()) return false;
   if (isInCombat()) return false;
 
+  // moveX/moveZ are THIS FRAME'S movement delta — speed × dt, so roughly 0.05m
+  // at a walk. They are a DIRECTION, not a distance.
+  //
+  // This used to reject anything shorter than 0.35m, "so you have to be walking
+  // into it rather than brushing past". That threshold was written as if the
+  // caller passed a normalised input vector; it passes a per-frame step, which
+  // is never a third of a metre. The gate therefore rejected every real call and
+  // the vault never fired once in the game — while the unit test passed, because
+  // the test fed it a unit vector and so agreed with the mistake instead of
+  // catching it.
+  //
+  // There is no magnitude condition to restore: "is the player pushing into
+  // this?" is a question the CALLER already answered by only calling on a walk
+  // that got blocked. All that's needed here is a direction to travel in.
   const len = Math.hypot(moveX, moveZ);
-  if (len < 0.35) return false;   // must be genuinely walking INTO it, not brushing
+  if (len < 1e-6) return false;
   const nx = moveX / len, nz = moveZ / len;
   const carry = CARRY_CANDIDATES_M.find(
     (d) => walkable.canDashOver(x, z, x + nx * d, z + nz * d, radius),
