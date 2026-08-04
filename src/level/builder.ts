@@ -145,6 +145,9 @@ export interface LiveLevel {
    * removes this from the scene + disposes meshes inside it.
    */
   root: THREE.Group;
+  /** The style's shared materials — so anything spawned INTO a live floor
+   *  (an offering's plinth, a runtime prop) matches the walls it stands beside. */
+  materials: StyleMaterials;
   /**
    * Call to dispose this level: removes root from its parent, disposes
    * geometries/materials inside, clears interactables, destroys enemy
@@ -2796,6 +2799,7 @@ export function buildLevel(
     destructibles,
     playerSpawn: spec.startPos,
     root,
+    materials,
     teardown,
     // Stash on the object via casting; main.ts pulls this out via a typed
     // wrapper if needed. For now expose directly.

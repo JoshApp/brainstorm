@@ -85,20 +85,24 @@ export interface EventDef {
   onDestroy?: () => void;
 }
 
-function canAfford(cost?: TransactionPrice): boolean {
+// The ONE cost applier. Exported so every priced thing in the game — events,
+// offerings, doors — charges through the same code path rather than each
+// re-implementing "can I afford / take the payment". A new priced surface
+// should import these, never re-derive them.
+export function canAfford(cost?: TransactionPrice): boolean {
   if (!cost) return true;
   if (cost.gold && getGold() < cost.gold) return false;
   if (cost.itemId && getCount(cost.itemId) <= 0) return false;
   return true;   // hp is always "affordable" — it can kill you, that's the bet
 }
 
-function unaffordableMessage(cost: TransactionPrice): string {
+export function unaffordableMessage(cost: TransactionPrice): string {
   if (cost.itemId) return /key/i.test(cost.itemId) ? 'Locked. It wants a key.' : 'It wants something you lack.';
   if (cost.gold) return 'Not enough gold.';
   return 'You cannot pay.';
 }
 
-function payCost(cost: TransactionPrice | undefined): void {
+export function payCost(cost: TransactionPrice | undefined): void {
   if (!cost) return;
   if (cost.hp) damagePlayer(cost.hp, null, 'physical', false, 'their own bargain');
   if (cost.gold) spendGold(cost.gold);

@@ -1,47 +1,31 @@
 import * as THREE from 'three';
-import { buildModel } from '../ecs/build-model';
-import { generateEntityId } from '../ecs/world';
-import { registerInteractable } from './system';
+import { spawnOffering } from './offering';
 import { setSlot } from '../player/equipment';
-import { emit, on as onEvent } from '../broadcast/event-bus';
-import { playEquipClick } from '../audio/sfx';
-import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
+import { emit } from '../broadcast/event-bus';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
-import { disposeBuiltTree } from '../style/material-registry';
 
-// Starter-altar — a stone block with one of three offered weapons
-// floating + slowly rotating above it. Lives ONLY in the starter
-// chamber. On use:
+// Starter-altar — a stone block with one of three offered weapons floating +
+// slowly rotating above it. Lives ONLY in the starter chamber.
 //
-//   1. The chosen weapon is equipped into the player's weapon slot
-//      (the equipment listener in main.ts handles the viewmodel swap).
-//   2. A 'starter:chosen' event fires.
-//   3. ALL starter altars (this one and its siblings) drop their
-//      floating weapon meshes — but the stone blocks STAY as
-//      monuments. You walked past two rejected altars; you keep
-//      walking past two empty ones. Commitment-by-absence.
+// This is now just an OFFERING (interactables/offering.ts) with a bespoke take:
+// the three altars share a group id, so taking one closes the other two and
+// leaves their stones standing empty. You walked past two rejected altars; you
+// keep walking past two empty ones. Commitment-by-absence.
 //
-// The stair-unlock predicate (has-equipment: weapon) flips the
-// stairwell from SEALED to DESCEND the moment the weapon is set,
-// without any additional wiring here.
+// The stair-unlock predicate (has-equipment: weapon) flips the stairwell from
+// SEALED to DESCEND the moment the weapon is set, with no wiring here.
 
-// Slow rotation + small bob to suggest "alive offering," not a museum
-// piece nailed to a plinth.
-const ROTATE_SPEED = 0.5;        // rad/sec around the weapon's Y axis
-const BOB_AMPLITUDE = 0.025;     // metres of vertical bob
-const BOB_FREQUENCY = 0.8;       // Hz — slow, dreamy hover (was 1.5, read jittery)
+/** Every starter altar on a floor belongs to this one choice. */
+const STARTER_GROUP = 'starter-altar';
 
 /**
  * Spawn a starter altar (stone block + offered weapon).
  *
- * @param onDestroy  Owner-supplied cleanup — typically the builder
- *                   passes a splice that removes this altar's
- *                   collision AABB from the level's obstacles list
- *                   when the offer is gone. (Without this, the
- *                   invisible hitbox stays — the recurring leak the
- *                   interactables system now defends against via
- *                   the onDestroy hook.)
+ * @param onDestroy Owner-supplied cleanup — the builder's hook for removing the
+ *                  altar's collision AABB. (Today the stone REMAINS a collider
+ *                  after the weapon is taken, so the builder passes nothing;
+ *                  the hook stays wired for a future walk-through-empty-altar.)
  */
 export function spawnStarterAltar(
   scene: THREE.Object3D,
@@ -51,137 +35,26 @@ export function spawnStarterAltar(
   materials: StyleMaterials,
   onDestroy?: () => void,
 ) {
-  // ── Stone group — the altar block. Stays in the scene forever, as
-  // a monument to the choice. Lives directly under the scene root so
-  // the system's auto-remove on the WEAPON group can't drag the
-  // stones with it.
-  const stoneGroup = new THREE.Group();
-  stoneGroup.position.copy(pos);
-  stoneGroup.rotation.y = rotY;
-  scene.add(stoneGroup);
-
-  const baseHeight = 0.62;
-  const baseW = 0.70;
-  const baseD = 0.55;
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(baseW, baseHeight, baseD),
-    materials.wall,
+  spawnOffering(
+    { item: weaponItem, pos, rotY },
+    {
+      kind: 'starter-altar',
+      scene,
+      materials,
+      style: 'pedestal',
+      groupId: STARTER_GROUP,
+      // The opening choice is a stat-for-stat comparison of three weapons you
+      // know nothing about — so all three show their numbers at once rather than
+      // making you walk to each. Every later trove uses the lean-in default.
+      leanInForStats: false,
+      onDestroy,
+      // Bespoke take: the FIRST weapon is set directly into the slot rather than
+      // routed through ground-equip — there is nothing to compare against yet,
+      // and main.ts's equipment listener swaps the viewmodel off the slot change.
+      onTake: (item) => {
+        setSlot('weapon', item);
+        emit({ type: 'starter:chosen', weaponId: item.id });
+      },
+    },
   );
-  base.position.y = baseHeight / 2;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  stoneGroup.add(base);
-
-  const topW = baseW + 0.06;
-  const topD = baseD + 0.06;
-  const topH = 0.06;
-  const top = new THREE.Mesh(
-    new THREE.BoxGeometry(topW, topH, topD),
-    materials.wall,
-  );
-  top.position.y = baseHeight + topH / 2;
-  top.castShadow = true;
-  top.receiveShadow = true;
-  stoneGroup.add(top);
-
-  // ── Weapon group — SEPARATE root, sibling to the stones. This is
-  // what built.group points at, so the system's auto-remove on
-  // destroy only takes the weapon away (we still set
-  // keepBuiltOnDestroy=true belt-and-braces for the partial-removal
-  // semantics, but having a separate root means tap-target raycasts
-  // also resolve to a tap on the weapon, not on the stone block).
-  const weaponSpec = weaponItem.viewmodel ?? weaponItem.dropModel;
-  const built = buildModel(weaponSpec);
-  const weaponGroup = built.group;
-  const restingY = baseHeight + topH + 0.30;
-  weaponGroup.position.copy(pos);
-  weaponGroup.position.y += restingY;
-  // Same Y-rotation as the stone so tilt/orientation reads consistent;
-  // mild diagonal tilt on top so the offering feels held aloft, not
-  // balanced.
-  weaponGroup.rotation.set(0.20, rotY, 0.30);
-  scene.add(weaponGroup);
-
-  // ── Interactable wiring ──────────────────────────────────────────
-  const id = generateEntityId('starter-altar');
-  let phase = 0;
-  let taken = false;
-
-  // Item-preview label — floats name + flavor + stats above the altar.
-  // Starter altars surface the preview UNCONDITIONALLY once placed:
-  // the room IS the picker, the player should see all three options
-  // at once when surveying the chamber. The shared screen-projector
-  // hides it automatically when off-screen, behind the camera, or
-  // while a menu is open. Anchored ~1.7m above the altar base so it
-  // floats above the rotating weapon, not on top of it.
-  registerItemPreview(id, weaponItem);
-  const previewY = pos.y + 1.7;
-
-  const interactable: import('./types').Interactable = {
-    id,
-    position: pos.clone(),
-    radius: 1.5,
-    // Prompt sits LOW (altar top, below the floating weapon) so it clears the
-    // weapon + its description box stacked above.
-    labelOffsetY: 0.55,
-    promptLabel: 'TAKE',
-    // built.group = weaponGroup so tap-target raycasts resolve when
-    // the player taps the floating weapon. The stone block is its
-    // own scene-graph branch and stays after this interactable dies.
-    built: {
-      group: weaponGroup,
-      parts: new Map(),
-      slots: new Map(),
-      materials: new Map(),
-      hitTargets: [],
-    },
-    // Belt-and-braces with the separate-roots approach above: even if
-    // someone later re-parents the weapon under the stone group, this
-    // flag prevents the system from yanking the stone too.
-    keepBuiltOnDestroy: true,
-    onUse() {
-      if (taken) return;
-      taken = true;
-      // Equip directly. The equipment listener in main.ts swaps the
-      // sword viewmodel + the active combat stats; no manual wiring
-      // needed here.
-      setSlot('weapon', weaponItem);
-      playEquipClick();
-      // Notify siblings so they tear down their offers too.
-      emit({ type: 'starter:chosen', weaponId: weaponItem.id });
-      // (No card draw here — the starter room has its own fire, and resting at a
-      // fire is what deals your opening hand. The altar only gives the weapon.)
-    },
-    tick(dt: number) {
-      if (taken) return;
-      phase += dt;
-      weaponGroup.rotation.y = rotY + phase * ROTATE_SPEED;
-      weaponGroup.position.y = pos.y + restingY + Math.sin(phase * BOB_FREQUENCY * Math.PI * 2) * BOB_AMPLITUDE;
-      setItemPreviewAnchor(id, pos.x, previewY, pos.z, true);
-    },
-    destroyed: false,
-    // Cleanup: remove the floating weapon group + dispose its meshes,
-    // then call the owner's splice (which removes the collision AABB
-    // the builder pushed into the level's obstacles list). The stone
-    // block + its base AABB STAY — the silent "you walked past this"
-    // commitment marker.
-    onDestroy() {
-      scene.remove(weaponGroup);
-      disposeBuiltTree(weaponGroup);
-      unregisterItemPreview(id);
-      onDestroy?.();
-      unsubscribe();
-    },
-  };
-  registerInteractable(interactable);
-
-  // ── Self-mark-destroyed on any starter:chosen ────────────────────
-  // The system tick will see destroyed=true next frame and run
-  // onDestroy (above) which does the actual cleanup.
-  const unsubscribe = onEvent((e) => {
-    if (e.type !== 'starter:chosen') return;
-    if (interactable.destroyed) return;
-    interactable.destroyed = true;
-    interactable.promptLabel = '';
-  });
 }

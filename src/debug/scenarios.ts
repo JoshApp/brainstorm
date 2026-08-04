@@ -27,6 +27,8 @@ import { createPickup } from '../interactables/pickup';
 import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { spawnGateOffering } from '../interactables/gate-offering';
+import { spawnOfferingGroup } from '../interactables/offering';
+import type { ItemSpec } from '../content/items';
 import { spawnChest } from '../interactables/chest';
 import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
@@ -156,6 +158,19 @@ export interface Scenario {
   /** Fill both weapon slots, then open the ground-equip SWAP-OR-LEAVE compare
    *  with a third found weapon (for snapping the equip-compare screen). */
   equipCompare?: boolean;
+  /** Stand a TROVE up in front of the player — N offerings on plinths (or on the
+   *  ground), take one and the rest withdraw. `cost` prices the whole group. */
+  trove?: {
+    itemIds: string[];
+    style?: 'pedestal' | 'ground';
+    /** Price for any pick: gold amount, or an item id (a key). */
+    gold?: number;
+    itemId?: string;
+    /** Metres in front of the player the row is centred. Default 3.2. */
+    dist?: number;
+    /** Metres between plinths. Default 1.6. */
+    spacing?: number;
+  };
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
   /** RAW PointLights added straight to the scene, BYPASSING the light pool —
@@ -1529,6 +1544,46 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // THE STARTER ALTARS — the first thing every player sees, and now an OFFERING
+  // group like any other (one shared groupId; taking one closes its siblings).
+  // Goes through the real builder prop path, so this is the regression guard on
+  // the starter chamber. `delve snap starter-choice`.
+  'starter-choice': {
+    freeze: true,
+    level: {
+      id: 'dbg-starter', depth: 1, displayName: 'THE THRESHOLD', fogColor: 0x07060a,
+      startPos: { x: 0, z: 4.2, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 11, d: 11 }, height: 3.8 }],
+      corridors: [],
+      props: [
+        { kind: 'starter-altar', x: -2.4, z: 0, rotY: 0, weaponId: 'bone-needle' },
+        { kind: 'starter-altar', x:  0.0, z: 0, rotY: 0, weaponId: 'rusted-sword' },
+        { kind: 'starter-altar', x:  2.4, z: 0, rotY: 0, weaponId: 'iron-maul' },
+      ],
+      torches: [
+        { x: -4.6, z: -4.6, wall: 'N', height: 2.2 }, { x: 4.6, z: -4.6, wall: 'N', height: 2.2 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4.2, lookAt: { x: 0, z: 0, y: 1.1 } },
+  },
+
+  // THE TROVE (the offering system) — three relics on plinths, take one and the
+  // other two withdraw. `delve snap trove`. Swap `style: 'ground'` to see the
+  // low-slab presentation instead.
+  trove: {
+    freeze: true,
+    trove: {
+      itemIds: ['gorged-tick', 'weeping-splinter', 'sanguine-ring'],
+      style: 'pedestal',
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -20, z: -20 } },
+      { index: 1, pos: { x:  20, z: -20 } },
+      { index: 2, pos: { x: -20, z:  20 } },
+    ],
+  },
+
   // The ground-equip SWAP-OR-LEAVE compare (#97): two weapons carried, a third
   // found → the sheet opens to choose which to shed. `delve snap equip-compare`.
   'equip-compare': {
@@ -2478,6 +2533,45 @@ export function applyScenario(
   }
   if (scenario.openCharacterScreen) {
     openCharacterScreen();
+  }
+
+  if (scenario.trove) {
+    // Stand a row of offerings in front of the player, facing them. Take one and
+    // the rest withdraw, leaving bare stone. `delve snap trove`.
+    const t = scenario.trove;
+    const dist = t.dist ?? 3.2;
+    const spacing = t.spacing ?? 2.8;
+    const items = t.itemIds.map((id) => ITEMS[id]).filter((i): i is ItemSpec => !!i);
+    const cost = t.gold != null ? { gold: t.gold } : t.itemId ? { itemId: t.itemId } : undefined;
+    // Lay the row out along the camera's actual FORWARD (flattened to the floor)
+    // rather than assuming −Z, so the trove is in view whatever the spawn faces.
+    const p = ctx.camera.position;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1); else fwd.normalize();
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);   // fwd rotated +90° on Y
+    const faceCamera = Math.atan2(-fwd.x, -fwd.z);       // offerings look back at you
+    const offerings = items.map((item, i) => {
+      const lateral = (i - (items.length - 1) / 2) * spacing;
+      return {
+        item,
+        pos: new THREE.Vector3(
+          p.x + fwd.x * dist + right.x * lateral,
+          0,
+          p.z + fwd.z * dist + right.z * lateral,
+        ),
+        rotY: faceCamera,
+      };
+    });
+    spawnOfferingGroup({
+      kind: 'trove',
+      scene: ctx.level.root,
+      materials: ctx.level.materials,
+      style: t.style ?? 'pedestal',
+      cost,
+      family: cost ? 'priced' : undefined,
+      offerings,
+    });
   }
 
   if (scenario.equipCompare) {
