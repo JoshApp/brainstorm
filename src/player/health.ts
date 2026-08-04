@@ -17,6 +17,7 @@ import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
 import { DEV } from '../debug/dev';
+import { absorbWithEmber } from './ember';
 
 // Player health module. State now lives in the world entity (id: 'player')
 // rather than module-level vars, so effects (heal, apply-buff, damage) can
@@ -194,7 +195,12 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
   if (!player || !player.hp) return;
 
   const result = computeDamage({ source, target: PLAYER_ENTITY_ID, base: amount, type });
-  player.hp.current = Math.max(0, player.hp.current - result.applied);
+  // THE EMBER eats the blow first — borrowed life is always spent before your
+  // own (player/ember.ts). Everything downstream (feedback, recap, death) keys
+  // off what SURVIVED the ember, so a fully-absorbed hit still shakes and flashes
+  // (you felt it) but costs you no real health and cannot kill.
+  const applied = absorbWithEmber(result.applied);
+  player.hp.current = Math.max(0, player.hp.current - applied);
   // Toughness proficiency: damage absorbed → +N. Block ticks too if
   // a shield is equipped (passive shields = every hit while equipped
   // counts; narrows to actual blocks once active blocking lands).

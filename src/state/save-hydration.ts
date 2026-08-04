@@ -1,5 +1,6 @@
 import { clearInventory, addItemSilently } from '../player/inventory';
 import { clearReliquary } from '../player/reliquary';
+import { resetEmber } from '../player/ember';
 import { setSlot, setSidearm, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
@@ -20,6 +21,8 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   clearInventory();
   clearReliquary();
   setSidearm(null);
+  // Borrowed life is per-run: a fresh run (or a restore) starts with none.
+  resetEmber();
   // Hydrate inventory from save (or empty for new run).
   if (saveData) {
     for (const [id, count] of Object.entries(saveData.inventory)) {

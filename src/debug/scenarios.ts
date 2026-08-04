@@ -28,6 +28,7 @@ import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { spawnGateOffering } from '../interactables/gate-offering';
 import { spawnOfferingGroup } from '../interactables/offering';
+import { grantEmber } from '../player/ember';
 import type { ItemSpec } from '../content/items';
 import { spawnChest } from '../interactables/chest';
 import { openInventoryPanel, selectBagItem, selectRelicItem } from '../ui/inventory-panel';
@@ -155,6 +156,9 @@ export interface Scenario {
   selectRelicId?: string;
   /** Open the character sheet (for UI snaps). */
   openCharacterScreen?: boolean;
+  /** Grant N points of EMBER (borrowed life) at startup — the temporary layer
+   *  that absorbs damage before real health. */
+  giveEmber?: number;
   /** Fill both weapon slots, then open the ground-equip SWAP-OR-LEAVE compare
    *  with a third found weapon (for snapping the equip-compare screen). */
   equipCompare?: boolean;
@@ -1499,6 +1503,14 @@ export const SCENARIOS: Record<string, Scenario> = {
     hudOnly: true,
     damagePlayerBy: 7,
   },
+  // THE EMBER — borrowed life sitting above the hearts. Amber lozenges, spent
+  // before your own blood. `delve snap hud-ember`.
+  'hud-ember': {
+    freeze: true,
+    hudOnly: true,
+    giveEmber: 6,
+    damagePlayerBy: 2,
+  },
   // Consumable hotbar with a healthy stack of consumables — the flask +
   // satellite icons + count badges visible.
   'hud-hotbar': {
@@ -2457,6 +2469,9 @@ export function applyScenario(
     debugUseAll();
     if (scenario.tickInteractables) debugTickAll(scenario.tickInteractables);
   }
+
+  // Ember BEFORE damage — borrowed life must exist for the blow to eat it.
+  if (scenario.giveEmber) grantEmber(scenario.giveEmber);
 
   if (scenario.damagePlayerBy) {
     damagePlayer(scenario.damagePlayerBy);

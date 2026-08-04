@@ -51,6 +51,8 @@ export type GameEvent =
   | { type: 'chest:opened'; tier: 'wood' | 'silver' | 'gold' }
   | { type: 'level:up'; level: number }
   | { type: 'starter:chosen'; weaponId: string }
+  /** Borrowed life (player/ember.ts) gained or spent. */
+  | { type: 'ember:changed'; value: number }
   // ── Transactions (content/transactions.ts owns the grammar) ──
   // One stream for every deal the dungeon makes: blood altars, trials,
   // fountains, merchant buys, tithes. Subscribers: broadcast snark,

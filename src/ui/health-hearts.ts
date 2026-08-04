@@ -2,6 +2,7 @@ import { hpStore, type HpState } from '../state/hud-stores';
 import { hudStyleStore, getHudStyle } from './hud-style';
 import { HEALTH_COLORS } from './hud-design';
 import { heartFillFractions, heartCount, HEART_HP } from './heart-fill';
+import { getEmber, onEmberChanged } from '../player/ember';
 import { bind } from './hud';
 
 // TotK-style heart row for the MINIMAL HUD style. Each heart is worth TWO HP,
@@ -35,6 +36,9 @@ const LOW_BLINK_FRAC = 0.25;
 let root: HTMLDivElement | null = null;
 let bar: HTMLDivElement | null = null;   // inner wrapper that carries the low-HP pulse
 let hearts: HeartSvg[] = [];
+let emberRow: HTMLDivElement | null = null;
+let builtEmberPips = -1;
+let unsubEmber: (() => void) | null = null;
 let builtMax = -1;
 let prevHp = Infinity;   // last rendered hp — detects a fresh wound to re-alarm
 let wasLow = false;      // was the previous frame in the low-HP band
@@ -109,6 +113,43 @@ export function createHealthHearts(): void {
   unsubStyle = hudStyleStore.subscribe(() => applyVisibility());
 
   bind(hpStore, render);
+
+  // THE EMBER row — borrowed life, rendered ABOVE the hearts (column-reverse, so
+  // appended last = highest). Deliberately a DIFFERENT shape and colour from a
+  // heart: these aren't yours, they're on loan from the deep, and they're spent
+  // before your own blood. See player/ember.ts.
+  emberRow = document.createElement('div');
+  Object.assign(emberRow.style, {
+    display: 'flex', gap: `${HEART_GAP}px`, alignItems: 'center',
+  } as Partial<CSSStyleDeclaration>);
+  bar.appendChild(emberRow);
+  unsubEmber = onEmberChanged(renderEmber);
+  renderEmber();
+}
+
+/** One ember pip per HEART_HP of borrowed life — a small amber lozenge. */
+function renderEmber(): void {
+  if (!emberRow) return;
+  const pips = Math.ceil(getEmber() / HEART_HP);
+  if (pips === builtEmberPips) return;
+  builtEmberPips = pips;
+  emberRow.replaceChildren();
+  emberRow.style.marginBottom = pips > 0 ? '3px' : '0';
+  const svgNs = 'http://www.w3.org/2000/svg';
+  for (let i = 0; i < pips; i++) {
+    const el = document.createElementNS(svgNs, 'svg');
+    el.setAttribute('viewBox', '0 0 24 24');
+    el.setAttribute('width', '15'); el.setAttribute('height', '15');
+    const d = document.createElementNS(svgNs, 'path');
+    // A struck-spark lozenge — reads as a coal, not an organ.
+    d.setAttribute('d', 'M12 2 L18 12 L12 22 L6 12 Z');
+    d.setAttribute('fill', 'rgba(255, 186, 96, 0.95)');
+    d.setAttribute('stroke', 'rgba(120, 62, 16, 0.9)');
+    d.setAttribute('stroke-width', '1.5');
+    el.appendChild(d);
+    el.style.filter = 'drop-shadow(0 0 4px rgba(255,150,60,0.75))';
+    emberRow.appendChild(el);
+  }
 }
 
 function applyVisibility(): void {
@@ -140,6 +181,13 @@ function buildHearts(max: number): void {
       idx++;
     }
     bar.appendChild(row);
+  }
+  // The rebuild above wiped the bar, ember row included — put it back on top and
+  // force a re-render (a max-HP change must not silently eat your borrowed life).
+  if (emberRow) {
+    bar.appendChild(emberRow);
+    builtEmberPips = -1;
+    renderEmber();
   }
   builtMax = max;
 }
@@ -260,10 +308,14 @@ function render({ hp, max }: HpState): void {
 export function disposeHealthHearts(): void {
   unsubStyle?.();
   unsubStyle = null;
+  unsubEmber?.();
+  unsubEmber = null;
   if (root?.parentNode) root.parentNode.removeChild(root);
   root = null;
   bar = null;
   hearts = [];
+  emberRow = null;
+  builtEmberPips = -1;
   builtMax = -1;
   prevHp = Infinity;
   wasLow = false;
