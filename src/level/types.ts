@@ -168,6 +168,24 @@ export type RoomSpec = {
    *  'lit' ×1 (default), 'dim' ×0.55, 'dark' ×0. Corridors are always
    *  'dim' (threshold sconces carry their ends). */
   lightTier?: 'lit' | 'dim' | 'dark';
+  /**
+   * Unit vector from the room's centre toward the way the player MOST LIKELY
+   * COMES IN. A room property, not a per-pass calculation, because "which way
+   * does this room face" is a fact about the room that many passes want:
+   * centrepiece layout, prop facing, where a light should draw the eye, which
+   * wall to dress.
+   *
+   * A staged room only reads if it's composed from where the viewer stands. A
+   * row of offerings laid on a fixed world axis becomes a queue you walk down
+   * instead of a choice you take in at a glance; a shopkeeper ends up side-on to
+   * his own counter. This is the fact that lets a room turn toward you.
+   *
+   * MOST LIKELY, not "an" entrance: a room with several mouths uses the one
+   * facing back toward the floor's start, because the spine is walked forward
+   * and that's the door you'll actually arrive through. Undefined for a room
+   * with no corridors (a hand-authored vault, a single-room level).
+   */
+  entranceDir?: Vec2;
   /** How many waves this room's arena gauntlet runs (1-3, default 3). A room
    *  sealed by a MODIFIER (an ambush, a guarded reward) is a BEAT, not the
    *  arena room's full trial, so the composer asks for fewer. */

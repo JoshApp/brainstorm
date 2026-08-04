@@ -654,6 +654,32 @@ export function composeFloor(
     elevations[c.toIdx] = elevations[c.fromIdx] - drop;
   }
 
+  /**
+   * THE WAY IN, per room — the direction the player MOST LIKELY arrives from.
+   *
+   * Not just "a corridor": a room with several mouths uses the one facing back
+   * toward the floor's START, because the spine is walked forward and that's the
+   * door you'll actually come through. A dead-end spur has only one mouth, so
+   * this is exact for every room that stages something. Undefined for a room
+   * with no corridors at all.
+   */
+  const entranceDirFor = (idx: number): { x: number; z: number } | undefined => {
+    let best: { x: number; z: number } | null = null;
+    let bestOther = Infinity;
+    for (const c of corridors) {
+      const other = c.fromIdx === idx ? c.toIdx : c.toIdx === idx ? c.fromIdx : -1;
+      if (other < 0) continue;
+      // Lower index = nearer the start, so that mouth is the likely approach.
+      if (other < bestOther) {
+        bestOther = other;
+        best = { x: c.rect.x - placed[idx].offsetX, z: c.rect.z - placed[idx].offsetZ };
+      }
+    }
+    if (!best) return undefined;
+    const mag = Math.hypot(best.x, best.z);
+    return mag > 1e-3 ? { x: best.x / mag, z: best.z / mag } : undefined;
+  };
+
   // ── Room ROLES — give each room its JOB before it's dressed ────
   // (docs/FLOOR-DIRECTOR.md, step 1). The build passes below read a room's
   // CAPS (may it hold combat? a bonfire?) instead of hardcoding "is this the
@@ -787,8 +813,13 @@ export function composeFloor(
     });
     // Whole-vault elevation: the main room AND its logical sub-rooms sit
     // on one plateau (rooms are internally flat — see RoomSpec.elevation).
+    const roomEntrance = entranceDirFor(i);
     for (const r of sub.rooms) {
       r.elevation = elevations[i];
+      // Which way this room FACES — see RoomSpec.entranceDir. Stamped on every
+      // sub-room so a logical-only attribution room answers the same as its
+      // parent geometry.
+      if (roomEntrance) r.entranceDir = roomEntrance;
       // A room sealed by a MODIFIER runs a SHORTER gauntlet than the arena
       // room's full trial — an ambush should bite and be over.
       const mw = modPlan.byRoom.get(pv.roomId)?.waves;

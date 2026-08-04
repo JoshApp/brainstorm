@@ -8,6 +8,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
+import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerLight } from '../scene/light-pool';
 import { rollShopStock } from '../content/shop';
 import { openShopScreen } from '../ui/shop-screen';
@@ -102,22 +103,37 @@ export function spawnMerchant(
   parent.add(built.group);
   registerVendorLight(MERCHANT_MODEL, pos);
 
-  // Roll the stall's wares once; the panel mutates `sold` flags in place so
-  // walking away and back shows the same (partly-bought) stock.
-  const stock = rollShopStock(depth);
-
+  // NO MENU. The stock stands on the counter in front of him (level/centrepieces
+  // planMerchant → priced offerings), so the goods ARE the shop: you walk up to
+  // a ware, read it where it lies, and pay for it in the world. Opening a panel
+  // on top of that would be the same transaction twice, and the screen version
+  // is the one that breaks the fiction — you don't browse a menu in a dungeon.
+  //
+  // He stays interactable because a shopkeeper you can't address is furniture.
+  // He just talks instead of trading.
+  void depth;
   registerInteractable({
     id: generateEntityId('merchant'),
     position: pos.clone(),
     radius: 1.4,
-    promptLabel: 'TRADE',
+    promptLabel: 'SPEAK',
     labelOffsetY: 1.6,
     onUse() {
-      openShopScreen(stock, { gearDrop: { scene: parent, pos } });
+      showInWorldMessage(PEDDLER_LINES[peddlerLine++ % PEDDLER_LINES.length]);
     },
     built,
   });
 }
+
+/** What the peddler says. In-world register (Tone Bible): the place does not
+ *  joke. He is not pleased to see you; he is pleased to see coin. */
+const PEDDLER_LINES: readonly string[] = [
+  'Coin on the stone. I do not haggle with the walking.',
+  'Take what you can carry. The rest keeps.',
+  'Others have stood where you stand. Their coin spent the same.',
+  'Look all you like. Looking is free.',
+];
+let peddlerLine = 0;
 
 // The RELIC-KEEPER — the trinket merchant. A GAUNT, taller silhouette than the
 // peddler: a spined/horned cowl, skeletal charm-hung robe, and a staff topped
