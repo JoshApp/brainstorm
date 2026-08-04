@@ -16,6 +16,7 @@
 // layer — both already carry caps so the seam is ready.
 
 import { ROOM_TYPES, roomType, assignableTypes, type RoomTypeId } from './room-types';
+import { planFloor, type FloorPlan, type PlanEntry } from './floor-plan';
 
 /** The job a room does on its floor. This IS the room-type id — one vocabulary,
  *  not two that drift apart. See level/room-types.ts for what each one means and
@@ -149,13 +150,11 @@ export function assignFloorRoles(
  *  already doing a job that must not be overwritten. */
 const PROMOTABLE: ReadonlySet<RoomRole> = new Set<RoomRole>(['combat', 'feature']);
 
-/** What may be rolled onto a floor, and from what depth. The trove is handled
- *  separately (it's guaranteed, not rolled). Weight is relative. */
-const ROLLED_ROLES: ReadonlyArray<{ role: RoomRole; minDepth: number; weight: number }> = [
-  { role: 'shop',  minDepth: 2, weight: 3 },
-  { role: 'trap',  minDepth: 2, weight: 2 },
-  { role: 'arena', minDepth: 3, weight: 2 },
-];
+// WHAT a floor contains is no longer decided here — level/floor-plan.ts decides
+// that BEFORE any geometry exists, and this pass only answers WHERE each planned
+// entry goes. That split is the fix for content being a consequence of shape: a
+// floor that wanted a trove used to lose it because the seed grew no spur, and
+// nobody chose that.
 
 export interface RoleRoomPlan {
   /** roomId → the role it was promoted to. Empty when nothing qualified. */
@@ -173,63 +172,68 @@ export interface RoleRoomPlan {
 export function assignRoleRooms(
   roles: FloorRoles,
   nodes: readonly RoomNode[],
-  opts: { depth: number; rand: () => number; isBossFloor?: boolean },
+  opts: { depth: number; rand: () => number; isBossFloor?: boolean; plan?: FloorPlan },
 ): RoleRoomPlan {
   const assigned = new Map<string, RoomRole>();
   if (opts.isBossFloor) return { assigned };
 
-  // A ROLE ROOM IS A DETOUR, NOT A PASSTHROUGH.
-  //
-  // Isaac's special rooms are never on the way to anywhere — the treasure room,
-  // the shop, the arcade all hang off the map as leaves you choose to walk to
-  // and back out of. That's what makes finding one an event: you SPENT something
-  // (time, safety, a trip past mobs) to be standing in it, and you leave the way
-  // you came. A trove you happen to cross on the way to the stairs is scenery.
-  //
-  // So a dead end (connections <= 1) is not merely preferred here, it's REQUIRED
-  // when the floor has any. Only if a floor's shape offers no leaf at all do we
-  // fall back to through-rooms, quiet-end first — better a landmark in the wrong
-  // place than a floor with no landmark.
-  const promotable = nodes.filter((n) => PROMOTABLE.has(roles.role(n.roomId)));
-  const deadEnds = promotable.filter((n) => n.connections <= 1);
-  const candidates = (deadEnds.length > 0 ? deadEnds : promotable)
-    .slice()
-    .sort((a, b) => a.connections - b.connections);
-  if (candidates.length === 0) return { assigned };
+  // The floor's CONTRACT — what it owes the player, decided before the rooms
+  // existed. Callers that haven't been migrated roll one here.
+  const plan = opts.plan ?? planFloor(opts.depth, opts.rand);
 
-  const take = (role: RoomRole): boolean => {
-    const pick = candidates.find((n) => !assigned.has(n.roomId));
-    if (!pick) return false;
-    assigned.set(pick.roomId, role);
-    roles.designate(pick.roomId, role);
+  // PLACEMENT IS A SCORED PREFERENCE, not a hard rule — except where the
+  // mechanism demands one. Four pressures decide what wants its own room:
+  // is it a destination you CHOOSE (the value is the detour), does it want
+  // uninterrupted attention, does it change the room's RULES (an arena seals),
+  // is it spatially greedy. And the inverse matters as much: a FIRE is better
+  // stumbled into than routed to, and a TRAP on a dead end is one nobody springs.
+  const promotable = nodes.filter((n) => PROMOTABLE.has(roles.role(n.roomId)));
+  if (promotable.length === 0) return { assigned };
+
+  // RESERVE — keep at least HALF the floor's content rooms ordinary. The ratio
+  // IS the design: a landmark only reads as one against plain rooms. (The
+  // denominator is CONTENT rooms — the entrance and the stairwell are bookends
+  // and were never candidates. See room-types.ts `bookend`.)
+  const reserve = Math.max(1, Math.ceil(promotable.length / 2));
+  const budget = Math.max(1, promotable.length - reserve);
+
+  const score = (n: RoomNode, placement: PlanEntry['placement']): number => {
+    const isLeaf = n.connections <= 1;
+    switch (placement) {
+      // A destination you CHOOSE: you spend something to stand here and you
+      // leave the way you came. On the through-path you didn't choose it.
+      case 'dedicated': return isLeaf ? 100 : 10 - n.connections;
+      // Unavoidable IS the mechanism. A toll you can walk around is not a toll.
+      case 'on-path':   return isLeaf ? 0 : 50 + n.connections * 10;
+      // Something you MEET rather than visit. Happy anywhere, slight lean to the
+      // path so a fire is stumbled into rather than routed to.
+      default:          return 20 + n.connections;
+    }
+  };
+
+  const place = (entry: PlanEntry): boolean => {
+    if (assigned.size >= budget) return false;
+    const free = promotable.filter((n) => !assigned.has(n.roomId));
+    if (free.length === 0) return false;
+    let best = free[0];
+    let bestScore = -Infinity;
+    for (const n of free) {
+      const sc = score(n, entry.placement);
+      if (sc > bestScore) { bestScore = sc; best = n; }
+    }
+    assigned.set(best.roomId, entry.id);
+    roles.designate(best.roomId, entry.id);
     return true;
   };
 
-  // 1. The guaranteed trove — the floor's dependable choice.
-  take('trove');
-
-  // 2. Rolled extras. RESERVE — keep at least HALF the floor's content rooms
-  //    ordinary. A landmark is only a landmark against plain rooms, so the ratio
-  //    is the design, not a nice-to-have: promote up to half, never more. (The
-  //    denominator is CONTENT rooms — the entrance and the stairwell are
-  //    bookends and were never candidates. See room-types.ts `bookend`.)
-  // The reserve is measured over the whole CONTENT pool, not the leaf subset: a
-  // floor with one spur should still be allowed to put its trove on that spur
-  // while the through-rooms stay ordinary.
-  const reserve = Math.max(1, Math.ceil(promotable.length / 2));
-  const spare = Math.max(0, promotable.length - assigned.size - reserve);
-  const extras = Math.min(spare, opts.rand() < 0.45 ? 2 : 1);
-  const pool = ROLLED_ROLES.filter((r) => opts.depth >= r.minDepth);
-  const used = new Set<RoomRole>();
-  for (let i = 0; i < extras; i++) {
-    const open = pool.filter((r) => !used.has(r.role) && assignableTypes().includes(r.role as never));
-    if (open.length === 0) break;
-    const total = open.reduce((s, r) => s + r.weight, 0);
-    let roll = opts.rand() * total;
-    let chosen = open[open.length - 1];
-    for (const r of open) { roll -= r.weight; if (roll <= 0) { chosen = r; break; } }
-    if (!take(chosen.role)) break;
-    used.add(chosen.role);
+  // Required first — the contract is not optional. Within each group, DEDICATED
+  // entries go first so the scarce leaves reach the things that actually need one.
+  const byNeed = (a: PlanEntry, b: PlanEntry) =>
+    Number(b.placement === 'dedicated') - Number(a.placement === 'dedicated');
+  for (const entry of [...plan.required].sort(byNeed)) place(entry);
+  for (const entry of [...plan.rolled].sort(byNeed)) {
+    if (!assignableTypes().includes(entry.id as never)) continue;
+    place(entry);
   }
 
   return { assigned };
