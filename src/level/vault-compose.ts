@@ -998,7 +998,15 @@ export function composeFloor(
       ? sub.props.filter((p) => p.kind !== 'spike-trap' && !isFloorClutter(p))
       : sub.props));
     torches.push(...sub.torches);
-    spawns.push(...sub.spawns);
+    // A room whose TYPE refuses enemies keeps refusing them when the type was
+    // assigned by PROMOTION. The spawn budget already reads `allowCombat` and
+    // never seeds here — but a shop is usually a combat vault that got promoted,
+    // and that vault's own authored 'X' markers came through this line
+    // untouched. Measured: ~60% of shop rooms had mobs standing in them, next to
+    // a room-type table whose comment reads "You never fight beside a vendor."
+    // Same shape as `clean` above: the room type is the final word, checked at
+    // the end, not an intention held by one producer (DESIGN-METHOD §3).
+    spawns.push(...(typeHere.enemies ? sub.spawns : []));
     if (sub.doors) doors.push(...sub.doors);
     if (sub.navGates) navGates.push(...sub.navGates);
     // Exit AND BOSS vault stairs re-place at the BACK of the room (far side of
@@ -1033,7 +1041,11 @@ export function composeFloor(
     // uses (vault centred on its own midpoint, then translated by
     // the vault's placement offset). Attribute every spawn to the
     // vault's room so room-clear gating works.
-    if (cellSpawns.length) {
+    // A promoted room whose TYPE refuses enemies drops the vault's own authored
+    // mobs too. See the note on `spawns.push(...sub.spawns)` above: a shop is
+    // usually a combat vault that got promoted, and its tilemap 'X' markers are
+    // resolved HERE, downstream of the budget's allowCombat check.
+    if (cellSpawns.length && typeHere.enemies) {
       const W = pv.vault.map[0]?.length ?? 0;
       const D = pv.vault.map.length;
       for (const cs of cellSpawns) {
@@ -1117,7 +1129,7 @@ export function composeFloor(
             if (tp.kind === 'model') tp._dbg = `group:${p.groupId}@${pv.vault.id}`;
             props.push(tp);
           }
-        } else if (p.kind === 'spawn') {
+        } else if (p.kind === 'spawn' && typeHere.enemies) {
           // Spawn-prop: route into the spawns list rather than props
           // (it's a mob instantiation, not a static mesh). World
           // coords = vault-local + the vault's placement offset.
@@ -1602,6 +1614,40 @@ export function composeFloor(
   // count toward it; if they fall short — the empty-early-floors bug, where few
   // combat vaults are eligible — we top up by seeding budget enemies into the
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
+  // ── NOBODY FIGHTS IN A SHOP ───────────────────────────────────────────
+  //
+  // The room-type table says `enemies: false` on a shop and a trove, and its
+  // comment reads "You never fight beside a vendor." Three producers gate on
+  // that flag — and ~60% of shop rooms still came out with mobs standing in
+  // them, because a shop is usually a combat vault that got PROMOTED and its
+  // enemies arrive by several routes (the tilemap's own markers, spawn props, a
+  // sub-room whose parent was the one that got asked).
+  //
+  // Gating each producer took it to 13%. The rest is the same lesson as the
+  // ONE-MAJOR-BEAT pass: a rule about the finished room has to be CHECKED
+  // against the room, not intended by each producer separately.
+  //
+  // It runs HERE, before the combat budget injects, and not at the end with the
+  // other sweeps — because a cull after the budget has been met can leave a
+  // floor below its combat minimum, which the floor invariants correctly caught.
+  // Cull first, and the budget tops back up in rooms that will actually keep it.
+  {
+    const peaceful: Array<{ x: number; z: number; hw: number; hd: number }> = [];
+    for (const r of rooms) {
+      if (r.logicalOnly) continue;
+      if (roomType(r.roomType ?? roles.role(r.id)).enemies) continue;
+      peaceful.push({ x: r.rect.x, z: r.rect.z, hw: r.rect.w / 2, hd: r.rect.d / 2 });
+    }
+    if (peaceful.length) {
+      for (let k = spawns.length - 1; k >= 0; k--) {
+        const sp = spawns[k];
+        if (peaceful.some((q) => Math.abs(sp.x - q.x) <= q.hw && Math.abs(sp.z - q.z) <= q.hd)) {
+          spawns.splice(k, 1);
+        }
+      }
+    }
+  }
+
   {
     // INVARIANT: a fire never appears from vault authoring — strip every baked
     // bonfire first, so the director is the sole owner of fires. Same for VASES:

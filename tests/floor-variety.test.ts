@@ -111,5 +111,27 @@ test('a floor does not hand out build pieces by the handful', () => {
   }
 });
 
+test('NOBODY FIGHTS IN A SHOP', () => {
+  // room-types.ts says `enemies: false` on a shop and means it in a comment:
+  // "You never fight beside a vendor." ~60% of shop rooms had mobs in them,
+  // because a shop is usually a combat vault that was PROMOTED and its enemies
+  // arrive by several routes. Checked on the finished floor, where it can be
+  // true, rather than intended by each producer.
+  for (const depth of [5, 8]) {
+    let shops = 0, withMobs = 0;
+    for (const f of floors(depth)) {
+      for (const r of f.rooms as Array<Room & { roomType?: string; rect: { x: number; z: number; w: number; d: number } }>) {
+        if (r.logicalOnly || r.roomType !== 'shop') continue;
+        shops++;
+        const inside = ((f as unknown as { spawns?: Array<{ x: number; z: number }> }).spawns ?? []).some(
+          (sp) => Math.abs(sp.x - r.rect.x) <= r.rect.w / 2 && Math.abs(sp.z - r.rect.z) <= r.rect.d / 2,
+        );
+        if (inside) withMobs++;
+      }
+    }
+    assert.equal(withMobs, 0, `depth ${depth}: ${withMobs} of ${shops} shop rooms have enemies standing in them`);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

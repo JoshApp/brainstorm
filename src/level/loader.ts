@@ -25,7 +25,7 @@ import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearStatusVfx } from '../effects/status-vfx';
 import { clearTutorialHints } from '../effects/tutorial-hints';
-import { clearAlerts } from '../mobs/alerts';
+import { clearAlerts, setAlertLineOfSight } from '../mobs/alerts';
 import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
 import { clearFlungParts } from '../effects/flung-parts';
@@ -219,6 +219,10 @@ export function tickPendingLoad() {
   tagPerfEvent(`level-load:${id}`);   // perf timeline (no-op unless the dashcam rolls)
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   setActiveLevel(level);
+  // A shout carries down a corridor, not through a wall. Installed here because
+  // the alert module must not know about levels — same seam as every other
+  // per-level dependency injection in this file.
+  setAlertLineOfSight((ax, az, bx, bz) => level.walkable.hasLineOfSight(ax, az, bx, bz));
 
   // Reposition player to new spawn — and resolve against the walkable
   // region. Authored spawns are normally fine, but if a designer (or
