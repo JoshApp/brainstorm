@@ -939,7 +939,12 @@ export const CONFIG = {
     // and below this the cards overlap into mush (measured on a phone at ~3m).
     // Whoever places a choice must honour it or "survey your options at a
     // glance" breaks — so it lives here, where placement can read it.
-    OFFERING_MIN_SPACING: 2.8,
+    // Close enough to COMPARE. The old 2.8m kept the floating name-cards from
+    // overlapping, but cards are hidden until you inspect one now — so the
+    // constraint that set this number is gone, and what's left is the real one:
+    // three things you must walk between are three things you can't weigh
+    // against each other. Stand them within a glance of one another.
+    OFFERING_MIN_SPACING: 1.8,
     // TRAP ROOM — spikes ringed around the prize, at this radius.
     HAZARD_RING_RADIUS: 1.9,
     HAZARD_RING_SPIKES: 4,

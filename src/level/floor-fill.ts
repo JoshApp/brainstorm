@@ -34,8 +34,16 @@ export interface DefiningFind {
 }
 
 /** The deal kinds the FILL stage may stage for the floor's QUESTION. Shallow
- *  ones are survivable-bad; deep ones are run-threatening gambles. */
-export type DealKind = 'fountain' | 'tithe-basin' | 'altar' | 'blood-altar';
+ *  ones are survivable-bad; deep ones are run-threatening gambles.
+ *
+ *  'fountain' is NOT among them any more. A basin that heals you was competing
+ *  with the bonfire for the same job, and the bonfire won: it's the rest, it's
+ *  the only place the flask refills, and reaching one is meant to be a decision.
+ *  A free half-bar on the way undercut that every time it appeared. The variant
+ *  still exists for hand-authored vaults (the safe haven's basin is gone too,
+ *  but the code path stays for a shrine that wants water) — it's just no longer
+ *  something a floor STAGES as its question. */
+export type DealKind = 'tithe-basin' | 'altar' | 'blood-altar';
 
 /** A resolved staged deal — the floor's one QUESTION, on a marker. */
 export interface StagedDeal {
@@ -46,7 +54,7 @@ export interface StagedDeal {
 }
 
 /** Deals split by tension: survivable-bad early, run-threatening deep. */
-const SHALLOW_DEALS: readonly DealKind[] = ['fountain', 'tithe-basin'];
+const SHALLOW_DEALS: readonly DealKind[] = ['tithe-basin'];
 const DEEP_DEALS: readonly DealKind[] = ['blood-altar', 'altar'];
 
 /** Keep staged content this far from an AVOID point (the fire, another beat) so a

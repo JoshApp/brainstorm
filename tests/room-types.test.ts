@@ -137,13 +137,17 @@ function seeded(seed: number): () => number {
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
-test('every non-boss floor gets exactly ONE guaranteed trove', () => {
+test('a floor never stages more than ONE trove', () => {
+  // The trove is once per ACT now, not once per floor — but when a floor does
+  // get one, it gets exactly one.
   for (let seed = 1; seed <= 40; seed++) {
-    const nodes = mkNodes(7);
-    const roles = assignFloorRoles(nodes, { isBossFloor: false });
-    assignRoleRooms(roles, nodes, { depth: 5, rand: seeded(seed), isBossFloor: false });
-    const troves = nodes.filter((n) => roles.role(n.roomId) === 'trove').length;
-    assert.equal(troves, 1, `seed ${seed}: expected 1 trove, got ${troves}`);
+    for (const depth of [1, 2, 4, 5, 9]) {
+      const nodes = mkNodes(7);
+      const roles = assignFloorRoles(nodes, { isBossFloor: false });
+      assignRoleRooms(roles, nodes, { depth, rand: seeded(seed), isBossFloor: false });
+      const troves = nodes.filter((n) => roles.role(n.roomId) === 'trove').length;
+      assert.ok(troves <= 1, `seed ${seed} d${depth}: ${troves} troves`);
+    }
   }
 });
 
@@ -214,13 +218,20 @@ test('a role is never assigned twice on one floor', () => {
   }
 });
 
-test('depth gates the pool — no shop or arena on floor 1', () => {
+test('depth gates the pool — no shop, arena or trap on floor 1', () => {
+  // Floor 1 places only its OFFER (floor-plan.ts): a trove if it's the act's
+  // trove floor, a bargain otherwise. Nothing in the rolled pool is eligible
+  // that shallow, so the first descent stays one landmark and a lot of dark.
   for (let seed = 1; seed <= 30; seed++) {
     const nodes = mkNodes(7);
     const roles = assignFloorRoles(nodes, { isBossFloor: false });
     const plan = assignRoleRooms(roles, nodes, { depth: 1, rand: seeded(seed), isBossFloor: false });
+    assert.ok(plan.assigned.size <= 1, `depth 1 placed ${plan.assigned.size} role rooms`);
     for (const role of plan.assigned.values()) {
-      assert.ok(role === 'trove', `depth 1 assigned ${role} — only the trove is depth-1 eligible`);
+      assert.ok(
+        role === 'trove' || role === 'feature',
+        `depth 1 assigned ${role} — only the offer slot is depth-1 eligible`,
+      );
     }
   }
 });

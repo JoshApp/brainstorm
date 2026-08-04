@@ -40,6 +40,7 @@
 // routed to (Dark Souls puts them on the path — the "thank god" is the surprise),
 // and a TRAP on a dead end is a trap nobody springs.
 
+import { actForDepth } from './acts';
 import type { RoomTypeId } from './room-types';
 
 /** What a slot is FOR. See the contract above. */
@@ -89,11 +90,44 @@ export interface FloorPlan {
 // ── THE POOL ─────────────────────────────────────────────────────────
 // A content/design layer reshapes floor feel by editing THIS, not a build pass.
 
-/** The dependable offer. Guaranteed on every non-boss floor — it's the beat you
- *  can plan around, which is what lets the rest of the floor be unpredictable. */
+/**
+ * The trove — three things on stone, take one.
+ *
+ * ONCE PER ACT, not once per floor. A guarantee you meet every single floor
+ * stops being a beat and becomes a checkpoint: you know it's coming, you know
+ * roughly what it holds, and the reward stream flattens into a metronome (the
+ * audit's CoV flag). Once an act, it's an event you look forward to.
+ *
+ * The OFFER slot itself is still guaranteed every floor — the trove just isn't
+ * the only thing that can fill it. A bargain, a hoard, a shop: anything that
+ * puts something in front of you and asks a question of you counts.
+ */
 const TROVE: PlanEntry = {
   id: 'trove', role: 'offer', placement: 'dedicated', minDepth: 1, weight: 1, worth: 3,
 };
+
+/** The fallback OFFER for floors that aren't the act's trove floor. A staged
+ *  bargain is the same promise in a different shape: something in front of you,
+ *  and a question about it. */
+const BARGAIN_OFFER: PlanEntry = {
+  id: 'feature', role: 'offer', placement: 'anywhere', minDepth: 1, weight: 1, worth: 2,
+};
+
+/**
+ * Is this the act's trove floor? Derived from the act's own depth list rather
+ * than tracked in run state — the plan is PURE, and a floor must be able to
+ * decide this on its own from `depth` alone.
+ *
+ * The act's SECOND floor: the first is a warm-up you're still finding your feet
+ * on, and the last is the boss's approach. The middle is where a real choice
+ * about your build has time to matter.
+ */
+export function isTroveFloor(depth: number): boolean {
+  const act = actForDepth(depth);
+  const nonBoss = act.depths.filter((d) => d !== act.bossDepth);
+  if (nonBoss.length === 0) return false;
+  return depth === (nonBoss[1] ?? nonBoss[0]);
+}
 
 /**
  * The rolled pool. Note the placements, because they're the design:
@@ -111,8 +145,7 @@ const POOL: readonly PlanEntry[] = [
   { id: 'shop',    role: 'offer',  placement: 'dedicated', minDepth: 2, weight: 3, worth: 3 },
   { id: 'arena',   role: 'threat', placement: 'dedicated', minDepth: 3, weight: 2, worth: 3 },
   { id: 'trap',    role: 'threat', placement: 'on-path',   minDepth: 2, weight: 3, worth: 2 },
-  { id: 'feature', role: 'offer',  placement: 'anywhere',  minDepth: 2, weight: 3, worth: 2 },
-  { id: 'sanctum', role: 'mercy',  placement: 'anywhere',  minDepth: 2, weight: 2, worth: 2 },
+  { id: 'sanctum', role: 'mercy',  placement: 'anywhere',  minDepth: 2, weight: 3, worth: 2 },
 ];
 
 /** How many extras a floor rolls. Two is the ceiling on purpose: the trove plus
@@ -135,7 +168,8 @@ export function planFloor(
 ): FloorPlan {
   if (opts.isBossFloor) return { required: [], rolled: [], all: [] };
 
-  const required = [TROVE];
+  // The offer slot is always filled; WHICH thing fills it is the variety.
+  const required = [isTroveFloor(depth) ? TROVE : BARGAIN_OFFER];
   const rolled: PlanEntry[] = [];
 
   const eligible = POOL.filter((e) => depth >= e.minDepth);

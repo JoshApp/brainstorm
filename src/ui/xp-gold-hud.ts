@@ -83,10 +83,21 @@ export function createXpGoldHud(): void {
     alignItems: 'center',
     gap: '12px',
   } as Partial<CSSStyleDeclaration>);
-  // KEYS ARE CUT — the key HUD is gone; only the gold purse remains.
+  // KEYS sit LEFT of the purse, and only while you carry one — a currency you
+  // don't have shouldn't take up screen. (This element was declared and then
+  // never built when keys were cut; restoring keys restored the variables but
+  // not the DOM, which is why the count was invisible.)
+  keysEl = document.createElement('div');
+  Object.assign(keysEl.style, {
+    display: 'none',
+    alignItems: 'center',
+    gap: '4px',
+    color: 'rgba(226, 206, 156, 0.95)',
+    transition: 'transform 180ms ease-out, color 180ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
   goldEl = document.createElement('div');
   goldEl.style.transition = 'transform 180ms ease-out, color 180ms ease-out';
-  goldContainer.append(goldEl);
+  goldContainer.append(keysEl, goldEl);
   document.body.appendChild(goldContainer);
 
   // Floating "+N" gold tick — sits just under the gold counter, rises + fades.
@@ -330,6 +341,18 @@ export function updateXpGoldHud(dt: number): void {
       xpFractionEl.style.color = 'rgba(220, 240, 255, 0.92)';
     }
   }
+  // KEYS — polled rather than event-driven: a key can arrive by walk-over
+  // pickup, be spent on a gold chest, or be restored from a save, and polling one
+  // integer per frame is cheaper than keeping three call sites in sync.
+  if (keysEl) {
+    const keys = getCount(KEY_ID);
+    if (keys !== prevKeys) {
+      prevKeys = keys;
+      keysEl.style.display = keys > 0 ? 'flex' : 'none';
+      keysEl.innerHTML = keys > 0 ? `${SVG_KEY}${keys}` : '';
+    }
+  }
+
   if (goldPulseTimer > 0) {
     goldPulseTimer -= dt;
     const t = Math.max(0, goldPulseTimer / 0.22);

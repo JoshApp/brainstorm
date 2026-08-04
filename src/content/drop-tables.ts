@@ -58,6 +58,9 @@ export const GROUPS: Record<string, ItemGroup> = {
   // So the 'gear' group now yields TRINKETS: every "gear" drop in the tables below
   // becomes a build-piece (relic), which is the loot economy for now. GEAR_KINDS
   // is kept only as a reference for the (dormant) equip infra.
+  // VESTMENTS CANNOT BE PICKED UP, so they must never be offered. An item you
+  // can see and can't take is worse than no item — it reads as a bug. Events
+  // that hand out "gear" resolve to relics until vestments have a home again.
   gear:        { kinds: RELIC_KINDS },
   relics:      { kinds: RELIC_KINDS },
   'boss-loot': { tag: 'boss', bias: 4 },

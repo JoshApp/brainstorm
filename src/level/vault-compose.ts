@@ -1351,9 +1351,15 @@ export function composeFloor(
     // DEFINING FIND — a gold chest with an explicit rolled item (applyProcgenDefaults
     // leaves seeded loot intact). No eligible marker → the plan's find is null.
     if (plan.find) {
+      // SILVER, not gold. This was a second guaranteed build source on every
+      // floor — on top of the offer slot — and being gold made it key-LOCKED,
+      // so early floors handed you a box you couldn't open. It carries its own
+      // seeded loot regardless of tier, so the tier only ever decided the lock.
+      // Guarantees belong to the floor plan's offer slot now; this stays as the
+      // director's staged find, openable.
       props.push({
         kind: 'chest', x: plan.find.x, z: plan.find.z,
-        tier: 'gold', loot: { gold: 0, items: [plan.find.loot] }, facing: { kind: 'wall-away' },
+        tier: 'silver', loot: { gold: 0, items: [plan.find.loot] }, facing: { kind: 'wall-away' },
       });
     }
 

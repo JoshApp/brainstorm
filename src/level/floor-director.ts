@@ -65,13 +65,12 @@ export interface FloorPlan {
 // cap; past it the director stops CHOOSING that kind (it won't spam heal
 // fountains). Kinds absent here are unconstrained.
 const DEAL_SOFT_CAP: Partial<Record<DealKind, number>> = {
-  fountain: 1,        // one heal per floor — a second free top-up kills tension
   'blood-altar': 1,   // one gamble per floor — two flattens the choice
   altar: 1,
   'tithe-basin': 1,
 };
 
-const ALL_DEALS: readonly DealKind[] = ['fountain', 'tithe-basin', 'altar', 'blood-altar'];
+const ALL_DEALS: readonly DealKind[] = ['tithe-basin', 'altar', 'blood-altar'];
 
 /** Decide the whole floor's content plan. Pure — no scene, no props mutated. */
 export function directFloor(input: DirectorInput): FloorPlan {
@@ -163,7 +162,9 @@ export function directFloor(input: DirectorInput): FloorPlan {
 export function countDeals(props: readonly PropSpec[]): Partial<Record<DealKind, number>> {
   const c: Partial<Record<DealKind, number>> = {};
   for (const p of props) {
-    if (p.kind === 'fountain' || p.kind === 'tithe-basin' || p.kind === 'altar' || p.kind === 'blood-altar') {
+    // 'fountain' is deliberately absent — a heal basin is no longer a staged
+    // deal (the bonfire is the mend), so it has no variety budget to spend.
+    if (p.kind === 'tithe-basin' || p.kind === 'altar' || p.kind === 'blood-altar') {
       c[p.kind] = (c[p.kind] ?? 0) + 1;
     }
   }

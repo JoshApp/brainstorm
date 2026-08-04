@@ -7,7 +7,6 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { canAfford, payCost, unaffordableMessage } from './event-factory';
 import { showInWorldMessage } from '../ui/pickup-notification';
-import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import { playEquipClick, playDenied } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { disposeBuiltTree } from '../style/material-registry';
@@ -53,12 +52,13 @@ const BOB_AMPLITUDE = 0.025;   // m
 const BOB_FREQUENCY = 0.8;     // Hz — slow, dreamy hover
 
 /** PLACEMENT CONSTRAINT — minimum metres between offerings in one group.
- *  Each offering floats a name card above it, and below this spacing the cards
- *  overlap into unreadable mush at normal viewing distance (measured on a phone
- *  at ~3m). Whoever places a trove room must honour this, or the "survey your
- *  options at a glance" premise breaks.
+ *  Close enough to COMPARE, far enough that the plinths read as separate stones.
+ *  The old, wider number existed to keep floating name-cards from overlapping;
+ *  those are gone (investigation shows the card now), so what's left is the real
+ *  constraint: three things you have to walk between are three things you can't
+ *  weigh against each other.
  *
- *  The number itself lives in config.ts, because the pass that has to OBEY it
+ *  The number lives in config.ts because the pass that has to OBEY it
  *  (level/centrepieces.ts) runs headless and must not drag this UI-heavy module
  *  into a node import. Re-exported here so the constraint is documented where
  *  the system it constrains lives. */
@@ -261,7 +261,11 @@ export function spawnOffering(offering: Offering, opts: OfferingOpts): void {
     // the player stands — but full cards stacked side by side overlap. Name +
     // flavour always; stats when you lean in (see leanInForStats).
     const leanIn = spec.leanInForStats ?? true;
-    registerItemPreview(id, offering.item, { hideCardUntilInspect: leanIn });
+    // NO separate floating card. The interactable's `previewItem` (set below)
+    // already drives ui/item-overlay — the full card that rises above the prompt
+    // the moment you're the thing being INVESTIGATED. Registering a second
+    // preview here put two cards on screen for one item; investigation was
+    // always going to tell you, so the world label was pure duplication.
 
     let phase = 0;
     let closed = false;
@@ -314,15 +318,11 @@ export function spawnOffering(offering: Offering, opts: OfferingOpts): void {
         // else rotates on its stone.
         if (!billboard) itemGroup.rotation.y = rotY + phase * SPIN;
         itemGroup.position.y = pos.y + restY + Math.sin(phase * BOB_FREQUENCY * Math.PI * 2) * BOB_AMPLITUDE;
-        setItemPreviewAnchor(id, pos.x, pos.y + style.previewY, pos.z, true);
-        // Reveal this one's stats while it's the offering you're actually
-        // considering (in range + facing it) — the lean-in.
-        if (leanIn) setItemPreviewInspected(id, getInRangeInteractable() === interactable);
+
       },
       onDestroy() {
         spec.scene.remove(itemGroup);
         disposeBuiltTree(itemGroup);
-        unregisterItemPreview(id);
         // Leave the group. Level teardown destroys every live interactable, so
         // this is what keeps a FIXED group id (like the starter altars') from
         // carrying stale closers into the next floor — no cross-module reset

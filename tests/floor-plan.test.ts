@@ -7,7 +7,7 @@
 // regardless of which rooms the seed happened to grow.
 
 import assert from 'node:assert/strict';
-import { planFloor, dedicatedEntries, requiredLeafCount } from '../src/level/floor-plan';
+import { planFloor, dedicatedEntries, requiredLeafCount, isTroveFloor } from '../src/level/floor-plan';
 import { assignFloorRoles, assignRoleRooms, type RoomNode } from '../src/level/floor-roles';
 import { roomType } from '../src/level/room-types';
 
@@ -42,12 +42,37 @@ function mkFloor(mids: number, leaves: number): RoomNode[] {
 
 // ── THE CONTRACT ─────────────────────────────────────────────────────
 
-test('every non-boss floor is owed an OFFER, and the trove is the dependable one', () => {
+test('every non-boss floor is owed an OFFER — though not always the trove', () => {
+  // The SLOT is the guarantee, not the thing that fills it. A trove every floor
+  // stops being a beat and becomes a checkpoint; a bargain is the same promise
+  // in another shape.
   for (let seed = 1; seed <= 60; seed++) {
-    for (const depth of [1, 3, 6, 9]) {
+    for (const depth of [1, 2, 3, 5, 6, 9]) {
       const plan = planFloor(depth, seeded(seed * 13 + depth));
-      assert.ok(plan.required.some((e) => e.id === 'trove'), `d${depth} seed ${seed}: no trove`);
-      assert.ok(plan.all.some((e) => e.role === 'offer'), 'a floor must always offer something');
+      assert.ok(
+        plan.required.some((e) => e.role === 'offer'),
+        `d${depth} seed ${seed}: the offer slot was left empty`,
+      );
+    }
+  }
+});
+
+test('the TROVE lands once per act — an event you look forward to', () => {
+  // Act 1 is depths 1-3 with the boss at 3, so exactly one of {1,2} is the
+  // trove floor. Same shape for the deeper acts.
+  for (const act of [[1, 2], [4, 5, 6], [8, 9, 10, 11]]) {
+    const troveFloors = act.filter((d) => isTroveFloor(d));
+    assert.equal(troveFloors.length, 1, `act ${act}: ${troveFloors.length} trove floors`);
+  }
+});
+
+test('a trove floor plans a trove; every other floor plans a bargain instead', () => {
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const depth of [1, 2, 4, 5, 6, 9]) {
+      const plan = planFloor(depth, seeded(seed * 7 + depth));
+      const offer = plan.required.find((e) => e.role === 'offer');
+      assert.ok(offer, `d${depth}: no offer`);
+      assert.equal(offer.id, isTroveFloor(depth) ? 'trove' : 'feature', `d${depth} offer mismatch`);
     }
   }
 });
@@ -76,10 +101,14 @@ test('restraint holds — the trove plus at most two extras', () => {
   }
 });
 
-test('depth gates the pool — floor 1 plans only its trove', () => {
+test('depth gates the pool — floor 1 plans its offer and nothing else', () => {
+  // Nothing in the rolled pool is depth-1 eligible, so the first descent is just
+  // its offer: one thing to find, and the shape of a room to learn.
   for (let seed = 1; seed <= 40; seed++) {
     const plan = planFloor(1, seeded(seed));
-    assert.deepEqual(plan.all.map((e) => e.id), ['trove']);
+    assert.equal(plan.rolled.length, 0, `floor 1 rolled ${plan.rolled.map((e) => e.id)}`);
+    assert.equal(plan.all.length, 1);
+    assert.equal(plan.all[0].role, 'offer');
   }
 });
 
@@ -87,7 +116,13 @@ test('the geometry knows how many spurs it must grow', () => {
   for (let seed = 1; seed <= 40; seed++) {
     const plan = planFloor(9, seeded(seed));
     assert.equal(requiredLeafCount(plan), dedicatedEntries(plan).length);
-    assert.ok(requiredLeafCount(plan) >= 1, 'the trove alone needs one');
+    }
+});
+
+test('a floor needs a spur only for the entries that actually want one', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const plan = planFloor(9, seeded(seed));
+    assert.equal(requiredLeafCount(plan), dedicatedEntries(plan).length);
   }
 });
 
