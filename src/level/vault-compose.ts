@@ -1936,6 +1936,47 @@ export function composeFloor(
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
 
+  // ── ONE MAJOR BEAT PER ROOM ───────────────────────────────────────────
+  //
+  // The director states this as a HARD RULE — a fire and a deal must never
+  // share a room — and enforces it by excluding the fire's room from the deal's
+  // pool. That only binds the DIRECTOR. Measured over 240 floors, 16 still came
+  // out with a bonfire and a basin in the same chamber, because a floor's major
+  // beats come from several producers (the director, the floor plan's
+  // centrepiece, the manifest reconcile, a vault's own props) and each one only
+  // knows about itself.
+  //
+  // So the rule is enforced where it can actually be true: on the FINISHED
+  // floor. Whatever put them there, a room ends with at most one major beat.
+  // The FIRE wins — it's the rarer thing, the plan may own it, and a rest you
+  // stumble on is worth more than a second altar. This is the same lesson as
+  // the elbow-room sweep below: a constraint about the final state has to be
+  // checked against the final state.
+  {
+    const MAJOR = new Set<string>([
+      'altar', 'blood-altar', 'tithe-basin', 'fountain', 'reliquary',
+      'challenge-offering', 'tome-pillar',
+    ]);
+    const isFire = (p: PropSpec) =>
+      p.kind === 'model' && (p as { model?: { id?: string } }).model?.id === 'bonfire';
+    const cull = new Set<PropSpec>();
+    for (const room of result.rooms) {
+      if (room.logicalOnly) continue;
+      const hw = room.rect.w / 2, hd = room.rect.d / 2;
+      const here = result.props.filter((p) => {
+        const q = p as { x?: number; z?: number };
+        return typeof q.x === 'number' && typeof q.z === 'number'
+          && Math.abs(q.x - room.rect.x) <= hw && Math.abs(q.z - room.rect.z) <= hd;
+      });
+      const majors = here.filter((p) => isFire(p) || MAJOR.has(p.kind));
+      if (majors.length < 2) continue;
+      // Keep the fire if there is one, else the first major; cull the rest.
+      const keep = majors.find(isFire) ?? majors[0];
+      for (const m of majors) if (m !== keep) cull.add(m);
+    }
+    if (cull.size > 0) result.props = result.props.filter((p) => !cull.has(p));
+  }
+
   // ── ELBOW ROOM — clear the dressing off anything you have to touch ────
   //
   // Decor, furnishing, debris and the interactables all place through the same

@@ -51,6 +51,26 @@ test('a vault in flight does not restart itself', () => {
   assert.equal(tryVaultStep(0, 0, 0, 1, 0.3, CLEAR), false);
 });
 
+test('the step is long enough to CLEAR a fallen pillar', () => {
+  // The bug that made the whole feature a no-op: a fallen pillar segment is a
+  // circle of r=0.45 and the player is r=0.3, so a blocked walk starts 0.75m
+  // from its centre and must travel 1.5m to land clear. A world that only
+  // accepts landings past 1.5m must still produce a vault.
+  const FAR = { canDashOver: (fx: number, fz: number, tx: number, tz: number) =>
+    Math.hypot(tx - fx, tz - fz) >= 1.5 };
+  assert.equal(tryVaultStep(0, 0, 0, 1, 0.3, FAR), true,
+    'the step is too short to clear the obstacle it exists for');
+  const p = vaultPosition()!;
+  assert.ok(Math.hypot(p.x, p.z) <= 2.4, 'the step overshot into a leap');
+});
+
+test('a world that clears nothing at any distance refuses', () => {
+  let asked = 0;
+  const NEVER = { canDashOver: () => { asked++; return false; } };
+  assert.equal(tryVaultStep(0, 0, 0, 1, 0.3, NEVER), false);
+  assert.ok(asked > 1, 'only one distance was probed — the step is back to guessing');
+});
+
 test('the step carries forward, and only forward', () => {
   tryVaultStep(10, 20, 0, 1, 0.3, CLEAR);
   const p = vaultPosition();

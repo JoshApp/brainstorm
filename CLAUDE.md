@@ -381,6 +381,28 @@ The full visual grammar — reveal modes, brightness budget, color
 legend, geometry rules, the three-lights acceptance test — lives in
 **docs/VISUAL-LANGUAGE.md**. Check model/material work against it.
 
+## Designing mechanics — read this before authoring an item or an economy
+
+**docs/DESIGN-METHOD.md** is the record of how design has actually gone wrong
+here, with the rules that came out of each failure. It is short and every entry
+is a real bug, not advice. The load-bearing ones:
+
+- **Bonuses add, penalties multiply, crit multiplies once.** Five stacked
+  player-chosen multipliers turned a 1-damage dagger into an 11-damage hit.
+- **Player-controlled condition + multiplicative payoff = broken, always.** That
+  is the whole diagnosis; check a new effect against it before writing numbers.
+- **Every audit tool imports the real function.** A report that re-inlines the
+  math is worse than no report — it launders a guess as a measurement.
+- **Check final-state rules against the final state.** "A fire and a deal never
+  share a room" held in the director and was violated on 16 floors in 240,
+  because four other producers place major beats too.
+- **A cost denominated in another system's units is a FRACTION, not a number.**
+  The blood altar charged four fifths of your health for months because the pool
+  shrank and the constant didn't.
+- **Brief a role and a ceiling, not a vibe.** Claude is reliable at diagnosis and
+  unreliable at inventing fun items; "make some cool relics" reliably produces
+  overpowered or boring ones.
+
 ## Tone Bible (for any text written by the system or LLM later)
 
 - Terse. Archaic. Cruel. Indifferent.

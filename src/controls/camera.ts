@@ -163,7 +163,11 @@ export function updateCamera(
       // never mid-dodge — the dodge always wins.
       const wantedDist = Math.hypot(moveX, moveZ);
       const gotDist = Math.hypot(stepDx, stepDz);
-      if (!isVaulting() && wantedDist > 1e-4 && gotDist < wantedDist * 0.4) {
+      // 0.65, not 0.4: colliding with an obstacle SLIDES you along it, so a
+      // player walking into a fallen column at any angle still covers real
+      // ground. Only a head-on stop registers under 0.4, which is the one
+      // approach angle a player is least likely to have.
+      if (!isVaulting() && wantedDist > 1e-4 && gotDist < wantedDist * 0.65) {
         tryVaultStep(
           camera.position.x, camera.position.z,
           moveX, moveZ, PLAYER_RADIUS, walkable,

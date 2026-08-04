@@ -27,12 +27,29 @@ import { playWhoosh } from '../audio/sfx';
 
 /** How the camera moves through a vault. Short — this is a step, not a stunt. */
 const RISE_M = 0.42;         // how high the eye arcs over the obstacle
-const CARRY_M = 1.15;        // forward distance the step covers
+
+/**
+ * HOW FAR THE STEP CARRIES — probed, not assumed.
+ *
+ * The first version hard-coded 1.15m and never fired once. The arithmetic:
+ * a fallen pillar segment is a circle of r=0.45 and the player is r=0.3, so
+ * when the walk is blocked you are standing 0.75m from its centre and the
+ * nearest CLEAR landing is 0.75m past it — 1.5m of travel. Every probe at
+ * 1.15m landed inside the pillar, `contains` refused it, and the vault
+ * silently declined. (The dodge clears the same obstacle because its lunge is
+ * ~1.3m of knockback PLUS held input, and it still needed an undershoot rescue.)
+ *
+ * So the step asks the world instead of guessing: try each distance in turn and
+ * take the first that lands clear. Short first, so a low kerb gets a short hop
+ * and a fallen column gets a real stride.
+ */
+const CARRY_CANDIDATES_M = [1.5, 1.9, 2.3];
 
 let activeUntil = 0;
 let startedAt = 0;
 let dirX = 0, dirZ = 0;
 let fromX = 0, fromZ = 0;
+let carryM = 0;
 
 /** Is a vault step playing right now? Movement input is carried by it. */
 export function isVaulting(): boolean { return gameNow() < activeUntil; }
@@ -54,7 +71,7 @@ export function vaultPosition(): { x: number; z: number } | null {
   // Ease-out: most of the ground is covered early, so the landing settles
   // rather than arriving at speed.
   const e = 1 - (1 - k) * (1 - k);
-  return { x: fromX + dirX * CARRY_M * e, z: fromZ + dirZ * CARRY_M * e };
+  return { x: fromX + dirX * carryM * e, z: fromZ + dirZ * carryM * e };
 }
 
 export interface VaultProbe {
@@ -87,10 +104,14 @@ export function tryVaultStep(
   const len = Math.hypot(moveX, moveZ);
   if (len < 0.35) return false;   // must be genuinely walking INTO it, not brushing
   const nx = moveX / len, nz = moveZ / len;
-  if (!walkable.canDashOver(x, z, x + nx * CARRY_M, z + nz * CARRY_M, radius)) return false;
+  const carry = CARRY_CANDIDATES_M.find(
+    (d) => walkable.canDashOver(x, z, x + nx * d, z + nz * d, radius),
+  );
+  if (carry === undefined) return false;
 
   fromX = x; fromZ = z;
   dirX = nx; dirZ = nz;
+  carryM = carry;
   startedAt = gameNow();
   activeUntil = startedAt + CONFIG.VAULT.DURATION_S * 1000;
   playWhoosh();

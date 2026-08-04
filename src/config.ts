@@ -949,8 +949,10 @@ export const CONFIG = {
   // them, they don't reward hoarding them.
   BONFIRE: {
     /** Ember hearts a rest hands you. Flat — no scaling with how hurt you are,
-     *  because that's the whole point (see above). */
-    EMBER: 2,
+     *  because that's the whole point (see above). Sits against EMBER_MAX: at 4
+     *  a single rest fills two thirds of the buffer, which is what makes finding
+     *  a fire feel like an event rather than a top-up. */
+    EMBER: 4,
   },
 
   // === THE EMBER (borrowed life — see player/ember.ts) ===
