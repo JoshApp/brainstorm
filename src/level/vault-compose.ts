@@ -433,7 +433,17 @@ export function composeFloor(
   // placeholders: v3 treats their tag as a HINT, not a gate — they draw from one
   // weighted union pool (built below) so any room SHAPE can fill a middle and
   // variety isn't throttled by a single tag's depth-eligible pool.
-  const middleCount = clamp(1 + Math.floor((depth - 1) / 2), 1, 4);
+  // CONTENT ROOMS — the rooms BETWEEN the bookends (entrance / stairwell). Those
+  // two open and close the floor; they're not what the floor is about, so they
+  // never count here. The minimum matters more than the ramp: a floor whose whole
+  // middle is the one guaranteed trove has no landmark, just a corridor with a
+  // prize in it. See CONFIG.FLOOR_SHAPE.
+  const fs = CONFIG.FLOOR_SHAPE;
+  const middleCount = clamp(
+    fs.CONTENT_ROOMS_MIN - 1 + Math.floor((depth - 1) / fs.DEPTHS_PER_EXTRA_ROOM),
+    fs.CONTENT_ROOMS_MIN,
+    fs.CONTENT_ROOMS_MAX,
+  );
   const tagSeq: VaultTag[] = ['start'];
   for (let i = 0; i < middleCount; i++) tagSeq.push('combat');   // placeholder; see midPool
   tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');

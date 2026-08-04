@@ -891,6 +891,22 @@ export const CONFIG = {
     FURNISH_VASE_MAX: 6,
   },
 
+  // === FLOOR SHAPE ===
+  // How many CONTENT rooms a floor carries — the rooms between the bookends.
+  // The entrance and the stairwell don't count: they open and close the floor,
+  // they aren't what it's about (level/room-types.ts `bookend`).
+  //
+  // The MINIMUM is the load-bearing number. A landmark only reads as a landmark
+  // when it stands against ordinary rooms, so a floor whose entire middle is the
+  // trove has no landmark — it has a corridor with a prize in it. Three is the
+  // fewest that leaves the guaranteed trove something to be notable against.
+  FLOOR_SHAPE: {
+    CONTENT_ROOMS_MIN: 3,
+    CONTENT_ROOMS_MAX: 5,
+    /** Content rooms gained per this many depths, from the minimum up. */
+    DEPTHS_PER_EXTRA_ROOM: 2,
+  },
+
   // === ROOM CENTREPIECES ===
   // The ONE notable thing a role room stages (level/centrepieces.ts). The
   // room-type table decides WHICH; these decide how big it stands.

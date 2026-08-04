@@ -104,6 +104,26 @@ role rooms; at most 2 modified rooms, one modifier each; nothing at all on
 depth 1 or a boss floor. A landmark only reads as a landmark when most rooms
 aren't one.
 
+**Measured over CONTENT rooms.** The entrance and the stairwell are BOOKENDS
+(`bookend: true`) — they open and close the floor rather than holding it. They
+may still be dressed (the way down can be a blood door), but they never count
+toward the floor's content budget, and every landmark-density measurement
+excludes them. Counting them was what made a short floor look full when it was
+actually empty: a depth-1 floor of entrance + one room + exit reads as "2 of 3
+rooms are landmarks", when the truth is it has exactly ONE content room and the
+trove ate all of it.
+
+Two rules fall out, and they're the ones that fixed early floors:
+
+- **`CONFIG.FLOOR_SHAPE.CONTENT_ROOMS_MIN` = 3.** Every floor carries at least
+  three rooms between the bookends, so the guaranteed trove always has ordinary
+  rooms to be notable *against*. The ramp (3 → 5 by depth) matters much less
+  than the minimum.
+- **At most half the content rooms may be promoted.** `assignRoleRooms` reserves
+  `ceil(n/2)` as plain. Measured over 60 composed floors per depth this lands at
+  29% landmarks on D1 and ~36% by D9 — near Isaac's ratio — and never worse than
+  50% on any single floor.
+
 **To change floor feel, edit `ROOM_TYPES`** — add a type, or flip what an
 existing one tolerates. `ROLE_CAPS` and every build pass derive from it.
 

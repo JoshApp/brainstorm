@@ -136,8 +136,13 @@ export function assignFloorRoles(
 // arena — from a small budget.
 //
 // The budget is the whole point. A landmark only reads as a landmark when most
-// rooms aren't one, so this deliberately upgrades 1-3 rooms and leaves the rest
+// rooms aren't one, so this deliberately upgrades a MINORITY and leaves the rest
 // as connective tissue. Isaac's own ratio is ~3-5 special against ~8-10 plain.
+//
+// "Most rooms" means most CONTENT rooms. The entrance and the stairwell are
+// bookends (room-types.ts) — they open and close the floor rather than holding
+// it — so they're neither candidates here nor part of the denominator. Counting
+// them was what made a short floor look full when it was actually empty.
 
 /** Rooms this pass may promote — the ones with no structural identity of their
  *  own. Everything else (entrance, finish, the arenas, a designated sanctum) is
@@ -191,9 +196,13 @@ export function assignRoleRooms(
   // 1. The guaranteed trove — the floor's dependable choice.
   take('trove');
 
-  // 2. Rolled extras. Leave at least one ordinary room behind so a floor never
-  //    becomes wall-to-wall landmarks (the muddiness we're fixing).
-  const spare = Math.max(0, candidates.length - assigned.size - 1);
+  // 2. Rolled extras. RESERVE — keep at least HALF the floor's content rooms
+  //    ordinary. A landmark is only a landmark against plain rooms, so the ratio
+  //    is the design, not a nice-to-have: promote up to half, never more. (The
+  //    denominator is CONTENT rooms — the entrance and the stairwell are
+  //    bookends and were never candidates. See room-types.ts `bookend`.)
+  const reserve = Math.max(1, Math.ceil(candidates.length / 2));
+  const spare = Math.max(0, candidates.length - assigned.size - reserve);
   const extras = Math.min(spare, opts.rand() < 0.45 ? 2 : 1);
   const pool = ROLLED_ROLES.filter((r) => opts.depth >= r.minDepth);
   const used = new Set<RoomRole>();

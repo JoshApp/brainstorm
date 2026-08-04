@@ -170,6 +170,22 @@ function sampleFloor(depth: number, seed: number): FloorSample {
     }
   }
 
+  // The TROVE — the floor's guaranteed choice. Several offering stones share one
+  // groupId and taking any ONE closes the rest, so the income is one item per
+  // GROUP, not per stone. Counting stones would triple the floor's apparent
+  // build income; ignoring the group entirely (what this audit did before the
+  // trove existed) hides the single most reliable build source on the floor.
+  const troveGroups = new Set<string>();
+  for (const p of spec.props as PropSpec[]) {
+    if (p.kind !== 'offering') continue;
+    troveGroups.add((p as Extract<PropSpec, { kind: 'offering' }>).groupId);
+  }
+  for (const _ of troveGroups) {
+    const t = rollDropTable('trove', depth, rand);
+    incomeGold += t.gold;
+    incomeItems.push(...t.items.filter((i) => i.kind !== 'key'));
+  }
+
   // Set-piece FIRES — a boss floor's boss, or a miniboss arena, gives a deferred
   // reward when the fight ends. Model it as its table's payout (taken on clear).
   if (isBossDepth(depth)) {

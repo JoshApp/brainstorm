@@ -19,6 +19,7 @@
 import { CONFIG } from '../config';
 import { roomType, type Centrepiece } from './room-types';
 import { rollDropItem } from '../content/drop-tables';
+import { rollChestLoot } from './decor-defaults';
 import type { PropSpec } from './types';
 
 /** Where a centrepiece may stand, and what the room can tell it. */
@@ -114,7 +115,7 @@ function planTrove(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiec
   // A room too cramped to stand two stones apart can't hold a CHOICE — and one
   // offering isn't a trove, it's a chest with extra ceremony. So it becomes a
   // chest: the reward still lands, it just stops pretending to be a decision.
-  if (!slots) return planConsolationChest(site);
+  if (!slots) return planConsolationChest(site, ctx);
 
   // Distinct goods — an offering of three copies of one thing isn't a choice.
   const groupId = `trove:${site.roomId}`;
@@ -136,10 +137,17 @@ function planTrove(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiec
 
 /** The trove's fallback when the room can't stand two stones apart: a single
  *  gold chest on the focal spot. Same reward tier, no false ceremony. */
-function planConsolationChest(site: CentrepieceSite): PlacedCentrepiece {
+function planConsolationChest(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiece {
   if (!site.free(site.x, site.z)) return EMPTY;
   return {
-    props: [{ kind: 'chest', x: site.x, z: site.z, tier: 'gold', facing: { kind: 'wall-away' } }],
+    // Loot is rolled HERE, not left to the procgen defaults: those only fill a
+    // chest that declared no tier, and a centrepiece always declares one. A
+    // chest that names its tier must name its contents too, or the room's whole
+    // reason to exist opens empty.
+    props: [{
+      kind: 'chest', x: site.x, z: site.z, tier: 'gold',
+      loot: rollChestLoot('gold', ctx.rand, ctx.depth), facing: { kind: 'wall-away' },
+    }],
     claimed: [{ x: site.x, z: site.z }],
   };
 }
@@ -175,8 +183,11 @@ function planHazard(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepie
   const r = CONFIG.CENTREPIECE.HAZARD_RING_RADIUS;
   const n = CONFIG.CENTREPIECE.HAZARD_RING_SPIKES;
   const claimed = [{ x: site.x, z: site.z }];
+  // Loot rolled here for the same reason as the consolation chest above — a
+  // tier-declaring chest is skipped by the procgen default fill.
   const props: PropSpec[] = [{
-    kind: 'chest', x: site.x, z: site.z, tier: 'silver', facing: { kind: 'wall-away' },
+    kind: 'chest', x: site.x, z: site.z, tier: 'silver',
+    loot: rollChestLoot('silver', ctx.rand, ctx.depth), facing: { kind: 'wall-away' },
   }];
   // Offset the ring by a rolled phase so two trap rooms don't read identically.
   const phase = ctx.rand() * Math.PI * 2;

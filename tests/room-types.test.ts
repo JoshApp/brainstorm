@@ -12,9 +12,10 @@
 import assert from 'node:assert/strict';
 import { ROLE_CAPS, assignFloorRoles, assignRoleRooms, type RoomNode } from '../src/level/floor-roles';
 import {
-  ROOM_TYPES, roomType, acceptsModifier, assignableTypes, hasCentrepiece,
+  ROOM_TYPES, roomType, acceptsModifier, assignableTypes, hasCentrepiece, isBookend,
   type RoomTypeId,
 } from '../src/level/room-types';
+import { CONFIG } from '../src/config';
 
 let passed = 0;
 let failed = 0;
@@ -153,14 +154,43 @@ test('a boss floor gets NO role rooms — the boss is the floor', () => {
   assert.equal(plan.assigned.size, 0);
 });
 
-test('most rooms stay connective — at least one plain room always survives', () => {
-  for (let seed = 1; seed <= 40; seed++) {
-    const nodes = mkNodes(6);
-    const roles = assignFloorRoles(nodes, { isBossFloor: false });
-    assignRoleRooms(roles, nodes, { depth: 9, rand: seeded(seed), isBossFloor: false });
-    const plain = nodes.filter((n) => !hasCentrepiece(roles.role(n.roomId))).length;
-    assert.ok(plain >= 1, `seed ${seed}: every room became a landmark`);
+test('exactly TWO bookends — the floor opens and closes, everything else is content', () => {
+  assert.equal(isBookend('entrance'), true);
+  assert.equal(isBookend('finish'), true);
+  for (const id of Object.keys(ROOM_TYPES) as RoomTypeId[]) {
+    if (id === 'entrance' || id === 'finish') continue;
+    assert.equal(isBookend(id), false, `${id} should count as a content room`);
   }
+  // A boss arena is the floor's whole point; the way down is not.
+  assert.equal(isBookend('boss'), false);
+});
+
+test('landmark density is measured over CONTENT rooms — at least half stay plain', () => {
+  // This is the ratio, and the ratio is the design: a landmark only reads as one
+  // against ordinary rooms. Measured over content rooms only — counting the
+  // entrance and the stairwell is what made a short floor look full when it was
+  // actually empty.
+  for (let seed = 1; seed <= 60; seed++) {
+    for (const depth of [1, 3, 6, 9]) {
+      const nodes = mkNodes(2 + CONFIG.FLOOR_SHAPE.CONTENT_ROOMS_MIN);
+      const roles = assignFloorRoles(nodes, { isBossFloor: false });
+      assignRoleRooms(roles, nodes, { depth, rand: seeded(seed), isBossFloor: false });
+      const content = nodes.filter((n) => !isBookend(roles.role(n.roomId)));
+      const landmarks = content.filter((n) => hasCentrepiece(roles.role(n.roomId)));
+      assert.ok(
+        landmarks.length <= Math.floor(content.length / 2),
+        `seed ${seed} d${depth}: ${landmarks.length}/${content.length} content rooms are landmarks`,
+      );
+    }
+  }
+});
+
+test('a floor always carries enough content rooms for a landmark to stand against', () => {
+  // The minimum is what makes the guaranteed trove READ as special. Below it the
+  // floor's whole middle is the reward — a corridor with a prize in it.
+  assert.ok(CONFIG.FLOOR_SHAPE.CONTENT_ROOMS_MIN >= 3,
+    'fewer than 3 content rooms leaves the trove nothing to be notable against');
+  assert.ok(CONFIG.FLOOR_SHAPE.CONTENT_ROOMS_MAX >= CONFIG.FLOOR_SHAPE.CONTENT_ROOMS_MIN);
 });
 
 test('structural rooms are never overwritten by a promotion', () => {

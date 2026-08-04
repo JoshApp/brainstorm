@@ -77,6 +77,20 @@ export interface AppliedModifier {
 
 export interface RoomTypeDef {
   kind: RoomKind;
+  /**
+   * A BOOKEND exists to OPEN or CLOSE the floor — it is not what the floor is
+   * about. It may still be dressed (the way down can be a blood door), but it
+   * never counts toward the floor's CONTENT BUDGET, and the question "is this
+   * floor mostly landmarks?" is asked over the rooms BETWEEN the bookends.
+   *
+   * This distinction is load-bearing on short floors. A depth-1 floor of
+   * entrance + one room + exit looked like "2 of 3 rooms are landmarks" when
+   * measured naively; measured honestly it has exactly ONE content room, which
+   * is the real problem (see CONFIG.FLOOR_SHAPE — floors carry a minimum
+   * number of content rooms so a landmark has something to be a landmark
+   * against).
+   */
+  bookend: boolean;
   /** The one notable thing. 'none' for the connective majority. */
   centrepiece: Centrepiece;
   /** May the combat budget seed wandering enemies here (enemies as TEXTURE)? */
@@ -101,7 +115,7 @@ export const ROOM_TYPES = {
   // ── STRUCTURAL — placed, form welded to function ───────────────────
   // You arrive here. Safe, marked, never a fight and never a deal.
   entrance: {
-    kind: 'structural', centrepiece: 'none',
+    kind: 'structural', bookend: true, centrepiece: 'none',
     enemies: false, event: false, minorLoot: true, fire: false, firePref: 0,
     modifiers: [],
   },
@@ -109,19 +123,19 @@ export const ROOM_TYPES = {
   // last thing standing between you and the stairs, and the way down can be
   // PRICED: `finish + toll` is the blood door.
   finish: {
-    kind: 'structural', centrepiece: 'descent',
+    kind: 'structural', bookend: true, centrepiece: 'descent',
     enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: ['ambush', 'toll'],
   },
   // The elite's stage. No injected trash, no deal, no found fire — the miniboss
   // IS the content, and it gives a fire when it dies.
   miniboss: {
-    kind: 'structural', centrepiece: 'miniboss',
+    kind: 'structural', bookend: false, centrepiece: 'miniboss',
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
   boss: {
-    kind: 'structural', centrepiece: 'boss',
+    kind: 'structural', bookend: false, centrepiece: 'boss',
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
@@ -129,20 +143,20 @@ export const ROOM_TYPES = {
   // ── ROLE — a job assigned to any qualifying room ───────────────────
   // A calm pocket that hosts a question: a deal, or a defining find.
   feature: {
-    kind: 'role', centrepiece: 'bargain',
+    kind: 'role', bookend: false, centrepiece: 'bargain',
     enemies: true, event: true, minorLoot: true, fire: true, firePref: 3,
     modifiers: ['ambush', 'contested', 'toll', 'hazard', 'gated'],
   },
   // The bonfire's own room — staged, prominent, never a fight.
   sanctum: {
-    kind: 'role', centrepiece: 'fire',
+    kind: 'role', bookend: false, centrepiece: 'fire',
     enemies: false, event: false, minorLoot: false, fire: true, firePref: 5,
     modifiers: [],
   },
   // The floor's guaranteed choice — several offerings, take one. A reward room
   // is a BREATH: no enemies, no hazards. It may be sealed behind an offering.
   trove: {
-    kind: 'role', centrepiece: 'offerings',
+    kind: 'role', bookend: false, centrepiece: 'offerings',
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 1,
     // You may have to FIGHT for the offerings (contested) or PAY to reach them
     // (toll) — but the room is never sprung on you. A reward you walked into
@@ -151,7 +165,7 @@ export const ROOM_TYPES = {
   },
   // You never fight beside a vendor. No modifiers, at all, ever.
   shop: {
-    kind: 'role', centrepiece: 'merchant',
+    kind: 'role', bookend: false, centrepiece: 'merchant',
     enemies: false, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
   },
@@ -159,27 +173,27 @@ export const ROOM_TYPES = {
   // fighting — which is why this is a TYPE and "fight for the thing" is not. You
   // may have to pay your way in.
   arena: {
-    kind: 'role', centrepiece: 'gauntlet',
+    kind: 'role', bookend: false, centrepiece: 'gauntlet',
     enemies: true, event: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: ['toll', 'hazard'],
   },
   // The hazard and the prize it guards. Can also be waiting for you.
   trap: {
-    kind: 'role', centrepiece: 'hazard',
+    kind: 'role', bookend: false, centrepiece: 'hazard',
     enemies: true, event: false, minorLoot: true, fire: false, firePref: 0,
     modifiers: ['ambush', 'contested'],
   },
 
   // ── PLAIN — the connective majority, no centrepiece ────────────────
   combat: {
-    kind: 'plain', centrepiece: 'none',
+    kind: 'plain', bookend: false, centrepiece: 'none',
     enemies: true, event: true, minorLoot: true, fire: true, firePref: 1,
     modifiers: ['ambush', 'hazard', 'dark'],
   },
   // A deliberately empty dread room. Its whole job is to be nothing — so the
   // only thing it tolerates is the dark getting worse.
   quiet: {
-    kind: 'plain', centrepiece: 'none',
+    kind: 'plain', bookend: false, centrepiece: 'none',
     enemies: false, event: true, minorLoot: true, fire: true, firePref: 4,
     modifiers: ['dark', 'hazard'],
   },
@@ -202,6 +216,16 @@ export function acceptsModifier(id: string, mod: RoomModifier): boolean {
  *  the spine and plain rooms are the fallback, so neither is assignable. */
 export function assignableTypes(): RoomTypeId[] {
   return (Object.keys(ROOM_TYPES) as RoomTypeId[]).filter((k) => ROOM_TYPES[k].kind === 'role');
+}
+
+/**
+ * True when the room is a BOOKEND — it opens or closes the floor rather than
+ * holding its content. The floor's content budget, and every "how dense are the
+ * landmarks?" measurement, must exclude these: counting the entrance and the
+ * stairwell as content makes a short floor look full when it's empty.
+ */
+export function isBookend(id: string): boolean {
+  return roomType(id).bookend;
 }
 
 /** True when the type stages a notable thing. Used to enforce the ONE-per-room
