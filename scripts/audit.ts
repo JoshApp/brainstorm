@@ -370,9 +370,13 @@ judge(meanCov >= 0.45 && meanCov <= 1.4, 'reward variance (CoV)',
   `${f2(meanCov)} — spread of the reward stream (band 0.45-1.4: not a metronome, not famine)`);
 
 // (5) Gear churn — gear-bearing floors, so build choices stay live. Band 20-70%.
-const gearMean = mean(depths.map((d) => pct(aggs.get(d)!.gearFloors, aggs.get(d)!.n)));
-judge(gearMean >= 20 && gearMean <= 70, 'gear churn',
-  `${f1(gearMean)}% of floors offer gear (band 20-70%: choices alive, not drowned)`);
+// BUILD CHURN — how often a floor hands you a build piece. Weapons and
+// vestments deliberately no longer drop (you carry one weapon; it evolves), so
+// the build layer is RELICS now — measuring "gear" here would flag 0% forever
+// and train us to ignore the health check.
+const buildMean = mean(depths.map((d) => pct(aggs.get(d)!.relicFloors, aggs.get(d)!.n)));
+judge(buildMean >= 20 && buildMean <= 90, 'build churn',
+  `${f1(buildMean)}% of floors offer a build piece (band 20-90%: a build grows, not drowns)`);
 
 // Mimic share — a surprise lever; flag if it's punishingly common.
 let mimicTot = 0, chestTot = 0;

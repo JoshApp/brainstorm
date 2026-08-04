@@ -15,6 +15,8 @@
 // `sanctum` for the bonfire pass to DESIGNATE and `quiet` for a later pacing
 // layer — both already carry caps so the seam is ready.
 
+import { roomType } from './room-types';
+
 /** The job a room does on its floor. */
 export type RoomRole =
   | 'entrance'  // the player spawns here — a safe beat, never a fight or a deal
@@ -42,20 +44,26 @@ export interface RoleCaps {
   bonfirePref: number;
 }
 
-// The tunable surface. A content/design layer can reshape floor feel here
-// without reading a single build pass.
-export const ROLE_CAPS: Record<RoomRole, RoleCaps> = {
-  entrance: { allowCombat: false, allowBonfire: false, allowEvent: false, allowLoot: true,  bonfirePref: 0 },
-  combat:   { allowCombat: true,  allowBonfire: true,  allowEvent: true,  allowLoot: true,  bonfirePref: 1 },
-  feature:  { allowCombat: true,  allowBonfire: true,  allowEvent: true,  allowLoot: true,  bonfirePref: 3 },
-  sanctum:  { allowCombat: false, allowBonfire: true,  allowEvent: false, allowLoot: false, bonfirePref: 5 },
-  finish:   { allowCombat: true,  allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
-  quiet:    { allowCombat: false, allowBonfire: true,  allowEvent: true,  allowLoot: true,  bonfirePref: 4 },
-  // A miniboss arena is the elite's stage: no injected trash, no deal, no found
-  // fire (the miniboss GIVES a fire on death). Loot rides its deferred reward.
-  miniboss: { allowCombat: false, allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
-  boss:     { allowCombat: false, allowBonfire: false, allowEvent: false, allowLoot: false, bonfirePref: 0 },
-};
+// The caps are DERIVED from the room-type table (level/room-types.ts) — that
+// table is the single source of truth for what a room is, what it may host, and
+// what may happen in it. This projection exists so the existing build passes keep
+// their narrow, familiar question ("may a fire rest here?") while richer passes
+// read the type directly for its centrepiece and accepted modifiers.
+//
+// To change floor feel, edit ROOM_TYPES — not this.
+export const ROLE_CAPS: Record<RoomRole, RoleCaps> = Object.fromEntries(
+  (['entrance', 'combat', 'feature', 'sanctum', 'finish', 'quiet', 'miniboss', 'boss'] as RoomRole[])
+    .map((role) => {
+      const t = roomType(role);
+      return [role, {
+        allowCombat: t.enemies,
+        allowBonfire: t.fire,
+        allowEvent: t.event,
+        allowLoot: t.minorLoot,
+        bonfirePref: t.firePref,
+      } satisfies RoleCaps];
+    }),
+) as Record<RoomRole, RoleCaps>;
 
 /** Where a room sits on the spine — authoritative over vault tags, because
  *  middle vaults draw from a union pool and their tags are only hints (v3). */
