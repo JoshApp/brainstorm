@@ -168,6 +168,14 @@ export const TABLES: Record<string, LootTable> = {
   'defining-find': T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   'merchant':      T({ entries: [{ from: 'gear', bias: 2, minRarity: rampFloor(1, 6) }] }),
   'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
+  // TROVE — the floor's guaranteed choice, rolled three times onto three stones.
+  // Deliberately relic-heavy: a trove's job is to move your BUILD forward, and
+  // three relics side by side is a real decision (which direction do I commit
+  // to?), where three weapons would just be "which number is bigger".
+  'trove': T({ entries: [
+    { from: 'relics', bias: 3, weight: 72, minRarity: rampFloor(2, 7) },
+    { from: 'gear',   bias: 3, weight: 28, minRarity: rampFloor(2, 7) },
+  ] }),
   'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   // A fallen delver is now a RARE find (loot-director drops the per-floor odds),
   // so what they died holding is a real reward, not a scrap: a fair purse AND a

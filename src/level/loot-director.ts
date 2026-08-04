@@ -35,7 +35,7 @@ const GATE_MIN_DEPTH = 2;
 const EVENT_BLOCKERS = new Set([
   'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
   'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'trinket-merchant', 'blacksmith', 'pillar', 'model',
-  'corpse', 'stash-chest',
+  'corpse', 'stash-chest', 'offering',
 ]);
 
 // The L4D-style Director budget — anchors are POTENTIAL spots; this decides how
@@ -101,7 +101,7 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   // PER-ROOM BIG-CONTENT budget (Layer 1): a small room gets ONE big thing, a
   // larger one 2–3. The FIRE + any authored event already in a room COUNT against
   // it, so the director won't add a chest to a room that's already spoken for.
-  const BIG_KINDS = new Set(['chest', 'altar', 'blood-altar', 'starter-altar', 'fountain', 'challenge-offering', 'merchant', 'reliquary', 'tithe-basin', 'tome-pillar', 'stash-chest']);
+  const BIG_KINDS = new Set(['chest', 'altar', 'blood-altar', 'starter-altar', 'fountain', 'challenge-offering', 'merchant', 'reliquary', 'tithe-basin', 'tome-pillar', 'stash-chest', 'offering']);
   const isBigFire = (p: PropSpec) => p.kind === 'model' && (p as unknown as { model?: { id?: string } }).model?.id === 'bonfire';
   const bigLeft = new Map<RoomBox, number>();
   for (const r of rooms) bigLeft.set(r, r.w * r.d < 50 ? 1 : r.w * r.d < 100 ? 2 : 3);

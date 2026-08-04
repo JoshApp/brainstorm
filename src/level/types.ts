@@ -179,6 +179,22 @@ export type PropSpec =
   // arena room flips that room's arena gate to the 'offering' trigger (the
   // gate no longer slams on entry — you choose to start the trial).
   | { kind: 'challenge-offering'; x: number; z: number; rotY?: number }
+  // ONE thing on offer, standing on its own stone. Props sharing a `groupId`
+  // are a single MUTUALLY-EXCLUSIVE choice — take one and its siblings close,
+  // leaving their empty stones behind as monuments to what you refused. Each
+  // stone is its own prop (not one group prop) so every placement pass — the
+  // loot director's clearance, the manifest reconcile, the debug capture —
+  // sees each stone where it actually stands. See interactables/offering.ts.
+  | {
+      kind: 'offering';
+      x: number; z: number; rotY?: number;
+      /** Item id (src/content/items.ts) offered on this stone. */
+      itemId: string;
+      /** Members sharing this id close together when one is taken. */
+      groupId: string;
+      /** Presentation: a waist-high plinth, or a slab set into the floor. */
+      style?: 'pedestal' | 'ground';
+    }
   // 'model' = any ModelSpec placed in the world as static decoration.
   // Defaults to NO COLLISION — pure visuals. Use for relics, debris,
   // sigils, anything atmospheric that doesn't move or react.

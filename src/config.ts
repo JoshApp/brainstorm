@@ -891,6 +891,23 @@ export const CONFIG = {
     FURNISH_VASE_MAX: 6,
   },
 
+  // === ROOM CENTREPIECES ===
+  // The ONE notable thing a role room stages (level/centrepieces.ts). The
+  // room-type table decides WHICH; these decide how big it stands.
+  CENTREPIECE: {
+    // TROVE — the floor's dependable choice. Three is the sweet spot: enough
+    // that refusing two of them stings, few enough to read at a glance.
+    TROVE_OFFERINGS: 3,
+    // Minimum metres between offerings in one group. Each floats a name card,
+    // and below this the cards overlap into mush (measured on a phone at ~3m).
+    // Whoever places a choice must honour it or "survey your options at a
+    // glance" breaks — so it lives here, where placement can read it.
+    OFFERING_MIN_SPACING: 2.8,
+    // TRAP ROOM — spikes ringed around the prize, at this radius.
+    HAZARD_RING_RADIUS: 1.9,
+    HAZARD_RING_SPIKES: 4,
+  },
+
   // === DEATH SEQUENCE ===
   DEATH_SLOWMO_SCALE: 0.25,         // dt multiplier while dying
   // Sequence holds longer now (3.2 → 4.8s) so the bigger epitaph fade

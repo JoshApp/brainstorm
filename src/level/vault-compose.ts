@@ -22,6 +22,7 @@ import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles';
+import { planCentrepiece } from './centrepieces';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
 import { wallAdjacency, roleDecorPolicy } from './room-decor';
@@ -389,7 +390,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
 // blockers, not events, but count here so loot never lands inside one either.
 const EVENT_PROP_KINDS = new Set<string>([
   'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
-  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'pillar',
+  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'pillar', 'offering',
 ]);
 // How far a secondary lootable is kept from a room's event centrepiece (m). In a
 // room too small to reach it, the placer takes the farthest cell it can.
@@ -632,7 +633,7 @@ export function composeFloor(
   // guaranteed trove, plus 0-2 rolled extras (a shop, an arena, a trap). Most
   // rooms stay connective on purpose; a landmark only reads as one when most
   // rooms aren't. See floor-roles.assignRoleRooms.
-  assignRoleRooms(roles, roleNodes, {
+  const rolePlan = assignRoleRooms(roles, roleNodes, {
     depth, rand, isBossFloor: opts.isBossFloor === true,
   });
 
@@ -705,7 +706,12 @@ export function composeFloor(
       ceilingStyle: ceil.style,
       ceilingRise: ceil.rise,
       wallVariant: pv.vault.wallVariant,
-      perimeterFitting: pv.vault.perimeterFitting,
+      // A room PROMOTED to an arena needs the seal its vault never declared:
+      // every entrance the composer cuts becomes a portcullis, and the trial
+      // altar's encounter slams them in unison. Without this the gauntlet would
+      // summon its waves into a room you could simply walk out of.
+      perimeterFitting: rolePlan.assigned.get(pv.roomId) === 'arena'
+        ? 'arena-portcullis' : pv.vault.perimeterFitting,
       lightTier: pv.vault.lightTier,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
       depth,
@@ -938,6 +944,35 @@ export function composeFloor(
     const procDecor = decorPass(pv.vault, decorPalette, occ.blocked('floor', 'wall', 'void'), rand, depth);
     for (const p of procDecor) {
       props.push(translateProp(p, pv.offsetX, pv.offsetZ));
+    }
+
+    // ── CENTREPIECE — the ONE notable thing a promoted role room stages ─────
+    // Runs FIRST among the content passes (before fire anchors, content spots,
+    // enemy cells) so the room's reason to exist claims its centre and every
+    // later pass places AROUND it: `occ` is authoritative, and we reserve every
+    // cell the centrepiece took. The one-per-room cap is structural — a room has
+    // one centrepiece field, so it gets one call (#64: no more bonfire + fountain
+    // + altar stacked in a middle).
+    const promoted = rolePlan.assigned.get(pv.roomId);
+    if (promoted) {
+      const toCell = (x: number, z: number) => ({
+        col: Math.floor(x - pv.offsetX + W / 2),
+        row: Math.floor(z - pv.offsetZ + D / 2),
+      });
+      const freeAt = (x: number, z: number): boolean => {
+        const { col, row } = toCell(x, z);
+        const ch = populated[row]?.[col];
+        return (ch === '.' || ch === ',')
+          && !occ.has(col, row, 'floor') && !occ.has(col, row, 'void');
+      };
+      const placedPiece = planCentrepiece(promoted, {
+        roomId: pv.roomId, x: pv.offsetX, z: pv.offsetZ, w: W, d: D, free: freeAt,
+      }, { depth, rand });
+      for (const c of placedPiece.claimed) {
+        const { col, row } = toCell(c.x, c.z);
+        occ.reserve(col, row, 'floor', 'feature');
+      }
+      props.push(...placedPiece.props);
     }
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;

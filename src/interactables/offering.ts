@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
+import { CONFIG } from '../config';
 import { buildRelicBillboard } from '../effects/relic-billboard';
 import { hasRelicArt } from '../content/relic-art-assets';
 import { generateEntityId } from '../ecs/world';
@@ -55,8 +56,13 @@ const BOB_FREQUENCY = 0.8;     // Hz — slow, dreamy hover
  *  Each offering floats a name card above it, and below this spacing the cards
  *  overlap into unreadable mush at normal viewing distance (measured on a phone
  *  at ~3m). Whoever places a trove room must honour this, or the "survey your
- *  options at a glance" premise breaks. */
-export const MIN_OFFERING_SPACING = 2.6;
+ *  options at a glance" premise breaks.
+ *
+ *  The number itself lives in config.ts, because the pass that has to OBEY it
+ *  (level/centrepieces.ts) runs headless and must not drag this UI-heavy module
+ *  into a node import. Re-exported here so the constraint is documented where
+ *  the system it constrains lives. */
+export const MIN_OFFERING_SPACING = CONFIG.CENTREPIECE.OFFERING_MIN_SPACING;
 
 /** How an offering is presented. Adding one is a data edit here, not new code
  *  at every call site. */

@@ -30,6 +30,7 @@ import { spawnChest } from '../interactables/chest';
 import { spawnGateOffering } from '../interactables/gate-offering';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
+import { spawnOffering } from '../interactables/offering';
 import { spawnBloodAltar } from '../interactables/blood-altar';
 import { spawnChallengeOffering } from '../interactables/challenge-offering';
 import { ITEMS } from '../content/items';
@@ -1588,6 +1589,27 @@ export function buildLevel(
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.5, yTop: gy + 0.85,
       });
+    } else if (prop.kind === 'offering') {
+      // One stone of a choice. Siblings share `groupId`, so taking any of them
+      // closes the rest — the offering system owns that; the builder only stands
+      // this one up. An unknown item id is skipped rather than crashing the floor.
+      const offered = ITEMS[prop.itemId];
+      if (offered) {
+        const obs: Obstacle = {
+          kind: 'aabb',
+          minX: prop.x - 0.40, maxX: prop.x + 0.40,
+          minZ: prop.z - 0.34, maxZ: prop.z + 0.34,
+          yTop: gy + (prop.style === 'ground' ? 0.2 : 0.75),
+        };
+        obstacles.push(obs);
+        spawnOffering(
+          { item: offered, pos: new THREE.Vector3(prop.x, gy, prop.z), rotY: prop.rotY ?? 0 },
+          {
+            kind: 'trove', scene: root, materials,
+            groupId: prop.groupId, style: prop.style ?? 'pedestal',
+          },
+        );
+      }
     } else if (prop.kind === 'merchant') {
       spawnMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       // Slim footprint — step around the hooded figure on the path.
