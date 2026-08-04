@@ -14,7 +14,8 @@ import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
 import { getFlask, addCharges } from '../player/flask';
-import { healPlayer, getPlayerHp } from '../player/health';
+import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
+import { grantEmber } from '../player/ember';
 import { flashHearthEmbrace } from '../ui/vignette';
 import { spawnStatusTextHere } from '../ui/damage-numbers';
 
@@ -22,6 +23,8 @@ import { spawnStatusTextHere } from '../ui/damage-numbers';
  *  flesh-warm for health, flask-gold for charges. */
 const HEARTH_MEND_COLOR = 'rgba(255, 214, 170, 0.98)';
 const HEARTH_FLASK_COLOR = 'rgba(255, 198, 92, 0.98)';
+/** Borrowed life — the same amber the ember hearts use on the bar. */
+const HEARTH_EMBER_COLOR = 'rgba(255, 176, 74, 0.98)';
 import { CONFIG } from '../config';
 
 interface FateFireOpts {
@@ -70,16 +73,28 @@ export function registerFateFire(o: FateFireOpts): void {
       // a rest you don't feel, and this is the one moment the game is kind — so
       // the fire takes the whole screen for a beat, and the two things it gave
       // you float up off the flame where you're already looking.
-      const hpBefore = getPlayerHp();
-      healPlayer(CONFIG.BONFIRE.HEAL, 'passive');
-      const mended = Math.max(0, Math.round(getPlayerHp() - hpBefore));
+      // ORDER MATTERS: flask, then flesh, then the overflow becomes EMBER.
+      // Spending it this way means a rest is never wasted — arrive at full
+      // health and the whole budget converts to borrowed life, so a fire is
+      // worth reaching whatever state you're in.
       const charges = addCharges(CONFIG.BONFIRE.FLASK_CHARGES);
+      const budget = getPlayerMaxHp() * CONFIG.BONFIRE.MEND_BUDGET;
+      const hpBefore = getPlayerHp();
+      healPlayer(budget, 'passive');
+      const mended = Math.max(0, Math.round(getPlayerHp() - hpBefore));
+      // Whatever the flesh couldn't take. grantEmber clamps to the cap itself,
+      // so an already-shielded delver simply tops off rather than being refused.
+      const spare = Math.max(0, Math.round(budget - mended));
+      if (spare > 0) grantEmber(spare);
       flashHearthEmbrace();
       const at = o.position.clone();
       if (mended > 0) spawnStatusTextHere(at, `+${mended} MENDED`, HEARTH_MEND_COLOR);
       if (charges > 0) {
-        // Second line sits higher so the two never overlap on a phone.
+        // Stacked upward so the lines never overlap on a phone.
         spawnStatusTextHere(at.clone().setY(at.y + 0.42), `+${charges} FLASK`, HEARTH_FLASK_COLOR);
+      }
+      if (spare > 0) {
+        spawnStatusTextHere(at.clone().setY(at.y + 0.84), `+${spare} EMBER`, HEARTH_EMBER_COLOR);
       }
       spendFlame(flames);
       o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow

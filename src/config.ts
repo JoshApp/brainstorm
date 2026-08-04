@@ -904,8 +904,19 @@ export const CONFIG = {
   // then you choose whether to go deeper. The golden flask-refill fountain is
   // cut, so this is the single source — which is what makes reaching one matter.
   BONFIRE: {
-    HEAL: 99,            // effectively full — a rest is a rest
     FLASK_CHARGES: 2,
+    /**
+     * The fire's MEND BUDGET, as a multiple of your max HP. It is spent in a
+     * fixed order — flask, then flesh, then what's left becomes EMBER.
+     *
+     * That order is the design. A rest is never wasted: walk in at full health
+     * and the whole budget converts to borrowed life, so reaching a fire is
+     * worth the detour whatever state you're in, and a fire found early becomes
+     * a buffer you carry rather than a shrug. It also gives the ember a
+     * dependable source that isn't a bargain — you can PLAN to arrive healthy
+     * and leave with a shield.
+     */
+    MEND_BUDGET: 1.0,
   },
 
   // === THE EMBER (borrowed life — see player/ember.ts) ===
