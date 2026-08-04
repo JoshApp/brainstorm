@@ -474,6 +474,17 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       buttonLabel: 'TEND',
       onClick: () => openWickRitual(),
     }),
+    makeToggle({
+      label: 'READ THE ROOM',
+      description:
+        'Let the phone’s light sensor lift the dark when you play in a bright ' +
+        'room, and give it back when you don’t. Rides on top of your own ' +
+        'calibration — it never overwrites it. Most phones refuse to report ' +
+        'their sensor at all; where that’s so, this does nothing and TEND is ' +
+        'still the answer.',
+      get: () => getSettings().autoWick,
+      set: (v) => updateSettings({ autoWick: v }),
+    }),
     makeSlider({
       label: 'TORCH STRENGTH',
       description: 'Live multiplier on every environment light (torches, sconces, chandeliers). Tuning dial — 1.00 is authored.',

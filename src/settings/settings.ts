@@ -154,6 +154,11 @@ export interface Settings {
    *  and signal lights stay at authored levels, so the chiaroscuro
    *  hierarchy survives sunlight. 1 = authored darkness. */
   wick: number;
+  /** Let the phone's ambient-light sensor LIFT the wick when you're playing in
+   *  a bright room (settings/ambient-light.ts). Rides on top of your own
+   *  calibration rather than replacing it, and does nothing at all on a device
+   *  with no readable sensor — which today is most of them, iOS included. */
+  autoWick: boolean;
   /** Live tuning multipliers for ALL environment lights (torches,
    *  sconces, chandeliers). Debug/feel dials — 1 = the authored values. */
   torchStrengthMul: number;
@@ -254,6 +259,7 @@ const DEFAULTS: Settings = {
   surfaceDetail: true,
   brightness: 1.0,
   wick: 1.0,
+  autoWick: true,
   torchStrengthMul: 1.0,
   torchRangeMul: 1.0,
   hudStyle: 'minimal',

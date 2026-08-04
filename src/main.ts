@@ -133,7 +133,8 @@ import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
-import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
+import { setShadowMode, setEnvLightMuls, tickLightPool } from './scene/light-pool';
+import { applyAmbientWick, startAmbientLight, stopAmbientLight } from './settings/ambient-light';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes, captureDisplayFrame } from './style/render-webgpu';
 import { beginBoot } from './boot-guard';
@@ -346,7 +347,11 @@ setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);
 setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
-setWickFillMul(Math.pow(getSettings().wick, 1.5));
+applyAmbientWick();
+// Ask the phone how bright the room is, if it will say. Fire-and-forget: on the
+// (very common) device with no readable sensor this resolves having done
+// nothing, and the wick stays exactly where the player set it.
+if (getSettings().autoWick) void startAmbientLight();
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -1519,7 +1524,8 @@ onSettingsChanged((s) => {
   setSurfaceDetailEnabled(s.surfaceDetail);
   setMasterBrightness(s.brightness);
   setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
-  setWickFillMul(Math.pow(s.wick, 1.5));
+  applyAmbientWick();
+  if (s.autoWick) void startAmbientLight(); else stopAmbientLight();
   // Banded lighting toggle — re-patch the node lighting model (WebGPU).
   installBandedLightingWebGPU(s.bandedLighting);
 });

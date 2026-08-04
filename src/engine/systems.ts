@@ -10,6 +10,7 @@ import { updateTorchlight } from '../scene/torchlight';
 import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
+import { tickAmbientLight, applyAmbientWick } from '../settings/ambient-light';
 import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { tickFlaskDrink } from '../player/flask-drink';
@@ -411,6 +412,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // at the camera — a giant lamp-lit slab across the frame. The lamp
     // is presentation, not simulation; pose it in every rendered frame.
     { name: 'lamp', phase: 'always', tick(ctx) { tickLamp(ctx.realDt); } },
+    // The ROOM YOU ARE ACTUALLY IN — eases the ambient-light sensor's reading and
+    // re-targets the wick when it has moved (settings/ambient-light.ts). realDt +
+    // 'always': the sun does not pause when you open a menu, and coming back to a
+    // brightly-lit screen after pausing indoors is exactly when you'd notice. A
+    // no-op on every device without a readable sensor, which is most of them.
+    { name: 'ambient-light', phase: 'always', tick(ctx) { tickAmbientLight(ctx.realDt); applyAmbientWick(); } },
     // Left arm IK — must run AFTER 'lamp' so the hinge it targets has
     // its latest position from this frame's pendulum + stowed-ease.
     { name: 'lamp-arm', phase: 'always', tick(ctx) { tickLampArm(ctx.realDt); } },
