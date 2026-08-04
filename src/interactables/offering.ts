@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { CONFIG } from '../config';
 import { buildRelicBillboard } from '../effects/relic-billboard';
+import { pedestalSizeMeters } from '../content/drop-size';
 import { hasRelicArt } from '../content/relic-art-assets';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
@@ -206,7 +207,11 @@ function defaultTake(item: ItemSpec, affixes: AffixInstance[], scene: THREE.Obje
  *  weapon its viewmodel. Same rule a floor drop uses. */
 function buildOfferingVisual(item: ItemSpec): { group: THREE.Group; billboard: boolean } {
   const billboard = item.kind === 'relic' && hasRelicArt(item.id);
-  const built = billboard ? buildRelicBillboard(item) : buildModel(item.viewmodel ?? item.dropModel);
+  // PRESENTED, not dropped: held to the larger pedestal floor so a row of three
+  // stays comparable at a glance. See content/drop-size.ts.
+  const built = billboard
+    ? buildRelicBillboard(item, { sizeM: pedestalSizeMeters(item) })
+    : buildModel(item.viewmodel ?? item.dropModel);
   return { group: built.group, billboard };
 }
 

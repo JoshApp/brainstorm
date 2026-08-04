@@ -280,6 +280,16 @@ export interface ItemSpec {
   flavor?: string;
   /** Model used when the item is on the floor as a pickup. */
   dropModel: ModelSpec;
+  /**
+   * How wide this thing is where it lies, in METRES. Overrides the per-kind
+   * default in content/drop-size.ts — the author knows that a battle standard
+   * and a signet ring are both `relic` and are not the same size.
+   *
+   * Only the 2.5D billboard path reads this. A hand-authored `dropModel` already
+   * states its size in its own part dimensions, and nothing should second-guess
+   * that with a multiplier.
+   */
+  dropSize?: number;
   /** For weapons: the held viewmodel (often same as dropModel). */
   viewmodel?: ModelSpec;
   /** For weapons: combat stats. */

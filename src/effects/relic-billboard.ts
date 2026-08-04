@@ -26,6 +26,7 @@ import { relicArtUrl } from '../content/relic-art-assets';
 import { DOMAINS } from '../content/domains';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import type { BuiltModel } from '../ecs/build-model';
+import { dropSizeMeters } from '../content/drop-size';
 
 const BILL_W = 0.64;      // billboard width (m) — relics read bigger on the floor
 const BILL_H = 0.64;      // billboard height (m)
@@ -136,7 +137,7 @@ const _wp = new THREE.Vector3();
 
 /** Build a curved, lit, camera-facing billboard for a relic that has baked 2.5D
  *  art. Shaped like a BuiltModel so the pickup path can consume it unchanged. */
-export function buildRelicBillboard(item: ItemSpec): BuiltModel {
+export function buildRelicBillboard(item: ItemSpec, opts: { sizeM?: number } = {}): BuiltModel {
   const tex = relicTextures(item.id);
   const accent = item.domain
     ? DOMAINS[item.domain].register.color
@@ -163,8 +164,17 @@ export function buildRelicBillboard(item: ItemSpec): BuiltModel {
 
   const mesh = new THREE.Mesh(getCurvedGeo(), mat);
   mesh.name = 'relic-billboard';
+  // HOW BIG IS THIS THING? Every relic used to be the same 0.64m square, so a
+  // finger ring and a war standard both stood two-thirds of a metre off the
+  // floor. Size is the first thing a player reads off an object, and it was
+  // carrying nothing. content/drop-size.ts answers in metres; the geometry stays
+  // one shared cached plane and the mesh scales, so the curve and the standing
+  // height come along and there's still exactly one geometry for all relics.
+  const sizeM = opts.sizeM ?? dropSizeMeters(item);
+  const k = sizeM / BILL_W;
+  mesh.scale.setScalar(k);
   // Centre the art at "torso" height of the drop so it stands, not sinks.
-  mesh.position.y = BILL_H / 2;
+  mesh.position.y = (BILL_H / 2) * k;
 
   const group = new THREE.Group();
   // YXZ so the YAW (Y) is applied first and the PITCH (X) then tilts about the

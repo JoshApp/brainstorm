@@ -9,6 +9,7 @@ import type { AttributeKind } from '../state/character';
 import type { DomainId } from './domains';
 import { SWORD_RUSTED } from './sword';
 import { SKELETON_KEY } from './skeleton-key';
+import { GUTTERING_EMBER } from './ember';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
 import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
 import {
@@ -1728,7 +1729,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     rarity: 'uncommon',
     name: 'A guttering ember',
     flavor: 'Someone else\u2019s last warmth. It will burn for you a while, and it will not thank you.',
-    dropModel: SKELETON_KEY,   // placeholder silhouette until it gets its own
+    dropModel: GUTTERING_EMBER,
     drop: { weight: 1 },
   },
 
