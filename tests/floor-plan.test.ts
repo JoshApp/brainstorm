@@ -159,9 +159,12 @@ test('ON-PATH content refuses a spur — a trap nobody springs is scenery', () =
 
 test('the contract survives a floor with NO spurs at all', () => {
   // The whole point: content must not be rationed by shape. A spine-only floor
-  // still gets its trove — just in a worse spot, which is the right trade.
+  // still gets its offer — just in a worse spot, which is the right trade.
+  // Uses depth 1 because that's an act's trove floor, so the offer we're
+  // checking for is the one that most wants a spur it can't have.
+  assert.ok(isTroveFloor(1), 'depth 1 should be a trove floor');
   for (let seed = 1; seed <= 40; seed++) {
-    const placed = placeOn(mkFloor(4, 0), 9, seed).rooms;
+    const placed = placeOn(mkFloor(4, 0), 1, seed).rooms;
     assert.ok(placed.some((p) => p.role === 'trove'), `seed ${seed}: lost the trove to geometry`);
   }
 });

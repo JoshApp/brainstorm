@@ -118,15 +118,17 @@ const BARGAIN_OFFER: PlanEntry = {
  * than tracked in run state — the plan is PURE, and a floor must be able to
  * decide this on its own from `depth` alone.
  *
- * The act's SECOND floor: the first is a warm-up you're still finding your feet
- * on, and the last is the boss's approach. The middle is where a real choice
- * about your build has time to matter.
+ * The act's FIRST non-boss floor — so floor 1 of the run always has one. You
+ * arrive with nothing; the run should hand you its first real decision straight
+ * away rather than making you earn a floor before it's allowed to matter. It
+ * also front-loads each act: you pick your direction, then spend the act
+ * finding out whether you were right.
  */
 export function isTroveFloor(depth: number): boolean {
   const act = actForDepth(depth);
   const nonBoss = act.depths.filter((d) => d !== act.bossDepth);
   if (nonBoss.length === 0) return false;
-  return depth === (nonBoss[1] ?? nonBoss[0]);
+  return depth === nonBoss[0];
 }
 
 /**

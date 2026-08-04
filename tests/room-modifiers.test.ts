@@ -116,10 +116,13 @@ test('CONTESTED only lands where there is something to reach FOR', () => {
       if (mod.kind !== 'contested') continue;
       const role = roles.role(roomId);
       assert.ok(hasCentrepiece(role), `seed ${seed}: contested on ${role}, which stages nothing`);
-      // …and specifically something with a TAKE the build can intercept.
+      // …and specifically something with an ACT the build can intercept: an
+      // offering you take, a chest you open, a FIRE YOU SIT AT. Resting counts,
+      // and it's the sharpest one — you're never more committed than in the
+      // second you decide to mend.
       assert.ok(
-        ['offerings', 'hazard'].includes(roomType(role).centrepiece),
-        `seed ${seed}: contested on a ${roomType(role).centrepiece} centrepiece, which has no take to guard`,
+        ['offerings', 'hazard', 'fire'].includes(roomType(role).centrepiece),
+        `seed ${seed}: contested on a ${roomType(role).centrepiece} centrepiece, which has no act to guard`,
       );
     }
   }

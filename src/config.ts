@@ -858,10 +858,14 @@ export const CONFIG = {
   // COMBAT_MIN is the hard guarantee that a floor is never empty (the v3 bug
   // fix). Counts are floor TOTALS, distributed across all rooms' open cells.
   CONTENT_BUDGET: {
-    COMBAT_BASE: 3,             // enemies on the shallowest floor
-    COMBAT_PER_DEPTH: 1.0,      // + this many per depth deeper
+    // Floors got BIGGER (CONTENT_ROOMS_MIN 3, plus grown spurs) without the
+    // combat budget moving, so the early game thinned out to well under one
+    // enemy per room — you could walk a whole floor barely fighting. The budget
+    // is per-FLOOR, so it has to track floor size, not just depth.
+    COMBAT_BASE: 6,             // enemies on the shallowest floor
+    COMBAT_PER_DEPTH: 1.3,      // + this many per depth deeper
     COMBAT_JITTER: 1,           // ± whole-enemy wobble so floors vary
-    COMBAT_MIN: 3,              // HARD floor — never emptier than this
+    COMBAT_MIN: 5,              // HARD floor — never emptier than this
     COMBAT_MAX: 16,             // cap so deep floors don't become soup
     // Intensity bands by depth ('heavy' upgrades a pack slot to an elite).
     INTENSITY_MEDIUM_DEPTH: 4,  // < this → 'light'

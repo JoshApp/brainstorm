@@ -70,10 +70,23 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
   // too busy — the fountain already carries its own basin glow,
   // and Josh wanted the silhouette cleaner. Glow stays as the
   // floor accent that draws the eye to the front of the basin.
+  // Kept for hand-authored vaults that genuinely want water. NOT used by the
+  // procgen pool any more — a heal basin is no longer something a floor stages
+  // (the bonfire is the mend), so a vault must not smuggle one in.
   'fountain-shrine': {
     id: 'fountain-shrine',
     children: [
       { prop: { kind: 'fountain', x: 0, z: 0 } },
+      { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.6 }, minClearance: 0.4 },
+    ],
+  },
+
+  // The tithe basin with the same bone-glow accent — a QUESTION where the heal
+  // fountain used to be, so the chamber still has a reason to exist.
+  'tithe-shrine': {
+    id: 'tithe-shrine',
+    children: [
+      { prop: { kind: 'tithe-basin', x: 0, z: 0 } },
       { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.6 }, minClearance: 0.4 },
     ],
   },

@@ -21,6 +21,7 @@ import { roomType, type Centrepiece } from './room-types';
 import { rollDropItem } from '../content/drop-tables';
 import { rollChestLoot } from './decor-defaults';
 import { BONFIRE } from '../content/bonfire';
+import { floorGlow } from '../content/light-props';
 import type { PropSpec } from './types';
 
 /** Where a centrepiece may stand, and what the room can tell it. */
@@ -54,6 +55,11 @@ const EMPTY: PlacedCentrepiece = { props: [], claimed: [] };
 
 /** A choice needs an alternative. Below this the trove isn't a trove. */
 const MIN_TROVE_OFFERINGS = 2;
+
+/** The trove's signature. Warm gold — deliberately the ONE hue the dungeon's
+ *  own palette never produces, so a glimpse of it down a side passage reads as
+ *  "something is being offered" before anything is legible. */
+const TROVE_GOLD = 0xffc257;
 
 /**
  * Stage a room's centrepiece. Returns EMPTY when the type has none, or when the
@@ -134,6 +140,22 @@ function planTrove(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrepiec
     props.push({ kind: 'offering', x: s.x, z: s.z, itemId: item.id, groupId, style: 'pedestal' });
   }
   if (props.length === 0) return EMPTY;
+
+  // THE TROVE IS A GIFT, AND IT SHOULD LOOK LIKE ONE.
+  //
+  // Lighting doctrine (docs/VISUAL-LANGUAGE.md, CLAUDE.md "Lighting as signal"):
+  // the dungeon's baseline is dark and the player's lamp is the only warmth, so
+  // a coloured floor glow means SOMETHING IS HAPPENING HERE. Gold is the one
+  // colour the dark never offers on its own — the trove is the single place in a
+  // run that gives freely, so it gets the warmest light in the game and earns it
+  // by being rare (once per act now).
+  //
+  // A pool under each stone rather than one big wash: the light follows the
+  // CHOICE, so three lit plinths in the dark read as three things on offer
+  // before you're close enough to see what any of them are.
+  for (const s of slots) {
+    props.push({ kind: 'model', model: floorGlow(TROVE_GOLD), x: s.x, y: 0, z: s.z });
+  }
   return { props, claimed: slots };
 }
 

@@ -441,9 +441,11 @@ const TREASURE_VAULT: Vault = {
 const ENCOUNTER_FOUNTAIN: Vault = {
   id: 'encounter-fountain',
   tags: ['encounter'],
-  // Fountain in the centre with its shrine group (flanking candles +
-  // bone glow). The group's own glow + candles set the focal mood;
-  // wall torches push pale-cyan to match the basin.
+  // WAS a heal fountain baked into the vault — which is exactly the thing the
+  // floor plan is supposed to decide. A vault that hardcodes an event smuggles
+  // content past the contract: the plan says this floor's mercy is a fire (or
+  // nothing at all) and then a basin appears anyway. The chamber shape is good,
+  // so it keeps it and hosts a QUESTION instead of a free heal.
   map: [
     '##########',
     '#..*.....#',
@@ -455,7 +457,7 @@ const ENCOUNTER_FOUNTAIN: Vault = {
     '##########',
   ],
   props: [
-    { kind: 'group', groupId: 'fountain-shrine', x: 0, z: 0 },
+    { kind: 'group', groupId: 'tithe-shrine', x: 0, z: 0 },
   ],
   torchTint: TORCH_PALE,
 };
