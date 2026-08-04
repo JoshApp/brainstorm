@@ -31,6 +31,11 @@ export interface DirectorInput {
   roles: FloorRoles;
   /** Authored fire anchors (already reserved off the enemy pool). */
   fireAnchors: readonly FireSite[];
+  /** The FLOOR PLAN already staged this floor's fire as a room centrepiece —
+   *  don't roll a second one. A fire is now a planned `mercy` entry rather than
+   *  a per-floor sprinkle, and two of them undoes the scarcity that makes
+   *  reaching one matter. */
+  suppressFire?: boolean;
   /** Open floor cells the fire may fall back to when no anchor fits. */
   fireFallbackCells: readonly FireSite[];
   /** Dumb content markers the find + deal may claim. */
@@ -80,7 +85,8 @@ export function directFloor(input: DirectorInput): FloorPlan {
   let fire: FireSite | null = null;
   let fireCell: { x: number; z: number } | null = null;
   let sanctumRoomId: string | null = null;
-  if (budget.events.minorFire) {
+  // The plan owns the fire when it rolled a sanctum — see DirectorInput.suppressFire.
+  if (budget.events.minorFire && !input.suppressFire) {
     const best = (list: readonly FireSite[]): FireSite | null => {
       if (list.length === 0) return null;
       let top = -Infinity;

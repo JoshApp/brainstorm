@@ -38,11 +38,12 @@ export const WIRED_MODIFIERS: readonly RoomModifier[] = ['ambush', 'contested', 
 
 /**
  * Centrepieces something can actually GUARD. `contested` fires when you reach
- * for the room's notable thing, so it needs a thing with a reach — an offering
- * you take, a chest you open. A fire or a staircase has no take to intercept,
- * and a bargain already charges you its own way.
+ * for the room's notable thing, so it needs an ACT to intercept — an offering
+ * you take, a chest you open, a fire you sit at. Resting counts, and it's the
+ * best one: you are never more committed than in the second you decide to mend.
+ * A staircase has no such act, and a bargain already charges you its own way.
  */
-const GUARDABLE: ReadonlySet<Centrepiece> = new Set<Centrepiece>(['offerings', 'hazard']);
+const GUARDABLE: ReadonlySet<Centrepiece> = new Set<Centrepiece>(['offerings', 'hazard', 'fire']);
 
 /** At most this many rooms on a floor carry a modifier. Restraint IS the
  *  feature: a floor where every room does something has no rooms that do. */

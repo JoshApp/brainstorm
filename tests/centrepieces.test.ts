@@ -131,13 +131,25 @@ test('a trap room rings its prize with spikes — the reward is defended, not hi
   );
 });
 
-test('types the composer already owns stage NOTHING here (no double-placement)', () => {
-  // The director places the fire, the stairs pass the descent, the boss vault
-  // its own arena, the fill stage the bargain. Claiming them here would fight.
-  for (const role of ['sanctum', 'finish', 'boss', 'miniboss', 'feature', 'combat', 'quiet', 'entrance']) {
+test('types other passes already own stage NOTHING here (no double-placement)', () => {
+  // The stairs pass owns the descent, the boss vault its own arena, the fill
+  // stage the bargain. Claiming them here would fight.
+  // NOT in this list any more: `sanctum`. The fire is a PLANNED `mercy` entry
+  // now (floor-plan.ts), staged here as a room's one centrepiece — which is what
+  // makes "a fire never shares a room with another event" structural rather than
+  // a rule, and what lets a fire carry a modifier. The composer stands the
+  // director's fire roll down when the plan staged one (suppressFire).
+  for (const role of ['finish', 'boss', 'miniboss', 'feature', 'combat', 'quiet', 'entrance']) {
     const out = planCentrepiece(role, site(), { depth: 5, rand: seeded(4) });
     assert.equal(out.props.length, 0, `${role} placed a centrepiece it doesn't own`);
   }
+});
+
+test('a planned SANCTUM stages exactly one fire, and claims its cell', () => {
+  const out = planCentrepiece('sanctum', site(), { depth: 5, rand: seeded(4) });
+  assert.equal(out.props.length, 1);
+  assert.equal(out.props[0].kind, 'model');
+  assert.equal(out.claimed.length, 1, 'the fire must claim its cell so nothing spawns inside it');
 });
 
 test('every claimed cell is reported so later passes can place AROUND it', () => {

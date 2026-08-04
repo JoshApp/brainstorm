@@ -24,6 +24,7 @@ import { rollManifest, reconcileManifest } from './floor-manifest';
 import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles';
 import { planCentrepiece } from './centrepieces';
 import { assignModifiers } from './room-modifiers';
+import { planFloor, requiredLeafCount } from './floor-plan';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
 import { wallAdjacency, roleDecorPolicy } from './room-decor';
@@ -465,6 +466,14 @@ export function composeFloor(
     tagSeq[Math.min(slot, middleCount)] = 'miniboss';
   }
 
+  // ── THE FLOOR PLAN — decided BEFORE any geometry ───────────────
+  // What this floor owes the player (level/floor-plan.ts). Rolled here, at the
+  // top, because the placement below has to SHAPE ITSELF TO FIT it: a floor that
+  // wants a trove and a shop needs two dead-end spurs, and growing one branch
+  // and hoping is what used to cost floors their contract.
+  const plan = planFloor(depth, rand, { isBossFloor: opts.isBossFloor === true });
+  const wantLeaves = requiredLeafCount(plan);
+
   // ── 2. Place spine vaults along a WINDING 2D path ──────────────
   const placed: PlacedVault[] = [];
   const corridors: CorridorPlacement[] = [];
@@ -563,9 +572,23 @@ export function composeFloor(
   // encounter pocket) dropped in whatever free cardinal direction fits off
   // a random mid vault. Occupancy-checked so it never clips the path; if
   // no direction is clear it's simply skipped.
-  const wantsBranch = middleCount >= 1 && rand() < (depth >= 3 ? 0.6 : 0.45);
-  if (wantsBranch) {
-    const branchIdx = 1 + Math.floor(rand() * middleCount);   // mid index
+  //
+  // GROW TO FIT. The count comes from the PLAN, not a coin flip: every entry
+  // that wants its own room (a trove, a shop, an arena) needs a spur to sit on,
+  // so we grow exactly that many. Plus one spare when the floor has room, so
+  // there's an ordinary pocket to explore that isn't a landmark.
+  //
+  // Each attempt picks a different parent mid and shuffles the cardinals, so a
+  // failure to fit in one direction doesn't cost the whole branch. Attempts that
+  // can't fit anywhere are simply dropped — placement DEGRADES rather than
+  // failing, and floor-roles will put the homeless entry in the best through-room
+  // it can find instead.
+  const spareLeaf = middleCount >= 2 && rand() < 0.45 ? 1 : 0;
+  const targetLeaves = middleCount >= 1 ? wantLeaves + spareLeaf : 0;
+  for (let leafN = 0; leafN < targetLeaves; leafN++) {
+    // Spread the spurs across DIFFERENT mids where possible, so a floor doesn't
+    // grow three pockets off the same room.
+    const branchIdx = 1 + ((leafN + Math.floor(rand() * middleCount)) % middleCount);
     const parent = placed[branchIdx];
     const parentBox = vaultBoxOf(parent, vaultDims(parent.vault));
     const sameAsParent = (o: Box) =>
@@ -652,7 +675,7 @@ export function composeFloor(
   // rooms stay connective on purpose; a landmark only reads as one when most
   // rooms aren't. See floor-roles.assignRoleRooms.
   const rolePlan = assignRoleRooms(roles, roleNodes, {
-    depth, rand, isBossFloor: opts.isBossFloor === true,
+    depth, rand, isBossFloor: opts.isBossFloor === true, plan,
   });
   // Third pass: 0-2 rooms get a MODIFIER — what happens around their centrepiece
   // (the doors seal, the lights are out, the floor is trapped, the reward is
@@ -717,6 +740,10 @@ export function composeFloor(
   // manifest reconcile below can PROTECT it: the intentful deal wins the floor
   // cap, and any random `?`-slot deal of the same kind is the one culled.
   let stagedDealProp: PropSpec | null = null;
+  // The fire the PLAN staged as a room's centrepiece, if it rolled a sanctum.
+  // Held so (a) the baked-bonfire strip below spares it and (b) the director
+  // doesn't roll a SECOND fire on top of it.
+  let plannedFireProp: PropSpec | null = null;
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
@@ -1033,6 +1060,10 @@ export function composeFloor(
           if (p.kind === 'offering' || p.kind === 'chest') p.guarded = true;
         }
       }
+      for (const pc of placedPiece.props) {
+        const m = pc as { kind?: string; model?: { id?: string } };
+        if (m.kind === 'model' && m.model?.id === 'bonfire') plannedFireProp = pc;
+      }
       props.push(...placedPiece.props);
     }
 
@@ -1259,6 +1290,10 @@ export function composeFloor(
     // ones so the furnish pass is the single source.
     for (let k = props.length - 1; k >= 0; k--) {
       const p = props[k] as { kind?: string; model?: { id?: string } };
+      // The PLAN's fire is not vault-baked — it's this floor's `mercy` entry,
+      // staged as a room's centrepiece. Stripping it would delete the very thing
+      // the floor decided it owed you.
+      if (props[k] === plannedFireProp) continue;
       if ((p.kind === 'model' && p.model?.id === 'bonfire') || p.kind === 'vase') props.splice(k, 1);
     }
 
@@ -1276,6 +1311,10 @@ export function composeFloor(
       fireFallbackCells: spawnCandidates.map((c) => ({ x: c.x, z: c.z, roomId: c.roomId, openness: c.centrality })),
       contentSpots,
       bakedProps: props,   // vault-baked + `?`-slot deals — read for variety
+      // The plan already owes this floor a fire and staged it — the director
+      // must not roll a second one. One fire per floor, and now it's a PLANNED
+      // beat rather than a sprinkle.
+      suppressFire: plannedFireProp !== null,
     });
 
     // FIRE — place it, and if it took an open enemy cell, remove that cell.

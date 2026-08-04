@@ -147,11 +147,16 @@ export const ROOM_TYPES = {
     enemies: true, event: true, minorLoot: true, fire: true, firePref: 3,
     modifiers: ['ambush', 'contested', 'toll', 'hazard', 'gated'],
   },
-  // The bonfire's own room — staged, prominent, never a fight.
+  // The bonfire's room. Staged, prominent — and NOT always safe. A fire is the
+  // one mercy the dungeon offers, which makes it the best thing in the game to
+  // put a price on: `sanctum + contested` is a rest you fight for, `sanctum +
+  // ambush` is mercy that turns on you as you reach it. It still seeds no
+  // wandering trash of its own — whatever happens here is the modifier's doing,
+  // so an unmodified fire stays the clean breath it's meant to be.
   sanctum: {
     kind: 'role', bookend: false, centrepiece: 'fire',
     enemies: false, event: false, minorLoot: false, fire: true, firePref: 5,
-    modifiers: [],
+    modifiers: ['ambush', 'contested'],
   },
   // The floor's guaranteed choice — several offerings, take one. A reward room
   // is a BREATH: no enemies, no hazards. It may be sealed behind an offering.

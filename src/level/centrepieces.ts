@@ -20,6 +20,7 @@ import { CONFIG } from '../config';
 import { roomType, type Centrepiece } from './room-types';
 import { rollDropItem } from '../content/drop-tables';
 import { rollChestLoot } from './decor-defaults';
+import { BONFIRE } from '../content/bonfire';
 import type { PropSpec } from './types';
 
 /** Where a centrepiece may stand, and what the room can tell it. */
@@ -70,9 +71,10 @@ export function planCentrepiece(
     case 'merchant':  return planMerchant(site);
     case 'gauntlet':  return planGauntlet(site);
     case 'hazard':    return planHazard(site, ctx);
-    // Owned by passes that already exist: the director places the fire, the
-    // stairs pass the descent, the boss vault its own arena, the fill stage the
-    // bargain. Nothing to do here — and nothing to fight with.
+    case 'fire':      return planFire(site);
+    // Owned by passes that already exist: the stairs pass the descent, the boss
+    // vault its own arena, the fill stage the bargain. Nothing to do here — and
+    // nothing to fight with.
     default: return EMPTY;
   }
 }
@@ -158,6 +160,26 @@ function planMerchant(site: CentrepieceSite): PlacedCentrepiece {
   if (!site.free(site.x, site.z)) return EMPTY;
   return {
     props: [{ kind: 'merchant', x: site.x, z: site.z }],
+    claimed: [{ x: site.x, z: site.z }],
+  };
+}
+
+/**
+ * A REST, as a planned event rather than a thing the director sprinkles.
+ *
+ * The fire is a `mercy` entry with `anywhere` placement (floor-plan.ts): Dark
+ * Souls puts bonfires ON THE PATH, and the "thank god" is stumbling into one,
+ * not routing to one. Staging it here — as a room's ONE centrepiece — is also
+ * what makes "never combined with another event" structural instead of a rule:
+ * a room has one centrepiece, so a fire room is a fire room.
+ *
+ * And because it's a centrepiece, it can be MODIFIED. `sanctum + contested` is a
+ * fire you have to fight for; `sanctum + ambush` is mercy that turns on you.
+ */
+function planFire(site: CentrepieceSite): PlacedCentrepiece {
+  if (!site.free(site.x, site.z)) return EMPTY;
+  return {
+    props: [{ kind: 'model', model: BONFIRE, x: site.x, y: 0, z: site.z, rotY: 0.7 }],
     claimed: [{ x: site.x, z: site.z }],
   };
 }
