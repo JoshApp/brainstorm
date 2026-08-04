@@ -109,6 +109,19 @@ export function disposeBuiltTree(root: THREE.Object3D): void {
       const mats = Array.isArray(mat) ? mat : [mat];
       for (const m of mats) if (!isSharedMaterial(m)) m.dispose();
     }
+    // A THREE.Sprite's geometry is a MODULE-LEVEL SINGLETON — every Sprite ever
+    // constructed, in every scene, in every renderer, shares the same object.
+    // Disposing it here deletes the GPU buffers out from under every OTHER
+    // sprite in the process, and the next frame drives an error per sprite draw
+    // ("no buffer is bound to enabled attribute"), which the context-recovery
+    // watchdog reads as a dead device and veils with "something below has
+    // shifted". That is the whole story of the ember-pickup crash: taking an
+    // ember built its inventory thumbnail (ui/item-thumbnail.ts), tore the rig
+    // down through here, and killed every flame in the dungeon.
+    //
+    // Sprite MATERIALS are per-instance and are disposed above; only the
+    // geometry is shared, and it is not ours to free.
+    if ((o as unknown as { isSprite?: boolean }).isSprite) return;
     const geo = (mesh as { geometry?: THREE.BufferGeometry }).geometry;
     if (geo && !isPooledGeometry(geo)) geo.dispose();
   });

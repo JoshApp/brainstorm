@@ -1511,6 +1511,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     giveEmber: 6,
     damagePlayerBy: 2,
   },
+  // THE EMBER ON THE FLOOR — the world object, not the HUD chip. Two of them:
+  // one at arm's length to LOOK at, one under the player's feet so the
+  // walk-over grant fires on the first tick. Not frozen — auto-pickup runs in
+  // the interactable tick, so a frozen world never collects anything.
+  //   delve snap ember-drop        (see it)
+  //   delve snap ember-drop --frames=4 --duration=1   (watch it get taken)
+  'ember-drop': {
+    hideSword: true,
+    playerPos: { x: 0, z: 0.6, lookAt: { x: 0, z: -1.4, y: 0.2 } },
+    spawnPickups: [
+      { itemId: 'guttering-ember', x: 0, z: -1.4 },
+      { itemId: 'guttering-ember', x: 0, z: 0.6 },
+    ],
+  },
   // Consumable hotbar with a healthy stack of consumables — the flask +
   // satellite icons + count badges visible.
   'hud-hotbar': {
