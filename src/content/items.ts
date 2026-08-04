@@ -1711,7 +1711,10 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'The eyes know which doors you tried.',
     dropModel: SKELETON_KEY,
     carryLimit: 3,
-    drop: { weight: 1, minDepth: 2 },
+    // NO minDepth. A key is the FIRST currency you learn, and gating it off
+    // floor 1 meant the gold chest you found there was a locked box with no
+    // answer. It falls from the very first pot.
+    drop: { weight: 1 },
   },
 
   // ── EMBER — borrowed life, lying on the floor ─────────────────────

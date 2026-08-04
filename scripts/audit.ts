@@ -117,6 +117,8 @@ interface FloorSample {
   // through the real drop executor. Gold is the summed payout.
   incomeGold: number;
   incomeItems: ItemSpec[];
+  incomePickups: ItemSpec[];
+  vases: number;
 }
 
 /** Roll one floor's whole passive acquisition through the actual executor.
@@ -134,7 +136,18 @@ function sampleFloor(depth: number, seed: number): FloorSample {
   const chests = { wood: 0, silver: 0, gold: 0, mimic: 0 };
   let corpses = 0, miniboss = false, gatedRooms = 0;
   let incomeGold = 0;
-  const incomeItems: ItemSpec[] = [];
+  const incomeItems: ItemSpec[] = [];    // BUILD PIECES only — what grows a build
+  const incomePickups: ItemSpec[] = [];  // currencies + consumables — what you spend
+  let vases = 0;
+  /** Route a bundle's items into the two economies. Counting a key or an ember
+   *  as "loot" is what made the acquisition table read as a flood when what was
+   *  actually flowing was resources. */
+  const pushIncome = (items: readonly ItemSpec[]) => {
+    for (const it of items) {
+      if (it.kind === 'key' || it.kind === 'ember' || it.kind === 'consumable') incomePickups.push(it);
+      else incomeItems.push(it);
+    }
+  };
 
   // Enemies — count types + roll each one's drop table.
   for (const s of spec.spawns as EnemySpawnSpec[]) {
@@ -148,7 +161,7 @@ function sampleFloor(depth: number, seed: number): FloorSample {
     if (spc.isBoss || spc.miniboss) continue;
     const bundle = rollDropTable((spc.dropTable ?? 'enemy') as DropTableId, depth, rand);
     incomeGold += bundle.gold;
-    incomeItems.push(...bundle.items.filter((i) => i.kind !== 'key'));
+    pushIncome(bundle.items);
   }
 
   // Props — events, chests (baked loot), corpses (rolled).
@@ -161,12 +174,26 @@ function sampleFloor(depth: number, seed: number): FloorSample {
       if (c.mimic) { chests.mimic++; continue; }
       const tier = (c.tier ?? 'wood') as 'wood' | 'silver' | 'gold';
       chests[tier]++;
-      if (c.loot) { incomeGold += c.loot.gold; incomeItems.push(...c.loot.items.filter((i) => i.kind !== 'key')); }
+      if (c.loot) { incomeGold += c.loot.gold; pushIncome(c.loot.items); }
+    } else if (kind === 'vase' || kind === 'vase-cluster') {
+      // VASES were MISSING from this table entirely — they're destructibles
+      // resolved at break time, not baked into the spec like a chest, so the
+      // sampler walked straight past them. On floors 1-2 they're the ONLY
+      // ambient key source (the director spends the single chest on the early
+      // spark), so omitting them made early-floor pickup income read as zero.
+      // A cluster is several pots; count it as three.
+      const pots = kind === 'vase-cluster' ? 3 : 1;
+      vases += pots;
+      for (let i = 0; i < pots; i++) {
+        const bundle = rollDropTable('vase', depth, rand);
+        incomeGold += bundle.gold;
+        pushIncome(bundle.items);
+      }
     } else if (kind === 'corpse') {
       corpses++;
       const bundle = rollDropTable('corpse', depth, rand);
       incomeGold += bundle.gold;
-      incomeItems.push(...bundle.items.filter((i) => i.kind !== 'key'));
+      pushIncome(bundle.items);
     }
   }
 
@@ -183,25 +210,25 @@ function sampleFloor(depth: number, seed: number): FloorSample {
   for (const _ of troveGroups) {
     const t = rollDropTable('trove', depth, rand);
     incomeGold += t.gold;
-    incomeItems.push(...t.items.filter((i) => i.kind !== 'key'));
+    pushIncome(t.items);
   }
 
   // Set-piece FIRES — a boss floor's boss, or a miniboss arena, gives a deferred
   // reward when the fight ends. Model it as its table's payout (taken on clear).
   if (isBossDepth(depth)) {
     const b = rollDropTable('boss', depth, rand);
-    incomeGold += b.gold; incomeItems.push(...b.items.filter((i) => i.kind !== 'key'));
+    incomeGold += b.gold; pushIncome(b.items);
   }
   if (miniboss) {
     const b = rollDropTable('miniboss', depth, rand);
-    incomeGold += b.gold; incomeItems.push(...b.items.filter((i) => i.kind !== 'key'));
+    incomeGold += b.gold; pushIncome(b.items);
   }
 
   // Gated ROOMS distinct from gated chest count — a gate-offering prop marks one.
   const gateProps = (spec.props as PropSpec[]).filter((p) => p.kind === 'gate-offering').length;
   gatedRooms = Math.max(gatedRooms, gateProps);
 
-  return { depth, rooms: spec.rooms.length, enemies: spec.spawns.length, enemyTypes, events, chests, corpses, miniboss, gatedRooms, incomeGold, incomeItems };
+  return { depth, rooms: spec.rooms.length, enemies: spec.spawns.length, enemyTypes, events, chests, corpses, vases, miniboss, gatedRooms, incomeGold, incomeItems, incomePickups };
 }
 
 // ── per-depth aggregate ──────────────────────────────────────────────────────
@@ -212,7 +239,7 @@ interface DepthAgg {
   eventFloors: Map<string, number>;   // # floors that had ≥1 of this event
   chestGold: number; chestSilver: number; chestWood: number; chestMimic: number;
   corpseFloors: number; minibossFloors: number; gatedFloors: number;
-  itemsPerFloor: number[]; goldPerFloor: number[];
+  itemsPerFloor: number[]; pickupsPerFloor: number[]; goldPerFloor: number[];
   rarityCount: Record<Rarity, number>;
   relicFloors: number; gearFloors: number;
   // Notable-beat flag per floor: a rare+ item OR relic OR miniboss OR gated room.
@@ -225,7 +252,7 @@ function newAgg(depth: number): DepthAgg {
     depth, n: 0, rooms: [], enemies: [], enemyMix: new Map(), eventFloors: new Map(),
     chestGold: 0, chestSilver: 0, chestWood: 0, chestMimic: 0,
     corpseFloors: 0, minibossFloors: 0, gatedFloors: 0,
-    itemsPerFloor: [], goldPerFloor: [],
+    itemsPerFloor: [], pickupsPerFloor: [], goldPerFloor: [],
     rarityCount: RARITY_ORDER.reduce((m, r) => { m[r] = 0; return m; }, {} as Record<Rarity, number>),
     relicFloors: 0, gearFloors: 0, notableFloors: 0, rewardStream: [],
   };
@@ -241,6 +268,7 @@ function fold(agg: DepthAgg, s: FloorSample): void {
   if (s.miniboss) agg.minibossFloors++;
   if (s.gatedRooms > 0) agg.gatedFloors++;
   agg.itemsPerFloor.push(s.incomeItems.length);
+  agg.pickupsPerFloor.push(s.incomePickups.length);
   agg.goldPerFloor.push(s.incomeGold);
   let hasRelic = false, hasGear = false, hasRarePlus = false;
   for (const it of s.incomeItems) {
@@ -324,10 +352,14 @@ for (const d of depths) {
 
 // 3. ACQUISITION — the passive loot income (chests + drops + set-piece fires).
 console.log('\n3. ACQUISITION  (passive income per floor: chests + enemy/corpse drops + set-piece fires)');
-console.log(`  ${padR('depth', 6)}${padL('items', 7)}${padL('gold', 7)}${padL('P(relic)', 10)}${padL('P(gear)', 9)}${padL('meanRar', 9)}`);
+// BUILD vs PICKUPS are two different economies and must never share a column.
+// `build` is what grows you (relics/gear); `pickup` is what you spend (keys,
+// embers, draughts). A key counted as loot is what made this table read as a
+// flood when what was actually flowing was resources.
+console.log(`  ${padR('depth', 6)}${padL('build', 7)}${padL('pickup', 8)}${padL('gold', 7)}${padL('P(relic)', 10)}${padL('P(gear)', 9)}${padL('meanRar', 9)}`);
 for (const d of depths) {
   const a = aggs.get(d)!;
-  console.log(`  ${padR('D' + d, 6)}${padL(f2(mean(a.itemsPerFloor)), 7)}${padL(f1(mean(a.goldPerFloor)), 7)}${padL(f1(pct(a.relicFloors, a.n)) + '%', 10)}${padL(f1(pct(a.gearFloors, a.n)) + '%', 9)}${padL(f2(meanRarity(a)), 9)}`);
+  console.log(`  ${padR('D' + d, 6)}${padL(f2(mean(a.itemsPerFloor)), 7)}${padL(f2(mean(a.pickupsPerFloor)), 8)}${padL(f1(mean(a.goldPerFloor)), 7)}${padL(f1(pct(a.relicFloors, a.n)) + '%', 10)}${padL(f1(pct(a.gearFloors, a.n)) + '%', 9)}${padL(f2(meanRarity(a)), 9)}`);
 }
 
 // 4. RARITY MIX — the escalation curve (share of items at each tier, by depth).

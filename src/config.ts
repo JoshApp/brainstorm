@@ -796,7 +796,11 @@ export const CONFIG = {
   },
 
   // === PLAYER HEALTH ===
-  PLAYER_HP_MAX: 8,    // bumped from 5 — multiple enemies stacking damage is brutal at 5
+  // Your survivability is HEALTH + FLASK, not health alone — and the flask has
+  // to be DRUNK, which costs you a window. Counting only the bar overstates how
+  // much you have, so the bar comes down and the flask carries more of it. Lower
+  // here means a hit lands harder and a rest matters more.
+  PLAYER_HP_MAX: 5,
 
   // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===
   // The primary sustain: a fixed pool of CHARGES that refills at the bonfire.
@@ -889,6 +893,15 @@ export const CONFIG = {
     // floor, varying each run. Tune on feel.
     FURNISH_VASE_DENSITY: 0.015,
     FURNISH_VASE_MAX: 6,
+  },
+
+  // === THE BONFIRE — the rest, and the only place heals come back ===
+  // Not a card draw, not a partial top-up: you mend and your flask fills, and
+  // then you choose whether to go deeper. The golden flask-refill fountain is
+  // cut, so this is the single source — which is what makes reaching one matter.
+  BONFIRE: {
+    HEAL: 99,            // effectively full — a rest is a rest
+    FLASK_CHARGES: 2,
   },
 
   // === THE EMBER (borrowed life — see player/ember.ts) ===

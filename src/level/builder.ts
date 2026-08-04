@@ -2442,8 +2442,13 @@ export function buildLevel(
       // The bonfire emerges here (rumble + the fallen foe's souls streaming in
       // from where it fell), then becomes a REST fire. A boss gives a MAJOR fire
       // (gates the descent); a miniboss gives a MINOR one (a reward, no gate).
+      // A MINIBOSS gives a fire; a BOSS does not. The boss's reward is the way
+      // down and the hoard — a rest handed to you the moment the floor's fight is
+      // over lands on a floor you're leaving anyway, and it made the safe room's
+      // own fire redundant. The safe room between acts is where you rest after a
+      // boss now, and it has a great one.
       const minorFire = grandEncounterTier() === 'miniboss';
-      spawnBossBonfire(root, at.clone(), levelDepth, fell, { minor: minorFire });
+      if (minorFire) spawnBossBonfire(root, at.clone(), levelDepth, fell, { minor: true });
       // The deferred hoard — the boss's whole 'boss' drop table, erupting around
       // the new fire on their own arcs (gold flies to the counter).
       const bundle = rollDropTable(rewardSpec.dropTable ?? 'boss', levelDepth, gameRng);

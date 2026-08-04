@@ -54,10 +54,10 @@ interface VariantStyle {
 const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
   gamble: {
     liquidColor:    0x3a2c10,
-    liquidEmissive: 0xffc844,   // molten gold — this one restores the flask
+    liquidEmissive: 0xffc844,   // molten gold
     lightColor:     0xffc860,
     promptLabel:    'DRINK',
-    promptKind:     'neutral',  // amber — a clean boon (a flask charge)
+    promptKind:     'neutral',  // amber — a clean boon (a partial mend)
   },
   rest: {
     liquidColor:    0x3a2818,
@@ -204,23 +204,13 @@ export function spawnFountain(
         showInscription('The basin takes the whole weight of the road. You rise whole, your flask full.');
         return { hpDelta: getPlayerMaxHp() - before };
       }
-      if (variant === 'gamble') {
-        // The golden fountain refills ONE flask charge — a found Estus draught,
-        // not a heal. (Was a green partial-heal; the flask is your real mend.)
-        const added = addCharges(1);
-        playHealSlurp();
-        // DIEGETIC REFILL — the gold water POURS into the flask: a shower of gold
-        // flecks streams from the basin up into the flask HUD button, the same
-        // fly-to-HUD language gold/keys use, so the charge visibly arrives.
-        if (added > 0) goldRefillStream(pos);
-        showInscription(added > 0
-          ? 'The gold water fills your flask. One more mercy for the dark.'
-          : 'The gold water beads on a full flask, and is gone.');
-        return {};
-      }
-      // A solid PARTIAL heal — half the pool — not a free full reset (heals are
-      // precious in the 8-HP economy; the flask stays your main mend). Both
-      // 'gamble' and 'rest' do the same; the variants just look different.
+      // THE GOLDEN FLASK-REFILL FOUNTAIN IS CUT. Charges come back at a BONFIRE
+      // and nowhere else — one source is what makes reaching a fire a decision,
+      // and a basin that quietly topped you up undercut every fire on the floor.
+      // The dungeon fountain is a partial heal now, same as 'rest'.
+      // A solid PARTIAL heal — half the pool — not a free full reset. With the
+      // HP bar cut down and the flask carrying more of your survivability, half
+      // a bar out of a basin is real mercy without replacing a rest.
       const before = getPlayerHp();
       healPlayer(Math.ceil(getPlayerMaxHp() / 2), 'passive');   // environmental heal — a TRANSFORM may suppress it
       const healed = getPlayerMaxHp() - before;

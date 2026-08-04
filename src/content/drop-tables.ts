@@ -140,12 +140,15 @@ export const TABLES: Record<string, LootTable> = {
       { entries: [{ from: 'embers', weight: 12 }, { weight: 88 }] },
     ],
   },
-  // Vases: gold, and a whisper of a key. Nothing else — a smashed pot is not
-  // where a build comes from.
+  // Vases: gold, and a real chance of a key. Nothing else — a smashed pot is not
+  // where a build comes from. The key share is deliberately NOT a whisper: on
+  // floors 1-2 the director spends the only chest on the early spark, so pots
+  // are the sole ambient key source down there. A gold chest you can't open
+  // because the floor never offered a key is a locked door with no answer.
   'vase': {
     pools: [
       { entries: [{ gold: [1, 2] }] },
-      { entries: [{ from: 'keys', weight: 3 }, { weight: 97 }] },
+      { entries: [{ from: 'keys', weight: 12 }, { weight: 88 }] },
     ],
   },
 
@@ -160,25 +163,33 @@ export const TABLES: Record<string, LootTable> = {
   // key, a consumable, an ember. No build piece has ever come out of one and
   // none ever should; that is the whole reason a gold chest is worth a key.
   'chest-wood':   T({ emptyGold: 8, entries: [
-    { from: 'consumables', weight: 34 },
-    { from: 'keys',        weight: 22 },
-    { from: 'embers',      weight: 14 },
-    { weight: 30 },
+    { from: 'keys',   weight: 30 },
+    { from: 'embers', weight: 22 },
+    { weight: 48 },
   ] }),
   // SILVER — better pickups, and the first tier where a relic is possible at
   // all. Deliberately a minority: this is a resource chest that sometimes
   // surprises you, not a build source with extra steps.
-  'chest-silver': T({ emptyGold: 14, entries: [
-    { from: 'consumables', weight: 30 },
-    { from: 'embers',      weight: 24 },
-    { from: 'keys',        weight: 20 },
-    { from: 'relics', bias: 2, weight: 26, minRarity: rampFloor(2, 7) },
+  // SILVER — a fatter purse of the SAME currencies. No relic: a build piece
+  // behind a free box is what floods a run, and it's what makes the gold chest
+  // (which costs a key) the only box worth routing toward.
+  'chest-silver': T({ emptyGold: 16, entries: [
+    { from: 'keys',   weight: 34 },
+    { from: 'embers', weight: 34 },
+    { gold: [8, 16],  weight: 32 },
   ] }),
   // Gold chest's rare floor ramps in d2→d6 (was a hard snap at d3) so the
   // uncommon→rare transition reads as a climb, not a cliff.
-  'chest-gold':   T({ emptyGold: 20, entries: [
-    { from: 'relics', bias: 4, minRarity: rampFloor(2, 6) },
-  ] }),
+  // GOLD — the only ambient box that holds a BUILD PIECE, and it costs a key.
+  // That is the whole shape of the key economy: you always know what the key
+  // costs, you roughly know what the box holds, and sometimes it isn't what you
+  // needed. A second pool rides alongside so a gold chest also pays currency —
+  // spending a key and getting only a relic you can't use should still leave you
+  // with something to spend.
+  'chest-gold':   T({ pools: [
+    { entries: [{ from: 'relics', bias: 4, minRarity: rampFloor(2, 6) }] },
+    { entries: [{ gold: [10, 20], weight: 55 }, { from: 'keys', weight: 25 }, { from: 'embers', weight: 20 }] },
+  ], emptyGold: 20 }),
 
   // ── EARLY SPARK — the first-descent gift (loot-director, floors 1-2). ──
   // Research: an early "free notable" is the strongest first-session retention

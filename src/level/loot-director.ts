@@ -26,7 +26,12 @@ const BLOCKER_CLEARANCE = 3.0;
 // GATED LOOT (#74) — how often a floor seals a chest-room behind a MAKE THE
 // OFFERING shrine, and the earliest depth it may appear (floor 1 stays taught +
 // unlocked). Rare + special: at most one gated room per floor.
-const GATE_CHANCE = 0.22;
+// CUT. The pay-gold-to-unlock room read as a tax, not a decision: you either had
+// the coin (and it was a formality) or you didn't (and it was a locked door with
+// no counterplay). Isaac's version of "pay to reach it" is a KEY on a chest —
+// you know exactly what the key costs and roughly what the box holds — which is
+// what we use instead. Set above 0 to bring the shrine back.
+const GATE_CHANCE = 0;
 const GATE_MIN_DEPTH = 2;
 
 // Every EVENT centrepiece + blocker a loot piece must stand clear of. Was missing

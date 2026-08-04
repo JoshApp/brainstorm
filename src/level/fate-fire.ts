@@ -15,6 +15,7 @@ import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
 import { getFlask, addCharges } from '../player/flask';
 import { healPlayer } from '../player/health';
+import { CONFIG } from '../config';
 
 interface FateFireOpts {
   /** The built bonfire model — its flame meshes/sprites get spent in place. */
@@ -52,9 +53,13 @@ export function registerFateFire(o: FateFireOpts): void {
       // charge's worth of HP straight into you, so the rest is never wasted. Once
       // per fire (the `drawn` guard). The full reset lives at the safe-haven basin.
       drawn = true;
-      const f = getFlask();
-      if (f.charges < f.capacity) addCharges(1);
-      else healPlayer(f.healPerCharge, 'passive');
+      // THE REST. A bonfire is now the Dark Souls beat and nothing else: it
+      // mends you and refills the flask, then you decide whether to go on. The
+      // flask is the ONLY thing that refills here — the golden fountain that
+      // used to hand out charges is cut, so a fire is the single place your
+      // heals come back and reaching one is the decision it should be.
+      healPlayer(CONFIG.BONFIRE.HEAL, 'passive');
+      addCharges(CONFIG.BONFIRE.FLASK_CHARGES);
       spendFlame(flames);
       o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
       interactable.promptLabel = ''; // spent — no rest prompt

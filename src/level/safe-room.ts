@@ -79,11 +79,9 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     // descent at the far end. Spawn pulled close to the south wall so
     // there's zero chance of overlapping the stair footprint.
     startPos: { x: 0, z: 4.0, yaw: 0 },
-    // Opt OUT of the builder's auto threshold bonfire (builder.ts). The safe
-    // room deliberately has NO fire now — the boss gives the rest-fire on its
-    // defeat, and this refuge is a COLD hearth (the dais). Without this flag,
-    // removing the authored bonfire (d4465c4) let the builder's fallback fire
-    // reappear dead-ahead of the spawn — the "small bonfire" that shouldn't be here.
+    // The refuge OWNS its fire, authored below on the dais — so the builder's
+    // auto threshold bonfire must stay out of the way (it used to reappear
+    // dead-ahead of the spawn as a second, smaller fire).
     composerManagedFires: true,
     rooms: [
       {
@@ -95,15 +93,15 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── THE SANCTUARY BASIN (V6 — Josh: heal-all fountain on the central
-      // pedestal). The dais is the RAISED PLINTH; the healing basin sits ON it,
-      // dead centre on the walk-line from spawn to descent — you can't leave
-      // without passing it. REST here for a FULL restore: heal to full AND refill
-      // every flask charge (the 'sanctuary' variant). The one plain kindness
-      // between acts. A warm holy glow pools beneath it. (The tome-pillar / study
-      // lectern is removed; the boss's fire carries the fate now.)
+      // ── THE GREAT FIRE. The dais is the RAISED PLINTH and the bonfire burns on
+      // it, dead centre on the walk-line from spawn to descent — you can't leave
+      // without passing it. This is THE rest between acts, and now the best one
+      // in the game: a boss no longer hands you a fire on the floor you're about
+      // to leave, so the refuge is where you mend and fill the flask before
+      // carrying it all back down. (The sanctuary basin is retired — a fountain
+      // that healed-and-refilled was doing the bonfire's job in another shape.)
       { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0 },
-      { kind: 'fountain', x: 0, z: 0, y: 0.30, rotY: 0, variant: 'sanctuary' },
+      { kind: 'model', model: BONFIRE, x: 0, y: 0.30, z: 0, rotY: 0.6 },
       { kind: 'model', model: SAFE_FLOOR_GLOW_BASIN, x: 0, y: 0, z: 0 },
 
       // ── THE VENDORS — arranged around the basin so the room reads as a market
@@ -166,6 +164,7 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
 
 // Lazy imports — keep this module's top-level surface small.
 import { FLOOR_CANDLE } from '../content/candle';
+import { BONFIRE } from '../content/bonfire';
 import { floorGlow } from '../content/light-props';
 const SAFE_FLOOR_GLOW_SPAWN  = floorGlow(0xffb070);
 // A warmer, paler holy glow pooling under the sanctuary basin — the healing

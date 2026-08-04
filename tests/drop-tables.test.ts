@@ -101,13 +101,30 @@ test('embers drop, and only from the places that earned them', () => {
   }
 });
 
-test('relic-gated sources never leak a weapon (gold chest = relics only)', () => {
+test('a gold chest always yields its relic, and pays currency alongside it', () => {
+  // The key you spent must always buy the build piece — that's the contract that
+  // makes routing toward a gold chest worth it. The second pool is the softener:
+  // a relic you can't use still leaves you coin or a key to spend elsewhere.
+  const rand = seeded(3);
+  let withRelic = 0;
+  for (let i = 0; i < 200; i++) {
+    const r = rollDropTable('chest-gold', 5, rand);
+    if (r.items.some((it) => it.kind === 'relic')) withRelic++;
+  }
+  assert.ok(withRelic > 190, `a paid box must deliver (${withRelic}/200)`);
+});
+
+test('relic-gated sources never leak a weapon', () => {
   const rand = seeded(7);
   for (let i = 0; i < 120; i++) {
     const r = rollDropTable('chest-gold', 5, rand);
     for (const it of r.items) {
       assert.notEqual(it.kind, 'weapon', 'a gold chest must never drop a weapon');
-      assert.ok(RELIC_KINDS.includes(it.kind), `gold chest dropped a ${it.kind} — should be a relic`);
+      // A relic, or the currency riding alongside it — never gear.
+      assert.ok(
+        RELIC_KINDS.includes(it.kind) || it.kind === 'key' || it.kind === 'ember',
+        `gold chest dropped a ${it.kind} — expected a relic or currency`,
+      );
     }
   }
 });
