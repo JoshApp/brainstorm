@@ -27,6 +27,7 @@ import { getCurrentWeapon } from '../player/current-weapon';
 import { fireCombatVerb } from '../combat/combat-verbs';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
+import { spawnAimTelegraph, type AimTelegraph } from '../effects/aim-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
 import { isBossEncounterEngaged } from './boss-encounter';
 import { levelHasFogWall } from '../ui/boss-engagement';
@@ -768,6 +769,18 @@ export function createEnemy(
   // AoE telegraph state — the ground marker shown during an aoe ability's
   // windup, and the world point it's locked to (resolved at strike).
   let aoeTelegraph: AoeTelegraph | null = null;
+  /** The AIM LINE for a ranged windup — the shot this creature has committed to,
+   *  drawn from muzzle to target so the player can step off it. See
+   *  effects/aim-telegraph.ts for why a projectile needs one and a claw doesn't. */
+  let aimTelegraph: AimTelegraph | null = null;
+  const _aimFrom = new THREE.Vector3();
+  const _aimTo = new THREE.Vector3();
+  /** The aim line's colour — the creature's own eye/core emissive where it has
+   *  one, so a spitter's line reads as ITS acid and a wisp's as its cold. One
+   *  shared shape, per-creature identity. */
+  const telegraphTint = spec.creature?.materials?.[spec.eyeMaterialName ?? 'core']?.emissive
+    ?? spec.creature?.materials?.[spec.eyeMaterialName ?? 'core']?.color
+    ?? 0xff5a3c;
   // The locked landing/impact point — the 'lockedTarget' anchor. Snapshot
   // of the player's position when the windup begins (an aoe resolves on
   // it, a leap arcs onto it).
@@ -780,6 +793,7 @@ export function createEnemy(
   let lashTendril: LashTendril | null = null;
   function clearAoeTelegraph() {
     if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
+    if (aimTelegraph) { aimTelegraph.dispose(); aimTelegraph = null; }
   }
   function clearLashTendril() {
     if (lashTendril) { lashTendril.dispose(); lashTendril = null; }
@@ -1963,6 +1977,18 @@ export function createEnemy(
         return;
       }
     }
+    // RANGED — draw the shot. Every projectile step commits to the target
+    // snapshotted above (aoeTarget), so the line is the truth rather than a
+    // hint: what it shows is where the bolt goes, and moving off it works.
+    // Melee needs no equivalent — something rearing back inside your torch is
+    // already legible; a small shape at seven metres in the dark is not.
+    for (const step of ability.steps) {
+      if (step.action.kind !== 'projectile') continue;
+      _aimFrom.set(container.position.x, container.position.y + aimHeightResolved, container.position.z);
+      _aimTo.set(aoeTarget.x, playerPos.y, aoeTarget.z);
+      aimTelegraph = spawnAimTelegraph(scene, _aimFrom, _aimTo, telegraphTint);
+      break;
+    }
     // Lash — grow a slime tentacle out of the body toward the player. It
     // reaches over the windup (driven in the winding state), so it both
     // telegraphs and IS the attack. Reach = the lash's melee reach.
@@ -2859,6 +2885,7 @@ export function createEnemy(
         const t = Math.min(1, phaseTimer / currentWindupTime);
         applyTelegraph(currentAbility.pose, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
+        if (aimTelegraph) aimTelegraph.setProgress(t);
         if (lashTendril) lashTendril.setProgress(t);   // tentacle reaches out over the windup
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).

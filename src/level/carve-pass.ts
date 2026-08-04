@@ -99,23 +99,59 @@ export function carvePass(
       const target = targetCount(palette.carve.style, palette.carve.density, free.length);
       if (target === 0 || free.length === 0) return [];
 
-      const stride = free.length / target;
       const W = vault.map[0]?.length ?? 0;
       const D = vault.map.length;
-      // Each crack is a 0.8×0.8m void centred on the cell. Smaller
-      // than the cell so the cell's geometry still has a walkable
-      // perimeter the builder treats as standable; the void only
-      // blocks the centre.
-      const VOID_SIZE = 0.8;
+
+      // A FISSURE IS A LINE, NOT A DOT.
+      //
+      // This used to punch an independent 0.8m square at each stride-sampled
+      // cell, so what a floor actually showed was single stray potholes
+      // scattered around at random — which reads as a generator artefact, not
+      // as something that cracked the stone. Each seed now GROWS along one axis
+      // into a short run and emits ONE rect covering it, so a crack has a
+      // direction and a length you can see and walk around.
+      //
+      // Deterministic (same map + density → same cracks): the axis and the
+      // target length come from the seed cell's own coordinates, not from rng.
+      // The pass has never taken rng and the composer relies on that.
+      const WIDTH = 0.8;         // across the crack — still leaves a standable rim
+      const MIN_RUN = 2, MAX_RUN = 4;
+      const used = new Set<string>();
+      const isFree = (col: number, row: number) =>
+        !used.has(`${col},${row}`)
+        && !occupiedCells.has(`${col},${row}`)
+        && free.some((c) => c.col === col && c.row === row);
+
+      const stride = free.length / target;
       const out: WalkableRect[] = [];
       for (let i = 0; i < target; i++) {
-        const idx = Math.floor(i * stride);
-        const cell = free[Math.min(idx, free.length - 1)];
+        const seed = free[Math.min(Math.floor(i * stride), free.length - 1)];
+        if (!isFree(seed.col, seed.row)) continue;
+        // Along the room's own grain, alternating by seed parity so a room gets
+        // cracks in both directions rather than a comb.
+        const horiz = ((seed.col + seed.row) & 1) === 0;
+        const want = MIN_RUN + ((seed.col * 3 + seed.row * 5) % (MAX_RUN - MIN_RUN + 1));
+        // Grow from the seed in both directions until blocked or long enough.
+        let lo = 0, hi = 0;
+        while (hi - lo + 1 < want) {
+          const grewHi = isFree(seed.col + (horiz ? hi + 1 : 0), seed.row + (horiz ? 0 : hi + 1));
+          if (grewHi) { hi++; if (hi - lo + 1 >= want) break; }
+          const grewLo = isFree(seed.col + (horiz ? lo - 1 : 0), seed.row + (horiz ? 0 : lo - 1));
+          if (grewLo) lo--;
+          if (!grewHi && !grewLo) break;
+        }
+        const len = hi - lo + 1;
+        for (let k = lo; k <= hi; k++) {
+          used.add(horiz ? `${seed.col + k},${seed.row}` : `${seed.col},${seed.row + k}`);
+        }
+        // Centre of the run, in vault-local metres.
+        const midCol = seed.col + (horiz ? (lo + hi) / 2 : 0);
+        const midRow = seed.row + (horiz ? 0 : (lo + hi) / 2);
         out.push({
-          x: cell.col + 0.5 - W / 2,
-          z: cell.row + 0.5 - D / 2,
-          w: VOID_SIZE,
-          d: VOID_SIZE,
+          x: midCol + 0.5 - W / 2,
+          z: midRow + 0.5 - D / 2,
+          w: horiz ? len - 0.2 : WIDTH,
+          d: horiz ? WIDTH : len - 0.2,
         });
       }
       return out;
