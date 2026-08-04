@@ -16,11 +16,27 @@ import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 import { isDesktopLike } from '../controls/platform';
 import { openWickRitual } from './wick-ritual';
+import { ambientLightSupported, ambientLux } from '../settings/ambient-light';
+
 import { openBugReport } from '../report/bug-report';
 import {
   BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
   type BindableAction,
 } from '../controls/keybindings';
+
+
+/** What the light sensor is doing right now, in one sentence. Most phones
+ *  refuse to report theirs at all, and a toggle that can be switched on while
+ *  doing nothing is indistinguishable from a broken one — so say which it is. */
+function sensorNote(): string {
+  if (!ambientLightSupported()) {
+    return 'This phone will not report its light sensor, so this does nothing here — CALIBRATE DARKNESS is the answer instead.';
+  }
+  const lux = ambientLux();
+  return lux == null
+    ? 'The sensor is here; it has not reported yet.'
+    : `The sensor reads about ${Math.round(lux)} lux right now.`;
+}
 
 // Settings panel.
 //
@@ -474,14 +490,22 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       buttonLabel: 'TEND',
       onClick: () => openWickRitual(),
     }),
+    // Named for what it DOES, not for what it feels like. This was "READ THE
+    // ROOM" — nicely in voice, and Josh looked straight at it while asking
+    // whether auto-brightness existed and where its toggle was. A settings row
+    // is the one place the flavour has to lose: you find it by the word you
+    // came looking for. The description keeps the register.
+    //
+    // It also states, live, whether the sensor is actually there. A toggle you
+    // can switch on that silently does nothing is worse than no toggle — you
+    // can't tell "off" from "broken".
     makeToggle({
-      label: 'READ THE ROOM',
+      label: 'AUTO BRIGHTNESS',
       description:
         'Let the phone’s light sensor lift the dark when you play in a bright ' +
-        'room, and give it back when you don’t. Rides on top of your own ' +
-        'calibration — it never overwrites it. Most phones refuse to report ' +
-        'their sensor at all; where that’s so, this does nothing and TEND is ' +
-        'still the answer.',
+        'room, and give it back when you don’t — the way the screen already ' +
+        'does. Rides on top of your own calibration; it never overwrites it. ' +
+        sensorNote(),
       get: () => getSettings().autoWick,
       set: (v) => updateSettings({ autoWick: v }),
     }),
