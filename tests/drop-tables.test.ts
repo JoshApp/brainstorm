@@ -101,17 +101,25 @@ test('embers drop, and only from the places that earned them', () => {
   }
 });
 
-test('a gold chest always yields its relic, and pays currency alongside it', () => {
-  // The key you spent must always buy the build piece — that's the contract that
-  // makes routing toward a gold chest worth it. The second pool is the softener:
-  // a relic you can't use still leaves you coin or a key to spend elsewhere.
+test('a gold chest gives an ITEM or PICKUPS — never both, and never nothing', () => {
+  // Isaac's rule, and the whole tension of spending a key: you know what the key
+  // costs and roughly what the box holds, and sometimes it simply isn't what you
+  // needed. Guarantee the relic and the key stops being a gamble and becomes a
+  // toll; let the box pay nothing and nobody opens the second one.
   const rand = seeded(3);
-  let withRelic = 0;
-  for (let i = 0; i < 200; i++) {
+  let relicRuns = 0, pickupRuns = 0;
+  for (let i = 0; i < 400; i++) {
     const r = rollDropTable('chest-gold', 5, rand);
-    if (r.items.some((it) => it.kind === 'relic')) withRelic++;
+    const relics = r.items.filter((it) => it.kind === 'relic').length;
+    const pickups = r.items.filter((it) => it.kind === 'key' || it.kind === 'ember').length;
+    assert.ok(relics === 0 || pickups === 0, 'a gold chest must not pay an item AND pickups');
+    assert.ok(relics > 0 || pickups > 0 || r.gold > 0, 'a paid box must always pay something');
+    if (relics > 0) relicRuns++; else pickupRuns++;
   }
-  assert.ok(withRelic > 190, `a paid box must deliver (${withRelic}/200)`);
+  // The relic is a real CHANCE, not a formality in either direction.
+  const share = relicRuns / 400;
+  assert.ok(share > 0.25 && share < 0.65, `relic share ${(share * 100).toFixed(0)}% is out of band`);
+  assert.ok(pickupRuns > 0, 'the pickup branch must actually happen');
 });
 
 test('relic-gated sources never leak a weapon', () => {

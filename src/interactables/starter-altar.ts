@@ -46,7 +46,11 @@ export function spawnStarterAltar(
       // The opening choice is a stat-for-stat comparison of three weapons you
       // know nothing about — so all three show their numbers at once rather than
       // making you walk to each. Every later trove uses the lean-in default.
-      leanInForStats: false,
+      // The starter altars hide their cards too — Josh: walking up to look is
+      // the point. Three weapon names glowing across the opening chamber makes
+      // the first choice a menu; approaching each stone in the dark makes it a
+      // decision you had to go and make.
+      leanInForStats: true,
       onDestroy,
       // Bespoke take: the FIRST weapon is set directly into the slot rather than
       // routed through ground-equip — there is nothing to compare against yet,

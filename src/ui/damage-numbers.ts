@@ -167,6 +167,20 @@ export function spawnStatusText(
   });
 }
 
+/**
+ * Same as {@link spawnStatusText} but for callers with no camera in hand — it
+ * uses the one this module already caches from the frame loop. A no-op before
+ * the first camera-bearing call, which is correct: nothing is on screen yet.
+ */
+export function spawnStatusTextHere(
+  worldPos: THREE.Vector3,
+  text: string,
+  color?: string,
+): void {
+  if (!_camera) return;
+  spawnStatusText(_camera, worldPos, text, color);
+}
+
 export function spawnDamageNumber(
   camera: THREE.Camera,
   worldPos: THREE.Vector3,

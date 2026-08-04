@@ -33,6 +33,7 @@ interface PreviewEntry {
    *  whole room IS a picker and stats need to be visible side-by-side
    *  for comparison. */
   hideStatsUntilInspect: boolean;
+  hideCardUntilInspect: boolean;
   /** Last inspected state — used to skip redundant style writes. */
   inspected: boolean;
 }
@@ -44,6 +45,17 @@ export interface ItemPreviewOptions {
    *  to see what bargain they're considering — name + flavor still
    *  identify the offering, stats are the contract. */
   hideStatsUntilInspect?: boolean;
+  /**
+   * Hide the ENTIRE card — name, flavour and stats — until the player is close
+   * enough and facing it (setItemPreviewInspected(id, true)).
+   *
+   * This is the diegetic read: a stone with a thing on it is just a stone with a
+   * thing on it until you WALK UP AND LOOK. Floating names visible across a dark
+   * room turn a choice you're meant to survey on foot into a menu you read from
+   * the doorway — and on a phone, three cards up at once is unreadable mush
+   * anyway. Stronger than hideStatsUntilInspect, which still shows the name.
+   */
+  hideCardUntilInspect?: boolean;
 }
 
 const entries = new Map<string, PreviewEntry>();
@@ -148,6 +160,7 @@ export function registerItemPreview(id: string, item: ItemSpec, opts: ItemPrevie
     id, worldX: 0, worldY: 0, worldZ: 0, visible: false, el,
     statsEl,
     hideStatsUntilInspect: !!opts.hideStatsUntilInspect,
+    hideCardUntilInspect: !!opts.hideCardUntilInspect,
     inspected: false,
   });
 }
@@ -159,10 +172,13 @@ export function registerItemPreview(id: string, item: ItemSpec, opts: ItemPrevie
  *  otherwise. */
 export function setItemPreviewInspected(id: string, inspected: boolean): void {
   const e = entries.get(id);
-  if (!e || !e.hideStatsUntilInspect || !e.statsEl) return;
+  if (!e) return;
+  if (!e.hideStatsUntilInspect && !e.hideCardUntilInspect) return;
   if (e.inspected === inspected) return;
   e.inspected = inspected;
-  e.statsEl.style.display = inspected ? 'block' : 'none';
+  // Whole-card mode owns visibility in the update loop below; stats-only mode
+  // just toggles its one line.
+  if (e.hideStatsUntilInspect && e.statsEl) e.statsEl.style.display = inspected ? 'block' : 'none';
 }
 
 /** Update the world anchor + visibility for a registered preview. */
@@ -211,7 +227,9 @@ export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement
   const rect = cachedCanvasRect(canvas);   // per-frame getBoundingClientRect forced layout (USB profile)
   const screensOpen = isAnyScreenOpen();
   for (const e of entries.values()) {
-    if (!e.visible || screensOpen) {
+    // A whole-card preview stays dark until you're close enough and looking at
+    // it — walk up and read, don't survey the room from the doorway.
+    if (!e.visible || screensOpen || (e.hideCardUntilInspect && !e.inspected)) {
       if (e.el.style.opacity !== '0') e.el.style.opacity = '0';
       continue;
     }

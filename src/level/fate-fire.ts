@@ -14,7 +14,14 @@ import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
 import { getFlask, addCharges } from '../player/flask';
-import { healPlayer } from '../player/health';
+import { healPlayer, getPlayerHp } from '../player/health';
+import { flashHearthEmbrace } from '../ui/vignette';
+import { spawnStatusTextHere } from '../ui/damage-numbers';
+
+/** The two things a rest gives you, coloured so they read apart at a glance:
+ *  flesh-warm for health, flask-gold for charges. */
+const HEARTH_MEND_COLOR = 'rgba(255, 214, 170, 0.98)';
+const HEARTH_FLASK_COLOR = 'rgba(255, 198, 92, 0.98)';
 import { CONFIG } from '../config';
 
 interface FateFireOpts {
@@ -43,7 +50,7 @@ export function registerFateFire(o: FateFireOpts): void {
     position: o.position,
     radius: 1.8,
     labelOffsetY: 1.25,
-    promptLabel: 'REST',
+    promptLabel: 'MEND',
     built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
     onUse() {
@@ -53,13 +60,27 @@ export function registerFateFire(o: FateFireOpts): void {
       // charge's worth of HP straight into you, so the rest is never wasted. Once
       // per fire (the `drawn` guard). The full reset lives at the safe-haven basin.
       drawn = true;
-      // THE REST. A bonfire is now the Dark Souls beat and nothing else: it
-      // mends you and refills the flask, then you decide whether to go on. The
-      // flask is the ONLY thing that refills here — the golden fountain that
-      // used to hand out charges is cut, so a fire is the single place your
-      // heals come back and reaching one is the decision it should be.
+      // THE MEND. A bonfire is the Dark Souls beat and nothing else: it mends
+      // you and refills the flask, then you decide whether to go on. The flask
+      // is the ONLY thing that refills here — the golden fountain that used to
+      // hand out charges is cut, so a fire is the single place your heals come
+      // back and reaching one is the decision it should be.
+      //
+      // SHOW THE PLAYER WHAT THEY GOT. A rest that silently sets two numbers is
+      // a rest you don't feel, and this is the one moment the game is kind — so
+      // the fire takes the whole screen for a beat, and the two things it gave
+      // you float up off the flame where you're already looking.
+      const hpBefore = getPlayerHp();
       healPlayer(CONFIG.BONFIRE.HEAL, 'passive');
-      addCharges(CONFIG.BONFIRE.FLASK_CHARGES);
+      const mended = Math.max(0, Math.round(getPlayerHp() - hpBefore));
+      const charges = addCharges(CONFIG.BONFIRE.FLASK_CHARGES);
+      flashHearthEmbrace();
+      const at = o.position.clone();
+      if (mended > 0) spawnStatusTextHere(at, `+${mended} MENDED`, HEARTH_MEND_COLOR);
+      if (charges > 0) {
+        // Second line sits higher so the two never overlap on a phone.
+        spawnStatusTextHere(at.clone().setY(at.y + 0.42), `+${charges} FLASK`, HEARTH_FLASK_COLOR);
+      }
       spendFlame(flames);
       o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
       interactable.promptLabel = ''; // spent — no rest prompt

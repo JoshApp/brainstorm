@@ -178,10 +178,22 @@ export function assignRoleRooms(
   const assigned = new Map<string, RoomRole>();
   if (opts.isBossFloor) return { assigned };
 
-  // Candidates, quiet-end first: a dead-end spur is a better home for a reward
-  // or a vendor than a room you merely pass through.
-  const candidates = nodes
-    .filter((n) => PROMOTABLE.has(roles.role(n.roomId)))
+  // A ROLE ROOM IS A DETOUR, NOT A PASSTHROUGH.
+  //
+  // Isaac's special rooms are never on the way to anywhere — the treasure room,
+  // the shop, the arcade all hang off the map as leaves you choose to walk to
+  // and back out of. That's what makes finding one an event: you SPENT something
+  // (time, safety, a trip past mobs) to be standing in it, and you leave the way
+  // you came. A trove you happen to cross on the way to the stairs is scenery.
+  //
+  // So a dead end (connections <= 1) is not merely preferred here, it's REQUIRED
+  // when the floor has any. Only if a floor's shape offers no leaf at all do we
+  // fall back to through-rooms, quiet-end first — better a landmark in the wrong
+  // place than a floor with no landmark.
+  const promotable = nodes.filter((n) => PROMOTABLE.has(roles.role(n.roomId)));
+  const deadEnds = promotable.filter((n) => n.connections <= 1);
+  const candidates = (deadEnds.length > 0 ? deadEnds : promotable)
+    .slice()
     .sort((a, b) => a.connections - b.connections);
   if (candidates.length === 0) return { assigned };
 
@@ -201,8 +213,11 @@ export function assignRoleRooms(
   //    is the design, not a nice-to-have: promote up to half, never more. (The
   //    denominator is CONTENT rooms — the entrance and the stairwell are
   //    bookends and were never candidates. See room-types.ts `bookend`.)
-  const reserve = Math.max(1, Math.ceil(candidates.length / 2));
-  const spare = Math.max(0, candidates.length - assigned.size - reserve);
+  // The reserve is measured over the whole CONTENT pool, not the leaf subset: a
+  // floor with one spur should still be allowed to put its trove on that spur
+  // while the through-rooms stay ordinary.
+  const reserve = Math.max(1, Math.ceil(promotable.length / 2));
+  const spare = Math.max(0, promotable.length - assigned.size - reserve);
   const extras = Math.min(spare, opts.rand() < 0.45 ? 2 : 1);
   const pool = ROLLED_ROLES.filter((r) => opts.depth >= r.minDepth);
   const used = new Set<RoomRole>();

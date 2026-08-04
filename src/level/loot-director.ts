@@ -199,7 +199,14 @@ function sparkifyFirstChest(props: PropSpec[], depth: number, rand: () => number
  *  vault authored (best effort — a floor with zero chests + zero anchors, very
  *  rare, simply has none to upgrade). */
 function ensureSpark(props: PropSpec[], depth: number, rand: () => number): PropSpec[] {
-  if (depth <= 2) sparkifyFirstChest(props, depth, rand);
+  // THE GUARANTEED EARLY SPARK IS CUT. It upgraded floor 1-2's only chest into a
+  // guaranteed relic, which meant the first floors had no ambient chest at all
+  // (nothing to open, no key to spend) and a build piece arrived on rails.
+  // Guarantees belong to ROOMS AND EVENTS now — the trove is the dependable
+  // offering, and an event may hand you a relic, a fire, coin or keys. Floors
+  // just generate. Kept as a named seam so the gift can come back as an EVENT
+  // rather than a silent chest rewrite.
+  void depth; void rand;
   return props;
 }
 

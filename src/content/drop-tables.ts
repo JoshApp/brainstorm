@@ -140,15 +140,15 @@ export const TABLES: Record<string, LootTable> = {
       { entries: [{ from: 'embers', weight: 12 }, { weight: 88 }] },
     ],
   },
-  // Vases: gold, and a real chance of a key. Nothing else — a smashed pot is not
-  // where a build comes from. The key share is deliberately NOT a whisper: on
-  // floors 1-2 the director spends the only chest on the early spark, so pots
-  // are the sole ambient key source down there. A gold chest you can't open
-  // because the floor never offered a key is a locked door with no answer.
+  // Vases: gold, and a slim but REAL chance of a key. Nothing else — a smashed
+  // pot is not where a build comes from. The number is deliberately low: early
+  // floors are meant to be lean, and the ask was that the chance EXISTS, not
+  // that the volume goes up. What must never happen is a key being structurally
+  // impossible on a floor that can hold a gold chest.
   'vase': {
     pools: [
       { entries: [{ gold: [1, 2] }] },
-      { entries: [{ from: 'keys', weight: 12 }, { weight: 88 }] },
+      { entries: [{ from: 'keys', weight: 6 }, { weight: 94 }] },
     ],
   },
 
@@ -186,10 +186,23 @@ export const TABLES: Record<string, LootTable> = {
   // needed. A second pool rides alongside so a gold chest also pays currency —
   // spending a key and getting only a relic you can't use should still leave you
   // with something to spend.
-  'chest-gold':   T({ pools: [
-    { entries: [{ from: 'relics', bias: 4, minRarity: rampFloor(2, 6) }] },
-    { entries: [{ gold: [10, 20], weight: 55 }, { from: 'keys', weight: 25 }, { from: 'embers', weight: 20 }] },
-  ], emptyGold: 20 }),
+  // GOLD — the key's door, and the only ambient box that can hold a BUILD PIECE.
+  //
+  // ONE pool, not two, because Isaac's gold chest gives an ITEM *or* PICKUPS and
+  // never both. That either/or is the whole tension of spending a key: you know
+  // what the key costs and roughly what the box holds, and sometimes it simply
+  // isn't what you needed. Guaranteeing the relic removes the gamble and turns
+  // the key into a toll.
+  //
+  // The pickup branch is deliberately GENEROUS — a fat purse, a couple of keys,
+  // borrowed life. A key spent and "only" a handful of currency back should
+  // still feel like the box paid you, or nobody opens the second one.
+  'chest-gold':   T({ emptyGold: 24, entries: [
+    { from: 'relics', bias: 4, weight: 45, minRarity: rampFloor(2, 6) },
+    { gold: [18, 34],  weight: 22 },
+    { from: 'keys',    weight: 18 },
+    { from: 'embers',  weight: 15 },
+  ] }),
 
   // ── EARLY SPARK — the first-descent gift (loot-director, floors 1-2). ──
   // Research: an early "free notable" is the strongest first-session retention

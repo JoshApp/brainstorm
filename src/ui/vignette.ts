@@ -142,6 +142,42 @@ export function flashDomainGlow(rgb: string, strength = 1) {
   domainEl.style.opacity = '0';
 }
 
+// ─── The hearth embrace ──────────────────────────────────────────────
+// The bonfire REST. Longer, warmer and slower than anything else on this
+// screen: the fire takes you, the whole view goes to firelight, and it lets
+// go reluctantly. This is the one moment DELVE is allowed to be kind, so it
+// gets the biggest swell in the game — but it's still FIRELIGHT, not a white
+// flash, so it reads as being held by the flame rather than as a UI event.
+
+let hearthEl: HTMLDivElement | null = null;
+
+function ensureHearth() {
+  if (hearthEl) return;
+  ensureElements();
+  hearthEl = document.createElement('div');
+  hearthEl.id = 'vignette-hearth';
+  Object.assign(hearthEl.style, baseStyle());
+  hearthEl.style.background =
+    'radial-gradient(ellipse at center, rgba(255, 186, 96, 0.30) 0%, '
+    + 'rgba(255, 140, 48, 0.44) 50%, rgba(180, 66, 12, 0.66) 100%)';
+  document.body.appendChild(hearthEl);
+}
+
+/** Fire up, hold, then let go slowly. Fired once when you rest at a bonfire. */
+export function flashHearthEmbrace(): void {
+  ensureHearth();
+  if (!hearthEl) return;
+  // Swell IN (the fire reaching for you) rather than snapping to full — the
+  // in-ramp is what makes it read as an embrace instead of a hit.
+  hearthEl.style.transition = 'opacity 520ms ease-in';
+  hearthEl.style.opacity = '0.92';
+  window.setTimeout(() => {
+    if (!hearthEl) return;
+    hearthEl.style.transition = 'opacity 1700ms ease-out';
+    hearthEl.style.opacity = '0';
+  }, 620);
+}
+
 // ─── Flask heal glow ─────────────────────────────────────────────────
 // The sip landing — a warm GOLD swell from the screen edges (Elden Ring's
 // liquid-light register), unmistakably not the damage red and softer than

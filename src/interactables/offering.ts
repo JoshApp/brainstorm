@@ -164,12 +164,15 @@ export interface OfferingOpts {
   promptLabel?: string;
   /** How many of the group may be taken before the rest close. Default 1. */
   picks?: number;
-  /** Default TRUE: each offering shows only its name + flavour until you LEAN IN
-   *  (become the highlighted one), then its stats appear. With three or more
-   *  cards up at once, full cards overlap into mush — and "identify at a glance,
-   *  lean in for the contract" is the better read anyway: the lamp reveals detail.
-   *  Set false for a small group meant to be compared stat-for-stat side by side
-   *  (the starter weapons). */
+  /** Default TRUE: an offering shows NOTHING until you walk up to it and look —
+   *  then the whole card (name, flavour, stats) appears.
+   *
+   *  This is the diegetic premise of the offering system. A stone with a thing
+   *  on it should be a stone with a thing on it; you find out what it is by
+   *  approaching, the way you'd find out anything else down here. Names floating
+   *  across a dark room turn a choice you're meant to survey ON FOOT into a menu
+   *  read from the doorway — and three cards up at once is unreadable on a phone
+   *  regardless. Set false only for a group meant to be compared side by side. */
   leanInForStats?: boolean;
   /** Override what taking does. Default routes the item the same way a floor
    *  pickup would (relics collect, gear equips, consumables bag). */
@@ -258,7 +261,7 @@ export function spawnOffering(offering: Offering, opts: OfferingOpts): void {
     // the player stands — but full cards stacked side by side overlap. Name +
     // flavour always; stats when you lean in (see leanInForStats).
     const leanIn = spec.leanInForStats ?? true;
-    registerItemPreview(id, offering.item, { hideStatsUntilInspect: leanIn });
+    registerItemPreview(id, offering.item, { hideCardUntilInspect: leanIn });
 
     let phase = 0;
     let closed = false;
