@@ -11,6 +11,7 @@ import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickAmbientLight, applyAmbientWick } from '../settings/ambient-light';
+import { tickArrivalThreshold, endArrivalThreshold } from '../player/arrival';
 import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { tickFlaskDrink } from '../player/flask-drink';
@@ -324,6 +325,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // Consume the press either way (so it can't buffer and fire on landing), but
       // only ACT on it when not dying / behind the load veil.
       const pressed = isDying() ? false : consumeAttackPressed();
+      // Swinging counts as starting to play, even from a standstill — a tap on
+      // the attack button leaves no stick or look delta for the threshold
+      // system to notice (see player/arrival.ts).
+      if (pressed) endArrivalThreshold();
       const attackPressed = isDescendTransition() ? false : pressed;
       combat.tick(attackPressed, input.moveX, input.moveY, ctx.playerDt);
     } },
@@ -412,6 +417,18 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // at the camera — a giant lamp-lit slab across the frame. The lamp
     // is presentation, not simulation; pose it in every rendered frame.
     { name: 'lamp', phase: 'always', tick(ctx) { tickLamp(ctx.realDt); } },
+    // THE THRESHOLD ends the moment the player does anything (player/arrival.ts).
+    // Read from the same input the movement system reads, so "did they act?" is
+    // one question asked in one place rather than a hook on every control.
+    {
+      name: 'arrival-threshold', phase: 'unpaused',
+      tick(ctx) {
+        tickArrivalThreshold(ctx.realDt);
+        const moved = Math.abs(input.moveX) > 0.08 || Math.abs(input.moveY) > 0.08;
+        const looked = Math.abs(input.lookDx) > 1.5 || Math.abs(input.lookDy) > 1.5;
+        if (moved || looked) endArrivalThreshold();
+      },
+    },
     // The ROOM YOU ARE ACTUALLY IN — eases the ambient-light sensor's reading and
     // re-targets the wick when it has moved (settings/ambient-light.ts). realDt +
     // 'always': the sun does not pause when you open a menu, and coming back to a
@@ -581,6 +598,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // there, so there's no double-interaction.
     { name: 'interact', kind: 'sim', phase: 'unpaused', tick() {
       if (!consumeInteractPressed()) return;
+      endArrivalThreshold();   // reaching for something is playing too
       if (!isBusInstalled()) return;
       if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
       const inRange = getInRangeInteractable();

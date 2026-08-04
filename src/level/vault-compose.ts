@@ -485,6 +485,16 @@ function vaultBakesMajorEvent(vault: Vault): boolean {
 // always pick a line between them; a trap you can't avoid is just damage.
 const HAZARD_SPREAD_M = 3.2;
 
+/** Prop kinds that make a room worth having walked into. Deliberately WIDER than
+ *  EVENT_PROP_KINDS — a room with a couple of vases and a corpse in it is dressed,
+ *  not empty; a room with nothing but wall grime is empty. Read by the
+ *  every-room-earns-its-walk pass in the combat budget. */
+const PRESENCE_PROP_KINDS = new Set<string>([
+  'chest', 'altar', 'blood-altar', 'starter-altar', 'challenge-offering', 'fountain',
+  'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'offering', 'stash-chest',
+  'corpse', 'spike-trap', 'vase', 'searchable', 'pickup',
+]);
+
 // How far the way DOWN wants to be from the way IN. Below this the reorient
 // stops trusting the far edge and walks the stair along the wall instead.
 const FAR_ENOUGH_M = 3.5;
@@ -840,7 +850,13 @@ export function composeFloor(
   // and combat can appear in any room shape. Each candidate carries its world
   // position, owning room, and whether it's a HINT (an author's X slot that the
   // density gate skipped — preferred so injected mobs land where intended).
-  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean; wallAdj: number; centrality?: number }
+  interface SpawnCandidate {
+    x: number; z: number; roomId: string; isHint: boolean; wallAdj: number; centrality?: number;
+    /** May an ENEMY be seeded here? False for a room whose type refuses combat —
+     *  the cell is still a furnishing candidate, which is the whole reason the
+     *  two purposes are one list. */
+    combat: boolean;
+  }
   const spawnCandidates: SpawnCandidate[] = [];
   // Director intent-anchors harvested from the placed vaults — good SPOTS the
   // director may fill. Step 1: fire anchors (a bonfire reads well here). The
@@ -1376,7 +1392,14 @@ export function composeFloor(
         facing: a.facing,
       });
     }
-    if (roomCaps.allowCombat) {
+    // CELL GATHERING — runs for every room that may host ANYTHING, not just
+    // fighting rooms. This used to be gated on `allowCombat` alone, and since
+    // the FURNISHING pass draws from the same pool, a room whose type refuses
+    // enemies got no vases, no clutter, no content markers either — nothing at
+    // all. That's how a `quiet` room, whose whole job is to be a dread beat you
+    // walk through, came out as literally bare stone. Combat still checks
+    // allowCombat, at the one push that seeds enemies.
+    if (roomCaps.allowCombat || roomCaps.allowLoot || roomCaps.allowEvent) {
       // Hint cells: original 'X' positions (incl. a non-boss 'B' treated as X).
       const hintCells = new Set<string>();
       for (let r = 0; r < pv.vault.map.length; r++) {
@@ -1495,7 +1518,14 @@ export function composeFloor(
         // Keep the derived focal + every secondary cell out of the enemy pool.
         if (derived && c.x === derived.x && c.z === derived.z) continue;
         if (secondaryKeys.has(`${c.x},${c.z}`)) continue;
-        spawnCandidates.push({ x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint, wallAdj: c.wallAdj, centrality: c.centrality });
+        // Enemies only where the room's TYPE tolerates them; the furnishing
+        // pass reads the same list, so a no-combat room still gets dressed
+        // (it just never reaches the enemy-seeding slice of the pool).
+        spawnCandidates.push({
+          x: c.x, z: c.z, roomId: pv.roomId, isHint: c.isHint,
+          wallAdj: c.wallAdj, centrality: c.centrality,
+          combat: roomCaps.allowCombat,
+        });
       }
     }
   }
@@ -1557,18 +1587,77 @@ export function composeFloor(
     // become the furnishing pool below, so vases dress the cells combat left.
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
     const shortfall = plan.budget.combat.count - liveCount;
-    const pool = spawnCandidates.slice();
+    const pool = spawnCandidates.filter((c) => c.combat);
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    pool.sort((a, b) => Number(b.isHint) - Number(a.isHint));
+
+    // EVERY ROOM EARNS ITS WALK.
+    //
+    // The budget used to spend itself into a floor-wide shuffled pool, so which
+    // rooms got enemies was luck. Measured across 240 floors, one room in eight
+    // came out with NOTHING in it at all — no mob, no interactable, no fire, no
+    // stairs — and a dead-end spur that pays you nothing for the detour is the
+    // worst version of that. It doesn't read as restraint, it reads as a bug.
+    //
+    // So the budget is SPENT WHERE IT'S NEEDED FIRST. Rooms that are still empty
+    // by the time combat rolls sort to the front of the pool; the rest of the
+    // budget then falls where it always did. Same number of enemies, distributed
+    // like someone meant it.
+    const roomHasPresence = new Set<string>();
+    for (const sp of spawns) if (!sp.dormant && sp.roomId) roomHasPresence.add(sp.roomId);
+    {
+      const rects = placed.map((pv) => ({
+        id: pv.roomId,
+        x: pv.offsetX, z: pv.offsetZ,
+        hw: (pv.vault.map[0]?.length ?? 0) / 2, hd: pv.vault.map.length / 2,
+      }));
+      const marks = props as Array<{ kind?: string; x?: number; z?: number }>;
+      for (const p of marks) {
+        if (!PRESENCE_PROP_KINDS.has(p.kind ?? '')) continue;
+        if (typeof p.x !== 'number' || typeof p.z !== 'number') continue;
+        for (const r of rects) {
+          if (Math.abs(p.x - r.x) <= r.hw && Math.abs(p.z - r.z) <= r.hd) { roomHasPresence.add(r.id); break; }
+        }
+      }
+      for (const st of stairs) {
+        for (const r of rects) {
+          if (Math.abs(st.x - r.x) <= r.hw && Math.abs(st.z - r.z) <= r.hd) { roomHasPresence.add(r.id); break; }
+        }
+      }
+    }
+    const needsSomething = (roomId: string) => !roomHasPresence.has(roomId);
+    // Empty rooms first, then authored hint cells, then everything else.
+    pool.sort((a, b) =>
+      (Number(needsSomething(b.roomId)) - Number(needsSomething(a.roomId)))
+      || (Number(b.isHint) - Number(a.isHint)));
+
     const place = shortfall > 0 ? Math.min(shortfall, pool.length) : 0;
     if (place > 0) {
       const ids = rollFloorEnemies(depth, place, plan.budget.combat.intensity, rand);
       for (let i = 0; i < place; i++) {
         const c = pool[i];
         spawns.push({ enemyId: ids[i], x: c.x, z: c.z, roomId: c.roomId });
+        roomHasPresence.add(c.roomId);
+      }
+    }
+    // TOP-UP — a floor whose budget ran out before its empty rooms did still
+    // must not hand the player a room with nothing in it. Strictly bounded, so
+    // this is a floor of last resort and never a second combat budget.
+    let topUp = CONFIG.FLOOR_SHAPE.EMPTY_ROOM_TOPUP_MAX;
+    if (topUp > 0) {
+      const spare = pool.slice(place).filter((c) => needsSomething(c.roomId));
+      const extraIds = rollFloorEnemies(depth, Math.min(topUp, spare.length), plan.budget.combat.intensity, rand);
+      let n = 0;
+      for (const c of spare) {
+        if (topUp <= 0) break;
+        if (!needsSomething(c.roomId)) continue;   // an earlier top-up already served this room
+        const id = extraIds[n++] ?? extraIds[0];
+        if (!id) break;
+        spawns.push({ enemyId: id, x: c.x, z: c.z, roomId: c.roomId });
+        roomHasPresence.add(c.roomId);
+        topUp--;
       }
     }
 
@@ -1601,7 +1690,10 @@ export function composeFloor(
     // the thresholds). Placed PER ROOM so mood varies by job: wall-HUG the vases
     // (wall-adjacent + corner first, never sprawling across open floor) and scale
     // the count by the room's role — an arena stays open, a storeroom fills up.
-    const leftover = pool.slice(place);
+    // Everything combat didn't take — INCLUDING every cell in the rooms combat
+    // was never allowed to touch, which is the point.
+    const taken = new Set(pool.slice(0, place).map((c) => `${c.x},${c.z}`));
+    const leftover = spawnCandidates.filter((c) => !taken.has(`${c.x},${c.z}`));
     const byRoom = new Map<string, typeof leftover>();
     for (const c of leftover) {
       const arr = byRoom.get(c.roomId);
@@ -1611,11 +1703,20 @@ export function composeFloor(
     for (const [roomId, cells] of byRoom) {
       const mul = roleDecorPolicy(roles.role(roomId)).furnishMul;
       cells.sort((a, b2) => b2.wallAdj - a.wallAdj);   // edge-hug
-      const n = Math.min(
+      let n = Math.min(
         Math.round(cells.length * b.FURNISH_VASE_DENSITY * mul),
         b.FURNISH_VASE_MAX,
         cells.length,
       );
+      // THE FLOOR OF THE THING: a room that is STILL empty at this point — no
+      // mob, no staged thing, no fire, no stairs, and a density that rounded its
+      // vase count down to zero — gets a couple anyway. A room may be quiet, and
+      // a room may be a breath between fights, but a room you walk into and
+      // find nothing at all in reads as a generator that forgot it.
+      if (!roomHasPresence.has(roomId) && cells.length > 0) {
+        n = Math.max(n, Math.min(2, cells.length));
+        roomHasPresence.add(roomId);
+      }
       for (let i = 0; i < n; i++) props.push({ kind: 'vase', x: cells[i].x, z: cells[i].z });
     }
   }

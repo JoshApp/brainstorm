@@ -801,6 +801,23 @@ export const CONFIG = {
   // much you have, so the bar comes down and the flask carries more of it. Lower
   // here means a hit lands harder and a rest matters more.
   PLAYER_HP_MAX: 5,
+  /**
+   * WHAT BLOOD COSTS — as a FRACTION of your max pool, never as a flat number.
+   *
+   * These were absolute HP written against an 8-point pool. When the pool was
+   * cut to 5 (the flask became part of the health budget) nobody revisited
+   * them, so the blood altar quietly went from half your health to FOUR FIFTHS
+   * of it and the tithe from a quarter to nearly half. A fraction can't drift
+   * like that: change PLAYER_HP_MAX and every blood price follows.
+   *
+   * Rounded, and floored at 1 — blood is never free.
+   */
+  BLOOD_PRICE: {
+    /** The cursed altar: a real bet. You are buying a curse with a wound. */
+    ALTAR: 0.4,
+    /** The tithe basin: the cheap lane, for when you have blood but no coin. */
+    TITHE: 0.2,
+  },
 
   // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===
   // The primary sustain: a fixed pool of CHARGES that refills at the bonfire.
@@ -937,6 +954,13 @@ export const CONFIG = {
   // trove has no landmark — it has a corridor with a prize in it. Three is the
   // fewest that leaves the guaranteed trove something to be notable against.
   FLOOR_SHAPE: {
+    /** Last-resort enemies a floor may spend BEYOND its combat budget purely to
+     *  stop a room being empty (see the every-room-earns-its-walk pass in
+     *  vault-compose). Small on purpose: the budget is still what decides how
+     *  dangerous a floor is, and this only exists so the tail case — a floor
+     *  with more rooms than it can afford to fill — doesn't hand you a walk to
+     *  nowhere. 0 disables it. */
+    EMPTY_ROOM_TOPUP_MAX: 3,
     CONTENT_ROOMS_MIN: 3,
     CONTENT_ROOMS_MAX: 5,
     /** Content rooms gained per this many depths, from the minimum up. */

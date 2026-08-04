@@ -73,6 +73,7 @@ import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
+import { isArrivalGrace } from '../player/arrival';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
 // lookups apply the runtime defaults: 'medium' for an unlisted size,
@@ -1979,6 +1980,12 @@ export function createEnemy(
   //   - Sight (inside sightRange, inside cone, AND clear LOS to player)
   // Hearing wins ties — close enough always trips, regardless of facing.
   function canSeePlayer(playerPos: THREE.Vector3, walkable: WalkableRegion): boolean {
+    // THE THRESHOLD (player/arrival.ts): someone who just came down the stairs
+    // and hasn't moved yet is not here as far as the dungeon is concerned.
+    // Gating SIGHT rather than only damage is the half that matters — a pack
+    // that aggros while you're still finding your thumbs is already mid-charge
+    // by the time you can answer it.
+    if (isArrivalGrace()) return false;
     const dx = playerPos.x - container.position.x;
     const dz = playerPos.z - container.position.z;
     const distSq = dx * dx + dz * dz;

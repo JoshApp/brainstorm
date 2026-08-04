@@ -25,6 +25,7 @@ import type { ComboStep } from '../src/content/weapon-classes';
 import { scaleEnemySpec } from '../src/content/modifiers';
 import { ROLE_DEFAULT_MUL, ROLE_DEFAULT_CRITBONUS } from '../src/combat/hurtbox';
 import { CONFIG } from '../src/config';
+import { composeStrikeDamage } from '../src/combat/damage-math';
 
 const HEAVY_CHARGE_BONUS = 0.80;        // attack.ts: chargeMul = 1 + c*0.80 (mirror)
 const HEAVY_MUL = 1 + HEAVY_CHARGE_BONUS;
@@ -119,22 +120,27 @@ console.log(
 );
 console.log('-'.repeat(70));
 for (const w of ws) {
-  const lBody = w.dmg;
-  const lHead = w.dmg * HEAD_MUL;
-  const lCrit = w.dmg * w.critM;
+  // Every cell goes through the LIVE formula (combat/damage-math.ts) rather than
+  // re-inlining the arithmetic — the report's whole job is to tell the truth
+  // about what the game does, and an independently-multiplied table stopped
+  // doing that the moment bonuses became additive.
+  const D = (crit: boolean, muls: number[]) => composeStrikeDamage(w.dmg, crit, w.critM, muls);
+  const lBody = D(false, []);
+  const lHead = D(false, [HEAD_MUL]);
+  const lCrit = D(true, []);
   // Ranged FIRES — no charge, so no heavy/execute. Its ceiling is a head crit.
-  const hBody = w.ranged ? null : w.dmg * HEAVY_MUL;
-  const hCrit = w.ranged ? null : w.dmg * HEAVY_MUL * w.critM;
+  const hBody = w.ranged ? null : D(false, [HEAVY_MUL]);
+  const hCrit = w.ranged ? null : D(true, [HEAVY_MUL]);
   const max = w.ranged
-    ? w.dmg * HEAD_MUL * w.critM                                   // head crit
-    : w.dmg * HEAVY_MUL * HEAD_MUL * w.critM * PERFECT * EXECUTE;  // heavy head crit overcharge execute
+    ? D(true, [HEAD_MUL])                                       // head crit
+    : D(true, [HEAVY_MUL, HEAD_MUL, PERFECT, EXECUTE]);         // heavy head crit overcharge execute
   console.log(
     pad(w.name.slice(0, 21), 22) + padL(r1(lBody), 8) + padL(r1(lHead), 8) +
     padL(w.critM > 1 ? r1(lCrit) : '—', 8) + padL(hBody != null ? r1(hBody) : '—', 8) +
     padL(hCrit != null && w.critM > 1 ? r1(hCrit) : '—', 8) + padL(r1(max), 8),
   );
 }
-console.log('\nMAX = heavy ×1.8 · head ×' + HEAD_MUL + ' · crit · overcharge ×' + PERFECT + ' · execute ×' + EXECUTE + ' (staggered foe)');
+console.log('\nMAX = crit × (1 + heavy .8 + head ' + r1(HEAD_MUL - 1) + ' + overcharge ' + r1(PERFECT - 1) + ' + execute ' + r1(EXECUTE - 1) + ')  — bonuses ADD, crit multiplies (damage-math.ts)');
 
 console.log('\n----------------  DPS (expected, incl. crit chance)  ----------------\n');
 console.log(pad('weapon', 22) + padL('light', 8) + padL('combo', 8) + padL('heavy', 8));

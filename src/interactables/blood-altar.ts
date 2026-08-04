@@ -11,9 +11,11 @@ import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 import { disposeBuiltTree } from '../style/material-registry';
 import { applyBrokenness } from './brokenness';
+import { getPlayerMaxHp } from '../player/health';
+import { CONFIG } from '../config';
 
 // Blood altar — a stone block with a CURSED offering floating above it, washed
-// in violet glow. Taking it ALWAYS costs BLOOD_PRICE_HP (can kill at low HP).
+// in violet glow. Taking it ALWAYS costs blood (can kill at low HP).
 // Now built on spawnEvent: the factory owns the id, the −4 ❤ cost chip, the
 // central HP deduction (cost.hp), the bargain transaction emits, and teardown.
 // This file keeps only the bespoke visuals (the leaning basin + floating,
@@ -25,7 +27,13 @@ import { applyBrokenness } from './brokenness';
 // Order note: the factory runs the effect (blood burst + grant) BEFORE paying
 // the HP cost, so the burst still anchors at the altar before a lethal take.
 
-const BLOOD_PRICE_HP = 4;   // half the base pool — a real bet at high HP, lethal at low
+/** What the altar charges, right now, in hit points. A FRACTION of the live max
+ *  pool (CONFIG.BLOOD_PRICE.ALTAR) rather than a flat number — this was hard-
+ *  coded at 4 back when the pool was 8, and stayed 4 when the pool became 5,
+ *  which quietly turned "half your health" into four fifths of it. */
+function bloodPriceHp(): number {
+  return Math.max(1, Math.round(getPlayerMaxHp() * CONFIG.BLOOD_PRICE.ALTAR));
+}
 
 const ROTATE_SPEED = 0.6;
 const BOB_AMPLITUDE = 0.030;
@@ -54,7 +62,7 @@ export function spawnBloodAltar(
     labelOffsetY: 0.55,        // sits low, below the floating offering + its card
     promptLabel: 'OFFER',      // you give blood for it — not a plain TAKE
     promptKind: 'bargain',     // violet — a cursed bargain
-    cost: { hp: BLOOD_PRICE_HP },   // shows "−4 ❤" and is deducted centrally
+    cost: { hp: bloodPriceHp() },   // shows the live price on the chip; deducted centrally
     family: 'bargain',
     previewItem: cursedItem,
     keepBuiltOnDestroy: true,  // the stone basin stays; onDestroy yanks only the offering
@@ -127,7 +135,7 @@ export function spawnBloodAltar(
         dropDisplaced: (dItem, dAff) => dropGearPickup(scene, pos, dItem, dAff),
       });
       playEquipClick();
-      return { itemIds: [cursedItem.id], hpDelta: -BLOOD_PRICE_HP };
+      return { itemIds: [cursedItem.id], hpDelta: -bloodPriceHp() };
     },
     onDestroy: () => {
       scene.remove(offerGroup);

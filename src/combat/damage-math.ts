@@ -26,13 +26,35 @@ export function resolveDamage(
 }
 
 /**
- * The pre-armor strike damage a swing/shot deals: `base`, crit-multiplied when
- * `crit`, then times every situational multiplier (charge, finisher, cleave,
- * zone, execute, step, …). The crit ROLL stays at the call site — it needs RNG
- * and per-zone bonuses — but this composes the number, so the melee and ranged
- * paths share ONE tested formula instead of re-inlining the multiplier product
- * (melee had a 9-factor inline chain; ranged its own). Multiplication order is
- * irrelevant to the result, so this is exactly behavior-preserving.
+ * The pre-armor strike damage a swing/shot deals.
+ *
+ * BONUSES ADD, PENALTIES MULTIPLY, CRIT MULTIPLIES ONCE.
+ *
+ * This used to multiply every situational factor together, and that is what
+ * made a one-damage dagger hit for eleven. Landing the perfect strike stacks
+ * FIVE separate "you did the right thing" factors — a full charge (×1.8), the
+ * head zone (×1.2), an overcharged release (×1.35), an execute on a staggered
+ * foe (×2.0) and the crit (×2.5) — and multiplied that is ×14.6 against a
+ * dungeon whose depth-1 population has one to four hit points. Every one of
+ * those factors was individually reasonable; the product was not, and it got
+ * worse every time we added a sixth good idea.
+ *
+ * So the situational bonuses now sum their SURPLUS and apply as one term:
+ *
+ *     bonus   = 1 + Σ (m − 1)   for every m ≥ 1
+ *     penalty = Π m             for every m < 1
+ *     damage  = base × crit × bonus × penalty
+ *
+ * Crit stays a true multiplier — it's the weapon's identity stat, it already
+ * varies 2.0–2.5 across the arsenal, and a crit that didn't feel like a crit
+ * would be the wrong fix. Penalties stay multiplicative because that's the only
+ * way they keep reducing: additively, two reducers (an armour zone at 0.25 and
+ * a cleave falloff at 0.6) would sum to a NEGATIVE factor.
+ *
+ * The result is that each bonus contributes a legible slice you can reason
+ * about — a head shot is always "+20% of base", not "+20% of whatever the other
+ * four factors already compounded to" — and adding a new bonus later costs a
+ * slice instead of doubling the ceiling.
  */
 export function composeStrikeDamage(
   base: number,
@@ -40,7 +62,12 @@ export function composeStrikeDamage(
   critMultiplier: number,
   multipliers: readonly number[] = [],
 ): number {
-  let dmg = crit ? base * critMultiplier : base;
-  for (const m of multipliers) dmg *= m;
-  return dmg;
+  let surplus = 0;
+  let penalty = 1;
+  for (const m of multipliers) {
+    if (m >= 1) surplus += m - 1;
+    else penalty *= m;
+  }
+  const dmg = crit ? base * critMultiplier : base;
+  return dmg * (1 + surplus) * penalty;
 }

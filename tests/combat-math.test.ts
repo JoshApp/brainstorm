@@ -115,18 +115,59 @@ test('crit multiplies the base before the situational multipliers', () => {
   assert.equal(composeStrikeDamage(10, true, 2, [1.8]), 36);
 });
 
-test('multipliers compound in any order (matches the old inline product)', () => {
-  // (crit? 10×2 : 10) × 1.5 × 0.5 × 2 = 20 × 1.5 = 30, ×0.5 = 15, ×2 = 30
-  assert.equal(composeStrikeDamage(10, true, 2, [1.5, 0.5, 2]), 30);
-  // order-independence
-  assert.equal(composeStrikeDamage(10, true, 2, [2, 0.5, 1.5]), 30);
+// ── BONUSES ADD, PENALTIES MULTIPLY (2026-08) ──────────────────────────────
+// The old rule multiplied everything, and five stacked "you did the right
+// thing" factors turned a 1-damage dagger into an 11-damage hit against mobs
+// with 1-4 HP. These pin the replacement.
+
+test('bonuses contribute a slice of BASE, not a slice of each other', () => {
+  // +50% and +100% together are +150%, not ×3.
+  assert.equal(composeStrikeDamage(10, false, 2, [1.5, 2.0]), 25);
+  assert.equal(composeStrikeDamage(10, false, 2, [1.5, 2.0]) < 10 * 1.5 * 2.0, true);
 });
 
-test('reproduces the melee 7-factor chain exactly', () => {
-  const base = 12, critMult = 2.5;
-  const muls = [1.3, 1.8, 1.1, 1.0, 0.7, 1.0, 1.0];   // finisher/charge/counter/zone/cleave/exec/step
-  const expected = (12 * 2.5) * 1.3 * 1.8 * 1.1 * 1.0 * 0.7 * 1.0 * 1.0;
-  assert.equal(composeStrikeDamage(base, true, critMult, muls), expected);
+test('order still does not matter', () => {
+  assert.equal(
+    composeStrikeDamage(10, true, 2, [1.5, 0.5, 2]),
+    composeStrikeDamage(10, true, 2, [2, 0.5, 1.5]),
+  );
+});
+
+test('a single bonus behaves exactly as it always did', () => {
+  // The one-factor case is where the two rules agree — which is why every
+  // body/head/crit number in the balance report is unchanged.
+  assert.equal(composeStrikeDamage(10, true, 2, [1.8]), 36);
+  assert.equal(composeStrikeDamage(10, false, 2, [1.2]), 12);
+});
+
+test('penalties still multiply, so two of them keep reducing', () => {
+  // An armour zone (0.25) under a cleave falloff (0.6). Summed surpluses would
+  // make this NEGATIVE; the product is the only rule that stays sane.
+  const d = composeStrikeDamage(10, false, 2, [0.25, 0.6]);
+  assert.ok(d > 0 && d < 10, `penalty stack produced ${d}`);
+  assert.equal(d, 10 * 0.25 * 0.6);
+});
+
+test('crit is still a true multiplier on top of the bonus slice', () => {
+  // base 12, crit ×2.5, then +30% +80% +10% = +120%
+  assert.equal(composeStrikeDamage(12, true, 2.5, [1.3, 1.8, 1.1]), 12 * 2.5 * 2.2);
+});
+
+test('the perfect strike no longer explodes', () => {
+  // The reported case: a 1-damage dagger, full charge + head + overcharge +
+  // execute + a 2.5x crit. Multiplied that was 14.6; it must now be well under.
+  const muls = [1.8, 1.2, 1.35, 2.0];
+  const perfect = composeStrikeDamage(1, true, 2.5, muls);
+  const oldRule = muls.reduce((a, m) => a * m, 1 * 2.5);
+  assert.ok(perfect < oldRule * 0.6, `${perfect.toFixed(1)} vs old ${oldRule.toFixed(1)}`);
+  // ...but it must still be a PAYOFF — landing everything is worth several hits.
+  assert.ok(perfect > 5, `perfect strike fell to ${perfect.toFixed(1)} — no longer worth setting up`);
+});
+
+test('adding a sixth bonus costs a slice, not a doubling', () => {
+  const five = composeStrikeDamage(2, true, 2, [1.8, 1.2, 1.35, 2.0]);
+  const six = composeStrikeDamage(2, true, 2, [1.8, 1.2, 1.35, 2.0, 1.25]);
+  assert.ok(six - five < five * 0.2, 'a new bonus still compounds — the rule did not take');
 });
 
 // ── Report ───────────────────────────────────────────────────────────────

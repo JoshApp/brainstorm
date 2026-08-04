@@ -84,9 +84,9 @@ function shuffled<T>(arr: readonly T[], rand: () => number): T[] {
 export function distributeLoot(props: PropSpec[], depth: number, rand: () => number, rooms: readonly RoomBox[]): PropSpec[] {
   const anchors = props.filter((p): p is Anchor => p.kind === 'loot-anchor');
   const kept = props.filter((p) => p.kind !== 'loot-anchor');
-  // A floor with no anchors still gets its early SPARK (upgraded onto whatever
-  // chest the vaults authored) — the gift must never miss for lack of a marker.
-  if (anchors.length === 0) return ensureSpark(props, depth, rand);
+  // No anchors, nothing for this pass to place. (This used to be the other half
+  // of the early-spark rewrite — see the note at the end of the function.)
+  if (anchors.length === 0) return props;
 
   const majors = shuffled(anchors.filter((a) => a.prominence === 'major'), rand);
   const minors = shuffled(anchors.filter((a) => a.prominence === 'minor'), rand);
@@ -168,46 +168,24 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
     }
   }
 
-  // EARLY SPARK (floors 1-2) — guarantee a relic, the first-descent gift. Prefer
-  // to upgrade a chest we're already placing (director find, else a vault chest);
-  // if the floor truly has none, inject a spark chest at a free anchor so the gift
-  // never misses. Applied AFTER the gate so the spark is never sealed behind an
-  // offering (a floor-1 delver must always reach it).
-  if (depth <= 2) {
-    const upgraded = sparkifyFirstChest(content, depth, rand) || sparkifyFirstChest(kept, depth, rand);
-    if (!upgraded) {
-      const a = take(minors, majors);
-      if (a) content.push(makeChest(a, 'wood', depth, rand, true));
-    }
-  }
+  // THE GUARANTEED EARLY SPARK IS CUT — completely, this time.
+  //
+  // It rewrote floor 1-2's first chest into `tier: 'wood'` carrying a guaranteed
+  // uncommon+ relic. Two things wrong with that, and they're the same thing
+  // twice: a build piece arrived on rails in the first two minutes, and it
+  // arrived out of a WOOD chest — which is the tier that is supposed to promise
+  // pickups and nothing else. A chest's silhouette is a contract about what's
+  // inside it (drop-tables.ts: only the gold chest holds a build piece, and it
+  // costs a key). The spark quietly broke that contract on the exact floors
+  // where the player is learning to read it.
+  //
+  // Guarantees belong to ROOMS AND EVENTS now. The trove is the floor's
+  // dependable offering; an event may hand you a relic, a fire, coin or keys.
+  // Floors just generate. If the first-descent gift comes back it comes back as
+  // an EVENT you can see, not as a silent rewrite of a box you already knew how
+  // to read.
 
   return [...kept, ...content, ...gateProps];
-}
-
-/** Rewrite the first openable (non-mimic) chest in `props` into the early SPARK —
- *  a wood, ungated chest holding a guaranteed relic. Returns true if one was
- *  found + upgraded. Mutates in place. */
-function sparkifyFirstChest(props: PropSpec[], depth: number, rand: () => number): boolean {
-  const idx = props.findIndex((p): p is Extract<PropSpec, { kind: 'chest' }> => p.kind === 'chest' && !p.mimic);
-  if (idx < 0) return false;
-  const c = props[idx] as Extract<PropSpec, { kind: 'chest' }>;
-  props[idx] = { ...c, tier: 'wood', mimic: false, gateId: undefined, loot: rollDropTable('spark', depth, rand) };
-  return true;
-}
-
-/** No-anchor path: still guarantee the early spark by upgrading whatever chest a
- *  vault authored (best effort — a floor with zero chests + zero anchors, very
- *  rare, simply has none to upgrade). */
-function ensureSpark(props: PropSpec[], depth: number, rand: () => number): PropSpec[] {
-  // THE GUARANTEED EARLY SPARK IS CUT. It upgraded floor 1-2's only chest into a
-  // guaranteed relic, which meant the first floors had no ambient chest at all
-  // (nothing to open, no key to spend) and a build piece arrived on rails.
-  // Guarantees belong to ROOMS AND EVENTS now — the trove is the dependable
-  // offering, and an event may hand you a relic, a fire, coin or keys. Floors
-  // just generate. Kept as a named seam so the gift can come back as an EVENT
-  // rather than a silent chest rewrite.
-  void depth; void rand;
-  return props;
 }
 
 /** A fallen delver at an anchor, POSED by its surroundings — the pose-by-context

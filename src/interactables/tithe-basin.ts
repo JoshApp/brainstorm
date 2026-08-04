@@ -4,7 +4,8 @@ import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { createSheet, menuButton } from '../ui/menu-shell';
 import { getGold, spendGold } from '../state/run-state';
-import { damagePlayer, getPlayerHp } from '../player/health';
+import { damagePlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
+import { CONFIG } from '../config';
 import { getEquipped, setSlot } from '../player/equipment';
 import { getWeaponHits } from '../player/weapon-usage';
 import { applyMutationWithFeedback } from '../player/apply-mutation';
@@ -46,7 +47,12 @@ import type { StyleMaterials } from '../style/materials';
 // One use. The basin keeps what it takes.
 
 const GOLD_TITHE_BASE = 25;       // scaled up with depth
-const BLOOD_TITHE_HP = 2;
+/** The blood lane's price, as a fraction of the live pool — see
+ *  CONFIG.BLOOD_PRICE. Was a flat 2 against an 8-point pool; on a 5-point pool
+ *  that was nearly half your health for the CHEAP option. */
+function bloodTitheHp(): number {
+  return Math.max(1, Math.round(getPlayerMaxHp() * CONFIG.BLOOD_PRICE.TITHE));
+}
 // Landed-hits threshold above which the basin treats the tithed weapon as your
 // true MAIN — a real sacrifice it will honour. Below it, the blade reads as a
 // barely-blooded castoff and the basin scorns the cheap trade (you can't swap to
@@ -244,10 +250,10 @@ export function spawnTitheBasin(
       sheet.body.append(btn, subEl);
     };
 
-    row(`BLOOD · ${BLOOD_TITHE_HP} HP`, 'The dungeon respects blood.', getPlayerHp() > BLOOD_TITHE_HP, () => {
+    row(`BLOOD · ${bloodTitheHp()} HP`, 'The dungeon respects blood.', getPlayerHp() > bloodTitheHp(), () => {
       spawnBloodBurst(scene, pos.x, pos.y + 0.9, pos.z);
-      damagePlayer(BLOOD_TITHE_HP, null, 'physical', false, 'the hungry basin');
-      resolveTithe('blood', { hp: BLOOD_TITHE_HP });
+      damagePlayer(bloodTitheHp(), null, 'physical', false, 'the hungry basin');
+      resolveTithe('blood', { hp: bloodTitheHp() });
     });
     row(`GOLD · ${goldPrice}`, 'The basin has no use for coin. Probably.', getGold() >= goldPrice, () => {
       spendGold(goldPrice);

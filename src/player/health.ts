@@ -1,4 +1,4 @@
-import { isArrivalActive } from './arrival';
+import { isArrivalGrace } from './arrival';
 import { gameNow } from '../engine/game-clock';
 import { registerSimReset } from '../engine/sim-state';
 import { recordPlayerDamage } from './damage-recap';
@@ -183,7 +183,7 @@ export function onPlayerDeath(cb: () => void) {
  */
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false, cause?: string) {
   if (dead || godMode) return;
-  if (isArrivalActive()) return;   // mid-wake at the bonfire — untouchable
+  if (isArrivalGrace()) return;   // mid-wake, or arrived and not yet moved — untouchable
   if (gameNow() < invulnUntil) {
     // Hit negated by i-frames (dodge / entry-grace). Pure survival — NO reward
     // here. The just-dodge bonus is earned by precise ROLL TIMING against a
