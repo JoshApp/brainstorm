@@ -187,7 +187,7 @@ const STAIR_ROTY: Record<Dir, number> = { S: 0, N: Math.PI, E: Math.PI / 2, W: -
  *  previous one, i.e. the way the player heads in; the stair descends that way.
  *  Centred on the perpendicular axis for maximal side clearance. */
 function reorientExitStair(
-  st: StairsSpec, ox: number, oz: number, dims: { w: number; d: number }, dir: Dir,
+  st: StairsSpec, ox: number, oz: number, dims: { w: number; d: number }, dir: Dir,   // eslint-disable-line prefer-const
   // Vault-local carved voids (sub.voids). The back-edge CENTRE can land on a
   // carved chasm pock (the carve avoided the AUTHORED '/', not the reoriented
   // spot), which would soft-lock the stair. So we slide along the back edge to a
@@ -196,11 +196,31 @@ function reorientExitStair(
   voids: ReadonlyArray<{ x: number; z: number; w: number; d: number }> = [],
 ): StairsSpec {
   const INSET = 0.04, D = STAIRWELL_TOTAL_DEPTH, hw = dims.w / 2, hd = dims.d / 2;
-  let x = ox, z = oz;
-  if (dir === 'S') z = oz + hd - INSET - D;
-  else if (dir === 'N') z = oz - hd + INSET + D;
-  else if (dir === 'E') x = ox + hw - INSET - D;
-  else x = ox - hw + INSET + D;
+  const place = (d: Dir): { x: number; z: number } =>
+    d === 'S' ? { x: ox, z: oz + hd - INSET - D }
+      : d === 'N' ? { x: ox, z: oz - hd + INSET + D }
+        : d === 'E' ? { x: ox + hw - INSET - D, z: oz }
+          : { x: ox - hw + INSET + D, z: oz };
+
+  // WHICH EDGE, really. The caller names the direction of travel, but a
+  // stairwell is 2.5m DEEP: on an edge the room is only four cells across, the
+  // well's own footprint pushes its mouth back past the room's centre and out
+  // the near side — the stair ends up beside the door you came in by, facing the
+  // wrong way (reported). So the direction is a PREFERENCE, and the actual edge
+  // is whichever puts the stair furthest from the way in. In a long shallow room
+  // that reliably picks the long axis, which is also where it looks right.
+  const mouth = {
+    x: ox + (dir === 'E' ? -hw : dir === 'W' ? hw : 0),
+    z: oz + (dir === 'S' ? -hd : dir === 'N' ? hd : 0),
+  };
+  let x = ox, z = oz, best = -Infinity;
+  for (const d of [dir, 'N', 'S', 'E', 'W'] as Dir[]) {
+    const p = place(d);
+    // Strictly greater, so the caller's own direction wins every tie and a
+    // room that was already placing its stair well keeps the exact same spot.
+    const score = Math.hypot(p.x - mouth.x, p.z - mouth.z);
+    if (score > best) { best = score; x = p.x; z = p.z; dir = d; }
+  }
 
   // Clearance the stair top needs around it (≈ stairwell half-width + player + margin).
   const CLEAR = 1.0;
@@ -220,8 +240,41 @@ function reorientExitStair(
       }
     }
     if (!found) return st;   // whole back edge carved → keep the carve-safe authored spot
+  } else if (best < FAR_ENOUGH_M) {
+    // WALK IT ALONG THE WALL. A long shallow room entered on its LONG side has
+    // no far edge worth the name — every cardinal lands within a couple of
+    // metres of the door. Distance is still available sideways, so slide the
+    // stair down the chosen wall toward whichever end is further from the mouth.
+    // The player still meets the room before the way out of it.
+    const alongZ = dir === 'E' || dir === 'W';
+    const limit = (alongZ ? hd : hw) - 1.2;   // keep the well clear of the side walls
+    for (let off = limit; off >= 0.8; off -= 0.8) {
+      const cands = [off, -off]
+        .map((s) => ({ x: alongZ ? x : ox + s, z: alongZ ? oz + s : z }))
+        .filter((p) => !blocked(p.x, p.z))
+        .sort((a, b) => Math.hypot(b.x - mouth.x, b.z - mouth.z) - Math.hypot(a.x - mouth.x, a.z - mouth.z));
+      if (cands.length > 0 && Math.hypot(cands[0].x - mouth.x, cands[0].z - mouth.z) > best) {
+        x = cands[0].x; z = cands[0].z;
+        break;
+      }
+    }
   }
   return { ...st, x, z, rotY: STAIR_ROTY[dir] };
+}
+
+/**
+ * The cardinal direction of TRAVEL through a room, given the way IN.
+ *
+ * `entranceDir` points from the room's centre toward its mouth; you walk the
+ * other way. Snapped to the dominant axis, because a room's edges are cardinal
+ * and the thing being placed (a stairwell, a gate) has to sit on one of them.
+ * The returned Dir matches reorientExitStair's convention: 'S' = the far edge is
+ * +Z, 'E' = +X.
+ */
+function oppositeCardinal(entranceDir: { x: number; z: number }): Dir {
+  return Math.abs(entranceDir.x) >= Math.abs(entranceDir.z)
+    ? (entranceDir.x > 0 ? 'W' : 'E')
+    : (entranceDir.z > 0 ? 'N' : 'S');
 }
 
 /** Where the boss fog-gate goes — the ENTRANCE edge of the boss vault (the
@@ -431,6 +484,10 @@ function vaultBakesMajorEvent(vault: Vault): boolean {
 // ROOM, whose spikes ring its prize). Spread far enough apart that a player can
 // always pick a line between them; a trap you can't avoid is just damage.
 const HAZARD_SPREAD_M = 3.2;
+
+// How far the way DOWN wants to be from the way IN. Below this the reorient
+// stops trusting the far edge and walks the stair along the wall instead.
+const FAR_ENOUGH_M = 3.5;
 const HAZARD_MIN = 2;
 const HAZARD_MAX = 4;
 
@@ -888,8 +945,18 @@ export function composeFloor(
     // it. Hand-authored (non-exit, non-boss) stairs keep their spot immediately.
     let pendingStairReorient: { ox: number; oz: number; dims: { w: number; d: number }; dir: Dir } | null = null;
     if (sub.stairs && sub.stairs.length) {
-      if ((pv.vault.tags.includes('exit') || pv.vault.tags.includes('boss')) && pv.placeDir) {
-        pendingStairReorient = { ox: pv.offsetX, oz: pv.offsetZ, dims: vaultDims(pv.vault), dir: pv.placeDir };
+      // WHICH WAY IS BACK? `placeDir` is the direction the vault was CHAINED,
+      // which is only the way in when the room has exactly one mouth on that
+      // edge. In a big room fed by a corridor that turns, or by a second spur,
+      // the chain direction and the actual doorway disagree — and the stair
+      // landed in the mouth the player walks out of, turned the wrong way
+      // (reported: descending almost from the doorway of the room you just
+      // entered). RoomSpec.entranceDir is the honest answer: it points at the
+      // mouth you most likely arrive through, so travel — and the far edge the
+      // stair belongs on — is the opposite of it.
+      const stairDir = roomEntrance ? oppositeCardinal(roomEntrance) : pv.placeDir;
+      if ((pv.vault.tags.includes('exit') || pv.vault.tags.includes('boss')) && stairDir) {
+        pendingStairReorient = { ox: pv.offsetX, oz: pv.offsetZ, dims: vaultDims(pv.vault), dir: stairDir };
       } else {
         stairs.push(...sub.stairs);
       }
