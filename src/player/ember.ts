@@ -42,14 +42,23 @@ export function onEmberChanged(fn: () => void): () => void {
 
 export function getEmber(): number { return ember; }
 
-/** Grant borrowed life. Sources: bargains, offerings, the deep's gifts.
- *  Clamped to the cap — a grant that would overflow is simply topped off, never
- *  refused, so the player is never punished for taking a gift. */
-export function grantEmber(amount: number): void {
-  if (amount <= 0) return;
+/**
+ * Grant borrowed life. Sources: the bonfire, bargains, offerings — the deep's
+ * gifts. Clamped to the cap, and a grant that would overflow is topped off
+ * rather than refused, so the player is never punished for taking one.
+ *
+ * Returns how much ACTUALLY landed (0 when you were already full), so a caller
+ * can say "+2 EMBER" or say nothing, instead of promising a gift the cap ate.
+ */
+export function grantEmber(amount: number): number {
+  if (amount <= 0) return 0;
+  const before = ember;
   ember = Math.min(CONFIG.EMBER_MAX, ember + amount);
+  const gained = ember - before;
+  if (gained <= 0) return 0;
   emit({ type: 'ember:changed', value: ember });
   notify();
+  return gained;
 }
 
 /**

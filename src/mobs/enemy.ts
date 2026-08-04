@@ -699,6 +699,15 @@ export function createEnemy(
   // Lash deform — eased 0..1 body elongation toward the player during a
   // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
   let lashStretch = 0;
+  /** Cast wind-up inflation — see tickLashDeform. */
+  let castSwell = 0;
+  /** PLANT — seconds a ranged mob must hold its ground after loosing a shot.
+   *  A kiter used to drop straight from `recovering` into its retreat, so it was
+   *  already backpedalling while its own bolt was still in the air: from the
+   *  player's side that reads as "it shoots at random while running away," which
+   *  is exactly the report. Standing in the shot it just took makes the attack a
+   *  discrete, committed act you can punish. */
+  let plantTimer = 0;
   let gelTime = 0;   // clock for the gelatinous (ooze) squash jiggle
 
   let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
@@ -2454,6 +2463,7 @@ export function createEnemy(
     // pool is already reset for the next break).
     actionFsm.tick(dt);   // advance interrupt beats (stagger + parry flinch-lock)
     if (falterCd > 0) falterCd = Math.max(0, falterCd - dt);
+    if (plantTimer > 0) plantTimer = Math.max(0, plantTimer - dt);
     if (state !== 'staggered') {
       if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
       else if (poiseLeft < poiseMax) {
@@ -2824,7 +2834,10 @@ export function createEnemy(
           // repositions to round the obstacle instead of holding behind a wall.
           const kiterCanShoot = pref > 0
             && walkable.hasLineOfSight(container.position.x, container.position.z, playerPos.x, playerPos.z);
-          if (kiterCanShoot && distance < pref) {
+          if (plantTimer > 0) {
+            // PLANTED — it just fired and is watching what you do about it.
+            faceTarget(playerPos, dt);
+          } else if (kiterCanShoot && distance < pref) {
             // KITER too close — back away to reopen the gap (the
             // reposition window between shots). Aim ~2m directly away;
             // moveTowards pathfinds + clamps against walls. Cornered, it
@@ -2958,6 +2971,10 @@ export function createEnemy(
         applyTelegraph(currentAbility.pose, 'recover', t);
         if (lashTendril) lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
         if (phaseTimer >= currentAbility.recover) {
+          // Hold the ground it just shot from (see plantTimer).
+          if (currentAbility.steps.some((st) => st.action.kind === 'projectile')) {
+            plantTimer = CONFIG.ENEMY_AI.RANGED_PLANT_S;
+          }
           // ±18% jitter so packs drift out of sync over the fight.
           cooldowns.set(currentAbility.id, (currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
           currentAbility = null;
@@ -3087,14 +3104,25 @@ export function createEnemy(
   // by the animation layers (which use position/rotation), so it's free.
   function tickLashDeform(dt: number) {
     const lashing = currentAbility?.pose === 'lash';
+    // A CAST reads on a limbless body too: the thing INFLATES as it charges the
+    // shot and empties as it fires. Same writer as the lash (this function owns
+    // built.group.scale), opposite sign — a lash reaches toward you, a spit
+    // gathers into itself first.
+    const casting = currentAbility?.pose === 'cast';
     let target = 0;
     let ease = dt * 9;
+    let swell = 0;
     if (lashing && state === 'winding') {
       target = 0.5 * Math.min(1, phaseTimer / currentWindupTime);   // rear up slowly
     } else if (lashing && state === 'striking') {
       target = 1.0;                                                  // snap forward
       ease = dt * 26;
+    } else if (casting && state === 'winding') {
+      swell = 0.30 * Math.min(1, phaseTimer / currentWindupTime);
+    } else if (casting && state === 'striking') {
+      swell = -0.16;                                                 // empties as it fires
     }
+    castSwell += (swell - castSwell) * Math.min(1, dt * (swell < castSwell ? 24 : 8));
     lashStretch += (target - lashStretch) * Math.min(1, ease);
     if (target === 0 && lashStretch < 0.002) lashStretch = 0;
     // GELATINOUS jiggle (blobs/oozes) — a continuous squash-and-stretch about
@@ -3109,10 +3137,11 @@ export function createEnemy(
     }
     // Elongate along local Z (forward/back, the player axis since the
     // container faces the player); squash X/Y a touch.
+    const sw = 1 + castSwell;
     built.group.scale.set(
-      groupBaseScale.x * gx * (1 - 0.12 * lashStretch),
-      groupBaseScale.y * gy * (1 - 0.16 * lashStretch),
-      groupBaseScale.z * gz * (1 + 0.55 * lashStretch),
+      groupBaseScale.x * gx * sw * (1 - 0.12 * lashStretch),
+      groupBaseScale.y * gy * sw * (1 - 0.16 * lashStretch),
+      groupBaseScale.z * gz * sw * (1 + 0.55 * lashStretch),
     );
   }
 

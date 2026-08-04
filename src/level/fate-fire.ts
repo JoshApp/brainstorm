@@ -13,16 +13,12 @@ import { registerInteractable } from '../interactables/system';
 import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
-import { getFlask, addCharges } from '../player/flask';
-import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { grantEmber } from '../player/ember';
 import { flashHearthEmbrace } from '../ui/vignette';
 import { spawnStatusTextHere } from '../ui/damage-numbers';
 
 /** The two things a rest gives you, coloured so they read apart at a glance:
  *  flesh-warm for health, flask-gold for charges. */
-const HEARTH_MEND_COLOR = 'rgba(255, 214, 170, 0.98)';
-const HEARTH_FLASK_COLOR = 'rgba(255, 198, 92, 0.98)';
 /** Borrowed life — the same amber the ember hearts use on the bar. */
 const HEARTH_EMBER_COLOR = 'rgba(255, 176, 74, 0.98)';
 import { CONFIG } from '../config';
@@ -53,49 +49,29 @@ export function registerFateFire(o: FateFireOpts): void {
     position: o.position,
     radius: 1.8,
     labelOffsetY: 1.25,
-    promptLabel: 'MEND',
+    promptLabel: 'REST',
     built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
     onUse() {
       if (drawn) return; // a spent fire has nothing left to give
       // FATES ARE DISABLED — the fire no longer deals a card. It's a plain REST:
-      // RECHARGE ONE FLASK CHARGE, or — if the flask is already full — pour the
-      // charge's worth of HP straight into you, so the rest is never wasted. Once
-      // per fire (the `drawn` guard). The full reset lives at the safe-haven basin.
+      // Once per fire (the `drawn` guard).
       drawn = true;
-      // THE MEND. A bonfire is the Dark Souls beat and nothing else: it mends
-      // you and refills the flask, then you decide whether to go on. The flask
-      // is the ONLY thing that refills here — the golden fountain that used to
-      // hand out charges is cut, so a fire is the single place your heals come
-      // back and reaching one is the decision it should be.
-      //
-      // SHOW THE PLAYER WHAT THEY GOT. A rest that silently sets two numbers is
-      // a rest you don't feel, and this is the one moment the game is kind — so
-      // the fire takes the whole screen for a beat, and the two things it gave
-      // you float up off the flame where you're already looking.
-      // ORDER MATTERS: flask, then flesh, then the overflow becomes EMBER.
-      // Spending it this way means a rest is never wasted — arrive at full
-      // health and the whole budget converts to borrowed life, so a fire is
-      // worth reaching whatever state you're in.
-      const charges = addCharges(CONFIG.BONFIRE.FLASK_CHARGES);
-      const budget = getPlayerMaxHp() * CONFIG.BONFIRE.MEND_BUDGET;
-      const hpBefore = getPlayerHp();
-      healPlayer(budget, 'passive');
-      const mended = Math.max(0, Math.round(getPlayerHp() - hpBefore));
-      // Whatever the flesh couldn't take. grantEmber clamps to the cap itself,
-      // so an already-shielded delver simply tops off rather than being refused.
-      const spare = Math.max(0, Math.round(budget - mended));
-      if (spare > 0) grantEmber(spare);
+      // SHOW THE PLAYER WHAT THEY GOT. A rest that silently sets a number is a
+      // rest you don't feel, and this is the one moment the game is kind — so
+      // the fire takes the whole screen for a beat and the gift floats up off
+      // the flame, where the player is already looking.
+      // WHAT A FIRE GIVES: ember, and only ember. Not a heal, not a refill.
+      // A heal is worth most to a player who is nearly dead, which made the
+      // optimal approach "arrive bleeding" and paid you LESS for having played
+      // well. Ember is the same size whatever shape you're in, so a fire is a
+      // flat beat you can route toward instead of a variable-value pit stop —
+      // and it gives the ember economy one dependable source that isn't a
+      // bargain, which is what lets the bargains be genuinely cruel.
+      const gained = grantEmber(CONFIG.BONFIRE.EMBER);
       flashHearthEmbrace();
       const at = o.position.clone();
-      if (mended > 0) spawnStatusTextHere(at, `+${mended} MENDED`, HEARTH_MEND_COLOR);
-      if (charges > 0) {
-        // Stacked upward so the lines never overlap on a phone.
-        spawnStatusTextHere(at.clone().setY(at.y + 0.42), `+${charges} FLASK`, HEARTH_FLASK_COLOR);
-      }
-      if (spare > 0) {
-        spawnStatusTextHere(at.clone().setY(at.y + 0.84), `+${spare} EMBER`, HEARTH_EMBER_COLOR);
-      }
+      spawnStatusTextHere(at, gained > 0 ? `+${gained} EMBER` : 'ALREADY BURNING', HEARTH_EMBER_COLOR);
       spendFlame(flames);
       o.dimLight?.(0.16);   // drop the light to a cold, barely-there glow
       interactable.promptLabel = ''; // spent — no rest prompt

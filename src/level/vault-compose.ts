@@ -25,7 +25,7 @@ import { assignFloorRoles, assignRoleRooms, type RoomNode } from './floor-roles'
 import { planCentrepiece } from './centrepieces';
 import { assignModifiers } from './room-modifiers';
 import { signatureFor, signatureLightDensity, tintRoomTorches } from './room-signature';
-import { roomType } from './room-types';
+import { roomType, isBookend } from './room-types';
 import { planFloor, requiredLeafCount } from './floor-plan';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
@@ -1182,7 +1182,24 @@ export function composeFloor(
     // ── Carve pass — runs FIRST so lighting + decor see the post-carve walkable
     // region. Blocks on floor + wall (don't open a hole under a standing prop or
     // out from under a torch's footing); reserves each hole on the void layer.
-    const procVoids = carvePass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall'), rand);
+    // A HOLE IN THE FLOOR MEANS SOMETHING, OR IT ISN'T THERE.
+    //
+    // The carve pass sprinkled cracks by palette density alone, which put
+    // chasms through the middle of troves, shops and stairwells — rooms whose
+    // whole job is to present something cleanly. A void is the strongest
+    // geometry statement the game can make about a room, and spending it at
+    // random is the floor equivalent of decorating with god rays (see
+    // docs/VISUAL-LANGUAGE.md, "lighting as signal").
+    //
+    // So procedural carving is now limited to rooms with no staged content —
+    // the connective majority, where a crack is atmosphere and can be walked
+    // around. Anywhere the floor is a stage, a void has to be AUTHORED: a vault
+    // can still declare its own (the machinery is untouched), and that one will
+    // be there because someone meant it.
+    const stagedHere = rolePlan.assigned.has(pv.roomId) || isBookend(roles.role(pv.roomId));
+    const procVoids = stagedHere
+      ? []
+      : carvePass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall'), rand);
     const carvedCells = voidCellsCovered(procVoids, W, D);
     for (const v of procVoids) {
       voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });

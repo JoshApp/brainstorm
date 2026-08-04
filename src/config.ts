@@ -561,6 +561,11 @@ export const CONFIG = {
   // The "I see you" hesitation, search-phase length, and idle gaze drift.
   // Rationale for each lives at its use site in src/mobs/enemy.ts.
   ENEMY_AI: {
+    /** Seconds a ranged mob holds the ground it just shot from before it may
+     *  reposition. Long enough that the shot reads as a committed act (and is
+     *  punishable), short enough that a kiter still kites. See enemy.ts
+     *  plantTimer. */
+    RANGED_PLANT_S: 0.65,
     ALERTED_DURATION: 0.45,           // s — hesitation after first spotting the player
     TURN_RATE: 11.0,                  // rad/s — body turn toward the player while CHASING. Fast
                                       //   enough to track a circling player with no visible lag (so
@@ -916,24 +921,25 @@ export const CONFIG = {
     FURNISH_VASE_MAX: 6,
   },
 
-  // === THE BONFIRE — the rest, and the only place heals come back ===
-  // Not a card draw, not a partial top-up: you mend and your flask fills, and
-  // then you choose whether to go deeper. The golden flask-refill fountain is
-  // cut, so this is the single source — which is what makes reaching one matter.
+  // === THE BONFIRE — the rest, and what it actually gives ===
+  //
+  // NOT a heal and NOT a flask refill. A fire hands you EMBER: borrowed life,
+  // spent before your own, that no rest and no fountain restores.
+  //
+  // Why this and not a mend. A heal is worth the most when you are nearly dead,
+  // which meant the correct play was to arrive at a fire bleeding and the reward
+  // for playing well was a smaller reward. Ember inverts that — the gift is the
+  // same size whatever state you walk in, so a fire is a flat, dependable beat
+  // you can plan a route around rather than a variable-value pit stop. It also
+  // gives the ember economy one honest source that isn't a bargain, which is
+  // what lets the bargains be genuinely nasty.
+  //
+  // It stacks toward CONFIG.EMBER_MAX and stops there: fires reward reaching
+  // them, they don't reward hoarding them.
   BONFIRE: {
-    FLASK_CHARGES: 2,
-    /**
-     * The fire's MEND BUDGET, as a multiple of your max HP. It is spent in a
-     * fixed order — flask, then flesh, then what's left becomes EMBER.
-     *
-     * That order is the design. A rest is never wasted: walk in at full health
-     * and the whole budget converts to borrowed life, so reaching a fire is
-     * worth the detour whatever state you're in, and a fire found early becomes
-     * a buffer you carry rather than a shrug. It also gives the ember a
-     * dependable source that isn't a bargain — you can PLAN to arrive healthy
-     * and leave with a shield.
-     */
-    MEND_BUDGET: 1.0,
+    /** Ember hearts a rest hands you. Flat — no scaling with how hurt you are,
+     *  because that's the whole point (see above). */
+    EMBER: 2,
   },
 
   // === THE EMBER (borrowed life — see player/ember.ts) ===

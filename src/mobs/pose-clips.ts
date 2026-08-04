@@ -46,12 +46,23 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
     bob:      { windup:  0.10, strike:  0.0  },    // rise on the wind-up, drop on the slam
     armSwing: { windup:  2.20, strike:  0.50 },    // arms overhead → driven down-forward (≈ old ARM_RAISED→SLAM)
   },
-  // Caster — a smaller, steadier lean; arms spread out then push the
-  // bolt/hex forward. No big body slam (it's not a physical blow).
+  // Caster / spitter — REAR BACK, THEN HEAVE.
+  //
+  // This used to be a whisper: an 0.18rad lean and a 6cm rise. On a jointed
+  // caster you could just about read the arms; on a LIMBLESS blob — which is
+  // most of our ranged roster — armSwing no-ops entirely, so the whole attack
+  // animation was a body tilt smaller than the idle jiggle. A player watching an
+  // acid spitter across a dark room saw nothing happen and then took damage,
+  // which teaches "ranged enemies hit you at random."
+  //
+  // So the anticipation is now carried by the two nodes EVERY model has. It
+  // coils back and swells on the windup, then snaps forward and drops as the
+  // shot leaves — the same anticipation→snap grammar as the melee poses, at a
+  // size you can read at seven metres.
   cast: {
-    rigTilt:  { windup:  0.18, strike:  0.0  },
-    bob:      { windup:  0.06, strike:  0.0  },
-    armSwing: { windup: -0.15, strike:  0.45 },   // draw back, then push the bolt FORWARD (was −0.35 = behind)
+    rigTilt:  { windup: -0.42, strike:  0.55 },   // rock back, then throw forward
+    bob:      { windup:  0.16, strike: -0.05 },   // draw itself up, drop as it spits
+    armSwing: { windup: -0.55, strike:  0.85 },   // (jointed casters) cock back, hurl
   },
   // Charger — COIL back hard (negative), then a deep forward lunge.
   // The big rig pitch + arm thrust sells the "springs across the gap."
