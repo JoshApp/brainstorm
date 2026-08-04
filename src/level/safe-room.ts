@@ -1,4 +1,5 @@
-import type { LevelSpec } from './types';
+import type { LevelSpec, PropSpec } from './types';
+import { rollShopStock } from '../content/shop';
 import type { ModelSpec } from '../ecs/model-types';
 import { ITEMS } from '../content/items';
 
@@ -63,6 +64,45 @@ const STONE_DAIS: ModelSpec = {
   ],
 };
 
+/**
+ * THE PEDDLER'S STALL — four wares on the stone in front of him.
+ *
+ * The harbour merchant had no goods at all: the procgen shops get their counter
+ * from centrepieces.planMerchant, and a hand-authored room never runs that pass,
+ * so the one trader you're guaranteed to meet was a man standing next to
+ * nothing. He has the best stall in the game now, because this is the floor you
+ * arrive at with a run's worth of coin.
+ *
+ * Rolled, not hand-listed, so the harbour isn't the same four items every run —
+ * but seeded off the DEPTH so a reload rebuilds the identical stall. Re-entering
+ * a shop must never reroll it; that turns a decision into a slot machine.
+ */
+function harbourStall(prevDepth: number): PropSpec[] {
+  // Deterministic per harbour. An LCG rather than gameRng so a floor reload
+  // (which re-runs this function) reproduces the shelf exactly.
+  let s = (prevDepth * 2654435761 + 0x9e3779b9) >>> 0;
+  const rand = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+  const depth = prevDepth + 1;
+  const wares = rollShopStock(depth, HARBOUR_WARES, rand, 'merchant');
+  // Laid across the approach in front of the peddler, so all four read at a
+  // glance from the fire rather than as a queue you walk down.
+  const startZ = 0.4 - ((HARBOUR_WARES - 1) * HARBOUR_WARE_GAP) / 2;
+  return wares.map((w, i): PropSpec => ({
+    kind: 'offering',
+    x: -2.05,                       // one step east of the peddler, on his counter line
+    z: startZ + i * HARBOUR_WARE_GAP,
+    rotY: -Math.PI / 2,             // facing east, same as the peddler
+    itemId: w.itemId,
+    groupId: 'stall:harbour',
+    style: 'ground',
+    costGold: w.price,
+  }));
+}
+
+const HARBOUR_WARES = 4;
+const HARBOUR_WARE_GAP = 1.15;
+
 export function generateSafeRoom(prevDepth: number): LevelSpec {
   const nextDepth = prevDepth + 1;
   const id = `safe-${prevDepth}`;
@@ -101,15 +141,26 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // carrying it all back down. (The sanctuary basin is retired — a fountain
       // that healed-and-refilled was doing the bonfire's job in another shape.)
       { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0 },
-      { kind: 'model', model: BONFIRE, x: 0, y: 0.30, z: 0, rotY: 0.6 },
+      // THE GREAT fire, at the scale that word implies. It had quietly become
+      // an ordinary rest-fire on a plinth; the harbour is the best rest in the
+      // game and its hearth should say so from the doorway. Same scale the boss
+      // reward uses (effects/boss-bonfire BOSS_FIRE_SCALE) — the two grandest
+      // fires in the run read as the same rank of thing.
+      { kind: 'model', model: BONFIRE, x: 0, y: 0.30, z: 0, rotY: 0.6, scale: 1.5 },
       { kind: 'model', model: SAFE_FLOOR_GLOW_BASIN, x: 0, y: 0, z: 0 },
 
-      // ── THE VENDORS — arranged around the basin so the room reads as a market
-      // refuge, each facing inward toward the water + the arriving delver. ──
-      // Merchant on the WEST flank (gold → gear), facing east across the basin.
+      // ── THE MARKET — ONE trader, with an actual stall. ──
+      // The relic-keeper is gone from the harbour. Two vendors flanking the fire
+      // read as a shopping row and split the attention of the one room that is
+      // supposed to be about the fire; and with the peddler's own stock rolling
+      // relics anyway, the second stall was selling the same category twice.
+      //
+      // The peddler stands on the WEST flank facing east across the dais, and
+      // his GOODS stand on the stone in front of him (below) — the same
+      // diegetic stall the procgen shops use, so you read a ware where it lies
+      // and pay for it in the world instead of opening a menu.
       { kind: 'merchant', x: -3.15, z: 0.4, rotY: -Math.PI / 2 },
-      // Relic-keeper on the EAST flank (gold → relics), mirroring the merchant.
-      { kind: 'trinket-merchant', x: 3.15, z: 0.4, rotY: Math.PI / 2 },
+      ...harbourStall(prevDepth),
       // Blacksmith in the back-LEFT corner, his coal forge against the wall,
       // angled in toward the basin. TEMPER your drawn weapon; the edge persists.
       { kind: 'blacksmith', x: -2.9, z: -2.9, rotY: -2.4 },

@@ -1417,7 +1417,14 @@ export function buildLevel(
       // Boosts the LIGHT pass below too (fireBoost) so bigger fire = bigger glow.
       let fireBoost = 1;
       if (prop.model.id === 'bonfire') {
-        if (BIGFIRE > 1) { built.group.scale.multiplyScalar(BIGFIRE); fireBoost = BIGFIRE; }
+        // A fire's POOL follows its SIZE, however the size was asked for — the
+        // ?bigfire debug flag or a prop that authored `scale` (the harbour's
+        // great fire). Boosting only for the URL flag left an authored-big fire
+        // with a small fire's glow, which reads as a dim fire rather than a
+        // grand one: the geometry says "hearth", the light says "candle".
+        const sizeMul = (prop.scale ?? 1) * (BIGFIRE > 1 ? BIGFIRE : 1);
+        if (BIGFIRE > 1) built.group.scale.multiplyScalar(BIGFIRE);
+        fireBoost = sizeMul;
         registerFateFire({
           group: built.group,
           position: new THREE.Vector3(prop.x, gy, prop.z),

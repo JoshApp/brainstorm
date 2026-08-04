@@ -118,6 +118,7 @@ let batchScene: THREE.Scene | null = null;
 const batches = new Map<string, Batch>();
 const entries: Entry[] = [];
 const _world = new THREE.Vector3();
+const _scale = new THREE.Vector3();
 
 function batchFor(textureName: string): Batch {
   let b = batches.get(textureName);
@@ -204,9 +205,22 @@ export function tickSpriteBatch(): void {
       s = 1 + w * e.flicker.scaleAmp;
       bob = w * e.flicker.bobAmp;
     }
-    e.obj.getWorldPosition(_world);
-    b.pos.setXYZ(i, _world.x, _world.y + bob, _world.z);
-    b.scale.setXY(i, e.baseSize.x * s * e.scaleMul.x, e.baseSize.y * s * e.scaleMul.y);
+    // WORLD SCALE, not just world position. A batched sprite's placeholder is a
+    // child of the model group, so scaling that group (a big bonfire, ?bigfire=,
+    // any prop with `scale`) moved every flame apart while each stayed its
+    // authored size — a fire scaled to 1.5 came out as a tall thin column of
+    // small flames with a gap up the middle. Read both from ONE world-matrix
+    // update rather than getWorldPosition + getWorldScale, which would walk the
+    // parent chain twice per sprite per frame.
+    e.obj.updateWorldMatrix(true, false);
+    _world.setFromMatrixPosition(e.obj.matrixWorld);
+    _scale.setFromMatrixScale(e.obj.matrixWorld);
+    b.pos.setXYZ(i, _world.x, _world.y + bob * _scale.y, _world.z);
+    b.scale.setXY(
+      i,
+      e.baseSize.x * s * e.scaleMul.x * _scale.x,
+      e.baseSize.y * s * e.scaleMul.y * _scale.y,
+    );
     // Additive: only rgb×alpha reaches the framebuffer, so opacity folds into
     // the tint and the shader's alpha stays the texture's own.
     b.col.setXYZ(i, e.color.r * e.opacity, e.color.g * e.opacity, e.color.b * e.opacity);

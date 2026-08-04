@@ -248,7 +248,13 @@ function planMerchant(site: CentrepieceSite, ctx: CentrepieceCtx): PlacedCentrep
     }
   }
   if (!keeper) return EMPTY;
-  props.push({ kind: 'merchant', x: keeper.x, z: keeper.z, rotY: facingEntrance(site) });
+  // He LOOKS AT the door. A CHARACTER model faces −Z (the bench's own comment
+  // says so, and both vendor models and the smith are authored that way), while
+  // facingEntrance() below solves for the +Z-front convention the prop-facing
+  // resolver uses for objects. Handing a person the object answer turned every
+  // procgen shopkeeper to face his own back wall — you walked into a stall and
+  // met a hood. Objects keep facingEntrance; people get facingEntranceFacing.
+  props.push({ kind: 'merchant', x: keeper.x, z: keeper.z, rotY: facingEntranceAsCharacter(site) });
   claimed.push(keeper);
 
   // THE COUNTER — wares across the approach, between you and him.
@@ -293,6 +299,21 @@ function facingEntrance(site: CentrepieceSite): number {
   const d = site.entranceDir;
   if (!d) return 0;
   return Math.atan2(d.x, d.z);
+}
+
+/**
+ * The same question for a CHARACTER model.
+ *
+ * The codebase carries two front conventions and this is where they collide:
+ * level/facing.ts solves for props whose front is +Z, while every authored
+ * creature/vendor model faces −Z (CLAUDE.md's rule, and what the bench's FRONT
+ * view is positioned for). A rotation that turns a chest to face you turns a
+ * shopkeeper to face away, which is exactly what a procgen stall looked like.
+ *
+ * Half a turn apart, and named so the next person picks on purpose.
+ */
+function facingEntranceAsCharacter(site: CentrepieceSite): number {
+  return facingEntrance(site) + Math.PI;
 }
 
 /**
