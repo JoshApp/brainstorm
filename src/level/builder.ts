@@ -2244,7 +2244,19 @@ export function buildLevel(
   // also split correctly. Termination relies on the child spec NOT
   // carrying splitsInto (e.g. ooze-small has none — ooze cascades stop
   // after one generation).
-  function spawnInto(baseSpec: EnemySpec, pos: THREE.Vector3, roomId: string | null): Enemy {
+  /**
+   * Drop a live mob into the world mid-run.
+   *
+   * `summoned` marks a mob that was CONJURED — an arena wave, a mimic reveal, a
+   * summoner's brood. Those pay nothing at all (see enemy.ts): anything a player
+   * can cause to appear must never be a source of income, or the optimal play
+   * becomes camping the spawner. The reward for a summoned fight belongs to the
+   * ENCOUNTER, paid once when it resolves.
+   */
+  function spawnInto(
+    baseSpec: EnemySpec, pos: THREE.Vector3, roomId: string | null,
+    opts: { summoned?: boolean } = {},
+  ): Enemy {
     const enemySpec = scaleEnemySpec(baseSpec, levelDepth, []);
     const resolved = walkable.resolveSpawn(pos.x, pos.z, enemySpec.collisionRadius);
     const e = createEnemy(
@@ -2253,6 +2265,7 @@ export function buildLevel(
       enemySpec,
       onEnemyDeath,
     );
+    e.summoned = opts.summoned === true;
     enemies.push(e);
     roomByEntity.set(e.entityId, roomId);
     // Only player-THREATS count toward a room's clear gate — neutral vermin
@@ -2277,7 +2290,13 @@ export function buildLevel(
       const r = gate.radius ?? 1.6;
       const angle = gameRng() * Math.PI * 2;
       const cos = Math.cos(angle), sin = Math.sin(angle);
-      const child = spawnInto(childBase, new THREE.Vector3(atPos.x + cos * r, 0, atPos.z + sin * r), roomId);
+      // A boss's add is conjured — it pays nothing. The boss's hoard is deferred
+      // to encounter-complete, so an add that dropped would be free income for
+      // standing still while the boss keeps spitting them.
+      const child = spawnInto(
+        childBase, new THREE.Vector3(atPos.x + cos * r, 0, atPos.z + sin * r), roomId,
+        { summoned: true },
+      );
       child.applyKnockback(cos, sin, 5.0);   // flung out of the parent as it splits
       kickShake(0.24, 0.4);
       return [child];
@@ -2329,7 +2348,9 @@ export function buildLevel(
         0,
         deathPos.z + sin * radius,
       );
-      const child = spawnInto(childBase, childPos, parentRoom);
+      // A SPLIT is a continuation of one enemy, not a new one — the parent
+      // already paid on its own death, so the halves pay nothing.
+      const child = spawnInto(childBase, childPos, parentRoom, { summoned: true });
       // Fling it outward from the burst point.
       child.applyKnockback(cos, sin, bigSplit ? 6.0 : 3.5);
     }
@@ -2606,7 +2627,9 @@ export function buildLevel(
       walkable,
       spawn: (enemyId, pos) => {
         const base = ENEMIES[enemyId];
-        return base ? spawnInto(base, pos, roomId) : null;
+        // Wave mobs are conjured — they drop nothing. The trial's reward is the
+        // trial's, paid once on completion.
+        return base ? spawnInto(base, pos, roomId, { summoned: true }) : null;
       },
       onComplete: () => handle.complete(),
     });

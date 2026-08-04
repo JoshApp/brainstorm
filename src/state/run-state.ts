@@ -18,6 +18,7 @@ import { clearTemper, serializeTemper, hydrateTemper } from './weapon-temper';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
 import { clearChoices, serializeChoices, hydrateChoices, type Choice } from './choices';
 import { resetFlask, restoreFlask, serializeFlask, type FlaskState } from '../player/flask';
+import { serializeEmber } from '../player/ember';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -80,6 +81,10 @@ export interface SaveData {
   /** Healing-flask (Estus) state — charges/capacity/heal, per-run. Refilled at
    *  the bonfire. Optional for older saves (restored to a full base flask). */
   flask?: FlaskState;
+  /** Borrowed life (player/ember.ts) — the temporary health layer. PERSISTS
+   *  across floors within a run: it's yours until something takes it. Optional
+   *  for older saves (restores to none). */
+  ember?: number;
 }
 
 /** The Hunger meter's ceiling. Built by fighting, spent on rites (the active

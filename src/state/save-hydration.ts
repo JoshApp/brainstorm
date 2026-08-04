@@ -21,8 +21,10 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   clearInventory();
   clearReliquary();
   setSidearm(null);
-  // Borrowed life is per-run: a fresh run (or a restore) starts with none.
-  resetEmber();
+  // Borrowed life PERSISTS across floors within a run (player/ember.ts) — a
+  // descent must not quietly wipe the buffer you bought with blood. A fresh run,
+  // or a save that predates the field, starts with none.
+  resetEmber(saveData?.ember ?? 0);
   // Hydrate inventory from save (or empty for new run).
   if (saveData) {
     for (const [id, count] of Object.entries(saveData.inventory)) {

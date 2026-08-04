@@ -216,6 +216,12 @@ export interface Enemy extends Damageable {
   position: THREE.Vector3;
   hitTargets: THREE.Object3D[];
   alive: boolean;
+  /** SUMMONED — conjured mid-fight by an arena wave, a summoner, or any other
+   *  spawner. A summoned mob drops NOTHING: no items, no gold. Anything that can
+   *  be produced on demand must never be a source of income, or the optimal play
+   *  becomes standing in a room farming it. The reward for a summoned fight
+   *  belongs to the ENCOUNTER that summoned it, paid once when it resolves. */
+  summoned: boolean;
   /** True after hp hit zero AND the death animation is still ticking. */
   dying: boolean;
   /** Phases through obstacles (props). Walls still block. Ghost flag. */
@@ -339,6 +345,10 @@ export function createEnemy(
 ): Enemy {
   tagPerfEvent(`spawn:${spec.id}`);   // perf timeline (no-op unless the dashcam rolls)
   // Container: world position + yaw to face player.
+  // SUMMONED — set by the spawner after construction (see the `summoned`
+  // accessor on the returned Enemy). Lives in the closure so the death handler
+  // reads the CURRENT value rather than a copy captured at build time.
+  let summoned = false;
   const container = new THREE.Group();
   container.position.copy(position);
   // Last seen player position — the death spray throws away from it.
@@ -1231,7 +1241,10 @@ export function createEnemy(
       // the floor with the boss hoard before the room is clear.
       // Minibosses defer too — their reward erupts with the rest-fire on
       // encounter-complete (same rule as bosses, one tier down).
-      if (!spec.isBoss && !spec.miniboss) {
+      // SUMMONED mobs pay nothing — not an item, not a coin. A spawner you can
+      // stand next to is an infinite income tap otherwise, and the reward for a
+      // summoned fight belongs to the encounter, once, when it resolves.
+      if (!spec.isBoss && !spec.miniboss && !summoned) {
         const bundle = rollDropTable(spec.dropTable ?? 'enemy', getCurrentDepth(), gameRng);
         const N = bundle.items.length;
         bundle.items.forEach((item, i) => {
@@ -3140,6 +3153,11 @@ export function createEnemy(
     entityId,
     kind: spec.id,
     faction: spec.faction ?? DEFAULT_FACTION,
+    // Backed by the closure flag above so the death handler (which closes over
+    // it) sees what the spawner set. Set AFTER construction — createEnemy has no
+    // summon context of its own. See builder.spawnInto's `summoned` option.
+    get summoned() { return summoned; },
+    set summoned(v: boolean) { summoned = v; },
     isBoss: !!spec.isBoss,
     miniboss: !!spec.miniboss,
     bossName: spec.bossName ?? spec.name,

@@ -1,4 +1,5 @@
 import { emit } from '../broadcast/event-bus';
+import { CONFIG } from '../config';
 
 // THE EMBER — borrowed life, spent before your own.
 //
@@ -19,8 +20,13 @@ import { emit } from '../broadcast/event-bus';
 //   - It only comes from the deep — bargains, offerings, the things that give
 //     while taking. Borrowed, never earned.
 //   - It PERSISTS across floors (it's yours until something takes it), but it
-//     dies with the run.
-//   - It is spent FIRST and always: no choosing to "save" it.
+//     dies with the run. That means it SERIALIZES — see state/run-state.ts.
+//   - It is spent FIRST and always: no choosing to "save" it as a damage buffer.
+//     But it CAN be spent deliberately as a PRICE (spendEmber) — that's the whole
+//     point of a second pool: a bargain you pay in borrowed life costs you a
+//     buffer, not a step toward death.
+//   - It is CAPPED. An uncapped buffer turns into invulnerability the moment a
+//     build farms it; the cap is what keeps a bargain a decision.
 
 /** Ember is measured in the same units as HP so damage maths stays one currency. */
 let ember = 0;
@@ -36,13 +42,34 @@ export function onEmberChanged(fn: () => void): () => void {
 
 export function getEmber(): number { return ember; }
 
-/** Grant borrowed life. Sources: bargains, offerings, the deep's gifts. */
+/** Grant borrowed life. Sources: bargains, offerings, the deep's gifts.
+ *  Clamped to the cap — a grant that would overflow is simply topped off, never
+ *  refused, so the player is never punished for taking a gift. */
 export function grantEmber(amount: number): void {
   if (amount <= 0) return;
-  ember += amount;
+  ember = Math.min(CONFIG.EMBER_MAX, ember + amount);
   emit({ type: 'ember:changed', value: ember });
   notify();
 }
+
+/**
+ * Spend ember as a PRICE (a bargain, a toll, a door that wants borrowed life).
+ * All-or-nothing: returns false and takes nothing when you can't cover it, so a
+ * caller never half-charges you. This is the other half of the two-pool design —
+ * without it the ember is just a shield, and the "health as currency" economy it
+ * exists to enable never gets a currency to spend.
+ */
+export function spendEmber(amount: number): boolean {
+  if (amount <= 0) return true;
+  if (ember < amount) return false;
+  ember -= amount;
+  emit({ type: 'ember:changed', value: ember });
+  notify();
+  return true;
+}
+
+/** Snapshot for the run save — the ember survives a descent (state/run-state). */
+export function serializeEmber(): number { return ember; }
 
 /**
  * Absorb incoming damage. Returns how much SURVIVED the ember and must be
@@ -58,8 +85,9 @@ export function absorbWithEmber(amount: number): number {
   return amount - eaten;
 }
 
-/** Clear on a fresh run / save restore. */
+/** Set on a fresh run (0) or a save restore (the saved value). Clamped to the
+ *  cap so a legacy save can't restore an impossible buffer. */
 export function resetEmber(value = 0): void {
-  ember = Math.max(0, value);
+  ember = Math.max(0, Math.min(CONFIG.EMBER_MAX, value));
   notify();
 }

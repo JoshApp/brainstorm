@@ -38,10 +38,21 @@ export interface ItemGroup {
   /** Explicit ids — overrides the query with a hand-picked set. */
   items?: readonly string[];
   bias?: number;
+  /** REFUSE the loot roller's category relaxation. Set on RESOURCE groups: a
+   *  key pool with no depth-eligible key must MISS, never substitute a relic.
+   *  See loot.ts LootContext.strictCategory. */
+  strict?: boolean;
 }
 
 export const GROUPS: Record<string, ItemGroup> = {
   consumables: { kinds: CONSUMABLE_KINDS },
+  // THE PICKUP LAYER — resources, never build pieces. This is the Isaac
+  // stratification: a wooden chest, a smashed vase, a bone shrine pay COINS and
+  // KEYS and EMBERS. Only the deliberate sources (the trove, the boss, the shop,
+  // the rare fallen delver) grow your build. Every ambient lootable being a
+  // build source is what floods a run, and it's what these groups fix.
+  keys:        { kinds: ['key'] as const,   strict: true },
+  embers:      { kinds: ['ember'] as const, strict: true },
   // WEAPONS + VESTMENTS NO LONGER DROP. The direction is one evolving weapon (you
   // start with it, it grows — never a floor-drop to swap), and vestments are cut.
   // So the 'gear' group now yields TRINKETS: every "gear" drop in the tables below
@@ -111,24 +122,30 @@ const T = (d: TableDef): LootTable =>
 export const TABLES: Record<string, LootTable> = {
   // ── The SMALL layer — enemies + vases. Gold ALWAYS (its own pool), key + the
   //    odd consumable as separate chance pools. ──
-  // KEYS ARE CUT — no key pools anywhere. Chests open freely now.
+  // KEYS ARE BACK. A currency needs its OWN doors or it's just a second coin:
+  // keys open gold chests (and, later, a toll'd threshold). They fall from
+  // vases, wooden chests, ossuaries and the dead — never guaranteed, so carrying
+  // one is a ROUTING decision (spend it here, or hold for something deeper?).
+  // An ordinary enemy pays GOLD and nothing else. Gold is confetti: constant,
+  // small, no decision, and the drain-to-HUD effect already makes it feel good.
+  // Everything with a decision attached lives further up the ladder.
   'enemy': {
-    pools: [
-      { entries: [{ gold: [1, 3] }] },
-      { entries: [{ from: 'consumables', weight: 5 }, { weight: 95 }] },
-    ],
+    pools: [{ entries: [{ gold: [1, 3] }] }],
   },
+  // An elite is worth more coin, and is the cheapest place an EMBER can appear —
+  // rare enough that it reads as a find, not a wage.
   'enemy-elite': {
     pools: [
       { entries: [{ gold: [3, 7] }] },
-      { entries: [{ from: 'consumables', weight: 30 }, { weight: 70 }] },
+      { entries: [{ from: 'embers', weight: 12 }, { weight: 88 }] },
     ],
   },
-  // Vases: rarer + mostly gold (the destructible gates most vases to empty already).
+  // Vases: gold, and a whisper of a key. Nothing else — a smashed pot is not
+  // where a build comes from.
   'vase': {
     pools: [
       { entries: [{ gold: [1, 2] }] },
-      { entries: [{ from: 'consumables', weight: 3 }, { weight: 97 }] },
+      { entries: [{ from: 'keys', weight: 3 }, { weight: 97 }] },
     ],
   },
 
@@ -139,13 +156,23 @@ export const TABLES: Record<string, LootTable> = {
   // consumables + keys + relics (the build, no compare), and every chest gear roll
   // is floored uncommon→rare (rampFloor(1,6)) — the mundane trash tier never drops
   // from a chest, and quality climbs as you descend.
-  'chest-wood':   T({ emptyGold: 6, entries: [
-    { from: 'gear', bias: 0, weight: 40, minRarity: rampFloor(1, 6) },
-    { from: 'consumables', weight: 44 }, { weight: 16 },
+  // WOOD — the free chest. PICKUPS ONLY, like Isaac's wooden chest: coins, a
+  // key, a consumable, an ember. No build piece has ever come out of one and
+  // none ever should; that is the whole reason a gold chest is worth a key.
+  'chest-wood':   T({ emptyGold: 8, entries: [
+    { from: 'consumables', weight: 34 },
+    { from: 'keys',        weight: 22 },
+    { from: 'embers',      weight: 14 },
+    { weight: 30 },
   ] }),
-  'chest-silver': T({ emptyGold: 12, entries: [
-    { from: 'gear', bias: 2, weight: 48, minRarity: rampFloor(1, 6) },
-    { from: 'relics', bias: 2, weight: 52 },
+  // SILVER — better pickups, and the first tier where a relic is possible at
+  // all. Deliberately a minority: this is a resource chest that sometimes
+  // surprises you, not a build source with extra steps.
+  'chest-silver': T({ emptyGold: 14, entries: [
+    { from: 'consumables', weight: 30 },
+    { from: 'embers',      weight: 24 },
+    { from: 'keys',        weight: 20 },
+    { from: 'relics', bias: 2, weight: 26, minRarity: rampFloor(2, 7) },
   ] }),
   // Gold chest's rare floor ramps in d2→d6 (was a hard snap at d3) so the
   // uncommon→rare transition reads as a climb, not a cliff.
@@ -191,9 +218,12 @@ export const TABLES: Record<string, LootTable> = {
   ] } as LootTable),
   // A bone-shrine set-piece you SEARCH — a little gold, and a fair chance of gear
   // or a relic among the dead's leavings.
+  // A bone shrine you SEARCH — coin among the dead's leavings, and what the dead
+  // still had on them: a key, an ember. Not a relic. An ossuary is atmosphere
+  // that pays a little, not a pedestal in disguise.
   'ossuary':       T({ pools: [
     { entries: [{ gold: [3, 8] }] },
-    { entries: [{ from: 'gear', bias: 1, weight: 32, minRarity: rampFloor(1, 6) }, { from: 'relics', bias: 1, weight: 18 }, { weight: 50 }] },
+    { entries: [{ from: 'keys', weight: 26 }, { from: 'embers', weight: 20 }, { weight: 54 }] },
   ] } as LootTable),
   'cursed':        T({ entries: [{ from: 'cursed', bias: 4 }] }),
   // CRITTER — ambient life (maggots) that drops NOTHING. A squished grub is
@@ -225,7 +255,11 @@ function rollGroup(entry: LootEntry, depth: number, rand: () => number): ItemSpe
   }
   const minRarity = typeof entry.minRarity === 'function' ? entry.minRarity(depth, rand) : entry.minRarity;
   return rollLoot(
-    { depth, bias: entry.bias ?? g.bias, minRarity, category: g.kinds ? [...g.kinds] : undefined, pool: g.tag },
+    {
+      depth, bias: entry.bias ?? g.bias, minRarity,
+      category: g.kinds ? [...g.kinds] : undefined, pool: g.tag,
+      strictCategory: g.strict,
+    },
     rand,
   );
 }

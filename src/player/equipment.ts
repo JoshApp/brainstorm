@@ -241,7 +241,7 @@ export function getPlayerOnHits(): PlayerOnHit[] {
  *   weapon / offhand / vestment -> the matching slot iff empty (the caller
  *                 handles the always-swap weapon path via equipFromInventory).
  *   relic      -> collects into the reliquary — never a slot, always applies.
- *   consumable / key -> never auto-equipped (returns false).
+ *   consumable / key / ember -> never auto-equipped (returns false).
  */
 export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   switch (item.kind) {
@@ -260,6 +260,9 @@ export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boo
     case 'relic':    addRelic(item, affixes); return true;
     case 'consumable':
     case 'key':
+    // An ember is consumed on touch (pickup.ts) and never reaches the bag or a
+    // slot — it's a resource, not an item you carry.
+    case 'ember':
       return false;
   }
 }
@@ -281,7 +284,8 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
     // relics don't occupy a slot — they collect into the reliquary.
     case 'relic':
     case 'consumable':
-    case 'key':        return [];
+    case 'key':
+    case 'ember':      return [];
   }
 }
 

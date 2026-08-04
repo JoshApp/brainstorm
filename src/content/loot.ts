@@ -132,11 +132,19 @@ export interface LootContext {
    */
   minRarity?: Rarity;
   /**
+   * REFUSE the category relaxation above. Set for a RESOURCE roll (keys, embers):
+   * "give me a key, or give me nothing." Without this, a key pool that has no
+   * depth-eligible key quietly hands back whatever else is in the index — which
+   * is how an ambient lootable silently becomes a build source again. A resource
+   * pool missing is correct and expected; most rolls should be nothing anyway.
+   */
+  strictCategory?: boolean;
+  /**
    * Content filter — restrict the roll to these item KINDS. This is what
    * gives a chest tier its IDENTITY: a supply chest pulls only `consumable`,
    * a strongbox only gear. If the filter excludes everything eligible, it's
    * RELAXED rather than yielding nothing (a chest must still cough up
-   * something). Omit for an unrestricted roll.
+   * something) — unless `strictCategory` forbids it. Omit for an unrestricted roll.
    */
   category?: ItemKind[];
   /**
@@ -196,7 +204,9 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
   // The category may have excluded everything eligible at this depth — relax
   // it rather than return null (a chest must still yield SOMETHING). The POOL
   // is NOT relaxed: a boss pool must never fall back to a general item.
-  if (allow) {
+  // A RESOURCE roll refuses the relaxation — better to miss than to substitute a
+  // build piece for a key (see strictCategory).
+  if (allow && !ctx.strictCategory) {
     const any = scanBands(idx, depth, rand, start, floorIdx, null, pool);
     if (any) return any;
   }

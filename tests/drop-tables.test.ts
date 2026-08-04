@@ -38,16 +38,67 @@ test('enemies drop ONLY the small layer — gold, key, or consumable (never gear
   }
 });
 
-test('enemy is mostly gold, and keys never drop (keys are cut)', () => {
-  let goldRolls = 0, keyRolls = 0;
+test('an ordinary kill pays gold and nothing else', () => {
+  // Gold is confetti — constant, small, no decision. Everything with a decision
+  // attached lives further up the ladder.
+  let goldRolls = 0;
   const rand = seeded(42);
   for (let i = 0; i < 300; i++) {
     const r = rollDropTable('enemy', 3, rand);
     if (r.gold > 0) goldRolls++;
-    if (r.items.some((it) => it.kind === 'key')) keyRolls++;
+    assert.equal(r.items.length, 0, `an ordinary enemy dropped ${r.items[0]?.id}`);
   }
   assert.ok(goldRolls > 240, `gold on most kills (${goldRolls}/300)`);
-  assert.equal(keyRolls, 0, `keys are cut — none should ever drop (${keyRolls}/300)`);
+});
+
+test('AMBIENT LOOTABLES PAY PICKUPS, NEVER BUILD PIECES', () => {
+  // The Isaac stratification, and the single rule that stops a run flooding.
+  // A smashed pot, a wooden chest, a bone shrine give coins / keys / embers /
+  // draughts. The build only grows at the deliberate sources — the trove, the
+  // boss, the shop, the rare fallen delver. If this ever fails, every ambient
+  // lootable has quietly become a build source again.
+  const AMBIENT = ['enemy', 'vase', 'chest-wood', 'ossuary'] as const;
+  const PICKUP_KINDS = new Set(['consumable', 'key', 'ember']);
+  const rand = seeded(11);
+  for (const table of AMBIENT) {
+    for (let depth = 1; depth <= 12; depth++) {
+      for (let i = 0; i < 60; i++) {
+        for (const it of rollDropTable(table, depth, rand).items) {
+          assert.ok(
+            PICKUP_KINDS.has(it.kind),
+            `${table} at d${depth} dropped a ${it.kind} (${it.id}) — ambient sources pay pickups only`,
+          );
+        }
+      }
+    }
+  }
+});
+
+test('keys are BACK, and they fall from the small layer', () => {
+  // A currency needs its own doors. Keys open gold chests; they come from the
+  // ambient layer, never guaranteed, so carrying one is a routing decision.
+  let keyRolls = 0;
+  const rand = seeded(5);
+  for (let i = 0; i < 400; i++) {
+    if (rollDropTable('chest-wood', 4, rand).items.some((it) => it.kind === 'key')) keyRolls++;
+  }
+  assert.ok(keyRolls > 0, 'wooden chests should be a key source');
+  assert.ok(keyRolls < 400, 'but never a guaranteed one');
+});
+
+test('embers drop, and only from the places that earned them', () => {
+  const rand = seeded(9);
+  let elite = 0;
+  for (let i = 0; i < 400; i++) {
+    if (rollDropTable('enemy-elite', 5, rand).items.some((it) => it.kind === 'ember')) elite++;
+  }
+  assert.ok(elite > 0, 'an elite should sometimes leave borrowed life behind');
+  // …but never an ordinary kill: an ember you can farm off trash is not borrowed.
+  for (let i = 0; i < 300; i++) {
+    for (const it of rollDropTable('enemy', 5, rand).items) {
+      assert.notEqual(it.kind, 'ember', 'trash must never pay an ember');
+    }
+  }
 });
 
 test('relic-gated sources never leak a weapon (gold chest = relics only)', () => {

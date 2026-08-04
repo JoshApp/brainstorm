@@ -891,6 +891,14 @@ export const CONFIG = {
     FURNISH_VASE_MAX: 6,
   },
 
+  // === THE EMBER (borrowed life — see player/ember.ts) ===
+  // Cap on the temporary health layer. Uncapped, a build that farms embers just
+  // becomes invulnerable and every blood-priced bargain stops being a decision.
+  // Measured in the same units as HP.
+  EMBER_MAX: 6,
+  /** Borrowed life granted by one ember picked up off the floor. */
+  EMBER_PER_PICKUP: 1,
+
   // === FLOOR SHAPE ===
   // How many CONTENT rooms a floor carries — the rooms between the bookends.
   // The entrance and the stairwell don't count: they open and close the floor,

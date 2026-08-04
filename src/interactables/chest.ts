@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
-import type { DropResult } from '../content/drop-tables';
+import { KEY_ID, type DropResult } from '../content/drop-tables';
+import { canAfford, payCost, unaffordableMessage } from './event-factory';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { registerInteractable, unregisterInteractable } from './system';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { createPickup } from './pickup';
-import { playChestOpen, playEquipClick } from '../audio/sfx';
+import { playChestOpen, playEquipClick, playDenied } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
 import { emit } from '../broadcast/event-bus';
@@ -128,10 +129,19 @@ export function spawnChest(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: 'OPEN',
-    // KEYS ARE CUT — every chest opens freely now (event-gated chests still wait
-    // for their offering, but nothing costs a key).
+    // A GOLD chest wants a key. This is the key's reason to exist: a currency
+    // needs its own doors or it's just a second coin. Wood and silver open free —
+    // they pay pickups — so the key is only ever spent on the tier that holds a
+    // build piece. Routed through the same central applier every other priced
+    // thing uses, so the refusal message and the deduction stay consistent.
+    cost: tier === 'gold' ? { itemId: KEY_ID } : undefined,
     onUse() {
       if (state !== 'closed') return;
+      if (tier === 'gold' && !canAfford({ itemId: KEY_ID })) {
+        showInWorldMessage(unaffordableMessage({ itemId: KEY_ID }));
+        playDenied();
+        return;
+      }
       // EVENT-GATED: sealed until the room's offering is taken. Skippable — you
       // can leave it — but not openable while the seal holds.
       if (gated) {
@@ -139,6 +149,7 @@ export function spawnChest(
         playEquipClick();
         return;
       }
+      if (tier === 'gold') payCost({ itemId: KEY_ID });
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';

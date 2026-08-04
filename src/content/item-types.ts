@@ -14,7 +14,11 @@ import type { AttributeKind } from '../state/character';
 import type { DomainId } from './domains';
 
 export type ItemKind = 'weapon' | 'offhand' | 'vestment' | 'relic'
-                     | 'consumable' | 'key';
+                     | 'consumable' | 'key'
+                     // A RESOURCE picked up off the floor and consumed on touch —
+                     // never a bag entry, never a decision. Isaac's soul heart.
+                     // See player/ember.ts.
+                     | 'ember';
 
 /**
  * Rarity tiers — atmospheric grimdark naming over the standard ARPG palette.

@@ -10,6 +10,8 @@ import { INTERACT_PRIORITY } from './types';
 import { addItem, isAtCarryLimit } from '../player/inventory';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { groundEquip } from '../player/ground-equip';
+import { grantEmber } from '../player/ember';
+import { CONFIG } from '../config';
 import { rollItemInstance } from '../player/item-instance';
 import type { AffixInstance } from '../content/affixes';
 import { getTexture } from '../style/procedural-textures';
@@ -270,7 +272,8 @@ export function createPickup(
     // (a key is pure currency, never a choice). Gear stays a deliberate tap
     // (equipping is a choice + the bag is finite). The carry-cap gate (canUse)
     // means a full bag leaves the potion on the floor for later.
-    autoPickup: item.kind === 'consumable' || item.kind === 'key',
+    // Consumables, KEYS and EMBERS are decision-free — grab them on walk-over.
+    autoPickup: item.kind === 'consumable' || item.kind === 'key' || item.kind === 'ember',
     onUse() {
       // Where the object physically is (nudged up off the floor to the item
       // body), so the diegetic pickup chip flies into the HUD from the item's
@@ -323,6 +326,18 @@ export function createPickup(
       // instantly; full slots open a swap-or-leave compare; a relic collects.
       // The pickup feel fires only when it actually LANDS (onEquipped) — a
       // LEAVE leaves the stone quiet and the item where it lay.
+      // EMBER is a resource, not an item: it never enters the bag. Walking over
+      // it grants borrowed life and the pickup is done.
+      if (item.kind === 'ember') {
+        grantEmber(CONFIG.EMBER_PER_PICKUP);
+        playPickupChime(rarityIdx);
+        pickupHaptic(rarityIdx);
+        flashPickupGlow(rarityIdx);
+        emit({ type: 'item:picked-up', itemId: item.id, worldPos: wp });
+        interactable.destroyed = true;
+        return;
+      }
+
       if (item.kind !== 'consumable' && item.kind !== 'key') {
         // Ejected gear keeps its rolled affixes; a fresh floor drop rolls now.
         const affixes = presetAffixes ?? rollItemInstance(item).affixes;

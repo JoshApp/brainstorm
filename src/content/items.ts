@@ -1714,6 +1714,21 @@ export const ITEMS: Record<string, ItemSpec> = {
     drop: { weight: 1, minDepth: 2 },
   },
 
+  // ── EMBER — borrowed life, lying on the floor ─────────────────────
+  // The soul heart. Walk over it and it's yours: a temporary health layer that
+  // is spent before your own and can later be spent as a PRICE. It is NOT
+  // healing — the flask and the fountains never touch it, and resting never
+  // restores it. It only comes from the deep.
+  'guttering-ember': {
+    id: 'guttering-ember',
+    kind: 'ember',
+    rarity: 'uncommon',
+    name: 'A guttering ember',
+    flavor: 'Someone else\u2019s last warmth. It will burn for you a while, and it will not thank you.',
+    dropModel: SKELETON_KEY,   // placeholder silhouette until it gets its own
+    drop: { weight: 1 },
+  },
+
   // ── PHIALS — the unlabeled draughts ──────────────────────────────
   // Isaac's pills in DELVE's voice: each color maps to ONE permanent
   // run mutation (state/phial-identities.ts), rolled per run, unknown
