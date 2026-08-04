@@ -3,6 +3,7 @@ import type { ResolvedComboStep } from '../content/weapon-classes';
 import { resolveMove, pickMove, type ResolvedMove, type MovePose, type MoveDir, type MoveStep } from './move-timeline';
 import { msSinceDash } from './just-dodge';
 import { CONFIG } from '../config';
+import { getPlayerActionSpeedMult } from './modifiers';
 
 // Extra grace ms added to the combo window when the just-finished step was on
 // the HEAVY track. Sized to a full melee charge time (CHARGED_COST /
@@ -182,7 +183,14 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // pickMove resolves the directional variant off the LATCHED moveDir (plain
     // steps ignore it) — so only the opener flavors by movement. Moveset =
     // whichever TRACK (light/heavy) requestSwing chose.
-    resolvedMove = resolveMove(pickMove(timelineMoveset(wm)[index], moveDir, moveDashed), { attackSpeed: wm.attackSpeed ?? 1, flurryHits: 0 });
+    // The weapon's own speed TIMES whatever the player is carrying. Items and
+    // cards have always aggregated an `action-speed-mult`; until now only the
+    // enemy AI read it, so "faster attacks" was a promise the swing clock never
+    // heard (see modifiers.getPlayerActionSpeedMult).
+    resolvedMove = resolveMove(pickMove(timelineMoveset(wm)[index], moveDir, moveDashed), {
+      attackSpeed: (wm.attackSpeed ?? 1) * getPlayerActionSpeedMult(),
+      flurryHits: 0,
+    });
     // A CHARGED move SKIPS its windup (intro) — you paid the windup by holding, so
     // it fires straight into the strike (no double-cock after the charge-hold).
     elapsed = charged ? resolvedMove.introReal : 0;
@@ -249,9 +257,13 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
 
   function phaseDuration(): number {
     const { step } = currentStep();
-    return phase === 'windup' ? step.windupTime
+    const base = phase === 'windup' ? step.windupTime
       : phase === 'strike' ? step.strikeTime
       : step.recoverTime;
+    // The LEGACY phase machine (weapons with no timeline moveset) gets the same
+    // treatment as the timeline path: the step's times are resolved per-weapon
+    // and cached, so the player's own speed has to be applied here, at read.
+    return base / Math.max(0.1, getPlayerActionSpeedMult());
   }
 
   /** Is the swing late enough to accept a buffered combo chain? Recover is
@@ -407,7 +419,8 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       // attackSpeed also shrinks the cadence, so a "faster attacks" modifier
       // actually speeds up a cadence-floored weapon (else the floor would cancel it).
       const wm2 = getCurrentWeapon();
-      const cadence = wm2.attackCadenceS / Math.max(0.1, wm2.attackSpeed);
+      const cadence = wm2.attackCadenceS
+        / Math.max(0.1, wm2.attackSpeed * getPlayerActionSpeedMult());
       if (elapsed >= resolvedMove.duration && clock >= moveStartClock + cadence) {
         const w = getCurrentWeapon();
         if (queuedPress && moveComboIndex < timelineMoveset(w).length - 1) {

@@ -305,6 +305,22 @@ export function getPlayerMoveSpeedMult(): number {
 }
 
 /**
+ * The PLAYER's aggregated ACTION-speed multiplier — how fast they swing.
+ * 1.0 when unmodified; >1 is faster.
+ *
+ * The mirror of getPlayerMoveSpeedMult, and it was missing. `action-speed-mult`
+ * was aggregated for every entity and read by the enemy AI for its attack
+ * phases, but nothing on the player side ever asked for it: swing timing came
+ * off the WEAPON's own `attackSpeed` alone. So the relics, vestments and cards
+ * that promise faster attacks — and the tainted mutation that promises slower —
+ * changed nothing at all, while their tooltips said otherwise. Multiplied into
+ * the swing clock in combat/swing-state.ts.
+ */
+export function getPlayerActionSpeedMult(): number {
+  return aggregateSpeed('player').action;
+}
+
+/**
  * Walk every source of TRIGGERED PASSIVES for an entity. Sister to
  * aggregateModifiers — same idea, different shape:
  *   - Modifiers       = static stat changes (max HP, damage bonus, armor)
