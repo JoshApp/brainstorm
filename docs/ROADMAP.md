@@ -16,7 +16,7 @@ Last reconciled: 2026-08-05.
 Everything below is one of these. If a new idea doesn't fit one, that's worth
 noticing before it gets built.
 
-1. **The level pipeline** — reauthoring generation so rooms are composed, not stamped.
+1. **The level pipeline** — replacing stamped rectangles with a real room generator.
 2. **The weapon** — wear-or-feed, and the game becoming about what you feed your blade.
 3. **Combat texture** — finishers, chasms, the verbs that make fights feel physical.
 4. **Foundations** — loading, tooling, the audit systems that keep content honest.
@@ -30,39 +30,54 @@ placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
 
 ### Decided
 
-- **The problem is the handoff, not the vaults or the generator.** A vault hands
-  the generator *finished geometry*, which is at once too rigid to adapt and too
-  under-specified to defend itself. That's why one room can be both inflexible
-  and full of random pillars.
-- **Vaults become COMPOSITIONS.** Shape family, mass regions with rhythm, voids,
-  event/combat slots with facing and apron, focus, claims. A new FIT stage
-  applies a composition to whatever rect the floor plan gave the room.
+- **The problem was the handoff.** A vault handed the generator *finished
+  geometry*, which is at once too rigid to adapt and too under-specified to
+  defend itself — one room, both failure modes. The measurement below then showed
+  the handoff wasn't even carrying anything.
+- **The ASCII vaults go.** Measured 2026-08-05: 36 of 37 are a bordered rectangle
+  with nothing inside, 96% of all tilemap cells are wall-or-floor, and the whole
+  hand-authored layer amounts to 21 placed props. There was no composition in
+  there to preserve. (This RETRACTS the earlier "keep ASCII, change the alphabet"
+  call — see LEVEL-ARCHITECTURE.md §3.)
+- **What replaces them is a ROOM GENERATOR, not a better authoring format** —
+  LEVEL-ARCHITECTURE.md §8. Rooms become polygons from a small shape grammar
+  (spine + lobes − bites + chamfer), voids and obstacles become polygon ops, and
+  archetypes are generator parameters.
+- **CIRCULATION FIRST.** Compute the paths between doors and to the focus,
+  protect them at width, and place masses only in the leftover pockets. This is
+  the inversion that makes "obstacles built better" structural rather than tuned —
+  a mass *cannot* land on a walk path, because the path was claimed first.
+- **Hand-authoring survives only for genuine set-pieces** (harbor, boss arenas,
+  tutorial), where form is welded to function.
 - **Seven-stage pipeline with a contract**: PLAN → GRAPH → FORM → CARVE → FIT →
   CONTENT → DRESS. *A stage may read any earlier stage and write only its own
   layer.* That rule is what kills the culls.
-- **Stage 4 (FIT) does not exist today.** The tilemap is its output, frozen at
-  author time. That single gap is the whole symptom.
+- **The FIT stage does not exist today.** The tilemap is its frozen output. The
+  generator (§8) is what fills that gap.
 - **Props have three axes**, and we model one. The missing ones are compositional
   ROLE (mass / furnishing / trace) and CLAIM (tended / abandoned / desecrated /
   flooded / burned). Claims contradict; a room commits to one or two and admits
   only props that support them. That is the difference between a bag of random
   draws and a place.
-- **Resolution is per-layer, not one number** — see `LEVEL-ARCHITECTURE.md` §7.
-  Coarse sketch for authoring, continuous for placement, fine derived grid for
-  nav. A finer authoring grid buys smaller stair-steps, not smoother rooms.
+- **Resolution is per-layer, not one number** (`LEVEL-ARCHITECTURE.md` §7). A
+  finer grid buys smaller stair-steps, not smoother rooms — non-blocky comes from
+  polygons and chamfers. Placement is continuous; nav is a derived grid.
+- **Room generation is the next build**, not an authoring format. §8.5 has the
+  order; polygon rooms ship first and alone, because the point is to LOOK at
+  one.
 
 ### Outstanding
 
 | | What | Why now / why not yet |
 |---|---|---|
-| **#130** | Prop taxonomy: ROLE + CLAIM | **Next.** Pure data, no pipeline change, improves rooms through the decorator that already runs, and it's the vocabulary every later stage needs. |
-| **#131** | Stage 4 — compositions replace tilemaps | The main event. Convert 3 vaults and run side by side; do **not** convert all 37. |
+| ~~#130~~ | Prop taxonomy: ROLE + CLAIM | **SHIPPED 2026-08-05.** 0 self-contradicting rooms at every depth (was 40/220 at depth 3), decoration density unchanged. |
+| **#131** | Room generator: polygons, shape grammar, circulation-first masses | The main event. Ships in the order in LEVEL-ARCHITECTURE.md §8.5 — polygon room FIRST and alone, because the whole point is to look at a non-blocky room. |
 | — | Stage contract + delete the culls | Falls out of #131. |
-| **#73** | Procedural room-form system (edge stitching, merges, organic edges) | Stage 2. Deliberately **after** compositions — nicer shapes wrapped around frozen tilemaps is the same problem in a better silhouette. |
+| **#73** | Room forms, stitching, merges | **Absorbed into #131** — the shape grammar IS this. Kept for tracking the merge/stitch half, which comes after single-room polygons land. |
 | **#124** | Void carves under wells/basins | Ordering bug: carve voids *before* openings. Should fall out of the stage contract. |
-| **#39 / #75** | Event placement + organic positioning within rooms | Largely absorbed by slots (#131). Re-read after. |
+| **#39 / #75** | Event placement + organic positioning within rooms | Re-read after #131 — circulation-first placement changes what "organic" means here. |
 | **#118** | Summoning sigils as a shared system | Independent; small. |
-| **#93** | Trap rework + more trap types | Wants the composition slots to land first. |
+| **#93** | Trap rework + more trap types | Wants #131's polygon voids first — traps in rifts is the same bug. |
 
 ### Known, unfixed
 

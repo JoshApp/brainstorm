@@ -106,50 +106,53 @@ intent, the machine states matter. Each is doing the thing it's good at.
 
 ---
 
-## 3. Do we keep ASCII?
+## 3. Do we keep ASCII? No — and the measurement is one-sided
 
-**We have outgrown the ASCII vaults. We have not outgrown ASCII.**
+**Retraction.** The first version of this section argued "we have outgrown the
+ASCII vaults, we have not outgrown ASCII" — keep the sketch, change the alphabet
+to intent marks. Josh pushed back:
 
-The format's real value was never that it's a grid — it's that **you can see the
-room at a glance, in a diff, in a terminal, without running anything**. That
-property matters more here than in most codebases, because the authoring model
-(CLAUDE.md) has several layers reading and writing the same substrate, and a
-format only one of them can visualise is a format that rots.
+> *"What do we actually gain by the vaults today, do they actually carry
+> anything? I don't care if the things can be diffed or whatever… it feels like
+> all the ASCII rooms give us now is almost nothing, or am I wrong there? I've
+> never seen them, I just felt obsoletion and collision from it."*
 
-So: keep the sketch, **change the alphabet**. Marks stop meaning objects and
-start meaning intent:
+He is not wrong. I defended the format's *legibility* without first checking
+whether it was carrying anything worth reading, which is the same mistake as
+optimising a function nobody calls. So I measured all 37 vaults:
 
 ```
-compose 'hall-of-the-dais'
-shape: long-hall
-
-  ###################
-  #.................#
-  #..M...........M..#      M = mass (rhythm: paired, along the length)
-  #.................#
-  #~~~~~~~~~~~~~~~~~#      ~ = void region
-  #.................#
-  #..M....[E<]...M..#      [E<] = event slot, facing -Z (toward the entry)
-  #.................#
-  ###################
-
-focus: E
-combat: 2 slots, loose        ← "a fight happens here", not "an X stands here"
-claims: abandoned, cold
+vaults                                       37
+total tilemap cells                       4,519
+  wall / floor / blank                     96.1%
+  everything else                           3.9%   (vases 2.2%, enemy slots 1.0%,
+                                                    traps, doors, stairs, start)
+vaults whose map is a PLAIN RECTANGLE     36 / 37
+vaults carrying ANY hand-placed prop      12 / 37
+total hand-placed props, ALL vaults          21   (0.6 per vault)
 ```
 
-That is still glanceable, still diffable, still writable by a content layer with
-no implementation knowledge — and every mark now carries a reason. Regions that
-are genuinely awkward in a grid (a mass's rhythm, a slot's apron radius) live in
-the small structured block underneath, where coordinates would have been unreadable
-anyway.
+Read that again: **thirty-six of thirty-seven vaults are a bordered rectangle
+with nothing inside.** The entire hand-authored layer of this game amounts to
+**37 rectangle sizes, 44 enemy-slot cells, 101 vase cells and 21 placed props** —
+and the sizes cluster hard in 10–14 wide by 6–9 deep, so even the rectangles are
+nearly the same rectangle.
 
-**Honest tradeoff:** regions-with-facing are a slightly poor fit for a character
-grid, and a pure JSON/region format would be more precise. I'm recommending
-against it because precision isn't the bottleneck — *legibility across authoring
-layers* is, and a list of rects is something nobody can picture.
+There is no composition in there to preserve. The library is a generator wearing
+37 rectangles as a costume, and every interesting thing in a finished room —
+the debris, the masses, the light, the events, the traps — is placed by code
+afterward. That is why "obsoletion and collision" is exactly what it feels like:
+the vault contributes a shape the generator could have picked, and then collides
+with the passes that do the real work.
 
----
+**So the vaults go.** Not "keep the notation, change the alphabet" — there is
+nothing to notate. What replaces them is not a better authoring format; it is an
+actual room generator (§8).
+
+**What survives hand-authoring:** the genuine set-pieces, where form is welded to
+function and a generator would be actively wrong — the harbor, the boss arenas,
+the tutorial chamber. That is a handful of rooms, authored as real geometry
+because they are real geometry, not as a library the generator draws from.
 
 ## 4. The staged pipeline
 
@@ -404,3 +407,128 @@ and the text is what the repo stores.
 Worth building **only if** the text sketch turns out to be annoying to author in
 practice. Not up front — it's a workflow convenience, and it can be added at any
 time without the pipeline knowing.
+
+---
+
+## 8. The room generator
+
+Josh, after the measurement in §3:
+
+> *"I don't want finer steps, I want the rooms to feel less blocky and walk paths
+> and obstacles to be built better… I really want a nice room generator."*
+
+Three named wants — **less blocky**, **better walk paths**, **obstacles built
+better** — plus one implementation complaint that turns out to be the same
+problem: *"voids and obstacles are just annoying to code in the grid."*
+
+All four have one root. **A grid is the wrong representation for a room.** Not
+too coarse — wrong in kind. Everything below follows from replacing it.
+
+### 8.1 A room is a POLYGON
+
+The floor becomes an orthogonal polygon (with optional chamfered corners), built
+by a tiny shape grammar rather than authored:
+
+```
+spine          one rect, the room's main axis
++ lobes        1-3 more rects unioned onto it — alcoves, transepts, a wider end
+- bites        0-2 rects subtracted from corners — a notch, a collapsed corner
+~ chamfer      convex corners cut at 45 degrees — the diagonal walls
+```
+
+That is maybe a hundred lines and it produces L-rooms, T-rooms, rooms with an
+apse, rooms with a bitten corner, halls that widen at one end. **Non-blocky comes
+from the chamfer and the union, not from smaller cells** — which is the §7 point
+arriving where it actually pays.
+
+There is a landing zone for this already: the builder consumes
+`WallSegment { ax, az, bx, bz }` for floor-wall contacts and collision, so walls
+are *already* line segments downstream. Only generation is rect-shaped
+(`buildRoomShell` reads `rect.w` / `rect.d`); the consumers do not care. A polygon
+room emits the same segment list with more segments in it, some of them diagonal.
+
+### 8.2 Voids and obstacles are polygon ops, which is why they stop being annoying
+
+Josh's implementation complaint is the honest one. In a grid, a void has to be
+rasterised into cells, and then every downstream pass re-tests cells and each one
+grows its own idea of the rim (`VOID_MARGIN` here, `LIP = 0.35` there, a
+`freeAt` that one producer forgets to call). That is where the 39 spike traps in
+rifts come from.
+
+As polygons it collapses to one thing:
+
+```
+floor      = outline − voids − obstacle footprints
+walkable(p) = pointInPolygon(p, floor)
+```
+
+One predicate. Continuous, no resolution, no margin constants, no rasterisation,
+and no way for a producer to "forget" — because there is nothing else to ask.
+
+### 8.3 The bit that actually makes rooms good: CIRCULATION FIRST
+
+This is the answer to "walk paths and obstacles built better", and it's an
+inversion rather than a tuning.
+
+Today obstacles are scattered and the walk paths are whatever is left over. So a
+pillar can land in the one line between two doors, and nothing notices. Turn it
+around:
+
+1. **Compute circulation first.** The paths between every pair of doors, and from
+   each door to the room's focus (its centrepiece). This is a handful of
+   shortest paths through an empty polygon — cheap.
+2. **Widen them into protected corridors** of a minimum walkable width (~1.4m,
+   comfortably more than the player's collision radius plus a dodge).
+3. **Place masses only in the leftover pockets** — the regions circulation does
+   not use.
+4. **Verify on the finished room**: every door still reaches every other door and
+   the focus, at width. If not, remove the newest mass and retry.
+
+That single inversion delivers all three of Josh's wants at once:
+
+- **the pillars are where you don't walk**, which is what "built better" means and
+  what makes a room read as designed rather than sprinkled;
+- **there is always a clean line between the doors**, so no room can be a
+  navigation puzzle by accident;
+- and the "random pillar inside the composition" failure becomes *structurally
+  impossible*, not merely discouraged — a mass cannot be placed on circulation
+  because circulation was claimed first.
+
+It also gives masses their **rhythm** for free: a colonnade is what you get when
+the leftover pockets are a regular series flanking a central corridor. You do not
+have to author the rhythm; you get it by protecting the nave.
+
+### 8.4 Archetypes are generator parameters, not tilemaps
+
+Six or so archetypes, each ~20 lines of polygon construction plus a mass rule:
+
+| archetype | polygon | masses |
+|---|---|---|
+| `hall` | long spine, maybe a wider end | rhythm along the length, flanking the nave |
+| `chamber` | near-square, one focus | at corners, clear centre |
+| `apse` | body + chamfered end holding the focus | frame the apse mouth |
+| `pillared` | spine + side aisles | a real colonnade, nave protected |
+| `broken` | spine with a void across it, one bridge | banks along the rim |
+| `cells` | spine subdivided by low masses | the dividers ARE the masses |
+
+Six of those, fitted to any size, skinned by the room's claims (§5), out-vary 37
+frozen rectangles by a wide margin — and each one is a thing you can look at and
+say "yes, that's a hall."
+
+### 8.5 Staging
+
+1. **Polygon room + shape grammar + chamfer**, rendered. The whole point is to
+   *look* at a non-blocky room, so this ships first and alone.
+2. **Circulation-first mass placement** (§8.3), with the reachability check as a
+   test — a floor where any door can't reach the focus at width is a hard failure.
+3. **Voids as polygon subtraction**, retiring the margin constants and the
+   rasterised occupancy path.
+4. **Archetypes**, one at a time, each snapped and compared.
+5. **Delete the vault library** and the composer's tag/slot machinery, keeping
+   only the genuine set-pieces as authored geometry.
+
+Note what is NOT in this list: an authoring format. §2's "compositions" were the
+right idea aimed at the wrong problem — they were a better way to hand-author,
+and the measurement says hand-authoring was never carrying the rooms. The
+archetype table above is where a design or content layer expresses intent now,
+and it is code, which is the substrate that layer already writes.
