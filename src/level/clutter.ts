@@ -254,7 +254,10 @@ function buildRoomContext(
   const tooClose = (x: number, z: number, minDist: number, kind: PlaceKind = 'blocker') => {
     // The authority first — it knows about voids, feature aprons and room types,
     // none of which this pass's own spacing list has ever known about.
-    if (auth && !auth.test(x, z, kind, roomId).ok) return true;
+    // minDist is the caller's own footprint estimate — hand it to the
+    // authority as a radius so an event's apron is measured against the prop's
+    // SPREAD, not its anchor point.
+    if (auth && !auth.test(x, z, kind, roomId, minDist / 2).ok) return true;
     const md2 = minDist * minDist;
     for (const p of existing) {
       const dx = p.x - x;
@@ -573,6 +576,11 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   for (const c of cobwebCorners) {
     if (webs >= 2) break;                 // never more than two webs in a room
     if (rand() > 0.28) continue;          // most corners stay bare
+    // This loop pushed with NO validity check at all — the one placement in this
+    // file that never asked. A corner is exactly where a shopkeeper or a
+    // reliquary tends to stand, which is how "the merchant stands inside his own
+    // cobwebs" happened and why the elbow-room sweep had to exist.
+    if (ctx.tooClose(c.x, c.z, 0.4)) continue;
     webs++;
     out.push({
       kind: 'model', model: COBWEB_CORNER,

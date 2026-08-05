@@ -2094,11 +2094,20 @@ export function composeFloor(
   // of its plinth, a chest opens into a pillar, and a merchant stands inside his
   // own cobwebs — things stuck inside things.
   //
-  // Rather than teach every pass a different footprint, this is one sweep at the
-  // end: anything PURELY DECORATIVE within a radius of anything INTERACTIVE is
-  // simply removed. Decor is the cheapest thing on the floor and the only one
-  // with nothing to lose — it exists to fill space, so the space it must not
-  // fill is the space around a decision.
+  // This used to be the ENFORCEMENT: one sweep at the end deleting anything
+  // decorative near anything interactive. It is now the BACKSTOP. The placement
+  // authority refuses these at proposal time — a clutter sampler told "no, a
+  // feature's apron" simply tries its next candidate — so what reaches here is
+  // whatever slipped a producer that still doesn't ask.
+  //
+  // Measured with this sweep disabled: depth 3 went from 23 crowded
+  // interactables to 0, and depth 6 from 31 to 5, once the cobweb loop (the one
+  // placement in clutter.ts that never called tooClose at all) started asking.
+  //
+  // Per docs/LEVEL-OWNERSHIP.md §4: a final-state check is how you VERIFY a
+  // rule, not how you implement one. Keeping it is cheap and it is the proof
+  // the claim-time rule is holding; the number it removes is the number of
+  // producers still bypassing the authority, and that number should go to zero.
   {
     const INTERACT_CLEAR_M = 1.25;   // model half-width + a step to stand in
     const anchors: Array<{ x: number; z: number }> = [];

@@ -141,7 +141,7 @@ export class PlacementAuthority {
   }
 
   /** Would this land? Pure — ask as often as you like while hunting for a spot. */
-  test(x: number, z: number, kind: PlaceKind, roomId?: string): ClaimResult {
+  test(x: number, z: number, kind: PlaceKind, roomId?: string, radius = 0): ClaimResult {
     const no = (why: RefusalReason): ClaimResult => {
       this.refusals[why] = (this.refusals[why] ?? 0) + 1;
       return { ok: false, why };
@@ -162,9 +162,16 @@ export class PlacementAuthority {
 
     // A feature's apron: candles and torches welcome, pillars and spikes not.
     if (!APRON_ADMITS.has(kind)) {
+      // The apron is measured against the thing's FOOTPRINT, not its anchor.
+      // A rubble pile anchored 1.3m from an altar with a metre of spread still
+      // grows out of the altar's plinth — which is exactly what the elbow-room
+      // sweep was deleting afterwards. Callers pass the radius they already know
+      // (clutter's own spacing distance), so the refusal happens at proposal
+      // time and the sampler simply picks elsewhere.
+      const reach = APRON_M + radius;
       for (const f of this.features) {
-        if (Math.abs(f.x - x) > APRON_M || Math.abs(f.z - z) > APRON_M) continue;
-        if (Math.hypot(f.x - x, f.z - z) <= APRON_M) return no('feature-apron');
+        if (Math.abs(f.x - x) > reach || Math.abs(f.z - z) > reach) continue;
+        if (Math.hypot(f.x - x, f.z - z) <= reach) return no('feature-apron');
       }
     }
 
@@ -179,8 +186,8 @@ export class PlacementAuthority {
    * Take the cell. Same verdict `test` gives, and only writes when it's ok — so
    * `if (!auth.claim(...).ok) continue;` is the whole idiom a producer needs.
    */
-  claim(x: number, z: number, kind: PlaceKind, by: string, roomId?: string): ClaimResult {
-    const verdict = this.test(x, z, kind, roomId);
+  claim(x: number, z: number, kind: PlaceKind, by: string, roomId?: string, radius = 0): ClaimResult {
+    const verdict = this.test(x, z, kind, roomId, radius);
     if (!verdict.ok) return verdict;
     if (FLOOR_KINDS.has(kind)) this.cells.set(this.key(x, z), { kind, roomId, by });
     if (kind === 'feature') this.features.push({ x, z });
@@ -232,7 +239,11 @@ const FEATURE_KINDS = new Set<string>([
   'blacksmith', 'challenge-offering', 'offering', 'corpse', 'searchable',
   'stairs', 'boss-mist',
 ]);
-const DECOR_KINDS = new Set<string>(['vase', 'candle', 'bones', 'debris', 'rubble', 'cobweb']);
+// NOT cobwebs. Decor is admitted into a feature's apron because dressing an
+// event is the point — but a candle TENDS a thing and a cobweb says nobody has.
+// Classified as a blocker, it gets refused from the apron like a pillar, which is
+// what "the merchant stands inside his own cobwebs" actually needed.
+const DECOR_KINDS = new Set<string>(['vase', 'candle', 'bones', 'debris', 'rubble']);
 const HAZARD_KINDS = new Set<string>(['spike-trap']);
 const LIGHT_KINDS = new Set<string>(['torch', 'wall-rune']);
 
