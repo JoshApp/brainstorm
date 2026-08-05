@@ -253,18 +253,16 @@ async function main() {
     // all three fail SILENTLY rather than loudly — the frame just renders wrong:
     //   batchworld=0  static world batching merges floors + walls into one
     //                 BatchedMesh, erasing their per-mesh debug labels.
-    //   portalcull    left off (the default) so rooms the player isn't standing
-    //                 in are not culled away.
-    //
-    // KNOWN GAP: on a `run-<seed>-<depth>` procgen floor the plan view draws
-    // walls, corridors and props but NOT the floor plates. Measured, not
-    // guessed: `--only=floor` on that path renders an empty frame while the
-    // legend proves the plates were found and recoloured, so something in the
-    // static-batch / render-bundle stack is drawing over or instead of them
-    // after the recolour. `?bundles=0` makes it worse (the walls vanish too), so
-    // it is not a simple freeze. Scenario-hosted levels (starter-choice, the
-    // vault previews) render correctly and are enough for room-shape work.
-    if (inspBits.length) inspBits.push('batchworld=0');
+    //   portalcull=0  PORTAL CULLING IS ON BY DEFAULT (it's a settings toggle,
+    //                 not a debug flag), so a real procgen floor renders only the
+    //                 room the player stands in. This is what made a plan view of
+    //                 a `run-` floor show walls, corridors and props but NO FLOOR
+    //                 PLATES: render bundles had FROZEN the walls, making them
+    //                 immune to the culler's visible=false, while the un-frozen
+    //                 floors were culled away. Hence also why `?bundles=0` made it
+    //                 worse rather than better — it took the walls' immunity away
+    //                 and everything vanished. Two systems, one symptom.
+    if (inspBits.length) inspBits.push('batchworld=0', 'portalcull=0');
     const inspQ = inspBits.length ? '&' + inspBits.join('&') : '';
     if (inspQ) console.log(`Inspector: ${inspBits.join(' ')}`);
     // --phase=strike poses the equipped weapon at a swing phase (animation review).

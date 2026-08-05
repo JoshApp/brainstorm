@@ -34,8 +34,17 @@
 // USE IT HEADLESSLY. Every mode is a URL parameter, and `delve snap` already
 // forwards arbitrary params via `--q=`:
 //
-//   npm run delve snap run-1780376544217-3 -- --q=insp=top&inspParts=1
-//   npm run delve snap starter-choice -- --q=insp=top&inspSegs=1&inspLit=1
+//   npm run delve snap run-1780376544217-3 -- --plan --parts
+//   npm run delve snap starter-choice -- --plan --segs --lit
+//   npm run delve snap starter-choice -- --orbit --only=polytrim
+//
+// Three of the game's own systems have to stand down for these views, and all
+// three fail SILENTLY — the frame just renders wrong. `delve snap` turns them
+// off for you (see the inspector block in scripts/snap.ts); driving the URL by
+// hand, you need them too:
+//   batchworld=0   static batching erases per-mesh debug labels
+//   portalcull=0   PORTAL CULLING IS ON BY DEFAULT and hides every room the
+//                  player isn't standing in
 //
 // …or from the console: `__insp.top()`, `__insp.parts()`, `__insp.rooms()`.
 
