@@ -6,7 +6,7 @@ import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
-import { polyBounds, type Poly } from './room-shape';
+import { polyBounds, pointInPoly, type Poly } from './room-shape';
 import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
@@ -70,6 +70,11 @@ export function buildPolyRoomShell(
   /** Rects that should CUT this room's walls — the corridors meeting it. Each
    *  span where a rect crosses an edge becomes a doorway. */
   openingRects: ReadonlyArray<OpeningRect> = [],
+  /** Floor holes in floor-shape coords — stairwells and chasm voids. Same
+   *  format and same producer as the rect path's, so the two shells cannot
+   *  disagree about where a hole is. Without these, a polygon room's stairwell
+   *  descends into a solid slab: the shaft is built and then paved over. */
+  floorHoles: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [],
 ): void {
   const poly = room.poly;
   if (poly.length < 3) return;
@@ -84,7 +89,16 @@ export function buildPolyRoomShell(
   const local: Poly = poly.map(([x, z]) => [x - rect.x, z - rect.z] as const);
 
   // ── FLOOR ──────────────────────────────────────────────────────────
-  const floorGeo = plateGeometry(local, 'up');
+  // A hole whose vertex lands ON the contour makes earcut silently DROP it —
+  // the floor comes back as a solid plate with no opening and no error. The
+  // rect path insets by 2cm against its bounding box for exactly this; a
+  // polygon's contour is wherever the outline is, so the check has to be
+  // against the outline. Anything that doesn't sit cleanly inside is refused
+  // rather than gambled on.
+  const safeHoles = floorHoles.filter((h) => h.length >= 3 && h.every(([hx, hy]) =>
+    // hole coords are (x, −z) in local space; the outline is (x, z)
+    pointInPoly(poly, hx + rect.x, rect.z - hy)));
+  const floorGeo = plateGeometry(local, 'up', safeHoles);
   subdivideToMaxEdge(floorGeo, FLOOR_MAX_EDGE);
   tintVertices(floorGeo);
   const floor = new THREE.Mesh(floorGeo, materials.floor);
@@ -189,12 +203,27 @@ export function buildPolyRoomShell(
  * rotX(+π/2). So an up-facing plate must author Y = −z and a down-facing plate
  * must author Y = +z, or the two disagree about where the room is.
  */
-function plateGeometry(local: Poly, facing: 'up' | 'down'): THREE.ShapeGeometry {
+function plateGeometry(
+  local: Poly, facing: 'up' | 'down',
+  /** Holes, ALREADY in floor-shape coordinates (X = world_x − rect.x,
+   *  Y = −(world_z − rect.z)) — the same space builder.ts builds stairwell and
+   *  void holes in for the rect path, so both shells consume one format. Only
+   *  meaningful for the floor: a stairwell does not cut the ceiling. */
+  holes: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [],
+): THREE.ShapeGeometry {
   const sy = facing === 'up' ? -1 : 1;
   const shape = new THREE.Shape();
   shape.moveTo(local[0][0], local[0][1] * sy);
   for (let i = 1; i < local.length; i++) shape.lineTo(local[i][0], local[i][1] * sy);
   shape.closePath();
+  for (const h of holes) {
+    if (h.length < 3) continue;
+    const path = new THREE.Path();
+    path.moveTo(h[0][0], h[0][1]);
+    for (let i = 1; i < h.length; i++) path.lineTo(h[i][0], h[i][1]);
+    path.closePath();
+    shape.holes.push(path);
+  }
   return new THREE.ShapeGeometry(shape);
 }
 

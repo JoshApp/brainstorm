@@ -6,6 +6,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell } from './poly-room-shell';
+import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, spawnBreakableDecoration, disposeDestructible, type Destructible } from './destructibles';
@@ -1073,12 +1074,37 @@ export function buildLevel(
       if (cMinX >= cMaxX || cMinZ >= cMaxZ) continue;  // clipped to nothing
       // Build hole in floor-shape coords (X = world_x - rect.x;
       // Y = -(world_z - rect.z) due to the floor's -π/2 X rotation).
-      const hole: Array<[number, number]> = [
+      let hole: Array<[number, number]> = [
         [cMinX - rx, -(cMinZ - rz)],
         [cMaxX - rx, -(cMinZ - rz)],
         [cMaxX - rx, -(cMaxZ - rz)],
         [cMinX - rx, -(cMaxZ - rz)],
       ];
+      // A POLYGON room takes the ROTATED FOOTPRINT, not its bounding box.
+      //
+      // The AABB above is a rect-path workaround: clipping an axis-aligned box
+      // to an axis-aligned room preserves it exactly, so nothing was lost. A
+      // stair facing a 45° chamfer is a different story — the AABB of a
+      // 1.95×2.56m footprint turned 45° is 3.19m square, fatter than the run it
+      // stands on, so it straddles the outline and the containment check drops
+      // it. Measured: 12.5% of stairwells lost their shaft, i.e. the way down
+      // was paved over on one floor in eight. The quad is the honest hole.
+      if (r.poly && r.poly.length >= 3) {
+        const contains = (q: ReadonlyArray<readonly [number, number]>) =>
+          q.every(([wx, wz]) => pointInPoly(r.poly!, wx, wz));
+        // Shrink about the footprint's centre if it doesn't fit. A slightly
+        // narrow shaft reads fine; a missing one is a dead end that looks solid.
+        let quad: Array<[number, number]> | null = null;
+        const cxq = worldCorners.reduce((t, c) => t + c[0], 0) / worldCorners.length;
+        const czq = worldCorners.reduce((t, c) => t + c[1], 0) / worldCorners.length;
+        for (const k of [1, 0.94, 0.88, 0.82, 0.76]) {
+          const q = worldCorners.map(([wx, wz]) =>
+            [cxq + (wx - cxq) * k, czq + (wz - czq) * k] as [number, number]);
+          if (contains(q)) { quad = q; break; }
+        }
+        if (!quad) continue;      // nothing fits — better no hole than a broken plate
+        hole = quad.map(([wx, wz]) => [wx - rx, -(wz - rz)] as [number, number]);
+      }
       holes.push(hole);
       // Stair footprint → AABB obstacle. The player can walk up to the
       // stair MOUTH (interactable range fires before contact) but can't
@@ -1122,6 +1148,14 @@ export function buildLevel(
       const cMinX = Math.max(vMinX, rx - hw + EDGE), cMaxX = Math.min(vMaxX, rx + hw - EDGE);
       const cMinZ = Math.max(vMinZ, rz - hd + EDGE), cMaxZ = Math.min(vMaxZ, rz + hd - EDGE);
       if (cMinX >= cMaxX || cMinZ >= cMaxZ) continue;
+      // In a POLYGON room the clip above (to the bounding box) is not enough —
+      // the real wall sits back from the rect, so a void clipped to the box can
+      // still straddle the outline. earcut would drop that hole and leave the
+      // obstacle behind: an invisible wall standing on solid floor, which is a
+      // worse bug than a missing chasm. Refuse BOTH or neither.
+      if (r.poly && r.poly.length >= 3
+          && ![[cMinX, cMinZ], [cMaxX, cMinZ], [cMaxX, cMaxZ], [cMinX, cMaxZ]]
+                .every(([hx, hz]) => pointInPoly(r.poly!, hx, hz))) continue;
       holes.push([
         [cMinX - rx, -(cMinZ - rz)],
         [cMaxX - rx, -(cMinZ - rz)],
@@ -1140,9 +1174,14 @@ export function buildLevel(
       if (r.poly && r.poly.length >= 3) {
         // The corridors touching this room cut its doorways. Passing the whole
         // corridor list is fine — an edge a corridor never crosses clips to null.
+        // `holes` carries this room's stairwell + void openings, computed above
+        // in exactly the same coordinates the rect path uses. Passing them is
+        // not optional dressing: without it the shaft is built and then paved
+        // over, so on a polygon floor the way down was a solid slab.
         buildPolyRoomShell(
           root, r as typeof r & { poly: NonNullable<typeof r.poly> }, materials, wallSegments,
           spec.corridors.map((c) => c.rect),
+          holes,
         );
       } else {
         buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
