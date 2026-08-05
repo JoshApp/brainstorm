@@ -1,5 +1,7 @@
 import type { LevelSpec, PropSpec, RoomSpec, PropFacing, WalkableRect } from './types';
 import { findContainingRect } from './geometry-cull';
+import { describeWalls, nearestSurface, type WallSurface } from './wall-surfaces';
+import { pointInPoly } from './room-shape';
 
 // Facing resolver.
 //
@@ -32,9 +34,24 @@ import { findContainingRect } from './geometry-cull';
 
 export function resolveAllFacings(spec: LevelSpec): void {
   const allRects = [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((r) => r.rect)];
+  // POLYGON ROOMS can answer "which wall" exactly, so they get the exact answer.
+  // The cardinal path below quantises every facing to a right angle, which is
+  // correct for a rectangle and wrong the moment a wall is chamfered or
+  // diagonal: a chest set `wall-away` against a 45° wall comes out 45° off, and
+  // it reads as somebody having placed it badly rather than as the model being
+  // unable to express that wall. Nothing crashes, nothing looks broken in a
+  // screenshot of a dark room, and the "fix" is a number a human nudges by hand
+  // forever. Built only for rooms that HAVE a polygon; every existing floor is
+  // rects and takes the old road unchanged.
+  const polyWalls = new Map<RoomSpec, WallSurface[]>();
+  for (const r of spec.rooms) {
+    if (r.poly && r.poly.length >= 3) {
+      polyWalls.set(r, describeWalls({ poly: r.poly, height: r.height, elevation: r.elevation }));
+    }
+  }
   for (const prop of spec.props) {
     if (!('facing' in prop) || !prop.facing) continue;
-    const rotY = resolveFacing(prop, prop.facing, allRects);
+    const rotY = resolveFacing(prop, prop.facing, allRects, polyWalls);
     // Write back as concrete rotY. Strip the directive so
     // downstream code doesn't try to re-resolve.
     (prop as { rotY?: number }).rotY = rotY;
@@ -46,18 +63,23 @@ function resolveFacing(
   prop: PropSpec & { x: number; z: number },
   f: PropFacing,
   rects: WalkableRect[],
+  polyWalls: Map<RoomSpec, WallSurface[]>,
 ): number {
   switch (f.kind) {
     case 'fixed':
       return f.rotY;
     case 'wall-away': {
-      const dir = nearestWall(prop.x, prop.z, rects);
-      return rotForWallAway(dir);
+      // A surface's `facingY` already points INTO the room from that wall, which
+      // is precisely "back against the stone, front to the room".
+      const s = polySurfaceFor(prop.x, prop.z, polyWalls);
+      if (s) return s.facingY;
+      return rotForWallAway(nearestWall(prop.x, prop.z, rects));
     }
     case 'wall-toward': {
-      const dir = nearestWall(prop.x, prop.z, rects);
+      const s = polySurfaceFor(prop.x, prop.z, polyWalls);
+      if (s) return wrapAngle(s.facingY + Math.PI);
       // Add π to "away" rotation to flip the front toward the wall.
-      return wrapAngle(rotForWallAway(dir) + Math.PI);
+      return wrapAngle(rotForWallAway(nearestWall(prop.x, prop.z, rects)) + Math.PI);
     }
     case 'point-away': {
       const dx = prop.x - f.x;
@@ -73,6 +95,18 @@ function resolveFacing(
       return Math.atan2(dx, dz);
     }
   }
+}
+
+/** The nearest wall FACE, when the prop stands in a polygon room. Null in every
+ *  rect room, which falls through to the cardinal path below. */
+function polySurfaceFor(
+  x: number, z: number, polyWalls: Map<RoomSpec, WallSurface[]>,
+): WallSurface | null {
+  for (const [room, walls] of polyWalls) {
+    if (!pointInPoly(room.poly!, x, z)) continue;
+    return nearestSurface(walls, x, z);
+  }
+  return null;
 }
 
 type WallDir = 'N' | 'S' | 'W' | 'E';

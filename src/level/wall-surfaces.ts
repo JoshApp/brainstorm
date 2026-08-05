@@ -187,6 +187,33 @@ export function clearDepth(s: WallSurface, poly: Ring, max = 6, step = 0.15): nu
   return max;
 }
 
+/**
+ * The wall face closest to a point.
+ *
+ * What "put your back against the wall" has to mean once a room stops being a
+ * rectangle. The rect answer was one of four compass letters, which quantises
+ * every prop's rotation to a right angle and has no answer at all for a
+ * chamfer or a diagonal — a chest against a 45° wall ended up facing 45° wrong.
+ */
+export function nearestSurface(
+  surfaces: readonly WallSurface[], x: number, z: number,
+): WallSurface | null {
+  let best: WallSurface | null = null;
+  let bestD = Infinity;
+  for (const s of surfaces) {
+    const d = distPointSeg(x, z, s.a[0], s.a[1], s.b[0], s.b[1]);
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+function distPointSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 <= 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+
 export interface RunNeed {
   /** Minimum wall length the fixture occupies. */
   length: number;
