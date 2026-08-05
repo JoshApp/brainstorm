@@ -17,6 +17,9 @@ import { roomType, type RoomTypeId, type RoomModifier } from './room-types';
 import { assignModifiers, type ModifierPlan } from './room-modifiers';
 import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
 import { planInterior, type InteriorForm } from './room-interior';
+import { planRoomLight, type Fixture, type Mount } from './light-plan';
+import { floorGlow, IRON_BRAZIER } from '../content/light-props';
+import { godRay } from '../content/god-ray';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -317,13 +320,12 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
 
   // Rooms whose centrepiece actually took the `guarded` flag. See the seal
   // below: a portcullis with nothing to reach for can never close.
-  const guardedRooms = new Set<string>();
-  for (const r of rooms) {
-    if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand,
-                props, torches, spawns, mods.byRoom.get(r.id)?.kind)) guardedRooms.add(r.id);
-  }
-
-  // The descent, on a wall chosen for being able to hold it.
+  // THE DESCENT IS DECIDED BEFORE THE ROOMS ARE FURNISHED, not after.
+  //
+  // It used to be computed at the end, which was fine while nothing needed to
+  // know about it. The light pass does: the way on always gets marked (a phone
+  // player hunting for the stair in the dark is doing a chore, not feeling
+  // tension), and it cannot mark something that does not exist yet.
   const last = rooms.find((x) => x.type === 'finish') ?? rooms[rooms.length - 1];
   const stairWall = findMountableRun(last.walls, last.poly, { length: 2.2, depth: 3.0, clearOfJambs: true });
   const stairs = stairWall
@@ -339,6 +341,13 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
         targetLevel: nextLevelAfter(depth),
       }]
     : [];
+
+  const guardedRooms = new Set<string>();
+  for (const r of rooms) {
+    const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
+    if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand,
+                props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent)) guardedRooms.add(r.id);
+  }
 
   return {
     id: `poly-${depth}`,
@@ -558,40 +567,9 @@ function furnish(
   depth: number, rand: () => number,
   props: PropSpec[], torches: TorchSpec[], spawns: EnemySpawnSpec[],
   mod?: RoomModifier,
+  /** The stair, if this room holds it. The way on always gets marked. */
+  descent?: { x: number; z: number },
 ): boolean {
-  // SCONCES — CANDIDATES, THEN A BUDGET.
-  //
-  // Taking every mount a wall offers gave 52 sconces per floor, about 8 a room:
-  // one light per 11m² against the builder's own fill budget of one per 45m².
-  // That isn't a tuning miss, it's a category error — `mountPoints` answers
-  // "where COULD one go", and something has to answer "how many does this room
-  // get". Darkness is the baseline in this game (CLAUDE.md), so the answer is
-  // "few, and spread".
-  //
-  // Chosen by farthest-point sampling from the candidate set, seeded at the
-  // room's mouth: you should see flame where you walk in, and the rest should
-  // pull your eye across the room rather than pile onto whichever wall happened
-  // to be longest.
-  const lampCandidates = sconcesOn(r.walls, [
-    { pick: (s) => s.length >= 5, spacing: [3.0, 4.6], inBays: true, height: 2.0, intensity: 0.85 },
-    { pick: (s) => s.length >= 2.2, spacing: [3, 5], height: 1.9, intensity: 0.6, minWall: 2.2 },
-  ]);
-  // ONE is a legitimate answer. A floor of two lit a 21m² pocket at one lamp
-  // per 11m² — the same over-lighting as taking every mount, just applied to
-  // the rooms too small for the ratio to hide it. A closet with a single
-  // guttering sconce is the room this game is made of.
-  //
-  // A `dark` room keeps ONE, at the mouth. Zero would be a bug you cannot see —
-  // the player would walk into a black rectangle with no way to tell it from
-  // the end of the world. One sconce behind you is what makes the dark ahead
-  // read as dark rather than as broken.
-  const budget = mod === 'dark' ? 1 : Math.max(1, Math.min(5, Math.round(polyArea(r.poly) / 26)));
-  for (const t of spreadPick(lampCandidates, budget, mouth)) {
-    torches.push(t);
-    r.occupancy.reserve(
-      { kind: 'cylinder', x: t.x, z: t.z, r: 0.2, y0: t.height - 0.4, y1: t.height + 0.4 }, 'sconce');
-  }
-
   // ── THE CENTREPIECE — the one thing the room is ABOUT ──────────────
   //
   // `planCentrepiece` is the shipping stager: it lays a trove's three plinths
@@ -642,7 +620,7 @@ function furnish(
   // the centrepiece deliberately placed. That is a stronger statement than "no
   // loot", and it is the one flag every decorative pass has to read: a trove
   // whose three offerings you cannot see past is not a choice.
-  if (def.clean) return guarded;
+  if (!def.clean) {
 
   // ── INTERIOR STONE — the room's own architecture ────────────────────
   //
@@ -707,6 +685,8 @@ function furnish(
     }
   }
 
+  }   // ── end of "not a clean stage" ─────────────────────────────────
+
   // SPAWNS. Placed against the room's shape, not scattered in its rect:
   // AMBUSH wants to be out of the entrance's sightline, so you walk in before
   // you see them. Everything else wants the open floor, spread out.
@@ -714,7 +694,11 @@ function furnish(
   // Whether anything wanders in at all is the TYPE's call, not this pass's. You
   // never fight beside a vendor; a trove is a breath; a quiet room's whole job
   // is to be nothing.
-  if (!def.enemies) return guarded;
+  //
+  // The ambush positions are kept: the LIGHT pass needs them, because an ambush
+  // in a lit corner is not an ambush. See the shadow list below.
+  const ambushSpots: Array<{ x: number; z: number }> = [];
+  if (def.enemies) {
   const ambush = mod === 'ambush' || (r.type === 'combat' && rand() < 0.45);
   const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
   const pool = ambush && mouth
@@ -736,8 +720,122 @@ function furnish(
     if (!r.occupancy.fits(vol, 0.2)) continue;
     r.occupancy.reserve(vol, 'spawn');
     spawns.push({ enemyId, x: s.x, z: s.z, roomId: r.id, dormant: ambush });
+    if (ambush) ambushSpots.push({ x: s.x, z: s.z });
   }
+  }   // ── end of "something wanders in here" ─────────────────────────
+
+  lightRoom(r, mouth, descent, ambushSpots, mod, staged, torches, props);
   return guarded;
+}
+
+/**
+ * LIGHT LAST.
+ *
+ * Everything above has already happened, so this is the first point at which
+ * the question "what should the player SEE in this room" has an answer. The
+ * rules live in light-plan.ts; this is only the translation from its fixtures
+ * to the props and torches the builder consumes.
+ */
+function lightRoom(
+  r: Placed,
+  mouth: { x: number; z: number } | null,
+  descent: { x: number; z: number } | undefined,
+  ambushSpots: ReadonlyArray<{ x: number; z: number }>,
+  mod: RoomModifier | undefined,
+  staged: { props: PropSpec[]; claimed: Array<{ x: number; z: number }> },
+  torches: TorchSpec[],
+  props: PropSpec[],
+): void {
+  // The brackets this room COULD hang something on. `sconcesOn` answers exactly
+  // that and nothing more — how many it gets, and which, is decided below.
+  let mounts: Mount[] = sconcesOn(r.walls, [
+    { pick: (s) => s.length >= 5, spacing: [3.0, 4.6], inBays: true, height: 2.0, intensity: 0.85 },
+    { pick: (s) => s.length >= 2.2, spacing: [3, 5], height: 1.9, intensity: 0.6, minWall: 2.2 },
+  ]).map((t) => ({ x: t.x, z: t.z, height: t.height, rotY: t.rotY, wall: t.wall }));
+
+  // A `dark` room keeps only the brackets by the door. Not zero — a room with no
+  // light at all is indistinguishable from the end of the world, and the player
+  // will stand at the threshold wondering if the floor is broken. One guttering
+  // sconce BEHIND you is what makes the dark ahead read as dark.
+  if (mod === 'dark' && mouth) {
+    const near = mounts.filter((m) => Math.hypot(m.x - mouth.x, m.z - mouth.z) < 4.0);
+    mounts = near.length ? [near[0]] : mounts.slice(0, 1);
+  }
+
+  // What the room is ABOUT — the centrepiece's own footprint, not the room's
+  // geometric middle. A merchant stands behind his counter; the light belongs on
+  // the counter.
+  const def = roomType(r.type);
+  const focusAt = staged.claimed.length
+    ? {
+        x: staged.claimed.reduce((t, c) => t + c.x, 0) / staged.claimed.length,
+        z: staged.claimed.reduce((t, c) => t + c.z, 0) / staged.claimed.length,
+      }
+    : null;
+
+  const fixtures = planRoomLight({
+    focus: focusAt && def.centrepiece !== 'none'
+      ? { x: focusAt.x, z: focusAt.z, kind: def.centrepiece }
+      : undefined,
+    descent,
+    // Rule 4: an ambush in a lit corner is not an ambush.
+    shadow: ambushSpots.map((a) => ({ x: a.x, z: a.z, r: 3.2 })),
+    mounts,
+    area: polyArea(r.poly),
+    height: r.height,
+    fallback: fallbackLightSpot(r, mouth, ambushSpots),
+  });
+
+  for (const f of fixtures) {
+    if (f.shape === 'sconce') {
+      torches.push({
+        x: f.x, z: f.z, height: f.height, wall: f.wall ?? 'N', rotY: f.rotY,
+        intensityMul: f.intensity,
+        ...(f.color ? { colorTint: f.color } : {}),
+      } as TorchSpec);
+      r.occupancy.reserve(
+        { kind: 'cylinder', x: f.x, z: f.z, r: 0.2, y0: f.height - 0.4, y1: f.height + 0.4 }, 'sconce');
+      continue;
+    }
+    if (f.shape === 'pool') {
+      props.push({ kind: 'model', model: floorGlow(f.color), x: f.x, y: 0, z: f.z } as PropSpec);
+      continue;   // a glow is light, not volume — nothing to reserve
+    }
+    if (f.shape === 'shaft') {
+      props.push({
+        kind: 'model', model: godRay({ tint: f.color, ceilingHeight: r.height }),
+        x: f.x, y: 0, z: f.z,
+      } as PropSpec);
+      continue;
+    }
+    // brazier — a standing source, and it DOES take floor.
+    props.push({ kind: 'model', model: IRON_BRAZIER, x: f.x, y: 0, z: f.z } as PropSpec);
+    r.occupancy.reserve({ kind: 'cylinder', x: f.x, z: f.z, r: 0.45, y0: 0, y1: 1.3 }, 'brazier');
+  }
+}
+
+/**
+ * A floor spot for a standing light, for the rooms no bracket will serve.
+ *
+ * Near the mouth, out of every ambush's shadow, on floor nothing else claimed.
+ * The mouth is safe by construction — ambush positions are chosen OUT of the
+ * mouth's sightline — so this can always be lit without betraying the ambush.
+ */
+function fallbackLightSpot(
+  r: Placed, mouth: { x: number; z: number } | null,
+  ambushSpots: ReadonlyArray<{ x: number; z: number }>,
+): { x: number; z: number } | undefined {
+  const seed = mouth ?? roomCenter(r.poly);
+  const spots = candidateSpots(r.poly, { radius: 0.5, band: [0.8, Infinity], pitch: 0.7 });
+  let best: { x: number; z: number } | undefined;
+  let bestD = Infinity;
+  for (const s of spots) {
+    if (ambushSpots.some((a) => Math.hypot(a.x - s.x, a.z - s.z) < 3.4)) continue;
+    if (!r.occupancy.fits({ kind: 'cylinder', x: s.x, z: s.z, r: 0.45, y0: 0, y1: 1.3 }, 0.2)) continue;
+    const d = (s.x - seed.x) ** 2 + (s.z - seed.z) ** 2;
+    if (d < bestD) { bestD = d; best = { x: s.x, z: s.z }; }
+  }
+  return best;
 }
 
 /**

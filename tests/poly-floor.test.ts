@@ -109,6 +109,25 @@ function flood(spec: LevelSpec): Set<string> {
   return seen;
 }
 
+/**
+ * Every light source in a room, of any SHAPE.
+ *
+ * Counting `spec.torches` alone was right when a sconce was the only kind of
+ * light there was. light-plan.ts added pools, shafts and standing braziers, and
+ * those are exactly the shapes the rooms a bracket cannot serve fall back to —
+ * so a torch-only count reports the rooms the new system FIXED as unlit.
+ */
+function lightsIn(spec: LevelSpec, poly: NonNullable<RoomSpec['poly']>): number {
+  const LIGHT_MODEL = /^(god-ray|floor-glow|iron-brazier|great-brazier)/;
+  const torches = (spec.torches ?? []).filter((t) => pointInPoly(poly, t.x, t.z)).length;
+  const models = (spec.props ?? []).filter((p) => {
+    const m = p as { kind?: string; model?: { id?: string }; x?: number; z?: number };
+    return m.kind === 'model' && LIGHT_MODEL.test(m.model?.id ?? '')
+      && typeof m.x === 'number' && typeof m.z === 'number' && pointInPoly(poly, m.x, m.z);
+  }).length;
+  return torches + models;
+}
+
 const CELL = 0.25;
 const reached = (seen: Set<string>, x: number, z: number, slack = 1.0): boolean => {
   const n = Math.ceil(slack / CELL);
@@ -202,11 +221,11 @@ test('DARKNESS IS THE BASELINE — nobody gets a floodlit room', () => {
   for (const spec of floors()) {
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      const lit = (spec.torches ?? []).filter((t) => pointInPoly(r.poly!, t.x, t.z)).length;
+      const lit = lightsIn(spec, r.poly);
       const area = polyArea(r.poly);
       assert.ok(lit > 0, `${spec.id}: room ${r.id} has no light at all`);
       assert.ok(area / lit > 14,
-        `${spec.id}: room ${r.id} has ${lit} sconces over ${area.toFixed(0)}m² — one per ${(area / lit).toFixed(0)}m²`);
+        `${spec.id}: room ${r.id} has ${lit} lights over ${area.toFixed(0)}m² — one per ${(area / lit).toFixed(0)}m²`);
     }
   }
 });
@@ -295,12 +314,16 @@ test('A SEAL ALWAYS HAS SOMETHING THAT SPRINGS IT', () => {
 
 test('a dark room is dark, not broken', () => {
   // Zero lights would be a bug the player cannot distinguish from the end of
-  // the world. One sconce behind you is what makes the dark ahead READ as dark.
+  // the world. ONE light behind you is what makes the dark ahead READ as dark.
+  //
+  // "One light", not "one sconce": a dark room whose single door-side bracket
+  // falls inside an ambush's shadow gets a standing brazier instead, which is
+  // the same decision reached by a different shape.
   for (const spec of floors()) {
     for (const r of spec.rooms) {
       if ((r as { lightTier?: string }).lightTier !== 'dark') continue;
-      const lit = (spec.torches ?? []).filter((t) => pointInPoly(r.poly!, t.x, t.z)).length;
-      assert.equal(lit, 1, `${spec.id}: a dark room carries ${lit} sconces`);
+      const lit = lightsIn(spec, r.poly!);
+      assert.equal(lit, 1, `${spec.id}: a dark room carries ${lit} lights`);
     }
   }
 });
