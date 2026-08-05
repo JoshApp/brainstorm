@@ -74,56 +74,81 @@ test('the CSG-bearing items are still findable by the walk the warm uses', () =>
     'no item spec contains a csg node — either the booleans are gone, or the walker stopped seeing them');
 });
 
+/**
+ * Best-of-N build time for a spec, in ms.
+ *
+ * The MINIMUM, not the mean — this runs on a shared box alongside a dev server
+ * and 64 other test processes, and scheduler noise only ever ADDS time. The
+ * minimum is the closest honest estimate of what the computation costs; a mean
+ * measures the machine's mood. Using a mean here is what made this file flaky
+ * enough to abort two pushes on 2026-08-05.
+ */
+function buildMs(spec: Parameters<typeof buildModel>[0], n = 5): number {
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const t = performance.now();
+    buildModel(spec);
+    best = Math.min(best, performance.now() - t);
+  }
+  return best;
+}
+
 test('A REPEAT BUILD OF A BOOLEAN IS CHEAP', () => {
-  // The property the cache exists for. Measured against the SAME model's first
-  // build, so this holds on a slow CI box as well as a fast laptop — it asserts
-  // a ratio, not a wall-clock.
+  // The property the cache exists for, measured against a BASELINE rather than
+  // against the same model's "first" build.
+  //
+  // The first version of this test compared to a cold build — and there is no
+  // cold build available here, because the `items` filter above already built
+  // every drop model to find out which ones need a DOM. So it was comparing warm
+  // to warm and asserting on the noise between them. That is DESIGN-METHOD §2
+  // again, self-inflicted: the scope filter was added AFTER the ratio test and
+  // silently invalidated its premise.
+  //
+  // What's meaningful instead: a CSG-bearing model, warm, should cost about what
+  // an ordinary model costs. If the boolean were re-running it would be an order
+  // of magnitude more (measured: 37ms vs ~1ms before the cache). This ratio is
+  // between two things timed under identical conditions, so it holds on any box.
+  const plain = items.filter((i) => !containsCsg(i.dropModel));
+  const baseline = median(plain.map((i) => buildMs(i.dropModel)));
+
   for (const item of csgItems) {
     const spec = containsCsg(item.dropModel) ? item.dropModel : item.viewmodel!;
-    const t0 = performance.now();
-    buildModel(spec);
-    const first = performance.now() - t0;
-
-    let repeats = 0;
-    const N = 5;
-    for (let i = 0; i < N; i++) {
-      const t = performance.now();
-      buildModel(spec);
-      repeats += performance.now() - t;
-    }
-    const avg = repeats / N;
-    // A cache miss would put avg at roughly `first`. Anything under a third of
-    // it means the boolean is genuinely being skipped.
-    assert.ok(avg < Math.max(2, first * 0.35),
-      `${item.id}: first build ${first.toFixed(1)}ms, repeats average ${avg.toFixed(1)}ms — ` +
-      `the CSG cache is not being hit`);
+    const ms = buildMs(spec);
+    assert.ok(ms < Math.max(3, baseline * 12),
+      `${item.id}: ${ms.toFixed(2)}ms warm vs a ${baseline.toFixed(2)}ms median plain model — ` +
+      `that is boolean-shaped, so the CSG cache is not being hit`);
   }
 });
 
 test('NO ITEM MODEL IS A FRAME-KILLER ONCE WARM', () => {
   // The player-facing claim: after boot, putting any item on the floor fits in a
-  // frame. 16ms is the 60fps budget; 8 leaves room for the rest of the frame.
+  // frame. 16ms is the 60fps budget. The threshold is deliberately loose (and
+  // best-of-N) because this is a REGRESSION guard, not a benchmark — it should
+  // fire when someone authors a 200-segment lathe, not when the box is busy.
   for (const item of items) {
-    buildModel(item.dropModel);                     // warm (as boot does)
-    const t = performance.now();
-    buildModel(item.dropModel);
-    const ms = performance.now() - t;
+    const ms = buildMs(item.dropModel, 3);
     assert.ok(ms < 8,
       `${item.id}: ${ms.toFixed(1)}ms to build its drop model even warm — that is a visible hitch when it drops`);
   }
 });
 
-test('the whole item catalogue could be built in one frame budget, warm', () => {
-  // Not because anything builds all 107 at once, but because it bounds the
-  // AVERAGE. A single new item authored with a 200-segment lathe would show up
-  // here long before a player felt it.
-  for (const item of items) buildModel(item.dropModel);   // ensure warm
-  const t = performance.now();
-  for (const item of items) buildModel(item.dropModel);
-  const total = performance.now() - t;
-  assert.ok(total / items.length < 1.5,
-    `${(total / items.length).toFixed(2)}ms average per item drop model (${total.toFixed(0)}ms for ${items.length})`);
+test('the whole item catalogue stays cheap on average', () => {
+  // Bounds the AVERAGE, so one new expensive model shows up here long before a
+  // player feels it. Best of three passes, same reasoning as buildMs.
+  let best = Infinity;
+  for (let pass = 0; pass < 3; pass++) {
+    const t = performance.now();
+    for (const item of items) buildModel(item.dropModel);
+    best = Math.min(best, performance.now() - t);
+  }
+  assert.ok(best / items.length < 1.5,
+    `${(best / items.length).toFixed(2)}ms average per item drop model (${best.toFixed(0)}ms for ${items.length})`);
 });
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : 1;
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
