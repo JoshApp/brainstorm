@@ -160,7 +160,35 @@ const MARGIN = 1.5;          // gap between unrelated boxes, so walls never clip
 /** Metres between two spikes of a `hazard` room. Closer and it stops being a
  *  line you pick and becomes a maze you thread. */
 const HAZARD_SPREAD = 3.2;
+/** How far a corridor pushes past a room's wall, so the opening rect straddles
+ *  the wall it is meant to cut instead of stopping at it. */
+const OVERLAP = 0.9;
+/**
+ * Corridor widths, and they are a FEEL knob, not a number.
+ *
+ * A 1.7m squeeze is a corridor you edge through with a weapon out; a 3.4m
+ * gallery is somewhere a fight can spill. Every corridor being 2.2m is most of
+ * why passages between rooms used to read as plumbing.
+ */
+const CORRIDOR_WIDTHS: ReadonlyArray<readonly [number, number]> = [
+  [1.7, 0.25],   // squeeze
+  [2.2, 0.50],   // the workhorse
+  [3.4, 0.25],   // gallery
+];
 const CORRIDOR_W = 2.2;
+/** How often a connection bends instead of running straight. */
+const DOGLEG_CHANCE = 0.45;
+/** (exit lateral, entry lateral) offsets to try for a bend, nearest first. The
+ *  pair must differ by enough that the kink actually blocks the sightline. */
+const DOGLEG_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 3], [0, -3], [-2.5, 2.5], [2.5, -2.5], [0, 4.5], [0, -4.5],
+];
+
+function corridorWidth(rand: () => number): number {
+  let roll = rand();
+  for (const [w, p] of CORRIDOR_WIDTHS) { roll -= p; if (roll <= 0) return w; }
+  return CORRIDOR_W;
+}
 
 /**
  * Build a complete floor out of polygon rooms.
@@ -199,6 +227,8 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const occupiedBoxes: Box[] = [];
   let cursor: Box = { x: 0, z: 0, w: 0, d: 0 };
   let heading: Dir = 'S';
+  /** roomId → the layout reservation for the path leading into it. See below. */
+  const placeholder = new Map<string, Box>();
 
   // Which spine slot each inline beat takes. Spread across the middle rather
   // than stacked at the front: the plan's beats are the floor's landmarks, and
@@ -224,6 +254,12 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     place(room, step.at.x, step.at.z);
     rooms.push(room);
     occupiedBoxes.push(room.rect, step.corridor);
+    // The placeholder is a LAYOUT reservation, not a corridor: it keeps other
+    // rooms out of the path between these two while boxes are being packed. The
+    // real corridor is computed later and is allowed to occupy that same space —
+    // so remember which pair it belongs to, or connect() will find its own
+    // reservation in the way and refuse every route that isn't dead straight.
+    placeholder.set(room.id, step.corridor);
     cursor = room.rect;
     heading = step.dir;
   }
@@ -231,11 +267,21 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // Dead-end pockets, off a middle room. Bonus exploration, and the shapes that
   // read best small (tomb, cavern) only ever appear here.
   const corridors: RoomSpec[] = [];
-  const links: Array<{ from: string; to: string; rect: Box }> = [];
+  // A LINK IS A LIST OF RECTS, not one. A dogleg is three, and every downstream
+  // reader — wall cutting, doorway finding, the light pass — has to see all of
+  // them or it will cut a doorway into the middle of a bend.
+  const links: Array<{ from: string; to: string; rects: Box[] }> = [];
+  const addLink = (from: string, to: string, id: string, rects: Box[]): void => {
+    rects.forEach((rect, k) => {
+      corridors.push({ id: rects.length > 1 ? `${id}-${k}` : id, rect, height: 3.0 });
+      occupiedBoxes.push(rect);
+    });
+    links.push({ from, to, rects });
+  };
   for (let i = 1; i < rooms.length; i++) {
-    const c = connect(rooms[i - 1], rooms[i]);
-    if (c) { corridors.push({ id: `cor-${i}`, rect: c, height: 3.0 });
-             links.push({ from: rooms[i - 1].id, to: rooms[i].id, rect: c }); }
+    const c = connect(rooms[i - 1], rooms[i], rand,
+                      occupiedBoxes.filter((o) => o !== placeholder.get(rooms[i].id)));
+    if (c) addLink(rooms[i - 1].id, rooms[i].id, `cor-${i}`, c);
   }
   // DEAD-END SPURS ARE OWED, NOT ROLLED. One per dedicated plan entry, plus a
   // spare when the floor asked for none — a floor with no detour at all is a
@@ -254,9 +300,10 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       place(pocket, g.at.x, g.at.z);
       rooms.push(pocket);
       occupiedBoxes.push(pocket.rect, g.corridor);
-      const cp = connect(parent, pocket) ?? g.corridor;
-      corridors.push({ id: `cor-p${p}`, rect: cp, height: 3.0 });
-      links.push({ from: parent.id, to: pocket.id, rect: cp });
+      placeholder.set(pocket.id, g.corridor);
+      addLink(parent.id, pocket.id, `cor-p${p}`,
+              connect(parent, pocket, rand,
+                      occupiedBoxes.filter((o) => o !== g.corridor)) ?? [g.corridor]);
       break;
     }
   }
@@ -483,30 +530,95 @@ function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; co
  * meant to cut. If the centre line misses the polygon (an ell's centre line can
  * exit through the missing quadrant), try lateral offsets before giving up.
  */
-function connect(a: Placed, b: Placed): Box | null {
+function connect(
+  a: Placed, b: Placed, rand: () => number, occupied: readonly Box[],
+): Box[] | null {
   const alongZ = Math.abs(a.rect.x - b.rect.x) < 0.01;
   if (!alongZ && Math.abs(a.rect.z - b.rect.z) >= 0.01) return null;
   const sign = alongZ ? Math.sign(b.rect.z - a.rect.z) : Math.sign(b.rect.x - a.rect.x);
-  // Lateral offsets to try, in order: dead centre first, then progressively
-  // further out. A room whose centre line has no wall on this side still has
-  // one somewhere along it.
   // The lateral is ABSOLUTE and SHARED. Measuring each room's exit from its own
   // `roomCenter` and then laying the corridor down at `rect.x` is two different
   // lines: a shape's centre of open floor is not its bounding box's centre, so
   // the corridor was built beside the wall it had measured and ended in stone.
   const base = alongZ ? a.rect.x : a.rect.z;
+  const width = corridorWidth(rand);
+
+  // A DOGLEG FIRST, SOMETIMES.
+  //
+  // A straight corridor between two rooms is a telescope: you stand in the
+  // doorway of one and read the whole of the next before you commit to it. That
+  // is the single thing that makes a procedural floor read as a diagram. Kink it
+  // and the room you are walking into is a surprise again.
+  //
+  // Worth noting this only became possible earlier this session: the three rects
+  // OVERLAP at their corners, and until `findOpenings` learned to open a wall
+  // line running through another rect's interior, the joints would have been
+  // sealed and the dogleg a dead end.
+  if (rand() < DOGLEG_CHANCE) {
+    const bent = dogleg(a, b, alongZ, sign, base, width, occupied);
+    if (bent) return bent;
+  }
+
+  // Straight. Lateral offsets in order: dead centre first, then progressively
+  // further out — a room whose centre line has no wall on this side still has
+  // one somewhere along it.
   for (const off of [0, 1.5, -1.5, 3, -3, 4.5, -4.5]) {
     const lat = base + off;
     const exitA = exitPoint(a, alongZ, sign, lat);
     const exitB = exitPoint(b, alongZ, -sign, lat);
     if (!exitA || !exitB) continue;
-    const OVERLAP = 0.9;                     // push into each room past its wall
     const t0 = Math.min(exitA.at, exitB.at) - OVERLAP;
     const t1 = Math.max(exitA.at, exitB.at) + OVERLAP;
     if (t1 <= t0) continue;
-    return alongZ
-      ? { x: lat, z: (t0 + t1) / 2, w: CORRIDOR_W, d: t1 - t0 }
-      : { z: lat, x: (t0 + t1) / 2, d: CORRIDOR_W, w: t1 - t0 };
+    return [alongZ
+      ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
+      : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }];
+  }
+  return null;
+}
+
+/**
+ * Three rects: a leg out of A, a cross piece, a leg into B — offset so you
+ * cannot see one room from the other.
+ *
+ * Returns null rather than forcing it. A dogleg sweeps sideways through space a
+ * straight run never touches, so it can collide with a room the layout already
+ * placed; when it does, the caller falls back to straight. Degrade, never fail.
+ */
+function dogleg(
+  a: Placed, b: Placed, alongZ: boolean, sign: number,
+  base: number, width: number, occupied: readonly Box[],
+): Box[] | null {
+  const mk = (lat: number, t0: number, t1: number, latSpan: number): Box => alongZ
+    ? { x: lat, z: (t0 + t1) / 2, w: latSpan, d: Math.abs(t1 - t0) }
+    : { z: lat, x: (t0 + t1) / 2, d: latSpan, w: Math.abs(t1 - t0) };
+
+  for (const [o1, o2] of DOGLEG_OFFSETS) {
+    const lat1 = base + o1, lat2 = base + o2;
+    const exitA = exitPoint(a, alongZ, sign, lat1);
+    const exitB = exitPoint(b, alongZ, -sign, lat2);
+    if (!exitA || !exitB) continue;
+    const tA = exitA.at, tB = exitB.at;
+    // The bend must have room to be a bend rather than a jog: two leg stubs and
+    // the cross piece between them.
+    if (Math.abs(tB - tA) < width + 3.5) continue;
+    const mid = (tA + tB) / 2;
+
+    const legA = mk(lat1, tA - sign * OVERLAP, mid + sign * (width / 2), width);
+    const legB = mk(lat2, mid - sign * (width / 2), tB + sign * OVERLAP, width);
+    // The cross piece runs BETWEEN the two laterals and overlaps both legs by
+    // half a width at each end, so the joints are interior rather than butted.
+    const cross = alongZ
+      ? { x: (lat1 + lat2) / 2, z: mid, w: Math.abs(lat2 - lat1) + width, d: width }
+      : { z: (lat1 + lat2) / 2, x: mid, d: Math.abs(lat2 - lat1) + width, w: width };
+
+    const parts = [legA, cross, legB];
+    // Nothing the layout already placed may be in the way. The two rooms this
+    // connects are excluded — the legs are SUPPOSED to reach into them.
+    const clash = parts.some((p) => occupied.some((o) =>
+      o !== a.rect && o !== b.rect && overlaps(o, p, 0.4)));
+    if (clash) continue;
+    return parts;
   }
   return null;
 }
@@ -539,24 +651,33 @@ function overlaps(a: Box, b: Box, pad: number): boolean {
  * inside this polygon, which is the point circulation has to be judged from.
  */
 function doorwaysOf(
-  r: Placed, links: ReadonlyArray<{ from: string; to: string; rect: Box }>,
+  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[] }>,
 ): Array<{ x: number; z: number }> {
   const out: Array<{ x: number; z: number }> = [];
   for (const l of links) {
     if (l.from !== r.id && l.to !== r.id) continue;
-    const c = l.rect;
-    const ends = c.w > c.d
-      ? [{ x: c.x - c.w / 2, z: c.z }, { x: c.x + c.w / 2, z: c.z }]
-      : [{ x: c.x, z: c.z - c.d / 2 }, { x: c.x, z: c.z + c.d / 2 }];
-    for (const e of ends) if (pointInPoly(r.poly, e.x, e.z)) out.push(e);
+    // Only the ends that land INSIDE this room are doorways. On a dogleg most
+    // ends are joints between two corridor rects, which are not doors.
+    for (const c of l.rects) {
+      const ends = c.w > c.d
+        ? [{ x: c.x - c.w / 2, z: c.z }, { x: c.x + c.w / 2, z: c.z }]
+        : [{ x: c.x, z: c.z - c.d / 2 }, { x: c.x, z: c.z + c.d / 2 }];
+      for (const e of ends) if (pointInPoly(r.poly, e.x, e.z)) out.push(e);
+    }
   }
   return out;
 }
 
-/** Where the player enters this room — used for sightline and ambush logic. */
-function mouthOf(r: Placed, links: ReadonlyArray<{ from: string; to: string; rect: Box }>): { x: number; z: number } | null {
+/** Where the player enters this room — used for sightline and ambush logic. The
+ *  DOORWAY, not the corridor's midpoint: on a dogleg the midpoint is round a
+ *  bend and metres outside the room. */
+function mouthOf(
+  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[] }>,
+): { x: number; z: number } | null {
+  const doors = doorwaysOf(r, links);
+  if (doors.length) return doors[0];
   const l = links.find((k) => k.to === r.id) ?? links.find((k) => k.from === r.id);
-  return l ? { x: l.rect.x, z: l.rect.z } : null;
+  return l ? { x: l.rects[0].x, z: l.rects[0].z } : null;
 }
 
 // ── furnishing, by query ─────────────────────────────────────────────────────

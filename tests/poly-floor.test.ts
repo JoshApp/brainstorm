@@ -175,11 +175,15 @@ test('THE STAIR CAN BE TAKEN', () => {
   }
 });
 
-test('a corridor meets the polygon, not the bounding box', () => {
-  // The generator's own precondition: a corridor whose end lands in the setback
-  // between the polygon and its rect cuts no wall and opens nothing. This is
-  // what made the doorways silently absent — the corridor was "connected" to a
-  // room it never touched.
+test('NO CORRIDOR END IS ORPHANED', () => {
+  // The generator's own precondition: an end that lands in blank space cuts no
+  // wall and opens nothing. That is what made the doorways silently absent —
+  // the corridor was "connected" to a room it never touched.
+  //
+  // "In a room OR in another corridor", because a connection is not always one
+  // rect. A dogleg is three — a leg, a cross piece, a leg — and its two interior
+  // joints are corridor-to-corridor by design. Asserting every end lands in a
+  // ROOM was right until bends existed and would now forbid them.
   for (const spec of floors()) {
     for (const c of spec.corridors) {
       const r = c.rect;
@@ -187,12 +191,42 @@ test('a corridor meets the polygon, not the bounding box', () => {
         ? [[r.x - r.w / 2, r.z], [r.x + r.w / 2, r.z]]
         : [[r.x, r.z - r.d / 2], [r.x, r.z + r.d / 2]];
       for (const [x, z] of ends) {
-        const inside = spec.rooms.some((rm) => rm.poly && pointInPoly(rm.poly, x, z));
-        assert.ok(inside,
-          `${spec.id}: corridor ${c.id} ends at (${x.toFixed(1)}, ${z.toFixed(1)}) — outside every room`);
+        const inRoom = spec.rooms.some((rm) => rm.poly && pointInPoly(rm.poly, x, z));
+        const inJoint = spec.corridors.some((o) => o !== c
+          && Math.abs(x - o.rect.x) <= o.rect.w / 2 + 0.01
+          && Math.abs(z - o.rect.z) <= o.rect.d / 2 + 0.01);
+        assert.ok(inRoom || inJoint,
+          `${spec.id}: corridor ${c.id} ends at (${x.toFixed(1)}, ${z.toFixed(1)}) — in nothing`);
       }
     }
   }
+});
+
+test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {
+  // The whole point of a dogleg. If the two legs shared a lateral it would be a
+  // straight corridor in three pieces — more geometry, same telescope.
+  let bends = 0;
+  for (const spec of floors()) {
+    const byLink = new Map<string, typeof spec.corridors>();
+    for (const c of spec.corridors) {
+      const m = /^(cor-p?\d+)-\d+$/.exec(c.id);
+      if (!m) continue;
+      byLink.set(m[1], [...(byLink.get(m[1]) ?? []), c]);
+    }
+    for (const [id, parts] of byLink) {
+      assert.equal(parts.length, 3, `${spec.id}: bend ${id} has ${parts.length} pieces, expected 3`);
+      bends++;
+      // The two LEGS run along the connecting axis; the cross runs across it.
+      // Their perpendicular offsets must differ, or nothing is blocked.
+      const legs = parts.filter((p) => p.rect.d > p.rect.w).length > 1
+        ? parts.filter((p) => p.rect.d > p.rect.w).map((p) => p.rect.x)
+        : parts.filter((p) => p.rect.w > p.rect.d).map((p) => p.rect.z);
+      const spread = Math.max(...legs) - Math.min(...legs);
+      assert.ok(spread > 1.5,
+        `${spec.id}: bend ${id}'s legs are only ${spread.toFixed(1)}m apart — you can see straight through`);
+    }
+  }
+  assert.ok(bends > 5, `only ${bends} bends across every sampled floor — the dogleg never fires`);
 });
 
 test('nothing is placed outside the room that owns it', () => {
