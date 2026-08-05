@@ -11,6 +11,42 @@ Last reconciled: 2026-08-05.
 
 ---
 
+## THE BUILD ORDER
+
+One ordered sequence across all four threads, so "what do we build" has a single
+answer. Reasons and alternatives are in the thread sections below; this is just
+the order and why each thing sits where it does.
+
+### Shipped 2026-08-05 (live on the phone)
+
+| | |
+|---|---|
+| **Fear + backstab** | inflictable morale, the bone-skull tell, and the loop: break poise from behind → it panics → its back is yours |
+| **Preloading** | CSG build cache (skeleton key 37ms → 2.2ms), CSG specs warmed at boot, a boot bar that stopped measuring a quarter of the wait |
+| **Prop claims** | rooms stopped contradicting themselves — 0 arguing rooms at every depth, was 40/220 at depth 3 |
+
+### Next, in order
+
+| # | What | Why here |
+|---|---|---|
+| **1** | **#137 — make the existing height visible** | Needs no new system and no more decisions. Elevation already runs; it just arrives as a 4° ramp in fog. Step the ramps, open ledges with a drop point, let a 1.2m drop be a drop. You feel it immediately. |
+| **2** | **`delve floor-report`** | Every finding today came from a throwaway script. Three significant ones in a day from tooling that doesn't exist — print what a floor actually contains (elevation spread, shapes, claims, cycle count) so the next one isn't luck. |
+| **3** | **#138 — cycles in the floor plan** | The strongest idea in the survey and the cheapest. Our plan is a chain; one loop costs a graph edge, not a system. Gives shortcuts, two-way ambushes, rooms re-entered from a new side. |
+| **4** | **#131 — polygon rooms** | The big one. Shape grammar, voids as polygon ops, circulation-first masses. Ships in `LEVEL-ARCHITECTURE.md` §8.5 order — polygon room FIRST and alone, because the point is to *look* at a non-blocky room. |
+| **5** | **#139 — plates inside rooms** | After #131: a plate is a sub-polygon, so doing it on rectangles builds it twice. Overlook, sunken pit, dais. |
+| **6** | **#135 / #136 — chasms as a weapon, falling** | Weapon-weighted shove; falling to the next floor hurt. Shares machinery with the ledge drop from step 1. |
+| **7** | **#132 — combination simulator** | The gate on all weapon content. Build before authoring a single relic. |
+| **8** | **#133 — wear-or-feed slice** | One basin, one weapon, three foods, no menu — and all three must visibly change the model. |
+
+### The two open questions that need Josh
+
+- **Does feeding a relic consume it permanently?** I lean strongly yes. Still
+  unanswered, and it decides whether the weapon economy is real or a formality.
+- **Does the polygon-room silhouette look right?** Unanswerable until step 4 puts
+  a snap in front of you — which is why #131 ships the shape alone first.
+
+---
+
 ## The four active threads
 
 Everything below is one of these. If a new idea doesn't fit one, that's worth
@@ -68,6 +104,11 @@ placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
   for two answers at one point, so they're a finer lookup in a field that exists.
   A true mezzanine needs a layer index through eight systems, for a floor we
   can't fight on anyway. Most things that LOOK like a second level are plates.
+- **Ledges: you can drop, deliberately, never accidentally** (`PROCGEN-RESEARCH.md`
+  §7). The rail is a blocker; a marked GAP is the only way over. This is a phone
+  game with a thumbstick — backing off an edge you couldn't see is unforgivable.
+  The drop buys a shortcut, and it turns the overlook into a real decision: stairs
+  put you at the room's edge, the drop puts you in its middle.
 - **Height is something you SEE and DESCEND, not something you FIGHT ACROSS.**
   Combat is deliberately 2D and doors seal on combat; embrace that. The best
   vertical moment available is the OVERLOOK — enter on a ledge, see the room

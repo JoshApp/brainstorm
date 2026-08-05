@@ -369,3 +369,57 @@ for a mezzanine we cannot fight on anyway.
 If we ever want kind 3, the natural stepping stone is the chasm work (#135/#136) —
 once falling and rims are real, a walkable lower level is the next question, and
 we'll know a lot more about whether it earns its cost.
+
+---
+
+## 7. Can you fall off a ledge?
+
+Yes — **deliberately, never accidentally.** A ledge is a one-way door you take on
+purpose, not a hazard you slip off.
+
+### Why not free-fall anywhere along the edge
+
+This is a **phone game played with a thumbstick and a first-person camera**.
+Backing away from something while looking at it and dropping off an edge you
+couldn't see is the single most infuriating thing this control scheme can produce,
+and no amount of atmosphere pays for it. So the ledge rail is a **blocker** — walk
+into it and you stop, exactly like a wall.
+
+### The drop point
+
+Somewhere along the rail there is a **gap** — a broken section, a collapsed
+balustrade — and that gap is the only place you can go over. It reads as an
+opening, it is narrow enough that you have to aim for it, and going through it is
+an act you chose. Same grammar as every other commitment in the game.
+
+Cost: a small amount of HP past about 2m, nothing below that. Souls does exactly
+this and the reason is legibility — a free drop teaches you the world is safe, and
+a lethal one teaches you never to explore.
+
+### Why allow it at all — three things it buys
+
+1. **It is a SHORTCUT**, which is the loop-closing payoff the cyclic-generation
+   research (§2) says makes dungeons feel designed. Dropping in means you skipped
+   the stairs. That is the Dark Souls shortcut feeling, generated rather than
+   authored.
+2. **It gives the overlook a DECISION.** You are standing above a room you can
+   see into. Stairs are slow, safe, and put you at the room's *edge*. The drop is
+   fast and puts you in its *middle* — surrounded, but you skipped the approach.
+   Two genuinely different entries to the same fight, from geometry alone.
+3. **It is the same machinery as falling into a chasm** (#136 — you fall to the
+   next floor, hurt). Both are "commit to a drop, take damage, arrive somewhere
+   you didn't walk to." Building one builds most of the other.
+
+That second point is the real prize. It's the rare case where a *view* becomes a
+*choice*, and it costs one gap in a rail.
+
+### What we are NOT doing yet: shoving mobs off ledges
+
+Tempting — it pairs with the chasm shove (#135) — but it collides with the
+invariant that keeps elevation cheap: **one combat plate per room.** A mob shoved
+off a ledge lands on a different plate mid-fight, and "which plate is this fight
+on" is a question the combat system currently never has to ask.
+
+Shoving mobs into **voids** (#135) has no such problem, because they die — they
+leave the fight rather than relocating within it. So: voids yes, ledges later, and
+only once there's a reason worth the complexity.
