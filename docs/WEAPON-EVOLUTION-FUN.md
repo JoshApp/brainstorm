@@ -159,3 +159,157 @@ reliquary permanently?**
 
 I lean strongly yes. But that's the lever that decides whether this is a real
 economy or a formality, and it's worth being deliberate about.
+
+---
+
+# Part II — wear or feed (2026-08-05)
+
+Josh, thinking out loud, landed the spine this was missing. Recording it before
+it gets paraphrased into something weaker.
+
+> *"What if we make the game about finding things that are active on you — relics
+> — and you can use these to feed, refine, craft your weapon. What if we make a
+> system that also visibly alters the model. What if you can transform your sword
+> if you feed it the Boiling King's relic — either adding effect or taking form.
+> Like Isaac but with the weapon, where you actively decide which pieces to give
+> up and which to have as trinkets on you."*
+
+## 7. The spine: every relic is a fork
+
+**Every relic you find can be WORN or FED.** That is the entire economy.
+
+- **Worn** — it takes a slot and gives you its effect now. Swappable later.
+- **Fed** — the effect is gone forever and the weapon changes permanently.
+
+One decision, repeated all run, and hard every single time.
+
+Why this is right and the earlier framing wasn't:
+
+- **It answers Josh's own objection.** He said "limited active trinkets, but
+  inventory management isn't the most fun thing" — and he's right, that's a
+  spreadsheet. Wear-or-feed has *no bag to manage*. There are two doors and you
+  pick one. The decision is the content.
+- **Loss aversion does the work a price tag never could** (§3). You're not
+  spending currency, you're giving up a thing you already have and can see.
+- **It makes weapon DROPS interesting again.** A blank blade stops being "worse
+  than mine" and becomes an empty stomach — a chance to build a different eater.
+- **It's Isaac's devil-deal**, except recurring and authored by the player rather
+  than offered by the game.
+
+## 8. TAKING FORM is the thing only we can build
+
+Feeding should be able to do two different sizes of thing:
+
+- **ADD** — a scar (the shipped S0 data model): a stat or effect change, plus a
+  small visible addition to the model.
+- **TAKE FORM** — rarer and much bigger: the weapon *becomes* something. New
+  silhouette, new name, a moveset trait. **Boss relics should always be this.**
+
+The second one is the whole pitch, and it is worth being explicit about why it's
+available to us and not to a normal team of this size:
+
+**Our models are code-generated `ModelSpec`s with named slots and intent
+anchors.** A weapon that grows the Boiling King's crown along its pommel is a
+*spec transformation* — a part appended at a named anchor, a material swapped, a
+silhouette re-proportioned. It is not an art request. The combinatorics that
+would make this ludicrous to hand-author (Josh's word, and correct) are the exact
+thing a spec transformation gets for free.
+
+That is the "couldn't be done before" instinct, and it's real. The authoring
+model in CLAUDE.md was built for this without knowing it.
+
+## 9. Is this the Monster Hunter fantasy? Partly — and the difference matters
+
+Monster Hunter is a **known target**: you can see the armour set, you farm the
+monster, you get it. That's a completion loop, it's deeply satisfying, and it
+needs session lengths and a persistent character we do not have.
+
+What's described here is the opposite: **you don't know what you'll get, and the
+run ends.** That's much closer to **Isaac's synergy discovery wearing a Souls
+coat** — which is a better description of the game we're actually building, and a
+more useful one, because it tells you what to optimise:
+
+> **Optimise for surprise per run, not progress toward a goal.**
+
+The MH *feeling* we want to keep is narrower and worth naming: **your weapon is
+visibly made of what you killed.** Keep that. Drop the grind that normally
+delivers it.
+
+## 10. The authoring problem, and the thing to build FIRST
+
+Josh:
+
+> *"We have the ability to author content but it can suck, as we said yesterday,
+> so we need like a baseline testing system that can mechanically simulate
+> combinations and see what they do, as well as a ruleset to author fun things
+> that aren't just catchphrases but actually fun."*
+
+This is the correct instinct and it should be built **before a single new relic
+is authored**. DESIGN-METHOD §6 already records that "make some cool relics"
+reliably produces overpowered or boring ones; the fix is not to try harder.
+
+`content/scars.ts` already has half of it — a ceiling audit that imports the real
+`composeStrikeDamage` rather than re-inlining the math (DESIGN-METHOD §2). What's
+missing is the **combination simulator**:
+
+> For every (weapon class × food) pair, resolve the actual outcome through the
+> REAL stat pipeline, and report the distribution: outliers above the ceiling,
+> dead cells that change nothing, and pairs that collapse into each other.
+
+Three things that report gives you that no amount of care gives you:
+
+- **outliers** — the 11-damage dagger, caught before a player finds it
+- **dead cells** — the boring ones, which are the actual enemy here
+- **duplicates** — two foods that produce the same feel, i.e. wasted content
+
+And it is what makes an LLM content layer *safe*: **the LLM proposes, the
+simulator disposes.**
+
+## 11. On the background LLM graph — a caution and a better shape
+
+Josh:
+
+> *"We could use the LLM layer to author content in the background and make a
+> graph of interactions and combinations and evolutions the player can discover,
+> while maybe it not being a crafting recipe."*
+
+The caution: **a precomputed graph of combinations IS a recipe list**, just with
+more nodes. §4 of this document already records why that's death — recipe lists
+get solved once, published, and then it's shopping again. Precomputing it doesn't
+change what it is.
+
+What saves the idea is a rule already written down in §4.1: **the result depends
+on the WEAPON, not just the food.** That turns the graph into a small matrix —
+
+```
+weapon class  ×  food domain  →  outcome
+```
+
+— which is a couple of dozen cells rather than a combinatorial explosion, is
+auditable by the simulator above, and stays *unsolvable in practice* because a
+player only ever sees a handful of cells per run.
+
+So the division of labour, which also keeps CLAUDE.md's runtime-LLM line exactly
+where it is:
+
+| | Who | Why |
+|---|---|---|
+| **Mechanics** | deterministic matrix, audited by the simulator | fair play, offline, cacheable, no latency |
+| **Form** (the spec transformation) | LLM, at build time | combinatorics no human should author |
+| **Name + flavour** | LLM | it's the narration layer's actual job |
+
+The LLM never decides a number. It decides what the thing *looks like* and what
+it's *called* — which is where it's strongest and where determinism doesn't
+matter.
+
+## 12. The smallest thing that proves it
+
+§5 said: one basin, one weapon, three foods, no menu. That still holds, with one
+upgrade that raises the stakes usefully:
+
+> **All three foods must visibly change the model.**
+
+Not a stat line, not a buff icon. You feed the blade and the blade is different
+when you look at it. If that lands on the phone, everything after is content
+authoring. If it doesn't, no amount of taxonomy would have told us — and we'd
+have found out for the price of a day.
