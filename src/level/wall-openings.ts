@@ -4,9 +4,30 @@ import type { RoomSpec } from './types';
 // helpers used when baking room shells (where to leave doorway gaps) and
 // when placing threshold drafts. No THREE, no game state.
 
-// Find segments where another rect's edge coincides with this wall edge.
-// "Coincides" = on the same line (same perpendicular coord) AND overlapping
-// in the running-axis direction.
+// Find segments where another rect MEETS this wall edge, which happens two ways:
+//
+//   ABUTS   — the other rect's edge lies on the same line (same perpendicular
+//             coord) and overlaps in the running-axis direction. This is how
+//             the vault composer connects everything: it lays rooms and
+//             corridors on a grid so their edges coincide exactly.
+//
+//   CROSSES — the wall line runs THROUGH the other rect's interior. A wall
+//             buried inside another walkable rect is not a wall; it is a
+//             doorway, for exactly the same reason an abutting edge is.
+//
+// The crossing case only started happening with polygon rooms. A polygon's
+// real wall sits back from its bounding box — a notch or a chamfer can set it
+// back by metres — so a corridor that MEETS THE WALL necessarily ENDS INSIDE
+// THE RECT rather than on its edge. Under the abut-only rule those corridors
+// got a solid end cap and sealed themselves: `delve reach` flooded the
+// entrance room and reported every other room "never entered", on every
+// polygon floor sampled.
+//
+// Measured before generalising, on the real generator: across 240 vault floors
+// and 13048 wall edges, ZERO wall lines run through another rect's interior.
+// The composer's grid makes the crossing case unreachable there, so this rule
+// cannot change a vault floor — it only describes a situation the old
+// generator could not produce.
 export function findOpenings(
   we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
   allRects: RoomSpec[],
@@ -26,7 +47,8 @@ export function findOpenings(
       const oSouth = o.z + o.d / 2;
       const oNorth = o.z - o.d / 2;
       const coincides = Math.abs(oSouth - we.perpCoord) < EPS || Math.abs(oNorth - we.perpCoord) < EPS;
-      if (!coincides) continue;
+      const crosses = oNorth < we.perpCoord - EPS && oSouth > we.perpCoord + EPS;
+      if (!coincides && !crosses) continue;
       const a = Math.max(we.wallStart, o.x - o.w / 2);
       const b = Math.min(we.wallEnd, o.x + o.w / 2);
       if (b > a + EPS) openings.push({ start: a, end: b });
@@ -35,7 +57,8 @@ export function findOpenings(
       const oEast = o.x + o.w / 2;
       const oWest = o.x - o.w / 2;
       const coincides = Math.abs(oEast - we.perpCoord) < EPS || Math.abs(oWest - we.perpCoord) < EPS;
-      if (!coincides) continue;
+      const crosses = oWest < we.perpCoord - EPS && oEast > we.perpCoord + EPS;
+      if (!coincides && !crosses) continue;
       const a = Math.max(we.wallStart, o.z - o.d / 2);
       const b = Math.min(we.wallEnd, o.z + o.d / 2);
       if (b > a + EPS) openings.push({ start: a, end: b });

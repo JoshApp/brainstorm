@@ -60,7 +60,11 @@ async function main() {
     const page = await (await browser.newContext({ viewport: { width: 800, height: 400 } })).newPage();
     page.on('console', (m: ConsoleMessage) => { if (m.type() === 'error') console.log(`  [browser error] ${m.text()}`); });
     page.on('pageerror', (e) => console.log(`  [browser pageerror] ${e.message}`));
-    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=1&seed=${seed}&depth=${depth}&freeze=false`;
+    // --q=a=1&b=2 passes extra URL params through, so a generator flag (e.g.
+    // --q=polyfloors=1) can be reachability-checked without a bespoke option.
+    const extraQ = argv.find((a) => a.startsWith('--q='))?.slice(4);
+    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=1&seed=${seed}&depth=${depth}&freeze=false`
+      + (extraQ ? `&${extraQ}` : '');
     console.log(`reach — seed ${seed} depth ${depth}\n${url}\n`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
     await page.waitForFunction(() => Boolean((window as { harness?: unknown }).harness), { timeout: 10_000 });

@@ -42,8 +42,11 @@ import { buildPolyDressing } from './poly-dressing';
 // rectangle standing next to real masonry, which is a worse look than the shape
 // is a better one.)
 
-/** Wall thickness in metres — matches the visual weight of the rect shell. */
-const WALL_T = 0.25;
+/** Wall thickness in metres — matches the visual weight of the rect shell.
+ *  Exported so an audit can plan the SAME ring this builds rather than a copy
+ *  of it: a connectivity check that guesses the thickness is measuring its own
+ *  guess (docs/DESIGN-METHOD.md). */
+export const WALL_T = 0.25;
 /** Floor triangles get subdivided until no edge is longer than this. Baked AO
  *  and every contact darkening in the game are PER-VERTEX; a raw ShapeGeometry
  *  is a dozen huge triangles, so the darkening either vanishes or smears across

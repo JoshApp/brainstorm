@@ -25,7 +25,14 @@ import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, typ
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
+import { generatePolyFloor } from './poly-floor';
 import { densityMultiplier, type ResolvedPaletteV1 } from './palette';
+
+/** Content flag: build floors from polygon rooms instead of ASCII vaults. */
+function usePolyFloors(): boolean {
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('polyfloors') === '1';
+}
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -417,6 +424,22 @@ export function generateFloor(
   nextLevelIdOverride?: string,
 ): LevelSpec {
   const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
+
+  // ── POLYGON FLOORS (preview) ────────────────────────────────────────
+  // `?polyfloors=1` swaps the vault composer for level/poly-floor.ts, which
+  // builds a floor out of SHAPES and places its content by asking each room
+  // rather than by stamping a tilemap. It is a CONTENT flag, not a cheat — it
+  // grants nothing, it changes what gets generated — so it lives outside the
+  // DEV gate the way `?content=dev` does, and can be walked on the live site.
+  //
+  // NOT the default, and honestly so: the new generator has no boss floors, no
+  // shops, no arenas and no floor-plan contract (the trove/bargain slots that
+  // carry the run's economy). Defaulting to it today would generate a dungeon
+  // with nothing in it to want. Those move across one at a time.
+  if (usePolyFloors() && !isBossDepth(depth)) {
+    return generatePolyFloor(depth, runSeed);
+  }
+
   const rand = rng(seedForFloor);
   // Seed the build stream BEFORE composeFloor — vault-compose → parseTileMap
   // bakes corpse rotation + wall-fixture rolls into the spec, and those must

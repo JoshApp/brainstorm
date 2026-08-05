@@ -170,7 +170,7 @@ switch (cmd) {
   case 'reports': delegate('reports'); break;
   case 'repro': delegate('repro'); break;
   case 'check': check(Number(rest[0]), Number(rest[1] ?? 1)); break;
-  case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1']); break;
+  case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1', ...rest.slice(2)]); break;
   case 'weapons': weapons(); break;
   case 'bench': delegate('bench'); break;
   case 'art': delegate('art'); break;
