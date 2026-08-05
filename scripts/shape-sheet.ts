@@ -8,7 +8,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import {
-  ARCHETYPES, generateRoomShape, polyArea, polyBounds, type Poly,
+  ARCHETYPES, ceilingFor, generateRoomShape, polyArea, polyBounds, type Poly,
 } from '../src/level/room-shape';
 
 /** Deterministic PRNG so a sheet is reproducible and two runs are comparable. */
@@ -22,11 +22,11 @@ function mulberry(seed: number): () => number {
   };
 }
 
-const COLS = 6;              // one column per archetype
+const COLS = 10;             // one column per archetype
 const ROWS = 4;              // four samples each
-const CELL = 190;            // px per cell
+const CELL = 168;            // px per cell
 const PAD = 26;
-const SCALE = 6.2;           // px per metre
+const SCALE = 5.4;           // px per metre
 
 const W = COLS * CELL + PAD * 2;
 const H = ROWS * CELL + PAD * 3 + 30;
@@ -35,7 +35,7 @@ const parts: string[] = [];
 parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
 parts.push(`<rect width="${W}" height="${H}" fill="#0b0908"/>`);
 parts.push(`<text x="${PAD}" y="${PAD + 4}" fill="#c8bfa8" font-family="Georgia,serif" font-size="15">` +
-  `DELVE — room shape v2 · polygon floors from the archetype grammar</text>`);
+  `DELVE — room shape v2 · polygon floors + derived ceilings, ten archetypes</text>`);
 
 let idx = 0;
 for (let r = 0; r < ROWS; r++) {
@@ -47,7 +47,8 @@ for (let r = 0; r < ROWS; r++) {
     // median room ~60m², p90 ~120m². So 8-16m by 6-13m.
     const w = 8 + rand() * 8;
     const d = 6 + rand() * 7;
-    const poly: Poly = generateRoomShape(kind, { w, d, rand, chamfer: 1.1 });
+    const poly: Poly = generateRoomShape(kind, { w, d, rand });
+    const ceil = ceilingFor(kind, w, d, rand());
 
     const ox = PAD + c * CELL + CELL / 2;
     const oy = PAD + 30 + r * CELL + CELL / 2;
@@ -62,7 +63,7 @@ for (let r = 0; r < ROWS; r++) {
         parts.push(`<circle cx="${(ox + (x - cx) * SCALE).toFixed(1)}" cy="${(oy + (z - cz) * SCALE).toFixed(1)}" r="1.8" fill="#d98b3a"/>`);
       }
       parts.push(`<text x="${ox}" y="${oy + CELL / 2 - 16}" fill="#6f6759" font-family="monospace" font-size="10" text-anchor="middle">` +
-        `${polyArea(poly).toFixed(0)}m² · ${poly.length}v</text>`);
+        `${polyArea(poly).toFixed(0)}m² · ${poly.length}v · ${ceil.height}m high</text>`);
     }
     if (r === 0) {
       parts.push(`<text x="${ox}" y="${PAD + 26}" fill="#d98b3a" font-family="Georgia,serif" font-size="13" text-anchor="middle">${kind}</text>`);
