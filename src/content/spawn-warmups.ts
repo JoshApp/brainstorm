@@ -231,6 +231,45 @@ for (const item of Object.values(ITEMS)) {
   });
 }
 
+// CSG MODELS — the one place where BUILDING, not compiling, is the cost.
+//
+// Everything else on this page warms a PIPELINE: a material on a tiny dummy, no
+// build, because buildCreature/buildModel is the heavy part we deliberately keep
+// out of the warm. A boolean is the exception. Measured 2026-08-05: the skeleton
+// key (a skull with two sockets subtracted) costs ~107ms on its first build and
+// ~37ms on every one after — so the first key the dungeon ever paid you froze a
+// frame, and every key after it dropped another. build-model's CSG_CACHE takes
+// the repeats to ~2ms; this takes the FIRST one behind the loading veil, which is
+// the whole point of having a veil.
+//
+// DETECTED, NOT LISTED. A hand-written list is how the last audit of this missed
+// the key entirely — a walker that only followed `children` never saw that CSG
+// operands live under `a`/`b`. So this walks every value of every object and asks
+// one question, which stays true however the spec shape grows. That matters
+// doubly here: the content layer authors these specs, and a warm it has to
+// remember to opt into is a warm that silently rots.
+function containsCsg(node: unknown, depth = 0): boolean {
+  if (depth > 12 || node === null || typeof node !== 'object') return false;
+  if ((node as { kind?: string }).kind === 'csg') return true;
+  for (const v of Object.values(node as Record<string, unknown>)) {
+    if (containsCsg(v, depth + 1)) return true;
+  }
+  return false;
+}
+
+for (const item of Object.values(ITEMS)) {
+  const specs = [item.dropModel, item.viewmodel].filter((s) => s && containsCsg(s));
+  if (!specs.length) continue;
+  registerWarmup({
+    label: `csg:${item.id ?? item.name}`, live: true,
+    // Nothing is added to the scratch scene: the work IS the build, banked into
+    // build-model's CSG_CACHE. The pipelines these models need are already
+    // covered by the item/viewmodel material warms above.
+    spawn: () => { for (const s of specs) { try { buildModel(s!); } catch { /* a bad spec is its own bug */ } } },
+    clear: () => {},
+  });
+}
+
 // WEAPON VIEWMODELS — the held first-person models. Built ONLY on equip and NOT
 // covered by the drop-model warm above (a viewmodel differs from its drop
 // model, e.g. the wand's arcane orb + halo). So switching weapons compiled their

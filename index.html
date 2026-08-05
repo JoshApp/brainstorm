@@ -139,8 +139,11 @@
         animation: boot-pulse 1.5s ease-in-out infinite;
       }
       @keyframes boot-pulse { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.85; } }
-      /* Warmup progress bar — driven by main.ts setBootProgress() while the roster
-         compiles. Hidden until the first update so fast/cached boots never flash it. */
+      /* Boot progress bar — driven by ui/boot-progress.ts across ALL FOUR boot
+         phases (see that file for why it used to cover only one of them). Visible
+         from first paint at zero: the boot is never instant, so there is nothing
+         to protect against flashing, and a bar that appears late is a bar the
+         player catches already part-filled. */
       #boot-loading .boot-bar {
         width: min(220px, 50vw); height: 2px; margin-top: 4px;
         background: rgba(255, 150, 80, 0.1); overflow: hidden;
@@ -203,7 +206,10 @@
       <div class="boot-ember"></div>
       <div class="boot-mark">DELVE</div>
       <div class="boot-sub">descending</div>
-      <div class="boot-bar"><div class="boot-bar-fill"></div></div>
+      <!-- `on` from first paint: JS module evaluation is ~2s of real boot time that
+           the player used to spend looking at a veil with no bar on it. The bar is
+           part of the veil, not a thing that appears later. -->
+      <div class="boot-bar on"><div class="boot-bar-fill"></div></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -883,10 +883,38 @@ function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec
 // Sprite, a Group, a no-op Object3D from a too-short shape), the build
 // throws — the spec is bad data and crashing early is the right
 // failure mode.
+// CSG RESULT CACHE — the boolean is the single most expensive thing in the whole
+// model builder and it is a PURE FUNCTION of its spec node.
+//
+// Measured 2026-08-05 across all 107 item drop models: the entire set builds in
+// ~250ms cold and ~100ms warm, and ONE model — the skeleton key, a skull with
+// two sockets subtracted — accounts for 37ms of the warm figure by itself. Keys
+// drop constantly, so that was a dropped frame every time the dungeon paid you.
+//
+// Spec nodes are module-level constants, so object identity is a stable key and
+// a WeakMap costs nothing for specs that are never built. We hand out a CLONE
+// rather than the cached geometry itself: a clone is a typed-array copy
+// (microseconds) against a 37ms BVH boolean, and sharing the instance would let
+// any downstream merge/dispose reach back into every other build of that spec —
+// the exact aliasing class as the sprite-geometry crash that took out ember
+// pickups. The saving is the boolean, not the bytes.
+const CSG_CACHE = new WeakMap<object, THREE.BufferGeometry>();
+
 function buildCsg(
   part: Extract<PartSpec, { kind: 'csg' }>,
   materials: Map<string, THREE.Material>,
 ): THREE.Mesh {
+  const cached = CSG_CACHE.get(part);
+  if (cached) {
+    const mesh = new THREE.Mesh(cached.clone(), materials.get(part.mat)!);
+    // Reveal attributes are stamped per build, not cached, so a spec reused
+    // under a different material still gets that material's reveal colours.
+    const rev = revealOf(mesh.material as THREE.Material);
+    if (rev) setRevealAttributes(mesh.geometry, rev);
+    mesh.castShadow = part.castShadow ?? curShadow.cast;
+    mesh.receiveShadow = part.receiveShadow ?? curShadow.receive;
+    return mesh;
+  }
   const a = buildPart(part.a, materials);
   const b = buildPart(part.b, materials);
   // Authored transforms for the operands — the caller's main loop applies
@@ -922,6 +950,10 @@ function buildCsg(
   // Replace the result's material with the CSG spec's chosen one and
   // free the operand geometries — they're no longer referenced.
   result.material = materials.get(part.mat)!;
+  // Bank the boolean BEFORE the reveal stamp — the geometry is what's expensive
+  // and material-independent; the reveal colours belong to whichever material
+  // this particular build used.
+  CSG_CACHE.set(part, result.geometry.clone());
   // The evaluator only carries position/uv/normal through the boolean — a
   // reveal material's per-vertex aReveal* attributes are lost, and a later
   // same-material merge (mergeRigidSegments) rejects the mixed attribute

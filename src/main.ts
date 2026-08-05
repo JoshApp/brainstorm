@@ -167,7 +167,9 @@ import { createXpGoldHud } from './ui/xp-gold-hud';
 import { setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
 import { initVideoSettings, applyVideoSettings } from './scene/video-settings';
-import { setBootProgress, hideBootLoading, armBootVeilSafetyNet, bootVeilHeartbeat } from './ui/boot-veil';
+import { hideBootLoading, armBootVeilSafetyNet, bootVeilHeartbeat } from './ui/boot-veil';
+import { bootPhase, reportBootTimeline } from './debug/boot-timeline';
+import { beginBootProgress, enterBootPhase, bootPhaseProgress, endBootProgress } from './ui/boot-progress';
 import { initFrameLoop, startFrameLoop, isFixedStepLoop } from './engine/frame-loop';
 import { installDevHooks } from './debug/dev-hooks';
 import { mountLuxButtonIfEnabled } from './debug/lux-button';
@@ -1849,7 +1851,7 @@ if (handleDebugScreenFlags()) {
   // Wait until pipeline compiling has SETTLED (the scene rendered everything it's going to)
   // or maxMs elapses. DEV uses the compile guard's total (precise); prod has no counter, so
   // a fixed ~1.5s budget gives the title time to render. requestAnimationFrame-paced.
-  async function settleCompiles(maxMs: number): Promise<void> {
+  async function settleCompiles(maxMs: number, onProgress?: (t: number) => void): Promise<void> {
     const stats = (window as unknown as { __compileStats?: () => { total: number } }).__compileStats;
     const start = performance.now();
     let last = -1, stable = 0;
@@ -1859,6 +1861,12 @@ if (handleDebugScreenFlags()) {
       // Frames ticking while we wait for compiles = the boot is alive, not
       // stranded — keep the veil watchdog from tearing down mid-warm.
       bootVeilHeartbeat();
+      // A WAIT still owes the player a moving bar. This phase has no countable
+      // work, so it reports elapsed-against-its-own-budget: honest, because the
+      // budget IS its worst case, and settling early just hands the remainder of
+      // the slice to the next phase (boot-progress is monotonic, so the bar
+      // jumps forward rather than stalling).
+      onProgress?.(Math.min(1, (performance.now() - start) / maxMs));
       if (stats) {
         const t = stats().total;
         if (t === last) { if (++stable >= 12) return; } else { stable = 0; last = t; }
@@ -1866,17 +1874,36 @@ if (handleDebugScreenFlags()) {
     }
   }
 
+  /** Creep the current boot phase's bar across `budgetMs` while awaited work
+   *  that can't report progress (presented-frame waits) runs. Stop() when done. */
+  function creepPhaseProgress(budgetMs: number): { stop: () => void } {
+    const start = performance.now();
+    let live = true;
+    const tick = (): void => {
+      if (!live) return;
+      bootPhaseProgress(Math.min(1, (performance.now() - start) / budgetMs));
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return { stop: () => { live = false; } };
+  }
+
   // Compile the whole roster at BOOT, behind the loading veil — against the title
   // vignette (a real fogged dungeon scene with the live PSX pipeline), so the pipelines
   // match the in-game render state. Held here so the menu only appears once warm: the
   // first DESCEND is then instant (the floor warmup's `done` guard makes it a no-op).
   async function bootWarm(): Promise<void> {
+    // The bar spans ALL THREE phases now, revealed at zero from the first beat —
+    // see ui/boot-progress.ts for why it used to cover only the middle one and
+    // therefore appeared to start most of the way along.
+    bootPhase('title-settle');
+    enterBootPhase('title-settle');
     // Let the title vignette (a real fogged dungeon floor) BUILD + RENDER + fully COMPILE its
     // floor / wall / decor pipelines behind the veil — the descend floor + in-game safe rooms
     // reuse them. The title loads async + its decor compiles over several frames, so wait until
     // the compile count SETTLES (DEV: the guard's total stable; prod: a fixed ~1.5s budget),
     // capped at 4s. Without this the title compiles when the MENU appears (a menu hitch).
-    await settleCompiles(4000);
+    await settleCompiles(4000, bootPhaseProgress);
     // Let the boot veil + loading bar paint before the warm blocks the thread (else boot looks frozen).
     await yieldToCover();
     const _t0 = performance.now();
@@ -1885,8 +1912,10 @@ if (handleDebugScreenFlags()) {
     // the reveal timeout). Pipelines compile lazily instead; only used for
     // headless self-verify snaps, never a normal boot.
     const skipWarm = new URLSearchParams(location.search).get('nowarm') === '1';
+    bootPhase('roster-warm');
+    enterBootPhase('roster-warm');
     if (!skipWarm) {
-      try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
+      try { await runWarmupPassWebGPU(renderer, scene, camera, bootPhaseProgress); } catch { /* best-effort */ }
     }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
     // CLEAN FRAME before the veil drops — two layers, because the artifact
@@ -1898,12 +1927,35 @@ if (handleDebugScreenFlags()) {
     //  2. Then wait for two REAL presented frames (rAF ticks alone don't
     //     prove a submit under the frame cap) so the canvas provably shows
     //     the settled title, never the last warm frame.
+    bootPhase('clean-frames');
+    enterBootPhase('clean-frames');
+    // The presented-frame waits can't report progress, so creep the slice across
+    // this phase's worst case (1500 + 2000 + 1000) while they run.
+    const creep = creepPhaseProgress(4500);
     await waitForPresentedFrames(2, 1500);
     await settleCompiles(2000);
     await waitForPresentedFrames(2, 1000);
+    creep.stop();
+    endBootProgress();
+    reportBootTimeline();
   }
 
+  // Start the bar HERE, not inside bootWarm — the update check and the title
+  // mount are real boot time (measured at 4.7s headless) that the player spent
+  // staring at a veil with no bar on it at all. Revealed at zero from the first
+  // beat so its 0.4s fade-in overlaps the START of the wait.
+  beginBootProgress();
+  bootPhase('boot-gate');
+  enterBootPhase('boot-gate');
+  const gateCreep = creepPhaseProgress(3000);
   awaitBootUpdate()
-    .then(async (updating) => { if (!updating) { await mountTitleScene(); await bootWarm(); hideBootLoading(); openTitle(); } })
+    .then(async (updating) => {
+      if (updating) return;                 // reloading for a new build; the veil holds
+      await mountTitleScene();
+      gateCreep.stop();
+      await bootWarm();
+      hideBootLoading();
+      openTitle();
+    })
     .catch(() => { void mountTitleScene().then(() => { hideBootLoading(); openTitle(); }); });
 }
