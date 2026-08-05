@@ -255,3 +255,117 @@ rectangles would be building the thing twice.
 [multi]: https://www.researchgate.net/publication/396108479_Extending_Recursive_Backtracking_for_Procedural_Generation_of_Interconnected_Rooms_and_Staircases_in_Multi-Level_3D_Dungeon_Layouts
 [ldb]: https://book.leveldesignbook.com/process/layout/flow/verticality
 [vert]: https://salivity.github.io/game-development/article/vertical-level-design-techniques-in-3d-games
+
+---
+
+## 6. Multi-level rooms: which kind, and what it costs
+
+Josh:
+
+> *"I wanna know if we could make a design that is more like going up and down,
+> and maybe rooms having multiple levels — you could later walk in the same room
+> but kinda second level — or if that would just make it more complicated for
+> nothing? I was thinking inside a room there could be stairs or stairwells or
+> small highs and lows."*
+
+The answer splits cleanly, because **three different things get called "a room
+with two levels" and only one of them is expensive.**
+
+### The three kinds
+
+| | Shape | At any (x,z) there are… | Cost |
+|---|---|---|---|
+| **1. Plates** | sunken floor, raised dais, stepped bays, a gallery ringing a sunken centre | …exactly **one** walkable height | **Nearly free** |
+| **2. Overlook** | a ledge above a **void** — you can fall, but not walk, below | one walkable height (the void isn't floor) | **Nearly free** |
+| **3. True overlap** | a mezzanine with walkable floor **underneath** | **two** walkable heights | **Expensive** |
+
+The line between them is exactly one question: *can you stand at the same (x,z)
+at two different heights?*
+
+### Why the first two are nearly free, and the third isn't
+
+Everything spatial in DELVE is indexed by **(x, z) with no layer**:
+
+- `NavGrid` is a flat `Uint8Array` of `cols × rows` — one bit of walkability per
+  cell, no third index
+- collision, the walkable region, the light pool's LOS culling, the blood splat
+  map: all XZ
+- and `elevation.ts` answers `groundY(x, z)` — **a single height per point**
+
+Kinds 1 and 2 fit that model perfectly, because they never ask for two answers at
+one point. `groundY` already returns a per-room plateau; returning a per-**plate**
+height is the same function with a finer lookup. Nothing else in the engine
+notices.
+
+Kind 3 breaks the model everywhere at once. Every one of those systems would need
+a layer index, and every consumer of them too — pathfinding, aggro line-of-sight,
+pack ring positions, where a corpse lands, which floor a bloodstain is on. **That
+is the "more complicated for nothing" case, and it is a genuine no for now.**
+
+### The good news, which is bigger than it sounds
+
+**Most things that LOOK like a second level are kind 1.** A gallery running around
+the wall of a sunken chamber is an annulus plus a disc — in plan view they don't
+overlap at all. A raised dais, a sunken fighting pit, a stepped approach, a
+landing at the top of a stair: all sub-polygons, all free.
+
+So the honest version of "rooms with multiple levels" that we can have is:
+
+> **A room is several plates at quantised heights, joined by stairs, and no plate
+> is ever above another.**
+
+That covers almost every dungeon room anyone pictures.
+
+### What's actually GOOD for this game (not just cheap)
+
+DELVE's combat is deliberately 2D and doors seal on combat, so a fight lives on
+one plane. That constraint should be *embraced*, not worked around:
+
+> **Height in DELVE should be something you SEE and DESCEND — not something you
+> FIGHT ACROSS.**
+
+That keeps the combat pillar untouched and still collects every payoff the
+literature attributes to verticality. Ranked by what they'd give us:
+
+1. **The overlook — the single best vertical moment available to us.** You enter a
+   room on a ledge above its floor, and you see the room *before* you are in it.
+   In a game where fog and a torch normally give you eight metres, looking down
+   into a lit chamber is a genuinely new kind of view — and it does the thing the
+   level-design literature says an overview does: hands you the layout, the
+   enemies, and the exits in one glance. Costs one plate and one stair.
+2. **Two ways down.** Stairs at two points on the ledge = two approaches to the
+   same fight. Approach choice, for free, from geometry we already wanted.
+3. **The sunken fighting pit.** Drop into it and the walls are above your
+   eyeline — the room feels like an arena because you are *in* it rather than *on*
+   it. Pairs naturally with `arena`/`gauntlet` rooms.
+4. **The dais.** A raised platform holding the centrepiece. Solves the "events
+   can go in the middle" want *and* makes the thing visible from the door, which
+   the lighting doctrine already wants.
+5. **Falling.** Already queued (#136) — the void drops you to the next floor,
+   hurt. That is vertical *drama* without vertical *combat*, which is exactly the
+   right trade for us.
+
+### Rules for generating it
+
+These are what keep it from becoming a mess, and they're all checkable:
+
+- **Quantise to 0.6m.** The step the game already uses. Two or three plates per
+  room, maximum; more reads as noise, not architecture.
+- **A plate boundary never crosses a door.** You arrive on flat ground.
+- **One combat plate per room** — the largest. Everything else is approach,
+  overlook, or dressing. This preserves "a fight never spans two elevations".
+- **Every plate reachable** by a stair or ramp of at least the protected
+  circulation width, and reachability is a *test*, not a hope.
+- **Plates are sub-polygons**, which is why this comes after the polygon room work
+  (#131) — doing it on rectangles builds it twice.
+
+### Verdict
+
+**Yes to rooms with multiple levels, defined as plates. No to walkable-over-
+walkable, for now.** The first is a finer lookup in a field that already exists;
+the second is a third dimension through eight systems, and we would be paying it
+for a mezzanine we cannot fight on anyway.
+
+If we ever want kind 3, the natural stepping stone is the chasm work (#135/#136) —
+once falling and rims are real, a walkable lower level is the next question, and
+we'll know a lot more about whether it earns its cost.

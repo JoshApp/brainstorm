@@ -61,6 +61,17 @@ placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
   and one loop per floor costs a graph edge, not a new system.
 - **Not WFC, not a continuous heightmap, not a grammar engine** — reasons in
   `PROCGEN-RESEARCH.md` §5.
+- **Rooms MAY have multiple levels — as PLATES, never walkable-over-walkable**
+  (`PROCGEN-RESEARCH.md` §6). Everything spatial here is indexed by (x,z) with no
+  layer — NavGrid is a flat `Uint8Array`, and `groundY(x,z)` returns one height.
+  Plates (sunken pit, raised dais, a gallery ringing a sunken centre) never ask
+  for two answers at one point, so they're a finer lookup in a field that exists.
+  A true mezzanine needs a layer index through eight systems, for a floor we
+  can't fight on anyway. Most things that LOOK like a second level are plates.
+- **Height is something you SEE and DESCEND, not something you FIGHT ACROSS.**
+  Combat is deliberately 2D and doors seal on combat; embrace that. The best
+  vertical moment available is the OVERLOOK — enter on a ledge, see the room
+  before you're in it. In a fog-and-torch game that's a genuinely new view.
 - **Seven-stage pipeline with a contract**: PLAN → GRAPH → FORM → CARVE → FIT →
   CONTENT → DRESS. *A stage may read any earlier stage and write only its own
   layer.* That rule is what kills the culls.
