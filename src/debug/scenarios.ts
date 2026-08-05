@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { ceilingFor, generateRoomShape, type Archetype } from '../level/room-shape';
+import { polyRoomRect } from '../level/poly-room-shell';
 import type { LevelSpec, EnemySpawnSpec, TorchSpec } from '../level/types';
 import { buildElevationLab } from '../level/test-chambers';
 import type { LiveLevel } from '../level/builder';
@@ -462,6 +464,71 @@ const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
   'threat': buildThreatScenario,
   'ai-lab': buildAiLabScenario,
 };
+
+/**
+ * A single generated polygon room you can walk around in, for judging a shape
+ * from the inside. Torches are placed on the bounding box's mid-walls rather
+ * than on the polygon, which is crude — but a lit room is the point, and torch
+ * placement against arbitrary edges is the generator's job, not the preview's.
+ */
+function polyRoomScenario(kind: Archetype): Scenario {
+  const rand = mulberryFor(kind);
+  const w = 13 + rand() * 4;
+  const d = 11 + rand() * 4;
+  const poly = generateRoomShape(kind, { w, d, rand });
+  const rect = polyRoomRect(poly);
+  const ceil = ceilingFor(kind, w, d, rand());
+  const T = (x: number, z: number, wall: 'N' | 'S' | 'E' | 'W') =>
+    ({ x, z, height: 2.4, wall, colorTint: 0xffaa55, intensityMul: 1.15 });
+  return {
+    godMode: true,
+    level: {
+      id: `dbg-poly-${kind}`, depth: 3, displayName: kind.toUpperCase(), fogColor: 0x0c0c12,
+      startPos: { x: rect.x, z: rect.z + rect.d / 2 - 1.6, yaw: 0 },
+      rooms: [{
+        id: 'poly', rect, height: ceil.height, poly,
+        ceilingStyle: ceil.style, ceilingRise: ceil.rise,
+      }],
+      corridors: [],
+      props: [],
+      spawns: [],
+      // Eight torches, not four — a polygon room is wider than a rect one at the
+      // corners, and the point of the scenario is to SEE the shape. Brighter
+      // than the game's doctrine allows on purpose; this is a fitting room.
+      torches: [
+        T(rect.x - rect.w / 2 + 0.4, rect.z - rect.d * 0.25, 'W'),
+        T(rect.x - rect.w / 2 + 0.4, rect.z + rect.d * 0.25, 'W'),
+        T(rect.x + rect.w / 2 - 0.4, rect.z - rect.d * 0.25, 'E'),
+        T(rect.x + rect.w / 2 - 0.4, rect.z + rect.d * 0.25, 'E'),
+        T(rect.x - rect.w * 0.25, rect.z - rect.d / 2 + 0.4, 'N'),
+        T(rect.x + rect.w * 0.25, rect.z - rect.d / 2 + 0.4, 'N'),
+        T(rect.x - rect.w * 0.25, rect.z + rect.d / 2 - 0.4, 'S'),
+        T(rect.x + rect.w * 0.25, rect.z + rect.d / 2 - 0.4, 'S'),
+      ],
+      doors: [], stairs: [],
+    },
+    // Stand just inside the near wall looking down the room's long axis, so the
+    // first thing you see is the far wall and the shape between here and there.
+    playerPos: {
+      x: rect.x,
+      z: rect.z + rect.d / 2 - 1.6,
+      lookAt: { x: rect.x, z: rect.z - rect.d / 2, y: 1.4 },
+    },
+  };
+}
+
+/** Stable per-archetype seed so a given scenario is the same room every time. */
+function mulberryFor(kind: string): () => number {
+  let a = 0;
+  for (let i = 0; i < kind.length; i++) a = (a * 31 + kind.charCodeAt(i)) | 0;
+  a = (a + 0x6d2b79f5) | 0;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export const SCENARIOS: Record<string, Scenario> = {
   // ── SUBSTRATE SLICE — the blood-drinker fun-check (docs/BUILD-ECONOMY.md) ──
@@ -2015,6 +2082,24 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.3 } },
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
   },
+
+  // ROOM SHAPE v2 — walk a generated polygon room. The whole point of #131:
+  // the shapes have only ever been looked at from above, and "does it feel
+  // right in first person" is the one question a contact sheet cannot answer.
+  //
+  //   ?scenario=polyroom            (rotunda — the most different silhouette)
+  //   ?scenario=polyroom-tomb       (niches you can step into)
+  //   ?scenario=polyroom-cavern     (carved, no straight through-line)
+  //   ?scenario=polyroom-hall
+  //
+  // Sealed by design — no openings yet (level/poly-room-shell.ts), so this is a
+  // room to stand in, not a floor to traverse.
+  polyroom: polyRoomScenario('rotunda'),
+  'polyroom-tomb': polyRoomScenario('tomb'),
+  'polyroom-cavern': polyRoomScenario('cavern'),
+  'polyroom-hall': polyRoomScenario('hall'),
+  'polyroom-ell': polyRoomScenario('ell'),
+  'polyroom-wedge': polyRoomScenario('wedge'),
 
   // FEAR — two of the same creature side by side, one frightened and one not,
   // because a status tell is only as good as the CONTRAST with its absence. The

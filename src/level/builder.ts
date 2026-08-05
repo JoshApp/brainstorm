@@ -5,6 +5,7 @@ import { spawnNetworkBloodstains } from './network-bloodstains';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
+import { buildPolyRoomShell } from './poly-room-shell';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, spawnBreakableDecoration, disposeDestructible, type Destructible } from './destructibles';
@@ -1123,7 +1124,13 @@ export function buildLevel(
     // trigger purposes. Their parent vault's main RoomSpec already
     // covers floor/ceiling/walls.
     if (!r.logicalOnly) {
-      buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
+      // ROOM SHAPE v2: a room carrying a polygon builds from it instead. The
+      // rect path is untouched — this is an additive branch, not a rewrite.
+      if (r.poly && r.poly.length >= 3) {
+        buildPolyRoomShell(root, r as typeof r & { poly: NonNullable<typeof r.poly> }, materials, wallSegments);
+      } else {
+        buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
+      }
     }
   }
 

@@ -85,6 +85,17 @@ export type RoomSpec = {
   rect: WalkableRect;
   height: number;
   /**
+   * ROOM SHAPE v2 — when present, the room's floor/walls/ceiling are built from
+   * this polygon (level/poly-room-shell.ts) instead of from `rect`, and one wall
+   * segment is emitted per edge so arbitrary-angle walls block movement exactly
+   * like axis-aligned ones.
+   *
+   * `rect` is still required and must be the polygon's BOUNDING BOX — everything
+   * that still thinks in rects (the elevation field, the nav bbox, the walkable
+   * union) keeps reading it. See level/room-shape.ts.
+   */
+  poly?: ReadonlyArray<readonly [number, number]>;
+  /**
    * Floor elevation in metres (default 0). Rooms are internally FLAT at
    * their elevation — combat, props, splats all live on one plane per
    * room (doors seal on combat, so a fight never spans two elevations).
