@@ -1672,6 +1672,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 5.0, lookAt: { x: 0, z: 0, y: 1.1 } },
   },
 
+
   // THE TROVE (the offering system) — three relics on plinths, take one and the
   // other two withdraw. `delve snap trove`. Swap `style: 'ground'` to see the
   // low-slab presentation instead.

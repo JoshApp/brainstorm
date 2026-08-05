@@ -1,37 +1,55 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { RoomSpec } from './types';
 import type { WallSegment } from './walkable';
 import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
+import { makeJitteredPlane } from './geometry-prims';
+import { buildRng } from '../engine/rng';
 import { polyBounds, type Poly } from './room-shape';
+import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
 
 // ── BUILDING A POLYGON ROOM ──────────────────────────────────────────────────
 //
-// The first place room-shape.ts's polygons become geometry you can stand in.
+// Where room-shape.ts's polygons become geometry you can stand in.
 //
 // Deliberately a SEPARATE function from `buildRoomShell`, not surgery inside it.
 // That one is ~400 lines of rect-derived special cases — floor grates, ceiling
 // shafts, skirting and cornice trim, braced variants, ramp handling — every one
-// of which assumes four axis-aligned sides. Branching inside it would put the
-// new path at risk from all of that and vice versa. This is additive: a room
-// with `poly` set comes here, everything else takes the old road, and nothing
-// legacy had to be touched to try the new thing.
+// of which assumes four axis-aligned sides.
 //
-// OPENINGS. Each edge is clipped against the corridor rects that cross it, and
-// the covered spans become doorways. That's the rect path's `subtractRanges`
-// idea moved into EDGE-LOCAL 1D coordinates, which is what makes it work on a
-// diagonal wall as readily as an axis-aligned one.
+// Being separate is not a licence to be different, though, and the first version
+// of this file was, in three ways that all showed up on a phone at once:
 //
-// What this deliberately does NOT do yet: trim, grates, shafts, torch mounting
-// against arbitrary edges. Those come with the generator.
+//   1. NO `color` ATTRIBUTE. Every wall/floor material in this game runs
+//      `vertexColors: true`. A geometry without a colour attribute leaves that
+//      slot UNBOUND, and the driver hands the shader garbage that multiplies
+//      into albedo — black patches, wrong tints, surfaces that read as holes.
+//      makeFloorWithHoles carries a long comment about exactly this trap. Every
+//      geometry built here now carries colours.
+//   2. A MIRRORED CEILING. The floor's shape is authored with −z and rotated
+//      −π/2 about X. Reusing that same shape with a +π/2 rotation does NOT flip
+//      it face-down, it flips it in Z — so on a room that isn't symmetric front
+//      to back (an apse very much isn't) the ceiling sat over the wrong end and
+//      the room was open to the void. Textbook axis confusion.
+//   3. SLABS, NOT A RING. See poly-shell-plan.ts.
+//
+// What this still deliberately does NOT do: trim, grates, shafts, barrel and
+// pitched vaults, torch mounting against arbitrary edges. Those come with the
+// generator.
 
 /** Wall thickness in metres — matches the visual weight of the rect shell. */
 const WALL_T = 0.25;
+/** Floor triangles get subdivided until no edge is longer than this. Baked AO
+ *  and every contact darkening in the game are PER-VERTEX; a raw ShapeGeometry
+ *  is a dozen huge triangles, so the darkening either vanishes or smears across
+ *  metres as a wedge. The rect path gets this for free from PlaneGeometry. */
+const FLOOR_MAX_EDGE = 0.8;
 
 /**
  * Build floor, walls and ceiling for a polygon room.
  *
- * Emits one `WallSegment` per polygon edge. That is what actually contains the
+ * Emits one `WallSegment` per wall span. That is what actually contains the
  * player: `walkable.ts` rejects any move whose path crosses a wall segment
  * (segmentsIntersect), so an arbitrary-angle wall blocks exactly like an
  * axis-aligned one with no extra work. The room's `rect` stays as the permissive
@@ -44,147 +62,237 @@ export function buildPolyRoomShell(
   wallSegmentsOut: WallSegment[],
   /** Rects that should CUT this room's walls — the corridors meeting it. Each
    *  span where a rect crosses an edge becomes a doorway. */
-  openingRects: ReadonlyArray<{ x: number; z: number; w: number; d: number }> = [],
+  openingRects: ReadonlyArray<OpeningRect> = [],
 ): void {
   const poly = room.poly;
   if (poly.length < 3) return;
   const H = room.height;
-  const elev = room.elevation ?? groundYAt(room.rect.x, room.rect.z);
+  const rect = room.rect;
+  const elev = room.elevation ?? groundYAt(rect.x, rect.z);
+
+  // Everything below is authored in coordinates LOCAL to the room's rect centre,
+  // matching the rect path — that is what lets the shared post-passes (floor
+  // contact AO, prop contact AO) find these meshes via `aoRect` and read their
+  // vertices with the same origin arithmetic they use on every other floor.
+  const local: Poly = poly.map(([x, z]) => [x - rect.x, z - rect.z] as const);
 
   // ── FLOOR ──────────────────────────────────────────────────────────
-  // A THREE.Shape triangulated by ShapeGeometry. The shape is authored in
-  // (x, y) and then rotated −π/2 about X, which maps local +y to world −z;
-  // feeding z directly would mirror the room. Negating here keeps the built
-  // floor identical to the polygon the generator and the SVG sheet describe.
-  const shape = new THREE.Shape();
-  shape.moveTo(poly[0][0], -poly[0][1]);
-  for (let i = 1; i < poly.length; i++) shape.lineTo(poly[i][0], -poly[i][1]);
-  shape.closePath();
-
-  const floorGeo = new THREE.ShapeGeometry(shape);
-  floorGeo.rotateX(-Math.PI / 2);
-  floorGeo.translate(0, elev, 0);
+  const floorGeo = plateGeometry(local, 'up');
+  subdivideToMaxEdge(floorGeo, FLOOR_MAX_EDGE);
+  tintVertices(floorGeo);
   const floor = new THREE.Mesh(floorGeo, materials.floor);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(rect.x, elev, rect.z);
   floor.receiveShadow = true;
   floor.name = `polyfloor:${room.id}`;
-  // Opt this floor into the wall-contact AO post-pass, which finds its subjects
-  // by userData.aoRect. Without it a polygon room is the one floor in the level
-  // with no darkening where it meets its walls — and the seam reads instantly.
-  floor.userData.aoRect = { x: room.rect.x, z: room.rect.z, w: room.rect.w, d: room.rect.d };
+  // Opt into the wall-contact and prop-contact AO post-passes, which find their
+  // subjects by userData.aoRect and read vertices in this un-rotated shape space.
+  floor.userData.aoRect = { x: rect.x, z: rect.z, w: rect.w, d: rect.d };
   floor.userData.dbgKind = 'floor';
   floor.userData.dbgSource = `polyfloor · ${room.id}`;
   root.add(floor);
 
   // ── CEILING ────────────────────────────────────────────────────────
-  // Same outline, flipped so it faces down.
-  const ceilGeo = new THREE.ShapeGeometry(shape);
-  ceilGeo.rotateX(Math.PI / 2);
-  ceilGeo.translate(0, elev + H, 0);
+  // Authored face-DOWN (see plateGeometry) rather than by re-rotating the floor,
+  // which mirrors it in Z. The rect path gets away with the re-rotation only
+  // because a rectangle is symmetric; a polygon is not.
+  const ceilGeo = plateGeometry(local, 'down');
+  tintVertices(ceilGeo);
   const ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.set(rect.x, elev + H, rect.z);
   ceiling.name = `polyceil:${room.id}`;
   ceiling.userData.dbgKind = 'ceiling';
   ceiling.userData.dbgSource = `polyceil · ${room.id}`;
   root.add(ceiling);
 
   // ── WALLS ──────────────────────────────────────────────────────────
-  // One slab per edge, rotated to the edge's angle. A box is the right
-  // primitive even for a diagonal: the chamfered corners leave a small notch
-  // between neighbouring slabs, which at 0.25m thickness reads as a masonry
-  // joint rather than a gap.
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i];
-    const b = poly[(i + 1) % poly.length];
-    const dx = b[0] - a[0], dz = b[1] - a[1];
-    const len = Math.hypot(dx, dz);
-    if (len < 0.05) continue;
-
-    // Everything the corridors cut out of this edge, then what's left of it.
-    const gaps = openingRects
-      .map((r) => clipEdgeToRect(a, b, r))
-      .filter((g): g is [number, number] => g !== null);
-    const spans = subtractSpans(gaps);
-    const yaw = -Math.atan2(dz, dx);
-
-    for (const [t0, t1] of spans) {
-      const segLen = (t1 - t0) * len;
-      if (segLen < 0.12) continue;             // slivers beside a doorway
-      const sx = a[0] + dx * t0, sz = a[1] + dz * t0;
-      const ex = a[0] + dx * t1, ez = a[1] + dz * t1;
-
-      // Only the ENDS of a run get the corner overlap. A slab beside a doorway
-      // must stop at the doorway, or the overlap closes the gap it just cut.
-      const padS = t0 <= 1e-6 ? WALL_T / 2 : 0;
-      const padE = t1 >= 1 - 1e-6 ? WALL_T / 2 : 0;
-      const geo = new THREE.BoxGeometry(segLen + padS + padE, H, WALL_T);
-      const mesh = new THREE.Mesh(geo, materials.wall);
-      mesh.position.set(
-        (sx + ex) / 2 + (dx / len) * (padE - padS) / 2,
-        elev + H / 2,
-        (sz + ez) / 2 + (dz / len) * (padE - padS) / 2,
-      );
-      // atan2(dz, dx) is the edge's angle in the XZ plane; Three's +Y rotation
-      // turns +X toward −Z, hence the negation.
-      mesh.rotation.y = yaw;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = `polywall:${room.id}:${i}`;
-      mesh.userData.dbgKind = 'wall';
-      mesh.userData.dbgSource = `polywall · ${room.id}`;
-      root.add(mesh);
-
-      // THE thing that makes the room solid — and the thing that makes a doorway
-      // real, since a span with no segment is a span the player can cross. The
-      // movement code already refuses any step that crosses a segment.
-      wallSegmentsOut.push({ ax: sx, az: sz, bx: ex, bz: ez });
+  const spans = planWallRing(poly, WALL_T, openingRects);
+  const pieces: THREE.BufferGeometry[] = [];
+  for (const s of spans) {
+    pieces.push(...spanGeometry(s, elev, H));
+    // THE thing that makes the room solid — and the thing that makes a doorway
+    // real, since a span with no segment is a span the player can cross. The
+    // movement code already refuses any step that crosses a segment.
+    wallSegmentsOut.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
+  }
+  if (pieces.length > 0) {
+    const merged = mergeGeometries(pieces, false);
+    for (const g of pieces) g.dispose();
+    if (merged) {
+      const walls = new THREE.Mesh(merged, materials.wall);
+      walls.castShadow = true;
+      walls.receiveShadow = true;
+      walls.name = `polywalls:${room.id}`;
+      walls.userData.dbgKind = 'wall';
+      walls.userData.dbgSource = `polywalls · ${room.id}`;
+      root.add(walls);
     }
   }
 }
 
+// ── plates ───────────────────────────────────────────────────────────────────
+
 /**
- * Where does the axis-aligned rect `r` cover the edge a→b? Returns the covered
- * span as [t0, t1] in edge-local 0..1, or null if it never touches.
+ * A horizontal polygon plate, in the SHAPE space the mesh's ±π/2 X rotation
+ * expects, facing the way you asked.
  *
- * Liang–Barsky slab clipping, which handles a diagonal edge as naturally as an
- * axis-aligned one — the entire reason openings work on a polygon at all.
- * The rect is inflated by half the wall thickness so a corridor that stops
- * exactly on the wall plane still cuts through it rather than kissing it.
+ * The handedness is the whole reason this is a named function. A shape point
+ * (x, Y) becomes world (x, ·, −Y) under rotX(−π/2) and world (x, ·, +Y) under
+ * rotX(+π/2). So an up-facing plate must author Y = −z and a down-facing plate
+ * must author Y = +z, or the two disagree about where the room is.
  */
-function clipEdgeToRect(
-  a: readonly [number, number], b: readonly [number, number],
-  r: { x: number; z: number; w: number; d: number },
-): [number, number] | null {
-  const pad = WALL_T;
-  const minX = r.x - r.w / 2 - pad, maxX = r.x + r.w / 2 + pad;
-  const minZ = r.z - r.d / 2 - pad, maxZ = r.z + r.d / 2 + pad;
-  const dx = b[0] - a[0], dz = b[1] - a[1];
-  let t0 = 0, t1 = 1;
-  const clip = (p: number, q: number): boolean => {
-    if (Math.abs(p) < 1e-9) return q >= 0;      // parallel: inside iff q >= 0
-    const t = q / p;
-    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
-    else { if (t < t0) return false; if (t < t1) t1 = t; }
-    return true;
-  };
-  if (!clip(-dx, a[0] - minX)) return null;
-  if (!clip(dx, maxX - a[0])) return null;
-  if (!clip(-dz, a[1] - minZ)) return null;
-  if (!clip(dz, maxZ - a[1])) return null;
-  return t1 > t0 ? [t0, t1] : null;
+function plateGeometry(local: Poly, facing: 'up' | 'down'): THREE.ShapeGeometry {
+  const sy = facing === 'up' ? -1 : 1;
+  const shape = new THREE.Shape();
+  shape.moveTo(local[0][0], local[0][1] * sy);
+  for (let i = 1; i < local.length; i++) shape.lineTo(local[i][0], local[i][1] * sy);
+  shape.closePath();
+  return new THREE.ShapeGeometry(shape);
 }
 
-/** The parts of 0..1 NOT covered by any of `gaps`. */
-function subtractSpans(gaps: Array<[number, number]>): Array<[number, number]> {
-  if (!gaps.length) return [[0, 1]];
-  const sorted = [...gaps].sort((p, q) => p[0] - q[0]);
-  const out: Array<[number, number]> = [];
-  let cursor = 0;
-  for (const [g0, g1] of sorted) {
-    if (g0 > cursor) out.push([cursor, Math.min(1, g0)]);
-    cursor = Math.max(cursor, g1);
-    if (cursor >= 1) break;
+/**
+ * Split triangles until none has an edge longer than `maxEdge`.
+ *
+ * Plain 4-way midpoint subdivision on a de-indexed geometry. Not adaptive and
+ * not clever: a room floor is a few hundred triangles either way, and the
+ * per-vertex darkening passes only need vertices to exist where the darkening
+ * varies.
+ */
+function subdivideToMaxEdge(geo: THREE.BufferGeometry, maxEdge: number): void {
+  let pos = (geo.index ? geo.toNonIndexed() : geo).getAttribute('position') as THREE.BufferAttribute;
+  let tris: number[] = Array.from(pos.array as Float32Array);
+  const longest = (o: number): number => {
+    let m = 0;
+    for (let e = 0; e < 3; e++) {
+      const i = o + e * 3, j = o + ((e + 1) % 3) * 3;
+      m = Math.max(m, Math.hypot(tris[i] - tris[j], tris[i + 1] - tris[j + 1]));
+    }
+    return m;
+  };
+  for (let pass = 0; pass < 6; pass++) {
+    if (!tris.some((_, k) => k % 9 === 0 && longest(k) > maxEdge)) break;
+    const next: number[] = [];
+    for (let o = 0; o < tris.length; o += 9) {
+      if (longest(o) <= maxEdge) { next.push(...tris.slice(o, o + 9)); continue; }
+      const v = [0, 1, 2].map((e) => tris.slice(o + e * 3, o + e * 3 + 3));
+      const m = [0, 1, 2].map((e) => {
+        const p = v[e], q = v[(e + 1) % 3];
+        return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2];
+      });
+      next.push(
+        ...v[0], ...m[0], ...m[2],
+        ...m[0], ...v[1], ...m[1],
+        ...m[2], ...m[1], ...v[2],
+        ...m[0], ...m[1], ...m[2],
+      );
+    }
+    tris = next;
   }
-  if (cursor < 1) out.push([cursor, 1]);
-  return out.filter(([p, q]) => q - p > 1e-6);
+  geo.deleteAttribute('normal');
+  geo.deleteAttribute('uv');
+  geo.setIndex(null);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(tris, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(
+    tris.flatMap((_, k) => (k % 3 === 0 ? [tris[k] * 0.25, tris[k + 1] * 0.25] : [])), 2,
+  ));
+  geo.computeVertexNormals();
+}
+
+// ── the ring ─────────────────────────────────────────────────────────────────
+
+/**
+ * The faces of one wall span: the room-side surface, its back, the top, and a
+ * jamb cap at any end that a doorway cut.
+ *
+ * The room-side face is built by the SAME `makeJitteredPlane` every other wall
+ * in the game uses, so a polygon room's walls carry the identical surface wave
+ * and baked edge AO — this is a shell for the existing look, not a second one.
+ * The back, top and jambs are plain quads: they exist so the shell is a closed
+ * solid, and only the jambs are ever looked at closely.
+ */
+function spanGeometry(s: WallSpan, baseY: number, H: number): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-4) return out;
+
+  // Inward normal — a plane's local +Z must end up pointing INTO the room.
+  // Rotation about Y by θ maps (0,0,1) to (sin θ, 0, cos θ), so θ = atan2 of the
+  // inward normal's components in that order. (Its local +X then lands on the
+  // edge direction, which is the consistency check that this is the right θ.)
+  const ix = -dz / len, iz = dx / len;
+  const face = makeJitteredPlane(len, H, { wavy: true });
+  const m = new THREE.Matrix4().makeRotationY(Math.atan2(ix, iz));
+  m.setPosition((s.a[0] + s.b[0]) / 2, baseY + H / 2, (s.a[1] + s.b[1]) / 2);
+  face.applyMatrix4(m);
+  out.push(face);
+
+  const lo = baseY, hi = baseY + H;
+  // Back face, wound so it faces away from the room.
+  out.push(quad(
+    [s.ob[0], lo, s.ob[1]], [s.oa[0], lo, s.oa[1]],
+    [s.oa[0], hi, s.oa[1]], [s.ob[0], hi, s.ob[1]],
+  ));
+  // Top cap.
+  out.push(quad(
+    [s.a[0], hi, s.a[1]], [s.b[0], hi, s.b[1]],
+    [s.ob[0], hi, s.ob[1]], [s.oa[0], hi, s.oa[1]],
+  ));
+  // Jambs — only where a doorway cut the span. A mitred corner must NOT get one:
+  // its end vertices are shared with the neighbouring span, and capping there
+  // would build a pane of stone across the inside of the corner.
+  if (s.jambA) {
+    out.push(quad(
+      [s.oa[0], lo, s.oa[1]], [s.a[0], lo, s.a[1]],
+      [s.a[0], hi, s.a[1]], [s.oa[0], hi, s.oa[1]],
+    ));
+  }
+  if (s.jambB) {
+    out.push(quad(
+      [s.b[0], lo, s.b[1]], [s.ob[0], lo, s.ob[1]],
+      [s.ob[0], hi, s.ob[1]], [s.b[0], hi, s.b[1]],
+    ));
+  }
+  return out;
+}
+
+/** A world-space quad with the attribute set `mergeGeometries` needs to fold it
+ *  in beside a jittered plane: position, normal, uv AND colour. */
+function quad(
+  p0: [number, number, number], p1: [number, number, number],
+  p2: [number, number, number], p3: [number, number, number],
+): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...p0, ...p1, ...p2, ...p3], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
+  // Indexed, because `makeJitteredPlane` is — mergeGeometries refuses a batch
+  // that mixes indexed and non-indexed geometry, and it fails by returning null
+  // rather than throwing, which reads downstream as "the room has no walls".
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.computeVertexNormals();
+  tintVertices(g, 0.62);
+  return g;
+}
+
+/**
+ * The gentle per-vertex tint every surface in this game carries.
+ *
+ * Not decoration — LOAD-BEARING. The floor, wall and ceiling materials all set
+ * `vertexColors: true`, and a geometry that ships without a colour attribute
+ * leaves that slot unbound: the shader reads undefined memory and multiplies it
+ * into the albedo. It is driver-dependent, so it can look fine in one browser
+ * and paint black holes in another. `scale` darkens the faces you are not meant
+ * to be looking at (a wall's back, the top of the ring).
+ */
+function tintVertices(geo: THREE.BufferGeometry, scale = 1): void {
+  const count = geo.getAttribute('position').count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const base = (0.85 + buildRng() * 0.15) * scale;
+    colors[i * 3] = base; colors[i * 3 + 1] = base; colors[i * 3 + 2] = base;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 /** The bounding rect a polygon room should advertise, so everything that still
