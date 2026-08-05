@@ -6,6 +6,8 @@ import { ceilingFor, generateRoomShape } from './room-shape';
 import { polyRoomRect } from './poly-room-shell';
 import { describeWalls } from './wall-surfaces';
 import { sconcesOn } from './wall-sconces';
+import { pilasterVolumes } from './poly-dressing';
+import { RoomOccupancy } from './room-occupancy';
 
 // Starter chamber — the first room of EVERY fresh run. Three altars,
 // one weapon each. The player picks one (which auto-equips and
@@ -65,6 +67,12 @@ const STARTER_CEILING = ceilingFor('apse', STARTER_W, STARTER_D, 0.5);
  *  as constant as the polygon is, and everything mounted on a wall reads them
  *  instead of a coordinate somebody measured. */
 const STARTER_WALLS = describeWalls({ poly: STARTER_POLY, height: STARTER_CEILING.height });
+/** The chamber's own architecture, reserved, so nothing mounted on a wall ends
+ *  up inside a pier. The shell builds the same piers from the same plan — this
+ *  is the plan, not a second guess at it. */
+const STARTER_OCCUPANCY = new RoomOccupancy();
+STARTER_OCCUPANCY.reserveAll(
+  pilasterVolumes(STARTER_WALLS, STARTER_CEILING.height, 0), 'pilaster');
 
 export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSpec {
   // Roll three distinct base weapons for the altars (left → centre →
@@ -159,12 +167,14 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
         // THE NAVE — the two long side walls. Warm at the entrance where you
         // arrive, cooling toward the altars, so walking up the room is a
         // temperature change rather than a brightness one.
+        // Same spacing band as the piers plus `inBays`, so the flames land in
+        // the bays BETWEEN them instead of fighting them for the same stone.
         pick: (s) => s.length > 6,
-        spacing: [4.5, 6], height: 2.0,
+        spacing: [3.0, 4.6], inBays: true, height: 2.0,
         tint: (m) => (m.z > 2 ? 0xffaa55 : 0xc8c0e0),
         intensity: (m) => (m.z > 2 ? 0.9 : 0.7),
       },
-    ]),
+    ], STARTER_OCCUPANCY),
 
     // No mobs. The starter chamber is the choice, not the test.
     spawns: [],

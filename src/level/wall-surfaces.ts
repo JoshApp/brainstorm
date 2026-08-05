@@ -119,6 +119,20 @@ export interface MountOpts {
    *  plus a little air. Not related to `spacing`, which is the gap BETWEEN
    *  fixtures on a run long enough for several. */
   minRun?: number;
+  /**
+   * Place in the GAPS of the rhythm instead of on it — the BAYS.
+   *
+   * Two producers that both divide the same wall evenly land on top of each
+   * other, which is not a coincidence to be nudged apart but the definition of
+   * "evenly". Piers and sconces did exactly this: every sconce in the nave came
+   * out 0.1m from a pier, and once the occupancy check was honest, every one of
+   * them was dropped and the room went dark.
+   *
+   * A staggered run with the SAME spacing band interleaves perfectly with the
+   * un-staggered one — which is also just correct architecture. A bay is the
+   * space between two piers, and a bay is what you light.
+   */
+  stagger?: boolean;
 }
 
 /**
@@ -159,8 +173,13 @@ export function mountPoints(s: WallSurface, o: MountOpts): Mount[] {
   const dx = (s.b[0] - s.a[0]) / s.length, dz = (s.b[1] - s.a[1]) / s.length;
   const inset = o.inset ?? 0.05;
   const out: Mount[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = count === 1 ? s.length / 2 : pad + step * i;
+  // Staggered: one fewer, each halfway between two of the rhythm's points.
+  const n = o.stagger ? count - 1 : count;
+  if (n < 1) return [];
+  for (let i = 0; i < n; i++) {
+    const t = o.stagger
+      ? pad + step * (i + 0.5)
+      : (count === 1 ? s.length / 2 : pad + step * i);
     out.push({
       x: s.a[0] + dx * t + s.inward[0] * inset,
       z: s.a[1] + dz * t + s.inward[1] * inset,

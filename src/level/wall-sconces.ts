@@ -1,5 +1,6 @@
 import type { TorchSpec } from './types';
 import { mountPoints, type Mount, type WallSurface } from './wall-surfaces';
+import type { RoomOccupancy } from './room-occupancy';
 
 // ── LIGHTING A ROOM BY ASKING ITS WALLS ──────────────────────────────────────
 //
@@ -19,6 +20,13 @@ import { mountPoints, type Mount, type WallSurface } from './wall-surfaces';
 // walls plus a palette, so "the sanctuary is lit cold and the nave is lit warm"
 // stays authorable, it just stops being fourteen magic numbers.
 
+/** A sconce's own bulk — bracket plus flame, generously. */
+const SCONCE_RADIUS = 0.20;
+const SCONCE_HALF_H = 0.40;
+/** Air a sconce wants around it. A flame touching a pier is a flame you see
+ *  half of, and it lights the stone rather than the room. */
+const SCONCE_CLEARANCE = 0.18;
+
 export interface SconcePlan {
   /** Which walls this plan claims. Plans are tried in order and each wall goes
    *  to the FIRST that claims it, so a room can't be lit twice over. */
@@ -35,6 +43,9 @@ export interface SconcePlan {
    *  cupboard. */
   minWall?: number;
   fixtureKind?: TorchSpec['fixtureKind'];
+  /** Light the BAYS rather than the rhythm — see MountOpts.stagger. Set this
+   *  with the SAME spacing band the wall's piers use and the two interleave. */
+  inBays?: boolean;
 }
 
 /**
@@ -48,6 +59,19 @@ export interface SconcePlan {
 export function sconcesOn(
   surfaces: readonly WallSurface[],
   plans: readonly SconcePlan[],
+  /**
+   * What is already on these walls. Mounts that collide with a reservation are
+   * DROPPED rather than nudged.
+   *
+   * Not hypothetical: the first run of tests/room-occupancy.test.ts found a live
+   * sconce at (3.98, −1.73) standing inside a pilaster in the starter chamber.
+   * Both are mounted by the same `mountPoints` on the same wall, at different
+   * intervals, and neither knew about the other — the exact failure this whole
+   * registry exists to make impossible. Dropping rather than nudging also gives
+   * the right ARCHITECTURE for free: what survives sits in the bays between the
+   * piers, which is where a sconce belongs.
+   */
+  occupancy?: RoomOccupancy,
 ): TorchSpec[] {
   const out: TorchSpec[] = [];
   for (const s of surfaces) {
@@ -63,7 +87,12 @@ export function sconcesOn(
       y: plan.height,
       minRun: plan.minWall ?? 1.6,
       inset: 0.02,
+      stagger: plan.inBays,
     })) {
+      if (occupancy && !occupancy.fits({
+        kind: 'cylinder', x: m.x, z: m.z, r: SCONCE_RADIUS,
+        y0: plan.height - SCONCE_HALF_H, y1: plan.height + SCONCE_HALF_H,
+      }, SCONCE_CLEARANCE)) continue;
       out.push({
         x: m.x,
         z: m.z,

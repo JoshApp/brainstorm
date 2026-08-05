@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mountPoints, type WallSurface } from './wall-surfaces';
+import type { Volume } from './room-occupancy';
 
 // ── MAKING A POLYGON ROOM READ AS BUILT ──────────────────────────────────────
 //
@@ -86,7 +87,53 @@ export function buildPolyDressing(
       }
     }
 
-    if (!pilaster || s.length < pilaster.minWall) continue;
+  }
+
+  for (const p of pilasterPlan(spans, height, elevation, pilaster)) {
+    const geo = new THREE.BoxGeometry(p.width, p.height, p.depth);
+    const m = new THREE.Matrix4().makeRotationY(p.rotY);
+    m.setPosition(p.x, p.y, p.z);
+    geo.applyMatrix4(m);
+    parts.push(geo);
+  }
+
+  if (parts.length === 0) return null;
+  const merged = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  if (merged) tintVertices(merged);
+  return merged;
+}
+
+export interface Pier {
+  /** Centre of the pier, in world space. */
+  x: number; y: number; z: number;
+  rotY: number;
+  width: number; depth: number; height: number;
+}
+
+/**
+ * WHERE the piers go, with no geometry involved.
+ *
+ * Split out from the mesh builder because the two things that need this answer
+ * happen at different times: the shell builds boxes at BUILD time, and anything
+ * that must avoid standing inside a pier — a chest, an altar, a spawn — is
+ * placed at COMPOSE time, long before the mesh exists. A pier's position is a
+ * pure function of the polygon, so both can just ask.
+ *
+ * (This is the shape of the fix for "placement is blind": not a repair pass
+ * afterwards, but making the answer available before the decision.)
+ */
+export function pilasterPlan(
+  spans: readonly WallSurface[],
+  height: number,
+  elevation: number,
+  pilaster: PilasterSpec | null = PILASTER,
+): Pier[] {
+  if (!pilaster) return [];
+  const out: Pier[] = [];
+  const h = height * pilaster.rise;
+  for (const s of spans) {
+    if (s.length < pilaster.minWall) continue;
     // Never on a span a doorway cut: a pier at a jamb is in the doorway.
     if (s.jambA || s.jambB) continue;
     const piers = mountPoints(s, {
@@ -98,25 +145,33 @@ export function buildPolyDressing(
     // A single pier centred on a wall reads as an accident. Two or more read as
     // a rhythm, which is the entire point.
     if (piers.length < 2) continue;
-    const h = height * pilaster.rise;
     for (const p of piers) {
-      const geo = new THREE.BoxGeometry(pilaster.width, h, pilaster.depth);
-      const m = new THREE.Matrix4().makeRotationY(Math.atan2(s.inward[0], s.inward[1]));
-      m.setPosition(
-        p.x + s.inward[0] * (pilaster.depth / 2 - BURY),
-        elevation + h / 2,
-        p.z + s.inward[1] * (pilaster.depth / 2 - BURY),
-      );
-      geo.applyMatrix4(m);
-      parts.push(geo);
+      out.push({
+        x: p.x + s.inward[0] * (pilaster.depth / 2 - BURY),
+        y: elevation + h / 2,
+        z: p.z + s.inward[1] * (pilaster.depth / 2 - BURY),
+        rotY: Math.atan2(s.inward[0], s.inward[1]),
+        width: pilaster.width, depth: pilaster.depth, height: h,
+      });
     }
   }
+  return out;
+}
 
-  if (parts.length === 0) return null;
-  const merged = mergeGeometries(parts, false);
-  for (const g of parts) g.dispose();
-  if (merged) tintVertices(merged);
-  return merged;
+/** The piers as reservable volumes, so nothing else is placed inside one. */
+export function pilasterVolumes(
+  spans: readonly WallSurface[],
+  height: number,
+  elevation: number,
+  pilaster: PilasterSpec | null = PILASTER,
+): Volume[] {
+  return pilasterPlan(spans, height, elevation, pilaster).map((p) => ({
+    kind: 'box' as const,
+    x: p.x, z: p.z,
+    halfW: p.width / 2, halfD: p.depth / 2,
+    rotY: p.rotY,
+    y0: p.y - p.height / 2, y1: p.y + p.height / 2,
+  }));
 }
 
 /**
