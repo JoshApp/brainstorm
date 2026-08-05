@@ -16,6 +16,7 @@ import { planCentrepiece } from './centrepieces';
 import { roomType, type RoomTypeId, type RoomModifier } from './room-types';
 import { assignModifiers, type ModifierPlan } from './room-modifiers';
 import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
+import { planInterior, type InteriorForm } from './room-interior';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -93,6 +94,32 @@ const TYPE_SHAPES: Record<string, readonly Archetype[]> = {
   feature:  ['chamber', 'wedge', 'notched'],
   combat:   ['chamber', 'cross', 'notched', 'cavern'],
   quiet:    ['tomb', 'cavern', 'hall'],
+};
+
+/**
+ * What kind of stone a room may stand INSIDE itself, in preference order.
+ *
+ * An empty room is a corridor with a bigger number. Stone you have to go around
+ * is what makes a room a place to fight in — cover that breaks a sightline, a
+ * choke you commit through, a colonnade that turns one floor into a nave and
+ * two aisles. Empty is still the common answer: a floor where every room is
+ * subdivided has no room that READS as subdivided, so this only offers forms to
+ * the types they suit, and room-interior.ts refuses any that breaks the room.
+ *
+ *   colonnade — a fight with cover and flanking. Big rooms.
+ *   pinch     — a gate you commit through. A crossing, so: traps and passages.
+ *   ring      — the middle approached through stone rather than seen across an
+ *               empty floor. What a trove and a fire want.
+ */
+const TYPE_INTERIOR: Record<string, readonly InteriorForm[]> = {
+  arena:   ['colonnade', 'ring'],
+  combat:  ['colonnade', 'pinch'],
+  trap:    ['pinch'],
+  finish:  ['colonnade'],
+  sanctum: ['ring'],
+  // Deliberately absent: TROVE and SHOP. Both are `clean`, and clean means the
+  // room is a stage — a ring of columns between you and three offerings is
+  // exactly the thing that flag exists to forbid.
 };
 
 /** Floor area band per type, in metres of bounding box. A trove needs room for
@@ -292,8 +319,8 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // below: a portcullis with nothing to reach for can never close.
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
-    if (furnish(r, mouthOf(r, links), depth, rand, props, torches, spawns,
-                mods.byRoom.get(r.id)?.kind)) guardedRooms.add(r.id);
+    if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand,
+                props, torches, spawns, mods.byRoom.get(r.id)?.kind)) guardedRooms.add(r.id);
   }
 
   // The descent, on a wall chosen for being able to hold it.
@@ -495,6 +522,28 @@ function overlaps(a: Box, b: Box, pad: number): boolean {
   return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + pad && Math.abs(a.z - b.z) < (a.d + b.d) / 2 + pad;
 }
 
+/**
+ * Every point where a corridor breaks this room's wall.
+ *
+ * The corridor's CENTRE is not a doorway — it is a point in the passage, often
+ * metres outside the room. The doorway is whichever end of the corridor lies
+ * inside this polygon, which is the point circulation has to be judged from.
+ */
+function doorwaysOf(
+  r: Placed, links: ReadonlyArray<{ from: string; to: string; rect: Box }>,
+): Array<{ x: number; z: number }> {
+  const out: Array<{ x: number; z: number }> = [];
+  for (const l of links) {
+    if (l.from !== r.id && l.to !== r.id) continue;
+    const c = l.rect;
+    const ends = c.w > c.d
+      ? [{ x: c.x - c.w / 2, z: c.z }, { x: c.x + c.w / 2, z: c.z }]
+      : [{ x: c.x, z: c.z - c.d / 2 }, { x: c.x, z: c.z + c.d / 2 }];
+    for (const e of ends) if (pointInPoly(r.poly, e.x, e.z)) out.push(e);
+  }
+  return out;
+}
+
 /** Where the player enters this room — used for sightline and ambush logic. */
 function mouthOf(r: Placed, links: ReadonlyArray<{ from: string; to: string; rect: Box }>): { x: number; z: number } | null {
   const l = links.find((k) => k.to === r.id) ?? links.find((k) => k.from === r.id);
@@ -504,7 +553,9 @@ function mouthOf(r: Placed, links: ReadonlyArray<{ from: string; to: string; rec
 // ── furnishing, by query ─────────────────────────────────────────────────────
 
 function furnish(
-  r: Placed, mouth: { x: number; z: number } | null, depth: number, rand: () => number,
+  r: Placed, mouth: { x: number; z: number } | null,
+  doorways: Array<{ x: number; z: number }>,
+  depth: number, rand: () => number,
   props: PropSpec[], torches: TorchSpec[], spawns: EnemySpawnSpec[],
   mod?: RoomModifier,
 ): boolean {
@@ -592,6 +643,34 @@ function furnish(
   // loot", and it is the one flag every decorative pass has to read: a trove
   // whose three offerings you cannot see past is not a choice.
   if (def.clean) return guarded;
+
+  // ── INTERIOR STONE — the room's own architecture ────────────────────
+  //
+  // Proposed and then VERIFIED: room-interior.ts floods the room's floor with
+  // the stone in place and refuses any form that strands a doorway, the
+  // centrepiece, or a third of the floor. It cannot return a plan it hasn't
+  // checked, which is the only way to add obstacles to a procedural room
+  // without eventually shipping a sealed one.
+  const forms = TYPE_INTERIOR[r.type];
+  if (forms && doorways.length > 0 && rand() < 0.55) {
+    const plan = planInterior(r.poly, {
+      doorways,
+      mustReach: [...staged.claimed, ...doorways],
+      avoid: [
+        ...r.occupancy.footprints().map((f) => ({ x: f.x, z: f.z, r: f.r })),
+        ...staged.claimed.map((c) => ({ x: c.x, z: c.z, r: 0.8 })),
+      ],
+      rand,
+    }, forms);
+    if (plan) {
+      for (const pier of plan.pillars) {
+        props.push({ kind: 'pillar', x: pier.x, z: pier.z, size: pier.size } as PropSpec);
+        r.occupancy.reserve(
+          { kind: 'cylinder', x: pier.x, z: pier.z, r: pier.size * 0.42, y0: 0, y1: r.height },
+          'pillar');
+      }
+    }
+  }
 
   // Minor clutter, in the wall band. Candidates come sorted by clearance and go
   // through the occupancy, so nothing lands inside a pier, a lamp, or the thing

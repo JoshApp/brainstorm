@@ -1232,6 +1232,15 @@ export function buildLevel(
     const rid = findRoomContaining(px, pz, spec.rooms);
     const room = spec.rooms.find((r) => r.id === rid);
     if (!room) return false;
+    // A POLYGON room's doorway is not on its bounding box. Its real wall sits
+    // back from the rect — by metres on a notch or an L — so measuring to the
+    // rect-edge opening asks about a point that is inside the room, often
+    // nowhere near the door. Measured: it culled 3% of planned pillars, and in
+    // a handful of rooms 2 of 3, leaving one orphaned column where a pinch had
+    // been. Poly rooms get their interiors from room-interior.ts, which knows
+    // the outline and FLOODS the room before it commits — a strictly better
+    // informed check than this one, so this one steps aside.
+    if (room.poly && room.poly.length >= 3) return false;
     const rect = room.rect;
     const hw = rect.w / 2, hd = rect.d / 2;
     const walls = [
@@ -1257,7 +1266,15 @@ export function buildLevel(
     if (prop.kind === 'pillar') {
       if (pillarBlocksOpening(prop.x, prop.z)) continue;   // crowds a doorway — drop it
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
-      const H = spec.rooms[0]?.height ?? 3.2;
+      // A pillar's height is its OWN room's ceiling. Reading rooms[0] worked
+      // only while every room on a floor was the same height — polygon rooms
+      // pick a ceiling per archetype (a rotunda vaults to 5.5m, a tomb sits at
+      // 2.8m), so the first room's number would leave a colonnade either
+      // stopping short of the vault or spearing through it.
+      const H = spec.rooms.find((r) => !r.logicalOnly
+        && Math.abs(prop.x - r.rect.x) <= r.rect.w / 2
+        && Math.abs(prop.z - r.rect.z) <= r.rect.d / 2)?.height
+        ?? spec.rooms[0]?.height ?? 3.2;
       const { group: pillarGroup, obstacle } = buildAltarPillar(prop.x, prop.z, size, H, materials);
       // Bake each part's local transform into a world-space geometry clone
       // for the merge. (Merge, not InstancedMesh: pillars vary in height +
