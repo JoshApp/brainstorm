@@ -8,6 +8,8 @@ import { makeJitteredPlane } from './geometry-prims';
 import { buildRng } from '../engine/rng';
 import { polyBounds, type Poly } from './room-shape';
 import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
+import { describeWalls } from './wall-surfaces';
+import { buildPolyDressing } from './poly-dressing';
 
 // ── BUILDING A POLYGON ROOM ──────────────────────────────────────────────────
 //
@@ -34,9 +36,11 @@ import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan
 //      the room was open to the void. Textbook axis confusion.
 //   3. SLABS, NOT A RING. See poly-shell-plan.ts.
 //
-// What this still deliberately does NOT do: trim, grates, shafts, barrel and
-// pitched vaults, torch mounting against arbitrary edges. Those come with the
-// generator.
+// What this still deliberately does NOT do: grates, ceiling shafts, barrel and
+// pitched vaults. Those come with the generator. (Trim and engaged piers arrived
+// with poly-dressing.ts — a shaped room with no coursework read as an extruded
+// rectangle standing next to real masonry, which is a worse look than the shape
+// is a better one.)
 
 /** Wall thickness in metres — matches the visual weight of the rect shell. */
 const WALL_T = 0.25;
@@ -128,6 +132,26 @@ export function buildPolyRoomShell(
       walls.userData.dbgSource = `polywalls · ${room.id}`;
       root.add(walls);
     }
+  }
+
+  // ── DRESSING ───────────────────────────────────────────────────────
+  // Skirting, cornice and engaged piers, in dressed stone. Every rect room in
+  // the game has had trim for months; a polygon room without it reads as an
+  // extruded rectangle standing next to real masonry, which is a worse look
+  // than the shape is a better one. Derived from the same wall surfaces the
+  // placers use, so it follows a chamfer and breaks at a doorway for free.
+  const dressing = buildPolyDressing(
+    describeWalls({ poly, height: H, elevation: elev, thickness: WALL_T, openings: openingRects }),
+    H, elev,
+  );
+  if (dressing) {
+    const trim = new THREE.Mesh(dressing, materials.dressed);
+    trim.receiveShadow = true;
+    trim.castShadow = false;
+    trim.name = `polytrim:${room.id}`;
+    trim.userData.dbgKind = 'wall';
+    trim.userData.dbgSource = `polytrim · ${room.id}`;
+    root.add(trim);
   }
 }
 
