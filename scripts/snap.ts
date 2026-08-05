@@ -223,6 +223,50 @@ async function main() {
     // --crt forces the CRT dirty-signal film on (DEV override) for A/B.
     const crtFilm = process.argv.includes('--crt') ? '&crt=1' : '';
     if (crtFilm) console.log('CRT film: ON');
+    // ── ROOM INSPECTOR (src/debug/inspector.ts) ─────────────────────────────
+    // The instrument for looking at GENERATED GEOMETRY rather than at the game.
+    // A first-person shot of a near-black dungeon cannot tell you whether a
+    // shell closes; these can.
+    //   --plan            near-orthographic top-down (the view that shows gaps)
+    //   --orbit           three-quarter, for form/height/thickness
+    //   --room=<id|index> frame ONE room instead of the whole floor
+    //   --parts           recolour every mesh by WHICH PASS BUILT IT
+    //   --segs            draw the collision segments over the geometry
+    //   --lit             studio lighting on the level (form, not atmosphere)
+    // Combine freely: `--plan --parts` is the room-composition contact view.
+    const inspBits: string[] = [];
+    if (process.argv.includes('--plan')) inspBits.push('insp=top');
+    else if (process.argv.includes('--orbit')) inspBits.push('insp=orbit');
+    else if (process.argv.includes('--eye')) inspBits.push('insp=at');
+    const roomArg = process.argv.find((a) => a.startsWith('--room='))?.split('=')[1];
+    if (roomArg) inspBits.push(`inspRoom=${encodeURIComponent(roomArg)}`);
+    if (process.argv.includes('--parts')) inspBits.push('inspParts=1');
+    const onlyArg = process.argv.find((a) => a.startsWith('--only='))?.split('=')[1];
+    if (onlyArg) inspBits.push(`inspOnly=${encodeURIComponent(onlyArg)}`);
+    if (process.argv.includes('--segs')) inspBits.push('inspSegs=1');
+    if (process.argv.includes('--lit')) inspBits.push('inspLit=1');
+    // Static world batching merges floors and walls into one BatchedMesh, which
+    // erases their per-mesh debug labels — a plan view then draws the entire room
+    // shell in a single colour (or black). Turn it off whenever we're inspecting;
+    // it exists for frame time, and an inspection shot does not care.
+    // Three render optimisations have to stand down for an inspection shot, and
+    // all three fail SILENTLY rather than loudly — the frame just renders wrong:
+    //   batchworld=0  static world batching merges floors + walls into one
+    //                 BatchedMesh, erasing their per-mesh debug labels.
+    //   portalcull    left off (the default) so rooms the player isn't standing
+    //                 in are not culled away.
+    //
+    // KNOWN GAP: on a `run-<seed>-<depth>` procgen floor the plan view draws
+    // walls, corridors and props but NOT the floor plates. Measured, not
+    // guessed: `--only=floor` on that path renders an empty frame while the
+    // legend proves the plates were found and recoloured, so something in the
+    // static-batch / render-bundle stack is drawing over or instead of them
+    // after the recolour. `?bundles=0` makes it worse (the walls vanish too), so
+    // it is not a simple freeze. Scenario-hosted levels (starter-choice, the
+    // vault previews) render correctly and are enough for room-shape work.
+    if (inspBits.length) inspBits.push('batchworld=0');
+    const inspQ = inspBits.length ? '&' + inspBits.join('&') : '';
+    if (inspQ) console.log(`Inspector: ${inspBits.join(' ')}`);
     // --phase=strike poses the equipped weapon at a swing phase (animation review).
     const phaseArg = process.argv.find((a) => a.startsWith('--phase='))?.split('=')[1];
     const phaseOverride = phaseArg ? `&phase=${encodeURIComponent(phaseArg)}` : '';
@@ -255,7 +299,7 @@ async function main() {
       const depthStr = parts[2] ?? '1';
       // autostart=1 enters the seeded-jump boot path (handleAutostart); dev=1
       // unlocks depth>1. Without autostart the title screen shows instead.
-      url = `http://127.0.0.1:${port}/brainstorm/?autostart=1&seed=${encodeURIComponent(seedStr)}&depth=${encodeURIComponent(depthStr)}&dev=1`;
+      url = `http://127.0.0.1:${port}/brainstorm/?autostart=1&seed=${encodeURIComponent(seedStr)}&depth=${encodeURIComponent(depthStr)}&dev=1${inspectOverride}${inspQ}${extraQ}`;
     }
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
     // Item viewer: `item-<id>` is sugar for the generic `item`
@@ -266,7 +310,7 @@ async function main() {
       const itemId = scenario.slice('item-'.length);
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}${extraQ}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}${inspQ}${extraQ}`;
     // Headless swiftshader has no working WebGPU: Chrome exposes navigator.gpu but
     // the context provider fails, and the failed 'webgpu' getContext attempt poisons
     // the canvas so the WebGL2 fallback gets a null context (black frame). Force the

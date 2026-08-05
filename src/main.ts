@@ -1274,6 +1274,14 @@ if (import.meta.env.DEV) {
     systems: SYSTEMS,
     getLevel: () => currentLevel,
     getRunSeed,
+    // The room inspector needs to put the studio rig on a WHOLE LEVEL, which
+    // only main.ts can do — enterInspectMode wants the renderer and the ambient
+    // light. Passed as a thunk so dev-hooks doesn't grow those dependencies.
+    enterLit: () => enterInspectMode({
+      scene, camera, renderer, ambient,
+      subjectOnly: false,
+      getLevelRoot: () => currentLevel?.root ?? null,
+    }),
   });
 }
 

@@ -81,6 +81,13 @@ export class WalkableRegion {
     for (const o of obstacles) this.indexObstacle(o);
   }
 
+  /** Read-only view of the collision the player actually feels — for debug
+   *  overlays and audits. From inside a dark room, a wall that isn't there and
+   *  a wall you can walk through look identical; the only way to tell them
+   *  apart is to draw THESE over the geometry. Live arrays, so don't mutate. */
+  listWalls(): readonly WallSegment[] { return this.walls; }
+  listObstacles(): readonly Obstacle[] { return this.obstacles; }
+
   private indexWall(w: WallSegment): void {
     this.wallGrid.insert(
       w,

@@ -19,6 +19,7 @@ import { setGodMode } from '../player/health';
 import { tryActivateRite } from '../combat/rites';
 import { requestLux, showLuxCard, luxTour, LUX_BANDS } from './lux';
 import { installPerfProbe } from './perf-probe';
+import { installInspector } from './inspector';
 
 // DEV-only console hooks + URL overrides — every window.__* inspection handle
 // and DEV URL flag that used to live inline in main.ts. Called ONLY inside an
@@ -33,11 +34,19 @@ export interface DevHookDeps {
   systems: GameSystem[];
   getLevel: () => (LiveLevel & { checkRoomClear?: () => void }) | null;
   getRunSeed: () => number;
+  /** Puts the studio lighting rig on the whole loaded level. Owned by main.ts
+   *  (it holds the renderer + ambient); the inspector calls it via this thunk. */
+  enterLit: () => void;
 }
 
 export function installDevHooks(deps: DevHookDeps): void {
   const { renderer, scene, camera, systems, getLevel, getRunSeed } = deps;
   const w = window as unknown as Record<string, unknown>;
+
+  // ── The room inspector — window.__insp + the ?insp=… URL family. The one
+  // instrument that can answer "is this geometry correct" separately from
+  // "does this room look good"; see debug/inspector.ts for why that matters.
+  installInspector({ scene, camera, getLevel, enterLit: deps.enterLit });
 
   // ── URL overrides (snap/compare isolation) ────────────────────────────
   // ?ps1=0.3 forces the scene-render scale.
