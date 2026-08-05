@@ -17,6 +17,7 @@ import {
   type Opening, type StairFootprint,
 } from './geometry-cull';
 import { roomType } from './room-types';
+import { claimsAdmitModel, resolveRoomClaims, type Claim } from './prop-taxonomy';
 import type { PlaceKind, PlacementAuthority } from './placement-authority';
 
 // =====================================================================
@@ -108,6 +109,20 @@ interface RoomContext {
    * elbow room rather than letting it crowd one.
    */
   tooClose: (x: number, z: number, minDist: number, kind?: PlaceKind) => boolean;
+  /**
+   * What this room ASSERTS about its own history — see level/prop-taxonomy.ts.
+   *
+   * The second validity predicate, and a different KIND of question from
+   * `tooClose`. That one asks "is there room here"; this asks "does this thing
+   * belong in this story at all". A cobweb in a tended shop fails the second and
+   * would pass the first at any distance, which is why the merchant-in-cobwebs
+   * bug survived a spacing fix.
+   */
+  claims: readonly Claim[];
+  /** Would this model contradict the room's claims? Consult it when PICKING a
+   *  variant, so a contradicting prop is never proposed rather than placed and
+   *  swept — a decorator that filters its own pool needs no cull behind it. */
+  admits: (modelId: string) => boolean;
   centreSampler: () => { x: number; z: number };
   edgeSampler: () => { x: number; z: number };
 }
@@ -289,6 +304,15 @@ function buildRoomContext(
     return false;
   };
 
+  // The room's claims come from its TYPE where identity fixes them (a shop is
+  // tended because a living vendor stands in it) and are drawn from the
+  // dungeon's palette otherwise — which is most rooms, and is where a lot of
+  // free variety comes from. Corridors have no type and read as abandoned.
+  const claims = resolveRoomClaims(
+    roomType((room as { roomType?: string }).roomType ?? '').claims, rand,
+  );
+  const admits = (modelId: string) => claimsAdmitModel(claims, modelId);
+
   const centreSampler = () => ({
     x: minX + 0.5 + rand() * Math.max(0, rect.w - 1),
     z: minZ + 0.5 + rand() * Math.max(0, rect.d - 1),
@@ -326,7 +350,7 @@ function buildRoomContext(
     rect, minX, maxX, minZ, maxZ,
     area: rect.w * rect.d,
     openN, openS, openE, openW,
-    existing, tooClose,
+    existing, tooClose, claims, admits,
     centreSampler, edgeSampler,
   };
 }
@@ -418,7 +442,11 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   //   - Pike-preferred for tighter rooms (narrow silhouette reads
   //     well against a wall); brazier reserved for rooms big enough
   //     that its footprint won't squeeze a doorway.
-  if (!hasCentrepiece && ctx.area >= 50 && rand() < 0.22) {
+  // A LIT fire claims someone tends this room. Refuse it outright where that
+  // would contradict — a burning brazier in a room the floor already declared
+  // abandoned is the same contradiction as a cobweb in a shop, pointing the
+  // other way. (prop-taxonomy: iron-brazier / cresset-pike both claim 'tended'.)
+  if (!hasCentrepiece && ctx.area >= 50 && ctx.admits('iron-brazier') && rand() < 0.22) {
     // Single helper for "near any door / corridor opening on any
     // wall." Each axis check uses the right coord against the right
     // opening list (openings on N/S walls have X-ranges; openings
@@ -522,7 +550,11 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   // Floor debris — edge-biased, varied. Per-room shuffle of the
   // pool so the same chunk model doesn't dominate a chamber.
   const floorCount = Math.max(1, Math.round(ctx.area / 14));
-  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
+  // Pool filtered by the room's CLAIMS before anything is sampled — ash in a
+  // flooded room, or a scatter that argues with the room's story, is refused by
+  // never being offered. A decorator that filters its own pool needs no cull
+  // behind it (docs/LEVEL-OWNERSHIP.md §4).
+  const debrisOrder = shuffled(FLOOR_DEBRIS.filter((m) => ctx.admits(m.id)), rand);
   let debrisIdx = 0;
   for (let i = 0; i < floorCount; i++) {
     for (let a = 0; a < 6; a++) {
@@ -572,7 +604,11 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
     { x: ctx.minX + 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.25 },
     { x: ctx.maxX - 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.75 },
   ], rand);
-  let webs = 0;
+  // The whole pass is skipped where webs would contradict the room's story. This
+  // is the real fix for "the merchant stands inside his own cobwebs": the apron
+  // added on 2026-08-04 kept webs off the vendor's toes, but a tended room should
+  // never have grown one anywhere in it.
+  let webs = ctx.admits('cobweb-corner') ? 0 : 99;
   for (const c of cobwebCorners) {
     if (webs >= 2) break;                 // never more than two webs in a room
     if (rand() > 0.28) continue;          // most corners stay bare
@@ -612,7 +648,11 @@ function corridorSurfacePass(ctx: RoomContext, out: PropSpec[], rand: () => numb
   // ~1 piece per 3m of length, capped. Corridors are normally
   // 1.8-5m long so this lands at 1-2 pieces typically.
   const floorCount = Math.max(0, Math.floor(length / 3));
-  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
+  // Pool filtered by the room's CLAIMS before anything is sampled — ash in a
+  // flooded room, or a scatter that argues with the room's story, is refused by
+  // never being offered. A decorator that filters its own pool needs no cull
+  // behind it (docs/LEVEL-OWNERSHIP.md §4).
+  const debrisOrder = shuffled(FLOOR_DEBRIS.filter((m) => ctx.admits(m.id)), rand);
   let idx = 0;
   for (let i = 0; i < floorCount; i++) {
     for (let a = 0; a < 6; a++) {

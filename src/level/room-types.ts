@@ -1,4 +1,5 @@
 import type { TransactionPrice } from '../content/transactions';
+import type { Claim } from './prop-taxonomy';
 
 // ROOM TYPES — what a room IS, what it may host, and what may happen in it.
 //
@@ -119,6 +120,21 @@ export interface RoomTypeDef {
   /** Modifiers this type ACCEPTS. Empty means the type refuses all of them —
    *  the room is what it is and nothing gets layered on. */
   modifiers: readonly RoomModifier[];
+  /**
+   * What this room's IDENTITY asserts about its history — see
+   * `level/prop-taxonomy.ts` and docs/LEVEL-ARCHITECTURE.md §5.
+   *
+   * A claim is a statement the decoration must not contradict. A shop is
+   * `tended` because a living vendor stands in it, which is what makes "the
+   * merchant stands inside his own cobwebs" a CLAIM CONTRADICTION rather than a
+   * spacing bug — the web and the vendor should never have shared a room at any
+   * separation.
+   *
+   * OMITTED means the type has no opinion, and the floor picks one. That is the
+   * common case on purpose: a plain combat room reading as burned on one floor
+   * and flooded on the next is most of where room variety comes from.
+   */
+  claims?: readonly Claim[];
 }
 
 /**
@@ -147,11 +163,13 @@ export const ROOM_TYPES = {
     kind: 'structural', bookend: false, centrepiece: 'miniboss',
     enemies: false, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
+    claims: ['desecrated'],
   },
   boss: {
     kind: 'structural', bookend: false, centrepiece: 'boss',
     enemies: false, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
+    claims: ['desecrated'],
   },
 
   // ── ROLE — a job assigned to any qualifying room ───────────────────
@@ -171,6 +189,7 @@ export const ROOM_TYPES = {
     kind: 'role', bookend: false, centrepiece: 'fire',
     enemies: false, event: false, clean: false, minorLoot: false, fire: true, firePref: 5,
     modifiers: ['ambush', 'contested'],
+    claims: ['tended'],
   },
   // The floor's guaranteed choice — several offerings, take one. A reward room
   // is a BREATH: no enemies, no hazards. It may be sealed behind an offering.
@@ -187,6 +206,7 @@ export const ROOM_TYPES = {
     kind: 'role', bookend: false, centrepiece: 'merchant',
     enemies: false, event: false, clean: true, minorLoot: false, fire: false, firePref: 0,
     modifiers: [],
+    claims: ['tended'],
   },
   // A gauntlet room: waves, each one answered with a reward. Its identity IS the
   // fighting — which is why this is a TYPE and "fight for the thing" is not. You
@@ -195,6 +215,7 @@ export const ROOM_TYPES = {
     kind: 'role', bookend: false, centrepiece: 'gauntlet',
     enemies: true, event: false, clean: false, minorLoot: false, fire: false, firePref: 0,
     modifiers: ['toll', 'hazard'],
+    claims: ['desecrated'],
   },
   // The hazard and the prize it guards. Can also be waiting for you.
   trap: {
