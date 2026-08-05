@@ -121,6 +121,34 @@ decorate with either. The known gap (2026-06): some anchor props
 promise the altar can't. Until altars get a verb (interactable or
 Encounter hook), don't add MORE lit altars; close the loop first.
 
+## Overhead status glyphs (added 2026-08)
+
+A creature can carry ONE symbol above its crown, and it means *this one
+is open right now*. There are two, and they are deliberately built in
+opposite registers so they can never be confused at a glance on a phone:
+
+| Glyph | State | Register | Module |
+|---|---|---|---|
+| Orbiting sparks | STAGGERED — poise broken, executable | additive, spectral, cold blue-white, moving | `mobs/stun-stars.ts` |
+| Bone skull | FEARED — nerve broken, routing, backstabbable | normal blending, dead bone-grey, a dark socket, hovering | `mobs/fear-skull.ts` |
+
+Both sit at the model's measured crown (bounding box, not a guessed
+height — a tall body buries a guessed cue in its chest) with depth-test
+OFF, so the cue is never occluded by the pillar the coward is hiding
+behind. Finding the opening is the reward; hunting for the icon isn't.
+
+Rules for any future glyph:
+
+- **One at a time.** The skull is suppressed while a creature is
+  staggered; two symbols over one head is noise, not language.
+- **A glyph is a promise of an OPENING**, not a status readout. Do not
+  add one for "poisoned" or "burning" — those belong to the body
+  (`effects/status-vfx.ts`), which is where the player already looks for
+  damage-over-time. A glyph above the head means *go now*.
+- **Distinct silhouette before distinct colour.** These read at twenty
+  pixels tall through torch glare; a ring of sparks and a skull are
+  distinguishable by shape alone, which is what survives the dithering.
+
 ## Geometry rules (model authoring)
 
 - **Silhouette first.** Every creature must be nameable as a pure

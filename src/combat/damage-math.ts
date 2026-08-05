@@ -71,3 +71,31 @@ export function composeStrikeDamage(
   const dmg = crit ? base * critMultiplier : base;
   return dmg * (1 + surplus) * penalty;
 }
+
+/**
+ * Is the attacker BEHIND the target — cos of the angle between the target's
+ * forward and the direction to the attacker.
+ *
+ *   +1 = attacker is dead ahead      0 = square on the flank      −1 = directly behind
+ *
+ * Target FORWARD is (−sin yaw, −cos yaw): Three's −Z forward turned by the body
+ * yaw. Pulled out as a named pure function rather than inlined at the hit site
+ * for the reason CLAUDE.md gives — a hand-written sign here is the axis-confusion
+ * failure mode, and a wrong sign would silently invert "behind" into "in front"
+ * with the mechanic still appearing to work. A test pins the four cardinals.
+ *
+ * Returns +1 (dead ahead — never a backstab) if the attacker is standing exactly
+ * on the target, so a degenerate distance can't hand out a free multiplier.
+ */
+export function rearDot(
+  targetX: number, targetZ: number, targetYaw: number,
+  attackerX: number, attackerZ: number,
+): number {
+  const dx = attackerX - targetX;
+  const dz = attackerZ - targetZ;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return 1;
+  const fx = -Math.sin(targetYaw);
+  const fz = -Math.cos(targetYaw);
+  return (fx * dx + fz * dz) / len;
+}

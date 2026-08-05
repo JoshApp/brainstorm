@@ -129,6 +129,10 @@ export interface Scenario {
      *  collapse animation) — for snapping phase 2 (crawl) without grinding
      *  phase 1 down in combat. */
     bossPhase?: number;
+    /** Impose FEAR for this many seconds through the REAL applyFear path — so
+     *  the pose exercises the actual mechanism (rout → skull) instead of a
+     *  hand-set state that only looks like it. */
+    fear?: number;
   }>;
   /** Override the sword's phase + timer at startup. */
   swordPhase?: { phase: SwingPhase; phaseTimer: number };
@@ -2012,6 +2016,36 @@ export const SCENARIOS: Record<string, Scenario> = {
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
   },
 
+  // FEAR — two of the same creature side by side, one frightened and one not,
+  // because a status tell is only as good as the CONTRAST with its absence. The
+  // fear is imposed through the real applyFear path (not a posed state), so what
+  // you see is the actual rout + skull the mechanic produces.
+  //   ?scenario=fear
+  fear: {
+    godMode: true,
+    level: {
+      id: 'dbg-fear', depth: 3, displayName: 'FEAR', fogColor: 0x0c0c12,
+      startPos: { x: 0, z: 4.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 12, d: 12 }, height: 3.6 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -5.8, z: -1, height: 2.4, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.1 },
+        { x:  5.8, z: -1, height: 2.4, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.1 },
+      ],
+      spawns: [
+        { enemyId: 'skeleton', x: -1.6, z: -1.0, roomId: 'r' },   // frightened
+        { enemyId: 'skeleton', x:  1.6, z: -1.0, roomId: 'r' },   // calm — the control
+      ],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.2, lookAt: { x: 0, z: -1.0, y: 1.2 } },
+    enemyOverrides: [
+      { index: 0, pos: { x: -1.6, z: -1.0 }, fear: 30 },
+      { index: 1, pos: { x:  1.6, z: -1.0 }, state: 'chasing' },
+    ],
+  },
+
   // Mimic — three chests in a row, one of each tier, each one a
   // mimic. Lets us preview the disguise (chest sees-as-chest), the
   // subtle breathing tell, the reveal animation, and the mob model
@@ -2460,6 +2494,7 @@ export function applyScenario(
       if (ov.pos) enemy.setDebugPosition(ov.pos.x, ov.pos.z);
       if (ov.bossPhase !== undefined) enemy.setDebugBossPhase(ov.bossPhase);
       if (ov.state) enemy.setDebugState(ov.state, ov.phaseTimer ?? 0);
+      if (ov.fear) enemy.applyFear(ov.fear);
       // Always make the repositioned enemy face the camera. Without this,
       // frozen scenarios show enemies at default rotation (looking world -Z)
       // regardless of where the camera is, so the rat appears to face

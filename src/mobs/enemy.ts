@@ -72,6 +72,7 @@ import { selectIntent, rollPersonality, type IntentChoice } from './intent';
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
+import { createFearSkull, type FearSkull } from './fear-skull';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 import { isArrivalGrace } from '../player/arrival';
 
@@ -92,6 +93,7 @@ function vocalArchetypeFor(spec: EnemySpec): VocalArchetype | null {
  *  the world map across descents. Idempotent (killed mobs already freed). */
 export function disposeEnemy(e: Enemy): void {
   e.clearThreat();   // pop any held deflect opportunity (no leak on teardown)
+  e.releaseOverheadCues();   // hand the stun ring / fear skull's pooled clones back
   clearEntityCombatStats(e.entityId);
   unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
@@ -138,6 +140,8 @@ export interface AiDebug {
   decisionIn: number;   // s until the next intent re-decision
   cower: number;        // s of cower left (fleeing)
   broke: boolean;       // morale has broken this life
+  fear: number;         // s of IMPOSED fear left (0 = only a spontaneous rout)
+  openToBackstab: boolean;   // a blow to its back right now would be a backstab
 }
 
 export type EnemyState =
@@ -241,6 +245,13 @@ export interface Enemy extends Damageable {
   /** Force any open deflect-flash threat OFF (pops a held deflect opportunity)
    *  — used by removal paths so the global opportunity count can't leak. */
   clearThreat(): void;
+  /** Hand the overhead cues' pooled materials back. Called by disposeEnemy for
+   *  mobs the player LEFT ALIVE — those skip the death path that tidies them. */
+  releaseOverheadCues(): void;
+  /** Impose FEAR for `seconds` — the creature routs and hangs a skull. Returns
+   *  true if it took (refused for bosses, the dead, and anything still inside
+   *  its post-fear immunity). See CONFIG.ENEMY_AI.FEAR. */
+  applyFear(seconds: number): boolean;
   collisionRadius: number;
   /** Combat hit radius — swings reach the body's surface this far from
    *  `position`. Default 0 (point). See Damageable.hitRadius. */
@@ -424,6 +435,18 @@ export function createEnemy(
   // "Seeing stars" stun ring — lazily built the first time this mob is staggered
   // (most never are), parented to the container above the head.
   let stunStars: StunStars | null = null;
+  // Fear skull — same lazy story as the stun ring: most creatures never break,
+  // so it is built the first time this one is frightened and not before.
+  let fearSkull: FearSkull | null = null;
+
+  /** Local Y of the creature's actual crown, from its bounding box. Guessing a
+   *  height buries an overhead cue in a tall body (the stoneguard); measured
+   *  once, on first use, and shared by both overhead cues. */
+  function crownHeight(): number {
+    built.group.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(built.group);
+    return isFinite(box.max.y) ? box.max.y - container.position.y : aimHeightResolved * 1.5;
+  }
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -824,6 +847,15 @@ export function createEnemy(
   // once per life (a re-engaged coward then fights on), so no perma-flee flicker.
   let brokenOnce = false;
   let cowerTimer = 0;   // >0 while cowering at the end of a rout
+  // FEAR — the same rout, but IMPOSED rather than rolled. While `fearTimer > 0`
+  // the creature will not re-engage no matter how long it has cowered; it is
+  // simply too frightened to turn around. `fearCd` is the anti-permalock cooldown
+  // (CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER) that keeps break→panic→break from
+  // removing the fight entirely. See applyFear.
+  let fearTimer = 0;
+  let fearCd = 0;
+  /** True while the creature is visibly panicked — drives the skull + backstab. */
+  const isFeared = (): boolean => fearTimer > 0 || state === 'fleeing';
 
   // Join the pack coordinator so a crowd of chasers rings the player instead of
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
@@ -1281,6 +1313,7 @@ export function createEnemy(
       built.hitTargets.length = 0;
       // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
       stunStars?.dispose(); stunStars = null;
+      fearSkull?.dispose(); fearSkull = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id, victimBuffs });
       // Death soaks the floor: a big pool under the corpse plus a
@@ -1458,6 +1491,27 @@ export function createEnemy(
     cowerTimer = 0;
     state = 'fleeing';
     phaseTimer = 0;
+  }
+
+  // IMPOSE fear. The public route into the rout above, for anything that can
+  // frighten a creature rather than wait for its nerve to fail on its own — today
+  // a poise break landed from BEHIND (combat/attack.ts), tomorrow a 'fear'-domain
+  // relic or rite (content/domains.ts has carried the name for a while with
+  // nothing behind it).
+  //
+  // Returns true if the fear TOOK, so a caller can decide whether to pay out a
+  // beat for it. Refused for: the dead, bosses and minibosses (a set-piece has a
+  // tuned pressure curve and being frightened off is not part of it), and any
+  // creature still inside its post-fear immunity.
+  function applyFear(seconds: number): boolean {
+    if (!aliveLocal || seconds <= 0) return false;
+    if (spec.isBoss || spec.miniboss) return false;
+    if (fearCd > 0) return false;
+    fearTimer = Math.max(fearTimer, seconds);
+    // A creature already reeling from the break can't start running yet — it
+    // routs the moment the stagger lets go (see the 'staggered' exit).
+    if (state !== 'staggered' && state !== 'fleeing') breakMorale();
+    return true;
   }
 
   // Resolve a parry against the CURRENT deflectable strike — fired the INSTANT
@@ -2438,6 +2492,15 @@ export function createEnemy(
     actionFsm.tick(dt);   // advance interrupt beats (stagger + parry flinch-lock)
     if (falterCd > 0) falterCd = Math.max(0, falterCd - dt);
     if (plantTimer > 0) plantTimer = Math.max(0, plantTimer - dt);
+    // FEAR burns down whatever the creature is doing (including reeling), and
+    // the moment it runs out the immunity starts — so nerve returns exactly
+    // once per scare and can't be re-broken on the same breath.
+    if (fearTimer > 0) {
+      fearTimer = Math.max(0, fearTimer - dt);
+      if (fearTimer === 0) fearCd = CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER;
+    } else if (fearCd > 0) {
+      fearCd = Math.max(0, fearCd - dt);
+    }
     if (state !== 'staggered') {
       if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
       else if (poiseLeft < poiseMax) {
@@ -2519,22 +2582,19 @@ export function createEnemy(
         built.group.rotation.z = Math.sin(elapsed * 11) * 0.18 * wob + Math.sin(elapsed * 2.2) * 0.06;
         applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
         built.group.position.y = 0;
-        if (!stunStars) {
-          // Place the ring above the model's ACTUAL top (bounding box), not a
-          // guessed height — a tall body (stoneguard) otherwise buries the
-          // stars in its chest. Computed once, on the first stagger.
-          built.group.updateWorldMatrix(true, true);
-          const box = new THREE.Box3().setFromObject(built.group);
-          const top = isFinite(box.max.y) ? box.max.y - container.position.y : aimHeightResolved * 1.5;
-          stunStars = createStunStars(container, top + 0.4);
-        }
+        // Placed above the model's ACTUAL top, not a guessed height — a tall
+        // body (stoneguard) otherwise buries the stars in its chest.
+        if (!stunStars) stunStars = createStunStars(container, crownHeight() + 0.4);
         if (!actionFsm.isStaggered()) {
           applyTilt(0);
           built.group.rotation.y = 0;
           built.group.rotation.z = 0;
           setStaggerVuln(false);   // close the exposed weak point
-          state = 'chasing';
-          phaseTimer = 0;
+          // If the blow that broke it came from BEHIND, fear was imposed during
+          // the reel and cashes in here: it comes out of the stagger running,
+          // not swinging. That handoff is the whole poise→panic→backstab loop.
+          if (fearTimer > 0) breakMorale();
+          else { state = 'chasing'; phaseTimer = 0; }
         }
         break;
       }
@@ -2554,7 +2614,14 @@ export function createEnemy(
             applyTilt(-0.5);            // hunched down/back
             eyePresenter.applySearch();  // eyes dim — cowed, not glaring
             built.group.position.y = 0;
-            if (cowerTimer <= 0) { applyTilt(0); state = 'chasing'; phaseTimer = 0; }
+            if (cowerTimer <= 0) {
+              // Nerve returns when the cower runs out — UNLESS fear is still on
+              // it, in which case no amount of hiding is enough. Refresh the
+              // cower rather than letting it lapse, so it stays hunched instead
+              // of twitching back into a one-frame rout every 2.6s.
+              if (fearTimer > 0) cowerTimer = M.COWER_DURATION;
+              else { applyTilt(0); state = 'chasing'; phaseTimer = 0; }
+            }
             break;
           }
         }
@@ -3026,6 +3093,16 @@ export function createEnemy(
     // Stun-star ring — orbits while staggered, fades out after (so it lingers a
     // beat as the mob shakes it off). No-op until the first stagger builds it.
     stunStars?.tick(dt, state === 'staggered');
+    // FEAR skull — hangs over anything whose nerve has broken, whether the game
+    // frightened it (the low-HP morale roll) or the player did (a poise break
+    // from behind). Suppressed while STAGGERED so the two overhead cues never
+    // stack on one head; the skull takes over the instant the reel ends, which
+    // is also the instant the mob turns and runs.
+    {
+      const showSkull = isFeared() && state !== 'staggered';
+      if (showSkull && !fearSkull) fearSkull = createFearSkull(container, crownHeight() + 0.20);
+      fearSkull?.tick(dt, showSkull);
+    }
   }
 
   /** Drive the keyframe animator from AI state. setBase responds to
@@ -3249,6 +3326,35 @@ export function createEnemy(
     clearThreat() {
       reconcileThreat(false, false);
     },
+    releaseOverheadCues() {
+      stunStars?.dispose(); stunStars = null;
+      fearSkull?.dispose(); fearSkull = null;
+    },
+    applyFear,
+    /** Body FORWARD is (−sin yaw, −cos yaw) — Three's −Z forward turned by the
+     *  container yaw. The combat cone reads this to tell a blow to the back from
+     *  a blow to the flank. */
+    get facingYaw() {
+      return container.rotation.y;
+    },
+    // The creature's own verdict on whether a blow from behind is a BACKSTAB —
+    // stated here rather than reassembled from state flags in the combat layer,
+    // because "can it answer me" is a question only it can answer. Two ways to
+    // be open, and they bracket the fight: it has not noticed you (the opener),
+    // or its nerve is broken (the punish you earned by breaking it).
+    //
+    // Bosses and minibosses are never open: their pressure curve is tuned, and
+    // a dormant one waiting behind its fog gate would otherwise eat a free
+    // opener for the crime of standing still.
+    get openToBackstab() {
+      if (!aliveLocal || dormantLocal || spec.isBoss || spec.miniboss) return false;
+      // Ambient vermin are never open: a maggot is PERMANENTLY unaware, so
+      // without this every crawling thing on the floor is a free BACKSTAB beat
+      // and the word stops meaning anything. Sneaking up on something that was
+      // never going to fight you is not an achievement.
+      if (!hostileToPlayer) return false;
+      return !aggroed || isFeared();
+    },
     // Finisher window: ONLY a poise-broken (STAGGERED) enemy is executable.
     // The old low-HP "chip execute" path is gone — execution is now purely the
     // reward for breaking poise, which is what makes the stagger game matter.
@@ -3265,6 +3371,7 @@ export function createEnemy(
         poise: poiseMax > 0 ? Math.max(0, poiseLeft / poiseMax) : 1, aggression,
         boldness: personality.boldness, patience: personality.patience,
         feint: feintT >= 0, decisionIn: decisionTimer, cower: cowerTimer, broke: brokenOnce,
+        fear: fearTimer, openToBackstab: !hostileToPlayer ? false : (!aggroed || isFeared()),
       };
     },
     takeDamage,

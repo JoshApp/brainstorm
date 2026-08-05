@@ -77,6 +77,8 @@ export function tickMobAiReadout(mob: Enemy | null, distance: number, nowMs: num
   const tags = [
     d.feint ? 'FEINT' : '',
     d.broke ? 'BROKE' : '',
+    d.fear > 0 ? `FEAR ${d.fear.toFixed(1)}s` : '',
+    d.openToBackstab ? 'BACK-OPEN' : '',
     d.release ? 'attack-ok' : 'held',
   ].filter(Boolean).join(' ');
 

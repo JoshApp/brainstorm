@@ -15,7 +15,7 @@ import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
 import { computePlayerStats } from './modifiers';
-import { composeStrikeDamage } from './damage-math';
+import { composeStrikeDamage, rearDot } from './damage-math';
 import { gameRngChance, gameRng } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
@@ -790,8 +790,18 @@ export function createCombatSystem(
       // zone's additive critBonus (the head — crits more often, not always).
       const crit = (zone?.crit ?? false) || gameRngChance(critChance + (zone?.critBonus ?? 0));
       const execMul = isExecute ? CONFIG.EXECUTE.DAMAGE_MUL : 1;
+      // BACKSTAB — the blade in the back of something that can't answer it. The
+      // combat layer supplies the GEOMETRY (are you behind its shoulders); the
+      // target supplies the JUDGEMENT (is it open at all — unaware, or routing).
+      // Both must hold, and only on a real creature: a vase has no back.
+      const behind = target.facingYaw !== undefined
+        && rearDot(target.position.x, target.position.z, target.facingYaw,
+                   camera.position.x, camera.position.z) <= CONFIG.BACKSTAB.REAR_DOT;
+      const backstab = behind && target.openToBackstab === true && target.hitFeedback === 'heavy';
+      const backstabMul = backstab ? CONFIG.BACKSTAB.DAMAGE_MUL : 1;
       const baseDamage = composeStrikeDamage(stats.damage, crit, critMult,
-        [finisherMult, chargeDamageMul, counterDmgMul, zoneMul, cleaveMul, execMul, stepDamageMul]);
+        [finisherMult, chargeDamageMul, counterDmgMul, zoneMul, cleaveMul, execMul, stepDamageMul,
+         backstabMul]);
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -889,8 +899,21 @@ export function createCombatSystem(
         const broke = target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul * stepStaggerMul) ?? false;
         if (broke) {
           anyStagger = true;
-          spawnStatusText(camera, hitPoint, 'STAGGERED', 'rgba(255, 226, 150, 0.99)');
           playSurfaceHit('stone', target.position);   // sharp guard-cracks-open crack
+          // A guard broken by a blow it NEVER SAW takes the creature's nerve
+          // with it: it comes out of the reel running, not swinging. This is the
+          // player's route into the fear state, and the front half of the loop —
+          // break it from behind, it panics, and a panicking thing has its back
+          // to you (see BACKSTAB above). Refused on bosses and on anything still
+          // inside its post-fear immunity, so it stays a beat and not a lock.
+          const feared = behind && (target.applyFear?.(CONFIG.ENEMY_AI.FEAR.BREAK_DURATION) ?? false);
+          if (feared) spawnStatusText(camera, hitPoint, 'UNNERVED', 'rgba(206, 199, 182, 0.99)');
+          else spawnStatusText(camera, hitPoint, 'STAGGERED', 'rgba(255, 226, 150, 0.99)');
+        } else if (backstab) {
+          // Not a break — just a blade where it couldn't be answered. Named in
+          // bone, matching the skull, so the two halves of the loop read as one
+          // colour language.
+          spawnStatusText(camera, hitPoint, 'BACKSTAB', 'rgba(206, 199, 182, 0.99)');
         }
         // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
         // listener in createCombatSystem — not a per-hit drain, which was

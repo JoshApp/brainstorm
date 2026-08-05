@@ -65,4 +65,16 @@ export interface Damageable {
    *  THIS hit broke the poise (triggered the stagger) — drives the player-side
    *  "STAGGERED" feedback in attack.ts. */
   applyStaggerDamage?(amount: number): boolean;
+  /** Body yaw in radians, where FORWARD is (−sin yaw, −cos yaw) — Three's −Z
+   *  forward turned by the yaw. The swing resolver uses it to tell a blow to the
+   *  BACK from one to the flank. Enemies implement it; a vase has no front. */
+  facingYaw?: number;
+  /** The target's own verdict that it cannot answer a blow from behind — it has
+   *  not noticed the attacker, or its nerve is broken. Left to the target
+   *  because "can I answer this" is a question only it can answer; the combat
+   *  layer supplies the geometry and nothing else. See CONFIG.BACKSTAB. */
+  openToBackstab?: boolean;
+  /** Impose FEAR for `seconds`. Returns true if it took. Optional — only living
+   *  things have nerve to break. See CONFIG.ENEMY_AI.FEAR. */
+  applyFear?(seconds: number): boolean;
 }

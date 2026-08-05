@@ -527,6 +527,25 @@ export const CONFIG = {
     // cleanly excluded; this low bar means a brief, deliberate hold qualifies.
     MIN_CHARGE: 0.15,
   },
+  // BACKSTAB — a blow landed in the back of a creature that CANNOT ANSWER IT.
+  // Two ways to earn one, and they bracket the fight:
+  //   • it has not noticed you yet  → the opener, paid for by not being seen
+  //   • its nerve is broken         → the punish, paid for by breaking it
+  // Never on a boss or a miniboss: a set-piece has a tuned pressure curve and
+  // "walk behind it" is not supposed to be a shortcut through it.
+  //
+  // DESIGN-METHOD §1 is the live risk here — a player-controlled condition with
+  // a multiplicative payoff is the shape that broke the game once already. Two
+  // things hold it: the multiplier rides the ADDITIVE surplus lane of
+  // composeStrikeDamage (it sums with charge/counter rather than compounding),
+  // and the condition is genuinely expensive — an unaware creature is a
+  // once-per-life resource and a feared one had to be broken from behind first.
+  BACKSTAB: {
+    DAMAGE_MUL: 2.2,   // +1.2 surplus — decisive on a routing mob, not a delete button
+    // cos of the angle from the creature's FORWARD. −0.5 = a 120° rear arc: you
+    // must be behind its shoulders, not merely off to one side.
+    REAR_DOT: -0.5,
+  },
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
                                  //   appear. Otherwise the player would be told
@@ -600,6 +619,24 @@ export const CONFIG = {
       FLEE_SPEED_MUL: 1.3,  // panicked run is faster than a chase
       FLEE_SAFE_DIST: 7,    // m from the player before it stops and cowers
       COWER_DURATION: 2.6,  // s hunched + defenceless before nerve returns (or you cut it down)
+    },
+    // FEAR — morale as an INFLICTABLE state rather than only a spontaneous roll.
+    // A feared creature routs (the MORALE flow above, unchanged) and hangs a
+    // skull over its head (mobs/fear-skull.ts) for as long as the fear lasts, so
+    // "that one is running, its back is open" reads across a room.
+    //
+    // The player's route in is BREAK ITS POISE FROM BEHIND: it never saw the
+    // blow that broke its guard, so its nerve goes with it. That is the whole
+    // loop — get behind it, break it, it panics and runs, and a running creature
+    // has its back to you (see BACKSTAB). Fear is also the seam a content layer
+    // reaches for: the 'fear' domain (content/domains.ts) has had a name and no
+    // mechanism until now.
+    FEAR: {
+      BREAK_DURATION: 5.0,  // s of imposed fear from a poise break landed from behind
+      // A creature that has just shaken off fear cannot be re-feared for this
+      // long. Without it, break→panic→backstab→break is a permalock: the mob
+      // never gets a turn and the fight stops being a fight.
+      IMMUNE_AFTER: 8.0,    // s of fear immunity once a fear expires
     },
     FACE_MOVE_MIN: 0.5,              // m/s — below this SMOOTHED speed a chaser faces the PLAYER (standing / blocked / arrived); above it, it faces its ACTUAL travel so it never crab-walks or moonwalks. Smoothed heading kills the per-frame facing jitter that aiming at a noisy pack target caused.
     HEAD_TRACK_MAX: 1.15,           // rad (~66°) — DOOM-style focus tracking: max yaw the head/neck twists to keep the player in view while the BODY faces its movement. So a strafing/circling mob watches you (attention decoupled from locomotion) instead of looking where its feet go. Beyond this it looks over its shoulder; the body turns the rest as it slows + faces you.
