@@ -2122,7 +2122,9 @@ export function buildLevel(
       // TorchSpec.height is metres above the FLOOR — lift by the ground
       // under the fixture so wall torches ride their room's elevation.
       new THREE.Vector3(t.x, groundYAt(t.x, t.z) + t.height, t.z),
-      torchYawForWall(t.wall),
+      // An explicit rotY wins: it came from the mounting wall's own normal and
+      // is exact on any angle. `wall` can only say N/S/E/W.
+      t.rotY ?? torchYawForWall(t.wall),
       t.colorTint,
       t.intensityMul,
       wallFixtureModel(t.fixtureKind),

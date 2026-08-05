@@ -555,8 +555,18 @@ export type TorchSpec = {
   z: number;
   /** Height above the floor for the torch flame. */
   height: number;
-  /** Which wall the torch is mounted on; determines bracket facing. */
+  /** Which wall the torch is mounted on. A LOSSY LABEL: it can only name four
+   *  directions, so on a chamfered or diagonal wall it is up to 45° wrong.
+   *  Several passes still read it (the opening filter, the lighting budget), so
+   *  it stays required — but anything that needs the real facing should set and
+   *  read `rotY`. This letter is the reason a sconce could sit at a coordinate
+   *  where its wall no longer existed and nothing could tell. */
   wall: 'N' | 'S' | 'E' | 'W';
+  /** EXACT bracket facing, when the mounting wall isn't axis-aligned. Overrides
+   *  the angle derived from `wall`. Set by wall-sconces.ts from the wall's own
+   *  inward normal; omitted by every hand-authored torch, which keeps the
+   *  cardinal path byte-identical. */
+  rotY?: number;
   /** Optional hex color override for this torch's light + flame (defaults to CONFIG.TORCH_COLOR). */
   colorTint?: number;
   /** Optional intensity multiplier (defaults to 1). Use 0.5 for a dying/dim torch. */

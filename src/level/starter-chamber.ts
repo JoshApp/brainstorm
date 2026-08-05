@@ -4,6 +4,8 @@ import { floorGlow } from '../content/light-props';
 import { rollStarterWeapons } from '../content/starter-weapons';
 import { ceilingFor, generateRoomShape } from './room-shape';
 import { polyRoomRect } from './poly-room-shell';
+import { describeWalls } from './wall-surfaces';
+import { sconcesOn } from './wall-sconces';
 
 // Starter chamber — the first room of EVERY fresh run. Three altars,
 // one weapon each. The player picks one (which auto-equips and
@@ -59,6 +61,10 @@ export const STARTER_POLY = generateRoomShape('apse', {
 /** Height comes from the archetype too: an apse is tall for its span, so the
  *  chamber goes from a flat 2.8m lid to something you look UP in. */
 const STARTER_CEILING = ceilingFor('apse', STARTER_W, STARTER_D, 0.5);
+/** The chamber's wall faces. Computed once — the shape is fixed, so these are
+ *  as constant as the polygon is, and everything mounted on a wall reads them
+ *  instead of a coordinate somebody measured. */
+const STARTER_WALLS = describeWalls({ poly: STARTER_POLY, height: STARTER_CEILING.height });
 
 export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSpec {
   // Roll three distinct base weapons for the altars (left → centre →
@@ -130,20 +136,35 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
       },
     ],
 
-    torches: [
-      // Two entry sconces at the spawn end (south).
-      { x: -3.95, z: 4.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.90 },
-      { x:  3.95, z: 4.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.90 },
-      // Cool sconces flanking the altars — "ritual / chamber" feel.
-      { x: -3.95, z: -0.5, height: 2.0, wall: 'W', colorTint: 0xc8c0e0, intensityMul: 0.70 },
-      { x:  3.95, z: -0.5, height: 2.0, wall: 'E', colorTint: 0xc8c0e0, intensityMul: 0.70 },
-      // Stairs sconces — cool moonlight blue, side-mounted so they don't
-      // clash with the stair's own moonbeam halo. These now sit on the APSE
-      // walls (x = ±2), not the nave's — the shape steps in behind the altars,
-      // so the pair reads as lighting the sanctuary rather than the room.
-      { x: -1.95, z: -4.4, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.75 },
-      { x:  1.95, z: -4.4, height: 1.8, wall: 'E', colorTint: 0x88aaff, intensityMul: 0.75 },
-    ],
+    // ── LIGHT, ASKED OF THE WALLS ────────────────────────────────────
+    // These used to be six hand-measured coordinates, and one of them —
+    // `{ x: -3.95, z: -3.5, wall: 'W' }` — hung in the void the moment the
+    // room became an apse, because the west wall stops existing at that Z.
+    // Fixing it by hand fixed one sconce and none of the ones that would do
+    // the same thing next time the shape moved.
+    //
+    // The art direction is unchanged and now says what it MEANS: the sanctuary
+    // burns cold, the nave burns warm and cools as you walk up it toward the
+    // altars. Both are predicates over walls, so the chamber re-lights itself
+    // correctly if the polygon is ever regenerated.
+    torches: sconcesOn(STARTER_WALLS, [
+      {
+        // THE APSE — the short walls behind the altars, where the stair is.
+        // Moonlight blue, mounted low so it doesn't fight the stair's own halo.
+        pick: (s) => s.mid[1] < -3,
+        spacing: [2.4, 4], height: 1.8, minWall: 1.8,
+        tint: 0x88aaff, intensity: 0.75,
+      },
+      {
+        // THE NAVE — the two long side walls. Warm at the entrance where you
+        // arrive, cooling toward the altars, so walking up the room is a
+        // temperature change rather than a brightness one.
+        pick: (s) => s.length > 6,
+        spacing: [4.5, 6], height: 2.0,
+        tint: (m) => (m.z > 2 ? 0xffaa55 : 0xc8c0e0),
+        intensity: (m) => (m.z > 2 ? 0.9 : 0.7),
+      },
+    ]),
 
     // No mobs. The starter chamber is the choice, not the test.
     spawns: [],
