@@ -17,6 +17,7 @@ import {
   type Opening, type StairFootprint,
 } from './geometry-cull';
 import { roomType } from './room-types';
+import type { PlaceKind, PlacementAuthority } from './placement-authority';
 
 // =====================================================================
 // LEVEL DECORATION PIPELINE
@@ -91,7 +92,22 @@ interface RoomContext {
   area: number;
   openN: Opening[]; openS: Opening[]; openE: Opening[]; openW: Opening[];
   existing: PlacedPoint[];
-  tooClose: (x: number, z: number, minDist: number) => boolean;
+  /**
+   * "Is this spot no good?" — the single validity predicate every placement in
+   * this file already consults, and every call site already answers by trying
+   * the NEXT candidate.
+   *
+   * It now asks the PLACEMENT AUTHORITY as well as its own spacing list, which
+   * is what turns three separate end-of-pipeline culls into a refusal at the
+   * point of production. A pillar proposed inside an altar's apron, over a
+   * carved void, or in a room whose type refuses it is simply told no, and the
+   * loop tries somewhere else — where a cull could only have deleted it.
+   *
+   * `kind` defaults to 'blocker': unclassified clutter is assumed to be
+   * something you can walk into, so the authority keeps it out of an event's
+   * elbow room rather than letting it crowd one.
+   */
+  tooClose: (x: number, z: number, minDist: number, kind?: PlaceKind) => boolean;
   centreSampler: () => { x: number; z: number };
   edgeSampler: () => { x: number; z: number };
 }
@@ -122,7 +138,7 @@ function isCleanRoom(room: { logicalOnly?: boolean; roomType?: string }): boolea
   return !!room.roomType && !room.logicalOnly && roomType(room.roomType).clean;
 }
 
-export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
+export function applyGeometryWarp(spec: LevelSpec, rand: () => number, auth?: PlacementAuthority): void {
   // 1. Archway emission. Walks every corridor, finds where it
   //    meets a room, drops a framed gate. De-duped so a shared
   //    edge only emits once.
@@ -145,7 +161,7 @@ export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
   const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
     if (isCleanRoom(room)) continue;   // the floor is a stage — see isCleanRoom
-    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids, auth, room.id);
     const hasCentrepiece = centrepiecePoints.some(
       (p) => p.x >= ctx.minX && p.x <= ctx.maxX && p.z >= ctx.minZ && p.z <= ctx.maxZ,
     );
@@ -174,7 +190,7 @@ export const applyStructuralClutter = applyGeometryWarp;
  *  debris + cracks to break the long empty hallway feel without
  *  cluttering passage. No wall damage in corridors (the walls
  *  are short + close enough that a decal reads as graffiti). */
-export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
+export function applySurfaceClutter(spec: LevelSpec, rand: () => number, auth?: PlacementAuthority): void {
   const existing = collectExisting(spec);
   const stairs = allStairFootprints(spec);
   const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
@@ -182,11 +198,11 @@ export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
   const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
     if (isCleanRoom(room)) continue;   // the floor is a stage — see isCleanRoom
-    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids, auth, room.id);
     surfacePass(ctx, out, rand);
   }
   for (const corridor of spec.corridors) {
-    const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand, voids);
+    const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand, voids, auth, corridor.id);
     corridorSurfacePass(ctx, out, rand);
   }
   stampDbg(out, 'surface-clutter');
@@ -222,6 +238,8 @@ function buildRoomContext(
   stairs: StairFootprint[],
   rand: () => number,
   voids: WalkableRect[] = [],
+  auth?: PlacementAuthority,
+  roomId?: string,
 ): RoomContext {
   const rect = room.rect;
   const minX = rect.x - rect.w / 2;
@@ -233,7 +251,10 @@ function buildRoomContext(
   const openE = wallOpenings(rect, 'E', allRectsFlat);
   const openW = wallOpenings(rect, 'W', allRectsFlat);
 
-  const tooClose = (x: number, z: number, minDist: number) => {
+  const tooClose = (x: number, z: number, minDist: number, kind: PlaceKind = 'blocker') => {
+    // The authority first — it knows about voids, feature aprons and room types,
+    // none of which this pass's own spacing list has ever known about.
+    if (auth && !auth.test(x, z, kind, roomId).ok) return true;
     const md2 = minDist * minDist;
     for (const p of existing) {
       const dx = p.x - x;

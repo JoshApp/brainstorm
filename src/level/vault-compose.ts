@@ -26,6 +26,7 @@ import { planCentrepiece } from './centrepieces';
 import { assignModifiers } from './room-modifiers';
 import { signatureFor, signatureLightDensity, tintRoomTorches } from './room-signature';
 import { roomType, isBookend } from './room-types';
+import { PlacementAuthority } from './placement-authority';
 import { planFloor, requiredLeafCount } from './floor-plan';
 import type { ContentSpot } from './floor-fill';
 import { directFloor } from './floor-director';
@@ -1326,8 +1327,32 @@ export function composeFloor(
     const freeAt = (x: number, z: number): boolean => {
       const { col, row } = toCell(x, z);
       const ch = populated[row]?.[col];
-      return (ch === '.' || ch === ',')
-        && !occ.has(col, row, 'floor') && !occ.has(col, row, 'void');
+      if (ch !== '.' && ch !== ',') return false;
+      if (occ.has(col, row, 'floor') || occ.has(col, row, 'void')) return false;
+      // AND the world-space void rects, with a lip margin.
+      //
+      // The occupancy grid's void layer is CELL-quantised — it marks whole
+      // 1m cells — but a carved void is an arbitrary RECTANGLE. A rect that
+      // covers three quarters of a cell leaves that cell unreserved, so a trap
+      // or a basin placed at the far corner of it passes the cell test and ends
+      // up standing over the hole. Measured: 10.3% of placed things on a depth-3
+      // floor were inside a void and another 9.8% on its lip, which is exactly
+      // Josh's "the basin is standing like almost in the void or slightly over
+      // it". Testing the real rect is the only way to be right.
+      // BOTH kinds of void: the ones the vault AUTHORED and the ones the carve
+      // pass opened at runtime. Testing only the authored set left the
+      // procedural rifts — which are the ones a shallow floor actually gets —
+      // still swallowing traps.
+      const LIP = 0.35;
+      for (const v of pv.vault.voids ?? []) {
+        if (Math.abs(x - (v.x + pv.offsetX)) <= v.w / 2 + LIP
+         && Math.abs(z - (v.z + pv.offsetZ)) <= v.d / 2 + LIP) return false;
+      }
+      for (const v of procVoids) {
+        if (Math.abs(x - (v.x + pv.offsetX)) <= v.w / 2 + LIP
+         && Math.abs(z - (v.z + pv.offsetZ)) <= v.d / 2 + LIP) return false;
+      }
+      return true;
     };
     const promoted = rolePlan.assigned.get(pv.roomId);
     if (promoted) {
@@ -1992,8 +2017,32 @@ export function composeFloor(
   // placement wins over the accidental one.
   reconcileManifest(result, manifest, rand, stagedDealProp ? new Set([stagedDealProp]) : undefined);
   resolveAllFacings(result);
-  applyGeometryWarp(result, rand);
-  applySurfaceClutter(result, rand);
+  // ── THE PLACEMENT AUTHORITY (docs/LEVEL-OWNERSHIP.md) ────────────────────
+  // Built here, once, from the finished-but-undressed floor, and handed to the
+  // dressing passes so they stop guessing. It knows three things none of them
+  // knew: where the voids are, where the events are (and that their aprons take
+  // candles but not pillars), and which rooms refuse which kinds outright.
+  //
+  // This is stage 1 of four. The earlier producers still place blind and the
+  // authority LEARNS from them via seedFrom; the passes that run after it are
+  // held to the rules. A refusal here makes the sampler try its next candidate,
+  // which is the whole point — the culls this replaces could only delete.
+  const auth = new PlacementAuthority({
+    rects: [...result.rooms.filter((r) => !r.logicalOnly), ...result.corridors].map((r) => r.rect),
+    voids: result.voids ?? [],
+  });
+  for (const r of result.rooms) {
+    if (r.logicalOnly) continue;
+    const t = roomType(r.roomType ?? roles.role(r.id));
+    if (!t.enemies) auth.refuse(r.id, 'spawn');
+    // A CLEAN room is a stage: nothing underfoot but what its centrepiece put
+    // there. Stated to the authority instead of being re-derived by each pass.
+    if (t.clean) auth.refuse(r.id, 'blocker', 'hazard', 'decor');
+  }
+  auth.seedFrom(result.props);
+
+  applyGeometryWarp(result, rand, auth);
+  applySurfaceClutter(result, rand, auth);
 
   // ── ONE MAJOR BEAT PER ROOM ───────────────────────────────────────────
   //

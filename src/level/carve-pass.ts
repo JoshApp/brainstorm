@@ -161,7 +161,26 @@ export function carvePass(
         else flush(i);
       }
       flush(along - 1);
-      return out;
+      // A CHASM NEVER OPENS UNDER SOMETHING THAT IS ALREADY THERE.
+      //
+      // `occupiedCells` was only ever consulted for the SEED cell — but a rift
+      // is a long rectangle, and nothing rechecked the cells it crosses on its
+      // way over the room. Measured on depth-3 floors: 10.3% of placed things
+      // stood inside a void and 9.8% on its lip, almost all of them spike traps
+      // the tilemap had already put down. That is Josh's "void pits can carve
+      // right at the ground of wells and other things".
+      //
+      // Drop any segment that would swallow an existing cell. A shorter rift, or
+      // none, is always better than a basin hanging over a hole — and this is a
+      // producer declining to place, not a sweep deleting afterward.
+      const W2 = vault.map[0]?.length ?? 0;
+      const D2 = vault.map.length;
+      return out.filter((rect) => {
+        for (const cell of voidCellsCovered([rect], W2, D2)) {
+          if (occupiedCells.has(cell)) return false;
+        }
+        return true;
+      });
     }
 
     // Stubs — see header comment. Add candidate logic + sizing rule
