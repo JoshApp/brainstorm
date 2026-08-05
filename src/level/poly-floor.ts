@@ -11,6 +11,9 @@ import { RoomOccupancy } from './room-occupancy';
 import { pilasterVolumes } from './poly-dressing';
 import { rollFloorEnemies } from './procgen';
 import { nextLevelAfter } from './acts';
+import { planFloor, dedicatedEntries } from './floor-plan';
+import { planCentrepiece } from './centrepieces';
+import { roomType, type RoomTypeId } from './room-types';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -25,15 +28,16 @@ import { nextLevelAfter } from './acts';
 // everything goes. You cannot make placement smart by editing the room after
 // the placement happened. So this owns both.
 //
-// What it does NOT do yet, deliberately: elevation, voids, arenas, shops,
-// bosses, the floor-plan contract (trove/bargain slots). Those live in the vault
-// composer and are the next things to move, one at a time, each with the
-// measurement that says it worked. This is the spine — walk it first.
+// What it does NOT do yet, deliberately: elevation, voids, bosses, room
+// MODIFIERS (ambush / contested / toll / gated), and the toll-pricing pass.
+// Those are the next things to move, one at a time, each with the measurement
+// that says it worked.
 //
 // The ORDER matters and is the actual design:
 //
-//   1. SHAPE the rooms      (archetype + size + ceiling, before anything else)
-//   2. PLACE them            (spine + leaves, boxes that don't overlap)
+//   0. PLAN the floor        (what it OWES you, before any geometry exists)
+//   1. SHAPE the rooms       (type → archetype → size → ceiling)
+//   2. PLACE them            (spine + the spurs the plan demanded)
 //   3. CONNECT them          (corridors, which become doorways in the walls)
 //   4. RESERVE what's built  (the piers the shell will raise)
 //   5. FURNISH by query      (centrepiece → clutter → sconces → spawns)
@@ -41,6 +45,14 @@ import { nextLevelAfter } from './acts';
 // Content is placed against a room that already knows its own shape, and every
 // placement reserves its volume, so the next one can see it. That's the whole
 // difference from "place, then repair".
+//
+// Step 0 and the staging in step 5 are SHARED WITH THE VAULT COMPOSER, not
+// reimplemented: floor-plan.ts decides the contract, room-types.ts says what a
+// type tolerates, centrepieces.ts stages the thing the room is about. The two
+// generators disagree about how to build a room; they must not disagree about
+// what a floor IS. What is genuinely new here is that the stager gets a better
+// question answered — `free()` is the real polygon plus a 3D occupancy, where
+// the composer could only offer a grid of tilemap cells.
 
 /** Rooms on the main spine, by depth. Small floors early, longer later. */
 function spineLength(depth: number, rand: () => number): number {
@@ -48,21 +60,60 @@ function spineLength(depth: number, rand: () => number): number {
   return base + (rand() < 0.4 ? 1 : 0);
 }
 
-/** Archetypes that suit each job. A room's SHAPE is the first thing that says
- *  what it's for — a tomb is not a hall and shouldn't be shaped like one. */
-const ROLE_SHAPES: Record<string, readonly Archetype[]> = {
+/**
+ * SHAPE FOLLOWS FUNCTION.
+ *
+ * A room's outline is the first thing that says what it's for, and it says it
+ * before you can read a single prop — from the doorway, in the dark, at the
+ * range the lamp reaches. So the room's TYPE picks the shape, and the type
+ * comes from the floor's contract (floor-plan.ts), not from whatever the
+ * layout happened to grow. That inversion is the point: under the tilemap
+ * composer a trove looked like a trove because a vault author drew one, and a
+ * seed that grew no suitable room simply went without.
+ *
+ * The pairings are arguments, not decoration:
+ *   trove / shop   — apse and rotunda have a BACK. A presentation needs
+ *                    somewhere to be presented against.
+ *   arena          — rotunda and cross: open, symmetric, no corner to kite into.
+ *   trap           — hall and ell: a crossing you must make, which is the only
+ *                    place a trap is a trap rather than scenery.
+ *   sanctum / quiet— tomb and cavern: small and held. A fire in a hall is a
+ *                    campsite; a fire in a tomb is a mercy.
+ */
+const TYPE_SHAPES: Record<string, readonly Archetype[]> = {
   entrance: ['chamber', 'apse', 'rotunda'],
-  passage: ['hall', 'ell', 'notched', 'wedge'],
-  chamber: ['chamber', 'cross', 'notched', 'cavern'],
-  descent: ['apse', 'rotunda', 'cross'],
-  pocket: ['tomb', 'cavern', 'chamber', 'wedge'],
+  finish:   ['apse', 'rotunda', 'cross'],
+  trove:    ['apse', 'rotunda'],
+  shop:     ['apse', 'chamber', 'notched'],
+  arena:    ['rotunda', 'cross', 'chamber'],
+  sanctum:  ['tomb', 'cavern', 'apse'],
+  trap:     ['hall', 'ell', 'notched'],
+  feature:  ['chamber', 'wedge', 'notched'],
+  combat:   ['chamber', 'cross', 'notched', 'cavern'],
+  quiet:    ['tomb', 'cavern', 'hall'],
 };
 
-type Role = keyof typeof ROLE_SHAPES;
+/** Floor area band per type, in metres of bounding box. A trove needs room for
+ *  three plinths and the standing back to look at them; a quiet room is dread,
+ *  and dread is close. */
+const TYPE_SIZE: Record<string, readonly [number, number, number, number]> = {
+  entrance: [10, 16, 8, 13],
+  finish:   [12, 18, 10, 15],
+  trove:    [12, 17, 10, 14],
+  shop:     [11, 15, 9, 12],
+  arena:    [14, 19, 12, 16],
+  sanctum:  [8, 12, 7, 10],
+  trap:     [9, 15, 7, 11],
+  feature:  [10, 15, 8, 12],
+  combat:   [10, 16, 8, 13],
+  quiet:    [7, 11, 6, 9],
+};
 
 interface Placed {
   id: string;
-  role: Role;
+  /** What this room IS, from the floor's contract. Drives shape, size, what may
+   *  be staged in it, and whether anything wanders in. */
+  type: RoomTypeId;
   poly: Poly;
   rect: { x: number; z: number; w: number; d: number };
   height: number;
@@ -84,7 +135,25 @@ const CORRIDOR_W = 2.2;
  */
 export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const rand = mulberry(hash(depth, seed));
-  const n = spineLength(depth, rand);
+
+  // ── 0. THE CONTRACT, BEFORE ANY GEOMETRY EXISTS ────────────────────
+  // floor-plan.ts states what the floor OWES the player — an offer, a threat,
+  // maybe a mercy — and which of those want their own dead-end spur. The layout
+  // then GROWS exactly that many spurs instead of rolling for one and hoping,
+  // which is the bug that header was written about: a floor's content must not
+  // be a consequence of the shape a seed happened to produce.
+  //
+  // This is shared with the vault composer on purpose. The two generators
+  // disagree about how to build a room; they must not disagree about what a
+  // floor is.
+  const plan = planFloor(depth, rand);
+  const dedicated = dedicatedEntries(plan);
+  const inline = plan.all.filter((e) => e.placement !== 'dedicated');
+
+  // The spine has to be long enough to seat everything that wants to be ON it,
+  // between the two bookends. A floor that plans three inline beats and grows
+  // two middle rooms would silently drop one.
+  const n = Math.max(spineLength(depth, rand), 2 + inline.length);
 
   // ── 1 + 2. SHAPE, THEN PLACE ───────────────────────────────────────
   // Shape first: a room's polygon is decided from its ROLE and its budget, and
@@ -96,9 +165,20 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   let cursor: Box = { x: 0, z: 0, w: 0, d: 0 };
   let heading: Dir = 'S';
 
+  // Which spine slot each inline beat takes. Spread across the middle rather
+  // than stacked at the front: the plan's beats are the floor's landmarks, and
+  // landmarks need ordinary rooms to stand against.
+  const middles = n - 2;
+  const inlineAt = new Map<number, RoomTypeId>();
+  inline.forEach((e, i) => {
+    inlineAt.set(1 + Math.floor(((i + 0.5) * middles) / Math.max(1, inline.length)), e.id);
+  });
+
   for (let i = 0; i < n; i++) {
-    const role: Role = i === 0 ? 'entrance' : i === n - 1 ? 'descent' : (rand() < 0.45 ? 'passage' : 'chamber');
-    const room = shapeRoom(`poly-${i}`, role, depth, rand);
+    const type: RoomTypeId = i === 0 ? 'entrance'
+      : i === n - 1 ? 'finish'
+      : inlineAt.get(i) ?? (rand() < 0.3 ? 'quiet' : 'combat');
+    const room = shapeRoom(`poly-${i}`, type, depth, rand);
     if (i === 0) {
       place(room, 0, 0);
       cursor = room.rect; occupiedBoxes.push(cursor);
@@ -122,10 +202,14 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     if (c) { corridors.push({ id: `cor-${i}`, rect: c, height: 3.0 });
              links.push({ from: rooms[i - 1].id, to: rooms[i].id, rect: c }); }
   }
-  const pockets = depth <= 2 ? 1 : rand() < 0.6 ? 2 : 1;
-  for (let p = 0; p < pockets; p++) {
+  // DEAD-END SPURS ARE OWED, NOT ROLLED. One per dedicated plan entry, plus a
+  // spare when the floor asked for none — a floor with no detour at all is a
+  // corridor with rooms on it.
+  const spurTypes: RoomTypeId[] = dedicated.map((e) => e.id);
+  if (spurTypes.length === 0) spurTypes.push(rand() < 0.5 ? 'quiet' : 'combat');
+  for (let p = 0; p < spurTypes.length; p++) {
     const parent = rooms[1 + Math.floor(rand() * Math.max(1, rooms.length - 2))];
-    const pocket = shapeRoom(`poly-pocket-${p}`, 'pocket', depth, rand);
+    const pocket = shapeRoom(`poly-pocket-${p}`, spurTypes[p], depth, rand);
     const dirs: Dir[] = shuffle(['N', 'S', 'E', 'W'], rand);
     for (const dir of dirs) {
       const g = geometryFor(parent.rect, pocket.rect, dir, 4 + rand() * 3);
@@ -179,7 +263,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   }
 
   // The descent, on a wall chosen for being able to hold it.
-  const last = rooms.find((x) => x.role === 'descent') ?? rooms[rooms.length - 1];
+  const last = rooms.find((x) => x.type === 'finish') ?? rooms[rooms.length - 1];
   const stairWall = findMountableRun(last.walls, last.poly, { length: 2.2, depth: 3.0, clearOfJambs: true });
   const stairs = stairWall
     ? [{
@@ -203,7 +287,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     composerManagedFires: true,
     startPos,
     rooms: rooms.map((r) => ({
-      id: r.id, rect: r.rect, height: r.height, poly: r.poly,
+      id: r.id, rect: r.rect, height: r.height, poly: r.poly, roomType: r.type,
     } as RoomSpec)),
     corridors,
     props,
@@ -216,23 +300,17 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
 
 // ── shaping ──────────────────────────────────────────────────────────────────
 
-function shapeRoom(id: string, role: Role, depth: number, rand: () => number): Placed {
-  const pool = ROLE_SHAPES[role];
+function shapeRoom(id: string, type: RoomTypeId, depth: number, rand: () => number): Placed {
+  const pool = TYPE_SHAPES[type] ?? TYPE_SHAPES.combat;
   const kind = pool[Math.floor(rand() * pool.length)];
-  // Size band by role. A descent chamber earns more room than a passage; a
-  // pocket is small on purpose, because a small room is a different EXPERIENCE
-  // and not merely a cheaper one.
-  const [wLo, wHi, dLo, dHi] = role === 'pocket' ? [7, 11, 6, 9]
-    : role === 'passage' ? [9, 15, 7, 11]
-    : role === 'descent' ? [12, 18, 10, 15]
-    : [10, 16, 8, 13];
+  const [wLo, wHi, dLo, dHi] = TYPE_SIZE[type] ?? TYPE_SIZE.combat;
   const w = wLo + rand() * (wHi - wLo) + Math.min(3, depth * 0.15);
   const d = dLo + rand() * (dHi - dLo) + Math.min(3, depth * 0.15);
   const poly = generateRoomShape(kind, { w, d, rand });
   const b = polyBounds(poly);
   const ceil = ceilingFor(kind, w, d, rand());
   return {
-    id, role, poly,
+    id, type, poly,
     rect: { x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2, w: b.maxX - b.minX, d: b.maxZ - b.minZ },
     height: ceil.height,
     walls: [],
@@ -401,37 +479,74 @@ function furnish(
       { kind: 'cylinder', x: t.x, z: t.z, r: 0.2, y0: t.height - 0.4, y1: t.height + 0.4 }, 'sconce');
   }
 
-  // CENTREPIECE. `roomCenter` is the point furthest from any wall — which is
-  // both the honest middle of a shaped room and exactly what a centrepiece
-  // wants. The bbox centre it replaces can be in the wall on an L.
+  // ── THE CENTREPIECE — the one thing the room is ABOUT ──────────────
+  //
+  // `planCentrepiece` is the shipping stager: it lays a trove's three plinths
+  // along whichever axis has room, stands a merchant behind his counter facing
+  // the door, drops a fire. It is already generator-agnostic — it asks for a
+  // focal point, the room's extents, a `free()` predicate and which way the
+  // player comes in — so nothing here is a port. What IS new is that it gets a
+  // better `free()` than the tilemap composer could give it: the real polygon
+  // and the room's 3D occupancy, rather than a grid of cells.
+  //
+  // `roomCenter` is the focal point: the point furthest from any wall. That is
+  // both the honest middle of a shaped room and exactly what a presentation
+  // wants — and on an L or a cross, the bbox centre it replaces is in the wall.
   const c = roomCenter(r.poly);
-  const centre = { kind: 'cylinder' as const, x: c.x, z: c.z, r: 0.7, y0: 0, y1: 1.4 };
-  if (r.role !== 'passage' && clearance(r.poly, c.x, c.z) > 2.0
-      && r.occupancy.fits(centre, 0.2) && rand() < 0.7) {
-    props.push({ kind: 'vase', x: c.x, z: c.z } as PropSpec);
-    r.occupancy.reserve(centre, 'centrepiece');
+  const def = roomType(r.type);
+  const site = {
+    roomId: r.id, x: c.x, z: c.z, w: r.rect.w, d: r.rect.d,
+    free: (x: number, z: number) =>
+      pointInPoly(r.poly, x, z) && clearance(r.poly, x, z) > 0.55
+      && r.occupancy.fits({ kind: 'cylinder', x, z, r: 0.45, y0: 0, y1: 1.6 }, 0.1),
+    // Which way the player comes in, so the presentation composes from where
+    // they will be standing rather than on a world axis.
+    entranceDir: mouth
+      ? (() => {
+          const dx = mouth.x - c.x, dz = mouth.z - c.z, m = Math.hypot(dx, dz);
+          return m > 1e-3 ? { x: dx / m, z: dz / m } : undefined;
+        })()
+      : undefined,
+  };
+  const staged = planCentrepiece(r.type, site, { depth, rand });
+  props.push(...staged.props);
+  for (const p of staged.claimed) {
+    r.occupancy.reserve({ kind: 'cylinder', x: p.x, z: p.z, r: 0.6, y0: 0, y1: 1.8 }, 'centrepiece');
   }
 
-  // CLUTTER, in the wall band. Candidates come sorted by clearance and are
-  // filtered through the occupancy, so nothing lands inside a pier or a lamp —
-  // which is the failure the old pipeline repaired afterwards instead.
-  const band = candidateSpots(r.poly, { radius: 0.35, band: [0.5, 1.4], pitch: 0.6 });
-  const want = Math.round(polyArea(r.poly) / 22);
-  let placed = 0;
-  for (let i = 0; i < band.length && placed < want; i++) {
-    const s = band[Math.floor(rand() * band.length)];
-    const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.5, y0: 0, y1: 1.0 };
-    if (!r.occupancy.fits(vol, 0.25)) continue;
-    r.occupancy.reserve(vol, 'clutter');
-    props.push({ kind: 'vase', x: s.x, z: s.z } as PropSpec);
-    placed++;
+  // A CLEAN room is a STAGE. Nothing scattered, nothing underfoot — only what
+  // the centrepiece deliberately placed. That is a stronger statement than "no
+  // loot", and it is the one flag every decorative pass has to read: a trove
+  // whose three offerings you cannot see past is not a choice.
+  if (def.clean) return;
+
+  // Minor clutter, in the wall band. Candidates come sorted by clearance and go
+  // through the occupancy, so nothing lands inside a pier, a lamp, or the thing
+  // the room is about — which is the failure the old pipeline repaired
+  // afterwards instead of preventing.
+  if (def.minorLoot) {
+    const band = candidateSpots(r.poly, { radius: 0.35, band: [0.5, 1.4], pitch: 0.6 });
+    const want = Math.round(polyArea(r.poly) / 22);
+    let placed = 0;
+    for (let i = 0; i < band.length && placed < want; i++) {
+      const s = band[Math.floor(rand() * band.length)];
+      const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.5, y0: 0, y1: 1.0 };
+      if (!r.occupancy.fits(vol, 0.25)) continue;
+      r.occupancy.reserve(vol, 'clutter');
+      props.push({ kind: 'vase', x: s.x, z: s.z } as PropSpec);
+      placed++;
+    }
   }
 
   // SPAWNS. Placed against the room's shape, not scattered in its rect:
   // AMBUSH wants to be out of the entrance's sightline, so you walk in before
   // you see them. Everything else wants the open floor, spread out.
-  if (r.role === 'entrance') return;
-  const ambush = r.role === 'chamber' && rand() < 0.45;
+  //
+  // Whether anything wanders in at all is the TYPE's call, not this pass's. You
+  // never fight beside a vendor; a trove is a breath; a quiet room's whole job
+  // is to be nothing.
+  if (!def.enemies) return;
+  const ambush = r.type === 'combat' && rand() < 0.45;
   const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
   const pool = ambush && mouth
     ? open.filter((s) => !hasSightline(r.poly, mouth, s))
@@ -441,7 +556,10 @@ function furnish(
   // Intensity rides the room's ROLE: an ambush is a hard beat, a passage is a
   // speed bump. The pack roller keeps the group coherent so a room reads as a
   // designed fight rather than a grab-bag.
-  const ids = rollFloorEnemies(depth, count, ambush ? 'heavy' : r.role === 'passage' ? 'light' : 'medium', rand);
+  const intensity = ambush || r.type === 'arena' ? 'heavy'
+    : r.type === 'trap' || r.type === 'finish' ? 'light'
+    : 'medium';
+  const ids = rollFloorEnemies(depth, count, intensity, rand);
   for (const enemyId of ids) {
     if (!picks.length) break;
     const s = picks[Math.floor(rand() * picks.length)];

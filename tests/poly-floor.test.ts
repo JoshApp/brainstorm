@@ -29,6 +29,7 @@ import { planWallRing } from '../src/level/poly-shell-plan';
 import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
+import { roomType } from '../src/level/room-types';
 import type { LevelSpec, RoomSpec } from '../src/level/types';
 
 let passed = 0, failed = 0;
@@ -206,6 +207,68 @@ test('DARKNESS IS THE BASELINE — nobody gets a floodlit room', () => {
       assert.ok(lit > 0, `${spec.id}: room ${r.id} has no light at all`);
       assert.ok(area / lit > 14,
         `${spec.id}: room ${r.id} has ${lit} sconces over ${area.toFixed(0)}m² — one per ${(area / lit).toFixed(0)}m²`);
+    }
+  }
+});
+
+test('EVERY FLOOR PAYS WHAT IT PLANNED', () => {
+  // floor-plan.ts's whole argument: a floor's content must not be a consequence
+  // of the shape a seed happened to grow. The old failure mode was silent — a
+  // seed that grew no dead-end spur simply went without a trove and nobody
+  // decided that. So assert the OFFER slot, which is the one thing the contract
+  // says is never optional.
+  for (const spec of floors()) {
+    const offer = spec.rooms.some((r) => {
+      const c = roomType(r.roomType ?? '').centrepiece;
+      return c === 'offerings' || c === 'merchant' || c === 'bargain';
+    });
+    assert.ok(offer, `${spec.id}: the floor owes an offer and staged none`);
+  }
+});
+
+test('a staged room actually got its centrepiece', () => {
+  // planCentrepiece returns EMPTY when the geometry can't carry the piece, and
+  // degrading to an ordinary room is the CORRECT behaviour — but if the shapes
+  // this generator picks can never carry a trove, every floor degrades and the
+  // contract is satisfied on paper only.
+  const staged: Record<string, { rooms: number; empty: number }> = {};
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      const piece = roomType(r.roomType ?? '').centrepiece;
+      if (piece === 'none' || piece === 'descent' || piece === 'bargain') continue;
+      const props = (spec.props ?? []).filter((p) => {
+        const x = (p as { x?: number }).x, z = (p as { z?: number }).z;
+        return typeof x === 'number' && typeof z === 'number' && pointInPoly(r.poly!, x, z);
+      });
+      staged[piece] ??= { rooms: 0, empty: 0 };
+      staged[piece].rooms++;
+      if (props.length === 0) staged[piece].empty++;
+    }
+  }
+  for (const [piece, s] of Object.entries(staged)) {
+    assert.equal(s.empty, 0,
+      `${piece}: ${s.empty} of ${s.rooms} rooms staged nothing — the shapes can't carry the piece`);
+  }
+});
+
+test('a CLEAN room is a stage, and a vendor never has company', () => {
+  // Both flags exist because separate passes each used to answer a different
+  // question: a trove refused loot and still got pillars in front of its
+  // offerings. Here one occupancy answers for all of them, so this is the
+  // regression guard on that.
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      const def = roomType(r.roomType ?? '');
+      const inRoom = (x: number, z: number) => pointInPoly(r.poly!, x, z);
+      if (def.clean) {
+        const clutter = (spec.props ?? []).filter((p) => (p as { kind: string }).kind === 'vase'
+          && inRoom((p as { x: number }).x, (p as { z: number }).z));
+        assert.equal(clutter.length, 0, `${spec.id}: ${r.id} is a stage and has ${clutter.length} pots on it`);
+      }
+      if (!def.enemies) {
+        const mobs = (spec.spawns ?? []).filter((s) => inRoom(s.x, s.z));
+        assert.equal(mobs.length, 0, `${spec.id}: ${mobs.length} enemies in a ${r.roomType}`);
+      }
     }
   }
 });
