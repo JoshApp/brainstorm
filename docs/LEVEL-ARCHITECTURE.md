@@ -313,3 +313,94 @@ it from light to props is the move.
   authoring language; the first three will teach us what it's missing.
 - **Don't do stage 2 first**, however tempting. Nicer room shapes with frozen
   tilemaps inside them is more of the same problem, wearing a better silhouette.
+
+---
+
+## 7. Resolution — the grid is coarse because it is doing three jobs at once
+
+Josh, 2026-08-05:
+
+> *"I hate about the ASCII vaults that they are so coarse. I originally wanted
+> pixel vaults but I'm honestly open to anything — I just feel like we could use
+> finer grids for placement as well as all the other things you and I deduced."*
+
+The diagnosis is right. The remedy needs one correction first, because it's the
+kind that wastes a week.
+
+### A finer grid gives you smaller stair-steps, not smoother rooms
+
+The 1m grid is most visibly wrong at **wall edges and void rims** — everything is
+blocky. The instinct is to shrink the cell. But a 0.25m grid produces 0.25m
+stair-steps: sixteen times the cells, the same *character* of edge, and an ASCII
+sketch 80 characters wide for a single 20m room — which destroys the one property
+the format was kept for.
+
+Blocky edges are not a resolution problem. They're a **representation** problem: a
+grid can only ever produce axis-aligned steps. A diagonal wall, a curved apse, a
+rim that isn't a staircase all want a **polygon**, at any resolution.
+
+So shrinking the cell pays 16× the cost for none of the thing actually wanted.
+
+### The real fault: one grid is doing three unrelated jobs
+
+The 1m grid is currently the authoring notation, the placement system, **and** the
+collision/nav structure. Those three want *opposite* resolutions, which is why any
+single number is wrong:
+
+| Job | Wants | Why |
+|---|---|---|
+| **Authoring** | COARSE (~1m) | You're indicating intent — "a mass row along here", "void down the middle". Nobody wants to hand-place 32 pixels of pillar, and a coarse sketch is what keeps it glanceable, diffable and LLM-writable. |
+| **Placement** | CONTINUOUS (float metres) | A candle in a corner, a pillar rotated 0.3 rad, a slot facing the door. Snapping any of this to *any* grid is what makes rooms read as stamped. |
+| **Collision / nav** | FINE (~0.25m), **derived** | Here a fine grid genuinely helps — tighter pathing, mobs that fit between a pillar and a wall. But it should be **baked from the geometry**, never authored. |
+
+The existing vault format already half-admits this. It carries an escape hatch:
+
+> *"Optional precise-placement props in VAULT-LOCAL world coordinates … use this
+> for anything the 1m grid can't place precisely: rotated fountains, altars off
+> grid centre…"*
+
+That hatch exists because the grid was already too coarse for the things that
+matter, and it is used for exactly those things. That's evidence, not theory.
+
+### The decision
+
+**Three resolutions, each where it belongs. Placement stops using a grid at all.**
+
+1. **Authoring sketch stays coarse (~1m) — and that is a feature.** In the
+   composition model it isn't placing objects any more, it's indicating regions
+   and slots. Coarse is the correct precision for intent.
+
+2. **Placement is continuous.** The FIT stage resolves a composition into float
+   world positions with rotation and per-room seeded jitter. This is also what
+   makes the same composition produce a different room each time it appears — the
+   variation is *free*, and it only exists because nothing snaps.
+
+3. **Nav/collision is a fine derived grid**, baked from the finished geometry.
+   Authored by nobody.
+
+4. **Room outlines become polygons (rect unions), not cell sets.** This is what
+   actually delivers non-blocky rooms, diagonal walls, merged chambers and rims
+   that aren't staircases — and it's stage 2's job (`#73`). A polygon can be
+   chamfered and merged; a cell grid can only be re-sampled.
+
+The net effect is that "resolution" stops being a number we argue about. The
+sketch is low-res *on purpose*, the world is continuous, and the nav grid is an
+implementation detail.
+
+### On pixel vaults specifically
+
+The original instinct is closer to right than it sounds — an ASCII map **is**
+already a pixel grid where characters are the pixels. What was wrong was never
+the medium; it was that a pixel meant *an object at 1m* instead of *intent over
+a region*.
+
+If drawing rooms in an image editor is a better authoring experience than typing
+them (it plausibly is, for shapes), that's worth having — but the **canonical
+format should stay text**, because a PNG can't be diffed, can't be reviewed in a
+terminal, and can't be written by a content layer. The way to get both is a
+bidirectional converter: draw in any pixel editor, convert to the text sketch,
+and the text is what the repo stores.
+
+Worth building **only if** the text sketch turns out to be annoying to author in
+practice. Not up front — it's a workflow convenience, and it can be added at any
+time without the pipeline knowing.
