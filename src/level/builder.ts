@@ -1127,7 +1127,12 @@ export function buildLevel(
       // ROOM SHAPE v2: a room carrying a polygon builds from it instead. The
       // rect path is untouched — this is an additive branch, not a rewrite.
       if (r.poly && r.poly.length >= 3) {
-        buildPolyRoomShell(root, r as typeof r & { poly: NonNullable<typeof r.poly> }, materials, wallSegments);
+        // The corridors touching this room cut its doorways. Passing the whole
+        // corridor list is fine — an edge a corridor never crosses clips to null.
+        buildPolyRoomShell(
+          root, r as typeof r & { poly: NonNullable<typeof r.poly> }, materials, wallSegments,
+          spec.corridors.map((c) => c.rect),
+        );
       } else {
         buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
       }

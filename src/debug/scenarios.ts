@@ -10,6 +10,7 @@ import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
 import { generateFloor } from '../level/procgen';
 import { generateSafeRoom } from '../level/safe-room';
+import { buildStarterChamber } from '../level/starter-chamber';
 import { buildVaultPreview } from '../level/vault-compose';
 import { VAULTS } from '../level/vault-library';
 import { ENEMIES } from '../content/enemies';
@@ -1662,22 +1663,13 @@ export const SCENARIOS: Record<string, Scenario> = {
   // the starter chamber. `delve snap starter-choice`.
   'starter-choice': {
     freeze: true,
-    level: {
-      id: 'dbg-starter', depth: 1, displayName: 'THE THRESHOLD', fogColor: 0x07060a,
-      startPos: { x: 0, z: 4.2, yaw: 0 },
-      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 11, d: 11 }, height: 3.8 }],
-      corridors: [],
-      props: [
-        { kind: 'starter-altar', x: -2.4, z: 0, rotY: 0, weaponId: 'bone-needle' },
-        { kind: 'starter-altar', x:  0.0, z: 0, rotY: 0, weaponId: 'rusted-sword' },
-        { kind: 'starter-altar', x:  2.4, z: 0, rotY: 0, weaponId: 'iron-maul' },
-      ],
-      torches: [
-        { x: -4.6, z: -4.6, wall: 'N', height: 2.2 }, { x: 4.6, z: -4.6, wall: 'N', height: 2.2 },
-      ],
-      spawns: [], doors: [], stairs: [],
-    },
-    playerPos: { x: 0, z: 4.2, lookAt: { x: 0, z: 0, y: 1.1 } },
+    // THE REAL CHAMBER, not a copy of it. This used to be a hand-restated 11×11
+    // box with three altars in it — which meant the scenario kept passing while
+    // the actual first room of the game changed underneath it. It now builds the
+    // shipping spec, so what you snap is what the player walks into: the apse
+    // polygon, its ceiling, its sconces, the sealed stair.
+    level: buildStarterChamber('depth-1', 4242),
+    playerPos: { x: 0, z: 5.0, lookAt: { x: 0, z: 0, y: 1.1 } },
   },
 
   // THE TROVE (the offering system) — three relics on plinths, take one and the

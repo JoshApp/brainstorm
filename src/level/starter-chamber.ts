@@ -2,6 +2,8 @@ import type { LevelSpec } from './types';
 import { FLOOR_CANDLE } from '../content/candle';
 import { floorGlow } from '../content/light-props';
 import { rollStarterWeapons } from '../content/starter-weapons';
+import { ceilingFor, generateRoomShape } from './room-shape';
+import { polyRoomRect } from './poly-room-shell';
 
 // Starter chamber — the first room of EVERY fresh run. Three altars,
 // one weapon each. The player picks one (which auto-equips and
@@ -20,6 +22,43 @@ import { rollStarterWeapons } from '../content/starter-weapons';
 // authored placement below leaves ~0.9m clearance.
 
 const STARTER_FLOOR_GLOW = floorGlow(0x6c5c40);
+
+// ── THE FIRST POLYGON ROOM IN THE GAME ────────────────────────────────────────
+//
+// The room-shape v2 generator (level/room-shape.ts) wired into content, not a
+// debug scenario — scenarios are DEV-gated and stripped from the live build, so
+// the only way to WALK a generated shape is for one to be real. The starter
+// chamber is the right first subject: every fresh run opens here, its contents
+// are hand-placed (so the fit is verifiable rather than hoped for), and 'apse'
+// is what this room already was in spirit — a nave you walk up, narrowing into a
+// sanctuary that holds the way down.
+//
+// The seed is FIXED, not rolled. This is the one room in the game that is the
+// same every run; it's a ceremony, not a floor. 88 was chosen off a search for
+// the symmetric draws that clear every altar, candle, hint, sconce and the whole
+// stair body — see tests/starter-chamber.test.ts, which re-checks that fit
+// against the real polygon so a change to the grammar can't quietly wall
+// something in.
+const STARTER_SHAPE_SEED = 88;
+const STARTER_W = 8, STARTER_D = 14;
+
+function fixedRand(seed: number): () => number {
+  let a = seed + 0x6d2b79f5;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The chamber's floor outline. World coords — the room is centred on the origin. */
+export const STARTER_POLY = generateRoomShape('apse', {
+  w: STARTER_W, d: STARTER_D, rand: fixedRand(STARTER_SHAPE_SEED),
+});
+/** Height comes from the archetype too: an apse is tall for its span, so the
+ *  chamber goes from a flat 2.8m lid to something you look UP in. */
+const STARTER_CEILING = ceilingFor('apse', STARTER_W, STARTER_D, 0.5);
 
 export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSpec {
   // Roll three distinct base weapons for the altars (left → centre →
@@ -47,8 +86,12 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
     rooms: [
       {
         id: 'antechamber',
-        rect: { x: 0, z: 0, w: 8, d: 14 },
-        height: 2.8,
+        // rect stays the polygon's BOUNDING BOX — elevation, the nav bbox and the
+        // walkable union all still read it. The polygon's wall segments are what
+        // actually contain the player, so the cut corners are unreachable.
+        rect: polyRoomRect(STARTER_POLY),
+        height: STARTER_CEILING.height,
+        poly: STARTER_POLY,
       },
     ],
     corridors: [],
@@ -94,9 +137,12 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
       // Cool sconces flanking the altars — "ritual / chamber" feel.
       { x: -3.95, z: -0.5, height: 2.0, wall: 'W', colorTint: 0xc8c0e0, intensityMul: 0.70 },
       { x:  3.95, z: -0.5, height: 2.0, wall: 'E', colorTint: 0xc8c0e0, intensityMul: 0.70 },
-      // Stairs torch — cool moonlight blue, side-mounted so it doesn't
-      // clash with the stair's own moonbeam halo.
-      { x: -3.95, z: -3.5, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.75 },
+      // Stairs sconces — cool moonlight blue, side-mounted so they don't
+      // clash with the stair's own moonbeam halo. These now sit on the APSE
+      // walls (x = ±2), not the nave's — the shape steps in behind the altars,
+      // so the pair reads as lighting the sanctuary rather than the room.
+      { x: -1.95, z: -4.4, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.75 },
+      { x:  1.95, z: -4.4, height: 1.8, wall: 'E', colorTint: 0x88aaff, intensityMul: 0.75 },
     ],
 
     // No mobs. The starter chamber is the choice, not the test.
