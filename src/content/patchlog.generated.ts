@@ -4,9 +4,178 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 12",
+    "date": "2026-08-05",
+    "entries": [
+      {
+        "tag": "add",
+        "text": "Break a thing's guard from behind and its nerve goes with it. It runs, it wears a skull, and its back is yours.",
+        "area": [
+          "combat",
+          "mobs",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The merchant no longer stands in his own cobwebs, and the dungeon's dressers ask before they crowd a thing you have to touch.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Chasms stopped opening under the furniture, and the dungeon's dressers learned to ask before they put a pillar somewhere.",
+        "area": [
+          "level"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 11",
     "date": "2026-08-04",
     "entries": [
+      {
+        "tag": "fix",
+        "text": "Taking a thing no longer makes the dungeon pause to think about it, and silver chests remember they are not gold.",
+        "area": [
+          "ui",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The lamp that reads the room is called AUTO BRIGHTNESS now, and it tells you whether your phone will talk to it.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Shouting no longer travels through stone, and the shopkeeper's room is his own again.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "You step over the fallen columns now instead of standing against them, which is what the last patch claimed.",
+        "area": [
+          "controls",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The harbour burns properly again, the peddler laid out his wares, and shopkeepers stopped greeting you with the back of the head.",
+        "area": [
+          "level",
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dungeon stopped rebuilding the same five rooms, and silver chests remembered they are not a trinket dispenser.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Two new rites: one steps you through the dark, one stops the room and forgets to stop you.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The smith will scar your blade now, not just sharpen it. What it takes in exchange is written on the offer.",
+        "area": [
+          "combat",
+          "content",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Ember hearts can be picked up again. The dungeon regrets the interruption of service.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "You step over the fallen columns now, which you were always meant to. No chamber holds both a fire and a bargain any more. And the fire gives four hearts of borrowed life, which is most of what you can carry.",
+        "area": [
+          "controls",
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The shot no longer draws you a line first. Watch the thing that means to hit you instead.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The trove keeps its floor swept and nothing grows out of a chest any more. Chasms lie across your path with one crossing, and you step over what you used to walk into. The fire in the refuge makes you whole; the ones below only lend.",
+        "area": [
+          "level",
+          "controls",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Things that shoot you now plant their feet and heave, and you can see it coming. The fire stopped healing and started lending you life instead. Holes in the floor happen where something meant them.",
+        "area": [
+          "combat",
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The floor cracks along a line now instead of sprouting holes at random, and anything about to shoot you shows you the shot first. You may still decline to move.",
+        "area": [
+          "level",
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The perfect strike stopped multiplying itself into absurdity, the altar stopped asking for nearly all your blood, and rooms you walk into now have something in them. The deep was getting lazy.",
+        "area": [
+          "combat",
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The deep has stopped offering you a second of something it already gave you. It has plenty else to be cruel with.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The dark now knows what room you are sitting in. Step into the sun and it loosens its grip a little; step back out and it takes it again.",
+        "area": [
+          "atmosphere",
+          "ui"
+        ]
+      },
       {
         "tag": "content",
         "text": "The ember is its own thing now: split bone with a fire still in it. And what lies on the floor is finally the size it ought to be, so a ring no longer looms like a shield.",
@@ -255,172 +424,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The chests stopped coughing up rusted junk by the armful. What they keep now is worth the walk over.",
         "area": [
           "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "No more gear bag. A blade you find goes on your body or stays on the stone — and if both hands are full, choose which to shed. It falls where you stood, in case you want it back.",
-        "area": [
-          "combat",
-          "ui",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Fewer fires in the deep now — rest is a mercy again, not a habit. And your second blade shows on the sheet beside the first, a tap from your hand.",
-        "area": [
-          "level",
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The grubs stir and crawl the dark now. The Choir sleeps until you're in its hall, then seals the stair behind you — down is earned past it, not slipped by.",
-        "area": [
-          "combat",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The stalls and the forge lay it out proper on a phone now — the price and the deal sit under your thumb where you can reach them, and the smith lets you pick which blade meets the coals and shows you the keener edge before he strikes.",
-        "area": [
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The sanctuary has a heart again — a pale basin on the old pedestal that mends you whole and fills your flask, with the traders drawn up around the water. Rest here. It costs nothing, which should worry you.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The traders wear faces and burdens now — a hooded peddler bent under his pack, a horned thing that deals in relics, a smith broad at his coals. They were shapeless before. The dark apologizes for nothing.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The stalls lay their wares out proper now — pick one up, turn it over, read what it does, then decide. The merchants would rather you bought in haste, but they will abide.",
-        "area": [
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The little fire that crept back into the sanctuary is out. The hearth is cold on purpose now; the dark keeps its warmth for the far side of the boss.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dark leaves a gift on the first stair now, and the good things come on sooner and steadier. It expects the favour repaid in kind.",
-        "area": [
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A named thing waits in the wide dark now, and gives up its fire when it falls. The Hollow Choir keeps its own room.",
-        "area": [
-          "combat",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The keyring hangs by your purse even when it is empty. The dungeon wants you to feel the lack.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Your purse and your keys are back on the wall where you left them. The dark misplaced them, briefly.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The sanctuary's great fire is cold now — you took your rest at the thing you killed to get here. Only the dead stone hearth remains, and the traders around it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "A smith keeps the sanctuary's forge now. Feed it gold and the blade in your hand comes back keener — and stays that way, all the way down.",
-        "area": [
-          "content",
-          "combat",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The fire and the basin keep their distance now — no more tripping over two altars in one cramped cell. And the tally of your levels goes dark until it means something again.",
-        "area": [
-          "ui",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "A second hooded figure keeps the sanctuary now — the relic-keeper, trading charms for coin. Buy your way into a domain, if the dead left you enough gold.",
-        "area": [
-          "content",
-          "level",
-          "ui"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The ledger of your killing goes quiet for now. No more counting levels — what you are is what you carry, until the deep starts keeping score again.",
-        "area": [
-          "ui",
-          "progression"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Two worn slots now, and they are not about armour — they are about how you move and kill. Wear quicksilver on your heels, a leech at your throat, and become something particular.",
-        "area": [
-          "combat",
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Carry a second blade now, sheathed at your hip — one tap draws it and stows the first. Bring a answer for every shape of thing down here.",
-        "area": [
-          "combat",
-          "ui",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon has learned to tell its hunters from its worms. What means you harm holds the door; what merely crawls does not.",
-        "area": [
-          "content",
-          "combat",
           "level"
         ]
       }
