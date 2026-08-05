@@ -52,7 +52,9 @@ export function spawnFitting(
     case 'cobweb': {
       // Destructible curtain. Seal is now a wall segment (was a hand-tuned
       // circle obstacle) spanning the full gap; slashing the web removes it.
-      const seg = { ...openingSeg(opening) };
+      // Openable: a cobweb curtain is cut through, not walked around. An audit
+      // asking about LAYOUT must not treat it as stone (see WallSegment).
+      const seg = { ...openingSeg(opening), openable: true };
       walkable.addWall(seg);
       const web = spawnCobweb(scene, opening.x, opening.z, opening.rotY, opening.widthM,
         () => walkable.removeWall(seg));

@@ -23,6 +23,19 @@ import { SpatialHash } from './spatial-hash';
 export interface WallSegment {
   ax: number; az: number;
   bx: number; bz: number;
+  /**
+   * A barrier ORDINARY PLAY OPENS — a door, an arena gate, a portcullis, boss
+   * mist. Blocks movement exactly like stone while it's closed; the flag says
+   * nothing about collision.
+   *
+   * It exists because an AUDIT has to be able to tell the two apart. Layout
+   * reachability asks "can the player get there", and a door is never the
+   * answer to that — they open it. Without this flag, `delve reach`'s flood
+   * stopped at every closed door and reported the stairs beyond them
+   * unreachable on 5 of 7 sampled floors: an audit that cries wolf on most of
+   * its inputs will mask the one time it's right.
+   */
+  openable?: boolean;
 }
 
 // An obstacle is a real 3D volume: a footprint (circle = cylinder, aabb = box)
@@ -171,7 +184,10 @@ export class WalkableRegion {
    *                       altars, fountains, chests). Used by phasing
    *                       mobs (ghosts) who pass through props but are
    *                       still bounded by room walls. */
-  contains(x: number, z: number, radius: number, opts?: { ignoreObstacles?: boolean; ignoreDashable?: boolean }): boolean {
+  contains(
+    x: number, z: number, radius: number,
+    opts?: { ignoreObstacles?: boolean; ignoreDashable?: boolean; ignoreOpenable?: boolean },
+  ): boolean {
     // (1) Inside the union of rects (unshrunken). Doorways are inside both
     // adjacent rects' union; the player can cross them.
     let inside = false;
@@ -190,6 +206,9 @@ export class WalkableRegion {
     const nw = this.wallGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, WALL_SCRATCH);
     for (let i = 0; i < nw; i++) {
       const w = WALL_SCRATCH[i];
+      // Audits pass ignoreOpenable to ask about the LAYOUT rather than the
+      // current state of every door. Gameplay never sets it.
+      if (opts?.ignoreOpenable && w.openable) continue;
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
 
@@ -232,6 +251,9 @@ export class WalkableRegion {
     const nw = this.wallGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, WALL_SCRATCH);
     for (let i = 0; i < nw; i++) {
       const w = WALL_SCRATCH[i];
+      // No ignoreOpenable here, deliberately: a closed door stops an arrow. The
+      // flag is about what a PLAYER can eventually get through, not about what
+      // a projectile can fly through right now.
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
     const no = this.obstacleGrid.queryAabb(x - radius, z - radius, x + radius, z + radius, OBS_SCRATCH);

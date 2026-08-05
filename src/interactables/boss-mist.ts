@@ -84,7 +84,8 @@ export function spawnBossMist(
   // every fitting blocks movement the same way. Identity matters: the walkable
   // adds/removes by reference.
   const ep = openingEndpoints({ x, z, rotY, widthM: width });
-  const seg: WallSegment = { ax: ep.ax, az: ep.az, bx: ep.bx, bz: ep.bz };
+  // Openable: the mist lifts when the boss dies. It is a gate, not geometry.
+  const seg: WallSegment = { ax: ep.ax, az: ep.az, bx: ep.bx, bz: ep.bz, openable: true };
   let blocking = false;
   function block() { if (!blocking) { walkable.addWall(seg); blocking = true; } }
   function unblock() { if (blocking) { walkable.removeWall(seg); blocking = false; } }

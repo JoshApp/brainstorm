@@ -2791,6 +2791,9 @@ export function buildLevel(
     const sealedSegs: Array<{ ax: number; az: number; bx: number; bz: number }> = [];
     doorTeardowns.push(onEncounterActivated(encId, () => {
       for (const seg of externalSegs) {
+        // Openable: an arena seal lifts on room-clear. Blocks movement while it
+        // is up; must not read as layout to an audit (see WallSegment).
+        (seg as { openable?: boolean }).openable = true;
         walkable.addWall(seg);
         sealedSegs.push(seg);
       }

@@ -31,7 +31,11 @@ const seed = Number(get('--seed') ?? Math.floor(Math.random() * 1e9));
 const depth = Number(get('--depth') ?? 1);
 const port = Number(get('--port') ?? 5180 + Math.floor(Math.random() * 300));
 
-type Report = { ok: boolean; reachableCells: number; stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number }> };
+type Report = {
+  ok: boolean; reachableCells: number; strictCells: number; openableBarriers: Array<{ x: number; z: number }>;
+  unreachedRooms: string[];
+  stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number; blockedBy?: string }>;
+};
 
 async function main() {
   const repoRoot = dirname(new URL(import.meta.url).pathname).replace(/\/scripts$/, '');
@@ -67,10 +71,18 @@ async function main() {
     if (!okReady) { console.error('harness never became ready'); bad = true; return; }
 
     const rep = await page.evaluate(() => (window as { harness: { reachability(): Report } }).harness.reachability()) as Report;
-    console.log(`reachable cells from spawn: ${rep.reachableCells}`);
+    // Two numbers, because they answer different questions. The first is
+    // LAYOUT — can the player get there at all, opening what they'd open. The
+    // second is what you can walk to right now with every door shut. Reporting
+    // only the second is what made this tool call 5 of 7 floors soft-locked.
+    console.log(`reachable cells from spawn: ${rep.reachableCells}  (layout — doors and gates assumed openable)`);
+    console.log(`  with every barrier shut: ${rep.strictCells}  ·  ${rep.openableBarriers.length} openable barrier(s)`
+      + (rep.openableBarriers.length ? ': ' + rep.openableBarriers.map((b) => `(${b.x}, ${b.z})`).join(' ') : ''));
+    if (rep.unreachedRooms.length) console.log(`  rooms never entered: ${rep.unreachedRooms.join(', ')}`);
     if (rep.stairs.length === 0) console.log('  (no stairs on this floor)');
     for (const s of rep.stairs) {
-      console.log(`  stair @(${s.x}, ${s.z}): ${s.reachable ? "REACHABLE ✓" : "UNREACHABLE ✗"}  (closest reachable spot: ${s.minDist}m, need <=1.6m)`);
+      console.log(`  stair @(${s.x}, ${s.z}): ${s.reachable ? 'REACHABLE ✓' : 'UNREACHABLE ✗'}  (closest reachable spot: ${s.minDist}m, need <=1.6m)`
+        + (s.blockedBy ? `  — ${s.blockedBy}` : ''));
       if (!s.reachable) bad = true;
     }
     console.log(bad ? '\n✗ SOFT-LOCK: a stair is unreachable.' : '\n✓ all stairs reachable.');

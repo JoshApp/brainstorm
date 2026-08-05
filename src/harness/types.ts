@@ -163,7 +163,14 @@ export interface HarnessApi {
   };
   /** Flood-fill the live walkable region from spawn (real collision radius)
    *  and report whether each stair is reachable — faithful soft-lock check. */
-  reachability(): { ok: boolean; reachableCells: number; stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number }> };
+  /** Layout reachability from spawn. Ignores barriers ordinary play opens
+   *  (doors, arena gates, boss mist) unless `strict` — see WallSegment.openable
+   *  and the note in harness/index.ts. */
+  reachability(opts?: { strict?: boolean }): {
+    ok: boolean; reachableCells: number; strictCells: number; openableBarriers: Array<{ x: number; z: number }>;
+    unreachedRooms: string[];
+    stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number; blockedBy?: string }>;
+  };
   /** Force-pause (default) / force-unpause without running an action. */
   pause(): void;
   resume(): void;

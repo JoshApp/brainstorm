@@ -132,7 +132,12 @@ export function spawnDoor(
 
   // Wall segment that represents the door's collision while closed. Identity
   // matters: WalkableRegion add/remove by reference.
-  const wallSeg: WallSegment = { ax: spec.ax, az: spec.az, bx: spec.bx, bz: spec.bz };
+  const wallSeg: WallSegment = {
+    ax: spec.ax, az: spec.az, bx: spec.bx, bz: spec.bz,
+    // A door blocks like stone, but an audit asking "can the player reach the
+    // stairs" must not treat it as stone — they open it. See WallSegment.
+    openable: true,
+  };
   walkable.addWall(wallSeg);
 
   // ── Threshold light ────────────────────────────────────────────────

@@ -68,10 +68,16 @@ export function bootHarness(ctx: HarnessContext): void {
      *  reach. Faithful (sees archway columns, stairwell footprints, every
      *  obstacle the renderer-free rect tests can't) — used by `npm run reach`
      *  to verify a seed isn't soft-locked. */
-    reachability(): { ok: boolean; reachableCells: number; stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number }> } {
+    reachability(opts?: { strict?: boolean }): {
+      ok: boolean; reachableCells: number; strictCells: number; openableBarriers: Array<{ x: number; z: number }>;
+      unreachedRooms: string[];
+      stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number; blockedBy?: string }>;
+    } {
       const c = tryGetContext();
       const level = c?.getLevel();
-      if (!level) return { ok: false, reachableCells: 0, stairs: [] };
+      if (!level) {
+        return { ok: false, reachableCells: 0, strictCells: 0, openableBarriers: [], unreachedRooms: [], stairs: [] };
+      }
       const W = level.walkable;
       const spec = level.spec;
       const R = 0.3;          // player collision radius (controls/camera.ts PLAYER_RADIUS)
@@ -85,29 +91,80 @@ export function bootHarness(ctx: HarnessContext): void {
       }
       const key = (x: number, z: number) => `${Math.round(x / CELL)},${Math.round(z / CELL)}`;
       const sp = spec.startPos;
-      const seen = new Set<string>([key(sp.x, sp.z)]);
-      const q: Array<[number, number]> = [[sp.x, sp.z]];
-      while (q.length) {
-        const [x, z] = q.pop()!;
-        for (const [dx, dz] of [[CELL, 0], [-CELL, 0], [0, CELL], [0, -CELL]] as const) {
-          const nx = x + dx, nz = z + dz;
-          if (nx < mnX || nx > mxX || nz < mnZ || nz > mxZ) continue;
-          const k = key(nx, nz);
-          if (seen.has(k)) continue;
-          if (W.contains(nx, nz, R)) { seen.add(k); q.push([nx, nz]); }
+      // THE QUESTION THIS ANSWERS IS ABOUT LAYOUT, NOT ABOUT DOORS.
+      //
+      // A closed door adds a real wall segment, so a naive flood stops dead at
+      // every one of them. That is what made this check report unreachable
+      // stairs on 5 of 7 sampled floors — it was measuring "where can you walk
+      // without opening anything", which is never the question. A player opens
+      // doors; an arena gate lifts on room-clear; boss mist lifts when the boss
+      // dies. None of them is geometry.
+      //
+      // So the default flood ignores barriers tagged `openable` (see
+      // WallSegment), and the STRICT flood — which does not — is reported
+      // alongside it. The difference is exactly "how much of this floor is
+      // behind something that opens", which is worth knowing and was previously
+      // indistinguishable from a soft-lock.
+      const flood = (ignoreOpenable: boolean): Set<string> => {
+        const seen = new Set<string>([key(sp.x, sp.z)]);
+        const q: Array<[number, number]> = [[sp.x, sp.z]];
+        while (q.length) {
+          const [x, z] = q.pop()!;
+          for (const [dx, dz] of [[CELL, 0], [-CELL, 0], [0, CELL], [0, -CELL]] as const) {
+            const nx = x + dx, nz = z + dz;
+            if (nx < mnX || nx > mxX || nz < mnZ || nz > mxZ) continue;
+            const k = key(nx, nz);
+            if (seen.has(k)) continue;
+            if (W.contains(nx, nz, R, { ignoreOpenable })) { seen.add(k); q.push([nx, nz]); }
+          }
         }
-      }
+        return seen;
+      };
+      const strictSeen = flood(false);
+      const seen = opts?.strict ? strictSeen : flood(true);
+      // Report WHERE they are, not just how many. "1 barrier" was enough to
+      // explain the false alarm but not enough to say which producer put it
+      // there, and I spent three runs bisecting producers by hand to find out.
+      const barriers = W.listWalls().filter((w) => w.openable).map((w) => ({
+        x: +((w.ax + w.bx) / 2).toFixed(1), z: +((w.az + w.bz) / 2).toFixed(1),
+      }));
       const pts = [...seen].map((s) => s.split(',').map(Number));
       const minDist = (tx: number, tz: number) => {
         let m = Infinity;
         for (const [a, b] of pts) { const d = Math.hypot(a * CELL - tx, b * CELL - tz); if (d < m) m = d; }
         return m;
       };
+      // Which rooms the flood never entered. An unreachable stair with a named
+      // room beside it is a lead; a bare distance is a puzzle.
+      const unreachedRooms: string[] = [];
+      for (const r of rects) {
+        const b = r.rect;
+        const hit = pts.some(([a, c]) =>
+          Math.abs(a * CELL - b.x) <= b.w / 2 && Math.abs(c * CELL - b.z) <= b.d / 2);
+        if (!hit) unreachedRooms.push(r.id);
+      }
       const stairs = (spec.stairs ?? []).map((st) => {
         const md = minDist(st.x, st.z);
-        return { x: +st.x.toFixed(1), z: +st.z.toFixed(1), reachable: md <= INTERACT, minDist: +md.toFixed(2) };
+        const reachable = md <= INTERACT;
+        // If even the permissive flood can't get there, say what kind of thing
+        // sits nearest the stair — the difference between "sealed by geometry"
+        // and "we still can't model this" is the whole value of the report.
+        let blockedBy: string | undefined;
+        if (!reachable) {
+          const room = rects.find((r) =>
+            Math.abs(st.x - r.rect.x) <= r.rect.w / 2 && Math.abs(st.z - r.rect.z) <= r.rect.d / 2);
+          blockedBy = room ? `room ${room.id} never entered` : 'stair is outside every room rect';
+        }
+        return { x: +st.x.toFixed(1), z: +st.z.toFixed(1), reachable, minDist: +md.toFixed(2), blockedBy };
       });
-      return { ok: true, reachableCells: seen.size, stairs };
+      return {
+        ok: true,
+        reachableCells: seen.size,
+        strictCells: strictSeen.size,
+        openableBarriers: barriers,
+        unreachedRooms,
+        stairs,
+      };
     },
     pause() { setHarnessPaused(true); },
     resume() { setHarnessPaused(false); },
