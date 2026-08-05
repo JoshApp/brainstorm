@@ -313,3 +313,56 @@ Not a stat line, not a buff icon. You feed the blade and the blade is different
 when you look at it. If that lands on the phone, everything after is content
 authoring. If it doesn't, no amount of taxonomy would have told us — and we'd
 have found out for the price of a day.
+
+---
+
+## 13. DECIDED 2026-08-05: feeding consumes the relic
+
+Josh: *"feeding a relic consumes it."* §6's open question is closed, and closed the
+way the design wanted — without permanence there is no sacrifice, and without
+sacrifice the basin is a free button you press whenever you have anything.
+
+That settles the spine. What it opens is one real risk and three consequences that
+now need answers.
+
+### The risk it creates, named in §6 and still true
+
+> Players hoard and never feed, because **the reliquary is a visible number going
+> up and the blade's growth is not.**
+
+Loss aversion cuts both ways. The same instinct that makes feeding feel weighty
+makes players *not do it*. A relic economy where the optimal play is "keep
+everything, feed nothing" is worse than no economy, because it looks like a
+system and behaves like a shop you never enter.
+
+Three mitigations, and I think we need all three:
+
+1. **Make the blade's growth visible.** This is why "taking form" (§8) is
+   load-bearing rather than decorative. If feeding *visibly changes the model*,
+   growth becomes a thing you can see, and the two sides of the decision are
+   finally comparable. A stat line loses to a number going up; a changed
+   silhouette does not.
+2. **Cap what you can WEAR.** With a hard slot limit, the relic you cannot equip
+   is dead weight — and feeding it costs nothing you were using. That converts
+   hoarding into feeding automatically, and it rescues Josh's own "limited active
+   trinkets" idea, which failed on its own as inventory management but works
+   perfectly as the *pressure* behind wear-or-feed.
+3. **Keep the basin scarce.** A decision you meet twice a run is an event; one you
+   meet at every vendor is a menu.
+
+### Three questions the decision now forces
+
+- **Is there a third door?** Wear / feed / — sell? Leaving a relic on the floor is
+  currently the only other option, and it's unsatisfying. The merchant is the
+  obvious third door, and it prices the decision in a currency you understand.
+- **Does the weapon have a capacity?** If you can feed forever the blade becomes a
+  god by depth 10. Options: a hard scar cap (per `WEAPON-EVOLUTION.md`), an
+  escalating cost per feed, or — the interesting one — **the weapon has slots
+  too**, so a late feed *replaces* an earlier one and you choose what to lose.
+  That keeps the last feed of a run as tense as the first. Unresolved; my instinct
+  is the slot version, but it is exactly the kind of idea that sounds better than
+  it plays and should be simulated (#132) before it is authored.
+- **What happens on death?** The weapon is lost, so everything fed is gone. That
+  is correct for a roguelike and it's the Souls deal — but it means feeding must
+  pay off *inside* the run. Which argues for feeding early and cheaply, and
+  against a system that only blooms at depth 8.

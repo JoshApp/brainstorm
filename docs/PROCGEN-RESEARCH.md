@@ -423,3 +423,81 @@ on" is a question the combat system currently never has to ask.
 Shoving mobs into **voids** (#135) has no such problem, because they die — they
 leave the fight rather than relocating within it. So: voids yes, ledges later, and
 only once there's a reason worth the complexity.
+
+---
+
+## 8. Correction: the gallery doesn't fit, and the fix is to drop the floor
+
+Josh, on the overlook:
+
+> *"How do you get back up, or is it just an overseeing point? I don't quite
+> understand how looking into a room works since most of our rooms are small and
+> not so well lit."*
+
+Right on both counts, and the measurement is worse than the instinct. Over 846
+generated rooms:
+
+```
+room area          p10 32 m²   median 60 m²   p90 120 m²   max 288 m²
+rooms ≥ 100 m²                                   12%
+rooms with ≥1 torch                              93%
+CEILING HEIGHT     3.2m ×772    2.6m ×44    14m ×30
+```
+
+**772 of 846 rooms have a 3.2m ceiling.** A gallery at +2m in a 3.2m room leaves
+**1.2m of headroom** — you would be crawling along it. Only 30 rooms in 846 (3.5%)
+are tall enough for a raised walkway, and those are the signature halls.
+
+So §5's "open a ledge between adjacent rooms" was written without checking the
+vertical budget, and as pitched it is feasible in about one room in thirty. The
+median room is roughly 8 × 7.5m — from 2m up you would see all of it at once
+anyway, and there is no floor left to put a gallery on.
+
+### The fix: don't raise the walkway, LOWER THE ROOM
+
+The same view, obtained the other way round:
+
+> **The corridor stops descending before it arrives.** The room's floor sits 1.2m
+> below the corridor mouth, so the mouth *is* the balcony.
+
+Nothing is added above. The room is simply lower than the passage feeding it —
+which is a thing the elevation field already produces on its own, since rooms
+carry plateaus and corridors ramp between them. Today the ramp runs all the way
+down so you arrive at floor level and never see the drop. **Stop the ramp one step
+short and the arrival becomes an overlook**, at zero cost in headroom: the room
+still has its full 3.2m, and internally now reads as 4.4m, which is a bonus.
+
+That also answers "how do you get back up":
+
+- at **1.2m**, you vault — the move already exists (`player/vault-step.ts`)
+- at **2m+**, the corridor's own stair down the side is the way back, and the drop
+  is the shortcut past it
+
+So the gallery-and-stairs picture collapses into something much simpler: **a
+corridor that arrives high, a step or stair at its side, and a lip you can go over
+if you'd rather.** No new space, no new geometry class.
+
+### What you actually SEE, in a dark game
+
+Also worth correcting. The level-design literature's case for the overlook is
+*tactical overview* — but that literature is about daylit multiplayer maps. In a
+fog-and-torch dungeon you will never read a layout from a doorway.
+
+What you see instead is **the lights and the movement**: a fire burning, a shape
+crossing in front of it. Which is better suited to this game than an overview
+would be, because our lighting doctrine already makes an uncommon light *mean
+something*. An overlook lets you read the signals before you commit — "there's a
+fire in there, and something moved" — which is dread, then a decision. That is the
+beat we want; the tactical map was never available and would have been the wrong
+prize anyway.
+
+### The generation rules that follow
+
+- **Only over a room with a light source.** 93% qualify, so this is cheap — but a
+  ledge onto pure black is a wasted beat and must be refused at generation.
+- **Only where the room is genuinely lower than its entry corridor.** Already true
+  for a good share of rooms; the change is to spend the drop at the threshold
+  instead of smearing it along the ramp.
+- **Prefer the bigger rooms.** In a 32m² closet a 1.2m step is just a step. Above
+  ~90m² it is a look-in.
+- **The lip is a blocker; a marked gap is the way over** (§7, unchanged).

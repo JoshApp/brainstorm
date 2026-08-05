@@ -40,8 +40,13 @@ the order and why each thing sits where it does.
 
 ### The two open questions that need Josh
 
-- **Does feeding a relic consume it permanently?** I lean strongly yes. Still
-  unanswered, and it decides whether the weapon economy is real or a formality.
+- ~~Does feeding a relic consume it permanently?~~ **DECIDED 2026-08-05: yes.**
+  What it opens: the hoarding risk (the reliquary is a visible number going up and
+  the blade's growth is not), which needs all three of — visible form change, a
+  hard WEAR cap so the unequippable relic is free to feed, and a scarce basin.
+  Still open: is there a third door (sell?), does the weapon have a capacity, and
+  feeding must pay off INSIDE the run since death takes the blade.
+  `WEAPON-EVOLUTION-FUN.md` §13.
 - **Does the polygon-room silhouette look right?** Unanswerable until step 4 puts
   a snap in front of you — which is why #131 ships the shape alone first.
 
