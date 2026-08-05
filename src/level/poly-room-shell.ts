@@ -4,7 +4,7 @@ import type { RoomSpec } from './types';
 import type { WallSegment } from './walkable';
 import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
-import { makeJitteredPlane } from './geometry-prims';
+import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
 import { polyBounds, type Poly } from './room-shape';
 import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
@@ -100,11 +100,31 @@ export function buildPolyRoomShell(
   // Authored face-DOWN (see plateGeometry) rather than by re-rotating the floor,
   // which mirrors it in Z. The rect path gets away with the re-rotation only
   // because a rectangle is symmetric; a polygon is not.
-  const ceilGeo = plateGeometry(local, 'down');
-  tintVertices(ceilGeo);
-  const ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.set(rect.x, elev + H, rect.z);
+  const style = room.ceilingStyle ?? 'flat';
+  let ceiling: THREE.Mesh;
+  if (style === 'flat') {
+    const ceilGeo = plateGeometry(local, 'down');
+    tintVertices(ceilGeo);
+    ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(rect.x, elev + H, rect.z);
+  } else {
+    // VAULTED. The same arch the rect path builds, spanning this room's
+    // BOUNDING BOX rather than its outline — a barrel over a chamfered plan is
+    // still a barrel, and the corner overhang sits above the wall's top cap
+    // where nothing standing in the room can see it.
+    //
+    // Not a nicety: measured over 288 generated floors, 67% of the rooms the
+    // chamfer pass refused were refused for having a vault. Excluding them
+    // meant "polygon rooms in the dungeon" converted 1% of rooms, which is a
+    // feature that isn't in the game.
+    ceiling = new THREE.Mesh(
+      makeArchedCeilingGeometry(rect.w, rect.d, H, room.ceilingRise ?? (style === 'barrel' ? 1.3 : 1.0), style),
+      archCeilingMaterial(materials.ceiling),
+    );
+    ceiling.position.set(rect.x, elev, rect.z);   // geometry is already in world Y
+  }
+  ceiling.receiveShadow = true;
   ceiling.name = `polyceil:${room.id}`;
   ceiling.userData.dbgKind = 'ceiling';
   ceiling.userData.dbgSource = `polyceil · ${room.id}`;

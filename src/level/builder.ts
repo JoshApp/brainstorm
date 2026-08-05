@@ -800,6 +800,7 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
+import { polygoniseRooms } from './polygonise';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
 // Scatter a few lamp-revealed wall-runes across a floor's rooms so the dungeon
@@ -866,6 +867,16 @@ export function buildLevel(
   // anything is positioned. Flat floors build a constant-0 field and every
   // sample short-circuits.
   setElevationField(buildElevationField(spec.rooms, spec.corridors));
+
+  // ROOM SHAPE v2, applied to the dungeon we already have. Every eligible room
+  // gets its corners cut, but ONLY if every prop, sconce, spawn, door, stair
+  // body and start position it already holds still clears the new outline —
+  // otherwise it stays a rectangle. Runs here, at the top of the build, because
+  // this is the first moment the spec is final: the composer has finished
+  // placing, so the fit gate is checking the ROOM THE PLAYER WILL SEE rather
+  // than an intermediate one. (docs/DESIGN-METHOD.md: check final-state rules
+  // against the final state.)
+  polygoniseRooms(spec);
 
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
