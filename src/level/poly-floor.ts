@@ -13,7 +13,9 @@ import { rollFloorEnemies } from './procgen';
 import { nextLevelAfter } from './acts';
 import { planFloor, dedicatedEntries } from './floor-plan';
 import { planCentrepiece } from './centrepieces';
-import { roomType, type RoomTypeId } from './room-types';
+import { roomType, type RoomTypeId, type RoomModifier } from './room-types';
+import { assignModifiers, type ModifierPlan } from './room-modifiers';
+import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -28,10 +30,10 @@ import { roomType, type RoomTypeId } from './room-types';
 // everything goes. You cannot make placement smart by editing the room after
 // the placement happened. So this owns both.
 //
-// What it does NOT do yet, deliberately: elevation, voids, bosses, room
-// MODIFIERS (ambush / contested / toll / gated), and the toll-pricing pass.
-// Those are the next things to move, one at a time, each with the measurement
-// that says it worked.
+// What it does NOT do yet, deliberately: elevation, voids, bosses, and the
+// PRICED modifiers (toll / gated) with the pass that sets their prices. Those
+// are the next things to move, one at a time, each with the measurement that
+// says it worked.
 //
 // The ORDER matters and is the actual design:
 //
@@ -125,6 +127,9 @@ type Box = { x: number; z: number; w: number; d: number };
 type Dir = 'N' | 'S' | 'E' | 'W';
 
 const MARGIN = 1.5;          // gap between unrelated boxes, so walls never clip
+/** Metres between two spikes of a `hazard` room. Closer and it stops being a
+ *  line you pick and becomes a maze you thread. */
+const HAZARD_SPREAD = 3.2;
 const CORRIDOR_W = 2.2;
 
 /**
@@ -257,9 +262,38 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   entrance.occupancy.reserve(
     { kind: 'cylinder', x: startPos.x, z: startPos.z, r: 1.3, y0: 0, y1: 2.0 }, 'spawn');
 
+  // ── MODIFIERS — what happens TO the room, layered on what it IS ────
+  //
+  // A trove you have to fight for and a trove you walk into are the same room
+  // with different weather. room-modifiers.ts owns which room takes which — it
+  // picks the modifier FIRST and then finds a room that tolerates it, because
+  // picking the room first biases every floor toward whichever type is most
+  // permissive. It only wants a role lookup and each room's connection count,
+  // both of which this generator already knows, so it plugs straight in.
+  const connections = new Map<string, number>();
+  for (const l of links) {
+    connections.set(l.from, (connections.get(l.from) ?? 0) + 1);
+    connections.set(l.to, (connections.get(l.to) ?? 0) + 1);
+  }
+  const nodes: RoomNode[] = rooms.map((r) => ({
+    roomId: r.id, tags: [], slot: 'mid', connections: connections.get(r.id) ?? 1,
+  }));
+  const byType = new Map(rooms.map((r) => [r.id, r.type]));
+  const roles: FloorRoles = {
+    role: (id) => byType.get(id) ?? 'combat',
+    caps: (id) => ROLE_CAPS[byType.get(id) ?? 'combat'],
+    bonfireScore: () => 0,
+    designate: (id, role) => { byType.set(id, role); },
+    entries: () => byType,
+  };
+  const mods: ModifierPlan = assignModifiers(roles, nodes, { depth, rand });
+
+  // Rooms whose centrepiece actually took the `guarded` flag. See the seal
+  // below: a portcullis with nothing to reach for can never close.
+  const guardedRooms = new Set<string>();
   for (const r of rooms) {
-    const mouth = mouthOf(r, links);
-    furnish(r, mouth, depth, rand, props, torches, spawns);
+    if (furnish(r, mouthOf(r, links), depth, rand, props, torches, spawns,
+                mods.byRoom.get(r.id)?.kind)) guardedRooms.add(r.id);
   }
 
   // The descent, on a wall chosen for being able to hold it.
@@ -286,9 +320,31 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     displayName: undefined,
     composerManagedFires: true,
     startPos,
-    rooms: rooms.map((r) => ({
-      id: r.id, rect: r.rect, height: r.height, poly: r.poly, roomType: r.type,
-    } as RoomSpec)),
+    rooms: rooms.map((r) => {
+      const m = mods.byRoom.get(r.id);
+      return {
+        id: r.id, rect: r.rect, height: r.height, poly: r.poly, roomType: r.type,
+        // An AMBUSH slams shut on you as you cross; a CONTESTED room waits until
+        // you reach for what it's guarding. Same enemies, opposite emotions —
+        // which is why they are different seals and not a flag on one.
+        // A CONTESTED seal only ships when the centrepiece could actually carry
+        // the trigger. `guarded` exists on offerings and chests alone, so a
+        // contested SANCTUM — a rest you fight for, which sounds great — has
+        // nothing to reach for, and the portcullis can never close. Measured:
+        // 12 of 40 contested rooms landed on a fire and were silently inert.
+        // An absent modifier is honest; one that pretends is not.
+        perimeterFitting: m?.kind === 'ambush' ? 'arena-trap'
+          : (m?.kind === 'contested' && guardedRooms.has(r.id)) || r.type === 'arena'
+            ? 'arena-portcullis'
+          : undefined,
+        // A room sealed by a modifier runs a SHORTER gauntlet than an arena's
+        // full trial — an ambush should bite and be over.
+        arenaWaves: m?.waves,
+        // `dark` is a one-word override, not a lighting special case: the build
+        // already knows how to render an unlit room.
+        lightTier: m?.kind === 'dark' ? 'dark' : undefined,
+      } as RoomSpec;
+    }),
     corridors,
     props,
     torches,
@@ -450,7 +506,8 @@ function mouthOf(r: Placed, links: ReadonlyArray<{ from: string; to: string; rec
 function furnish(
   r: Placed, mouth: { x: number; z: number } | null, depth: number, rand: () => number,
   props: PropSpec[], torches: TorchSpec[], spawns: EnemySpawnSpec[],
-): void {
+  mod?: RoomModifier,
+): boolean {
   // SCONCES — CANDIDATES, THEN A BUDGET.
   //
   // Taking every mount a wall offers gave 52 sconces per floor, about 8 a room:
@@ -472,7 +529,12 @@ function furnish(
   // per 11m² — the same over-lighting as taking every mount, just applied to
   // the rooms too small for the ratio to hide it. A closet with a single
   // guttering sconce is the room this game is made of.
-  const budget = Math.max(1, Math.min(5, Math.round(polyArea(r.poly) / 26)));
+  //
+  // A `dark` room keeps ONE, at the mouth. Zero would be a bug you cannot see —
+  // the player would walk into a black rectangle with no way to tell it from
+  // the end of the world. One sconce behind you is what makes the dark ahead
+  // read as dark rather than as broken.
+  const budget = mod === 'dark' ? 1 : Math.max(1, Math.min(5, Math.round(polyArea(r.poly) / 26)));
   for (const t of spreadPick(lampCandidates, budget, mouth)) {
     torches.push(t);
     r.occupancy.reserve(
@@ -509,6 +571,17 @@ function furnish(
       : undefined,
   };
   const staged = planCentrepiece(r.type, site, { depth, rand });
+  // CONTESTED — the centrepiece is guarded. The seal is already installed (the
+  // room got a portcullis above); marking the props is what says WHICH act
+  // springs it. Reaching for the reward is the trigger, and that is the whole
+  // difference from an ambush, which springs on the way in.
+  let guarded = false;
+  if (mod === 'contested') {
+    for (const p of staged.props) {
+      const k = (p as { kind?: string }).kind;
+      if (k === 'offering' || k === 'chest') { (p as { guarded?: boolean }).guarded = true; guarded = true; }
+    }
+  }
   props.push(...staged.props);
   for (const p of staged.claimed) {
     r.occupancy.reserve({ kind: 'cylinder', x: p.x, z: p.z, r: 0.6, y0: 0, y1: 1.8 }, 'centrepiece');
@@ -518,7 +591,7 @@ function furnish(
   // the centrepiece deliberately placed. That is a stronger statement than "no
   // loot", and it is the one flag every decorative pass has to read: a trove
   // whose three offerings you cannot see past is not a choice.
-  if (def.clean) return;
+  if (def.clean) return guarded;
 
   // Minor clutter, in the wall band. Candidates come sorted by clearance and go
   // through the occupancy, so nothing lands inside a pier, a lamp, or the thing
@@ -538,6 +611,23 @@ function furnish(
     }
   }
 
+  // MODIFIER: `hazard` — the floor itself is the danger. Spikes spread THROUGH
+  // the room rather than ringed around a prize (that is the trap room's
+  // centrepiece, a different beat). Spread far enough apart that crossing means
+  // picking a line, not threading a minefield.
+  if (mod === 'hazard') {
+    const spots = candidateSpots(r.poly, { radius: 0.6, band: [1.6, Infinity], pitch: 0.8 });
+    const laid: Array<{ x: number; z: number }> = [];
+    for (const s of spreadPick(spots, 4, null)) {
+      if (laid.some((o) => Math.hypot(o.x - s.x, o.z - s.z) < HAZARD_SPREAD)) continue;
+      const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.6, y0: 0, y1: 0.3 };
+      if (!r.occupancy.fits(vol, 0.2)) continue;
+      r.occupancy.reserve(vol, 'hazard');
+      props.push({ kind: 'spike-trap', x: s.x, z: s.z } as PropSpec);
+      laid.push(s);
+    }
+  }
+
   // SPAWNS. Placed against the room's shape, not scattered in its rect:
   // AMBUSH wants to be out of the entrance's sightline, so you walk in before
   // you see them. Everything else wants the open floor, spread out.
@@ -545,8 +635,8 @@ function furnish(
   // Whether anything wanders in at all is the TYPE's call, not this pass's. You
   // never fight beside a vendor; a trove is a breath; a quiet room's whole job
   // is to be nothing.
-  if (!def.enemies) return;
-  const ambush = r.type === 'combat' && rand() < 0.45;
+  if (!def.enemies) return guarded;
+  const ambush = mod === 'ambush' || (r.type === 'combat' && rand() < 0.45);
   const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
   const pool = ambush && mouth
     ? open.filter((s) => !hasSightline(r.poly, mouth, s))
@@ -568,6 +658,7 @@ function furnish(
     r.occupancy.reserve(vol, 'spawn');
     spawns.push({ enemyId, x: s.x, z: s.z, roomId: r.id, dormant: ambush });
   }
+  return guarded;
 }
 
 /**

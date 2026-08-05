@@ -273,6 +273,38 @@ test('a CLEAN room is a stage, and a vendor never has company', () => {
   }
 });
 
+test('A SEAL ALWAYS HAS SOMETHING THAT SPRINGS IT', () => {
+  // A `contested` room drops a portcullis when you reach for what it guards —
+  // and `guarded` exists only on offerings and chests. Land the modifier on a
+  // SANCTUM and there is nothing to reach for, so the gate can never close and
+  // the modifier is silently a no-op. Measured at 12 of 40 contested rooms
+  // before the generator started refusing to ship a seal it can't spring.
+  //
+  // An arena is the exception by design: its challenge altar is the trigger,
+  // and that is the room's centrepiece rather than a flag on a prop.
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      const fitting = (r as { perimeterFitting?: string }).perimeterFitting;
+      if (fitting !== 'arena-portcullis' || r.roomType === 'arena') continue;
+      const trigger = (spec.props ?? []).some((p) => (p as { guarded?: boolean }).guarded
+        && pointInPoly(r.poly!, (p as { x: number }).x, (p as { z: number }).z));
+      assert.ok(trigger, `${spec.id}: ${r.id} is sealed by nothing — the gate can never close`);
+    }
+  }
+});
+
+test('a dark room is dark, not broken', () => {
+  // Zero lights would be a bug the player cannot distinguish from the end of
+  // the world. One sconce behind you is what makes the dark ahead READ as dark.
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      if ((r as { lightTier?: string }).lightTier !== 'dark') continue;
+      const lit = (spec.torches ?? []).filter((t) => pointInPoly(r.poly!, t.x, t.z)).length;
+      assert.equal(lit, 1, `${spec.id}: a dark room carries ${lit} sconces`);
+    }
+  }
+});
+
 test('the same seed builds the same floor', () => {
   // Resume, descend and reload all regenerate the floor. A generator that
   // drifted would put the player somewhere the save file does not agree with.
