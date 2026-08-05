@@ -25,7 +25,8 @@ noticing before it gets built.
 
 ## 1. The level pipeline
 
-Full argument: **`docs/LEVEL-ARCHITECTURE.md`**. Prior diagnosis (ownership, the
+Full argument: **`docs/LEVEL-ARCHITECTURE.md`**. Survey of how the field
+solves this, and the verticality finding: **`docs/PROCGEN-RESEARCH.md`**. Prior diagnosis (ownership, the
 placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
 
 ### Decided
@@ -49,6 +50,17 @@ placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
   a mass *cannot* land on a walk path, because the path was claimed first.
 - **Hand-authoring survives only for genuine set-pieces** (harbor, boss arenas,
   tutorial), where form is welded to function.
+- **VERTICALITY ALREADY EXISTS AND ALREADY RUNS** (`docs/PROCGEN-RESEARCH.md` §4).
+  60–75% of rooms sit at a non-zero elevation, median step 0.60m, −4.5m of total
+  descent by depth 8, with ramped corridors and a ground-height field sampled by
+  camera/mobs/loot. It doesn't *read* because rooms are internally flat and all
+  the height is delivered as a ~4° corridor ramp you walk through in fog. The ask
+  is not a height system; it is making the height we have VISIBLE.
+- **Cycles beat everything else in the survey.** Our floor plan is a chain.
+  Unexplored's central lesson is that cycles are a planned feature, not luck —
+  and one loop per floor costs a graph edge, not a new system.
+- **Not WFC, not a continuous heightmap, not a grammar engine** — reasons in
+  `PROCGEN-RESEARCH.md` §5.
 - **Seven-stage pipeline with a contract**: PLAN → GRAPH → FORM → CARVE → FIT →
   CONTENT → DRESS. *A stage may read any earlier stage and write only its own
   layer.* That rule is what kills the culls.
@@ -71,6 +83,9 @@ placement authority, why culls are a smell): **`docs/LEVEL-OWNERSHIP.md`**.
 | | What | Why now / why not yet |
 |---|---|---|
 | ~~#130~~ | Prop taxonomy: ROLE + CLAIM | **SHIPPED 2026-08-05.** 0 self-contradicting rooms at every depth (was 40/220 at depth 3), decoration density unchanged. |
+| **#137** | R1 — make the existing height visible (ledges, steps, drops) | **Do first.** Builder work on a field that already runs; answers "the floor is flat" without generating anything. |
+| **#138** | R3 — cycles in the floor plan | Cheapest big structural win in the survey. |
+| **#139** | R2 — height inside rooms as 0.6m plates | Deliberately after #131 — a plate is a sub-polygon. |
 | **#131** | Room generator: polygons, shape grammar, circulation-first masses | The main event. Ships in the order in LEVEL-ARCHITECTURE.md §8.5 — polygon room FIRST and alone, because the whole point is to look at a non-blocky room. |
 | — | Stage contract + delete the culls | Falls out of #131. |
 | **#73** | Room forms, stitching, merges | **Absorbed into #131** — the shape grammar IS this. Kept for tracking the merge/stitch half, which comes after single-room polygons land. |
