@@ -659,8 +659,19 @@ Not yet routed, in rough order of value:
      less suitable for having a twin elsewhere — so it belongs in the request
      with the rest of the situation.
 
-   Still hardcoded, and the next one to move: `mass.pillar` (ruined columns,
-   fallen segments, buttresses) and `WALL_DAMAGE`.
+   `WALL_DAMAGE` followed as `wall.damage` — trivially, because a scorch mark
+   is nothing but its id.
+
+   **`mass.pillar` is blocked, and the reason is worth writing down.** Every
+   mass in `clutter.ts` carries model-specific placement facts baked into the
+   call site: the ruined column gets `collision: {kind:'circle', r:0.34}`, the
+   fallen segment gets a cardinal rotation because its AABB half-extents swap at
+   ±π/2, the buttress gets a wall-attachment routine of its own. Those are
+   properties *of the model*, sitting in the *pass*, which is exactly the
+   coupling this architecture exists to remove — but moving them means the
+   candidate has to carry a collision hint, and that is a real design step rather
+   than a copy-paste. It is the right next piece of work and it is not a
+   five-minute one.
 2. **A room's claims reaching the light request.** The field is there and
    `poly-floor.ts` passes nothing, because it does not yet track per-room claims
    the way `clutter.ts` does. Once it does, a desecrated sanctum stops being

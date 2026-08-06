@@ -5,6 +5,7 @@ import { godRay } from '../content/god-ray';
 import {
   RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS, IRON_BARS,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL, LURKER,
+  WALL_SCORCH, WALL_GOUGE,
 } from '../content/clutter';
 
 // ── THE SKIN CATALOG ─────────────────────────────────────────────────────────
@@ -70,6 +71,12 @@ export const CRYPT_SKIN: Skin = {
       { model: ASH_MOUND },
       { model: STONE_SHARDS },
       { model: IRON_BARS },
+    ],
+    // Marks on the masonry. Flat, so no footprint and no headroom to check —
+    // the whole candidate is its id.
+    'wall.damage': [
+      { model: WALL_SCORCH },
+      { model: WALL_GOUGE },
     ],
     // The pile that gathers where a floor meets a wall. Weighted: small is the
     // common case and large is the punctuation.

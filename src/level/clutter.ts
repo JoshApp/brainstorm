@@ -1,6 +1,6 @@
 import type { LevelSpec, PropSpec, RoomSpec, TorchSpec, WalkableRect } from './types';
 import {
-  FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE, CORNER_MOUND_LARGE,
+  FLOOR_CRACK, CORNER_MOUND_LARGE,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN, FALLEN_PILLAR_SEGMENT,
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
@@ -62,9 +62,7 @@ import type { PlaceKind, PlacementAuthority } from './placement-authority';
 // the surface pass. IRON_BARS joins the pool to add a material
 // contrast (dark iron vs stone) to break up the otherwise
 // stone-only family.
-const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
-
-// FLOOR_DEBRIS and CORNER_MOUND_VARIANTS used to live here. They are palettes —
+// FLOOR_DEBRIS, CORNER_MOUND_VARIANTS and WALL_DAMAGE used to live here. They are palettes —
 // what the dungeon is MADE OF — and they moved to level/skins.ts so a theme can
 // replace them without touching this pass (docs/LEVEL-ARCHITECTURE.md §9). What
 // stays here is how much, and where.
@@ -781,11 +779,9 @@ function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number):
     }
     if (blocked) continue;
     if (ctx.tooClose(x, z, 0.8)) continue;
-    out.push({
-      kind: 'model',
-      model: WALL_DAMAGE[Math.floor(rand() * WALL_DAMAGE.length)],
-      x, y: 1.1 + rand() * 0.6, z, rotY,
-    });
+    const mark = resolveSkin(activeSkin(), { intent: 'wall.damage' }, rand);
+    if (!mark) return;
+    out.push({ kind: 'model', model: mark, x, y: 1.1 + rand() * 0.6, z, rotY });
     ctx.existing.push({ x, z });
     return;
   }

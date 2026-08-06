@@ -67,6 +67,8 @@ export type Intent =
   | 'light.shaft'
   /** Small scatter: sherds, dust, bone. The cheapest "someone was here". */
   | 'debris.small'
+  /** A mark ON a wall — scorch, gouge. Flat, takes nothing, asserts history. */
+  | 'wall.damage'
   /** The pile that gathers where a floor meets a wall. */
   | 'debris.corner'
   /** Architecture standing in the room. Wants rhythm, not scatter. */
