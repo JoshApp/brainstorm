@@ -432,10 +432,17 @@ export function generateFloor(
   // grants nothing, it changes what gets generated — so it lives outside the
   // DEV gate the way `?content=dev` does, and can be walked on the live site.
   //
-  // NOT the default, and honestly so: the new generator has no boss floors, no
-  // shops, no arenas and no floor-plan contract (the trove/bargain slots that
-  // carry the run's economy). Defaulting to it today would generate a dungeon
-  // with nothing in it to want. Those move across one at a time.
+  // NOT the default yet. Shops, arenas and the floor-plan contract have since
+  // moved across, but the OFFER SLOT IS STILL EMPTY on three floors in four:
+  // on the act's trove floor the contract stages a trove, and on every other
+  // floor it stages a `feature` room whose centrepiece is 'bargain' — which
+  // `planCentrepiece` deliberately returns EMPTY for, because in the vault path
+  // a bargain is placed by the fill/director stage, and that stage has not moved
+  // over. Measured over 240 generated floors: all 180 feature rooms are empty,
+  // and 15% of floors contain nothing the player can take or use at all.
+  //
+  // That is the blocker. A dungeon you descend with nothing to want in it is
+  // worse than a rectangular one.
   if (usePolyFloors() && !isBossDepth(depth)) {
     return generatePolyFloor(depth, runSeed);
   }
