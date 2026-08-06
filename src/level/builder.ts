@@ -581,8 +581,25 @@ function buildRoomShell(
       trimGeos.push(geo);
     }
   };
+  // A WALL SEGMENT INSIDE A ROOM IS NOT A WALL.
+  //
+  // Corridors overlap into polygon rooms by 0.9m so their opening rect straddles
+  // the wall it cuts — which left the last 0.9m of every corridor's SIDE WALLS
+  // standing inside the room, two slabs of masonry sticking out of the wall into
+  // open floor. The rect-based opening finder cannot see this: it only knows
+  // bounding boxes, and a polygon's real wall sits back from its own.
+  //
+  // Inert on the vault path by construction — no poly rooms, so nothing to
+  // subtract.
+  const otherPolys = allRects
+    .filter((r) => r !== room && r.poly && r.poly.length >= 3)
+    .map((r) => r.poly!);
+
   for (const we of wallEdges) {
-    const openings = findOpenings(we, allRects, room);
+    const openings = [
+      ...findOpenings(we, allRects, room),
+      ...insidePolyRanges(we, otherPolys),
+    ];
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
@@ -801,6 +818,7 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
+import { insidePolyRanges } from './portals';
 import { polygoniseRooms } from './polygonise';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 

@@ -153,3 +153,56 @@ export function wallCutsFor(
   return planPortals('shell', poly, rects.map((rect, i) => ({ id: `o${i}`, rect })))
     .map((p) => ({ edge: p.edge, t0: p.t0, t1: p.t1 }));
 }
+
+/**
+ * Where does this wall line run INSIDE a polygon?
+ *
+ * The other half of the doorway, and it is not a mirror of the room's half.
+ *
+ * poly-floor builds corridors that OVERLAP into the room by 0.9m so the opening
+ * rect straddles the wall it is meant to cut. A consequence nobody wired up: the
+ * last 0.9m of that corridor is INSIDE the room, and its side walls were still
+ * being built there — two slabs of masonry standing in open floor, sticking out
+ * of the wall into the room. That is "wall faces leaking too far".
+ *
+ * The rule is simply stated: A WALL SEGMENT INSIDE A ROOM IS NOT A WALL. Which
+ * needs the polygon, not the bounding box — the whole reason the rect-based
+ * opening finder could never get this right.
+ *
+ * Exact, not sampled: intersect the infinite wall line with every polygon edge,
+ * sort the crossings along the wall's running axis, and pair them up. An odd
+ * crossing count means the line starts inside, which cannot happen for a wall
+ * on a room's own boundary but can for a corridor that ends in one — so the
+ * pairing starts from the first crossing either way.
+ */
+export function insidePolyRanges(
+  we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
+  polys: ReadonlyArray<Ring>,
+): Array<{ start: number; end: number }> {
+  const out: Array<{ start: number; end: number }> = [];
+  for (const poly of polys) {
+    const xs: number[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      // Coordinates: `p` is the axis the wall line is CONSTANT on, `q` the axis
+      // it runs along.
+      const pa = we.perpAxis === 'z' ? a[1] : a[0];
+      const pb = we.perpAxis === 'z' ? b[1] : b[0];
+      const qa = we.perpAxis === 'z' ? a[0] : a[1];
+      const qb = we.perpAxis === 'z' ? b[0] : b[1];
+      // Half-open test so a vertex exactly on the line is counted once, not
+      // twice — the classic even-odd fencepost.
+      if ((pa <= we.perpCoord) === (pb <= we.perpCoord)) continue;
+      const t = (we.perpCoord - pa) / (pb - pa);
+      xs.push(qa + (qb - qa) * t);
+    }
+    if (xs.length < 2) continue;
+    xs.sort((m, n) => m - n);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const start = Math.max(we.wallStart, xs[i]);
+      const end = Math.min(we.wallEnd, xs[i + 1]);
+      if (end > start + 1e-3) out.push({ start, end });
+    }
+  }
+  return out;
+}
