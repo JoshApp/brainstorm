@@ -142,10 +142,19 @@ SKIP_PREPUSH=1 git push origin "$orig_branch" 2>/dev/null || true
 
 # Definitive, greppable verdict on the FINAL line — so a deploy's outcome is never
 # inferred from a (maskable) exit code. `npm run live | tail` swallows the real
-# exit, but this line does not lie: grep for "✓ DEPLOYED" to confirm.
+# exit, but this line does not lie: grep for "✓ DEPLOYED" to confirm. "⚠ PUSHED"
+# means the push landed and the deploy's outcome is UNKNOWN — not that it worked.
+# rc 2 is the "could not check" case (no gh), NOT a success. Reporting it as
+# DEPLOYED is how five failed deploys in a row got called live: the build was
+# green every time and actions/deploy-pages aborted in GitHub's queue, which this
+# script never saw. An unverified deploy now says so in the word it prints.
 if [ "$watch_rc" -eq 0 ]; then
-  echo "[live] ✓ DEPLOYED ${short_sha} → main (build green or queued)"
+  echo "[live] ✓ DEPLOYED ${short_sha} → main"
+elif [ "$watch_rc" -eq 2 ]; then
+  echo "[live] ⚠ PUSHED ${short_sha} → main — DEPLOY UNVERIFIED (no gh here; check the deploy job)"
 else
   echo "[live] ✗ DEPLOY FAILED (watch rc=${watch_rc}) — main updated but the build did not go green"
 fi
+# rc 2 means "pushed, unverified" — not a failure to abort a caller on.
+if [ "$watch_rc" -eq 2 ]; then exit 0; fi
 exit "$watch_rc"

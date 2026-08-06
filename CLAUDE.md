@@ -687,14 +687,22 @@ when it completes (~90s typical). The patient watch-deploy distinguishes
 "queued behind another run" (exit 0, push is safe) from "deploy explicitly
 failed" (exit 1, fix it).
 
-**Cloud agents don't have `gh` installed.** When Claude runs in the web
-cloud container, `gh` isn't available, so the watch-deploy step exits
-immediately with "push is safe, use MCP to verify." If you actually want
-to confirm a deploy outcome from the agent, call the GitHub MCP tools
-directly after running live (e.g. `mcp__github__actions_list` filtered
-to `branch: main`, look for `head_sha` matching `git rev-parse HEAD`).
-On your own machine `gh` is presumably installed and the script will
-poll as designed.
+**Cloud agents don't have `gh` installed**, so `npm run live` cannot see
+whether the site actually updated. It prints **`⚠ PUSHED … DEPLOY
+UNVERIFIED`** in that case — that is NOT a success, and reporting it as
+"live" is wrong. On 2026-08-06 five consecutive commits were called live
+while `actions/deploy-pages@v4` sat in GitHub's Pages queue and aborted; the
+BUILD was green every time, which is why nothing local noticed.
+
+To actually confirm, after `live`: `mcp__github__actions_list`
+(`{"branch": "main"}`), then **look at the `deploy` JOB's conclusion, not
+the run's build job**. `mcp__github__actions_list` with
+`method: list_workflow_jobs` gives per-job status. A `deployment_queued`
+timeout is service-side and outside the repo — retry by pushing again (an
+empty commit is fine); the GitHub App token here lacks `actions: write`, so
+`rerun_failed_jobs` and `workflow_dispatch` both 403.
+
+On your own machine `gh` is installed and the script polls as designed.
 
 ### Configuration
 

@@ -40,10 +40,14 @@ short="${sha:0:8}"
 # (caller already verified that), so exit 0 with a hint that the agent
 # should use the GitHub MCP tools to verify the deploy if needed.
 if ! command -v gh >/dev/null 2>&1; then
-  echo "[watch-deploy] ${short} on ${branch} — gh CLI not available in this environment."
-  echo "               push is safe. To verify deploy, use the GitHub MCP tools"
-  echo "               (mcp__github__actions_list / actions_get) or check the live URL."
-  exit 0
+  echo "[watch-deploy] ${short} on ${branch} — gh CLI not available; DEPLOY NOT VERIFIED."
+  echo "               The push landed. Whether the SITE updated is UNKNOWN from here:"
+  echo "               actions/deploy-pages can sit in GitHub's queue and abort, which"
+  echo "               has happened for five consecutive commits without this script"
+  echo "               being able to tell. VERIFY before reporting anything as live —"
+  echo "               mcp__github__actions_list (branch: main), check the deploy JOB's"
+  echo "               conclusion, not just the build's."
+  exit 2
 fi
 
 echo "[watch-deploy] HEAD ${short} on ${branch}"
