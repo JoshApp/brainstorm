@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
-import { getWindedMoveMul, isDashingOver, resolveDashOverLanding } from '../combat/dash';
+import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset } from '../combat/dash';
 import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset } from '../player/vault-step';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
@@ -253,7 +253,8 @@ export function updateCamera(
   camera.position.y = CONFIG.PLAYER_HEIGHT
     + groundYAt(camera.position.x, camera.position.z)
     + getArrivalHeightOffset()
-    + vaultHeightOffset();   // the arc over a knee-high obstacle
+    + vaultHeightOffset()    // the arc over a knee-high obstacle
+    + dashHeightOffset();    // and the same arc when a DODGE is what cleared it
 
   // Exhaustion chest-heave — a subtle breath-driven bob + pitch when winded, so
   // "out of breath" is FELT in the view, not read off a bar. 0 when rested; the

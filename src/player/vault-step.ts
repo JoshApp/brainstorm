@@ -25,8 +25,9 @@ import { playWhoosh } from '../audio/sfx';
 // exist. That's a hard gate, not a heuristic, because the failure is a betrayal
 // rather than a bug.
 
-/** How the camera moves through a vault. Short — this is a step, not a stunt. */
-const RISE_M = 0.42;         // how high the eye arcs over the obstacle
+// How high the eye arcs over the obstacle. Lives in config beside the dodge's
+// own rise, because the two are one visual language: height means "you got over
+// something". A number that says that in two places drifts apart.
 
 /**
  * HOW FAR THE STEP CARRIES — probed, not assumed.
@@ -65,7 +66,7 @@ export function isVaulting(): boolean { return gameNow() < activeUntil; }
 export function vaultHeightOffset(): number {
   if (!isVaulting()) return 0;
   const k = (gameNow() - startedAt) / (CONFIG.VAULT.DURATION_S * 1000);
-  return Math.sin(Math.max(0, Math.min(1, k)) * Math.PI) * RISE_M;
+  return Math.sin(Math.max(0, Math.min(1, k)) * Math.PI) * CONFIG.VAULT.RISE_M;
 }
 
 /** Where the vault wants the player this frame, or null when none is running. */

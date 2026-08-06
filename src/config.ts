@@ -852,6 +852,24 @@ export const CONFIG = {
     /** How long the step takes. Short: it's a stride, not a stunt, and every
      *  frame of it is a frame the player isn't steering. */
     DURATION_S: 0.34,
+    /** How high the eye arcs over a walk-vault. */
+    RISE_M: 0.42,
+    /**
+     * A DODGE THAT CLEARS SOMETHING ARCS TOO.
+     *
+     * The dodge has always been able to vault (dashOverActive) but the camera
+     * stayed flat through it, so clearing a fallen column read exactly like
+     * dodging across open floor. The information was in the world and not in
+     * the view.
+     *
+     * Deliberately not applied to every dodge: a flat-ground dodge is a duck to
+     * the side and adding lift to it would be a lie the player feels. Height
+     * means "you got over something", the same way an unusual light means
+     * something is there.
+     */
+    DASH_OVER_RISE_M: 0.34,
+    /** A plain flat-ground dodge. Small — a shove of weight, not a hop. */
+    DASH_RISE_M: 0.07,
   },
   PLAYER_HP_MAX: 5,
   /**

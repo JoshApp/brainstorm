@@ -34,9 +34,27 @@ let windedUntil = 0;
 // report 'dodging' as a real state with a duration, instead of inferring it
 // from the invuln flag (which entry-grace + parry also set).
 let dodgeActiveUntil = 0;
+let dodgeStartedAt = 0;
+let dodgeDurationMs = 0;
 
 /** True while a dodge is mid-roll (its i-frame window). The FSM's 'dodging'. */
 export function isDodging(): boolean { return gameNow() < dodgeActiveUntil; }
+
+/**
+ * The eye's vertical offset through a dodge — one arc up and back down, exactly
+ * the shape vault-step.ts uses, so a hop is a hop wherever it comes from.
+ *
+ * A dodge that CLEARS something arcs properly; a flat-ground dodge barely
+ * leaves the floor. That split is the point: the lift is what tells you the
+ * obstacle was cleared rather than sidestepped, and if every dodge floated, the
+ * one that matters would say nothing.
+ */
+export function dashHeightOffset(): number {
+  if (!isDodging() || dodgeDurationMs <= 0) return 0;
+  const k = Math.max(0, Math.min(1, (gameNow() - dodgeStartedAt) / dodgeDurationMs));
+  const rise = isDashingOver() ? CONFIG.VAULT.DASH_OVER_RISE_M : CONFIG.VAULT.DASH_RISE_M;
+  return Math.sin(k * Math.PI) * rise;
+}
 
 // DASH-OVER: set true at dash START only when a landing check said the dash CLEARS
 // a dashable obstacle/gap onto valid floor. While it holds AND we're mid-roll, the
@@ -92,6 +110,8 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   applyPlayerKnockback(dirX, dirZ, speed);
   setPlayerInvulnerable(iframes);
   dodgeActiveUntil = gameNow() + iframes * 1000;
+  dodgeStartedAt = gameNow();
+  dodgeDurationMs = iframes * 1000;
   // Mark the dodge so a hit negated in the next sliver counts as a just-dodge.
   noteDashStarted();
   // Post-dodge cooldown — longer when this was a gassed stumble (over-extending
@@ -134,6 +154,7 @@ export function resetDashCooldown(): void {
   lastStumbleAt = -Infinity;
   windedUntil = 0;
   dodgeActiveUntil = 0;
+  dodgeDurationMs = 0;
 }
 // sim-state: a fresh run starts dodge-ready (see sim-state.ts).
 registerSimReset(resetDashCooldown);
