@@ -23,6 +23,8 @@ import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import { MERCHANT_MODEL, RELIC_KEEPER_MODEL } from '../interactables/merchant';
 import { BLACKSMITH_MODEL } from '../interactables/blacksmith';
+import { archway } from '../content/archway';
+import { doorframe } from '../content/doorframe';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -103,6 +105,16 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'merchant':      { label: 'The wandering merchant — hooded trader, pack + lantern staff', spec: MERCHANT_MODEL },
   'relic-keeper':  { label: 'The relic-keeper — trinket merchant, arcane charms', spec: RELIC_KEEPER_MODEL },
   'blacksmith':    { label: 'The blacksmith — smith at anvil + coal forge', spec: BLACKSMITH_MODEL },
+  // THE THRESHOLDS. Every doorway in the game is one of these two, and until
+  // now neither could be LOOKED at — the `archway` snap scenario drops you in a
+  // corridor facing away from one, and the models are built per-instance from a
+  // width, so there was no registry entry to resolve. Both are pinned at the
+  // widths the generator actually produces (`chooseFrameModel` picks the
+  // archway above ~1.3m and the slimmer doorframe below), so what the bench
+  // shows is what a floor ships.
+  'archway':        { label: 'Archway — wide threshold, keystone carries the eye', spec: archway({ width: 1.8, ceilingHeight: 3.6 }) },
+  'archway-narrow': { label: 'Archway at its minimum width (1.3m)', spec: archway({ width: 1.3, ceilingHeight: 3.0 }) },
+  'doorframe':      { label: 'Doorframe — the slim threshold, for narrow openings', spec: doorframe({ width: 1.1, ceilingHeight: 3.2 }) },
 };
 
 // Pre-composed subjects — hand + object compositions that AREN'T weapons

@@ -1,151 +1,331 @@
-import type { ModelSpec } from '../ecs/model-types';
+import type { ModelSpec, PartSpec } from '../ecs/model-types';
 
-// Corridor archway — a stone gate frame at the mouth of a
-// corridor where it joins a room. Sells the transition between
-// chambers: instead of just stepping from one box into another,
-// the player passes UNDER something, framing the next room
-// cinematically.
+// Corridor archway — the stone gate at the mouth of a corridor where it joins a
+// room. Sells the transition between chambers: instead of stepping from one box
+// into another, the player passes UNDER something.
 //
-// Built per-instance so columns can sit AT THE CORRIDOR EDGES
-// (not at a fixed 2m apart) and the tympanum block above the
-// lintel fills the wall up to the ceiling. The wall opening
-// running floor→ceiling needs to be closed above the lintel
-// otherwise the player sees a gap revealing the void behind
-// the wall mesh.
+// ── WHY IT WAS REBUILT ───────────────────────────────────────────────────────
+//
+// Josh, on the old one: *"a lot of the old stuff is ugly and unclean."* He was
+// right, and the bench says exactly why (`delve bench model-archway --ortho`):
+// it was two plain rectangular legs, a slab lintel and a slab of wall above,
+// eight axis-aligned boxes in one material. That is the "one blob of leather"
+// failure CLAUDE.md warns about — no silhouette, nothing for torchlight to
+// catch, and from the front it read as a hole cut in a wall rather than a gate.
+//
+// What changed, in order of how much it does:
+//
+//   A REAL ARCH. The opening is a segmental curve cut from the wall fill with
+//   one CSG subtract, and a ring of VOUSSOIRS is laid around it. A curve
+//   against a dungeon of right angles is the whole read: you see an arch at
+//   the far end of a dark room and you know it is a way through before you can
+//   make out anything else about it.
+//
+//   THE GLOW IS THE RING, NOT THE FRAME. The old one raised its emissive on
+//   every part. Now only the voussoirs and the imposts they spring from carry
+//   the 'glow' material, so approaching lights a RING and the jambs stay
+//   stone. One shape says "threshold" instead of the whole object brightening.
+//
+//   COURSED JAMBS. Three blocks with alternating depth and a chamfer instead
+//   of one extruded pillar, so a jamb self-shadows and reads as masonry.
+//
+//   IT IS NOT SYMMETRICAL. One course on the left is chipped back. Procedural
+//   stone reads as new precisely because both sides match.
 //
 // Authoring axes:
-//   - +X = along the lintel (the gate's running direction)
+//   - +X = along the gate (the wall's running direction)
 //   - +Y = up
 //   - +Z = INTO the corridor / through the gate
-// Composer rotates with rotY so +X aligns with the wall the
-// gate sits in.
+// The composer rotates with rotY so +X aligns with the wall the gate sits in.
 //
-// Collision: emitted via PropSpec.collision[] with two circle
-// blockers at the column world positions — the composer
-// computes those.
+// Collision: emitted via PropSpec.collision[] with two circle blockers at the
+// jamb positions — the composer computes those from `archwayColumnOffset`.
 
 export interface ArchwayOptions {
   /** Width of the corridor opening this archway frames, in
-   *  metres. Columns are positioned so their OUTER faces sit
+   *  metres. Jambs are positioned so their OUTER faces sit
    *  just inside the opening (~0.04m clearance). */
   width: number;
-  /** Ceiling height of the abutting room. The tympanum block
-   *  above the lintel fills from lintel-top to ceiling so the
-   *  void behind the wall doesn't peek through. Default 3.2m. */
+  /** Ceiling height of the abutting room. The wall fill rises from the
+   *  springing line to here so the void behind the wall doesn't peek
+   *  through. Default 3.2m. */
   ceilingHeight?: number;
-  /** Interior height of the passage BEHIND the gate (the corridor's
-   *  ceiling). When lower than the default lintel line, the whole
-   *  frame compresses so the lintel overlaps the corridor ceiling —
-   *  otherwise a slit of void shows between the corridor's ceiling
-   *  plane and the lintel when looking in from the room (rolled
-   *  mine-tunnel corridors are 2.3-2.6m, the default lintel is 2.55).
-   *  Default: uncapped. */
+  /**
+   * Interior height of the passage BEHIND the gate (the corridor's ceiling).
+   *
+   * The arch's CROWN must not rise above it: the bore is the one place you can
+   * see through, so a crown above the corridor's ceiling plane shows a slit of
+   * void over the passage. The springing line sinks until the crown clears.
+   * (Rolled mine-tunnel corridors run 2.3-2.6m.) Default: uncapped.
+   */
   openHeight?: number;
 }
 
-const COL_HALF_THICK = 0.16;       // half of the column box X size
-const COL_HEIGHT     = 2.40;       // column body height (centre at y=1.20)
-const COL_DEPTH      = 0.40;       // along the corridor axis
-const BASE_HEIGHT    = 0.30;
-const BASE_OVERHANG  = 0.065;      // base extends this far past column on each side
-const CAPITAL_HEIGHT = 0.18;
-const CAPITAL_OVERHANG = 0.065;
-const LINTEL_BOTTOM  = 2.55;
-const LINTEL_HEIGHT  = 0.30;
-const LINTEL_DEPTH   = 0.55;
-const LINTEL_OVERHANG = 0.10;      // extra width past column outer edges
-const KEYSTONE_W     = 0.32;
-const KEYSTONE_H     = 0.28;
-const KEYSTONE_D     = 0.60;
+const JAMB_HALF_THICK = 0.16;      // half the jamb's size along the wall (X)
+// Along the corridor axis, and it tracks FILL_DEPTH on purpose: an arch a
+// metre deep springing from imposts 40cm deep reads as a slab resting on
+// sticks. The gate is one mass you pass through, so the jambs are the same
+// mass continued down to the floor.
+const JAMB_DEPTH      = 0.86;
+const BASE_HEIGHT     = 0.28;
+const BASE_OVERHANG   = 0.07;      // plinth extends this far past the jamb each side
+const IMPOST_HEIGHT   = 0.16;      // the block the arch springs from
+const IMPOST_OVERHANG = 0.075;
+const COURSES         = 3;         // shaft blocks between plinth and impost
 
-/** Top of the visible archway (lintel + keystone) — used by the
- *  tympanum to know where to start filling upward. */
-export const ARCHWAY_TOP_Y = LINTEL_BOTTOM + LINTEL_HEIGHT;
+// NO BEVELS, AND IT IS A MEASUREMENT NOT A TASTE. A chamfer on the fifteen
+// blocks here swaps every one for a RoundedBoxGeometry, and a floor's sixteen
+// doorways went from 18ms to 128ms of build — seven times the cost, on the
+// frame where a descent is already loading. At this fidelity (flat-shaded dark
+// stone, one lamp) a 2cm chamfer is worth almost nothing; the silhouette does
+// the work, and the silhouette is free.
 
-/** Local-X offset from the archway centre to each column's
- *  centre, for a given opening width. The composer uses this
- *  to position the collision blockers. */
+/** Where the arch springs from, unobstructed. Sinks under `openHeight`. */
+const SPRING_Y        = 2.20;
+const SPRING_MIN      = 1.78;      // below this you would duck through
+/** Voussoir count. Odd, so one sits dead centre and IS the keystone. */
+const VOUSSOIRS       = 7;
+const VOUSSOIR_RADIAL = 0.19;      // ring thickness
+const KEYSTONE_RADIAL = 0.34;
+const ARCH_DEPTH      = 1.22;      // proud of the wall fill on both faces
+const KEYSTONE_DEPTH  = 1.34;      // prouder still — the eye is set in this
+/**
+ * Depth of the wall block the arch is cut from — and, since the ring is cut
+ * from the same block, the depth of the reveal you walk through.
+ *
+ * MUST EXCEED THE WALL IT SITS IN, or the frame is thinner than the hole it
+ * plugs and a slit of void shows from any oblique angle. A poly room's wall is
+ * WALL_T (0.25m); a vault DIVIDER is a full grid cell, which is why
+ * doorframe.ts settled on 1.10 for the same job. Taking its number rather than
+ * a fresh guess: this frame goes in both kinds of wall, and the first pass of
+ * this rebuild picked 0.34 off a misremembered wall thickness — the exact
+ * shortcut that puts Josh's artefact back on every doorway.
+ *
+ * The side-effect is the better half of the change. A metre of stone around
+ * the opening means you pass through a short barrel of arched masonry instead
+ * of a cutout, which is what a threshold is supposed to feel like.
+ */
+const FILL_DEPTH      = 1.10;
+const LINTEL_OVERHANG = 0.10;      // fill extends past the opening each side
+
+/**
+ * Openings are snapped to this grid before ANY geometry is derived from them.
+ *
+ * THE ARCH COSTS A CSG, and a CSG is 27ms. A doorway width is a continuous
+ * float, so every archway on a floor used to be a unique spec — meaning the
+ * builder's CSG_CACHE (keyed on the part object) could never hit, and a floor
+ * with sixteen doorways paid nearly half a second of boolean solving on a
+ * phone. Snapping the width and the heights makes archways REPEAT, so the
+ * memo below returns the same spec object and the cache does its job.
+ *
+ * Everything derived from the width snaps together — the collision offset as
+ * well as the model — so the stone and the blockers can never end up 4cm
+ * apart, which is the failure a "quantise the model only" shortcut ships.
+ */
+const WIDTH_STEP = 0.10;
+const snap = (v: number, step: number): number => Math.round(v / step) * step;
+
+/**
+ * Local-X offset from the archway centre to each jamb's centre, for a given
+ * opening width. The composer uses this to position the collision blockers.
+ *
+ * The formula is unchanged by the rebuild, deliberately — the soft-lock
+ * guarantee (a stair room's mouth staying wider than the player) is computed
+ * against exactly this number, so a new silhouette must not quietly move where
+ * the stone stands. It now reads the SNAPPED width, which shifts a jamb by at
+ * most 5cm inside a 36cm blocker.
+ */
 export function archwayColumnOffset(width: number): number {
-  // Outer column face flush with opening edge → column centre
-  // sits one column-half-thickness inside.
-  return Math.max(COL_HALF_THICK + 0.02, width / 2 - COL_HALF_THICK);
+  return Math.max(JAMB_HALF_THICK + 0.02, snap(width, WIDTH_STEP) / 2 - JAMB_HALF_THICK);
 }
 
-/** Half of the passable band between the archway's column BLOCKERS
- *  (collision r 0.18 at the column centres) — the NavGate half-width
+/** Half of the passable band between the archway's jamb BLOCKERS
+ *  (collision r 0.18 at the jamb centres) — the NavGate half-width
  *  pathfinding funnels through. */
 export function archwayPassableHalfBand(width: number): number {
   return Math.max(0.2, archwayColumnOffset(width) - 0.18);
 }
 
+/**
+ * The arch's geometry, solved from the opening.
+ *
+ * A SEGMENTAL arch, not a round one, and the reason is the ceiling: a round
+ * arch's rise is half its span, so a 1.8m doorway would crown 0.9m above the
+ * springing and punch through a 3.0m room. A segmental arch takes its rise as
+ * an input and solves for the radius, so a wide gate stays a gate instead of
+ * becoming a cathedral.
+ *
+ *   R = (s² + f²) / 2f     centre at y = spring + f − R
+ *
+ * with half-span s and rise f. Exported for the test, which checks the curve
+ * actually passes through the springing points rather than trusting the algebra.
+ */
+export function archGeometry(width: number, ceiling: number, openHeight?: number): {
+  spring: number; rise: number; radius: number; centreY: number; halfAngle: number;
+  halfSpan: number;
+} {
+  // THE ARCH SPRINGS FROM THE JAMBS, NOT FROM THE OPENING'S EDGES. A jamb's
+  // outer face is flush with the wall opening and its inner face therefore
+  // stands one jamb-thickness inside it (`archwayColumnOffset`), so an arch
+  // spanning the full width would spring from thin air a third of a metre
+  // outboard of the stone meant to carry it — which is exactly the flared
+  // notch the first pass of this rebuild showed on the bench.
+  const s = Math.max(0.35, archwayColumnOffset(width) - JAMB_HALF_THICK);
+  const rise = Math.min(0.40, Math.max(0.22, s * 0.45));
+  // The crown has to clear BOTH ceilings: the room's (or the arch pokes through
+  // it) and the passage's (or you see void over the corridor through the bore).
+  const cap = Math.min(ceiling - 0.14, openHeight ?? Infinity);
+  const spring = Math.max(SPRING_MIN, Math.min(SPRING_Y, cap - rise));
+  const radius = (s * s + rise * rise) / (2 * rise);
+  const centreY = spring + rise - radius;
+  // Angle from vertical to the springing point. `radius - rise` is the vertical
+  // leg from the circle's centre up to the springing line.
+  const halfAngle = Math.atan2(s, radius - rise);
+  return { spring, rise, radius, centreY, halfAngle, halfSpan: s };
+}
+
+/** id → spec. Module-level, so the second floor's doorways are free. */
+const MEMO = new Map<string, ModelSpec>();
+
 export function archway(opts: ArchwayOptions): ModelSpec {
-  const width = opts.width;
-  const ceiling = opts.ceilingHeight ?? 3.2;
-  const colOffset = archwayColumnOffset(width);
-  const lintelWidth = width + LINTEL_OVERHANG * 2;
-  // Compress the frame when the passage behind is lower than the
-  // default lintel line: lintel bottom sinks to 0.10m below the
-  // corridor ceiling so the lintel body overlaps it — no void slit.
-  const lintelBottom = opts.openHeight !== undefined
-    ? Math.min(LINTEL_BOTTOM, opts.openHeight - 0.10)
-    : LINTEL_BOTTOM;
-  const colHeight = Math.max(1.6, lintelBottom + 0.03 - CAPITAL_HEIGHT);
-  const topY = lintelBottom + LINTEL_HEIGHT;
-  const tympanumHeight = Math.max(0.10, ceiling - topY);
-  const tympanumCentreY = topY + tympanumHeight / 2;
+  const width = snap(opts.width, WIDTH_STEP);
+  const ceiling = snap(opts.ceilingHeight ?? 3.2, 0.2);
+  const open = opts.openHeight === undefined ? undefined : snap(opts.openHeight, 0.2);
+  const memoKey = `${width}|${ceiling}|${open ?? '-'}`;
+  const hit = MEMO.get(memoKey);
+  // SAME OBJECT, not an equal one. The builder's CSG cache is a WeakMap keyed
+  // on the part, so returning a fresh-but-identical spec would cache nothing.
+  if (hit) return hit;
+  const jambOffset = archwayColumnOffset(width);
+  const fillWidth = width + LINTEL_OVERHANG * 2;
+  const g = archGeometry(width, ceiling, open);
 
-  // Tag the id with the opening width + heights (rounded) so buildModel's
-  // future cache layer can re-use same-sized archways. Currently
-  // buildModel doesn't cache by id, but it's cheap to be ready.
-  const id = `archway-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
+  const parts: PartSpec[] = [];
 
-  return {
+  // ── THE WALL, WITH A HOLE IN IT ────────────────────────────────────
+  //
+  // One subtract, one level deep. The block spans springing→ceiling across the
+  // whole opening, and the cylinder that carves the arch out of it is the same
+  // circle the voussoirs are laid on — so the stone and the ring can never
+  // disagree about where the curve is, which is what would happen if the fill
+  // were hand-fitted boxes around it.
+  const fillH = Math.max(0.12, ceiling - g.spring);
+  parts.push({
+    kind: 'csg', op: 'subtract', mat: 'stone', name: 'fill',
+    a: { kind: 'box', pos: [0, g.spring + fillH / 2, 0], size: [fillWidth, fillH, FILL_DEPTH], mat: 'stone' },
+    // Laid along Z (rotX = 90°) so its circular face is the arch. Long enough
+    // to punch clean through the fill from both sides.
+    b: {
+      kind: 'cylinder', pos: [0, g.centreY, 0], rot: [Math.PI / 2, 0, 0],
+      radius: g.radius, height: FILL_DEPTH * 3, segments: 48, mat: 'stone',
+    },
+  } as PartSpec);
+
+  // ── THE RING ───────────────────────────────────────────────────────
+  //
+  // Voussoirs on cell CENTRES rather than on the endpoints, so no block
+  // straddles the springing line with half of itself hanging below the impost.
+  // Tangential width overruns its cell by 12% — masonry with tight joints, not
+  // a dashed line.
+  const step = (2 * g.halfAngle) / VOUSSOIRS;
+  for (let i = 0; i < VOUSSOIRS; i++) {
+    const theta = -g.halfAngle + (i + 0.5) * step;
+    const key = i === (VOUSSOIRS - 1) / 2;
+    const radial = key ? KEYSTONE_RADIAL : VOUSSOIR_RADIAL;
+    const tang = g.radius * step * (key ? 1.30 : 1.12);
+    const rho = g.radius + radial / 2;
+    parts.push({
+      kind: 'box',
+      name: key ? 'keystone' : `voussoir-${i}`,
+      // +Y of an unrotated box points radially outward at theta = 0, so a
+      // rotation of −theta about Z swings it round the arc. (Rotation sign is
+      // the documented failure mode; this one is checked by the bench's TOP
+      // view, where a sign error puts the ring on its side.)
+      pos: [rho * Math.sin(theta), g.centreY + rho * Math.cos(theta), 0],
+      rot: [0, 0, -theta],
+      size: [tang, radial, key ? KEYSTONE_DEPTH : ARCH_DEPTH],
+      mat: 'glow',
+    } as PartSpec);
+  }
+
+  // ── THE JAMBS ──────────────────────────────────────────────────────
+  const impostY = g.spring - IMPOST_HEIGHT / 2;
+  const shaftBottom = BASE_HEIGHT;
+  const shaftTop = g.spring - IMPOST_HEIGHT;
+  const courseH = Math.max(0.18, (shaftTop - shaftBottom) / COURSES);
+
+  for (const side of [-1, 1] as const) {
+    const x = side * jambOffset;
+    parts.push({
+      kind: 'box', name: 'plinth',
+      pos: [x, BASE_HEIGHT / 2, 0],
+      size: [JAMB_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, JAMB_DEPTH + 0.14],
+      mat: 'stone',
+    } as PartSpec);
+
+    for (let c = 0; c < COURSES; c++) {
+      // Alternating depth is what makes three blocks read as three blocks in
+      // torchlight — a flush stack is indistinguishable from one tall box.
+      const deep = c % 2 === 0 ? 0.02 : -0.02;
+      // THE CHIP. One course, one side, missing a bite of its face. Deliberate
+      // rather than rolled: the model is built per width and has no RNG, and a
+      // gate that is the same on both sides is the tell that nobody built it.
+      const chipped = side === -1 && c === 1;
+      parts.push({
+        kind: 'box', name: `course-${c}`,
+        pos: [x + (chipped ? 0.022 : 0), shaftBottom + courseH * (c + 0.5), chipped ? -0.03 : 0],
+        size: [
+          JAMB_HALF_THICK * 2 - (chipped ? 0.045 : 0),
+          courseH - 0.012,
+          JAMB_DEPTH + deep - (chipped ? 0.07 : 0),
+        ],
+        mat: 'stone',
+      } as PartSpec);
+    }
+
+    // THE SPRINGER. Wide enough to actually receive the arch: a voussoir's
+    // extrados sits further out than its intrados, so the ring's lowest block
+    // overhangs the springing point and needs stone under it. Solved rather
+    // than guessed — an overhang the impost does not cover reads as the arch
+    // resting on nothing.
+    const extradosX = (g.radius + VOUSSOIR_RADIAL) * Math.sin(g.halfAngle);
+    const impostHalf = Math.max(
+      JAMB_HALF_THICK + IMPOST_OVERHANG, extradosX - jambOffset + 0.06);
+    parts.push({
+      kind: 'box', name: 'impost',
+      pos: [x, impostY, 0],
+      size: [impostHalf * 2, IMPOST_HEIGHT, JAMB_DEPTH + 0.12],
+      mat: 'glow',
+    } as PartSpec);
+  }
+
+  const id = `archway2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}`;
+
+  const spec: ModelSpec = {
     id,
     materials: {
       stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
-      // Lintel + keystone use this — identical to stone at rest (emissive 0),
-      // but the threshold system raises its warm emissive as the player nears,
-      // so the gate's crown glows to mark "a way through." Modulated by id
-      // 'glow' (see builder's proximityGlow handling).
-      //
-      // Toned the emissive colour down from a bright orange (0xff8c3a) to
-      // a more restrained warm amber (0xc05a18) — the previous tint was
-      // reading as "glowing" too aggressively when the player came close.
-      // The proximity system still drives the intensity up, but the peak
-      // now sits in a more subtle range.
+      // The arch ring. Identical to stone at rest (emissive 0); the threshold
+      // system raises the warm emissive as the player nears, so a RING lights
+      // up rather than the whole gate. Modulated by material id 'glow' (see
+      // the builder's proximityGlow handling).
       glow: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
     },
-    parts: [
-      // Whole frame glows on approach (the 'glow' material) — columns,
-      // plinths, capitals, lintel, keystone — a warm rim around the opening.
-      // Only the tympanum wall-fill stays plain stone.
-      // Left + right column shafts.
-      { kind: 'box', pos: [-colOffset, colHeight / 2, 0], size: [COL_HALF_THICK * 2, colHeight, COL_DEPTH], mat: 'glow' },
-      { kind: 'box', pos: [ colOffset, colHeight / 2, 0], size: [COL_HALF_THICK * 2, colHeight, COL_DEPTH], mat: 'glow' },
-      // Base plinths (slightly wider feet).
-      { kind: 'box', pos: [-colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
-      { kind: 'box', pos: [ colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
-      // Capitals at the top of each column.
-      { kind: 'box', pos: [-colOffset, colHeight + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
-      { kind: 'box', pos: [ colOffset, colHeight + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
-      // Lintel across the top, spanning both columns + a bit. Glows on approach.
-      { kind: 'box', pos: [0, lintelBottom + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
-      // Keystone — small slightly-protruding block centred on the lintel. Glows.
-      { kind: 'box', pos: [0, lintelBottom + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'glow' },
-      // Tympanum — wall block from lintel top to ceiling. Without
-      // this the player sees through the wall above the lintel
-      // into the void behind. Same depth as the lintel so it
-      // visually continues the gate's mass.
-      { kind: 'box', pos: [0, tympanumCentreY, 0], size: [lintelWidth, tympanumHeight, LINTEL_DEPTH], mat: 'stone' },
-    ],
-    // Mount points for the dungeon's EYE, set on the KEYSTONE FRONT FACE (one
+    parts,
+    // Mount points for the dungeon's EYE, on the KEYSTONE's outer faces (one
     // per side, since a passage is approached from both rooms). The nav system
-    // reads these so the eye sits ON the carved stone instead of a guessed
-    // offset — and any generated archway carries them. Each faces outward (the
-    // eye built facing +Z; eye_back is turned to face the other way).
+    // reads these, so the eye sits ON the carved stone rather than at a guessed
+    // offset — and it now rides the crown of the arch, which is where a mason
+    // would have put the carving anyway. Each faces outward (the eye is built
+    // facing +Z; eye_back is turned to face the other way).
     slots: {
-      eye_front: { pos: [0, lintelBottom + KEYSTONE_H / 2, KEYSTONE_D / 2 + 0.01] },
-      eye_back: { pos: [0, lintelBottom + KEYSTONE_H / 2, -(KEYSTONE_D / 2 + 0.01)], rot: [0, Math.PI, 0] },
+      eye_front: { pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, KEYSTONE_DEPTH / 2 + 0.01] },
+      eye_back: {
+        pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, -(KEYSTONE_DEPTH / 2 + 0.01)],
+        rot: [0, Math.PI, 0],
+      },
     },
   };
+  MEMO.set(memoKey, spec);
+  return spec;
 }

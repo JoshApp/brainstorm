@@ -697,10 +697,33 @@ BUILD was green every time, which is why nothing local noticed.
 To actually confirm, after `live`: `mcp__github__actions_list`
 (`{"branch": "main"}`), then **look at the `deploy` JOB's conclusion, not
 the run's build job**. `mcp__github__actions_list` with
-`method: list_workflow_jobs` gives per-job status. A `deployment_queued`
-timeout is service-side and outside the repo — retry by pushing again (an
-empty commit is fine); the GitHub App token here lacks `actions: write`, so
-`rerun_failed_jobs` and `workflow_dispatch` both 403.
+`method: list_workflow_jobs` gives per-job status.
+
+**Read the job, not the run.** A run whose conclusion is `failure` may have
+failed in three quite different ways, and only one of them is yours:
+
+| What you see on the job | What it means |
+| --- | --- |
+| `build` failed, with `steps` | Your code. Fix it. |
+| `deploy` failed after a green `build` | `actions/deploy-pages@v4` timed out in the Pages queue. Service-side. |
+| `build` **cancelled**, `runner_id: 0`, no `steps`, ~15 min from `created_at` to `completed_at` | **NO RUNNER WAS EVER ASSIGNED.** The job sat in the queue until GitHub gave up. Nothing was built and nothing was deployed. |
+
+That third row is the one that fooled a session on 2026-08-06: five commits
+in a row were reported as live while every job was being cancelled unstarted,
+and the site stayed on the commit from two hours earlier. The tell is
+`runner_id: 0` and an empty `steps` array — a job that actually ran has a
+real runner name and a step list. When you see it, say so plainly: **the site
+has not moved.** It is an account/service condition (runner availability),
+not something in this repo, and the only lever from here is to push again
+later. The GitHub App token lacks `actions: write`, so `rerun_failed_jobs`
+and `workflow_dispatch` both 403.
+
+**Don't push to `main` faster than the pipeline drains.** The workflow's
+concurrency group is `pages` with `cancel-in-progress: false`, so runs
+queue — and only the newest PENDING run survives, the rest are cancelled.
+That's harmless for content (main fast-forwards, so the newest run carries
+every earlier commit) but it makes the run list look like a wall of failures
+and it hides the case above. One `live` at a time; verify before the next.
 
 On your own machine `gh` is installed and the script polls as designed.
 
