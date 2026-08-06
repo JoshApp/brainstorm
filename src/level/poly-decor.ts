@@ -1,0 +1,229 @@
+import type { PropSpec } from './types';
+import { polyArea, pointInPoly, type Poly } from './room-shape';
+import { candidateSpots, clearance } from './floor-region';
+import { nearestSurface, type WallSurface } from './wall-surfaces';
+import type { RoomOccupancy } from './room-occupancy';
+import { roomType, type RoomTypeId } from './room-types';
+
+// ── THE SMALL FOUND THINGS ───────────────────────────────────────────────────
+//
+// Everything the generator places up to this point is a BEAT: the thing the
+// room is about, the reward, the question, the fight. This is what goes between
+// them, and a floor without it reads as a diagram of a dungeon rather than a
+// place someone died in.
+//
+// It is the last thing the vault composer still did that the polygon generator
+// did not. Polygon floors carried vases and nothing else — no bodies, no bone
+// shrines, no webs across a passage, no scratched glyph you only find because
+// the lamp swept it.
+//
+// ── WHAT MAKES THIS DIFFERENT FROM CLUTTER ───────────────────────────
+//
+// The rule that keeps dressing from eating the game: EVERY PIECE HERE IS EITHER
+// A STORY OR A TARGET, and neither is ever a beat.
+//
+//   corpse       — a story. Someone got this far. RARE by design (7% a floor,
+//                  matching loot-director.ts) because #70 established that a
+//                  body you meet every floor is scenery, and a body you meet
+//                  every few floors is a landmark that pays.
+//   bone-shrine  — a story someone else arranged. One candle, one body, a
+//                  patch of bone-glow.
+//   cobweb       — a target that is also a small gate: it plugs a doorway and
+//                  costs you one swing. The only thing here that touches
+//                  circulation, which is why it goes ONLY into a dead end —
+//                  gating a detour you chose, never the way on.
+//   wall-rune    — a story you only find with the lamp. Free: it hangs on a
+//                  wall and takes no floor at all.
+//   vase-cluster — a target, and variety against the single vases.
+//
+// Everything asks the room's occupancy first, so nothing lands inside a pier,
+// a lamp, a chest or the thing the room is about. A `clean` room takes NONE of
+// it — that flag means the room is a stage.
+
+/** What the pass needs to know about one room. Shape-compatible with the
+ *  generator's own `Placed`, so the caller hands its rooms straight in. */
+export interface DecorRoom {
+  id: string;
+  type: RoomTypeId;
+  poly: Poly;
+  walls: readonly WallSurface[];
+  occupancy: RoomOccupancy;
+  /** Where the player comes in — a web belongs in a mouth, a body does not. */
+  mouth: { x: number; z: number } | null;
+  /** How many ways out. Exactly one means a dead end, which is the only place a
+   *  web is allowed — see the fence on WEB_CHANCE below. */
+  exits: number;
+  /**
+   * Does this room hold the way down?
+   *
+   * The stair room is a dead end BY TOPOLOGY — it is the last room on the spine
+   * — so the dead-end rule alone happily webbed the one doorway that must never
+   * be gated. Measured on the strict flood: 52% and 39% of two sampled floors
+   * sat behind a web on the stair room's mouth. "Only a dead end" was the right
+   * instinct and the wrong test; this is the exception it needed.
+   */
+  holdsDescent: boolean;
+}
+
+/**
+ * A fallen delver, per floor. Matches loot-director.ts exactly rather than
+ * inventing a second number — two producers with two rates is how a rarity
+ * decision quietly stops being one.
+ */
+const CORPSE_CHANCE = 0.07;
+/** A bone shrine is the arranged version of the same beat, and just as rare. */
+const SHRINE_CHANCE = 0.10;
+/** Per eligible doorway. Low: a web on every mouth is a tax on walking. */
+const WEB_CHANCE = 0.16;
+/** Per room with a wall long enough. The cheapest story in the game. */
+const RUNE_CHANCE = 0.30;
+/** A cluster instead of a single vase, per vase-sized slot. */
+const CLUSTER_SHARE = 0.22;
+
+/** A wall run has to be at least this long to carry a glyph without it
+ *  wrapping a corner. */
+const RUNE_MIN_WALL = 2.4;
+/** Off the wall plane, so the quad doesn't z-fight the masonry. */
+const RUNE_NUDGE = 0.06;
+
+export interface DecorResult {
+  props: PropSpec[];
+  /** Counts by kind, for the audit. A dressing pass that silently places
+   *  nothing looks exactly like a floor with nothing to dress. */
+  placed: Record<string, number>;
+}
+
+/**
+ * Dress a floor's rooms with the small found things.
+ *
+ * Deterministic given `rand`. Returns props; reserves what it places in each
+ * room's occupancy so anything downstream sees it.
+ */
+export function decorPolyFloor(
+  rooms: readonly DecorRoom[], depth: number, rand: () => number,
+): DecorResult {
+  const props: PropSpec[] = [];
+  const placed: Record<string, number> = {};
+  const note = (k: string) => { placed[k] = (placed[k] ?? 0) + 1; };
+
+  // The FLOOR's one body, not one per room. Rarity is a floor-level decision;
+  // rolling it per room multiplies it by the room count and turns "every few
+  // floors" into "most floors" without anybody choosing that.
+  const bodyRooms = rooms.filter((r) => !roomType(r.type).clean && roomType(r.type).minorLoot);
+  if (bodyRooms.length > 0 && rand() < CORPSE_CHANCE) {
+    const r = bodyRooms[Math.floor(rand() * bodyRooms.length)];
+    const spot = openSpot(r, rand, 0.6);
+    if (spot) {
+      // Against a wall reads as "crawled here and stopped"; open floor reads as
+      // "dropped where they stood". The pose hint is the difference, and the
+      // room already knows which is true.
+      const wall = nearestSurface(r.walls, spot.x, spot.z);
+      const nearWall = wall ? clearance(r.poly, spot.x, spot.z) < 1.4 : false;
+      props.push({
+        kind: 'corpse', x: spot.x, z: spot.z,
+        facing: { kind: 'wall-away' },
+        pose: nearWall ? 'slumped' : 'curled',
+      } as PropSpec);
+      r.occupancy.reserve({ kind: 'cylinder', x: spot.x, z: spot.z, r: 0.6, y0: 0, y1: 0.6 }, 'corpse');
+      note('corpse');
+    }
+  }
+
+  // A bone shrine — the same beat, arranged by somebody. Also once a floor.
+  if (bodyRooms.length > 0 && rand() < SHRINE_CHANCE) {
+    const r = bodyRooms[Math.floor(rand() * bodyRooms.length)];
+    const spot = openSpot(r, rand, 1.1);
+    if (spot) {
+      props.push({ kind: 'group', groupId: 'bone-shrine', x: spot.x, z: spot.z, rotY: rand() * Math.PI * 2 } as PropSpec);
+      r.occupancy.reserve({ kind: 'cylinder', x: spot.x, z: spot.z, r: 1.1, y0: 0, y1: 1.0 }, 'shrine');
+      note('bone-shrine');
+    }
+  }
+
+  for (const r of rooms) {
+    const def = roomType(r.type);
+    if (def.clean) continue;
+
+    // A GLYPH ON THE WALL. Free — it takes no floor, so it never competes with
+    // anything, which is why it is the one piece here that is common.
+    const runeWall = [...r.walls]
+      .filter((s) => s.length >= RUNE_MIN_WALL && !s.jambA && !s.jambB)
+      .sort((a, b) => b.length - a.length)[0];
+    if (runeWall && rand() < RUNE_CHANCE) {
+      // Off-centre, because mid-wall is where a doorway usually is and where
+      // the eye already goes.
+      const t = 0.3 + rand() * 0.4;
+      // NUDGED off the wall plane. Placed exactly ON the outline the quad
+      // z-fights the masonry, and every "is this inside the room" check in the
+      // codebase reads a boundary point as outside — which is correct of them
+      // and wrong for a thing whose home IS the wall. Same 6cm the vault path's
+      // rune scatter uses.
+      const x = runeWall.a[0] + (runeWall.b[0] - runeWall.a[0]) * t + runeWall.inward[0] * RUNE_NUDGE;
+      const z = runeWall.a[1] + (runeWall.b[1] - runeWall.a[1]) * t + runeWall.inward[1] * RUNE_NUDGE;
+      props.push({ kind: 'wall-rune', x, z, rotY: runeWall.facingY, height: 1.3 + rand() * 0.4 } as PropSpec);
+      note('wall-rune');
+    }
+
+    // A WEB ACROSS A MOUTH, AND ONLY INTO A DEAD END.
+    //
+    // This is the one piece that touches circulation, so it gets the hardest
+    // fence in the file. The first version put webs on THROUGH rooms — rooms
+    // with two or more ways out — reasoning that the room could still be left.
+    // That was the wrong question. Measured on the strict flood, a single web on
+    // a mid-spine mouth put 85% of the floor behind it: the room had another
+    // exit, the FLOOR did not, and a "small found thing" had become a mainline
+    // toll.
+    //
+    // A dead end is where it belongs and where it reads best anyway — a side
+    // passage nobody has walked in years. It gates a detour you chose, costs one
+    // swing, and can never stand between the player and the stairs.
+    if (r.mouth && r.exits === 1 && !r.holdsDescent && def.minorLoot && rand() < WEB_CHANCE) {
+      const wall = nearestSurface(r.walls, r.mouth.x, r.mouth.z);
+      props.push({
+        kind: 'cobweb', x: r.mouth.x, z: r.mouth.z,
+        rotY: wall ? wall.facingY : 0, widthM: 2.0,
+      } as PropSpec);
+      note('cobweb');
+    }
+  }
+
+  return { props, placed };
+}
+
+/**
+ * Upgrade some single vases to clusters, in place.
+ *
+ * Runs over what the generator already placed rather than placing more: the
+ * count was budgeted against the room's area and re-rolling it here would be a
+ * second producer arguing with the first. This only changes WHAT is standing in
+ * a slot the floor already decided to fill.
+ */
+export function clusterSomeVases(props: PropSpec[], rand: () => number): number {
+  let n = 0;
+  for (const p of props) {
+    const q = p as { kind: string };
+    if (q.kind !== 'vase') continue;
+    if (rand() >= CLUSTER_SHARE) continue;
+    q.kind = 'vase-cluster';
+    n++;
+  }
+  return n;
+}
+
+/** An open spot in this room that nothing has claimed, preferring the middle
+ *  band — a body pressed into a corner is hard to see and easy to walk past. */
+function openSpot(
+  r: DecorRoom, rand: () => number, radius: number,
+): { x: number; z: number } | null {
+  const spots = candidateSpots(r.poly, { radius, band: [0.9, Infinity], pitch: 0.7 })
+    .filter((s) => pointInPoly(r.poly, s.x, s.z)
+      && r.occupancy.fits({ kind: 'cylinder', x: s.x, z: s.z, r: radius, y0: 0, y1: 1.0 }, 0.25));
+  if (spots.length === 0) return null;
+  return spots[Math.floor(rand() * spots.length)];
+}
+
+/** Exported for the audit: how much floor a room is carrying, so "dressing"
+ *  can be shown to have stayed dressing. */
+export function decorDensity(poly: Poly, count: number): number {
+  return count === 0 ? Infinity : polyArea(poly) / count;
+}

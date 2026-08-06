@@ -23,6 +23,7 @@ import { godRay } from '../content/god-ray';
 import { directFloor } from './floor-director';
 import type { ContentSpot } from './floor-fill';
 import { rollDropTable } from '../content/drop-tables';
+import { decorPolyFloor, clusterSomeVases } from './poly-decor';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -488,6 +489,23 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
         { kind: 'cylinder', x: spot.x, z: spot.z, r: 0.7, y0: 0, y1: 1.2 }, 'find');
     }
   }
+
+  // ── 7. THE SMALL FOUND THINGS ──────────────────────────────────────
+  //
+  // Bodies, bone shrines, webs across a mouth, a glyph the lamp finds. Last,
+  // because dressing must see everything the floor already committed to — and
+  // it goes through the same occupancy as everything else, so it cannot land
+  // inside a pier, a lamp, a chest or the thing the room is about.
+  const decor = decorPolyFloor(
+    rooms.map((r) => ({
+      id: r.id, type: r.type, poly: r.poly, walls: r.walls, occupancy: r.occupancy,
+      mouth: mouthOf(r, links),
+      exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
+      holdsDescent: r === last && stairs.length > 0,
+    })),
+    depth, rand);
+  props.push(...decor.props);
+  clusterSomeVases(props, rand);
 
   return {
     id: `poly-${depth}`,
