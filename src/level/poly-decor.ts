@@ -30,8 +30,9 @@ import { roomType, type RoomTypeId } from './room-types';
 //                  patch of bone-glow.
 //   cobweb       — a target that is also a small gate: it plugs a doorway and
 //                  costs you one swing. The only thing here that touches
-//                  circulation, which is why it goes ONLY into a dead end —
-//                  gating a detour you chose, never the way on.
+//                  circulation, which is why it goes ONLY into a dead end that
+//                  is OFF the spawn→stairs path — gating a detour you chose,
+//                  never the way on.
 //   wall-rune    — a story you only find with the lamp. Free: it hangs on a
 //                  wall and takes no floor at all.
 //   vase-cluster — a target, and variety against the single vases.
@@ -54,15 +55,23 @@ export interface DecorRoom {
    *  web is allowed — see the fence on WEB_CHANCE below. */
   exits: number;
   /**
-   * Does this room hold the way down?
+   * Is this room on the path from the spawn to the stairs?
    *
-   * The stair room is a dead end BY TOPOLOGY — it is the last room on the spine
-   * — so the dead-end rule alone happily webbed the one doorway that must never
-   * be gated. Measured on the strict flood: 52% and 39% of two sampled floors
-   * sat behind a web on the stair room's mouth. "Only a dead end" was the right
-   * instinct and the wrong test; this is the exception it needed.
+   * "Only a dead end" was the right instinct and the wrong test, TWICE. The
+   * stair room is a dead end by topology — it is the last room on the spine —
+   * and webbing its mouth put 52% and 39% of two sampled floors behind one
+   * swing. That was patched with a `holdsDescent` exception, and the ENTRANCE
+   * then walked into the identical hole from the other end: it also has exactly
+   * one link, and that link is the way ONWARD. Measured at 35 webs across 240
+   * floors, 24 of them nearer the corridor out than the spawn — a toll on the
+   * mainline, on 15% of floors, in the first room the player ever sees.
+   *
+   * Two patches for one bug means the test was wrong, not incomplete. THE RULE
+   * IS ABOUT THE MAINLINE, and always was: a web gates a detour you chose, never
+   * the way through. So the caller computes the actual spawn→stairs path and the
+   * fence asks that instead of counting doors.
    */
-  holdsDescent: boolean;
+  onMainline: boolean;
 }
 
 /**
@@ -73,8 +82,22 @@ export interface DecorRoom {
 const CORPSE_CHANCE = 0.07;
 /** A bone shrine is the arranged version of the same beat, and just as rare. */
 const SHRINE_CHANCE = 0.10;
-/** Per eligible doorway. Low: a web on every mouth is a tax on walking. */
-const WEB_CHANCE = 0.16;
+/**
+ * Per eligible doorway.
+ *
+ * High-looking, and it has to be: once the fence asks about the MAINLINE rather
+ * than counting doors, an eligible doorway is a genuine off-path spur, and there
+ * are only about a quarter of those per floor. At the old 0.16 that worked out
+ * to a cobweb on 6% of floors — a thing in the game in the sense that the code
+ * exists.
+ *
+ * So the roll is no longer the rate limiter, eligibility is, and this is tuned
+ * against the OUTPUT instead. Measured over 240 floors: 32 webs, one every seven
+ * or eight floors, so one or two in a full descent. That is the landmark rate —
+ * about where the fallen delver sits — rather than the scenery rate it was on
+ * its way to becoming when it was being placed in the entrance.
+ */
+const WEB_CHANCE = 0.55;
 /** Per room with a wall long enough. The cheapest story in the game. */
 const RUNE_CHANCE = 0.30;
 /** A cluster instead of a single vase, per vase-sized slot. */
@@ -177,7 +200,7 @@ export function decorPolyFloor(
     // A dead end is where it belongs and where it reads best anyway — a side
     // passage nobody has walked in years. It gates a detour you chose, costs one
     // swing, and can never stand between the player and the stairs.
-    if (r.mouth && r.exits === 1 && !r.holdsDescent && def.minorLoot && rand() < WEB_CHANCE) {
+    if (r.mouth && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
       const wall = nearestSurface(r.walls, r.mouth.x, r.mouth.z);
       props.push({
         kind: 'cobweb', x: r.mouth.x, z: r.mouth.z,

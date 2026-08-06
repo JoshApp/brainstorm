@@ -369,6 +369,70 @@ test('a dark room is dark, not broken', () => {
   }
 });
 
+test('NOTHING THAT GATES SITS ON THE WAY TO THE STAIRS', () => {
+  // This bug has now been fixed twice with the wrong test, which is the sign the
+  // rule was never "a dead end".
+  //
+  //   v1 webbed any room the player walked THROUGH — 85% of one floor behind a
+  //      single swing.
+  //   v2 restricted it to rooms with one exit, and the STAIR room is a dead end
+  //      by topology: 52% and 39% of two floors behind a web.
+  //   v3 excepted the stair room, and the ENTRANCE walked into the same hole
+  //      from the other end — one link, and that link is the way onward. 35 webs
+  //      across 240 floors, 24 of them nearer the exit than the spawn.
+  //
+  // The rule is and always was about the MAINLINE. This floods the spawn→stairs
+  // path from the shipped spec's own geometry — not from the generator's
+  // bookkeeping, so a bug in that bookkeeping cannot hide here — and asserts
+  // nothing gating stands on it.
+  for (const spec of floors()) {
+    const polyRooms = spec.rooms.filter((r) => r.poly);
+    if (!polyRooms.length) continue;
+    // Rooms AND corridors are nodes. A dogleg is three corridor rects and its
+    // middle one touches no room at all, so a room-to-room adjacency built from
+    // single corridors reports the stair room unreachable — which is how the
+    // first version of this check ended up asserting on a floor it had failed to
+    // understand rather than on the thing under test.
+    const hit = (a: RoomSpec['rect'], b: RoomSpec['rect']) =>
+      Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 0.05 && Math.abs(a.z - b.z) < (a.d + b.d) / 2 + 0.05;
+    const nodes = [...polyRooms, ...(spec.corridors ?? [])];
+    const adj = new Map<string, string[]>();
+    const join = (a: string, b: string) => { const l = adj.get(a); if (l) l.push(b); else adj.set(a, [b]); };
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        if (!hit(nodes[i].rect, nodes[j].rect)) continue;
+        join(nodes[i].id, nodes[j].id); join(nodes[j].id, nodes[i].id);
+      }
+    }
+    const sp = spec.startPos!;
+    const start = polyRooms.find((r) => pointInPoly(r.poly!, sp.x, sp.z))?.id;
+    // spec.stairs, NOT a 'stairs' prop — there is no such prop kind. Looking for
+    // one made `end` undefined on every floor, the path set empty, and the whole
+    // assertion vacuous: it passed with the fence deliberately deleted.
+    const stair = (spec.stairs ?? [])[0];
+    const end = stair ? polyRooms.find((r) => pointInPoly(r.poly!, stair.x, stair.z))?.id : undefined;
+    assert.ok(start && end, `${spec.id}: could not locate the spawn room or the stair room`);
+    if (!start || !end) continue;
+
+    const parent = new Map<string, string | null>([[start, null]]);
+    const q = [start];
+    for (let i = 0; i < q.length && q[i] !== end; i++) {
+      for (const n of adj.get(q[i]) ?? []) if (!parent.has(n)) { parent.set(n, q[i]); q.push(n); }
+    }
+    assert.ok(parent.has(end), `${spec.id}: the stair room is not reachable from the spawn`);
+    const path = new Set<string>();
+    for (let at: string | null | undefined = end; at; at = parent.get(at)) path.add(at);
+
+    for (const r of polyRooms) {
+      if (!path.has(r.id)) continue;
+      const webbed = (spec.props ?? []).some(
+        (p) => (p as { kind: string }).kind === 'cobweb' && pointInPoly(r.poly!, p.x, p.z));
+      assert.ok(!webbed,
+        `${spec.id}: ${r.id} is on the spawn→stairs path and carries a web — that is a toll, not a detour`);
+    }
+  }
+});
+
 test('NO ROOM CONTRADICTS ITSELF', () => {
   // docs/LEVEL-ARCHITECTURE.md §5: a room commits to one or two CLAIMS, and a
   // lit candle (SOMEONE IS HERE) cannot share a room with a cobweb (NOBODY HAS

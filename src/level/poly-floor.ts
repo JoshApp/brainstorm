@@ -508,12 +508,16 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // because dressing must see everything the floor already committed to — and
   // it goes through the same occupancy as everything else, so it cannot land
   // inside a pier, a lamp, a chest or the thing the room is about.
+  // Which rooms the player MUST walk through to reach the stairs. Anything that
+  // gates — a web, and whatever else wants to cost a swing later — belongs off
+  // this path, never on it.
+  const mainline = mainlineRooms(rooms[0]?.id, last?.id, links);
   const decor = decorPolyFloor(
     rooms.map((r) => ({
       id: r.id, type: r.type, poly: r.poly, walls: r.walls, occupancy: r.occupancy,
       mouth: mouthOf(r, links),
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
-      holdsDescent: r === last && stairs.length > 0,
+      onMainline: mainline.has(r.id),
     })),
     depth, rand);
   props.push(...decor.props);
@@ -1141,6 +1145,53 @@ function spreadPick<T extends { x: number; z: number }>(
 
 const dist2 = (a: { x: number; z: number }, b: { x: number; z: number }) =>
   (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
+
+/**
+ * Every room on the path from the spawn to the stairs, inclusive.
+ *
+ * BFS from the spawn room and walk the parent chain back from the stair room —
+ * shortest path, which on this generator's spine-and-spurs topology IS the route
+ * the player takes. Rooms not in the returned set are genuine detours: reaching
+ * them is a decision, so gating them costs the player nothing they did not
+ * choose.
+ *
+ * Returns EVERY room when the endpoints are missing or unreachable, which is the
+ * safe direction — "all mainline" means nothing gets gated, and a floor with no
+ * cobwebs is a much smaller problem than a floor with a web across its only way
+ * on.
+ */
+function mainlineRooms(
+  fromId: string | undefined,
+  toId: string | undefined,
+  links: ReadonlyArray<{ from: string; to: string }>,
+): Set<string> {
+  const all = new Set<string>();
+  for (const l of links) { all.add(l.from); all.add(l.to); }
+  if (!fromId || !toId) return all;
+
+  const adj = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    const list = adj.get(a); if (list) list.push(b); else adj.set(a, [b]);
+  };
+  for (const l of links) { link(l.from, l.to); link(l.to, l.from); }
+
+  const parent = new Map<string, string | null>([[fromId, null]]);
+  const queue = [fromId];
+  for (let i = 0; i < queue.length; i++) {
+    const cur = queue[i];
+    if (cur === toId) break;
+    for (const next of adj.get(cur) ?? []) {
+      if (parent.has(next)) continue;
+      parent.set(next, cur);
+      queue.push(next);
+    }
+  }
+  if (!parent.has(toId)) return all;
+
+  const path = new Set<string>();
+  for (let at: string | null | undefined = toId; at; at = parent.get(at)) path.add(at);
+  return path;
+}
 
 // ── seeded rng ───────────────────────────────────────────────────────────────
 
