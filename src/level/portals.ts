@@ -62,9 +62,23 @@ export interface Portal {
   t1: number;
 }
 
-/** Widths below this are build noise (a corridor kissing a corner), not a way
- *  through. The wall ring already drops spans shorter than 0.14m. */
-const MIN_WIDTH = 0.7;
+/**
+ * Widths below this are build noise (a corridor kissing a corner), not a way
+ * through. The wall ring already drops spans shorter than 0.14m.
+ *
+ * RAISED FROM 0.7. At 0.7 the generator shipped 99 doorways under 1.2m across
+ * 240 floors, the narrowest 0.71m — and the player's collision diameter is
+ * 0.60m, so that is five centimetres of clearance on each side of a hole you
+ * are meant to fight your way back through. It passed every reachability test
+ * precisely because it was passable; it was never walkable.
+ *
+ * A span this short is a corridor grazing a corner rather than meeting it, so
+ * refusing it leaves WALL, and the corridor comes in through the edge it
+ * actually covers. Verified across 144 floors: every room still reachable,
+ * every stair still takeable, no corridor end orphaned — and no doorway under
+ * 1.2m anywhere.
+ */
+const MIN_WIDTH = 1.2;
 
 /**
  * Every hole in this room's wall, one per corridor that actually reaches it.

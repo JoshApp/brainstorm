@@ -19,17 +19,14 @@ import type { ModelSpec, PartSpec } from '../ecs/model-types';
 //   - +Z = INTO the passage (through the gate)
 // The placer sets rotY so +X aligns with the wall the opening sits in.
 //
-// Collision is WIDTH-GATED (doorframeCollision below): wide openings get
-// jamb blockers that match the visible stone; narrow ones stay collision-
-// free because a 1m doorway can't spare the room — jamb blockers there
-// would leave a knife-edge centre band (the soft-lock trap the archway
-// threshold comment in clutter.ts documents). Emission sites attach
-// `collision: doorframeCollision(width)` so geometry and blockers come
-// from the same constants and can't drift.
+// Collision blockers match the posts and sit OUTSIDE the opening, so they can
+// never pinch the walk band — see the note above `doorframeCollision`. Emission
+// sites attach `collision: doorframeCollision(width)` so the geometry and the
+// blockers come from the same constants and can't drift.
 
 export interface DoorframeOptions {
-  /** Width of the opening this frames, in metres. Jambs sit just inside
-   *  the edges. Default 1.0 (a single-cell doorway). */
+  /** Width of the opening this frames, in metres. The posts flank it — the
+   *  whole width stays walkable. Default 1.0 (a single-cell doorway). */
   width?: number;
   /** Ceiling height of the surrounding room — the fill block rises from
    *  the lintel top to here so no void peeks above. Default 3.2m. */
@@ -57,56 +54,52 @@ const BRACE_RUN       = 0.30;
 
 const LINTEL_TOP = LINTEL_BOTTOM + LINTEL_HEIGHT;
 
-// Jamb collision is worth having only when the opening can spare it.
-// The passable centre band with jamb blockers is
-//   width − 2·(2·JAMB_HALF_THICK) − 2·playerRadius = width − 0.96,
-// so at 1.6m the band is 0.64m — just past the player's 0.6m diameter,
-// and comfortably wide for every mob the nav grid routes through tight
-// cells. Below the threshold the jambs stay ghost-thin to walk through
-// (rare, and the divider wall still blocks everything but the gap).
-const COLLISION_MIN_WIDTH = 1.6;
+// ── THE POSTS STAND BESIDE THE HOLE, NOT IN IT ───────────────────────────────
+//
+// This used to be width-gated: a wide opening put its jambs INSIDE the gap with
+// their outer faces flush to the edges, and only a narrow one flanked it. The
+// gate was about collision — wide frames could "spare the room" for blockers.
+//
+// They could not. Measured over 240 floors: EVERY doorframe the generator
+// places is between 1.6m and the 2.0m archway threshold, so every one of the
+// 812 of them was on the inside branch, and every one ate 0.36m of the way
+// through. A 1.7m squeeze corridor arrived at its doorway as 1.34m — which is
+// Josh's *"they might be too narrow"*, and it was the frames, not the floor.
+//
+// A frame surrounds a hole. Both thresholds now say so (see the same note in
+// archway.ts), which is one rule where there were two, and the whole opening is
+// yours to walk through at every width.
+//
+// The blockers stay, because the posts still project into the room along Z and
+// you can walk into one from the side — they just sit OUTSIDE the gap now,
+// where the stone actually is.
 
-/** Walk-blockers matching the doorframe's jambs, or undefined when the
- *  opening is too narrow to spare the room (see COLLISION_MIN_WIDTH).
- *  Attach as the `collision` of the same prop that renders the model. */
+/** Walk-blockers matching the doorframe's posts. They flank the opening rather
+ *  than narrowing it, so they never pinch the walk band. Attach as the
+ *  `collision` of the same prop that renders the model. */
 export function doorframeCollision(
   width: number,
 ): import('../level/types').PropCollision[] | undefined {
-  if (width < COLLISION_MIN_WIDTH) return undefined;
-  const jambOffset = Math.max(JAMB_HALF_THICK + 0.01, width / 2 - JAMB_HALF_THICK);
+  const jambOffset = width / 2 + JAMB_HALF_THICK;
   return [
     { kind: 'aabb', halfW: JAMB_HALF_THICK, halfD: JAMB_DEPTH / 2, ox: -jambOffset, oz: 0 },
     { kind: 'aabb', halfW: JAMB_HALF_THICK, halfD: JAMB_DEPTH / 2, ox: jambOffset, oz: 0 },
   ];
 }
 
-/** Half of the passable band through a doorframe, accounting for the
- *  collision policy: wide frames block at their jambs; narrow frames
- *  are collision-free with jambs OUTSIDE the gap, so the whole opening
- *  is the band. The NavGate half-width pathfinding funnels through. */
+/** Half of the passable band through a doorframe — the whole opening, since
+ *  nothing stands in it. The NavGate half-width pathfinding funnels through. */
 export function doorframePassableHalfBand(width: number): number {
-  if (width < COLLISION_MIN_WIDTH) return width / 2;
-  return Math.max(0.2, width / 2 - JAMB_HALF_THICK * 2);
+  return width / 2;
 }
 
 export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const width = opts.width ?? 1.0;
   const ceiling = opts.ceilingHeight ?? 3.2;
-  // Jamb placement follows the collision policy so the VISUAL is honest:
-  //   wide (>= COLLISION_MIN_WIDTH) — jambs inside the opening, outer face
-  //     flush with the gap edge, and doorframeCollision blocks exactly them.
-  //   narrow — jambs sit OUTSIDE the gap as pilasters flanking it (inner
-  //     face flush with the edge). Nothing intrudes into the walk band, so
-  //     "no collision" is what the eye already believes. (They used to sit
-  //     inside at every width, which read as solid stone you could ghost
-  //     through on every 1m door.)
-  const inside = width >= COLLISION_MIN_WIDTH;
-  const jambOffset = inside
-    ? Math.max(JAMB_HALF_THICK + 0.01, width / 2 - JAMB_HALF_THICK)
-    : width / 2 + JAMB_HALF_THICK;
-  const lintelWidth = inside
-    ? width + LINTEL_OVERHANG * 2
-    : width + JAMB_HALF_THICK * 4 + LINTEL_OVERHANG * 2;
+  // The posts flank the opening at every width — inner face flush with the
+  // edge — so the visual and the blockers agree and neither narrows the gap.
+  const jambOffset = width / 2 + JAMB_HALF_THICK;
+  const lintelWidth = width + JAMB_HALF_THICK * 4 + LINTEL_OVERHANG * 2;
   const lintelBottom = opts.openHeight !== undefined
     ? Math.min(LINTEL_BOTTOM, opts.openHeight - 0.10)
     : LINTEL_BOTTOM;

@@ -126,17 +126,35 @@ const WIDTH_STEP = 0.10;
 const snap = (v: number, step: number): number => Math.round(v / step) * step;
 
 /**
- * Local-X offset from the archway centre to each jamb's centre, for a given
- * opening width. The composer uses this to position the collision blockers.
+ * Local-X offset from the archway centre to each jamb's centre.
  *
- * The formula is unchanged by the rebuild, deliberately — the soft-lock
- * guarantee (a stair room's mouth staying wider than the player) is computed
- * against exactly this number, so a new silhouette must not quietly move where
- * the stone stands. It now reads the SNAPPED width, which shifts a jamb by at
- * most 5cm inside a 36cm blocker.
+ * ── THE JAMBS STAND BESIDE THE HOLE, NOT IN IT ───────────────────────────────
+ *
+ * Josh, on the screenshots: *"are the corridors etc big enough… I got the
+ * feeling they might be too narrow."* Measured, and it was not the corridors —
+ * a polygon room's narrow dimension is a median 10.5m against the vault's 7.0,
+ * and the corridors match the vault almost exactly (2.20m median against
+ * 2.22m). It was every DOORWAY.
+ *
+ * The jambs used to sit INSIDE the opening with their outer faces flush to its
+ * edges, so each one ate a full jamb-thickness of the way through: 0.68m gone
+ * from every doorway in the game, at every width. A median 2.2m corridor
+ * necked to 1.52m and a 1.7m squeeze to 1.02m — and the rebuilt archway is a
+ * metre deep, so that pinch became a metre-long tunnel rather than a thin one.
+ *
+ * A door frame surrounds a hole; it does not stand in it. The jambs now flank
+ * the opening — pilasters against the solid wall either side, which is the
+ * same move doorframe.ts already makes for its narrow openings — and the whole
+ * hole is yours to walk through.
+ *
+ * Everything downstream follows for free and in the SAFE direction: the arch
+ * springs from the jamb inner faces, so it now spans the opening exactly; the
+ * collision blockers move out of the walk band with the stone they represent;
+ * and `archwayPassableHalfBand` — which the nav gates and the stair-mouth
+ * soft-lock guarantee are computed against — can only get wider.
  */
 export function archwayColumnOffset(width: number): number {
-  return Math.max(JAMB_HALF_THICK + 0.02, snap(width, WIDTH_STEP) / 2 - JAMB_HALF_THICK);
+  return snap(width, WIDTH_STEP) / 2 + JAMB_HALF_THICK;
 }
 
 /** Half of the passable band between the archway's jamb BLOCKERS
@@ -197,8 +215,13 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   // on the part, so returning a fresh-but-identical spec would cache nothing.
   if (hit) return hit;
   const jambOffset = archwayColumnOffset(width);
-  const fillWidth = width + LINTEL_OVERHANG * 2;
   const g = archGeometry(width, ceiling, open);
+  // The fill has to reach past the RING, not just past the opening. A
+  // voussoir's extrados stands further out than its intrados, so with the arch
+  // now spanning the full hole the ring's ends overhang a fill sized off the
+  // width alone — and the wall behind the arch stops before the arch does.
+  const extradosX = (g.radius + VOUSSOIR_RADIAL) * Math.sin(g.halfAngle);
+  const fillWidth = Math.max(width + LINTEL_OVERHANG * 2, 2 * (extradosX + 0.08));
 
   const parts: PartSpec[] = [];
 
@@ -288,7 +311,6 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     // overhangs the springing point and needs stone under it. Solved rather
     // than guessed — an overhang the impost does not cover reads as the arch
     // resting on nothing.
-    const extradosX = (g.radius + VOUSSOIR_RADIAL) * Math.sin(g.halfAngle);
     const impostHalf = Math.max(
       JAMB_HALF_THICK + IMPOST_OVERHANG, extradosX - jambOffset + 0.06);
     parts.push({
