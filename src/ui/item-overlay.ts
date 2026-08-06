@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { getInRangeInteractable } from '../interactables/system';
+import { interactPromptHeight, interactPromptBottomY } from './interact-label';
 import { buildItemCard } from './item-card';
 import { THEME } from './theme';
 import { isAnyScreenOpen } from './screen-manager';
@@ -57,8 +58,32 @@ function ensurePanel(): HTMLDivElement {
 // hangs UP from that point; we clear its height + a gap so the card sits just
 // above it. Estimated, not measured — the prompt block is a fixed icon+verb
 // stack, and projecting deterministically beats reading a sibling's live rect.
-const PROMPT_BLOCK = 60;   // approx height of the icon+verb prompt, px
+/**
+ * Fallback clearance above the prompt, px — used only when the prompt is not
+ * currently laid out and cannot be measured.
+ *
+ * This used to be THE number, and it was an approximation of something the DOM
+ * knows exactly. A prompt wraps to two lines on a long verb and grew a numeric
+ * cost chip; every time it was taller than 60px the card landed on top of it.
+ */
+const PROMPT_BLOCK_FALLBACK = 60;
 const STACK_GAP = 8;
+/**
+ * Below this fraction of screen height the anchor has stopped meaning anything.
+ *
+ * Not a taste threshold — it is where the prompt itself has hit its on-screen
+ * clamp, because the item you are standing on has gone off the bottom of the
+ * viewport entirely. Tracking a point the camera is past does not convey
+ * position, it just glues the card to the bottom edge.
+ *
+ * Deliberately LATE (0.80, not 0.62). An earlier version parked for most floor
+ * items at ordinary range, which fixed nothing and cost the spatial link
+ * between the card and the thing it describes.
+ */
+const PARK_BELOW_FRAC = 0.80;
+/** Where a parked card's bottom sits, as a fraction of screen height. Above
+ *  centre, so the prompt stays in view beneath it. */
+const PARKED_BOTTOM_FRAC = 0.52;
 const DEFAULT_LABEL_OFFSET_Y = 0.6;   // matches interact-label's VERTICAL_OFFSET_WORLD
 // Keep the card clear of the depth header (top) and inside the side margins.
 const TOP_MARGIN = 52;
@@ -81,14 +106,29 @@ function anchorAbovePrompt(
   _tmp.set(focus.position.x, focus.position.y + offsetY, focus.position.z);
   const proj = worldToScreen(_tmp, camera, cachedCanvasRect(canvas));
 
+  // MEASURED, not assumed, and measured off the prompt AS PLACED.
+  //
+  // The clearance used to be a constant (60px) standing in for the prompt's
+  // height — but a prompt wraps to two lines on a long verb and grew a numeric
+  // cost chip, and every time it was taller than the guess the card landed on
+  // top of it. Worse, re-deriving the anchor from the world point ignored the
+  // prompt's own on-screen clamping, so near the viewport edge the two halves
+  // of the stack drifted apart.
+  //
+  // So: ask the prompt where its bottom actually IS and how tall it actually
+  // is. One source of truth for a stack of two.
+  const promptH = interactPromptHeight() || PROMPT_BLOCK_FALLBACK;
+  const promptBottom = interactPromptBottomY() || proj.y;
+
   let anchorX: number, anchorBottomY: number;
-  if (!proj.behind) {
-    anchorX = proj.x;
-    // The prompt hangs up from proj.y by ~PROMPT_BLOCK; sit the card above that.
-    anchorBottomY = proj.y - PROMPT_BLOCK - STACK_GAP;
-  } else {
+  if (proj.behind || proj.y > vh * PARK_BELOW_FRAC) {
+    // Behind the camera, or so close the item has left the bottom of the
+    // viewport. Either way the anchor is past being useful — park centred.
     anchorX = vw / 2;
-    anchorBottomY = vh - 150;
+    anchorBottomY = vh * PARKED_BOTTOM_FRAC;
+  } else {
+    anchorX = proj.x;
+    anchorBottomY = promptBottom - promptH - STACK_GAP;
   }
 
   // Clamp the card's real box on-screen.

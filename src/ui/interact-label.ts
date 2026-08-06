@@ -58,6 +58,12 @@ let shown = false;  // mirrors opacity 1/0 so we can toggle pointerEvents
 let tapHandler: (() => void) | null = null;
 
 const tmpVec = new THREE.Vector3();
+/** Keep the prompt this far from any screen edge. */
+const EDGE_MARGIN = 10;
+/** Where the prompt's bottom actually ended up this frame, after clamping —
+ *  read by the item card so it stacks on the REAL prompt rather than on where
+ *  the prompt would have been if the viewport were infinite. */
+let lastBottomY = 0;
 
 /** Register what happens when the floating prompt is tapped. main.ts wires
  *  this to "use the currently in-range interactable" (same gating + the
@@ -273,13 +279,54 @@ export function updateInteractLabel(
     hide();
     return;
   }
-  labelEl.style.left = `${p.x}px`;
-  labelEl.style.top = `${p.y}px`;
+  // KEEP THE PROMPT ON SCREEN.
+  //
+  // The label anchors its BOTTOM at the projected point, and a floor item you
+  // are standing on projects below the viewport — so the prompt hung off the
+  // bottom edge, half-clipped, with the item itself entirely out of view. That
+  // is the "item hidden up close" half of the report: not something covering
+  // it, just the camera being past it.
+  //
+  // Clamped, so the prompt stays wholly readable and the stack above it (the
+  // item card) has a stable thing to sit on.
+  const h = labelEl.offsetHeight || 0;
+  const w = labelEl.offsetWidth || 0;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const y = Math.max(h + EDGE_MARGIN, Math.min(vh - EDGE_MARGIN, p.y));
+  const x = Math.max(w / 2 + EDGE_MARGIN, Math.min(vw - w / 2 - EDGE_MARGIN, p.x));
+  lastBottomY = y;
+  labelEl.style.left = `${x}px`;
+  labelEl.style.top = `${y}px`;
   if (!shown) {
     shown = true;
     labelEl.style.opacity = '1';
     labelEl.style.pointerEvents = 'auto';  // tappable only while visible
   }
+}
+
+/**
+ * How tall the prompt block ACTUALLY is right now, in px — 0 when hidden.
+ *
+ * The item card floats above this prompt, and it used to clear it by an
+ * approximate constant (`PROMPT_BLOCK = 60`). A prompt is not a constant: it
+ * wraps to two lines on a long verb, and it grew a numeric cost chip. Every time
+ * it is taller than the guess, the card lands ON it — which is the reported
+ * "description overlaps the interact prompt".
+ *
+ * Measured, not assumed. The label anchors its BOTTOM at the projected point
+ * (`translate(-50%, -100%)`), so its height is exactly the clearance the card
+ * needs above that point.
+ */
+export function interactPromptHeight(): number {
+  return labelEl && shown ? labelEl.offsetHeight : 0;
+}
+
+/** Screen y of the prompt's BOTTOM edge this frame, after on-screen clamping.
+ *  0 when hidden. The card stacks on this rather than re-deriving it — two
+ *  projections of the same point that clamp differently is how a stack drifts
+ *  apart. */
+export function interactPromptBottomY(): number {
+  return labelEl && shown ? lastBottomY : 0;
 }
 
 /** Hide + make the (now stale-positioned) label inert to taps. */
