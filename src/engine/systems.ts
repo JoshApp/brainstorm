@@ -47,6 +47,7 @@ import { consumeInteractPressed } from '../controls/interact-input';
 import { isBusInstalled } from '../harness/intent';
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
+import { setDodgeButtonAim, tickDodgeButton } from '../controls/dodge-button';
 import { captureStep } from '../harness/run-recorder';
 import { tryDash, setDashOver, noteDashOverFired } from '../combat/dash';
 import { consumeRiposte } from '../combat/reactive-defense';
@@ -202,6 +203,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // backsteps. Runs in 'unpaused' so it stops with the world, and after
     // input-camera so it reads this frame's facing.
     { name: 'dash', kind: 'sim', phase: 'unpaused', tick() {
+      // The dodge BUTTON dodges the way the stick is ALREADY pointing, which is
+      // the whole reason it doesn't take the steering thumb. Feed it this
+      // frame's move vector before anything consumes the dash, and tick its
+      // hold→sprint promotion here so both live in the same place as the dodge
+      // they belong to.
+      setDodgeButtonAim(input.moveX, input.moveY);
+      tickDodgeButton();
       if (isDying() || isFogWalkthroughActive() || isDescendTransition()) return;
       // The action FSM arbitrates: no roll out of a swing's committed frames
       // or during a parry beat. Checked BEFORE consuming, so the input stays

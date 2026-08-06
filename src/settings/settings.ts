@@ -82,8 +82,17 @@ export interface Settings {
    *    'doubleTap' — double-tap the move side to dodge; hold & steer the
    *                  second tap to pick a direction, or a quick neutral
    *                  double-tap backsteps.
+   *    'button'    — a dedicated HUD button in the RIGHT thumb arc. Dodges in
+   *                  the direction the move stick is ALREADY holding; hold it
+   *                  to sprint. This is the default, and the reason is that
+   *                  both gestures above ask the STEERING thumb to stop
+   *                  steering and perform an aim-and-release — the exact
+   *                  pattern the mobile-controls literature warns against, and
+   *                  the one Josh reported as hard to do mid-fight. Every
+   *                  shipped action game on phone puts its evade on a discrete
+   *                  right-side button for this reason.
    *  Either way, no clear direction (inside the deadzone) = a backstep. */
-  dashGesture: 'flick' | 'doubleTap';
+  dashGesture: 'button' | 'flick' | 'doubleTap';
   /** Dynamic-shadow quality. PointLight shadows are the most expensive
    *  thing in the frame on mobile (each caster re-renders the scene as a
    *  cube map), so this is a deliberate, capped quality knob:
@@ -208,6 +217,7 @@ export const CONTROL_SCHEMES: { id: Settings['controlScheme']; label: string }[]
 ];
 
 export const DASH_GESTURES: { id: Settings['dashGesture']; label: string }[] = [
+  { id: 'button', label: 'Button (hold to run)' },
   { id: 'flick', label: 'Flick' },
   { id: 'doubleTap', label: 'Double-tap' },
 ];
@@ -232,9 +242,12 @@ const DEFAULTS: Settings = {
   debugGoreSplats: false,
   profilerTools: false,
   controlScheme: 'default',
-  // Flick by default — the most directional/immediate dodge; switch to
-  // double-tap in the controls menu to feel the difference on the phone.
-  dashGesture: 'flick',
+  // BUTTON by default. Both gestures take the steering thumb off steering and
+  // ask it to aim-and-release, which is hard mid-fight and is what the
+  // literature says not to do. The button costs a corner of the screen and
+  // gives back a dodge you can mash — which is also what makes chaining a vault
+  // possible at all. Both gestures stay available in the controls menu.
+  dashGesture: 'button',
   // 'hero' by default: a single lamp-cast shadow is cheap and immediately
   // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,
   // crank to 'single'/'all' on desktop or a strong device.

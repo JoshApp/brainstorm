@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
 import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset } from '../combat/dash';
+import { isSprinting } from './dodge-button';
 import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset } from '../player/vault-step';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
@@ -130,7 +131,11 @@ export function updateCamera(
       // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0) ×
       // BUILD move-speed (swift vestments / relics / cards / haste buffs). All
       // multiplicative so they compose uniformly on MOVE_SPEED.
-      const speed = CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * getPlayerMoveSpeedMult() * dt;
+      // SPRINT rides the same multiplier chain as everything else, so being winded,
+      // drinking or slowed still means what it meant — a run does not outrank a
+      // penalty, it stacks with one.
+      const sprintMul = isSprinting() ? CONFIG.SPRINT_MUL : 1;
+      const speed = CONFIG.MOVE_SPEED * sprintMul * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * getPlayerMoveSpeedMult() * dt;
       const scale = speed / Math.sqrt(lenSq);
       moveX *= scale;
       moveZ *= scale;

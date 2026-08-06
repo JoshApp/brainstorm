@@ -150,6 +150,7 @@ import { initBladeTrail } from './effects/blade-trail';
 import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
+import { createDodgeButton } from './controls/dodge-button';
 import { LEVELS_ENABLED } from './state/leveling';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
@@ -1004,6 +1005,10 @@ onScreenStateChanged(() => {
   _wasPausedByScreen = pausedNow;
 });
 createConsumableBar();
+// The DODGE BUTTON — the default touch dodge, and hold-to-sprint on the same
+// press. Hidden on desktop and whenever a gesture scheme is selected instead;
+// tickDodgeButton (in the dash system) owns that.
+createDodgeButton();
 // Rite button hidden until rites are properly built (Josh) — the seam stays,
 // but the HUD affordance is off so it doesn't imply a finished feature.
 // (createRiteButton() intentionally not called; re-enable when rites land — #98.)

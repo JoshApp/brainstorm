@@ -77,6 +77,16 @@ export const CONFIG = {
   // === PLAYER ===
   PLAYER_HEIGHT: 1.6,          // eye level
   MOVE_SPEED: 2.5,             // meters per second — slow, deliberate
+  /**
+   * SPRINT — hold the dodge button to run.
+   *
+   * Deliberately modest. This is a Souls-like: the walk is the game's tempo and
+   * a sprint that doubled it would make every room half the size it was
+   * designed as. 1.55× is "you are covering ground", not "you are outrunning
+   * the dungeon", and it is slow enough that a fight still starts before you
+   * can leave it.
+   */
+  SPRINT_MUL: 1.55,
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
   JOYSTICK_DEADZONE: 0.1,
 
