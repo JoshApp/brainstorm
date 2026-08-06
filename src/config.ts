@@ -78,15 +78,58 @@ export const CONFIG = {
   PLAYER_HEIGHT: 1.6,          // eye level
   MOVE_SPEED: 2.5,             // meters per second — slow, deliberate
   /**
-   * SPRINT — hold the dodge button to run.
+   * MOMENTUM — the hidden scalar behind stride, vault and chain.
    *
-   * Deliberately modest. This is a Souls-like: the walk is the game's tempo and
-   * a sprint that doubled it would make every room half the size it was
-   * designed as. 1.55× is "you are covering ground", not "you are outrunning
-   * the dungeon", and it is slow enough that a fight still starts before you
-   * can leave it.
+   * See src/player/momentum.ts and docs/MOVEMENT.md. Sprint is no longer a flat
+   * multiplier you get for holding a button; it is what having run FEELS like,
+   * and holding the button only fills it faster.
    */
-  SPRINT_MUL: 1.55,
+  MOMENTUM: {
+    ENABLED: true,
+    /** Seconds of unbroken full-speed travel to fill from empty, WITHOUT
+     *  holding run. Long enough that ordinary room-to-room walking rarely tops
+     *  out, short enough that a corridor does. */
+    BUILD_S: 2.1,
+    /** Holding run fills this much faster — so the deliberate version takes
+     *  about a second. Two ways in, one scalar out. */
+    HOLD_BUILD_MUL: 2.4,
+    /**
+     * Below this fraction of full-speed travel you are STALLED, and bleed.
+     *
+     * At or above it, any real movement builds — just proportionally slower.
+     * A virtual stick is rarely pushed to the rim, so a bleed that scaled with
+     * (1 - travel) made momentum unreachable for a normal thumb: dead on the
+     * device the game is for, alive on the keyboard it isn't.
+     */
+    STALL_AT: 0.55,
+    /** Seconds to empty from a dead stop. Short: momentum is a state you are
+     *  in, not a resource you bank, and a long tail would let you stop, look
+     *  around, and still be fast. */
+    DECAY_S: 0.55,
+    /** ...and much shorter in a fight, on top of the hard zero on damage. */
+    COMBAT_DECAY_S: 0.30,
+    /**
+     * Speed at full momentum. Deliberately the OLD sprint number.
+     *
+     * This is a Souls-like: the walk is the game's tempo and a sprint that
+     * doubled it would make every room half the size it was designed as. 1.55×
+     * is "you are covering ground", not "you are outrunning the dungeon". What
+     * changed is not the ceiling, it is that you have to earn it.
+     */
+    SPEED_MUL_MAX: 1.55,
+    /** Extra metres a vault step carries at full momentum. */
+    VAULT_CARRY_BONUS_M: 0.7,
+    /** Extra metres it RISES at full momentum. Height is what turns "I can't
+     *  get over that" into "I can if I run at it". */
+    VAULT_RISE_BONUS_M: 0.22,
+    /** The tell. Degrees the view opens by at full — enough to feel, not enough
+     *  to notice as an effect. NOT a meter, on purpose. */
+    FOV_MAX_DEG: 7,
+    /** How fast the view follows the number, per second. Slower than the
+     *  momentum itself so the camera lags the legs, which is what makes it read
+     *  as speed rather than as a UI element. */
+    FOV_FOLLOW: 4.5,
+  },
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
   JOYSTICK_DEADZONE: 0.1,
 

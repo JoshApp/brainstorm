@@ -15,7 +15,7 @@ Written 2026-08-06, answering Josh:
 > Terraria boots that work once you walk for a bit? I'm just throwing around
 > ideas."*
 
-**Nothing in this document is built.** It is the options laid out with a
+**§1–4 were written before any of this was built** (see §5 for what shipped). It is the options laid out with a
 recommendation, because this is a feel decision and feel decisions are yours.
 
 ---
@@ -168,13 +168,70 @@ Smallest slice worth building and feeling on the phone:
 3. One diegetic tell — FOV is the cheapest and the most legible.
 4. Phone pass. Momentum is a feel mechanic and the only real test is a thumb.
 
-**Open questions for Josh, which is why none of this is built:**
+---
 
-- Should momentum cost or interact with **stamina** at all, or stay completely
-  free? (Free is my instinct — property **3** is what makes mastery compound,
-  and DELVE already has one bar governing the dodge.)
-- Should a **big** momentum vault be able to clear things a small one cannot, or
-  only go *further*? Height changes what the level means much more than distance
-  does.
-- Does the **dodge button's hold-to-sprint** survive momentum, or does momentum
-  replace it? Two ways to go fast is one too many.
+## 5. Built (2026-08-06) — and how the three questions were answered
+
+Josh gave the go-ahead to build rather than wait, so the three open questions
+got answered. All three are reversible and all three are one constant away from
+being answered differently.
+
+**Does it touch stamina?** No. Completely free — no bar, no cooldown. Property
+**3** is what makes mastery compound, and DELVE already has one bar governing
+the dodge; putting the traversal tech on it would make every clever line a tax
+on your defence.
+
+**Does a big vault go higher, or only further?** Both, and the *height* is the
+point — height is what turns "I can't get over that" into "I can if I run at
+it". Config: `+0.7m` carry and `+0.22m` rise at full, both eased on the square
+so a trickle of momentum gives nearly nothing. A smeared bonus would read as the
+vault being inconsistent rather than as you being fast.
+
+**Does hold-to-sprint survive?** It survives as an *input*, not as a second
+system. Holding no longer hands you a flat ×1.55 the instant you press it — it
+fills momentum ~2.4× faster. So there is one scalar and two ways to feed it:
+walk far enough and you get fast for free (the discovery), or hold and get there
+deliberately (the control). Desktop got Shift on the same path.
+
+### What shipped
+
+- `src/player/momentum.ts` — the scalar. `stepMomentum` is pure and is what
+  `tests/momentum.test.ts` exercises.
+- `src/effects/camera-fov.ts` — **one owner for `camera.fov`.** Momentum was the
+  second system with an opinion about FOV, and the first (slow-mo's kill zoom)
+  was already coping by caching a base and declining to touch the camera at rest
+  "so we don't fight the resize handler". That is the shape of a property with
+  no owner. Contributors now declare named offsets; one system sums and writes.
+- Wired to exactly the two things the plan named — walk speed and the vault
+  step's carry/rise — plus the FOV tell. Nothing else reads it yet.
+
+### The tuning, measured rather than guessed
+
+| stick push | walking | holding run |
+|---|---|---|
+| full | 2.1s to full | 0.9s |
+| 85% | 2.5s | 1.0s |
+| 70% | 3.0s | 1.2s |
+| 60% | 3.5s | 1.5s |
+| 50% | never | 2.4s |
+
+Decay: 0.55s from a dead stop, 0.30s in combat, instant on taking a hit.
+
+**The one non-obvious shape.** Decay first scaled with `(1 - travelFrac)`,
+which reads fine and is wrong on a phone: a thumb rarely pushes a virtual stick
+to the rim, so a perfectly deliberate 60%-speed jog came out net *negative* and
+momentum was unreachable for anyone not holding against the stop. It would have
+been dead on the device the game is for and alive on the keyboard it isn't. So
+decay only bites below a stall line (`STALL_AT: 0.55`) — above it any real
+movement builds, just proportionally slower.
+
+### What it still needs
+
+A **thumb**. Every number above is a simulation, and momentum is a feel
+mechanic. `CONFIG.MOMENTUM.ENABLED = false` is the A/B switch, and the test
+suite asserts that switch actually works, because the first phone pass is
+exactly when you want to turn it off and compare.
+
+Not built, and deliberately: edge-vault **legibility** (option D). It is the
+other half and it wants a phone pass on this half first — cues for a mechanic
+that turns out to feel wrong are wasted twice.

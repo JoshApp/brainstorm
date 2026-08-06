@@ -72,6 +72,7 @@ import { tickGoldCoins } from '../effects/gold-coins';
 import { tickTutorialHints } from '../effects/tutorial-hints';
 import { tickDriftingMotes } from '../effects/drifting-motes';
 import { tickSlowmoPresentation } from '../effects/slowmo-presentation';
+import { applyFov } from '../effects/camera-fov';
 import { tickBladeTrail, setBladeTrailIntensity } from '../effects/blade-trail';
 import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
@@ -647,6 +648,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // speed (they READ the dip; they don't ride it). BEFORE shake so the FOV
     // kick + shake compose cleanly.
     { name: 'slowmo-fx', phase: 'always', tick(ctx) { tickSlowmoPresentation(camera, ctx.realDt); } },
+
+    // FOV — the single write. Every contributor (slow-mo's kick, momentum's
+    // opening view) declares a NAMED OFFSET and this sums them onto the base
+    // exactly once, here, after they have all had their say. Two systems
+    // assigning camera.fov directly is how a camera ends up stranded at
+    // somebody else's number when one of them stops caring.
+    { name: 'camera-fov', phase: 'always', tick() { applyFov(camera); } },
 
     // Screen shake. Add the offset; it PERSISTS through the render (incl. WebGPU's async deferred read)
     // and is undone at the START of the next frame by the camera reset — interpRestore (fixed-step) or

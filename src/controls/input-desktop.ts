@@ -18,6 +18,7 @@
 // to land on an in-range object still uses it.
 
 import { dismissHint } from './hint-overlay';
+import { setDesktopRunHeld } from './run-input';
 import { triggerAttack } from './attack-input';
 import { touchWasRecent } from './touch-activity';
 import { triggerDash } from './dash-input';
@@ -323,6 +324,11 @@ export const desktopScheme: InputScheme = {
     return (_dt: number) => {
       let kx = 0;
       let ky = 0;
+      // RUN — Shift, polled as a held state rather than bound as an action,
+      // because it is a modifier and not an edge. Feeds the same momentum
+      // build-rate the phone's dodge-button hold does (player/momentum.ts);
+      // desktop gets no HUD button and needs no new one.
+      setDesktopRunHeld(codesDown.has('ShiftLeft') || codesDown.has('ShiftRight'));
       if (codesDown.has(getBinding('moveForward'))) ky -= 1;
       if (codesDown.has(getBinding('moveBack')))    ky += 1;
       if (codesDown.has(getBinding('moveLeft')))    kx -= 1;

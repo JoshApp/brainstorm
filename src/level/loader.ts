@@ -17,6 +17,9 @@ import { isArrivalActive } from '../player/arrival';
 // forced fog-gate walk) — read only in the present pass, NOT part of the sim
 // digest, so they stay here rather than in the sim-state registry.
 import { resetSlowmoPresentation } from '../effects/slowmo-presentation';
+import { resetMomentum } from '../player/momentum';
+import { resetFovOffsets } from '../effects/camera-fov';
+import { resetDodgeButton } from '../controls/dodge-button';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
 import { resetViewSway } from '../player/viewmodel-sway';
@@ -212,6 +215,12 @@ export function tickPendingLoad() {
   // Presentation state — read only in the present pass, so it lives here, not in
   // the sim-state registry (a headless replay never runs the present pass).
   resetSlowmoPresentation(camera ?? undefined);  // clear cold vignette + restore FOV
+  // Momentum is a state you are IN, and arriving on a new floor is not a
+  // continuation of the corridor you were sprinting down. Reset it, and drop
+  // every FOV offset with it so the new floor opens at the resting view.
+  resetMomentum();
+  resetFovOffsets(camera ?? undefined);
+  resetDodgeButton();
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level

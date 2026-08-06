@@ -3,6 +3,7 @@ import { gameNow } from '../engine/game-clock';
 import { isDodging } from '../combat/dash';
 import { isInCombat } from '../combat/combat-state';
 import { playWhoosh } from '../audio/sfx';
+import { momentumVaultBonus } from './momentum';
 
 // THE VAULT STEP — walking over the knee-high stuff instead of stopping dead.
 //
@@ -55,6 +56,9 @@ let startedAt = 0;
 let dirX = 0, dirZ = 0;
 let fromX = 0, fromZ = 0;
 let carryM = 0;
+/** Arc height for the step IN FLIGHT — fixed at launch from the momentum you
+ *  had, so the hop never changes shape halfway through it. */
+let riseM = CONFIG.VAULT.RISE_M;
 
 /** Is a vault step playing right now? Movement input is carried by it. */
 export function isVaulting(): boolean { return gameNow() < activeUntil; }
@@ -66,7 +70,7 @@ export function isVaulting(): boolean { return gameNow() < activeUntil; }
 export function vaultHeightOffset(): number {
   if (!isVaulting()) return 0;
   const k = (gameNow() - startedAt) / (CONFIG.VAULT.DURATION_S * 1000);
-  return Math.sin(Math.max(0, Math.min(1, k)) * Math.PI) * CONFIG.VAULT.RISE_M;
+  return Math.sin(Math.max(0, Math.min(1, k)) * Math.PI) * riseM;
 }
 
 /** Where the vault wants the player this frame, or null when none is running. */
@@ -126,7 +130,20 @@ export function tryVaultStep(
   const len = Math.hypot(moveX, moveZ);
   if (len < 1e-6) return false;
   const nx = moveX / len, nz = moveZ / len;
-  const carry = CARRY_CANDIDATES_M.find(
+
+  // MOMENTUM PAYS OUT HERE (player/momentum.ts). A run-up carries further and
+  // rises higher than a standing step, which is the whole point of the scalar:
+  // it is what turns "I cannot get over that" into "I can if I run at it", and
+  // it is why the dungeon re-reads as the player gets better at holding a line.
+  //
+  // The bonus extends the LONGEST candidate rather than shifting all of them,
+  // so a low kerb still gets a short hop at any speed — the extra reach is a
+  // new option on top, not a change to what already worked.
+  const bonus = momentumVaultBonus();
+  const candidates = bonus.carryM > 0.02
+    ? [...CARRY_CANDIDATES_M, CARRY_CANDIDATES_M[CARRY_CANDIDATES_M.length - 1] + bonus.carryM]
+    : CARRY_CANDIDATES_M;
+  const carry = candidates.find(
     (d) => walkable.canDashOver(x, z, x + nx * d, z + nz * d, radius),
   );
   if (carry === undefined) return false;
@@ -134,6 +151,7 @@ export function tryVaultStep(
   fromX = x; fromZ = z;
   dirX = nx; dirZ = nz;
   carryM = carry;
+  riseM = CONFIG.VAULT.RISE_M + bonus.riseM;
   startedAt = gameNow();
   activeUntil = startedAt + CONFIG.VAULT.DURATION_S * 1000;
   playWhoosh();

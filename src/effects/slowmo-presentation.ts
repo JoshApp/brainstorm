@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setFovOffset, applyFov } from './camera-fov';
 import { getBulletTimeIntensity } from '../combat/reactive-defense';
 import { setSlowmoAmount, playSlowmoExit } from '../audio/sfx';
 
@@ -20,7 +21,6 @@ import { setSlowmoAmount, playSlowmoExit } from '../audio/sfx';
 let coldEl: HTMLDivElement | null = null;   // the steady cold vignette (opacity ∝ intensity)
 let popEl: HTMLDivElement | null = null;    // the entry flash (decays on its own)
 
-let baseFov = 0;       // captured once — the camera's resting FOV
 let fovKick = 0;       // current transient FOV offset (negative = zoom-in)
 let popLeft = 0;       // entry-flash countdown (s)
 let prevIntensity = 0;
@@ -57,7 +57,6 @@ function ensureEls(): void {
  *  the cues themselves don't slow). `camera` gets a transient FOV kick. */
 export function tickSlowmoPresentation(camera: THREE.PerspectiveCamera, realDt: number): void {
   ensureEls();
-  if (baseFov === 0) baseFov = camera.fov;
 
   const intensity = getBulletTimeIntensity();
 
@@ -86,17 +85,17 @@ export function tickSlowmoPresentation(camera: THREE.PerspectiveCamera, realDt: 
     popEl.style.opacity = '0';
   }
 
-  // FOV kick eases back to 0; only touch the camera while it's live so we
-  // don't fight the resize handler at rest.
+  // FOV kick eases back to 0. It is now a NAMED OFFSET rather than a direct
+  // write (effects/camera-fov.ts) — this used to cache a base FOV and assign
+  // camera.fov itself, which meant it could only avoid fighting other writers
+  // by declining to touch the camera at rest. Momentum is the second writer
+  // that made that untenable.
   if (Math.abs(fovKick) > 0.01) {
     fovKick += (0 - fovKick) * Math.min(1, realDt * FOV_DECAY);
-    camera.fov = baseFov + fovKick;
-    camera.updateProjectionMatrix();
   } else if (fovKick !== 0) {
     fovKick = 0;
-    camera.fov = baseFov;
-    camera.updateProjectionMatrix();
   }
+  setFovOffset('slowmo', fovKick);
 }
 
 /** Floor load — clear overlays + restore the FOV. */
@@ -107,5 +106,6 @@ export function resetSlowmoPresentation(camera?: THREE.PerspectiveCamera): void 
   if (coldEl) coldEl.style.opacity = '0';
   if (popEl) popEl.style.opacity = '0';
   setSlowmoAmount(0);
-  if (camera && baseFov !== 0) { camera.fov = baseFov; camera.updateProjectionMatrix(); }
+  setFovOffset('slowmo', 0);
+  if (camera) applyFov(camera);
 }

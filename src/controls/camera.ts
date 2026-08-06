@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
 import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset } from '../combat/dash';
-import { isSprinting } from './dodge-button';
+import { isRunHeld } from './run-input';
+import { tickMomentum, momentumSpeedMul, momentumFovOffset } from '../player/momentum';
+import { setFovOffset, setBaseFov } from '../effects/camera-fov';
 import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset } from '../player/vault-step';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
@@ -40,6 +42,10 @@ let pitch = 0;
 let distanceSinceStep = 0;
 
 export function createFirstPersonCamera(): THREE.PerspectiveCamera {
+  // Declare the resting FOV to the one thing that owns the property, so an
+  // effect's offset is always relative to the SETTING rather than to whatever
+  // the camera happened to be showing when that effect first ran.
+  setBaseFov(CONFIG.FOV);
   return new THREE.PerspectiveCamera(
     CONFIG.FOV,
     window.innerWidth / window.innerHeight,
@@ -116,6 +122,10 @@ export function updateCamera(
   }
 
   // --- Move ---
+  // Metres actually travelled this frame, filled in by the move block below and
+  // read by the momentum tick after it. Declared out here because a frame with
+  // NO input still has to tick momentum — with zero travel, so it decays.
+  let movedThisFrame = 0;
   if ((input.moveX !== 0 || input.moveY !== 0) && !isArrivalActive()) {
     // 2D move basis straight from yaw — forward is (0,0,-1) and right is
     // (1,0,0) rotated about Y; y stays 0 throughout, so no Vector3/Euler
@@ -134,8 +144,13 @@ export function updateCamera(
       // SPRINT rides the same multiplier chain as everything else, so being winded,
       // drinking or slowed still means what it meant — a run does not outrank a
       // penalty, it stacks with one.
-      const sprintMul = isSprinting() ? CONFIG.SPRINT_MUL : 1;
-      const speed = CONFIG.MOVE_SPEED * sprintMul * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * getPlayerMoveSpeedMult() * dt;
+      // MOMENTUM, not a sprint flag. Holding the run button no longer hands
+      // you a multiplier the instant you press it — it fills momentum faster,
+      // and momentum is what you move at (player/momentum.ts). Rides the same
+      // multiplicative chain as everything else, so being winded, drinking or
+      // slowed still means what it meant: having run does not outrank a
+      // penalty, it stacks with one.
+      const speed = CONFIG.MOVE_SPEED * momentumSpeedMul() * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * getDrinkMoveMul() * getPlayerMoveSpeedMult() * dt;
       const scale = speed / Math.sqrt(lenSq);
       moveX *= scale;
       moveZ *= scale;
@@ -182,15 +197,27 @@ export function updateCamera(
       camera.position.x = finalPos.x;
       camera.position.z = finalPos.z;
 
+      // MOMENTUM BUILDS FROM GROUND COVERED, not from stick intent — so it is
+      // fed here, at the end of the move, with what the collision actually let
+      // us have. Grinding along a wall covers little and therefore earns
+      // little, which is what makes picking a clean line the skill.
+      movedThisFrame = Math.hypot(stepDx, stepDz);
+
       // Footstep accumulator — fires once per STEP_DISTANCE actually moved
       // (so colliding with a wall doesn't trigger footsteps in place).
-      distanceSinceStep += Math.hypot(stepDx, stepDz);
+      distanceSinceStep += movedThisFrame;
       if (distanceSinceStep >= STEP_DISTANCE) {
         distanceSinceStep -= STEP_DISTANCE;
         playFootstep();
       }
     }
   }
+
+  // --- Momentum ---
+  // Unconditional: a frame with no input still ticks, with zero travel, so the
+  // number falls. Holding run only makes it FILL faster (see momentum.ts).
+  tickMomentum(dt, movedThisFrame, isRunHeld());
+  setFovOffset('momentum', momentumFovOffset());
 
   // --- Depenetration ---
   // The slide passes above only PREVENT entering an enemy; once we're already
