@@ -679,3 +679,40 @@ Not yet routed, in rough order of value:
 3. **A second real skin**, chosen per act. This is the point of all of it, and it
    is deliberately last — a theme is worth authoring once the seam is proven and
    every intent it needs is routed, not before.
+
+### 9.4 The rule the polygon rooms forced: a hall must not lie about its size
+
+The generator's rooms came out median **111 m²** against the vault composer's
+**70**, and the perimeter-sconce model does not scale. Measured across 240
+floors, a poly room's HEART — its point furthest from any wall — sat within a
+bracket's 5 m reach only **59 %** of the time, against **76 %** on the vault
+floors. Josh, walking one: *"rooms are bigger, they are barely lit in the
+center most of the time."*
+
+The instinct is to call that darkness working as intended. It isn't. Darkness
+is the baseline, but a room whose SIZE the player cannot perceive is not a dark
+room — it is a room they cannot make a decision about, the same failure class as
+an unfindable stair. A hundred square metres of hall lit only around its edges
+reads as a small dark room, and the space is wasted twice: once for being
+invisible, once for the encounter it can no longer stage.
+
+`light-plan.ts` stage 4 answers it as a REACH rule, not an area one:
+
+- The caller decides what counts as a hall. `interiorLightAnchors` offers only
+  floor more than **3.4 m from every wall**, which is a statement about SHAPE
+  rather than size — a room narrow in either direction is served by its walls
+  however long it runs, so no brazier stands in the middle of a gallery. It
+  hands a light to 79 % of rooms over 140 m² and 5 % of rooms under 60.
+- **Beside the stone where there is stone.** A light at the foot of a pier is
+  architecture; the same light in open floor is a lamp nobody placed. 93 of the
+  132 standing lights in rooms with piers land within 2.4 m of one.
+- **Two, and the question is re-asked between them.** Choosing both from one
+  pre-filtered list gave two lights to 783 of 1406 rooms, because the first
+  usually pulls the rest of the room inside reach. Re-deriving the candidates
+  after each placement drops that to 316 — the cap becomes a ceiling instead of
+  the default.
+- A `dark` room is exempt, like an ambush pocket. A deliberate beat outranks a
+  geometric rule.
+
+Result: hall hearts within reach **89 %**, floor beyond reach **14 %** against
+the vault dungeon's **22 %**. Still dark; no longer dark in the middle.
