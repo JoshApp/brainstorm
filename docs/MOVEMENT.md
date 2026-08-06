@@ -252,3 +252,61 @@ clear the thing in front of you. That one genuinely wants a thumb first. It is
 also the one most likely to be unnecessary: property **5** says you find a
 flutter jump by doing, and a game that points at it may be answering a question
 nobody was asking.
+
+---
+
+## 6. Up is earned, down is free — the ledge question
+
+Josh, 2026-08-06: *"do you think the game wants a pull up a ledge system or one
+way drops etc?"*
+
+**One-way drops, yes. Mantle, no.** And the reason is that we already built the
+other half without noticing.
+
+### Why not a mantle
+
+- **It costs an input we fought to keep.** The control budget is stick, look,
+  dodge, attack, interact. A climb needs a button or a context-press, and the
+  one thing this game has going for it on a phone is that it asks for very
+  little.
+- **It is a hole in the frame.** A first-person mantle is 0.5–0.8s where the
+  camera plays an animation and you cannot steer. In a game whose defence is a
+  0.30s i-frame window, handing the camera away is the worst thing traversal can
+  do.
+- **It makes height free**, and free height is not interesting height. If you
+  can always get up, a ledge stops being a decision and becomes a chore with a
+  timer on it.
+
+### Why one-way drops
+
+They cost **no input at all** — you walk off. And they do three things at once
+that nothing else we have does:
+
+1. **They make a floor's shape legible.** You can see where you are about to end
+   up before you commit. That is the first time this dungeon would have a read
+   on its own layout.
+2. **They create real one-way topology.** A drop is the cheapest possible route
+   asymmetry, which is the raw material for cycles (#138) and for the
+   "oh — *that* is where that went" moment.
+3. **They are a decision with a cost**, which is the grammar the whole game is
+   already written in.
+
+Dark Souls 1's Firelink is a stack of one-way drops, and it is the most
+memorable piece of level design in the game.
+
+### The part that makes it a system
+
+Momentum already shipped, and it is the other half:
+
+- **DOWN is free and one-way.** Step off.
+- **UP is earned and conditional.** No climb — a run-up, spent through the vault.
+
+That asymmetry is the whole design. Height becomes something you *spend* going
+down and *earn* going up, which turns a floor's vertical layout into route
+planning rather than platforming. It needs no new verb, no new button, and no
+animation that takes the camera away — and it gives the big polygon rooms a job,
+because a run-up needs room to run.
+
+**Order:** rifts (done — a drop is a rift with floor under it), then elevation
+(#137), then drops. Wall-jump (§3C) stays parked; it is a new verb and it wants
+geometry designed for it.
