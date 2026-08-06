@@ -174,6 +174,7 @@ switch (cmd) {
   case 'weapons': weapons(); break;
   case 'bench': delegate('bench'); break;
   case 'art': delegate('art'); break;
+  case 'facing': delegate('model-facing', rest); break;
   case 'ui': delegate('ui-eval'); break;
   case 'optimize': delegate('optimize-images'); break;
   case 'snap': delegate('snap'); break;

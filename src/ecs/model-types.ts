@@ -371,6 +371,21 @@ export interface MountSpec {
    * model's own geometry needs to begin.
    */
   standoff: number;
+  /**
+   * WHICH LOCAL AXIS IS THIS MODEL'S FRONT. Default '-z'.
+   *
+   * Every placer assumes −Z, and that assumption is invisible: a model authored
+   * facing +X is rotated as though −Z were its face, lands sideways, and reads
+   * as somebody having placed it badly. `facing.ts` already lets a placer say
+   * what it WANTS ('wall-away', 'point-toward'); this is the other half — what
+   * the model IS — and the two compose.
+   *
+   * `scripts/model-facing.ts` measures every model in src/content/ against this
+   * and flags any whose mass sits behind the front it claims. All 101 pass
+   * today, so nothing needs to set it yet; it exists so the first model that
+   * does can say so instead of being nudged by hand forever.
+   */
+  forward?: 'x' | '-x' | 'z' | '-z';
 }
 
 export interface ModelSpec {
