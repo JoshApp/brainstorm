@@ -1,4 +1,4 @@
-import type { ModelSpec } from '../ecs/model-types';
+import type { ModelSpec, PartSpec } from '../ecs/model-types';
 
 // Doorframe — the LIGHT cousin of the corridor archway (content/archway.ts).
 // Where the archway is an ornate gate for wide corridor mouths (columns with
@@ -51,6 +51,9 @@ const LINTEL_OVERHANG = 0.08;     // lintel extends past the jambs each side
 // one-cell-thick divider from both faces; the overshoot sits up in the dark
 // ceiling where it's never seen.
 const FILL_DEPTH      = 1.10;
+/** How far the knee brace runs down the post and in along the head. Keep it
+ *  well above head height — the collision contract knows nothing about it. */
+const BRACE_RUN       = 0.30;
 
 const LINTEL_TOP = LINTEL_BOTTOM + LINTEL_HEIGHT;
 
@@ -111,28 +114,111 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const fillHeight = Math.max(0.1, ceiling - lintelTop);
   const fillCentreY = lintelTop + fillHeight / 2;
 
-  const id = `doorframe-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
+  const id = `doorframe2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
+
+  const parts: PartSpec[] = [];
+  const postInner = jambOffset - JAMB_HALF_THICK;
+
+  for (const side of [-1, 1] as const) {
+    const x = side * jambOffset;
+    // A post is TWO timbers with an iron band at the splice, not one extrusion.
+    // The splice is the only thing that tells you which way is up on a plain
+    // vertical box, and it costs one extra part.
+    const spliceY = lintelBottom * 0.46;
+    parts.push({
+      kind: 'box', name: 'post-lower',
+      pos: [x, spliceY / 2, 0],
+      size: [JAMB_HALF_THICK * 2, spliceY, JAMB_DEPTH], mat: 'timber',
+    } as PartSpec);
+    parts.push({
+      kind: 'box', name: 'post-upper',
+      pos: [x, spliceY + (lintelBottom - spliceY) / 2, 0],
+      // Slightly slimmer above the splice: a shored post is whatever timber
+      // was to hand, and two identical halves read as one box again.
+      size: [JAMB_HALF_THICK * 1.82, lintelBottom - spliceY, JAMB_DEPTH * 0.92], mat: 'timber',
+    } as PartSpec);
+    parts.push({
+      kind: 'box', name: 'band',
+      pos: [x, spliceY, 0],
+      size: [JAMB_HALF_THICK * 2.3, 0.075, JAMB_DEPTH + 0.05], mat: 'iron',
+    } as PartSpec);
+    // Foot plate — keeps the timber out of the wet, and gives the post a base
+    // so it doesn't grow out of the floor.
+    parts.push({
+      kind: 'box', name: 'foot',
+      pos: [x, 0.05, 0],
+      size: [JAMB_HALF_THICK * 2.6, 0.10, JAMB_DEPTH + 0.08], mat: 'iron',
+    } as PartSpec);
+  }
+
+  // ── THE HEAD, DOUBLED ──────────────────────────────────────────────
+  // A single beam is a slab. Two, the upper one longer and set back, reads as
+  // carpentry — and the step between them is the one horizontal line in the
+  // silhouette that catches a lamp from below.
+  parts.push({
+    kind: 'box', name: 'head',
+    pos: [0, lintelBottom + LINTEL_HEIGHT * 0.32, 0],
+    size: [lintelWidth, LINTEL_HEIGHT * 0.64, LINTEL_DEPTH], mat: 'timber',
+  } as PartSpec);
+  parts.push({
+    kind: 'box', name: 'head-cap',
+    pos: [0, lintelBottom + LINTEL_HEIGHT * 0.82, 0],
+    size: [lintelWidth + 0.16, LINTEL_HEIGHT * 0.36, LINTEL_DEPTH * 0.78], mat: 'timber',
+  } as PartSpec);
+
+  // ── ONE KNEE BRACE, NOT TWO ────────────────────────────────────────
+  //
+  // The diagonal is the whole point: it is the only line in this dungeon that
+  // is neither vertical nor horizontal, so a shored doorway is recognisable at
+  // a distance no stone arch can match. It sits high — its lowest point is
+  // BRACE_RUN below the head — so it never reaches the band a player or a mob
+  // walks through, and the collision contract is untouched.
+  //
+  // And there is only ONE. The other rotted, or somebody took it. A frame with
+  // a matched pair is a frame somebody is still maintaining, and nobody has
+  // maintained anything down here for a long time.
+  const braceLen = BRACE_RUN * Math.SQRT2;
+  parts.push({
+    kind: 'box', name: 'brace',
+    pos: [postInner - BRACE_RUN / 2, lintelBottom - BRACE_RUN / 2, 0],
+    rot: [0, 0, Math.PI / 4],
+    size: [0.075, braceLen, JAMB_DEPTH * 0.7], mat: 'timber',
+  } as PartSpec);
+  // The stub of the one that went, still bolted to the post opposite.
+  parts.push({
+    kind: 'box', name: 'brace-stub',
+    pos: [-(postInner - 0.05), lintelBottom - BRACE_RUN + 0.05, 0],
+    rot: [0, 0, -Math.PI / 4],
+    size: [0.075, 0.14, JAMB_DEPTH * 0.7], mat: 'timber',
+  } as PartSpec);
+
+  // Fill above the head — closes the full-height void over the doorway. STONE,
+  // not timber: the wall was always there; the frame is what somebody put in it
+  // afterwards, and the material change is what says so.
+  parts.push({
+    kind: 'box', name: 'fill',
+    pos: [0, fillCentreY, 0],
+    size: [lintelWidth, fillHeight, FILL_DEPTH], mat: 'stone',
+  } as PartSpec);
 
   return {
     id,
     materials: {
       stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
-      // Same 'glow' contract as the archway: emissive 0 at rest, raised by the
-      // threshold proximity system so the frame warms as the player nears,
-      // marking the way through (see builder's proximityGlow handling).
-      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0, detail: 'dressed' },
+      // The frame itself. Warmer and lighter than the wall behind it, because
+      // the point of this threshold is that it is NOT the architecture — it is
+      // a prop somebody wedged into a hole in the architecture. That read is
+      // what keeps it distinct from the stone archway rather than being a
+      // smaller version of one.
+      timber: { color: 0x3a2c1e, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
+      // Bands, straps and foot plates carry the proximity glow — so nearing a
+      // doorway lights the IRON, not the whole frame. Same 'glow' contract as
+      // the archway (emissive 0 at rest; see the builder's proximityGlow
+      // handling), a different shape saying it.
+      iron: { color: 0x2b2a28, roughness: 0.85, metalness: 0.25, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
     },
-    parts: [
-      // Side jambs — slim posts framing the opening, with depth so the thin
-      // divider reads as a doorway you pass THROUGH, not a hole in paper.
-      { kind: 'box', pos: [-jambOffset, lintelBottom / 2, 0], size: [JAMB_HALF_THICK * 2, lintelBottom, JAMB_DEPTH], mat: 'glow' },
-      { kind: 'box', pos: [ jambOffset, lintelBottom / 2, 0], size: [JAMB_HALF_THICK * 2, lintelBottom, JAMB_DEPTH], mat: 'glow' },
-      // Lintel across the top.
-      { kind: 'box', pos: [0, lintelBottom + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
-      // Fill above the lintel — closes the full-height void over the doorway.
-      { kind: 'box', pos: [0, fillCentreY, 0], size: [lintelWidth, fillHeight, FILL_DEPTH], mat: 'stone' },
-    ],
-    // Eye mount points on the LINTEL front/back faces — same contract as the
+    parts,
+    // Eye mount points on the HEAD's front/back faces — same contract as the
     // archway (a doorframe is the narrow-mouth / stair-mouth variant, so it
     // needs the nav eye too). Without these, only wide-mouth archways got eyes.
     slots: {
