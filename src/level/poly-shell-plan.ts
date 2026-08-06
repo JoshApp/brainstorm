@@ -121,6 +121,10 @@ export function planWallRing(
   /** Spans shorter than this are dropped — a 4cm pier beside a doorway is
    *  z-fighting, not architecture. */
   minSpan = 0.14,
+  /** Pre-decided holes, edge-local (level/portals.ts). When given, these REPLACE
+   *  the rect clipping entirely — one opening, computed once, and the ring stops
+   *  guessing which edge a corridor came through. */
+  cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
 ): WallSpan[] {
   const n = poly.length;
   if (n < 3) return [];
@@ -134,8 +138,33 @@ export function planWallRing(
     if (len < 1e-4) continue;
     const nrm = edgeNormal(poly, i);
 
-    const gaps = openings
-      .map((r) => clipEdgeToRect(a, b, r, thickness))
+    // CUT THE PORTALS IF WE HAVE THEM.
+    //
+    // Rects are the legacy input and they cannot express "this corridor comes
+    // through THAT edge". A corridor grazing a corner clips both edges, so the
+    // ring punched two doorways for one way through — measured as 4.28m of wall
+    // removed for 3.40m of corridor on poly-2. portals.ts already decides which
+    // edge a corridor arrives on; handing the ring that decision is the whole
+    // point of computing the opening once.
+    const portalCuts = cuts?.filter((c) => c.edge === i).map((c) => [c.t0, c.t1] as [number, number]);
+
+    // THE HOLE IS EXACTLY WHERE THE CORRIDOR IS — no padding along the edge.
+    //
+    // This used to clip the rect INFLATED by the wall thickness, which widened
+    // every doorway by 2×t. Measured on 1203 real portals: the room's gap came
+    // out 0.50m wider than the corridor, every single time. That surplus is
+    // split between the two jambs, and behind each 25cm of missing room wall is
+    // nothing at all — which is the "gaps where the void is visible" walking a
+    // polygon floor.
+    //
+    // The padding was protecting a real case (a corridor stopping exactly ON the
+    // wall plane would kiss the edge and leave a pane of stone across the
+    // doorway), but it paid for that in the wrong axis. `padTouch` restores it
+    // in the only axis it was ever about: if the unpadded clip finds nothing,
+    // retry padded and take the ALONG-edge extent from the corridor's own
+    // footprint rather than the inflated one.
+    const gaps = portalCuts ?? openings
+      .map((r) => clipEdgeToRect(a, b, r, 0) ?? narrowTo(a, b, r, clipEdgeToRect(a, b, r, thickness)))
       .filter((g): g is [number, number] => g !== null);
     const keep = subtractSpans(gaps);
 
@@ -153,6 +182,35 @@ export function planWallRing(
     }
   }
   return spans;
+}
+
+/**
+ * A padded clip, pulled back to the rect's TRUE along-edge extent.
+ *
+ * Used only when the unpadded clip found nothing — a corridor that stops on the
+ * wall plane instead of overlapping it. We still want a hole there, but a hole
+ * the corridor's own width, not the inflated one. Clamps each end to the
+ * nearest point of the real rect projected onto the edge.
+ */
+function narrowTo(
+  a: V2, b: V2, r: OpeningRect, padded: [number, number] | null,
+): [number, number] | null {
+  if (!padded) return null;
+  const dx = b[0] - a[0], dz = b[1] - a[1];
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-9) return padded;
+  // Project the rect's four corners onto the edge; the hole spans their range.
+  const cs: V2[] = [
+    [r.x - r.w / 2, r.z - r.d / 2], [r.x + r.w / 2, r.z - r.d / 2],
+    [r.x + r.w / 2, r.z + r.d / 2], [r.x - r.w / 2, r.z + r.d / 2],
+  ];
+  let lo = Infinity, hi = -Infinity;
+  for (const c of cs) {
+    const t = ((c[0] - a[0]) * dx + (c[1] - a[1]) * dz) / len2;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const t0 = Math.max(padded[0], lo), t1 = Math.min(padded[1], hi);
+  return t1 > t0 ? [t0, t1] : null;
 }
 
 /**

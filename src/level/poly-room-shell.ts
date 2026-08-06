@@ -8,6 +8,7 @@ import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } fro
 import { buildRng } from '../engine/rng';
 import { polyBounds, pointInPoly, type Poly } from './room-shape';
 import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
+import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
 
@@ -148,7 +149,11 @@ export function buildPolyRoomShell(
   root.add(ceiling);
 
   // ── WALLS ──────────────────────────────────────────────────────────
-  const spans = planWallRing(poly, WALL_T, openingRects);
+  // ONE OPENING, COMPUTED ONCE (level/portals.ts). The ring used to clip the
+  // corridor rects itself, padded by the wall thickness — which widened every
+  // doorway by 0.5m and punched a second hole whenever a corridor grazed a
+  // corner. The portal planner already answers both questions correctly.
+  const spans = planWallRing(poly, WALL_T, openingRects, undefined, wallCutsFor(poly, openingRects));
   const pieces: THREE.BufferGeometry[] = [];
   for (const s of spans) {
     pieces.push(...spanGeometry(s, elev, H));

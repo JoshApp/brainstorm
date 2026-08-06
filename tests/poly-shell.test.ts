@@ -145,7 +145,15 @@ test('a doorway cuts the ring and leaves jambs, not stubs hanging in the gap', (
   assert.ok(east[0].jambB && !east[0].jambA, 'first east piece has the wrong end capped');
   assert.ok(east[1].jambA && !east[1].jambB, 'second east piece has the wrong end capped');
   const gap = Math.abs(east[0].b[1] - east[1].a[1]);
-  assert.ok(gap > door.d, `doorway is only ${gap.toFixed(2)}m — the wall closed the gap it cut`);
+  // THE HOLE IS THE OPENING'S OWN WIDTH — no wider.
+  //
+  // This used to assert `gap > door.d`, which was only ever satisfiable because
+  // the ring inflated every cut by the wall thickness: a 1.6m opening produced a
+  // 2.1m hole. That surplus is the see-through slot at each jamb — measured at
+  // 0.50m on 1203 real portals — so the assertion was pinning the bug. The cut
+  // is now exact, and "exact" is what a doorway should be.
+  assert.ok(Math.abs(gap - door.d) < 0.02,
+    `doorway is ${gap.toFixed(2)}m for a ${door.d.toFixed(2)}m opening — the two no longer agree`);
   // And the rest of the ring is untouched.
   assert.equal(spans.filter((s) => s.edge !== 1).length, 3, 'the doorway cut walls it should not have');
 });
