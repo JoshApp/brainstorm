@@ -80,19 +80,26 @@ test('a footprint smaller than anything in the palette gets nothing', () => {
 
 test('A ROOM\'S CLAIM FILTERS THE PALETTE — the merchant cannot draw a cobweb', () => {
   // prop-taxonomy's contradiction table, enforced at the point of choosing
-  // rather than by every pass remembering to check. A lit wall torch asserts
-  // TENDED, so a room that has committed to ABANDONED must not be offered one.
+  // rather than by every pass remembering to check. A brazier somebody dragged
+  // in and lit asserts TENDED, so a room committed to ABANDONED must never be
+  // offered one — whatever the roll.
+  //
+  // The exemplars here are deliberately a STANDING light against a DEAD wall
+  // fixture, because that is the axis the table actually splits on: portable or
+  // placed asserts tending, architectural does not. This test previously used a
+  // wall torch as the tended side and broke when the table was corrected, which
+  // is the table doing its job.
   const web: Skin = {
     id: 'test-web', name: 'Web',
     palette: {
-      'light.wall': [
-        { model: stub('wall-torch'), weight: 1 },     // tended
-        { model: stub('wall-stub'), weight: 1 },      // abandoned — a dead cresset
+      'light.floor': [
+        { model: stub('iron-brazier'), weight: 1 },   // tended — someone lit this
+        { model: stub('wall-stub'), weight: 1 },      // abandoned — a cresset with no fire left
       ],
     },
   };
   for (const roll of [0.0, 0.3, 0.7, 0.99]) {
-    const m = resolveSkin(web, { intent: 'light.wall', claims: ['abandoned'] }, fixed(roll));
+    const m = resolveSkin(web, { intent: 'light.floor', claims: ['abandoned'] }, fixed(roll));
     assert.equal(m?.id, 'wall-stub',
       `an abandoned room was offered ${m?.id} — the claim filter is not running`);
   }

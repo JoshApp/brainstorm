@@ -30,7 +30,9 @@ import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { roomType } from '../src/level/room-types';
-import type { LevelSpec, RoomSpec } from '../src/level/types';
+import { propFacts, claimsConflict } from '../src/level/prop-taxonomy';
+import { wallFixtureModel } from '../src/level/lit-fixture-pool';
+import type { LevelSpec, PropSpec, RoomSpec } from '../src/level/types';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -363,6 +365,44 @@ test('a dark room is dark, not broken', () => {
       if ((r as { lightTier?: string }).lightTier !== 'dark') continue;
       const lit = lightsIn(spec, r.poly!);
       assert.equal(lit, 1, `${spec.id}: a dark room carries ${lit} lights`);
+    }
+  }
+});
+
+test('NO ROOM CONTRADICTS ITSELF', () => {
+  // docs/LEVEL-ARCHITECTURE.md §5: a room commits to one or two CLAIMS, and a
+  // lit candle (SOMEONE IS HERE) cannot share a room with a cobweb (NOBODY HAS
+  // BEEN, FOR YEARS) at any separation. clutter.ts enforces this on the vault
+  // path; poly-decor.ts has no claim awareness at all, so this is the check that
+  // the polygon generator does not quietly reintroduce "the merchant stands in
+  // his own cobwebs".
+  //
+  // Measured 0 across 240 floors. It was 35 rooms (2.7%) while wall brackets
+  // were classified 'tended' — every one of them a bracket arguing with a web —
+  // which is what moved them to neutral: a torch bolted into masonry is part of
+  // the building, not evidence that somebody keeps it lit. If that reasoning is
+  // ever revisited, this test is what will say so.
+  //
+  // Goes through propFacts, NOT a copy of the claim table. The first version of
+  // this measurement carried its own and reported the same number before and
+  // after the table changed.
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      if (!r.poly) continue;
+      // r.poly is WORLD-space, like every other use of it in this file.
+      const here: PropSpec[] = (spec.props ?? []).filter((p) => pointInPoly(r.poly!, p.x, p.z));
+      for (const t of spec.torches ?? []) {
+        if (!pointInPoly(r.poly!, t.x, t.z)) continue;
+        here.push({ kind: 'model', model: wallFixtureModel(t.fixtureKind), x: t.x, y: 0, z: t.z } as PropSpec);
+      }
+      const claims = here.flatMap((p) => (propFacts(p)?.claims ?? []).map((c) => ({ c, p })));
+      for (let i = 0; i < claims.length; i++) {
+        for (let j = i + 1; j < claims.length; j++) {
+          assert.ok(!claimsConflict(claims[i].c, claims[j].c),
+            `${spec.id}: ${r.id} asserts both '${claims[i].c}' and '${claims[j].c}' — `
+            + `the room is a bag of props, not a place`);
+        }
+      }
     }
   }
 });

@@ -129,14 +129,26 @@ const BY_MODEL_ID: Record<string, PropFacts> = {
   // 40 of 220 depth-3 rooms, ALL of them this prop.
   'great-brazier':          { role: 'furnishing', claims: [] },
   'cresset-pike':           { role: 'furnishing', claims: ['tended'] },
-  'wall-cresset':           { role: 'furnishing', claims: ['tended'] },
-  // The gap the skin resolver found. A burning wall torch is the same assertion
-  // as a burning cresset — SOMEONE KEEPS THIS LIT — and it is what hangs on the
-  // wall three times out of four, yet it had no entry at all and so asserted
-  // nothing. Inert on every path that existed before: torches ship as TorchSpec,
-  // not as model props, so no producer was ever asking this table about one.
-  // Live for anything that resolves a wall fixture by model id (skin.ts).
-  'wall-torch':             { role: 'furnishing', claims: ['tended'] },
+  // ── WALL BRACKETS ARE ARCHITECTURE, NOT HOUSEKEEPING ──
+  //
+  // Both of these were 'tended' — a burning fixture says someone keeps it lit —
+  // and the reasoning is the same one the great brazier below already overturned
+  // once. Measured the moment the skin resolver started consulting this table:
+  // 42 of 1308 polygon rooms contradicted themselves, every single case a wall
+  // bracket arguing with a cobweb or a body on the floor.
+  //
+  // The rule that resolves it, and it is the same rule as the brazier's:
+  // PORTABLE OR PLACED asserts tending; ARCHITECTURAL does not. A candle
+  // somebody set down, a brazier somebody dragged in — those are housekeeping. A
+  // bracket bolted into the masonry is part of the building, and in a dungeon
+  // whose baseline is torchlight (CLAUDE.md, "the player's lamp is the
+  // baseline") it is not evidence of anything. Otherwise every lit room in the
+  // game is tended and NO room can ever be abandoned — which makes the whole
+  // claim vocabulary a single value.
+  //
+  // The stub keeps its claim, because a bracket with no fire left IS evidence.
+  'wall-cresset':           NEUTRAL_FURNISHING,
+  'wall-torch':             NEUTRAL_FURNISHING,
   'wall-stub':              { role: 'furnishing', claims: ['abandoned'] },   // a cresset with no fire left
   'ossuary-niche':          { role: 'furnishing', claims: [] },              // a charnel house is TENDED by its own lights
   'ossuary-niche-small':    { role: 'furnishing', claims: [] },

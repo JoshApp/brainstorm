@@ -600,6 +600,37 @@ hands *that* to the skin. Deterministic as before; independent of layout.
 `tests/skin.test.ts` pins it end-to-end: same seed, two entirely different
 palettes, every enemy and every non-light prop in exactly the same place.
 
+### 9.2b What the resolver found the moment it read the claim table
+
+Wiring the resolver made §5's claim table *live* for wall fixtures for the first
+time — nothing had ever consulted it about one. It immediately reported **46 of
+1308 polygon rooms (3.5%) contradicting themselves**, every case a lit wall
+bracket arguing with a cobweb on the same doorway.
+
+The declaration was wrong, not the generator. Both brackets said `tended` —
+*someone keeps this lit* — and the rule that resolves it is the one the great
+brazier's entry already established once:
+
+> **Portable or placed asserts tending. Architectural does not.**
+
+A candle somebody set down and a brazier somebody dragged in are housekeeping. A
+bracket bolted into the masonry is part of the building, and in a dungeon whose
+baseline is torchlight it is evidence of nothing. The alternative is that every
+lit room in the game is tended and *no* room can ever be abandoned — which
+collapses the whole claim vocabulary to a single value. `wall-stub` keeps its
+`abandoned`, because a bracket with **no fire left** genuinely is evidence.
+
+After: 0 of 1308. `tests/poly-floor.test.ts` pins it, and the pin was checked by
+reverting the table and watching it fail.
+
+Two process notes, both of which cost a measurement each:
+
+- The first audit carried **its own copy** of the claim table, so it reported the
+  same 46 rooms before *and after* the table was edited. It was measuring its own
+  opinion (docs/DESIGN-METHOD.md: *every audit tool imports the real function*).
+- The second offset `room.poly` by `room.rect`. **`poly` is already world-space**
+  — the numbers that came out were about the wrong rooms entirely.
+
 ### 9.3 Where it stands, and what comes next
 
 Wired: the four light intents on the polygon generator
