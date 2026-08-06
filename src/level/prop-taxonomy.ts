@@ -130,6 +130,13 @@ const BY_MODEL_ID: Record<string, PropFacts> = {
   'great-brazier':          { role: 'furnishing', claims: [] },
   'cresset-pike':           { role: 'furnishing', claims: ['tended'] },
   'wall-cresset':           { role: 'furnishing', claims: ['tended'] },
+  // The gap the skin resolver found. A burning wall torch is the same assertion
+  // as a burning cresset — SOMEONE KEEPS THIS LIT — and it is what hangs on the
+  // wall three times out of four, yet it had no entry at all and so asserted
+  // nothing. Inert on every path that existed before: torches ship as TorchSpec,
+  // not as model props, so no producer was ever asking this table about one.
+  // Live for anything that resolves a wall fixture by model id (skin.ts).
+  'wall-torch':             { role: 'furnishing', claims: ['tended'] },
   'wall-stub':              { role: 'furnishing', claims: ['abandoned'] },   // a cresset with no fire left
   'ossuary-niche':          { role: 'furnishing', claims: [] },              // a charnel house is TENDED by its own lights
   'ossuary-niche-small':    { role: 'furnishing', claims: [] },

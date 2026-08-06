@@ -18,8 +18,9 @@ import { assignModifiers, type ModifierPlan } from './room-modifiers';
 import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
 import { planInterior, type InteriorForm } from './room-interior';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
-import { floorGlow, IRON_BRAZIER } from '../content/light-props';
-import { godRay } from '../content/god-ray';
+import { resolveSkin } from './skin';
+import { activeSkin } from './skins';
+import { wallFixtureKindOf } from './lit-fixture-pool';
 import { directFloor } from './floor-director';
 import type { ContentSpot } from './floor-fill';
 import { rollDropTable } from '../content/drop-tables';
@@ -202,6 +203,17 @@ function corridorWidth(rand: () => number): number {
  */
 export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const rand = mulberry(hash(depth, seed));
+  // DRESSING ROLLS DO NOT TOUCH THE LAYOUT STREAM.
+  //
+  // The skin resolver picks between a torch and a cresset, a brazier and a pike
+  // — pure taste, with no bearing on where anything goes. Drawn from `rand`,
+  // those picks advance the shared stream and every later decision on the floor
+  // shifts with them: measured, adding the wall pool moved three sconces, one
+  // standing light and one glow across 240 floors, none of which were about
+  // fixtures. That coupling is invisible and it makes a theme change look like a
+  // level change. A separate stream, derived from the same seed so it stays
+  // deterministic, keeps "what it is made of" independent of "where things are".
+  const dressRand = mulberry((hash(depth, seed) ^ 0x5ce5cafe) >>> 0);
 
   // ── 0. THE CONTRACT, BEFORE ANY GEOMETRY EXISTS ────────────────────
   // floor-plan.ts states what the floor OWES the player — an offer, a threat,
@@ -396,7 +408,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
     const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
-    if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand,
+    if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand, dressRand,
                 props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent)) guardedRooms.add(r.id);
   }
 
@@ -797,6 +809,9 @@ function furnish(
   r: Placed, mouth: { x: number; z: number } | null,
   doorways: Array<{ x: number; z: number }>,
   depth: number, rand: () => number,
+  /** The DRESSING stream — skin palette rolls only. Kept apart from `rand` so a
+   *  theme's variety can never move a spawn. */
+  dressRand: () => number,
   props: PropSpec[], torches: TorchSpec[], spawns: EnemySpawnSpec[],
   mod?: RoomModifier,
   /** The stair, if this room holds it. The way on always gets marked. */
@@ -962,7 +977,7 @@ function furnish(
   }
   }   // ── end of "something wanders in here" ─────────────────────────
 
-  lightRoom(r, mouth, descent, ambushSpots, mod, staged, torches, props);
+  lightRoom(r, mouth, descent, ambushSpots, mod, staged, torches, props, dressRand);
   return guarded;
 }
 
@@ -983,6 +998,9 @@ function lightRoom(
   staged: { props: PropSpec[]; claimed: Array<{ x: number; z: number }> },
   torches: TorchSpec[],
   props: PropSpec[],
+  /** The floor's seeded RNG. The skin rolls its palette on this, so a theme's
+   *  variety is deterministic per seed like everything else. */
+  rand: () => number,
 ): void {
   // The brackets this room COULD hang something on. `sconcesOn` answers exactly
   // that and nothing more — how many it gets, and which, is decided below.
@@ -1024,11 +1042,20 @@ function lightRoom(
     fallback: fallbackLightSpot(r, mouth, ambushSpots),
   });
 
+  // THE LIGHT PLAN SAYS SHAPE; THE SKIN SAYS MODEL. Everything above decided
+  // that a standing source belongs here at this brightness in this colour — a
+  // statement about the ROOM. Which object that is, is a statement about the
+  // THEME, and it lives in skins.ts (see skin.ts for the split). A null answer
+  // means the palette has nothing that fits the space, and the honest response
+  // is an empty spot rather than a pike jammed into a crawlspace.
+  const skin = activeSkin();
   for (const f of fixtures) {
     if (f.shape === 'sconce') {
+      const model = resolveSkin(skin, { intent: 'light.wall', tint: f.color }, rand);
       torches.push({
         x: f.x, z: f.z, height: f.height, wall: f.wall ?? 'N', rotY: f.rotY,
         intensityMul: f.intensity,
+        ...(model ? { fixtureKind: wallFixtureKindOf(model.id) } : {}),
         ...(f.color ? { colorTint: f.color } : {}),
       } as TorchSpec);
       r.occupancy.reserve(
@@ -1036,18 +1063,22 @@ function lightRoom(
       continue;
     }
     if (f.shape === 'pool') {
-      props.push({ kind: 'model', model: floorGlow(f.color), x: f.x, y: 0, z: f.z } as PropSpec);
+      const model = resolveSkin(skin, { intent: 'light.pool', tint: f.color }, rand);
+      if (model) props.push({ kind: 'model', model, x: f.x, y: 0, z: f.z } as PropSpec);
       continue;   // a glow is light, not volume — nothing to reserve
     }
     if (f.shape === 'shaft') {
-      props.push({
-        kind: 'model', model: godRay({ tint: f.color, ceilingHeight: r.height }),
-        x: f.x, y: 0, z: f.z,
-      } as PropSpec);
+      const model = resolveSkin(skin, { intent: 'light.shaft', tint: f.color, headroom: r.height }, rand);
+      if (model) props.push({ kind: 'model', model, x: f.x, y: 0, z: f.z } as PropSpec);
       continue;
     }
-    // brazier — a standing source, and it DOES take floor.
-    props.push({ kind: 'model', model: IRON_BRAZIER, x: f.x, y: 0, z: f.z } as PropSpec);
+    // A standing source, and it DOES take floor — so the request states how much
+    // there is. `free` is generous here by construction: the fallback spot the
+    // light plan picked was chosen for being clear.
+    const model = resolveSkin(skin,
+      { intent: 'light.floor', tint: f.color, footprint: 0.5, headroom: r.height }, rand);
+    if (!model) continue;
+    props.push({ kind: 'model', model, x: f.x, y: 0, z: f.z } as PropSpec);
     r.occupancy.reserve({ kind: 'cylinder', x: f.x, z: f.z, r: 0.45, y0: 0, y1: 1.3 }, 'brazier');
   }
 }

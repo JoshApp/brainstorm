@@ -49,6 +49,20 @@ export function pickWallFixture(rand: () => number): WallFixtureKind {
   return WALL_FIXTURES[0].kind;
 }
 
+/**
+ * The inverse: which fixture kind is this model?
+ *
+ * A TorchSpec carries a KIND, not a model — the builder looks the model up at
+ * build time. So a caller that has already chosen a model (the skin resolver,
+ * skin.ts) needs to name it in the vocabulary TorchSpec speaks. Returns
+ * undefined for a model this pool doesn't offer, which the caller should treat
+ * as "leave it to the default" rather than an error.
+ */
+export function wallFixtureKindOf(modelId: string): WallFixtureKind | undefined {
+  if (modelId === 'wall-stub') return 'wall-stub';
+  return WALL_FIXTURES.find((e) => e.model.id === modelId)?.kind;
+}
+
 /** Resolve a fixture kind to its ModelSpec. Defaults to torch when
  *  the kind is undefined (legacy emission paths). */
 export function wallFixtureModel(kind: WallFixtureKind | undefined): ModelSpec {

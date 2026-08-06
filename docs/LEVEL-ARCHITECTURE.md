@@ -532,3 +532,92 @@ right idea aimed at the wrong problem — they were a better way to hand-author,
 and the measurement says hand-authoring was never carrying the rooms. The
 archetype table above is where a design or content layer expresses intent now,
 and it is code, which is the substrate that layer already writes.
+
+---
+
+## 9. Intent in, model out — the skin resolver
+
+Josh, 2026-08-06: *"what if the placement is all about intent and what gets
+rendered is decided by the skinner — the same generator can generate different
+themed floors, models describe themselves, and the building passes can say 'I
+want a light source here' optionally with constraints, and what gets put there
+is up to the skinning resolver. Is there a good pattern here?"*
+
+Yes, and it has a name. In procedural level generation this is the **semantic
+dressing** split: a placement pass emits *tokens of intent* ("cover here", "light
+here") and a separate dressing pass realises each token from the current biome's
+palette. Structurally it is an Abstract Factory whose products are selected at
+runtime. Two hand-rolled instances of it already existed in this codebase before
+the general version — `lit-fixture-pool.ts` (one intent, one palette, hardcoded)
+and the `shape → model` switch inside `poly-floor.ts:lightRoom` — and neither
+could be swapped, so neither bought a theme.
+
+`src/level/skin.ts` is the general version. `src/level/skins.ts` is the catalog.
+
+### 9.1 The part that makes it better than a lookup table
+
+The naive shape is `Record<Intent, ModelSpec>` per theme. It works, and it rots,
+because every placer still has to know what *fits*: is there a wall to hang this
+on, is there headroom, does a lit candle contradict the cobwebs this room already
+committed to (§5)? That knowledge migrates into the placers one special case at a
+time, and the theme table becomes a thing you must keep in sync with five call
+sites.
+
+So the split is by **who owns the fact**:
+
+| owner | owns | example |
+|---|---|---|
+| the **request** | the SITUATION | 0.5m of free floor, 3.2m of headroom, the room has committed to `desecrated` |
+| the **candidate** | its REQUIREMENTS | a cresset pike is 2.4m of iron; a wall torch asserts `tended` |
+| the **skin** | TASTE | 75% torch, 25% cresset — the whole of what a theme is |
+| the **resolver** | the MATCH, **and the refusal** | nothing in this palette belongs here → `null` |
+
+`resolveSkin` returning `null` is a real answer, not a failure. A 1.8m
+crawlspace genuinely cannot host a 2.4m pike, and the honest response is an empty
+spot rather than a pike jammed through the ceiling. Every caller must have
+somewhere to go when the answer is nothing.
+
+The payoff is that **a theme is a data file**. "Flooded catacombs" is a palette,
+not a change to any placement pass. And because the claim table from §5 filters
+candidates at the point of choosing, a theme cannot contradict itself: ask a
+desecrated room for a light and the tended candles are already gone from the
+pool.
+
+### 9.2 Dressing rolls must not touch the layout stream
+
+The one non-obvious constraint, found by measuring rather than by reasoning.
+
+The skin picks between a torch and a cresset — pure taste, no bearing on where
+anything goes. Drawn from the floor's own RNG, that pick *advances the shared
+stream*, and every later decision on the floor shifts with it. Measured across
+240 floors when the wall pool was first wired in: three sconces, one standing
+light and one floor glow moved, none of which were about fixtures.
+
+Small, invisible, and corrosive — it makes a palette edit read as a procgen
+regression, and it means you can never again tell the two apart. So
+`generatePolyFloor` derives a second stream (`dressRand`) from the same seed and
+hands *that* to the skin. Deterministic as before; independent of layout.
+`tests/skin.test.ts` pins it end-to-end: same seed, two entirely different
+palettes, every enemy and every non-light prop in exactly the same place.
+
+### 9.3 Where it stands, and what comes next
+
+Wired: the four light intents on the polygon generator
+(`light.wall` / `light.floor` / `light.pool` / `light.shaft`). One skin ships —
+the crypt — and it reproduces what the dungeon already looked like, because the
+first pass of an architecture should be the seam and not a new art direction.
+The second skin lives in the test, so "a theme is a data file" is a demonstrated
+fact rather than a claim in a comment.
+
+Not yet routed, in rough order of value:
+
+1. **`debris.small` / `debris.corner` / `mass.pillar`** — `clutter.ts` already
+   asks the claim table (§5) which models it may use, which is nine tenths of a
+   resolver. Routing it turns the last hardcoded palette into data.
+2. **A room's claims reaching the light request.** The field is there and
+   `poly-floor.ts` passes nothing, because it does not yet track per-room claims
+   the way `clutter.ts` does. Once it does, a desecrated sanctum stops being
+   offered a tended candle for free.
+3. **A second real skin**, chosen per act. This is the point of all of it, and it
+   is deliberately last — a theme is worth authoring once the seam is proven and
+   every intent it needs is routed, not before.
