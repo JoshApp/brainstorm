@@ -92,6 +92,15 @@ export interface SkinRequest {
    * tintable answer, and that is allowed.
    */
   tint?: number;
+  /**
+   * Model ids this spot may NOT use, because the caller has already spent them.
+   *
+   * A per-room budget ("at most one large mound in a room") is the caller's
+   * situation, not the candidate's requirement — the mound is no less suitable
+   * for having a twin elsewhere. Putting it here keeps the palette free of
+   * bookkeeping it has no way to know about.
+   */
+  exclude?: readonly string[];
 }
 
 /** One thing a skin can offer, and what it needs to be offered. */
@@ -138,6 +147,7 @@ function admits(c: SkinCandidate, req: SkinRequest): boolean {
   // are light, not evidence, and have no business being filtered by a room's
   // story. Fixed models go through the real taxonomy.
   const id = candidateId(c);
+  if (id && req.exclude?.includes(id)) return false;
   if (id && req.claims?.length && !claimsAdmitModel(req.claims, id)) return false;
   return true;
 }
@@ -163,6 +173,25 @@ export function resolveSkin(
   let chosen = pool[pool.length - 1];
   for (const c of pool) { roll -= c.weight ?? 1; if (roll <= 0) { chosen = c; break; } }
   return typeof chosen.model === 'function' ? chosen.model(req) : chosen.model;
+}
+
+/**
+ * Every candidate that fits, in palette order — for a caller that owns its own
+ * selection strategy.
+ *
+ * `resolveSkin` picks one at random by weight, which is right for a light: the
+ * room wants A fixture and does not care which. It is wrong for scatter. The
+ * debris pass deals its models ROUND-ROBIN from a shuffled pool so a room gets
+ * rubble AND ash AND shards rather than four of whatever the dice liked, and
+ * that variety-within-a-room is a real property worth keeping.
+ *
+ * So the resolver owns the MATCH and the caller may own the ORDER. Same filter
+ * either way, which is the part that must not be duplicated.
+ */
+export function skinCandidates(skin: Skin, req: SkinRequest): ModelSpec[] {
+  return (skin.palette[req.intent] ?? [])
+    .filter((c) => admits(c, req))
+    .map((c) => (typeof c.model === 'function' ? c.model(req) : c.model));
 }
 
 /** Everything a skin can answer at all. Used by the audit to report a palette's

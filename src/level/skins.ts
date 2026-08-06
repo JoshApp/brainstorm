@@ -2,6 +2,10 @@ import type { Skin } from './skin';
 import { WALL_TORCH } from '../content/torch';
 import { WALL_CRESSET, IRON_BRAZIER, CRESSET_PIKE, floorGlow } from '../content/light-props';
 import { godRay } from '../content/god-ray';
+import {
+  RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS, IRON_BARS,
+  CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL, LURKER,
+} from '../content/clutter';
 
 // ── THE SKIN CATALOG ─────────────────────────────────────────────────────────
 //
@@ -57,6 +61,27 @@ export const CRYPT_SKIN: Skin = {
     'light.shaft': [
       { model: (req) => godRay({ tint: req.tint, ceilingHeight: req.headroom ?? 3.2 }),
         needsHeadroom: 3.6 },
+    ],
+    // Scatter on the floor. Dealt ROUND-ROBIN by the debris pass rather than
+    // rolled (see skinCandidates), so these carry no weights — the order in this
+    // list is the only thing that survives, and it is shuffled per room anyway.
+    'debris.small': [
+      { model: RUBBLE_CHUNK },
+      { model: ASH_MOUND },
+      { model: STONE_SHARDS },
+      { model: IRON_BARS },
+    ],
+    // The pile that gathers where a floor meets a wall. Weighted: small is the
+    // common case and large is the punctuation.
+    //
+    // The LURKER's 0.4 against a ~10 sum is about 4% per corner slot. A session
+    // of 15-30 rooms sees one or two, and the goal is not a jump scare — it is
+    // the paranoia of "was that there before?".
+    'debris.corner': [
+      { model: CORNER_MOUND_SMALL, weight: 5 },
+      { model: CORNER_MOUND, weight: 4 },
+      { model: CORNER_MOUND_LARGE, weight: 1 },
+      { model: LURKER, weight: 0.4 },
     ],
   },
 };

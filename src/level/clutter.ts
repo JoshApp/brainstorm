@@ -1,10 +1,7 @@
 import type { LevelSpec, PropSpec, RoomSpec, TorchSpec, WalkableRect } from './types';
 import {
-  RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
-  FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
-  CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
-  WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
-  FALLEN_PILLAR_SEGMENT, IRON_BARS, LURKER,
+  FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE, CORNER_MOUND_LARGE,
+  WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN, FALLEN_PILLAR_SEGMENT,
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { OSSUARY_NICHE, OSSUARY_NICHE_SMALL } from '../content/ossuary';
@@ -18,6 +15,8 @@ import {
 } from './geometry-cull';
 import { roomType } from './room-types';
 import { claimsAdmitModel, resolveRoomClaims, type Claim } from './prop-taxonomy';
+import { resolveSkin, skinCandidates } from './skin';
+import { activeSkin } from './skins';
 import type { PlaceKind, PlacementAuthority } from './placement-authority';
 
 // =====================================================================
@@ -63,19 +62,12 @@ import type { PlaceKind, PlacementAuthority } from './placement-authority';
 // the surface pass. IRON_BARS joins the pool to add a material
 // contrast (dark iron vs stone) to break up the otherwise
 // stone-only family.
-const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS, IRON_BARS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
 
-const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number }> = [
-  { model: CORNER_MOUND_SMALL, weight: 5 },
-  { model: CORNER_MOUND,       weight: 4 },
-  { model: CORNER_MOUND_LARGE, weight: 1 },
-  // LURKER — weight 0.4 against a 10-sum pool ≈ 4% per corner slot. A small
-  // session of ~15-30 rooms will see one or two; players will notice it
-  // PRESENT before they notice what it is. The art-direction goal isn't a
-  // jump scare — it's the paranoia of "was that there before?"
-  { model: LURKER,             weight: 0.4 },
-];
+// FLOOR_DEBRIS and CORNER_MOUND_VARIANTS used to live here. They are palettes —
+// what the dungeon is MADE OF — and they moved to level/skins.ts so a theme can
+// replace them without touching this pass (docs/LEVEL-ARCHITECTURE.md §9). What
+// stays here is how much, and where.
 
 // Clearance kept between a clutter prop and the edge of a pit/void, on top of
 // the void's own footprint. Stops a column/brazier body from overhanging the
@@ -376,7 +368,12 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
     if (c.nearOpening) continue;
     if (rand() > 0.55) continue;
     if (ctx.tooClose(c.x, c.z, 0.7)) continue;
-    const variant = pickCornerVariant(rand, largeUsed);
+    // At most one LARGE per room — the caller's budget, so it rides on the
+    // request's `exclude` rather than becoming something the palette has to know.
+    const variant = resolveSkin(activeSkin(),
+      { intent: 'debris.corner', exclude: largeUsed ? [CORNER_MOUND_LARGE.id] : undefined },
+      rand);
+    if (!variant) continue;
     if (variant === CORNER_MOUND_LARGE) largeUsed = true;
     out.push({ kind: 'model', model: variant, x: c.x, y: 0, z: c.z, rotY: c.rotY });
     ctx.existing.push({ x: c.x, z: c.z });
@@ -550,11 +547,17 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   // Floor debris — edge-biased, varied. Per-room shuffle of the
   // pool so the same chunk model doesn't dominate a chamber.
   const floorCount = Math.max(1, Math.round(ctx.area / 14));
-  // Pool filtered by the room's CLAIMS before anything is sampled — ash in a
-  // flooded room, or a scatter that argues with the room's story, is refused by
-  // never being offered. A decorator that filters its own pool needs no cull
+  // WHAT the scatter is made of comes from the SKIN (docs/LEVEL-ARCHITECTURE.md
+  // §9), not from a list in this file — a theme is a palette, and this pass
+  // should only be deciding how much and where.
+  //
+  // `skinCandidates`, not `resolveSkin`: the pool is dealt ROUND-ROBIN so a room
+  // gets rubble AND ash AND shards rather than four of whatever the dice liked.
+  // The claim filter runs inside it, so ash in a flooded room is refused by
+  // never being offered, and a decorator that filters its own pool needs no cull
   // behind it (docs/LEVEL-OWNERSHIP.md §4).
-  const debrisOrder = shuffled(FLOOR_DEBRIS.filter((m) => ctx.admits(m.id)), rand);
+  const debrisOrder = shuffled(
+    skinCandidates(activeSkin(), { intent: 'debris.small', claims: ctx.claims }), rand);
   let debrisIdx = 0;
   for (let i = 0; i < floorCount; i++) {
     for (let a = 0; a < 6; a++) {
@@ -648,11 +651,17 @@ function corridorSurfacePass(ctx: RoomContext, out: PropSpec[], rand: () => numb
   // ~1 piece per 3m of length, capped. Corridors are normally
   // 1.8-5m long so this lands at 1-2 pieces typically.
   const floorCount = Math.max(0, Math.floor(length / 3));
-  // Pool filtered by the room's CLAIMS before anything is sampled — ash in a
-  // flooded room, or a scatter that argues with the room's story, is refused by
-  // never being offered. A decorator that filters its own pool needs no cull
+  // WHAT the scatter is made of comes from the SKIN (docs/LEVEL-ARCHITECTURE.md
+  // §9), not from a list in this file — a theme is a palette, and this pass
+  // should only be deciding how much and where.
+  //
+  // `skinCandidates`, not `resolveSkin`: the pool is dealt ROUND-ROBIN so a room
+  // gets rubble AND ash AND shards rather than four of whatever the dice liked.
+  // The claim filter runs inside it, so ash in a flooded room is refused by
+  // never being offered, and a decorator that filters its own pool needs no cull
   // behind it (docs/LEVEL-OWNERSHIP.md §4).
-  const debrisOrder = shuffled(FLOOR_DEBRIS.filter((m) => ctx.admits(m.id)), rand);
+  const debrisOrder = shuffled(
+    skinCandidates(activeSkin(), { intent: 'debris.small', claims: ctx.claims }), rand);
   let idx = 0;
   for (let i = 0; i < floorCount; i++) {
     for (let a = 0; a < 6; a++) {
@@ -1035,18 +1044,4 @@ function torchInOpening(
 
 // ── pick helpers ──────────────────────────────────────────────────
 
-function pickCornerVariant(
-  rand: () => number,
-  largeUsed: boolean,
-): typeof CORNER_MOUND {
-  const pool = largeUsed
-    ? CORNER_MOUND_VARIANTS.filter((v) => v.model !== CORNER_MOUND_LARGE)
-    : CORNER_MOUND_VARIANTS;
-  const total = pool.reduce((s, v) => s + v.weight, 0);
-  let r = rand() * total;
-  for (const v of pool) {
-    r -= v.weight;
-    if (r <= 0) return v.model;
-  }
-  return pool[pool.length - 1].model;
-}
+

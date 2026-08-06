@@ -642,9 +642,25 @@ fact rather than a claim in a comment.
 
 Not yet routed, in rough order of value:
 
-1. **`debris.small` / `debris.corner` / `mass.pillar`** — `clutter.ts` already
-   asks the claim table (§5) which models it may use, which is nine tenths of a
-   resolver. Routing it turns the last hardcoded palette into data.
+1. ~~**`debris.small` / `debris.corner`**~~ — **done.** `FLOOR_DEBRIS` and
+   `CORNER_MOUND_VARIANTS` moved out of `clutter.ts` into the skin; the pass now
+   decides only how much and where. Verified inert: the full prop tally over 210
+   vault-composed floors is byte-identical before and after.
+
+   Two things the routing needed, both of which sharpened the model:
+
+   - **`skinCandidates`** returns the whole fitting pool rather than one pick.
+     The debris pass deals ROUND-ROBIN so a room gets rubble *and* ash *and*
+     shards instead of four of whatever the dice liked — the resolver owns the
+     MATCH, the caller may own the ORDER. Same filter either way, which is the
+     part that must not be duplicated.
+   - **`SkinRequest.exclude`** carries "at most one large mound in this room".
+     That is the caller's budget, not the candidate's requirement — a mound is no
+     less suitable for having a twin elsewhere — so it belongs in the request
+     with the rest of the situation.
+
+   Still hardcoded, and the next one to move: `mass.pillar` (ruined columns,
+   fallen segments, buttresses) and `WALL_DAMAGE`.
 2. **A room's claims reaching the light request.** The field is there and
    `poly-floor.ts` passes nothing, because it does not yet track per-room claims
    the way `clutter.ts` does. Once it does, a desecrated sanctum stops being

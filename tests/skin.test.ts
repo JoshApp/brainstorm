@@ -19,7 +19,7 @@
 //   npm test
 
 import assert from 'node:assert/strict';
-import { resolveSkin, skinCoverage, type Skin } from '../src/level/skin';
+import { resolveSkin, skinCandidates, skinCoverage, type Skin } from '../src/level/skin';
 import { CRYPT_SKIN, SKINS, activeSkin, setActiveSkin } from '../src/level/skins';
 import type { ModelSpec } from '../src/ecs/model-types';
 import { generatePolyFloor } from '../src/level/poly-floor';
@@ -148,6 +148,38 @@ test('every catalog entry is keyed by its own id', () => {
   // A typo in the key makes a theme unreachable by name while still looking
   // present in the file.
   for (const [key, skin] of Object.entries(SKINS)) assert.equal(key, skin.id);
+});
+
+test('skinCandidates returns the whole fitting pool, in palette order', () => {
+  // The debris pass deals its pool ROUND-ROBIN so a room gets rubble AND ash AND
+  // shards rather than four of whatever the dice liked. That needs the pool, not
+  // a pick — and it must go through the SAME filter, or the two entry points
+  // drift and only one of them respects a room's claims.
+  const pool = skinCandidates(CRYPT_SKIN, { intent: 'debris.small' });
+  assert.deepEqual(pool.map((m) => m.id),
+    ['rubble-chunk', 'ash-mound', 'stone-shards', 'iron-bars']);
+});
+
+test('...and applies the same refusals a single pick would', () => {
+  // If this ever returns four models, the pool path has stopped filtering and
+  // every claim rule in the game is one code path away from being bypassed.
+  const filtered = skinCandidates(CRYPT_SKIN, { intent: 'debris.corner', claims: ['tended'] });
+  assert.ok(!filtered.some((m) => m.id.startsWith('corner-mound')),
+    'a tended room was offered a rubble mound through the pool path');
+});
+
+test('EXCLUDE IS THE CALLER\'S BUDGET, not the palette\'s business', () => {
+  // "At most one large mound in a room" is a fact about this room, not about the
+  // mound — it is no less suitable for having a twin elsewhere. Every roll must
+  // avoid it once the caller says so.
+  for (const roll of [0.0, 0.5, 0.95, 0.999]) {
+    const m = resolveSkin(CRYPT_SKIN,
+      { intent: 'debris.corner', exclude: ['corner-mound-large'] }, fixed(roll));
+    assert.notEqual(m?.id, 'corner-mound-large');
+  }
+  // And without the exclusion it IS reachable, or the test above proves nothing.
+  const pool = skinCandidates(CRYPT_SKIN, { intent: 'debris.corner' });
+  assert.ok(pool.some((m) => m.id === 'corner-mound-large'));
 });
 
 test('A THEME CHANGE IS NOT A LEVEL CHANGE', () => {
