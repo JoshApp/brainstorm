@@ -15,6 +15,11 @@ import { CONFIG } from '../config';
 
 export const WALL_TORCH: ModelSpec = {
   id: 'wall-torch',
+  // The arm runs from z=-0.02 to z=-0.38 in local space, so the flame has to
+  // stand this far off the masonry for the bracket to reach back INTO it rather
+  // than the bowl being buried in it. This is the number the comment on the arm
+  // part below has always described in prose.
+  mount: { to: 'wall', standoff: 0.20 },
   materials: {
     iron: {
       color: 0x14110d,

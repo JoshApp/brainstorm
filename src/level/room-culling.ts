@@ -352,11 +352,38 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   return culler;
 }
 
-/** Centre-of-overlap doorway between two edge-adjacent rects, or null. */
+/**
+ * The doorway between two rects, or null when they don't connect.
+ *
+ * TWO WAYS TO CONNECT, and for a long time this only knew the first:
+ *
+ *   ABUT   — a wall edge coincides and the rects overlap along the run axis.
+ *            That is how the vault composer's grid connects everything.
+ *   OVERLAP— one rect reaches INTO the other. A polygon room's real wall sits
+ *            back from its bounding box, so a corridor that meets the wall ends
+ *            inside the rect rather than on its edge.
+ *
+ * Knowing only the first, the culler saw a polygon room and its corridor as
+ * UNCONNECTED. So standing in a doorway looking down a corridor showed nothing:
+ * the corridor was not a portal neighbour, and it only appeared once you were
+ * physically inside it and `rectAt` put you there. That is the same abutment
+ * assumption `findOpenings` carried, found in a second place.
+ *
+ * Inert on vault floors by construction — measured across 240 of them, no rect
+ * ever runs through another's interior, so the overlap branch cannot fire there.
+ */
 function sharedOpening(a: RectNode, b: RectNode): { x: number; z: number } | null {
   // Vertical shared edge (a's E == b's W, or vice versa) → overlap in Z.
   const ax0 = a.cx - a.hw, ax1 = a.cx + a.hw, az0 = a.cz - a.hd, az1 = a.cz + a.hd;
   const bx0 = b.cx - b.hw, bx1 = b.cx + b.hw, bz0 = b.cz - b.hd, bz1 = b.cz + b.hd;
+
+  // OVERLAP: they share real area. The doorway is the centre of the shared
+  // region — which for a corridor poking into a room is the mouth itself.
+  const ox0 = Math.max(ax0, bx0), ox1 = Math.min(ax1, bx1);
+  const oz0 = Math.max(az0, bz0), oz1 = Math.min(az1, bz1);
+  if (ox1 - ox0 > EPS && oz1 - oz0 > EPS) {
+    return { x: (ox0 + ox1) / 2, z: (oz0 + oz1) / 2 };
+  }
 
   // East of A meets West of B (or symmetric): shared x line.
   if (Math.abs(ax1 - bx0) < EPS || Math.abs(bx1 - ax0) < EPS) {

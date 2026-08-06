@@ -2184,17 +2184,33 @@ export function buildLevel(
     });
   }
   for (const t of spec.torches) {
+    // An explicit rotY wins: it came from the mounting wall's own normal and is
+    // exact on any angle. `wall` can only say N/S/E/W.
+    const yaw = t.rotY ?? torchYawForWall(t.wall);
+    const fixture = wallFixtureModel(t.fixtureKind);
+    // STAND THE FIXTURE OFF THE WALL BY WHAT THE FIXTURE ASKS FOR.
+    //
+    // A placer marks the SURFACE — that is the honest thing for it to know, and
+    // it does not get to pick which model lands there (the fixture is rolled
+    // from a pool right here, at build time). But a wall fixture's origin is its
+    // FLAME, with the arm reaching back in local −Z into the masonry, so the
+    // origin has to sit out in the room by however far that model's arm is.
+    // Every fixture used a flat 0.02m inset instead and sat half inside the
+    // wall. The model declares its own standoff now; this applies it along the
+    // wall's inward normal, which is exactly what yaw already encodes (local +Z
+    // maps to inward).
+    const standoff = fixture.mount?.to === 'wall' ? fixture.mount.standoff : 0;
+    const tx = t.x + Math.sin(yaw) * standoff;
+    const tz = t.z + Math.cos(yaw) * standoff;
     const torch = createTorchlight(
       root,
       // TorchSpec.height is metres above the FLOOR — lift by the ground
       // under the fixture so wall torches ride their room's elevation.
-      new THREE.Vector3(t.x, groundYAt(t.x, t.z) + t.height, t.z),
-      // An explicit rotY wins: it came from the mounting wall's own normal and
-      // is exact on any angle. `wall` can only say N/S/E/W.
-      t.rotY ?? torchYawForWall(t.wall),
+      new THREE.Vector3(tx, groundYAt(tx, tz) + t.height, tz),
+      yaw,
       t.colorTint,
       t.intensityMul,
-      wallFixtureModel(t.fixtureKind),
+      fixture,
     );
     torches.push(torch);
     // Bind to its containing room (and any LOGICAL sub-rooms it sits in) for

@@ -23,6 +23,9 @@ import { CONFIG } from '../config';
 // Habitation class: someone stuck a candle here, once.
 export const WALL_STUB: ModelSpec = {
   id: 'wall-stub',
+  // A candle on a shallow sill — it hugs the wall far tighter than a torch on
+  // an arm does. Its own light comment already said "~7cm off the wall plane".
+  mount: { to: 'wall', standoff: 0.07 },
   moodTintable: true,
   materials: {
     wax: { color: 0xb0a184, roughness: 0.95, flatShading: 'auto' },
@@ -64,6 +67,8 @@ export const WALL_STUB: ModelSpec = {
 // silhouette.
 export const WALL_CRESSET: ModelSpec = {
   id: 'wall-cresset',
+  // Same convention as the torch: origin = flame, arm reaches back in −Z.
+  mount: { to: 'wall', standoff: 0.18 },
   moodTintable: true,
   materials: {
     iron: { color: 0x14110d, roughness: 0.55, metalness: 0.6, flatShading: true },

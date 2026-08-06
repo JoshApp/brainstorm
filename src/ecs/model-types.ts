@@ -361,6 +361,18 @@ export type ShadowRole = 'both' | 'cast' | 'receive' | 'none';
  */
 export type PropClass = 'clutter' | 'structural' | 'decor';
 
+/** How a model attaches to the surface a placer picked for it. */
+export interface MountSpec {
+  /** Which surface this model expects. */
+  to: 'wall' | 'floor' | 'ceiling';
+  /**
+   * Metres the model's ORIGIN stands off that surface, along the surface's
+   * inward normal. The placer marks the surface; this says how far out the
+   * model's own geometry needs to begin.
+   */
+  standoff: number;
+}
+
 export interface ModelSpec {
   id: string;
   parts: PartSpec[];
@@ -380,6 +392,20 @@ export interface ModelSpec {
   slots?: Record<string, SlotSpec>;
   /** Optional attached light (e.g. torch glow). */
   light?: LightSpec;
+  /**
+   * HOW THIS MODEL MOUNTS — declared by the model, not guessed by the placer.
+   *
+   * A wall fixture's origin is its FLAME, and its arm reaches back in local −Z
+   * into the masonry. So the origin has to sit some distance OUT from the wall
+   * face, and how far is a property of the fixture: a torch on a 0.36m arm
+   * needs ~0.20m, a candle stub on a shallow sill needs ~0.07m.
+   *
+   * Both numbers were written down — in prose, in each model's own comments —
+   * and the placer used a single flat 0.02m inset for everything, so every
+   * fixture sat half inside the wall. The prose was right and unreachable.
+   * A number the renderer needs belongs in the data the renderer reads.
+   */
+  mount?: MountSpec;
   /** Materials this model uses, keyed by `mat` field on parts. */
   materials: Record<string, MaterialDef>;
   /**
