@@ -21,6 +21,7 @@ import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
+import { planElevation } from './poly-elevation';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
 import { wallFixtureKindOf } from './lit-fixture-pool';
@@ -302,13 +303,18 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // A LINK IS A LIST OF RECTS, not one. A dogleg is three, and every downstream
   // reader — wall cutting, doorway finding, the light pass — has to see all of
   // them or it will cut a doorway into the middle of a bend.
-  const links: Array<{ from: string; to: string; rects: Box[] }> = [];
-  const addLink = (from: string, to: string, id: string, rects: Box[]): void => {
+  const links: Array<{ from: string; to: string; rects: Box[]; ids: string[]; spur?: boolean }> = [];
+  const addLink = (from: string, to: string, id: string, rects: Box[], spur = false): void => {
+    // The rect ids are kept alongside the rects because the ELEVATION pass has
+    // to stamp a ramp on a specific corridor RoomSpec, and re-deriving the
+    // `cor-3-1` naming at the far end of the file is exactly the kind of
+    // duplicated convention that drifts.
+    const ids = rects.map((_, k) => (rects.length > 1 ? `${id}-${k}` : id));
     rects.forEach((rect, k) => {
-      corridors.push({ id: rects.length > 1 ? `${id}-${k}` : id, rect, height: 3.0 });
+      corridors.push({ id: ids[k], rect, height: 3.0 });
       occupiedBoxes.push(rect);
     });
-    links.push({ from, to, rects });
+    links.push({ from, to, rects, ids, spur });
   };
   for (let i = 1; i < rooms.length; i++) {
     const c = connect(rooms[i - 1], rooms[i], rand,
@@ -335,7 +341,8 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       placeholder.set(pocket.id, g.corridor);
       addLink(parent.id, pocket.id, `cor-p${p}`,
               connect(parent, pocket, rand,
-                      occupiedBoxes.filter((o) => o !== g.corridor)) ?? [g.corridor]);
+                      occupiedBoxes.filter((o) => o !== g.corridor)) ?? [g.corridor],
+              true);   // a SPUR — the elevation pass clamps it to the spine's floor
       break;
     }
   }
@@ -582,6 +589,28 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     voids,
   });
 
+  // ── THE FLOOR GOES DOWN ────────────────────────────────────────────
+  //
+  // Rooms become plateaus, corridors become ramps. See poly-elevation.ts for
+  // the shape of it — the short version is that the descent is monotonic, so
+  // the way out is the lowest ground you've stood on and depth reads as
+  // progress without anybody being told.
+  //
+  // LAST, on a settled layout, and on its OWN rng stream. The layout must not
+  // move because the floor learned to fall — same reason the skin rolls on
+  // `dressRand`: adding a roll to `rand` shifted three sconces and a glow
+  // across 240 floors the first time it was tried.
+  const elevRand = mulberry((hash(depth, seed) ^ 0x0e1e7a7e) >>> 0);
+  const elevation = planElevation(
+    links,
+    new Map(rooms.map((r) => [r.id, r.rect])),
+    elevRand,
+  );
+  for (const c of corridors) {
+    const stamp = elevation.corridor.get(c.id);
+    if (stamp) Object.assign(c, stamp);
+  }
+
   const spec: LevelSpec = {
     id: `poly-${depth}`,
     seed,
@@ -593,6 +622,10 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       const m = mods.byRoom.get(r.id);
       return {
         id: r.id, rect: r.rect, height: r.height, poly: r.poly, roomType: r.type,
+        // The plateau this room sits on. Rooms are internally FLAT by design —
+        // a fight happens on one plane, so combat math, the splat map and the
+        // nav grid never see a slope.
+        elevation: elevation.room.get(r.id) ?? 0,
         // An AMBUSH slams shut on you as you cross; a CONTESTED room waits until
         // you reach for what it's guarding. Same enemies, opposite emotions —
         // which is why they are different seals and not a flag on one.
