@@ -114,6 +114,33 @@ test('A CORRIDOR GRAZING A CORNER GETS ONE DOORWAY, NOT TWO', () => {
   }
 });
 
+test('A FRAME IN AN AXIS-ALIGNED WALL IS SQUARE TO THE WORLD', () => {
+  // The rotation is derived from the edge normal, and a sign error there would
+  // put every archway across its own doorway — invisible to a reachability test
+  // and extremely visible on a phone. Most walls in this generator ARE axis
+  // aligned, so their frames must come out at a multiple of 90°; a chamfered
+  // wall is then free to be anything, which is the whole point of portal rotY.
+  let axisAligned = 0, offAxis = 0;
+  for (const spec of floors()) {
+    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
+    for (const r of spec.rooms) {
+      if (!r.poly) continue;
+      for (const p of planPortals(r.id, r.poly, corridors)) {
+        const nx = Math.abs(p.normal[0]), nz = Math.abs(p.normal[1]);
+        const isAxis = nx < 1e-6 || nz < 1e-6;
+        if (!isAxis) { offAxis++; continue; }
+        axisAligned++;
+        // rotY should land on a quarter turn.
+        const q = p.rotY / (Math.PI / 2);
+        assert.ok(Math.abs(q - Math.round(q)) < 1e-6,
+          `${r.id}: an axis-aligned wall got a frame at ${(p.rotY * 180 / Math.PI).toFixed(1)}°`);
+      }
+    }
+  }
+  assert.ok(axisAligned > 50, `only ${axisAligned} axis-aligned portals — not measuring much`);
+  assert.ok(offAxis > 0, 'no chamfered doorway in the sample — the rotation freedom is untested');
+});
+
 // NOT TESTED HERE, AND THE REASON IS WORTH KEEPING.
 //
 // The first version of this file asserted that a portal projects onto one of the

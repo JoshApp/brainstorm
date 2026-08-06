@@ -19,6 +19,7 @@ import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
 import { planInterior, type InteriorForm } from './room-interior';
 import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
+import { emitFramesForPortals } from './portal-frames';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
@@ -581,7 +582,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     voids,
   });
 
-  return {
+  const spec: LevelSpec = {
     id: `poly-${depth}`,
     seed,
     depth,
@@ -621,6 +622,17 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     stairs,
     voids,
   };
+
+  // FRAMES + THE EYE, on the finished spec.
+  //
+  // Every doorway gets an archway or a doorframe, mounted on the PORTAL — so a
+  // doorway in a chamfered wall gets a frame square to THAT wall rather than to
+  // the world. The archway eye (scene/archway-eye.ts) and the threshold draft
+  // both ride the frame model, which is why polygon floors had neither: they
+  // were never disabled, they simply had nothing to hang on.
+  emitFramesForPortals(spec);
+
+  return spec;
 }
 
 // ── shaping ──────────────────────────────────────────────────────────────────
