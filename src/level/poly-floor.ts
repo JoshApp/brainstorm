@@ -22,6 +22,7 @@ import { floorGlow, IRON_BRAZIER } from '../content/light-props';
 import { godRay } from '../content/god-ray';
 import { directFloor } from './floor-director';
 import type { ContentSpot } from './floor-fill';
+import { rollDropTable } from '../content/drop-tables';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -455,6 +456,37 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     props.push({ kind: directed.deal.kind, x: directed.deal.x, z: directed.deal.z } as PropSpec);
     roomById.get(directed.deal.roomId)?.occupancy.reserve(
       { kind: 'cylinder', x: directed.deal.x, z: directed.deal.z, r: 0.8, y0: 0, y1: 1.6 }, 'deal');
+  }
+
+  // THE OFFER SLOT IS GUARANTEED — floor-plan.ts says so in words, and until now
+  // nothing enforced it.
+  //
+  // The contract states the offer is "always present"; on a non-trove floor it
+  // is a bargain, which the DIRECTOR places — and the director is allowed to
+  // roll no find and no question. When it declines and the floor's own plan
+  // staged no trove, shop or gauntlet either, the floor keeps its promise on
+  // paper and breaks it in play. Measured at 5 floors in 240: they had a fire
+  // and breakables, so they were never EMPTY, but they carried nothing the
+  // contract had promised.
+  //
+  // Backstop, not a second producer: it only fires when the floor would
+  // otherwise have no staged offer at all, and it uses the same drop table the
+  // director's find uses, so it cannot become a quiet extra reward stream.
+  const OFFER_KINDS = new Set(['offering', 'chest', 'merchant', 'challenge-offering',
+                               'tithe-basin', 'altar', 'blood-altar']);
+  const hasOffer = props.some((p) => OFFER_KINDS.has((p as { kind: string }).kind));
+  if (!hasOffer) {
+    const spot = contentSpots.find(
+      (sp) => roomById.get(sp.roomId)?.occupancy.fits(
+        { kind: 'cylinder', x: sp.x, z: sp.z, r: 0.7, y0: 0, y1: 1.2 }, 0.3) ?? false);
+    if (spot) {
+      props.push({
+        kind: 'chest', x: spot.x, z: spot.z, tier: 'silver',
+        loot: rollDropTable('defining-find', depth, rand), facing: { kind: 'wall-away' },
+      } as PropSpec);
+      roomById.get(spot.roomId)?.occupancy.reserve(
+        { kind: 'cylinder', x: spot.x, z: spot.z, r: 0.7, y0: 0, y1: 1.2 }, 'find');
+    }
   }
 
   return {

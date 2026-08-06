@@ -266,16 +266,21 @@ test('DARKNESS IS THE BASELINE — nobody gets a floodlit room', () => {
 
 test('EVERY FLOOR PAYS WHAT IT PLANNED', () => {
   // floor-plan.ts's whole argument: a floor's content must not be a consequence
-  // of the shape a seed happened to grow. The old failure mode was silent — a
-  // seed that grew no dead-end spur simply went without a trove and nobody
-  // decided that. So assert the OFFER slot, which is the one thing the contract
-  // says is never optional.
+  // of the shape a seed happened to grow. The OFFER slot is the one thing the
+  // contract says is never optional.
+  //
+  // THIS TEST USED TO READ THE PLAN INSTEAD OF THE FLOOR. It asked whether a
+  // room of an offer-staging TYPE existed — which is a fact about the plan, and
+  // was true on every floor while 5 floors in 240 actually staged nothing,
+  // because on a non-trove floor the offer is a bargain the DIRECTOR places and
+  // the director is allowed to decline. Check the final-state rule against the
+  // final state (docs/DESIGN-METHOD.md). So: count the PROPS.
+  const OFFER = new Set(['offering', 'chest', 'merchant', 'challenge-offering',
+                         'tithe-basin', 'altar', 'blood-altar']);
   for (const spec of floors()) {
-    const offer = spec.rooms.some((r) => {
-      const c = roomType(r.roomType ?? '').centrepiece;
-      return c === 'offerings' || c === 'merchant' || c === 'bargain';
-    });
-    assert.ok(offer, `${spec.id}: the floor owes an offer and staged none`);
+    const staged = (spec.props ?? []).filter((p) => OFFER.has((p as { kind: string }).kind));
+    assert.ok(staged.length > 0,
+      `${spec.id}: the contract promises an offer and the floor staged none`);
   }
 });
 
