@@ -6,6 +6,7 @@ import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
 import { carvePass, voidCellsCovered } from './carve-pass';
+import { evictFromVoids } from './void-evict';
 import { OccupancyGrid, propLayer, enumerateOpenCells } from './occupancy-grid';
 import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
@@ -2151,6 +2152,23 @@ export function composeFloor(
   nudgePropsOutOfPassages(result);
   clearChestsBlockingCorridors(result);
   ensureStairsReachable(result);
+
+  // NOTHING STANDS OVER A HOLE — checked against the FINAL STATE.
+  //
+  // Three producers already refuse to PLACE into a void and all three are right
+  // about their own half; 17 props across 320 floors were still hanging in mid
+  // air, because the ones that produced them made no runtime placement decision
+  // at all — a vault's ASCII authored a trap on a cell its own authored void
+  // rect swallowed. A proposal-time rule cannot see that, and adding a fourth
+  // proposal-time rule would just be one producer away from wrong again.
+  //
+  // So it runs here, last, on the assembled spec (docs/DESIGN-METHOD.md: check
+  // final-state rules against the final state). See level/void-evict.ts for why
+  // it nudges before it drops.
+  evictFromVoids(result.props ?? [], {
+    floors: [...result.rooms, ...result.corridors].map((r) => r.rect),
+    voids: result.voids ?? [],
+  });
 
   return result;
 }
