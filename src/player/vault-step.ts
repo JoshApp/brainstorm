@@ -3,7 +3,8 @@ import { gameNow } from '../engine/game-clock';
 import { isDodging } from '../combat/dash';
 import { isInCombat } from '../combat/combat-state';
 import { playWhoosh } from '../audio/sfx';
-import { momentumVaultBonus } from './momentum';
+import { momentumVaultBonus, momentum } from './momentum';
+import { setFovOffset } from '../effects/camera-fov';
 
 // THE VAULT STEP — walking over the knee-high stuff instead of stopping dead.
 //
@@ -62,6 +63,23 @@ let riseM = CONFIG.VAULT.RISE_M;
 
 /** Is a vault step playing right now? Movement input is carried by it. */
 export function isVaulting(): boolean { return gameNow() < activeUntil; }
+
+/** When the vault's FOV punch should be released. */
+let fovClearAt = 0;
+
+/**
+ * Per-frame: drop the vault's FOV punch once the step has landed.
+ *
+ * Separate from `isVaulting` because a caller that forgets to ask would leave
+ * the view permanently widened — an offset with no owner clearing it is the
+ * exact failure effects/camera-fov.ts exists to make impossible to hide.
+ */
+export function tickVaultPresentation(): void {
+  if (fovClearAt !== 0 && gameNow() >= fovClearAt) {
+    fovClearAt = 0;
+    setFovOffset('vault', 0);
+  }
+}
 
 /**
  * The eye's vertical offset through the step — a single arc up and back down.
@@ -154,7 +172,24 @@ export function tryVaultStep(
   riseM = CONFIG.VAULT.RISE_M + bonus.riseM;
   startedAt = gameNow();
   activeUntil = startedAt + CONFIG.VAULT.DURATION_S * 1000;
+
+  // ── MAKE IT LAND ─────────────────────────────────────────────────────────
+  //
+  // The vault has always been legible in hindsight and invisible in the moment:
+  // a whoosh and a 42cm eye-rise, at a walk, with a lamp swinging — which is why
+  // Josh found the edge-vault by ACCIDENT rather than by being shown it. A
+  // traversal tech nobody notices themselves doing cannot be practised.
+  //
+  // So the fire gets a beat proportional to what you spent on it. The FOV punch
+  // rides the same named-offset owner momentum uses (effects/camera-fov.ts) and
+  // is cleared on landing, so it composes with the slow-mo zoom instead of
+  // fighting it. Haptic matches the dodge's own weight class — this is a stride,
+  // not a hit.
+  const boost = momentum();
+  setFovOffset('vault', CONFIG.VAULT.FOV_PUNCH_DEG * (0.45 + 0.55 * boost));
+  fovClearAt = activeUntil;
   playWhoosh();
+  try { navigator.vibrate?.(boost > 0.5 ? 10 : 6); } catch { /* unsupported */ }
   return true;
 }
 

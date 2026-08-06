@@ -5,7 +5,7 @@ import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffs
 import { isRunHeld } from './run-input';
 import { tickMomentum, momentumSpeedMul, momentumFovOffset } from '../player/momentum';
 import { setFovOffset, setBaseFov } from '../effects/camera-fov';
-import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset } from '../player/vault-step';
+import { tryVaultStep, isVaulting, vaultPosition, vaultHeightOffset, tickVaultPresentation } from '../player/vault-step';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
@@ -217,6 +217,7 @@ export function updateCamera(
   // Unconditional: a frame with no input still ticks, with zero travel, so the
   // number falls. Holding run only makes it FILL faster (see momentum.ts).
   tickMomentum(dt, movedThisFrame, isRunHeld());
+  tickVaultPresentation();
   setFovOffset('momentum', momentumFovOffset());
 
   // --- Depenetration ---

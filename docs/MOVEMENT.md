@@ -232,6 +232,23 @@ mechanic. `CONFIG.MOMENTUM.ENABLED = false` is the A/B switch, and the test
 suite asserts that switch actually works, because the first phone pass is
 exactly when you want to turn it off and compare.
 
-Not built, and deliberately: edge-vault **legibility** (option D). It is the
-other half and it wants a phone pass on this half first — cues for a mechanic
-that turns out to feel wrong are wasted twice.
+### The other half — legibility (option D), first pass
+
+Half of it went in with the same change, because it costs nothing extra and it
+is the reason the mechanic was invisible in the first place.
+
+The vault has always been legible in *hindsight* and invisible in the *moment*:
+a whoosh and a 42cm eye-rise, at a walk, with a lamp swinging. A traversal tech
+nobody notices themselves doing cannot be practised — which is exactly why Josh
+found the edge-vault by accident rather than by being shown it.
+
+So the fire now gets a beat proportional to what you spent: a short FOV punch
+(`CONFIG.VAULT.FOV_PUNCH_DEG`, scaled by momentum) and a haptic in the dodge's
+weight class. It rides the same named-offset owner momentum uses, so it composes
+with the slow-mo zoom instead of fighting it.
+
+Still not built: the **approach** cue — a signal that your current angle *would*
+clear the thing in front of you. That one genuinely wants a thumb first. It is
+also the one most likely to be unnecessary: property **5** says you find a
+flutter jump by doing, and a game that points at it may be answering a question
+nobody was asking.

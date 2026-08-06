@@ -902,6 +902,15 @@ export const CONFIG = {
    */
   VAULT: {
     ENABLED: true,
+    /**
+     * Degrees the view punches open as a vault fires, scaled by momentum.
+     *
+     * The vault was always legible in hindsight and invisible in the moment — a
+     * whoosh and a 42cm eye-rise, at a walk, with a lamp swinging. A traversal
+     * tech nobody notices themselves doing cannot be practised. Small: this is
+     * a stride, not a stunt.
+     */
+    FOV_PUNCH_DEG: 4,
     /** How long the step takes. Short: it's a stride, not a stunt, and every
      *  frame of it is a frame the player isn't steering. */
     DURATION_S: 0.34,
