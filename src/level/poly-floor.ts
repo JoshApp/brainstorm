@@ -20,6 +20,8 @@ import { planInterior, type InteriorForm } from './room-interior';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { floorGlow, IRON_BRAZIER } from '../content/light-props';
 import { godRay } from '../content/god-ray';
+import { directFloor } from './floor-director';
+import type { ContentSpot } from './floor-fill';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -394,6 +396,65 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
     if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand,
                 props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent)) guardedRooms.add(r.id);
+  }
+
+  // ── 6. THE DIRECTOR — the floor's reward and its question ──────────
+  //
+  // The contract (step 0) guarantees an OFFER every floor, but on any floor that
+  // is not the act's trove floor that offer is a `feature` room whose
+  // centrepiece is 'bargain' — and planCentrepiece returns EMPTY for a bargain
+  // on purpose, because in the vault path the FILL/DIRECTOR stage places it.
+  // That stage had not moved over, so measured across 240 generated floors all
+  // 180 feature rooms were empty and 15% of floors held nothing to take or use
+  // at all. A dungeon you descend with nothing to want in it is the one thing
+  // worse than a rectangular one.
+  //
+  // `directFloor` is the real thing rather than a reimplementation of it: it
+  // wants a role lookup, a list of dumb content markers and what is already
+  // placed, and it owns rules worth keeping — including that a fire and a deal
+  // never share a room, which docs/DESIGN-METHOD.md records being violated on 16
+  // floors in 240 the last time a second producer forgot it.
+  //
+  // `suppressFire` because the plan already staged this floor's fire as a
+  // sanctum centrepiece, and two fires undo the scarcity that makes reaching one
+  // matter.
+  const contentSpots: ContentSpot[] = [];
+  for (const r of rooms) {
+    const def = roomType(r.type);
+    if (def.clean) continue;                       // a stage takes nothing but its own piece
+    if (!def.event && !def.minorLoot) continue;
+    const c = roomCenter(r.poly);
+    // The focal marker is the room's open middle. The rest are off-centre, which
+    // is where a SECONDARY read like a reward chest belongs — the centre is the
+    // event's. Every marker goes through the occupancy, so the director can only
+    // ever claim floor nothing else took.
+    const spread = spreadPick(
+      candidateSpots(r.poly, { radius: 0.8, band: [1.2, Infinity], pitch: 0.9 }),
+      3, mouthOf(r, links));
+    for (const cand of [{ x: c.x, z: c.z, focal: true },
+                        ...spread.map((sp) => ({ x: sp.x, z: sp.z, focal: false }))]) {
+      if (!r.occupancy.fits({ kind: 'cylinder', x: cand.x, z: cand.z, r: 0.7, y0: 0, y1: 1.6 }, 0.3)) continue;
+      contentSpots.push({ x: cand.x, z: cand.z, roomId: r.id, focal: cand.focal });
+    }
+  }
+  const directed = directFloor({
+    depth, rand, roles, suppressFire: true,
+    fireAnchors: [], fireFallbackCells: [],
+    contentSpots, bakedProps: props,
+  });
+  const roomById = new Map(rooms.map((r) => [r.id, r]));
+  if (directed.find) {
+    props.push({
+      kind: 'chest', x: directed.find.x, z: directed.find.z,
+      tier: 'silver', loot: directed.find.loot, facing: { kind: 'wall-away' },
+    } as PropSpec);
+    roomById.get(directed.find.roomId)?.occupancy.reserve(
+      { kind: 'cylinder', x: directed.find.x, z: directed.find.z, r: 0.7, y0: 0, y1: 1.2 }, 'find');
+  }
+  if (directed.deal) {
+    props.push({ kind: directed.deal.kind, x: directed.deal.x, z: directed.deal.z } as PropSpec);
+    roomById.get(directed.deal.roomId)?.occupancy.reserve(
+      { kind: 'cylinder', x: directed.deal.x, z: directed.deal.z, r: 0.8, y0: 0, y1: 1.6 }, 'deal');
   }
 
   return {
