@@ -84,7 +84,18 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
       }
     }
   }
-  return new WalkableRegion(allRects.map((r) => r.rect), [], segs);
+  // VOIDS ARE COLLISION. builder.ts turns every spec.voids rect into a
+  // full-height AABB obstacle; a flood that omitted them would report a room as
+  // reachable when a rift had cut it in half, which is precisely the failure the
+  // rift planner exists to prevent and precisely the one a test with no
+  // obstacles cannot see.
+  const obstacles = (spec.voids ?? []).map((v) => ({
+    kind: 'aabb' as const,
+    minX: v.x - v.w / 2, maxX: v.x + v.w / 2,
+    minZ: v.z - v.d / 2, maxZ: v.z + v.d / 2,
+    yTop: Infinity,
+  }));
+  return new WalkableRegion(allRects.map((r) => r.rect), obstacles, segs);
 }
 
 /** Cells the player can stand on, flooded from the spawn. */

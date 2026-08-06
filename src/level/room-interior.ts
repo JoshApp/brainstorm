@@ -1,5 +1,9 @@
 import { pointInPoly, polyArea, polyBounds, type Poly } from './room-shape';
 import { clearance } from './floor-region';
+import {
+  circulates, walkableCells, areaLoss, PLAYER_R, CELL,
+  type BlockCircle,
+} from './room-circulation';
 
 // ── CUTTING A ROOM UP, WITHOUT CUTTING IT OFF ────────────────────────────────
 //
@@ -50,10 +54,6 @@ export interface InteriorOpts {
   rand: () => number;
 }
 
-/** Player collision radius (controls/camera.ts PLAYER_RADIUS). */
-const PLAYER_R = 0.3;
-/** Flood resolution. Fine enough to find a gap the player can actually use. */
-const CELL = 0.25;
 /** A pillar's blocking radius as a fraction of its `size`. */
 const SHAFT = 0.42;
 /** Below this a room has no business being subdivided. */
@@ -75,13 +75,15 @@ export function planInterior(
   poly: Poly, opts: InteriorOpts, forms: readonly InteriorForm[],
 ): InteriorPlan | null {
   if (polyArea(poly) < MIN_AREA) return null;
-  const baseline = walkableCells(poly, []);
+  const baseline = walkableCells(poly, {});
   if (baseline.size === 0) return null;
 
   for (const form of forms) {
     const pillars = propose(form, poly, opts);
     if (pillars.length === 0) continue;
-    if (!circulates(poly, pillars, opts, baseline.size)) continue;
+    if (!circulates(poly, { circles: asCircles(pillars) }, {
+      doorways: opts.doorways, mustReach: opts.mustReach, maxAreaLoss: MAX_AREA_LOSS,
+    }, baseline.size)) continue;
     return { form, pillars };
   }
   return null;
@@ -157,86 +159,18 @@ function propose(form: InteriorForm, poly: Poly, opts: InteriorOpts): Pier[] {
 }
 
 // ── verifying ────────────────────────────────────────────────────────────────
+//
+// LIFTED OUT to level/room-circulation.ts. room-voids.ts cuts holes in the same
+// floors this stands stone in, and both seal a room the same way — two copies of
+// that check is one copy too many. What is left here is the translation from
+// piers to the shared blocker vocabulary.
 
-const key = (x: number, z: number) => `${Math.round(x / CELL)},${Math.round(z / CELL)}`;
-
-/** Cells inside the room a player could stand on, given this stone. */
-function walkableCells(poly: Poly, pillars: readonly Pier[]): Set<string> {
-  const b = polyBounds(poly);
-  const out = new Set<string>();
-  for (let x = b.minX; x <= b.maxX; x += CELL) {
-    for (let z = b.minZ; z <= b.maxZ; z += CELL) {
-      if (standable(poly, pillars, x, z)) out.add(key(x, z));
-    }
-  }
-  return out;
-}
-
-function standable(poly: Poly, pillars: readonly Pier[], x: number, z: number): boolean {
-  if (!pointInPoly(poly, x, z)) return false;
-  if (clearance(poly, x, z) < PLAYER_R) return false;
-  for (const p of pillars) {
-    if (Math.hypot(p.x - x, p.z - z) < p.size * SHAFT + PLAYER_R) return false;
-  }
-  return true;
-}
-
-/**
- * Does the room still work with this stone in it?
- *
- * One flood from the first doorway. Everything that must be reachable — the
- * other doorways AND every `mustReach` point — has to land in that one
- * component, which is the whole question stated once instead of as a pile of
- * pairwise checks.
- */
-function circulates(
-  poly: Poly, pillars: readonly Pier[], opts: InteriorOpts, baselineArea: number,
-): boolean {
-  const cells = walkableCells(poly, pillars);
-  if (cells.size < baselineArea * (1 - MAX_AREA_LOSS)) return false;
-
-  const start = nearestCell(cells, opts.doorways[0] ?? { x: 0, z: 0 });
-  if (!start) return false;
-
-  const seen = new Set([start]);
-  const q = [start];
-  while (q.length) {
-    const [cx, cz] = q.pop()!.split(',').map(Number);
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const k = `${cx + dx},${cz + dz}`;
-      if (seen.has(k) || !cells.has(k)) continue;
-      seen.add(k); q.push(k);
-    }
-  }
-
-  // A doorway or a staged prop sits at a point, not on a cell centre, so ask
-  // whether ANY reachable cell is within arm's length of it.
-  const near = (p: { x: number; z: number }): boolean => {
-    const cx = Math.round(p.x / CELL), cz = Math.round(p.z / CELL);
-    const span = Math.ceil(1.2 / CELL);
-    for (let i = -span; i <= span; i++) {
-      for (let j = -span; j <= span; j++) if (seen.has(`${cx + i},${cz + j}`)) return true;
-    }
-    return false;
-  };
-  for (const dw of opts.doorways) if (!near(dw)) return false;
-  for (const m of opts.mustReach ?? []) if (!near(m)) return false;
-  return true;
-}
-
-function nearestCell(cells: ReadonlySet<string>, to: { x: number; z: number }): string | null {
-  let best: string | null = null, bestD = Infinity;
-  for (const c of cells) {
-    const [cx, cz] = c.split(',').map(Number);
-    const dd = (cx * CELL - to.x) ** 2 + (cz * CELL - to.z) ** 2;
-    if (dd < bestD) { bestD = dd; best = c; }
-  }
-  return best;
+/** Piers as the shared verify sees them: a blocking circle per shaft. */
+function asCircles(pillars: readonly Pier[]): BlockCircle[] {
+  return pillars.map((p) => ({ x: p.x, z: p.z, r: p.size * SHAFT }));
 }
 
 /** Exported for the audit + tests: how much floor this form costs. */
 export function interiorAreaLoss(poly: Poly, pillars: readonly Pier[]): number {
-  const before = walkableCells(poly, []).size;
-  if (before === 0) return 1;
-  return 1 - walkableCells(poly, pillars).size / before;
+  return areaLoss(poly, { circles: asCircles(pillars) });
 }

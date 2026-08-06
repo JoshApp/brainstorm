@@ -1,4 +1,4 @@
-import type { LevelSpec, RoomSpec, PropSpec, TorchSpec, EnemySpawnSpec } from './types';
+import type { LevelSpec, RoomSpec, PropSpec, TorchSpec, EnemySpawnSpec, WalkableRect } from './types';
 import {
   ARCHETYPES, ceilingFor, generateRoomShape, polyArea, polyBounds,
   type Archetype, type Poly,
@@ -17,6 +17,8 @@ import { roomType, type RoomTypeId, type RoomModifier } from './room-types';
 import { assignModifiers, type ModifierPlan } from './room-modifiers';
 import { ROLE_CAPS, type FloorRoles, type RoomNode } from './floor-roles';
 import { planInterior, type InteriorForm } from './room-interior';
+import { planVoids } from './room-voids';
+import { evictFromVoids } from './void-evict';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
@@ -168,6 +170,19 @@ const HAZARD_SPREAD = 3.2;
 /** How far a corridor pushes past a room's wall, so the opening rect straddles
  *  the wall it is meant to cut instead of stopping at it. */
 const OVERLAP = 0.9;
+/**
+ * Per ELIGIBLE room — a plain, non-bookend room with no centrepiece.
+ *
+ * Looks high, and it is the roll that ISN'T the rate limiter. Eligible rooms —
+ * plain, non-bookend, no centrepiece, and big enough that a rift is a feature of
+ * the room rather than the room — come out at about 0.37 per floor. At 0.18 this
+ * put a rift on 7% of floors, which is a feature most runs never meet.
+ *
+ * Tuned against the OUTPUT instead: 23% of floors, one rift each, two or three
+ * in a full descent. Still the strongest thing the floor can say, and still
+ * never two in one room — a floor with holes everywhere is a platforming level.
+ */
+const VOID_CHANCE = 0.70;
 /**
  * Corridor widths, and they are a FEEL knob, not a number.
  *
@@ -405,6 +420,38 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       }]
     : [];
 
+  // ── 5b. RIFTS — the one thing you cannot walk through ───────────────
+  //
+  // The polygon path had no voids at all; the vault path has had them since the
+  // carve pass. This closes that, but it does NOT port the carve pass's rule of
+  // sprinkling by density — that one had to be fenced off staged rooms after it
+  // put chasms through the middle of troves and shops. A hole in the floor is
+  // the strongest geometry statement the game can make, so it goes only where
+  // the room has nothing else to say (see level/room-voids.ts).
+  //
+  // Before FURNISH, so the interior stone, the staging and the decor all see it
+  // and place around it. planVoids floods the room itself, so a rift can never
+  // strand a doorway or the stair.
+  const voids: WalkableRect[] = [];
+  for (const r of rooms) {
+    const def = roomType(r.type);
+    if (def.centrepiece !== 'none' || def.clean) continue;         // the floor is a stage
+    if (r === rooms[0] || r === last) continue;                     // never the bookends
+    if (rand() >= VOID_CHANCE) continue;
+    const rift = planVoids(r.poly, {
+      doorways: doorwaysOf(r, links),
+      mustReach: doorwaysOf(r, links),
+      rand,
+    });
+    if (!rift) continue;
+    for (const v of rift) {
+      voids.push({ x: v.x, z: v.z, w: v.w, d: v.d });
+      r.occupancy.reserve(
+        { kind: 'box', x: v.x, z: v.z, halfW: v.w / 2, halfD: v.d / 2, rotY: 0, y0: -4, y1: 0.4 },
+        'void');
+    }
+  }
+
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
     const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
@@ -523,6 +570,17 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   props.push(...decor.props);
   clusterSomeVases(props, rand);
 
+  // NOTHING STANDS OVER A HOLE — the same final-state check the vault path runs
+  // (level/void-evict.ts). The rift pass fires BEFORE furnishing and reserves
+  // its rect, so in principle nothing can land in one; this is here because
+  // "in principle" is what the vault path also had, and 17 props were standing
+  // in mid-air. A rule about the finished floor gets checked on the finished
+  // floor.
+  evictFromVoids(props, {
+    floors: [...rooms.map((r) => r.rect), ...corridors.map((c) => c.rect)],
+    voids,
+  });
+
   return {
     id: `poly-${depth}`,
     seed,
@@ -561,6 +619,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     spawns,
     doors: [],
     stairs,
+    voids,
   };
 }
 
