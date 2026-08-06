@@ -4,6 +4,7 @@ import { candidateSpots, clearance } from './floor-region';
 import { nearestSurface, type WallSurface } from './wall-surfaces';
 import type { RoomOccupancy } from './room-occupancy';
 import { roomType, type RoomTypeId } from './room-types';
+import { propFacts, claimsConflict, type Claim } from './prop-taxonomy';
 
 // ── THE SMALL FOUND THINGS ───────────────────────────────────────────────────
 //
@@ -72,6 +73,34 @@ export interface DecorRoom {
    * fence asks that instead of counting doors.
    */
   onMainline: boolean;
+  /**
+   * What this room ALREADY says about itself, from everything placed in it
+   * before dressing ran.
+   *
+   * The claim table (prop-taxonomy.ts) exists so a lit candle and a cobweb
+   * cannot share a room, and clutter.ts enforces it on the vault path. This
+   * pass had no idea claims existed, so it enforced nothing — and the moment
+   * the light pass started standing cressets in big rooms, 3 rooms in 856 grew
+   * a web around a burning pike. Small, and it is the exact failure the
+   * vocabulary was built to prevent, which is the whole reason it counts.
+   *
+   * The caller computes this from the props already on the floor, through
+   * `propFacts` — not a second copy of the table.
+   */
+  claims: readonly Claim[];
+}
+
+/**
+ * May this room take a prop that asserts these claims?
+ *
+ * Refuses on contradiction rather than removing what is already there: the
+ * dressing is the LAST pass and the least important thing in the room, so it
+ * yields to the fire somebody lit and the body somebody left. (See the same
+ * ordering rule in prop-taxonomy.ts: "never a reason to delete the merchant".)
+ */
+function mayAssert(r: DecorRoom, prop: PropSpec): boolean {
+  const claims = propFacts(prop)?.claims ?? [];
+  return !claims.some((c) => r.claims.some((have) => claimsConflict(c, have)));
 }
 
 /**
@@ -202,11 +231,16 @@ export function decorPolyFloor(
     // swing, and can never stand between the player and the stairs.
     if (r.mouth && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
       const wall = nearestSurface(r.walls, r.mouth.x, r.mouth.z);
-      props.push({
+      const web = {
         kind: 'cobweb', x: r.mouth.x, z: r.mouth.z,
         rotY: wall ? wall.facingY : 0, widthM: 2.0,
-      } as PropSpec);
-      note('cobweb');
+      } as PropSpec;
+      // NOBODY HAS BEEN HERE FOR YEARS is a claim, and a room with a burning
+      // cresset standing in it has already made the opposite one. The roll is
+      // spent either way, so a refused web does not reshuffle the rest of the
+      // floor's dressing.
+      if (mayAssert(r, web)) { props.push(web); note('cobweb'); }
+      else note('cobweb-refused');
     }
   }
 

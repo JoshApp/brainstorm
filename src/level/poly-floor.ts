@@ -24,7 +24,8 @@ import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation } from './poly-elevation';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
-import { wallFixtureKindOf } from './lit-fixture-pool';
+import { wallFixtureKindOf, wallFixtureModel } from './lit-fixture-pool';
+import { propFacts, type Claim } from './prop-taxonomy';
 import { directFloor } from './floor-director';
 import type { ContentSpot } from './floor-fill';
 import { rollDropTable } from '../content/drop-tables';
@@ -567,12 +568,34 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // gates — a web, and whatever else wants to cost a swing later — belongs off
   // this path, never on it.
   const mainline = mainlineRooms(rooms[0]?.id, last?.id, links);
+  // WHAT EACH ROOM ALREADY SAYS ABOUT ITSELF, read off the floor as it stands.
+  //
+  // Through `propFacts`, never a second copy of the claim table — the first
+  // audit of this rule carried its own and reported the same number before and
+  // after the table changed (docs/DESIGN-METHOD.md). Wall brackets go in as
+  // their models too, because a torch is a prop the moment you ask what it
+  // asserts, even though the spec keeps it in a different list.
+  const claimsOf = (r: Placed): Claim[] => {
+    const out = new Set<Claim>();
+    for (const p of props) {
+      const q = p as unknown as { x: number; z: number };
+      if (!pointInPoly(r.poly, q.x, q.z)) continue;
+      for (const c of propFacts(p)?.claims ?? []) out.add(c);
+    }
+    for (const t of torches) {
+      if (!pointInPoly(r.poly, t.x, t.z)) continue;
+      const asProp = { kind: 'model', model: wallFixtureModel(t.fixtureKind), x: t.x, y: 0, z: t.z } as PropSpec;
+      for (const c of propFacts(asProp)?.claims ?? []) out.add(c);
+    }
+    return [...out];
+  };
   const decor = decorPolyFloor(
     rooms.map((r) => ({
       id: r.id, type: r.type, poly: r.poly, walls: r.walls, occupancy: r.occupancy,
       mouth: mouthOf(r, links),
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
       onMainline: mainline.has(r.id),
+      claims: claimsOf(r),
     })),
     depth, rand);
   props.push(...decor.props);

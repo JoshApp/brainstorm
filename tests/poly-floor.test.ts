@@ -41,8 +41,18 @@ function test(name: string, fn: () => void) {
   catch (err) { failed++; console.error(`✗ ${name}\n  ${(err as Error).message}`); }
 }
 
-const SEEDS = [7, 4242, 90210, 31337];
-const DEPTHS = [2, 3, 5, 8, 11];
+// WIDER THAN IT WAS, AND THE REASON IS ON THE RECORD.
+//
+// This was 4 seeds × 5 depths = 20 floors, and 20 floors was enough to FIND the
+// first 46 claim contradictions but not enough to prove the zero it then
+// claimed: re-run over 12 × 12, the same assertion failed again on seeds it had
+// never seen. A sample that can only find a bug once is a sample that retires
+// itself the moment the bug is fixed.
+//
+// 12 seeds × 6 depths spans every act (safe rooms at 3/7/12 are vault-composed,
+// so the depths here are the procgen ones) and still runs in a few seconds.
+const SEEDS = [7, 4242, 90210, 31337, 11, 222, 3333, 44444, 555, 66, 777, 8888];
+const DEPTHS = [1, 2, 5, 6, 8, 11];
 
 function floors(): LevelSpec[] {
   const out: LevelSpec[] = [];
