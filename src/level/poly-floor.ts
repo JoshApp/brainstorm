@@ -839,8 +839,14 @@ function furnish(
   let guarded = false;
   if (mod === 'contested') {
     for (const p of staged.props) {
-      const k = (p as { kind?: string }).kind;
-      if (k === 'offering' || k === 'chest') { (p as { guarded?: boolean }).guarded = true; guarded = true; }
+      const q = p as { kind?: string; model?: { id?: string }; guarded?: boolean };
+      // Offerings and chests were always guardable. The BONFIRE is the third,
+      // and it is the one room-types.ts always claimed could be contested — "a
+      // rest you fight for" — while the flag it needed did not exist on a model
+      // prop. Now it does, so a contested sanctum finally springs.
+      const guardable = q.kind === 'offering' || q.kind === 'chest'
+        || (q.kind === 'model' && q.model?.id === 'bonfire');
+      if (guardable) { q.guarded = true; guarded = true; }
     }
   }
   props.push(...staged.props);

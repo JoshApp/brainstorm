@@ -50,6 +50,20 @@ interface FateFireOpts {
   haven?: boolean;
   /** Dim the prop's pooled light toward embers when spent. */
   dimLight?: (factor: number) => void;
+  /**
+   * CONTESTED — resting here seals the room and the waves come.
+   *
+   * room-types.ts has always said a sanctum ACCEPTS the `contested` modifier
+   * ("a rest you fight for"), and room-modifiers.ts has always been willing to
+   * assign it: 'fire' is in its GUARDABLE set. But the trigger the seal uses is
+   * the `guarded` flag, and that flag only exists on offerings and chests. A
+   * fire is neither, so the portcullis had nothing to spring it and the
+   * modifier was silently a no-op — measured at 12 of 40 contested rooms.
+   *
+   * This is the missing half. Fired on the FIRST rest, before the gift, so the
+   * room closes as you reach for the mercy rather than after you have banked it.
+   */
+  onGuardSprung?: () => void;
 }
 
 const EMBER = new THREE.Color(0x551505);
@@ -73,6 +87,9 @@ export function registerFateFire(o: FateFireOpts): void {
     keepBuiltOnDestroy: true,
     onUse() {
       if (drawn) return; // a spent fire has nothing left to give
+      // CONTESTED: reaching for the rest is what springs the room. Before the
+      // gift, so you are fighting for it rather than after it.
+      o.onGuardSprung?.();
       // FATES ARE DISABLED — the fire no longer deals a card. It's a plain REST:
       // Once per fire (the `drawn` guard).
       drawn = true;

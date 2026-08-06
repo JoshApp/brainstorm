@@ -1518,6 +1518,11 @@ export function buildLevel(
           isBig: !/safe|harbor/i.test(spec.id ?? '')
             && (/foyer/i.test(spec.id ?? '') || (prop.scale ?? 1) >= 1.3),
           dimLight: (f) => { bonfireDim = f; },
+          // A CONTESTED sanctum: reaching for the rest slams the room. The prop
+          // carries the same `guarded` flag an offering or a chest does, and it
+          // now reaches the same springGuard — which is what the modifier always
+          // claimed to do and never could.
+          onGuardSprung: prop.guarded ? springGuard(prop.x, prop.z) : undefined,
         });
       }
       if (prop.model.light && !lightOwnedByGodRay(prop.x, prop.z, prop.model.id)) {

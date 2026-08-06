@@ -290,6 +290,18 @@ export type PropSpec =
        *  Drops nothing and blocks nothing — purely tactile. */
       destructible?: boolean;
       /**
+       * CONTESTED (room modifier): reaching for this seals the room and the
+       * waves come.
+       *
+       * On a 'model' prop for exactly one reason — the BONFIRE. room-types.ts
+       * has always said a sanctum accepts `contested` ("a rest you fight for")
+       * and room-modifiers.ts has always been willing to assign it, but the
+       * seal's trigger is this flag and it lived only on offerings and chests.
+       * A fire is neither, so the portcullis had nothing to spring it and the
+       * modifier was a silent no-op on 12 of 40 contested rooms.
+       */
+      guarded?: boolean;
+      /**
        * Turn this decoration into a one-shot SEARCHABLE container. The builder
        * registers a shared interactable (level/../interactables/searchable.ts):
        * it wears the standard focus OUTLINE, and on the first SEARCH it rolls
