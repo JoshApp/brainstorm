@@ -76,6 +76,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // the cost. -1 weapon damage AND -1 physical armor: meaningful, but not
   // run-ending if they were already strong.
   cursed: {
+    harmful: true,
     id: 'cursed',
     displayName: 'CURSED',
     color: 0x9c4dcf,
@@ -95,6 +96,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // 0.4s it shaved ~6 of the player's 8 HP off a single proc — slowed to
   // 0.6s so a burn stings without being a near-kill on its own.
   burn: {
+    harmful: true,
     id: 'burn',
     displayName: 'BURN',
     color: 0xff6020,
@@ -109,6 +111,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // capped at 4 stacks (peak ~5/sec) so it still ramps under pressure but
   // doesn't melt you — mirrors the poison attrition tune.
   bleed: {
+    harmful: true,
     id: 'bleed',
     displayName: 'BLEED',
     color: 0xcc1418,
@@ -122,6 +125,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // bypasses PHYSICAL armour (most enemies have none vs magic) — the
   // answer to armoured tanks like the stoneguard. Spider/acid theme.
   poison: {
+    harmful: true,
     id: 'poison',
     displayName: 'POISON',
     color: 0x66cc33,
@@ -143,6 +147,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // pipeline as everything else — the enemy AI reads move/action speed
   // from aggregateSpeed.
   chill: {
+    harmful: true,
     id: 'chill',
     displayName: 'CHILL',
     color: 0x88ccff,
@@ -159,6 +164,7 @@ export const BUFFS: Record<string, BuffSpec> = {
   // AND on the player (an enemy that makes you brittle) via the same
   // incoming-damage multiplier in computeDamage.
   sunder: {
+    harmful: true,
     id: 'sunder',
     displayName: 'SUNDER',
     color: 0xffb347,

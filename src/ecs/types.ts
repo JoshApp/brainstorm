@@ -132,6 +132,21 @@ export interface BuffSpec {
    */
   maxStacks?: number;
   /**
+   * Is this something being DONE TO YOU?
+   *
+   * Burn and Berserk are both hot orange and both 30px, and on a phone in a
+   * dark room they read identically — one is the best thing on your bar and the
+   * other is killing you. Colour alone cannot carry that, so the HUD draws a
+   * one-bit difference: a boon lights its TOP edge, an affliction its BOTTOM.
+   * Rising versus sinking, legible before you have identified which status it
+   * is.
+   *
+   * Declared rather than inferred. "Has a damaging tick" would catch burn and
+   * bleed and miss Cursed, Chill and Sunder — which are afflictions that happen
+   * to hurt you by other means.
+   */
+  harmful?: boolean;
+  /**
    * Optional world VFX while the buff is active — colored motes emitted
    * from the afflicted entity. The whole point: a new status gets a
    * visual from ONE field. `style`: 'rise' (embers float up — burn) or

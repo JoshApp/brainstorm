@@ -149,6 +149,10 @@ export interface Scenario {
   damagePlayerBy?: number;
   /** Apply a buff to the player at startup: id + duration. */
   applyPlayerBuff?: { id: string; duration: number };
+  /** Several statuses at once, with stack counts — for posing the buff HUD.
+   *  `stacks` re-applies the buff that many times, which is exactly what the
+   *  game does, so the stack cap in the spec still binds. */
+  applyPlayerBuffs?: Array<{ id: string; duration: number; stacks?: number }>;
   /** Equip a weapon by item id at startup (so snaps can show different viewmodels). */
   equipWeaponId?: string;
   /** Sheathe an alternate weapon by id (shows the loadout swap chip — #96). */
@@ -1487,6 +1491,25 @@ export const SCENARIOS: Record<string, Scenario> = {
 
   // Heartburn (fabled) lying on the floor — show off the fabled rarity
   // pickup glow.
+  // THE STATUS HUD, POSED. Four statuses at once, two of them compounding —
+  // which is the case the old buff bar rendered identically to a single stack
+  // while the player took several times the damage. `delve snap status-lab`.
+  'status-lab': {
+    freeze: true,
+    hideSword: true,
+    applyPlayerBuffs: [
+      { id: 'bleed', duration: 9, stacks: 4 },
+      { id: 'poison', duration: 14, stacks: 2 },
+      { id: 'burn', duration: 5 },
+      { id: 'berserk', duration: 11 },
+    ],
+    enemyOverrides: [
+      { index: 0, pos: { x: -12, z: -12 } },
+      { index: 1, pos: { x: 12, z: -12 } },
+      { index: 2, pos: { x: -12, z: 12 } },
+    ],
+  },
+
   heartburn: {
     freeze: true,
     hideSword: true,
@@ -2619,6 +2642,14 @@ export function applyScenario(
     damagePlayer(scenario.damagePlayerBy);
   }
 
+  if (scenario.applyPlayerBuffs) {
+    const player = getEntity('player');
+    if (player) {
+      for (const b of scenario.applyPlayerBuffs) {
+        for (let i = 0; i < (b.stacks ?? 1); i++) applyBuff(player, b.id, b.duration);
+      }
+    }
+  }
   if (scenario.applyPlayerBuff) {
     const player = getEntity('player');
     if (player) applyBuff(player, scenario.applyPlayerBuff.id, scenario.applyPlayerBuff.duration);
