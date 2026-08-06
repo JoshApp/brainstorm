@@ -104,6 +104,15 @@ export interface LightSubject {
   /** Ceiling height — a shaft needs headroom to read as a shaft. */
   height: number;
   /**
+   * Places inside the room a standing light could go — the piers
+   * room-interior.ts stood, and the room's own middle band.
+   *
+   * Consulted only when the room is too big for its walls to light (rule 4). A
+   * light ON a pier is architecture; the same light in open floor is a lamp
+   * nobody placed, so the anchors matter as much as the rule does.
+   */
+  interiorAnchors?: ReadonlyArray<{ x: number; z: number }>;
+  /**
    * Somewhere a STANDING light can go if every other rule declines.
    *
    * Two real rooms end up with nothing otherwise, and both are silent:
@@ -157,6 +166,25 @@ const FOCUS_LIGHT: Partial<Record<Centrepiece, {
  *  deliberately meaner than "enough to see by" — the lamp is what you see by. */
 const WASH_PER_M2 = 34;
 const WASH_MAX = 3;
+/**
+ * How far a wall bracket usefully reaches into the room.
+ *
+ * The number that turns "the room is big" into a decision. A sconce lights the
+ * wall it is on and a few metres of floor in front of it; past this the room is
+ * as dark as if the bracket were not there.
+ */
+const WALL_REACH_M = 5.0;
+/**
+ * At most this many standing lights inside one room, however big it is.
+ *
+ * The cap IS the design. Without it a large hall fills with braziers and stops
+ * being dark, and DELVE's baseline is dark — a floor of evenly-lit rooms has no
+ * vocabulary left for a room that matters.
+ */
+const INTERIOR_MAX = 2;
+/** A standing interior light is dimmer than a wall bracket. It exists to say
+ *  "the room continues", not to light the room. */
+const INTERIOR_INTENSITY = 0.42;
 /** A wash fixture may never come within this much of the focal's brightness. */
 const WASH_CEILING = 0.55;
 /** A shaft needs this much headroom or it reads as a lamp on a stick. */
@@ -241,7 +269,55 @@ export function planRoomLight(subject: LightSubject): Fixture[] {
           rotY: m.rotY, wall: m.wall, intensity: washIntensity, color: 0 });
   }
 
-  // ── 4. NOBODY GETS NOTHING ─────────────────────────────────────────
+  // ── 4. THE ROOM'S OWN SIZE ─────────────────────────────────────────
+  //
+  // Polygon rooms come out median 111m² against the vault composer's 70, and
+  // they were getting FEWER lights. Measured over 240 floors, the heart of a
+  // poly room — its point furthest from any wall — sat within a bracket's reach
+  // only 59% of the time, against 76% on the vault floors Josh has been walking
+  // for months. Which is his report exactly: *"rooms are bigger, they are barely
+  // lit in the center most of the time."*
+  //
+  // That is not the "darkness is the baseline" rule working. It is a LIE ABOUT
+  // THE SPACE — the same class of problem as the stair being unfindable (rule
+  // 3): the player cannot make a decision about a room whose size they cannot
+  // perceive. A big room should read as big AND dark, and a perimeter of
+  // brackets can only ever deliver the second.
+  //
+  // So: not an area rule but a REACH rule. If a point on this room's floor is
+  // further than a bracket can throw, the room needs something standing in it —
+  // and the interior stone room-interior.ts already put there is exactly where a
+  // cresset belongs. A light on a pier is architecture; a light floating in open
+  // floor is a lamp nobody placed. (The caller decides which spots qualify; see
+  // `interiorLightAnchors` in poly-floor.ts for the "is this a hall" test.)
+  //
+  // Capped hard at two. The cap is the design: without it a hall fills up and
+  // stops being dark, and then a room that MATTERS has no way left to say so.
+  // After this pass the poly dungeon sits at 14% of floor beyond reach against
+  // the vault's 22% — still dark, no longer dark in the middle of a hall.
+  if (subject.interiorAnchors?.length) {
+    const reached = (x: number, z: number): boolean =>
+      out.some((f) => Math.hypot(f.x - x, f.z - z) <= WALL_REACH_M);
+    const pool = subject.interiorAnchors.filter((a) => !dark(a.x, a.z));
+    const interiorIntensity = Math.min(
+      INTERIOR_INTENSITY, focalIntensity > 0 ? focalIntensity * 0.55 : INTERIOR_INTENSITY);
+    for (let i = 0; i < INTERIOR_MAX; i++) {
+      // THE QUESTION IS RE-ASKED AFTER EVERY PLACEMENT, and that is what keeps
+      // the cap a ceiling instead of a default. Choosing both from one
+      // pre-filtered list gave two lights to 783 of 1406 rooms — the first one
+      // usually pulls the rest of the room inside reach, and the second is then
+      // one light the room never needed.
+      const unreached = pool.filter((a) => !reached(a.x, a.z));
+      if (!unreached.length) break;
+      // The deepest dark, not the edge of it: whichever unlit spot is furthest
+      // from every light already standing.
+      const pick = farthestFrom(unreached, used);
+      add({ role: 'wash', shape: 'brazier', x: pick.x, z: pick.z, height: 0,
+            intensity: interiorIntensity, color: 0 });
+    }
+  }
+
+  // ── 5. NOBODY GETS NOTHING ─────────────────────────────────────────
   // A standing light needs no wall and answers both ways a room can come out
   // black (see LightSubject.fallback). Dimmest thing in the room by definition.
   if (out.length === 0 && subject.fallback) {
@@ -309,4 +385,24 @@ export function lightPlanViolation(fixtures: readonly Fixture[]): string | null 
     }
   }
   return null;
+}
+
+/**
+ * The point furthest from everything already placed — one step of the same
+ * farthest-point spread `spreadMounts` does for brackets.
+ *
+ * One step rather than n, because the interior pass has to re-derive its
+ * candidate set between picks; a batch sampler cannot see that its own first
+ * pick made the second unnecessary.
+ */
+function farthestFrom<T extends { x: number; z: number }>(
+  pts: ReadonlyArray<T>, placed: ReadonlyArray<{ x: number; z: number }>,
+): T {
+  let best = pts[0], bestD = -Infinity;
+  for (const p of pts) {
+    let nearest = Infinity;
+    for (const a of placed) nearest = Math.min(nearest, Math.hypot(a.x - p.x, a.z - p.z));
+    if (nearest > bestD) { bestD = nearest; best = p; }
+  }
+  return best;
 }

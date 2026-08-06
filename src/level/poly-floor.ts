@@ -948,6 +948,11 @@ function furnish(
   // the centrepiece deliberately placed. That is a stronger statement than "no
   // loot", and it is the one flag every decorative pass has to read: a trove
   // whose three offerings you cannot see past is not a choice.
+  //
+  // The stone this room stands, kept for the LIGHT pass. A big room needs
+  // something burning in the middle of it, and a light on a pier is
+  // architecture where the same light in open floor is a lamp nobody placed.
+  const piers: Array<{ x: number; z: number }> = [];
   if (!def.clean) {
 
   // ── INTERIOR STONE — the room's own architecture ────────────────────
@@ -974,6 +979,7 @@ function furnish(
         r.occupancy.reserve(
           { kind: 'cylinder', x: pier.x, z: pier.z, r: pier.size * 0.42, y0: 0, y1: r.height },
           'pillar');
+        piers.push({ x: pier.x, z: pier.z });
       }
     }
   }
@@ -1052,7 +1058,7 @@ function furnish(
   }
   }   // ── end of "something wanders in here" ─────────────────────────
 
-  lightRoom(r, mouth, descent, ambushSpots, mod, staged, torches, props, dressRand);
+  lightRoom(r, mouth, descent, ambushSpots, mod, staged, piers, torches, props, dressRand);
   return guarded;
 }
 
@@ -1071,6 +1077,8 @@ function lightRoom(
   ambushSpots: ReadonlyArray<{ x: number; z: number }>,
   mod: RoomModifier | undefined,
   staged: { props: PropSpec[]; claimed: Array<{ x: number; z: number }> },
+  /** The interior stone this room stands, if any — see `interiorLightAnchors`. */
+  piers: ReadonlyArray<{ x: number; z: number }>,
   torches: TorchSpec[],
   props: PropSpec[],
   /** The floor's seeded RNG. The skin rolls its palette on this, so a theme's
@@ -1114,6 +1122,11 @@ function lightRoom(
     mounts,
     area: polyArea(r.poly),
     height: r.height,
+    // A `dark` room is a DECISION, and it outranks the size rule the way an
+    // ambush does. A hall the player cannot see the end of is a bug; a hall the
+    // player cannot see the end of BECAUSE the room is marked dark is the beat.
+    // Caught by the suite: without this, 1 dark room in 20 floors lit itself.
+    interiorAnchors: mod === 'dark' ? undefined : interiorLightAnchors(r, piers, ambushSpots),
     fallback: fallbackLightSpot(r, mouth, ambushSpots),
   });
 
@@ -1156,6 +1169,57 @@ function lightRoom(
     props.push({ kind: 'model', model, x: f.x, y: 0, z: f.z } as PropSpec);
     r.occupancy.reserve({ kind: 'cylinder', x: f.x, z: f.z, r: 0.45, y0: 0, y1: 1.3 }, 'brazier');
   }
+}
+
+/**
+ * How far from every wall a spot must be before a light is allowed to stand
+ * there — and, in practice, the test for whether this room is a HALL.
+ *
+ * It is stated as clearance rather than area on purpose: a room narrow in
+ * either direction is served by its walls however long it runs, and a brazier
+ * down the middle of a 4m-wide gallery is a thing to walk around, not a light.
+ * Only a room wide in BOTH directions has a middle its walls cannot reach.
+ *
+ * Measured across 240 floors: it hands a standing light to 79% of rooms over
+ * 140m² and to 5% of rooms under 60m², which is the whole rule in two numbers.
+ */
+const HALL_CLEARANCE_M = 3.4;
+
+/**
+ * Where a light could STAND inside this room, for the rooms too big to light
+ * from their walls.
+ *
+ * Two candidate sets, and the preference between them is the whole point:
+ *
+ *   BESIDE THE STONE, if this room stood any. A cresset at the foot of a pier
+ *   is architecture — somebody put it there, on purpose, against the column
+ *   they built. It also reads at distance, because the pier itself catches the
+ *   light and gives the flame a shape to sit against.
+ *
+ *   OPEN FLOOR, only when there is no stone to stand beside. A brazier alone in
+ *   a hundred square metres is weaker, but a hall you cannot see the far end of
+ *   is weaker still.
+ *
+ * Every spot is checked against the room's occupancy at the standing light's
+ * real footprint, so nothing here can land inside a pier, an offering or a
+ * spawn — the light plan gets places a brazier genuinely fits, not places it
+ * would like one. Ambush pockets are excluded here as well as in the plan;
+ * belt and braces on the one rule whose failure is invisible in a screenshot.
+ */
+function interiorLightAnchors(
+  r: Placed,
+  piers: ReadonlyArray<{ x: number; z: number }>,
+  ambushSpots: ReadonlyArray<{ x: number; z: number }>,
+): Array<{ x: number; z: number }> {
+  // Deep floor only. A room with nothing this far from a wall returns an empty
+  // list and gets no interior light at all — which is most rooms, and is how
+  // the dungeon stays dark while its halls stop lying about their size.
+  const spots = candidateSpots(r.poly, { radius: 0.5, band: [HALL_CLEARANCE_M, Infinity], pitch: 0.9 })
+    .filter((s) => !ambushSpots.some((a) => Math.hypot(a.x - s.x, a.z - s.z) < 3.4))
+    .filter((s) => r.occupancy.fits({ kind: 'cylinder', x: s.x, z: s.z, r: 0.45, y0: 0, y1: 1.3 }, 0.2));
+  if (!spots.length || !piers.length) return spots.map((s) => ({ x: s.x, z: s.z }));
+  const beside = spots.filter((s) => piers.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < 1.9));
+  return (beside.length ? beside : spots).map((s) => ({ x: s.x, z: s.z }));
 }
 
 /**

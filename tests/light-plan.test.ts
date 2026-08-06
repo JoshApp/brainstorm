@@ -134,6 +134,81 @@ test('a fire lights itself', () => {
     'we lit a bonfire');
 });
 
+// ── THE ROOM'S OWN SIZE ──────────────────────────────────────────────
+//
+// The rule that stops a hundred-square-metre hall reading as a small dark room
+// with lit edges. Its failure mode is the opposite of every rule above: not
+// "the ambush got lit" but "the room fills with braziers and the dungeon stops
+// being dark", so both directions are pinned.
+
+test('A HALL GETS SOMETHING STANDING IN IT', () => {
+  // Brackets 24m apart on the long walls; nothing reaches the middle.
+  const long: Mount[] = [
+    { x: -14, z: -6, height: 2, wall: 'N' }, { x: 14, z: -6, height: 2, wall: 'N' },
+    { x: -14, z: 6, height: 2, wall: 'S' }, { x: 14, z: 6, height: 2, wall: 'S' },
+  ];
+  const f = planRoomLight(base({
+    mounts: long, area: 340,
+    interiorAnchors: [{ x: -8, z: 0 }, { x: 0, z: 0 }, { x: 8, z: 0 }],
+  }));
+  assert.ok(f.some((x) => x.shape === 'brazier'),
+    'the middle of a 340m² hall is beyond every bracket and got nothing');
+});
+
+test('...and never more than two, however big', () => {
+  // The cap IS the design. A hall of any size still has to be a dark hall.
+  const f = planRoomLight(base({
+    mounts: [], area: 900,
+    interiorAnchors: Array.from({ length: 40 }, (_, i) => ({ x: i * 6 - 120, z: 0 })),
+  }));
+  assert.ok(f.filter((x) => x.shape === 'brazier').length <= 2,
+    `${f.filter((x) => x.shape === 'brazier').length} standing lights — the hall stopped being dark`);
+});
+
+test('A ROOM ITS WALLS ALREADY REACH GETS NOTHING EXTRA', () => {
+  // The control, and the one that matters most: the anchors are OFFERED on
+  // every room, so if the reach test does not decline them the pass is just
+  // "put a brazier in the middle of everything".
+  //
+  // An 8×8 chamber. Its middle is 4m from the brackets on every wall, so the
+  // walls genuinely do the job and a standing light would be one lamp too many.
+  const small: Mount[] = [
+    { x: 0, z: -4, height: 2, wall: 'N' }, { x: 0, z: 4, height: 2, wall: 'S' },
+    { x: -4, z: 0, height: 2, wall: 'W' }, { x: 4, z: 0, height: 2, wall: 'E' },
+  ];
+  const f = planRoomLight(base({
+    mounts: small, area: 64,
+    interiorAnchors: [{ x: 0, z: 0 }, { x: 1, z: 1 }, { x: -1, z: -1 }],
+  }));
+  assert.equal(f.filter((x) => x.shape === 'brazier').length, 0,
+    'an 8×8 chamber ringed with brackets got a brazier in the middle of it');
+});
+
+test('the second light is re-asked, not assumed', () => {
+  // Choosing both from one pre-filtered list handed two lights to 783 of 1406
+  // rooms: the first usually pulls the rest of the room inside reach and the
+  // second is one light the room never needed. Two anchors 4m apart can only
+  // ever justify one.
+  const f = planRoomLight(base({
+    mounts: [], area: 200,
+    interiorAnchors: [{ x: -2, z: 0 }, { x: 2, z: 0 }],
+  }));
+  assert.equal(f.filter((x) => x.shape === 'brazier').length, 1,
+    'two anchors inside one light\'s reach got two lights');
+});
+
+test('an interior light never outshines the focal, and never lights an ambush', () => {
+  const f = planRoomLight(base({
+    mounts: [], area: 400,
+    focus: { x: 0, z: 0, kind: 'merchant' },
+    shadow: [{ x: 14, z: 0, r: 4 }],
+    interiorAnchors: [{ x: 14, z: 0 }, { x: -14, z: 0 }],
+  }));
+  assert.equal(lightPlanViolation(f), null);
+  assert.ok(!f.some((x) => Math.hypot(x.x - 14, x.z) < 4),
+    'a standing light was planted on top of the ambush');
+});
+
 test('the violation checker actually catches a violation', () => {
   // A validator that never fires is indistinguishable from no validator.
   assert.equal(lightPlanViolation([

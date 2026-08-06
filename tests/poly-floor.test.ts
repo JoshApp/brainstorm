@@ -29,6 +29,7 @@ import { planWallRing } from '../src/level/poly-shell-plan';
 import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
+import { candidateSpots } from '../src/level/floor-region';
 import { roomType } from '../src/level/room-types';
 import { propFacts, claimsConflict } from '../src/level/prop-taxonomy';
 import { wallFixtureModel } from '../src/level/lit-fixture-pool';
@@ -131,7 +132,10 @@ function flood(spec: LevelSpec): Set<string> {
  * so a torch-only count reports the rooms the new system FIXED as unlit.
  */
 function lightsIn(spec: LevelSpec, poly: NonNullable<RoomSpec['poly']>): number {
-  const LIGHT_MODEL = /^(god-ray|floor-glow|iron-brazier|great-brazier)/;
+  // cresset-pike was missing here until the interior-light pass made it 30% of
+  // every standing light the generator places — a light this helper could not
+  // see was a light no lighting test could count.
+  const LIGHT_MODEL = /^(god-ray|floor-glow|iron-brazier|great-brazier|cresset-pike)/;
   const torches = (spec.torches ?? []).filter((t) => pointInPoly(poly, t.x, t.z)).length;
   const models = (spec.props ?? []).filter((p) => {
     const m = p as { kind?: string; model?: { id?: string }; x?: number; z?: number };
@@ -139,6 +143,22 @@ function lightsIn(spec: LevelSpec, poly: NonNullable<RoomSpec['poly']>): number 
       && typeof m.x === 'number' && typeof m.z === 'number' && pointInPoly(poly, m.x, m.z);
   }).length;
   return torches + models;
+}
+
+/** The same lights, as POINTS — for anything asking how far away one is. */
+function lightPoints(
+  spec: LevelSpec, poly: NonNullable<RoomSpec['poly']>,
+): Array<{ x: number; z: number }> {
+  const LIGHT_MODEL = /^(god-ray|floor-glow|iron-brazier|great-brazier|cresset-pike)/;
+  return [
+    ...(spec.torches ?? []).filter((t) => pointInPoly(poly, t.x, t.z)).map((t) => ({ x: t.x, z: t.z })),
+    ...(spec.props ?? []).flatMap((p) => {
+      const m = p as { kind?: string; model?: { id?: string }; x?: number; z?: number };
+      return m.kind === 'model' && LIGHT_MODEL.test(m.model?.id ?? '')
+        && typeof m.x === 'number' && typeof m.z === 'number' && pointInPoly(poly, m.x, m.z)
+        ? [{ x: m.x, z: m.z }] : [];
+    }),
+  ];
 }
 
 const CELL = 0.25;
@@ -274,6 +294,58 @@ test('DARKNESS IS THE BASELINE — nobody gets a floodlit room', () => {
       assert.ok(area / lit > 14,
         `${spec.id}: room ${r.id} has ${lit} lights over ${area.toFixed(0)}m² — one per ${(area / lit).toFixed(0)}m²`);
     }
+  }
+});
+
+test('A HALL DOES NOT LIE ABOUT ITS SIZE', () => {
+  // Josh, walking a polygon floor: *"rooms are bigger, they are barely lit in
+  // the center most of the time."* Measured, he was right — the HEART of a poly
+  // room (its point furthest from any wall) sat within a bracket's 5m reach only
+  // 59% of the time, against 76% on the vault floors he had been walking for
+  // months. A perimeter of sconces cannot light the middle of a 140m² hall.
+  //
+  // Asserted on the halls only, because that IS the rule: a room narrow in
+  // either direction is served by its walls however long it runs.
+  const REACH = 5.0, HALL = 3.4;
+  let halls = 0, blind = 0;
+  for (const spec of floors()) {
+    for (const r of spec.rooms) {
+      if (!r.poly) continue;
+      const deep = candidateSpots(r.poly, { radius: 0.5, band: [HALL, Infinity], pitch: 0.9 });
+      if (!deep.length) continue;   // not a hall — its walls are the answer
+      halls++;
+      const heart = deep[0];        // sorted by clearance: the deepest floor there is
+      const lights = lightPoints(spec, r.poly);
+      const d = lights.length
+        ? Math.min(...lights.map((l) => Math.hypot(l.x - heart.x, l.z - heart.z)))
+        : Infinity;
+      if (d > REACH) blind++;
+    }
+  }
+  assert.ok(halls > 50, `only ${halls} halls in the sample — not measuring the rule`);
+  // 15 of 84 today, and the residue was read rather than waved at: 4 are halls
+  // whose heart sits in an ambush pocket and stays dark ON PURPOSE (rule 4
+  // outranks this one), and the other 11 all land between 5.1m and 7.8m — the
+  // heart is a spot nothing may stand on (a stairwell, an offering) so the light
+  // went to the nearest floor a brazier fits and the measurement, which does not
+  // care whether you can stand there, calls that a miss.
+  assert.ok(blind / halls < 0.25,
+    `${blind}/${halls} halls have an unlit heart — the middle of the room is a guess again`);
+});
+
+test('...and the dungeon is still dark', () => {
+  // The other end of the same rule, and the one that fails silently. Lighting
+  // every hall's middle is trivially achievable by putting a brazier in every
+  // room, which would cost the game its entire vocabulary for "this room
+  // matters". The vault floors run ~2 standing lights a floor; this caps the
+  // polygon floors near the same order.
+  for (const spec of floors()) {
+    const standing = (spec.props ?? []).filter((p) => {
+      const m = p as { kind?: string; model?: { id?: string } };
+      return m.kind === 'model' && /^(iron-brazier|cresset-pike)/.test(m.model?.id ?? '');
+    }).length;
+    assert.ok(standing <= 12,
+      `${spec.id}: ${standing} standing lights on one floor — it is not a dungeon any more`);
   }
 });
 
