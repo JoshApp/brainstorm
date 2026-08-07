@@ -23,6 +23,7 @@ import { emitFramesForPortals } from './portal-frames';
 import { planPortals } from './portals';
 import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES } from './corridor-types';
 import { ceilingForLink } from './corridor-ceiling';
+import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation } from './poly-elevation';
 import { resolveSkin } from './skin';
@@ -694,6 +695,23 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     })),
     depth, rand);
   props.push(...decor.props);
+
+  // ── EVIDENCE IN THE CORRIDORS ──────────────────────────────────────
+  //
+  // Rooms stage events; corridors hold residue. Measured before this existed:
+  // one prop per hundred metres of corridor, excluding the doorframes a
+  // corridor owns anyway. corridor-decor.ts owns the vocabulary and the rule
+  // that a section can only carry what still leaves it walkable.
+  //
+  // On `dressRand`, not `rand`: what a passage is strewn with must not move
+  // where anything on the floor GOES. Same reason the skin resolver got its own
+  // stream — see the header at the top of this function.
+  props.push(...dressCorridors(
+    corridors,
+    // The portal midpoints, from the same call the frames are built from.
+    [...doorwaysByRoom.values()].flat(),
+    rooms.map((r) => r.poly),
+    dressRand));
   clusterSomeVases(props, rand);
 
   // NOTHING STANDS OVER A HOLE — the same final-state check the vault path runs
