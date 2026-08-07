@@ -11,6 +11,7 @@ import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan
 import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
+import { makeCoursedWall, wallWear } from './wall-courses';
 
 // ── BUILDING A POLYGON ROOM ──────────────────────────────────────────────────
 //
@@ -154,9 +155,18 @@ export function buildPolyRoomShell(
   // doorway by 0.5m and punched a second hole whenever a corridor grazed a
   // corner. The portal planner already answers both questions correctly.
   const spans = planWallRing(poly, WALL_T, openingRects, undefined, wallCutsFor(poly, openingRects));
+  // HOW RUINED IS THIS ROOM, and then how ruined is each of its walls. Two
+  // levels on purpose: one number per room and the room reads as one place;
+  // one number per wall and a room can have three sound sides and a fourth
+  // that is coming down, which is a room something happened to.
+  //
+  // Seeded from the room's id so a floor rebuilds identically — a wall that
+  // changes shape when you walk back into it is worse than a flat one.
+  const wearRand = seededRand(room.id);
+  const roomWear = 0.18 + wearRand() * 0.5;
   const pieces: THREE.BufferGeometry[] = [];
   for (const s of spans) {
-    pieces.push(...spanGeometry(s, elev, H));
+    pieces.push(...spanGeometry(s, elev, H, wallWear(roomWear, wearRand), wearRand));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
     // movement code already refuses any step that crosses a segment.
@@ -292,7 +302,23 @@ function subdivideToMaxEdge(geo: THREE.BufferGeometry, maxEdge: number): void {
  * The back, top and jambs are plain quads: they exist so the shell is a closed
  * solid, and only the jambs are ever looked at closely.
  */
-function spanGeometry(s: WallSpan, baseY: number, H: number): THREE.BufferGeometry[] {
+/** A stable stream from a string key — same room, same walls, every build. */
+function seededRand(key: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+  let x = h >>> 0;
+  return () => {
+    x += 0x6D2B79F5;
+    let t = x;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function spanGeometry(
+  s: WallSpan, baseY: number, H: number, wear: number, rand: () => number,
+): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
   const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
   const len = Math.hypot(dx, dz);
@@ -303,7 +329,10 @@ function spanGeometry(s: WallSpan, baseY: number, H: number): THREE.BufferGeomet
   // inward normal's components in that order. (Its local +X then lands on the
   // edge direction, which is the consistency check that this is the right θ.)
   const ix = -dz / len, iz = dx / len;
-  const face = makeJitteredPlane(len, H, { wavy: true });
+  // COURSED, not a slab. See wall-courses.ts — the short version is that a flat
+  // plane has one brightness in torchlight however it is warped, and a course
+  // line has two.
+  const face = makeCoursedWall(len, H, { wear, rand });
   const m = new THREE.Matrix4().makeRotationY(Math.atan2(ix, iz));
   m.setPosition((s.a[0] + s.b[0]) / 2, baseY + H / 2, (s.a[1] + s.b[1]) / 2);
   face.applyMatrix4(m);
