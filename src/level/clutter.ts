@@ -723,12 +723,12 @@ function placeWallPile(ctx: RoomContext, out: PropSpec[], rand: () => number): v
       case 0: {
         z = ctx.minZ + along * ctx.rect.d;
         if (inOpening(z, ctx.openW)) { blocked = true; break; }
-        x = ctx.minX + 0.35; rotY = -Math.PI / 2; break;
+        x = ctx.minX + 0.35; rotY = Math.PI / 2; break;
       }
       case 1: {
         z = ctx.minZ + along * ctx.rect.d;
         if (inOpening(z, ctx.openE)) { blocked = true; break; }
-        x = ctx.maxX - 0.35; rotY = Math.PI / 2; break;
+        x = ctx.maxX - 0.35; rotY = -Math.PI / 2; break;
       }
       case 2: {
         x = ctx.minX + along * ctx.rect.w;
@@ -759,12 +759,12 @@ function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number):
       case 0: {
         z = ctx.minZ + along * ctx.rect.d;
         if (inOpening(z, ctx.openW)) { blocked = true; break; }
-        x = ctx.minX + 0.02; rotY = -Math.PI / 2; break;
+        x = ctx.minX + 0.02; rotY = Math.PI / 2; break;
       }
       case 1: {
         z = ctx.minZ + along * ctx.rect.d;
         if (inOpening(z, ctx.openE)) { blocked = true; break; }
-        x = ctx.maxX - 0.02; rotY = Math.PI / 2; break;
+        x = ctx.maxX - 0.02; rotY = -Math.PI / 2; break;
       }
       case 2: {
         x = ctx.minX + along * ctx.rect.w;
