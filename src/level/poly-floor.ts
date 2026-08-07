@@ -490,6 +490,35 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // `suppressFire` because the plan already staged this floor's fire as a
   // sanctum centrepiece, and two fires undo the scarcity that makes reaching one
   // matter.
+  // WHERE EACH ROOM'S DOORWAYS ARE, asked once. `planPortals` is the same call
+  // the frames, the webs and the spawn facing make, so every one of them means
+  // the same thing by "the doorway".
+  const doorwaysByRoom = new Map<string, Array<{ x: number; z: number }>>();
+  for (const r of rooms) {
+    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly, corridors)
+      .map((p) => ({ x: p.mid[0], z: p.mid[1] })));
+  }
+  /**
+   * How far a MAJOR beat must stand off a doorway, for a room of this size.
+   *
+   * Josh: *"I saw a choice basin and other events placed weirdly — the room is
+   * big and it's placed really close to the doorway I am entering. That choice
+   * feels unnatural."*
+   *
+   * Measured over 72 floors, 264 major events: 11% stood within 3m of a doorway
+   * and the closest was 1.3m. The deals were the worst of it — the tithe basin
+   * a median 3.8m out and a minimum of 1.4m — because the candidate filter only
+   * ever knew about WALLS (`band: [1.2, Infinity]` is distance from the stone).
+   * A doorway is not a wall. It is where you are standing when you arrive, and a
+   * bargain you can touch before you are through the door is one you never chose
+   * to approach.
+   *
+   * Scaled by the room, not fixed: three metres is most of a small chamber and
+   * nothing in a hall, and the complaint was specifically about a BIG room.
+   */
+  const doorwayClearance = (poly: Poly): number =>
+    Math.max(3.0, 0.22 * Math.sqrt(polyArea(poly)));
+
   const contentSpots: ContentSpot[] = [];
   for (const r of rooms) {
     const def = roomType(r.type);
@@ -500,13 +529,43 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     // is where a SECONDARY read like a reward chest belongs — the centre is the
     // event's. Every marker goes through the occupancy, so the director can only
     // ever claim floor nothing else took.
-    const spread = spreadPick(
-      candidateSpots(r.poly, { radius: 0.8, band: [1.2, Infinity], pitch: 0.9 }),
-      3, mouthOf(r, links));
+    const allSpots = candidateSpots(r.poly, { radius: 0.8, band: [1.2, Infinity], pitch: 0.9 });
+    const spread = spreadPick(allSpots, 3, mouthOf(r, links));
+    const doors = doorwaysByRoom.get(r.id) ?? [];
+    const offDoor = (x: number, z: number): number =>
+      doors.reduce((m, d) => Math.min(m, Math.hypot(d.x - x, d.z - z)), Infinity);
+    const clear = doorwayClearance(r.poly);
+    const usable: ContentSpot[] = [];
+    const crowded: Array<ContentSpot & { off: number }> = [];
     for (const cand of [{ x: c.x, z: c.z, focal: true },
                         ...spread.map((sp) => ({ x: sp.x, z: sp.z, focal: false }))]) {
       if (!r.occupancy.fits({ kind: 'cylinder', x: cand.x, z: cand.z, r: 0.7, y0: 0, y1: 1.6 }, 0.3)) continue;
-      contentSpots.push({ x: cand.x, z: cand.z, roomId: r.id, focal: cand.focal });
+      const spot = { x: cand.x, z: cand.z, roomId: r.id, focal: cand.focal };
+      const off = offDoor(cand.x, cand.z);
+      if (off >= clear) usable.push(spot); else crowded.push({ ...spot, off });
+    }
+    // A ROOM THAT OFFERS NOTHING GETS NOTHING, which is worse than a beat near a
+    // door — so when the clearance rule refuses every offered candidate, the
+    // room still gets one. But it looks HARDER first.
+    //
+    // The three markers above are `spreadPick`ed for variety, not for distance
+    // from a doorway, so "all three were too close" does not mean the room has
+    // nowhere better. It usually has: the one floor this ever fired on was a
+    // 10.9m room with 82 candidate spots, the furthest 8.4m from any door, and
+    // it seated an altar 1.37m from one. So fall back to the WHOLE candidate
+    // set and take the furthest that fits, and only after that give back the
+    // best of a bad lot — which is the honest answer in a chamber whose entire
+    // floor is within three metres of its own mouth.
+    if (usable.length) { contentSpots.push(...usable); continue; }
+    const rescue = allSpots
+      .map((sp) => ({ sp, off: offDoor(sp.x, sp.z) }))
+      .sort((a, b) => b.off - a.off)
+      .find(({ sp }) => r.occupancy.fits(
+        { kind: 'cylinder', x: sp.x, z: sp.z, r: 0.7, y0: 0, y1: 1.6 }, 0.3));
+    if (rescue) contentSpots.push({ x: rescue.sp.x, z: rescue.sp.z, roomId: r.id, focal: false });
+    else if (crowded.length) {
+      crowded.sort((a, b) => b.off - a.off);
+      contentSpots.push({ x: crowded[0].x, z: crowded[0].z, roomId: r.id, focal: crowded[0].focal });
     }
   }
   const directed = directFloor({
@@ -611,7 +670,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       // have to agree, and the only way to guarantee that is to ask once.
       doorways: planPortals(r.id, r.poly, corridors).map((p) => ({
         x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.width,
-      })),
+      })),   // yaw + width too, which the clearance pass above does not need
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
       onMainline: mainline.has(r.id),
       claims: claimsOf(r),

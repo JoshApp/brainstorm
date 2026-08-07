@@ -815,3 +815,49 @@ test('A DESCENT PUTS THE WAY ONWARD IN FRONT OF YOU', () => {
   // test's job. Printing it keeps it from going quiet.
   if (noExit) console.log(`  (note: ${noExit} spawn rooms had no PORTAL; fell back to the corridor rect)`);
 });
+
+test('A BARGAIN IS NOT REACHABLE FROM THE THRESHOLD', () => {
+  // Josh: *"I saw a choice basin and other events placed weirdly — the room is
+  // big and it's placed really close to the doorway I am entering. That choice
+  // feels unnatural."*
+  //
+  // The candidate filter only ever knew about WALLS (`band: [1.2, Infinity]` is
+  // distance from the stone). A doorway is not a wall: it is where you are
+  // standing when you arrive, and a bargain you can touch before you are through
+  // the door is one you never chose to approach.
+  //
+  // The DEALS are what this covers — the director's own markers, which is what
+  // Josh named. Measured over 72 floors before the clearance rule: the tithe
+  // basin sat a median 3.8m from the nearest doorway with a minimum of 1.4m.
+  const DEALS = new Set(['tithe-basin', 'altar', 'blood-altar']);
+  let deals = 0, tooClose = 0;
+  const worstBySize: Array<{ scale: number; d: number; kind: string }> = [];
+  for (const spec of floors()) {
+    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
+    for (const p of (spec.props ?? []) as PropSpec[]) {
+      const q = p as { kind: string; x: number; z: number };
+      if (!DEALS.has(q.kind)) continue;
+      const room = (spec.rooms ?? []).find((r) => r.poly && pointInPoly(r.poly, q.x, q.z));
+      if (!room?.poly) continue;
+      const ports = planPortals(room.id, room.poly, corridors);
+      if (!ports.length) continue;
+      deals++;
+      const d = Math.min(...ports.map((t) => Math.hypot(t.mid[0] - q.x, t.mid[1] - q.z)));
+      const scale = Math.sqrt(polyArea(room.poly));
+      worstBySize.push({ scale, d, kind: q.kind });
+      if (d < 3) tooClose++;
+    }
+  }
+  assert.ok(deals >= 20, `only ${deals} deals sampled — this test measured nothing`);
+  // A BIG room has no excuse. In a small one the whole floor is near the mouth
+  // and the placer deliberately gives a spot back rather than leave the room
+  // empty — that fallback is the correct answer, not a violation.
+  for (const w of worstBySize) {
+    if (w.scale < 9) continue;
+    assert.ok(w.d >= 2.4,
+      `a ${w.kind} stands ${w.d.toFixed(1)}m from a doorway in a ${w.scale.toFixed(0)}m room`);
+  }
+  assert.ok(tooClose / deals < 0.25,
+    `${((tooClose / deals) * 100).toFixed(0)}% of deals stand within 3m of a doorway`);
+});
+
