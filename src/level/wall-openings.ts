@@ -28,6 +28,25 @@ import type { RoomSpec } from './types';
 // The composer's grid makes the crossing case unreachable there, so this rule
 // cannot change a vault floor — it only describes a situation the old
 // generator could not produce.
+//
+// ── AND IT MUST BE ON THE FAR SIDE ───────────────────────────────────────────
+//
+// Josh, walking a polygon floor: *"L corridors have missing wall faces."*
+//
+// ABUTS assumed something the vault's grid guarantees and a dogleg does not:
+// that a rect sharing this wall's line is on the OTHER side of it. A dogleg is
+// three rects that OVERLAP — the cross piece is laid across the end of a leg,
+// so its outer edge is collinear with the leg's outer wall while sitting
+// entirely on the same side. Under abut-alone that leg's wall was opened onto
+// the void, and you could see straight out of the dungeon.
+//
+// Measured on the corridor perimeter: 18% of it was open to nothing.
+//
+// So a neighbour has to actually offer floor BEYOND the wall. Crossing rects
+// pass by construction (they have interior on both sides); abutting ones now
+// have to prove which side they are on. The vault path is unaffected — on a
+// grid every abutting neighbour is on the far side already, which is the
+// assumption that was being made implicitly.
 export function findOpenings(
   we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
   allRects: RoomSpec[],
@@ -35,6 +54,10 @@ export function findOpenings(
 ): Array<{ start: number; end: number }> {
   const EPS = 0.01;
   const openings: Array<{ start: number; end: number }> = [];
+  // Which way is THROUGH? The wall is on one side of its own room's centre;
+  // everything a doorway leads to is on the other.
+  const selfPerp = we.perpAxis === 'z' ? selfRoom.rect.z : selfRoom.rect.x;
+  const farIsPositive = we.perpCoord > selfPerp;
   for (const other of allRects) {
     if (other === selfRoom) continue;
     // Sub-rooms (logical-only) are INSIDE their parent vault rect —
@@ -49,6 +72,9 @@ export function findOpenings(
       const coincides = Math.abs(oSouth - we.perpCoord) < EPS || Math.abs(oNorth - we.perpCoord) < EPS;
       const crosses = oNorth < we.perpCoord - EPS && oSouth > we.perpCoord + EPS;
       if (!coincides && !crosses) continue;
+      // Does it actually reach past the wall? A neighbour flush against this
+      // line from the INSIDE is not a way through — it is the same room.
+      if (!(farIsPositive ? oSouth > we.perpCoord + EPS : oNorth < we.perpCoord - EPS)) continue;
       const a = Math.max(we.wallStart, o.x - o.w / 2);
       const b = Math.min(we.wallEnd, o.x + o.w / 2);
       if (b > a + EPS) openings.push({ start: a, end: b });
@@ -59,6 +85,7 @@ export function findOpenings(
       const coincides = Math.abs(oEast - we.perpCoord) < EPS || Math.abs(oWest - we.perpCoord) < EPS;
       const crosses = oWest < we.perpCoord - EPS && oEast > we.perpCoord + EPS;
       if (!coincides && !crosses) continue;
+      if (!(farIsPositive ? oEast > we.perpCoord + EPS : oWest < we.perpCoord - EPS)) continue;
       const a = Math.max(we.wallStart, o.z - o.d / 2);
       const b = Math.min(we.wallEnd, o.z + o.d / 2);
       if (b > a + EPS) openings.push({ start: a, end: b });

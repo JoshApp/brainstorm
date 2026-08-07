@@ -119,9 +119,19 @@ export function planPortals(
       a: pa, b: pb,
       mid: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2],
       normal: nrm,
-      // A lintel runs ALONG the wall, i.e. perpendicular to the normal. atan2(x, z)
-      // — x first — is the codebase's direction→yaw convention (CLAUDE.md).
-      rotY: Math.atan2(nrm[0], nrm[1]) + Math.PI / 2,
+      // THE FRAME FACES ALONG THE NORMAL, and that is the whole of it.
+      //
+      // A frame model is authored with +X along the gate and +Z THROUGH it
+      // (see archway.ts), so aiming its +Z down the wall's normal already puts
+      // the lintel along the wall. The extra quarter-turn that used to be here
+      // came from reading "the lintel runs along the wall" as an instruction
+      // instead of as a consequence — and it turned every doorway in the game
+      // edge-on. The rect emitter has always agreed with this: rotY 0 on a
+      // north/south wall, π/2 on an east/west one, which is what atan2(nx, nz)
+      // returns (modulo the half-turn a symmetric frame cannot show).
+      //
+      // atan2(x, z) — x FIRST — is the codebase's direction→yaw convention.
+      rotY: Math.atan2(nrm[0], nrm[1]),
       width: best.len,
       t0: best.t0, t1: best.t1,
     });
