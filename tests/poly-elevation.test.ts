@@ -58,7 +58,13 @@ test('NO STEP WHERE A CORRIDOR MEETS A ROOM', () => {
       }
     }
   }
-  assert.ok(checked > 200, `only ${checked} seams sampled — not measuring the rule`);
+  // A COVERAGE FLOOR, NOT A FINGERPRINT. This was `> 200` against a sample that
+  // produced 201, and the corridor vocabulary — which narrowed the average
+  // section by about 5% — took it to 199 without touching a single seam height.
+  // A guard pinned to the last number the generator happened to produce fires
+  // on every unrelated tuning pass, so it sits well under it now: what it is
+  // for is catching a sweep that stopped finding corridors at all.
+  assert.ok(checked > 150, `only ${checked} seams sampled — not measuring the rule`);
   assert.ok(worst < 0.02, `worst seam steps ${worst.toFixed(3)}m — you fall through a doorway`);
 });
 

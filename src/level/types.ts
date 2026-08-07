@@ -6,6 +6,7 @@
 // from props' implicit shapes (floors at y=0, ceilings at level height, etc.).
 
 import type { FittingKind, Edge } from './opening';
+import type { CorridorTypeId } from './corridor-types';
 
 export type Vec2 = { x: number; z: number };
 
@@ -95,6 +96,16 @@ export type RoomSpec = {
    * union) keeps reading it. See level/room-shape.ts.
    */
   poly?: ReadonlyArray<readonly [number, number]>;
+  /**
+   * For a CORRIDOR: which section it is — squeeze, passage or gallery.
+   *
+   * The word, not the numbers. Width and ceiling are already baked into `rect`
+   * and `height` by the time anything downstream sees this spec; what the id
+   * carries is INTENT, so a light pass, a dressing pass or a content layer can
+   * ask what a corridor is FOR instead of inferring it from a width.
+   * See level/corridor-types.ts.
+   */
+  corridorType?: CorridorTypeId;
   /**
    * Floor elevation in metres (default 0). Rooms are internally FLAT at
    * their elevation — combat, props, splats all live on one plane per

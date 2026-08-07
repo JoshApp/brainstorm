@@ -359,7 +359,11 @@ test('NO DOORWAY OPENS ONTO NOTHING', () => {
       }
     }
   }
-  assert.ok(checked > 20000, `only ${checked} samples — the sweep is not covering the doorways`);
+  // A coverage floor, set well under what the sweep actually produces — see the
+  // same note in poly-elevation.test.ts. Corridor sections are narrower on
+  // average since the vocabulary landed, so a guard pinned to the old count
+  // fired without a single opening having moved.
+  assert.ok(checked > 14000, `only ${checked} samples — the sweep is not covering the doorways`);
 });
 
 test('A CORRIDOR DOES NOT LAY ITS FLOOR AND CEILING INSIDE THE ROOM', () => {

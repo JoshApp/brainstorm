@@ -21,6 +21,8 @@ import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
 import { planPortals } from './portals';
+import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES } from './corridor-types';
+import { ceilingForLink } from './corridor-ceiling';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation } from './poly-elevation';
 import { resolveSkin } from './skin';
@@ -167,7 +169,7 @@ interface Placed {
 type Box = { x: number; z: number; w: number; d: number };
 type Dir = 'N' | 'S' | 'E' | 'W';
 
-const MARGIN = 1.5;          // gap between unrelated boxes, so walls never clip
+export const MARGIN = 1.5;          // gap between unrelated boxes, so walls never clip
 /** Metres between two spikes of a `hazard` room. Closer and it stops being a
  *  line you pick and becomes a maze you thread. */
 const HAZARD_SPREAD = 3.2;
@@ -188,18 +190,21 @@ const OVERLAP = 0.9;
  */
 const VOID_CHANCE = 0.70;
 /**
- * Corridor widths, and they are a FEEL knob, not a number.
+ * The width the LAYOUT PASS reserves for a path it has not built yet.
  *
- * A 1.7m squeeze is a corridor you edge through with a weapon out; a 3.4m
- * gallery is somewhere a fight can spill. Every corridor being 2.2m is most of
- * why passages between rooms used to read as plumbing.
+ * Not a corridor width — corridor-types.ts owns those now. This is the box
+ * `stepFrom` keeps other rooms out of while the spine is being packed, before
+ * anything knows how far apart the two rooms will end up or which section will
+ * fill the gap. It stays at the old constant deliberately: it is a placement
+ * heuristic, and MARGIN is what actually guarantees the clearance —
+ *
+ *   RESERVE_W / 2 + MARGIN  >=  widest section / 2
+ *
+ * which is 2.6m of kept-clear against a gallery's 1.8m half-width. That
+ * inequality is the load-bearing part, so it is asserted in a test rather than
+ * left as a comment that a later widening can quietly outgrow.
  */
-const CORRIDOR_WIDTHS: ReadonlyArray<readonly [number, number]> = [
-  [1.7, 0.25],   // squeeze
-  [2.2, 0.50],   // the workhorse
-  [3.4, 0.25],   // gallery
-];
-const CORRIDOR_W = 2.2;
+export const RESERVE_W = 2.2;
 /** How often a connection bends instead of running straight. */
 const DOGLEG_CHANCE = 0.45;
 /** (exit lateral, entry lateral) offsets to try for a bend, nearest first. The
@@ -207,12 +212,6 @@ const DOGLEG_CHANCE = 0.45;
 const DOGLEG_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, 3], [0, -3], [-2.5, 2.5], [2.5, -2.5], [0, 4.5], [0, -4.5],
 ];
-
-function corridorWidth(rand: () => number): number {
-  let roll = rand();
-  for (const [w, p] of CORRIDOR_WIDTHS) { roll -= p; if (roll <= 0) return w; }
-  return CORRIDOR_W;
-}
 
 /**
  * Build a complete floor out of polygon rooms.
@@ -306,14 +305,18 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // reader — wall cutting, doorway finding, the light pass — has to see all of
   // them or it will cut a doorway into the middle of a bend.
   const links: Array<{ from: string; to: string; rects: Box[]; ids: string[]; spur?: boolean }> = [];
-  const addLink = (from: string, to: string, id: string, rects: Box[], spur = false): void => {
+  const addLink = (from: string, to: string, id: string, conn: Connection, spur = false): void => {
+    const { rects, type } = conn;
     // The rect ids are kept alongside the rects because the ELEVATION pass has
     // to stamp a ramp on a specific corridor RoomSpec, and re-deriving the
     // `cor-3-1` naming at the far end of the file is exactly the kind of
     // duplicated convention that drifts.
     const ids = rects.map((_, k) => (rects.length > 1 ? `${id}-${k}` : id));
     rects.forEach((rect, k) => {
-      corridors.push({ id: ids[k], rect, height: 3.0 });
+      // The section's ceiling, not a constant. The frame models already take
+      // `openHeight` from this and compress to it, so a squeeze gets a low door
+      // and a gallery a tall one without either knowing about the other.
+      corridors.push({ id: ids[k], rect, height: type.height, corridorType: type.id });
       occupiedBoxes.push(rect);
     });
     links.push({ from, to, rects, ids, spur });
@@ -343,10 +346,24 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       placeholder.set(pocket.id, g.corridor);
       addLink(parent.id, pocket.id, `cor-p${p}`,
               connect(parent, pocket, rand,
-                      occupiedBoxes.filter((o) => o !== g.corridor)) ?? [g.corridor],
+                      occupiedBoxes.filter((o) => o !== g.corridor))
+                ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage },
               true);   // a SPUR — the elevation pass clamps it to the spine's floor
       break;
     }
+  }
+
+  // ── 2.5. NO CORRIDOR TALLER THAN THE ROOM IT OPENS INTO ───────────────────
+  //
+  // The gallery's 4.60m ceiling against rooms that start at 2.8m. The rule and
+  // the reason live in corridor-ceiling.ts; applied per LINK so a dogleg does
+  // not step its ceiling halfway round the bend.
+  const specById = new Map(corridors.map((c) => [c.id, c]));
+  for (const l of links) {
+    const legs = l.ids.map((id) => specById.get(id)).filter((c): c is RoomSpec => !!c);
+    if (!legs.length) continue;
+    const h = ceilingForLink(legs[0].height, l.rects, rooms);
+    for (const leg of legs) leg.height = h;
   }
 
   // ── 3. CONNECT. Corridors cut the walls; the shell does that from the same
@@ -830,7 +847,7 @@ function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; co
     const z = from.z + sign * (half(from, 'd') + len + half(size, 'd'));
     const at = { ...size, x: from.x, z };
     const corridor = {
-      x: from.x, w: CORRIDOR_W, d: len,
+      x: from.x, w: RESERVE_W, d: len,
       z: from.z + sign * (half(from, 'd') + len / 2),
     };
     return { at, corridor };
@@ -839,7 +856,7 @@ function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; co
   const x = from.x + sign * (half(from, 'w') + len + half(size, 'w'));
   const at = { ...size, x, z: from.z };
   const corridor = {
-    z: from.z, d: CORRIDOR_W, w: len,
+    z: from.z, d: RESERVE_W, w: len,
     x: from.x + sign * (half(from, 'w') + len / 2),
   };
   return { at, corridor };
@@ -862,9 +879,11 @@ function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; co
  * meant to cut. If the centre line misses the polygon (an ell's centre line can
  * exit through the missing quadrant), try lateral offsets before giving up.
  */
+interface Connection { rects: Box[]; type: CorridorType }
+
 function connect(
   a: Placed, b: Placed, rand: () => number, occupied: readonly Box[],
-): Box[] | null {
+): Connection | null {
   const alongZ = Math.abs(a.rect.x - b.rect.x) < 0.01;
   if (!alongZ && Math.abs(a.rect.z - b.rect.z) >= 0.01) return null;
   const sign = alongZ ? Math.sign(b.rect.z - a.rect.z) : Math.sign(b.rect.x - a.rect.x);
@@ -873,7 +892,23 @@ function connect(
   // lines: a shape's centre of open floor is not its bounding box's centre, so
   // the corridor was built beside the wall it had measured and ended in stone.
   const base = alongZ ? a.rect.x : a.rect.z;
-  const width = corridorWidth(rand);
+
+  // ── THE SECTION IS CHOSEN BEFORE THE GEOMETRY, FROM THE RUN IT MUST COVER ──
+  //
+  // A corridor is a WORD first now (level/corridor-types.ts) — squeeze, passage
+  // or gallery — and the word carries the width, the ceiling and the lengths it
+  // suits. Estimated at the base lateral, which is available before any rect
+  // exists and does not depend on the width the answer is about to set.
+  //
+  // ONE TYPE FOR THE WHOLE LINK, including a dogleg's three legs: a passage that
+  // changes width and ceiling halfway along does not read as architecture, it
+  // reads as a bug.
+  const eA = exitPoint(a, alongZ, sign, base), eB = exitPoint(b, alongZ, -sign, base);
+  const run = eA && eB
+    ? Math.abs(eA.at - eB.at)
+    : Math.abs((alongZ ? b.rect.z - a.rect.z : b.rect.x - a.rect.x));
+  const type = corridorTypeFor(run, rand);
+  const width = type.width;
 
   // A DOGLEG FIRST, SOMETIMES.
   //
@@ -888,7 +923,7 @@ function connect(
   // sealed and the dogleg a dead end.
   if (rand() < DOGLEG_CHANCE) {
     const bent = dogleg(a, b, alongZ, sign, base, width, occupied);
-    if (bent) return bent;
+    if (bent) return { rects: bent, type };
   }
 
   // Straight. Lateral offsets in order: dead centre first, then progressively
@@ -902,9 +937,12 @@ function connect(
     const t0 = Math.min(exitA.at, exitB.at) - OVERLAP;
     const t1 = Math.max(exitA.at, exitB.at) + OVERLAP;
     if (t1 <= t0) continue;
-    return [alongZ
-      ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
-      : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }];
+    return {
+      rects: [alongZ
+        ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
+        : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }],
+      type,
+    };
   }
   return null;
 }

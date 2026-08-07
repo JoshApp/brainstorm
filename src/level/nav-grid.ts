@@ -76,6 +76,23 @@ const FULL = 1;
 const TIGHT = 2;
 const GATE = 3;
 
+/**
+ * DOES A BODY OF THIS RADIUS FIT THROUGH A GAP OF THIS HALF-WIDTH?
+ *
+ * The one rule that decides whether a mob can follow you down a corridor, and
+ * the reason corridor-types.ts has a MIN_WALKABLE_WIDTH at all. Exported so the
+ * level generator's floor under corridor width is checked against the SHIPPING
+ * predicate rather than against a copy of the number 0.03 pasted into a test —
+ * a corridor vocabulary that silently walls wraiths out of half a floor looks
+ * like a pathing bug for three sessions before anyone measures it.
+ */
+export function gateAdmits(halfBand: number, radius: number): boolean {
+  return radius <= halfBand - GATE_SLACK;
+}
+/** Margin a body needs inside the band, metres. A mob that exactly fills a gap
+ *  wedges in the jamb on the first steering correction. */
+const GATE_SLACK = 0.03;
+
 export class NavGrid {
   private walkable: Uint8Array;
   readonly cols: number;
@@ -205,7 +222,7 @@ export class NavGrid {
     if (tier === TIGHT) return allowTight;
     if (tier === GATE) {
       const g = this.gateCells.get(r * this.cols + c);
-      return !!g && radius <= g.halfBand - 0.03;
+      return !!g && gateAdmits(g.halfBand, radius);
     }
     return false;
   }
@@ -444,7 +461,7 @@ export class NavGrid {
     for (const g of this.gates) {
       const s = gateCrossing({ x: ax, z: az }, { x: bx, z: bz }, g, g.halfBand + 1.5);
       if (s === null) continue;
-      if (radius > g.halfBand - 0.03) return true;          // cannot fit at all
+      if (!gateAdmits(g.halfBand, radius)) return true;      // cannot fit at all
       if (Math.abs(s) > g.halfBand - radius - 0.05) return true;   // would graze a blocker
     }
     return false;
