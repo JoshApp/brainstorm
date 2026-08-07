@@ -80,6 +80,10 @@ export function emitFramesForPortals(spec: LevelSpec): void {
         width: p.width,
         ceilingHeight: ceiling,
         openHeight: corridor.height,
+        // The frame is set INTO this wall, so its depths are solved from it —
+        // a 1.10m reveal in 0.25m of stone is what put half of every doorway
+        // out in the corridor. See content/frame-depth.ts.
+        wallDepth: WALL_T,
         slimOnly: stairMouth,
       });
 

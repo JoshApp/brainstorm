@@ -87,7 +87,10 @@ function buildFrame(scene: THREE.Object3D, opening: OpeningSpec, ceilingHeight: 
   // so force the slim doorframe. Routed through the SHARED chooser + fittings
   // installer (level/frame.ts) so these dress identically to corridor + tilemap
   // frames — the nav eye + crown glow now ride the fitting path too.
-  const { model } = chooseFrameModel({ width: opening.widthM, ceilingHeight, openHeight: opening.height, slimOnly: true });
+  const { model } = chooseFrameModel({
+    width: opening.widthM, ceilingHeight, openHeight: opening.height,
+    wallDepth: 0, slimOnly: true,
+  });
   const built = buildModel(model);
   built.group.position.set(opening.x, groundYAt(opening.x, opening.z), opening.z);
   built.group.rotation.y = opening.rotY;

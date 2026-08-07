@@ -976,7 +976,15 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
         // it; stair-room mouths force the slim doorframe (a column would
         // soft-lock the stair). Collision + nav gates stay here — they're what
         // lives IN the frame, and differ by kind.
-        const { kind, model } = chooseFrameModel({ width, ceilingHeight: ceiling, openHeight: corridor.height, slimOnly: stairMouth });
+        const { kind, model } = chooseFrameModel({
+          width, ceilingHeight: ceiling, openHeight: corridor.height,
+          // A rect room's wall is a single jittered PLANE — two rooms that
+          // share an edge bake one each, coincident — so there is no thickness
+          // for the frame to fill. It gets the shallowest reveal the arch can
+          // still read at. See content/frame-depth.ts.
+          wallDepth: 0,
+          slimOnly: stairMouth,
+        });
         if (kind === 'doorframe') {
           spec.props.push({
             kind: 'model', model,

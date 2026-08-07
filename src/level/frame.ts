@@ -23,6 +23,10 @@ export interface FrameOpts {
   ceilingHeight: number;
   /** Cap the lintel to a low tunnel's interior so no void slit shows above it. */
   openHeight?: number;
+  /** Thickness of the wall this opening is cut through, in metres. Drives every
+   *  depth in the frame model — see content/frame-depth.ts. Polygon rooms pass
+   *  `WALL_T`; rect rooms pass 0, because their wall is a single plane. */
+  wallDepth?: number;
   /** Force the slim doorframe regardless of width — a stair-room mouth (an
    *  archway column would soft-lock the stair) or a door/gate/fog opening that
    *  owns its own seal and wants no columns in the gap. */
@@ -37,7 +41,10 @@ export interface FrameChoice {
 /** The single archway-vs-doorframe decision + the model to build for it. */
 export function chooseFrameModel(o: FrameOpts): FrameChoice {
   const wide = o.width >= ARCHWAY_MIN_WIDTH && !o.slimOnly;
-  const opts = { width: o.width, ceilingHeight: o.ceilingHeight, openHeight: o.openHeight };
+  const opts = {
+    width: o.width, ceilingHeight: o.ceilingHeight,
+    openHeight: o.openHeight, wallDepth: o.wallDepth,
+  };
   return wide
     ? { kind: 'archway', model: archway(opts) }
     : { kind: 'doorframe', model: doorframe(opts) };

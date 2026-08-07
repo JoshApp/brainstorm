@@ -1,4 +1,5 @@
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
+import { revealDepthFor, DEFAULT_WALL_DEPTH } from './frame-depth';
 
 // Doorframe — the LIGHT cousin of the corridor archway (content/archway.ts).
 // Where the archway is an ornate gate for wide corridor mouths (columns with
@@ -36,6 +37,10 @@ export interface DoorframeOptions {
    *  overlaps the passage ceiling — no void slit above a low tunnel's
    *  ceiling (same fix as ArchwayOptions.openHeight). */
   openHeight?: number;
+  /** Thickness of the wall this frame is set into, in metres. The stone fill
+   *  above the head is sized from it — see content/frame-depth.ts. `WALL_T`
+   *  (0.25) for a polygon room; 0 for a rect room's plane. */
+  wallDepth?: number;
 }
 
 const JAMB_HALF_THICK = 0.09;     // half the jamb's size along the wall (X)
@@ -44,10 +49,10 @@ const LINTEL_BOTTOM   = 2.60;     // clear opening height (a door is 2.6 tall)
 const LINTEL_HEIGHT   = 0.24;
 const LINTEL_DEPTH    = 0.60;
 const LINTEL_OVERHANG = 0.08;     // lintel extends past the jambs each side
-// The fill block caps the void above the lintel. Deep enough (Z) to cover a
-// one-cell-thick divider from both faces; the overshoot sits up in the dark
-// ceiling where it's never seen.
-const FILL_DEPTH      = 1.10;
+// The fill block caps the void above the head. It used to be a flat 1.10 — a
+// metre of stone above a doorway in a wall a quarter of a metre thick, so it
+// hung 0.42m into the corridor on both faces and cut through the corridor's own
+// side walls. It is now solved from the wall it plugs; see content/frame-depth.ts.
 /** How far the knee brace runs down the post and in along the head. Keep it
  *  well above head height — the collision contract knows nothing about it. */
 const BRACE_RUN       = 0.30;
@@ -104,10 +109,11 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
     ? Math.min(LINTEL_BOTTOM, opts.openHeight - 0.10)
     : LINTEL_BOTTOM;
   const lintelTop = lintelBottom + LINTEL_HEIGHT;
+  const fillDepth = revealDepthFor(opts.wallDepth ?? DEFAULT_WALL_DEPTH);
   const fillHeight = Math.max(0.1, ceiling - lintelTop);
   const fillCentreY = lintelTop + fillHeight / 2;
 
-  const id = `doorframe2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
+  const id = `doorframe2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}-r${fillDepth.toFixed(2)}`;
 
   const parts: PartSpec[] = [];
   const postInner = jambOffset - JAMB_HALF_THICK;
@@ -191,7 +197,7 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   parts.push({
     kind: 'box', name: 'fill',
     pos: [0, fillCentreY, 0],
-    size: [lintelWidth, fillHeight, FILL_DEPTH], mat: 'stone',
+    size: [lintelWidth, fillHeight, fillDepth], mat: 'stone',
   } as PartSpec);
 
   return {

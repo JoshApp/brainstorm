@@ -88,17 +88,63 @@ test('THE FILL IS THICKER THAN THE WALL IT PLUGS', () => {
   // A frame thinner than its hole shows a slit of void from any oblique angle.
   // Checked against the REAL wall thickness, imported — a hard-coded 0.5 here
   // would keep passing on the day WALL_T changed.
-  const spec = archway({ width: 1.6, ceilingHeight: 3.2 });
+  const spec = archway({ width: 1.6, ceilingHeight: 3.2, wallDepth: WALL_T });
   const fill = spec.parts.find((p) => (p as { name?: string }).name === 'fill');
   assert.ok(fill, 'no fill part — the wall above the arch is open');
   const a = (fill as { a: { size: number[] } }).a;
-  assert.ok(a.size[2] > WALL_T,
-    `fill is ${a.size[2]}m deep in a ${WALL_T}m poly wall`);
-  // WALL_T is the POLY floor's wall and it is thin. A frame also lands in a
-  // vault DIVIDER, which is a full grid cell — doorframe.ts carries 1.10 for
-  // exactly that, and this must not be the shallower of the two.
-  assert.ok(a.size[2] >= 1.10 - 1e-9,
-    `fill is ${a.size[2]}m — shallower than the doorframe's 1.10 in the same walls`);
+  assert.ok(a.size[2] > WALL_T + 0.2,
+    `fill is ${a.size[2]}m deep in a ${WALL_T}m poly wall — a slit shows obliquely`);
+});
+
+test('AND IT DOES NOT HANG OUT IN THE CORRIDOR', () => {
+  // The other half of the same rule, and the one that was broken. Josh, on a
+  // phone: *"doorways z fight with the corridor, they are halfways embedded."*
+  //
+  // The frame is centred in the wall, so any part reaching further than half
+  // the reveal is stone standing in open air past the wall face — through the
+  // corridor's own side-wall planes, which is the z-fight, and out past its
+  // mouth, which is the "half embedded" read. Measured before the fix: 625 of
+  // 625 generated doorways stood 0.425m proud on the fill and 0.545m on the
+  // keystone, in a 0.25m wall.
+  //
+  // The keystone is ALLOWED to be the proudest block — it carries the dungeon's
+  // eye and a flush one would be a painted circle — so the budget is stated per
+  // part rather than as one number, and the ordering ring > fill > jamb is
+  // asserted because that ordering is the whole read.
+  for (const w of WIDTHS.filter((x) => x >= 2.0)) {
+    const spec = archway({ width: w, ceilingHeight: 3.2, wallDepth: WALL_T });
+    const named = (n: string) => spec.parts.find((p) => (p as { name?: string }).name === n);
+    const fillDepth = (named('fill') as { a: { size: number[] } }).a.size[2];
+    const keyDepth = (named('keystone') as { size: number[] }).size[2];
+    const voussoir = (named('voussoir-0') as { size: number[] }).size[2];
+    const shaft = (named('course-0') as { size: number[] }).size[2];
+    const plinth = (named('plinth') as { size: number[] }).size[2];
+
+    const proud = (d: number) => (d - WALL_T) / 2;
+    assert.ok(proud(fillDepth) <= 0.20 + 1e-9,
+      `w${w}: the wall fill stands ${proud(fillDepth).toFixed(3)}m out of a ${WALL_T}m wall on each face`);
+    assert.ok(proud(keyDepth) <= 0.30 + 1e-9,
+      `w${w}: the keystone stands ${proud(keyDepth).toFixed(3)}m proud — that is a buttress, not a boss`);
+    assert.ok(keyDepth > voussoir && voussoir > fillDepth && fillDepth > shaft,
+      `w${w}: depths out of order — key ${keyDepth.toFixed(2)} ring ${voussoir.toFixed(2)} `
+      + `fill ${fillDepth.toFixed(2)} shaft ${shaft.toFixed(2)}`);
+    assert.ok(plinth <= fillDepth + 1e-9,
+      `w${w}: the plinth (${plinth.toFixed(2)}m) steps out past the wall face`);
+  }
+});
+
+test('a thicker wall gets a deeper gate, and a plane still gets a gate', () => {
+  // The rule is a FRACTION of the wall, not a constant (docs/DESIGN-METHOD.md).
+  // Both ends of it: a rect room's wall is a single plane with no thickness at
+  // all, and the arch still has to have depth for a lamp to rake across.
+  const fillOf = (wallDepth: number) => {
+    const spec = archway({ width: 2.2, ceilingHeight: 3.2, wallDepth });
+    return ((spec.parts.find((p) => (p as { name?: string }).name === 'fill')) as
+      { a: { size: number[] } }).a.size[2];
+  };
+  assert.ok(fillOf(0) >= 0.5, `a plane wall got a ${fillOf(0)}m gate — the ring has no depth`);
+  assert.ok(fillOf(0.9) > fillOf(WALL_T), 'a thicker wall did not get a deeper reveal');
+  assert.ok(fillOf(4.0) <= 1.10 + 1e-9, 'reveal ran away past a metre — that is a tunnel');
 });
 
 test('the fill spans the whole opening, not just the arch', () => {

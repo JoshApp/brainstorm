@@ -1,4 +1,5 @@
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
+import { revealDepthFor, DEFAULT_WALL_DEPTH } from './frame-depth';
 
 // Corridor archway — the stone gate at the mouth of a corridor where it joins a
 // room. Sells the transition between chambers: instead of stepping from one box
@@ -59,14 +60,16 @@ export interface ArchwayOptions {
    * (Rolled mine-tunnel corridors run 2.3-2.6m.) Default: uncapped.
    */
   openHeight?: number;
+  /**
+   * Thickness of the wall this gate is set into, in metres. Every depth in the
+   * model is derived from it — see content/frame-depth.ts, and the measurement
+   * that says why. `WALL_T` (0.25) for a polygon room; 0 for a rect room, whose
+   * wall is a single plane. Default: a thin dungeon wall.
+   */
+  wallDepth?: number;
 }
 
 const JAMB_HALF_THICK = 0.16;      // half the jamb's size along the wall (X)
-// Along the corridor axis, and it tracks FILL_DEPTH on purpose: an arch a
-// metre deep springing from imposts 40cm deep reads as a slab resting on
-// sticks. The gate is one mass you pass through, so the jambs are the same
-// mass continued down to the floor.
-const JAMB_DEPTH      = 0.86;
 const BASE_HEIGHT     = 0.28;
 const BASE_OVERHANG   = 0.07;      // plinth extends this far past the jamb each side
 const IMPOST_HEIGHT   = 0.16;      // the block the arch springs from
@@ -87,26 +90,39 @@ const SPRING_MIN      = 1.78;      // below this you would duck through
 const VOUSSOIRS       = 7;
 const VOUSSOIR_RADIAL = 0.19;      // ring thickness
 const KEYSTONE_RADIAL = 0.34;
-const ARCH_DEPTH      = 1.22;      // proud of the wall fill on both faces
-const KEYSTONE_DEPTH  = 1.34;      // prouder still — the eye is set in this
-/**
- * Depth of the wall block the arch is cut from — and, since the ring is cut
- * from the same block, the depth of the reveal you walk through.
- *
- * MUST EXCEED THE WALL IT SITS IN, or the frame is thinner than the hole it
- * plugs and a slit of void shows from any oblique angle. A poly room's wall is
- * WALL_T (0.25m); a vault DIVIDER is a full grid cell, which is why
- * doorframe.ts settled on 1.10 for the same job. Taking its number rather than
- * a fresh guess: this frame goes in both kinds of wall, and the first pass of
- * this rebuild picked 0.34 off a misremembered wall thickness — the exact
- * shortcut that puts Josh's artefact back on every doorway.
- *
- * The side-effect is the better half of the change. A metre of stone around
- * the opening means you pass through a short barrel of arched masonry instead
- * of a cutout, which is what a threshold is supposed to feel like.
- */
-const FILL_DEPTH      = 1.10;
 const LINTEL_OVERHANG = 0.10;      // fill extends past the opening each side
+
+/**
+ * Every depth in this model, solved from the wall the gate is set into.
+ *
+ * These used to be four constants around a `FILL_DEPTH = 1.10` — a metre of
+ * stone, in a 0.25m wall, so half the gate hung out in the corridor. The
+ * measurement and the rule live in content/frame-depth.ts; what is here is the
+ * ORDER, which is the part you can see:
+ *
+ *   ring  >  fill  >  jambs
+ *
+ * The voussoirs stand proud of the wall face so a lamp rakes the curve; the
+ * fill is the wall; the jambs sit a hair back from it so the ring reads as
+ * laid ON the reveal rather than flush with it. The keystone is the proudest
+ * block in the gate, because the dungeon's eye is set in it.
+ */
+function depths(reveal: number) {
+  return {
+    fill:     reveal,
+    arch:     reveal + 0.12,
+    keystone: reveal + 0.24,
+    // An arch springing from imposts much shallower than the ring reads as a
+    // slab resting on sticks, so the jambs stay within a hand of the fill
+    // rather than taking a fixed fraction of it.
+    jamb:     Math.max(0.28, reveal - 0.10),
+    // The footing and the springer step OUT from the shaft, but never past the
+    // wall face — a plinth prouder than the fill is a buttress, and a gate does
+    // not have buttresses.
+    plinth:   Math.min(Math.max(0.28, reveal - 0.10) + 0.14, reveal),
+    impost:   Math.min(Math.max(0.28, reveal - 0.10) + 0.12, reveal),
+  };
+}
 
 /**
  * Openings are snapped to this grid before ANY geometry is derived from them.
@@ -139,8 +155,8 @@ const snap = (v: number, step: number): number => Math.round(v / step) * step;
  * The jambs used to sit INSIDE the opening with their outer faces flush to its
  * edges, so each one ate a full jamb-thickness of the way through: 0.68m gone
  * from every doorway in the game, at every width. A median 2.2m corridor
- * necked to 1.52m and a 1.7m squeeze to 1.02m — and the rebuilt archway is a
- * metre deep, so that pinch became a metre-long tunnel rather than a thin one.
+ * necked to 1.52m and a 1.7m squeeze to 1.02m — and the archway of the day was
+ * a metre deep, so that pinch became a metre-long tunnel rather than a thin one.
  *
  * A door frame surrounds a hole; it does not stand in it. The jambs now flank
  * the opening — pilasters against the solid wall either side, which is the
@@ -209,7 +225,9 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   const width = snap(opts.width, WIDTH_STEP);
   const ceiling = snap(opts.ceilingHeight ?? 3.2, 0.2);
   const open = opts.openHeight === undefined ? undefined : snap(opts.openHeight, 0.2);
-  const memoKey = `${width}|${ceiling}|${open ?? '-'}`;
+  const reveal = revealDepthFor(opts.wallDepth ?? DEFAULT_WALL_DEPTH);
+  const D = depths(reveal);
+  const memoKey = `${width}|${ceiling}|${open ?? '-'}|${reveal}`;
   const hit = MEMO.get(memoKey);
   // SAME OBJECT, not an equal one. The builder's CSG cache is a WeakMap keyed
   // on the part, so returning a fresh-but-identical spec would cache nothing.
@@ -235,12 +253,12 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   const fillH = Math.max(0.12, ceiling - g.spring);
   parts.push({
     kind: 'csg', op: 'subtract', mat: 'stone', name: 'fill',
-    a: { kind: 'box', pos: [0, g.spring + fillH / 2, 0], size: [fillWidth, fillH, FILL_DEPTH], mat: 'stone' },
+    a: { kind: 'box', pos: [0, g.spring + fillH / 2, 0], size: [fillWidth, fillH, D.fill], mat: 'stone' },
     // Laid along Z (rotX = 90°) so its circular face is the arch. Long enough
     // to punch clean through the fill from both sides.
     b: {
       kind: 'cylinder', pos: [0, g.centreY, 0], rot: [Math.PI / 2, 0, 0],
-      radius: g.radius, height: FILL_DEPTH * 3, segments: 48, mat: 'stone',
+      radius: g.radius, height: D.keystone * 3, segments: 48, mat: 'stone',
     },
   } as PartSpec);
 
@@ -266,7 +284,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // view, where a sign error puts the ring on its side.)
       pos: [rho * Math.sin(theta), g.centreY + rho * Math.cos(theta), 0],
       rot: [0, 0, -theta],
-      size: [tang, radial, key ? KEYSTONE_DEPTH : ARCH_DEPTH],
+      size: [tang, radial, key ? D.keystone : D.arch],
       mat: 'glow',
     } as PartSpec);
   }
@@ -282,7 +300,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     parts.push({
       kind: 'box', name: 'plinth',
       pos: [x, BASE_HEIGHT / 2, 0],
-      size: [JAMB_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, JAMB_DEPTH + 0.14],
+      size: [JAMB_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, D.plinth],
       mat: 'stone',
     } as PartSpec);
 
@@ -300,7 +318,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
         size: [
           JAMB_HALF_THICK * 2 - (chipped ? 0.045 : 0),
           courseH - 0.012,
-          JAMB_DEPTH + deep - (chipped ? 0.07 : 0),
+          D.jamb + deep - (chipped ? 0.07 : 0),
         ],
         mat: 'stone',
       } as PartSpec);
@@ -316,12 +334,12 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     parts.push({
       kind: 'box', name: 'impost',
       pos: [x, impostY, 0],
-      size: [impostHalf * 2, IMPOST_HEIGHT, JAMB_DEPTH + 0.12],
+      size: [impostHalf * 2, IMPOST_HEIGHT, D.impost],
       mat: 'glow',
     } as PartSpec);
   }
 
-  const id = `archway2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}`;
+  const id = `archway2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}-r${reveal.toFixed(2)}`;
 
   const spec: ModelSpec = {
     id,
@@ -341,9 +359,9 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     // would have put the carving anyway. Each faces outward (the eye is built
     // facing +Z; eye_back is turned to face the other way).
     slots: {
-      eye_front: { pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, KEYSTONE_DEPTH / 2 + 0.01] },
+      eye_front: { pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, D.keystone / 2 + 0.01] },
       eye_back: {
-        pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, -(KEYSTONE_DEPTH / 2 + 0.01)],
+        pos: [0, g.spring + g.rise + KEYSTONE_RADIAL / 2, -(D.keystone / 2 + 0.01)],
         rot: [0, Math.PI, 0],
       },
     },
