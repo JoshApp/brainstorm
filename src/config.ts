@@ -112,11 +112,18 @@ export const CONFIG = {
      * Speed at full momentum. Deliberately the OLD sprint number.
      *
      * This is a Souls-like: the walk is the game's tempo and a sprint that
-     * doubled it would make every room half the size it was designed as. 1.55×
-     * is "you are covering ground", not "you are outrunning the dungeon". What
-     * changed is not the ceiling, it is that you have to earn it.
+     * doubled it would make every room half the size it was designed as. What
+     * changed with momentum is not the ceiling, it is that you have to earn it.
+     *
+     * Josh, after playing it: *"the sprint momentum needs to be reduced by
+     * 40%."* The speed is `1 + (this - 1) * level`, so the thing being asked
+     * about is the BONUS over walking — 0.55 — not the multiplier itself.
+     * Forty percent off that bonus is 0.33, so 1.33×. Cutting the multiplier by
+     * 40% instead would have taken the player to 0.93× and made the sprint
+     * slower than the walk, which is the kind of reading a percentage invites
+     * and nobody means.
      */
-    SPEED_MUL_MAX: 1.55,
+    SPEED_MUL_MAX: 1.33,
     /** Extra metres a vault step carries at full momentum. */
     VAULT_CARRY_BONUS_M: 0.7,
     /** Extra metres it RISES at full momentum. Height is what turns "I can't
@@ -932,6 +939,30 @@ export const CONFIG = {
     DASH_OVER_RISE_M: 0.34,
     /** A plain flat-ground dodge. Small — a shove of weight, not a hop. */
     DASH_RISE_M: 0.07,
+    /**
+     * THE TALLEST THING A VAULT MAY CLEAR, in world metres above the floor.
+     *
+     * Josh: *"the vaulting should not work with objects that are too high...
+     * you can vault through doorframes and pillars. I think the vaulting should
+     * work slightly larger radius but with height check."*
+     *
+     * He is describing the right rule. Until now "can I get over this" was
+     * answered by a hand-set `dashable` flag on the prop, and a flag is a
+     * promise somebody has to remember to keep — one mis-tagged prop, or one
+     * piece of architecture that registers no collision at all, and the player
+     * walks through stone. Height is a FACT the obstacle already carries
+     * (`yTop`, required on every one of them, and read until now only by the
+     * projectile pass).
+     *
+     * So height is the rule and the flag is a hint: an obstacle taller than
+     * this can never be vaulted, whatever it claims. A doorframe and a pillar
+     * are full-height (yTop Infinity), so they are refused by construction
+     * rather than by anyone remembering.
+     *
+     * 0.75m is thigh-high — above the 0.42m the eye actually rises, so a step
+     * still reads as a step, and well under anything a person would call a wall.
+     */
+    MAX_CLEAR_HEIGHT_M: 0.75,
   },
   PLAYER_HP_MAX: 5,
   /**

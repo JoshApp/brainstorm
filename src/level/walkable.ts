@@ -1,5 +1,6 @@
 import type { WalkableRect, Vec2 } from './types';
 import { SpatialHash } from './spatial-hash';
+import { CONFIG } from '../config';
 
 // Walkable region = union of axis-aligned rectangles MINUS obstacles, MINUS
 // proximity to wall segments.
@@ -54,6 +55,24 @@ export interface WallSegment {
 // test the footprint alone (you still can't walk through a waist-high altar).
 // The footprint must MATCH the geometry that draws it (a round column = a
 // circle, not a square that eats shots grazing past it).
+/**
+ * CAN A VAULT CLEAR THIS? Height first, flag second.
+ *
+ * Josh, on a phone: *"you can vault through doorframes and pillars."* The old
+ * rule was the `dashable` flag alone — a promise each prop author has to
+ * remember to keep, and one that says nothing at all about a piece of
+ * architecture that registers no flag either way. Height is a fact every
+ * obstacle already carries: `yTop` is REQUIRED on all of them, and a
+ * full-height thing carries Infinity.
+ *
+ * So the flag still says "this is the KIND of thing you step over" and the
+ * height decides whether you actually can. A doorframe cannot become vaultable
+ * by being mislabelled, because it is 3 metres tall.
+ */
+function vaultable(o: Obstacle): boolean {
+  return !!o.dashable && o.yTop <= CONFIG.VAULT.MAX_CLEAR_HEIGHT_M;
+}
+
 export type Obstacle =
   | { kind: 'circle'; x: number; z: number; r: number; yTop: number; dashable?: boolean }
   | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number; dashable?: boolean };
@@ -219,7 +238,8 @@ export class WalkableRegion {
       const o = OBS_SCRATCH[i];
       // DASHABLE obstacles (fallen pillars, 1-wide gaps) don't block while the
       // player is DASHING — they vault/dash over. Still block a normal walk.
-      if (opts?.ignoreDashable && o.dashable) continue;
+      // AND ONLY IF THEY ARE LOW ENOUGH: see vaultable().
+      if (opts?.ignoreDashable && vaultable(o)) continue;
       if (o.kind === 'circle') {
         const dx = x - o.x;
         const dz = z - o.z;
@@ -358,7 +378,7 @@ export class WalkableRegion {
     const no = this.obstacleGrid.querySegment(fromX, fromZ, toX, toZ, OBS_SCRATCH);
     for (let i = 0; i < no; i++) {
       const o = OBS_SCRATCH[i];
-      if (o.dashable) continue;
+      if (vaultable(o)) continue;
       if (o.kind === 'circle') {
         if (distSqPointToSegment(o.x, o.z, fromX, fromZ, toX, toZ) < o.r * o.r) return false;
       } else {

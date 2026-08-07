@@ -110,5 +110,40 @@ test('resolveDashUndershoot is a NO-OP on valid floor and when stuck on a non-da
   assert.equal(region.resolveDashUndershoot(0, 0, 0, 1, R), null, 'stuck in a solid chest is NOT the dash-heal’s job');
 });
 
+test('A VAULT IS GATED ON HEIGHT, NOT ON A FLAG', () => {
+  // Josh, on a phone: *"the vaulting should not work with objects that are too
+  // high... you can vault through doorframes and pillars."*
+  //
+  // "Can I get over this" used to be answered by the `dashable` flag alone — a
+  // promise every prop author has to remember to keep. Height is a fact the
+  // obstacle already carries: `yTop` is required on all of them, and until this
+  // change only the PROJECTILE pass ever read it.
+  //
+  // The flag now says "this is the KIND of thing you step over" and the height
+  // decides whether you actually can, so a tall thing cannot become vaultable
+  // by being mislabelled — which is the only way the reported bug happens.
+  const low: Obstacle = { kind: 'circle', x: 0, z: 0, r: 0.45, yTop: 0.5, dashable: true };
+  const lowRegion = new WalkableRegion([ROOM], [low]);
+  assert.equal(lowRegion.contains(0, 0, R), false, 'a fallen pillar still blocks a WALK');
+  assert.equal(lowRegion.canDashOver(0, -2, 0, 2, R), true,
+    'a 0.5m fallen pillar is exactly what a vault is for');
+
+  // THE BUG, STATED. Same prop, same flag, three metres tall.
+  const tall: Obstacle = { kind: 'circle', x: 0, z: 0, r: 0.45, yTop: 3.0, dashable: true };
+  const tallRegion = new WalkableRegion([ROOM], [tall]);
+  assert.equal(tallRegion.canDashOver(0, -2, 0, 2, R), false,
+    'a 3m obstacle was vaulted because it CLAIMED to be dashable — height has to win');
+  // And it must not become passable mid-dash either, or the vault refuses while
+  // the collision that runs during it lets you through anyway.
+  assert.equal(tallRegion.contains(0, 0, R, { ignoreDashable: true }), false,
+    'a dashing player phased into a 3m obstacle');
+
+  // Full-height architecture — a doorframe jamb, a pillar — carries Infinity,
+  // so it is refused by construction rather than by anyone remembering.
+  const arch: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.3, maxZ: 0.3, yTop: Infinity, dashable: true };
+  const archRegion = new WalkableRegion([ROOM], [arch]);
+  assert.equal(archRegion.canDashOver(0, -2, 0, 2, R), false, 'vaulted through a full-height frame');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
