@@ -21,6 +21,7 @@
 import assert from 'node:assert/strict';
 import { archway, archGeometry, archwayColumnOffset, archwayPassableHalfBand } from '../src/content/archway';
 import { WALL_T } from '../src/level/poly-room-shell';
+import { COURSE_H, BRICK_W } from '../src/style/stone-grid';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -210,3 +211,43 @@ test('the nav gate still fits a player', () => {
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
+test('THE WALL ABOVE A GATE IS WALL, NOT ONE BLOCK', () => {
+  // Josh: *"that stacked mass on top of it looks ugly, it's just a dumb block."*
+  //
+  // The fill closing a doorway's full-height gap is a median 2.6m tall over a
+  // median 4.8m ceiling (measured, 625 doorways on 64 floors) — two square
+  // metres of blank stone in a room whose every other wall is coursed geometry.
+  // Coursing goes on its face, and it has to actually be there at the heights
+  // the generator produces, not just at the bench's convenient 3.2m.
+  for (const c of [3.6, 4.2, 4.8, 5.6]) {
+    const spec = archway({ width: 2.4, ceilingHeight: c, wallDepth: WALL_T });
+    const spandrel = spec.parts.filter((p) => /^spandrel-/.test((p as { name?: string }).name ?? '')) as
+      Array<{ size: number[] }>;
+    assert.ok(spandrel.length >= 1,
+      `c${c}: no stones above the arch — the fill is still one block`);
+    // The rule, stated the way the complaint was: no single stone up there is
+    // bigger than a stone. Height-independent, so it holds at every ceiling the
+    // generator produces rather than only at the convenient ones.
+    const tallest = Math.max(...spandrel.map((p) => p.size[1]));
+    const widest = Math.max(...spandrel.map((p) => p.size[0]));
+    assert.ok(tallest <= COURSE_H + 0.02,
+      `c${c}: a ${tallest.toFixed(2)}m-tall stone above the arch — courses are ${COURSE_H}m`);
+    assert.ok(widest <= BRICK_W + 0.02,
+      `c${c}: a ${widest.toFixed(2)}m-wide stone above the arch — bricks are ${BRICK_W}m`);
+    // And it stands PROUD of the fill, or the two are coplanar and z-fight.
+    const fill = (spec.parts.find((p) => (p as { name?: string }).name === 'fill') as
+      { a: { size: number[] } }).a.size[2];
+    const deepest = Math.max(...spandrel.map((p) => (p as { size: number[] }).size[2]));
+    assert.ok(deepest > fill + 0.01,
+      `c${c}: the coursing sits at ${deepest.toFixed(2)}m in a ${fill.toFixed(2)}m fill — coplanar`);
+  }
+  // A LOW room has no wall above the arch and must not grow one.
+  const low = archway({ width: 2.4, ceilingHeight: 2.8, wallDepth: WALL_T });
+  const g = archGeometry(2.4, 2.8);
+  const headroom = 2.8 - (g.spring + g.rise);
+  if (headroom < 0.3) {
+    assert.equal(low.parts.filter((p) => /^spandrel-/.test((p as { name?: string }).name ?? '')).length, 0,
+      'coursing laid in a room with no wall above the arch');
+  }
+});

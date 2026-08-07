@@ -1,5 +1,6 @@
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
 import { revealDepthFor, DEFAULT_WALL_DEPTH } from './frame-depth';
+import { coursedPanel } from './frame-coursing';
 
 // Doorframe — the LIGHT cousin of the corridor archway (content/archway.ts).
 // Where the archway is an ornate gate for wide corridor mouths (columns with
@@ -49,13 +50,23 @@ const LINTEL_BOTTOM   = 2.60;     // clear opening height (a door is 2.6 tall)
 const LINTEL_HEIGHT   = 0.24;
 const LINTEL_DEPTH    = 0.60;
 const LINTEL_OVERHANG = 0.08;     // lintel extends past the jambs each side
-// The fill block caps the void above the head. It used to be a flat 1.10 — a
-// metre of stone above a doorway in a wall a quarter of a metre thick, so it
-// hung 0.42m into the corridor on both faces and cut through the corridor's own
-// side walls. It is now solved from the wall it plugs; see content/frame-depth.ts.
 /** How far the knee brace runs down the post and in along the head. Keep it
  *  well above head height — the collision contract knows nothing about it. */
 const BRACE_RUN       = 0.30;
+
+// ── THE WALL ABOVE THE HEAD ──────────────────────────────────────────────────
+/** Fraction of the reveal the void-proof backing plate takes. The coursing in
+ *  front of it is full depth, so every laid stone stands proud of it and a
+ *  DROPPED one reads as a recess rather than as a hole. */
+const FILL_BACK       = 0.62;
+/** Rise of the relieving arch over the timber head. Shallow on purpose — the
+ *  point is one curved line, not a second gate. */
+const RELIEF_RISE     = 0.14;
+const RELIEF_H        = 0.17;   // radial thickness of its blocks
+const RELIEF_BLOCKS   = 5;
+/** Fraction of the coursed face missing above a shored doorway. Higher than a
+ *  sound wall's: this is the bit nobody could reach to repoint. */
+const FILL_GAPS       = 0.16;
 
 const LINTEL_TOP = LINTEL_BOTTOM + LINTEL_HEIGHT;
 
@@ -191,14 +202,50 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
     size: [0.075, 0.14, JAMB_DEPTH * 0.7], mat: 'timber',
   } as PartSpec);
 
-  // Fill above the head — closes the full-height void over the doorway. STONE,
-  // not timber: the wall was always there; the frame is what somebody put in it
-  // afterwards, and the material change is what says so.
+  // ── WHAT CARRIES THE WALL OVER THE HEAD ────────────────────────────
+  //
+  // The backing plate closes the full-height gap the wall ring leaves at a
+  // doorway; the relieving arch and the coursing in front of it are what you
+  // actually look at. See content/frame-coursing.ts for the whole note.
+  //
+  // THE RELIEVING ARCH is what a mason builds over a timber head, because a
+  // beam cannot carry a wall. Five blocks on a shallow segmental curve,
+  // springing off the ends of the head. It is the only curve in an otherwise
+  // square frame, which is the read at a distance.
   parts.push({
     kind: 'box', name: 'fill',
     pos: [0, fillCentreY, 0],
-    size: [lintelWidth, fillHeight, fillDepth], mat: 'stone',
+    size: [lintelWidth, fillHeight, fillDepth * FILL_BACK], mat: 'stone',
   } as PartSpec);
+
+  // Only when there is wall to carry. In a low room the head is nearly at the
+  // ceiling and the backing is the whole story.
+  let coursesFrom = lintelTop;
+  if (fillHeight >= RELIEF_RISE + RELIEF_H + 0.06) {
+    const s = (lintelWidth * 0.74) / 2;
+    const R = (s * s + RELIEF_RISE * RELIEF_RISE) / (2 * RELIEF_RISE);
+    const centreY = lintelTop + RELIEF_RISE - R;
+    const half = Math.atan2(s, R - RELIEF_RISE);
+    const step = (2 * half) / RELIEF_BLOCKS;
+    const rho = R + RELIEF_H / 2;
+    for (let i = 0; i < RELIEF_BLOCKS; i++) {
+      const theta = -half + (i + 0.5) * step;
+      parts.push({
+        kind: 'box', name: `relief-${i}`,
+        pos: [rho * Math.sin(theta), centreY + rho * Math.cos(theta), 0],
+        // Same sign convention as the archway's ring: −theta about Z swings an
+        // unrotated box (local +Y radially out at theta = 0) round the arc.
+        rot: [0, 0, -theta],
+        size: [R * step * 1.08, RELIEF_H, fillDepth], mat: 'stone',
+      } as PartSpec);
+    }
+    coursesFrom = lintelTop + RELIEF_RISE + RELIEF_H;
+  }
+
+  parts.push(...coursedPanel({
+    width: lintelWidth, baseY: coursesFrom, topY: ceiling,
+    depth: fillDepth, mat: 'stone', prefix: 'fillcourse', gaps: FILL_GAPS,
+  }));
 
   return {
     id,

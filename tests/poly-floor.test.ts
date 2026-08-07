@@ -30,6 +30,7 @@ import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
 import { plateExtentFor, OVERLAP } from '../src/level/corridor-trim';
+import { planPortals } from '../src/level/portals';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
 import { roomType } from '../src/level/room-types';
@@ -723,3 +724,44 @@ test('the same seed builds the same floor', () => {
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
+test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
+  // Josh, on a screenshot: *"cobweb placement sealing doorways is off."*
+  //
+  // It was placed at the room's `mouth` — the end of a corridor RECT that lands
+  // inside the polygon. A corridor rect deliberately ends INSIDE the room (the
+  // only way it reaches a wall set back from its own bounding box), so the
+  // mouth is a point floating in open floor: measured a median 1.63m from the
+  // doorway it names, and more than a metre off on half of them. Its yaw came
+  // from `nearestSurface` at that interior point — which picked a perpendicular
+  // wall 10 times in 285 — and its width was a hard-coded 2.0m in holes
+  // measuring 1.4m to 2.6m.
+  //
+  // A web and the stone frame it hangs in must come from ONE source. Both now
+  // ask `planPortals`, so this checks the web against that same answer.
+  let webs = 0;
+  for (const spec of floors()) {
+    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
+    const portals: Array<{ mid: readonly [number, number]; rotY: number; width: number }> = [];
+    for (const room of spec.rooms ?? []) {
+      if (!room.poly || room.poly.length < 3) continue;
+      portals.push(...planPortals(room.id, room.poly, corridors));
+    }
+    for (const p of (spec.props ?? []) as PropSpec[]) {
+      if (p.kind !== 'cobweb') continue;
+      webs++;
+      const w = p as { x: number; z: number; rotY?: number; widthM?: number };
+      const hit = portals.find((q) =>
+        Math.hypot(q.mid[0] - w.x, q.mid[1] - w.z) < 0.01);
+      assert.ok(hit, `a web at (${w.x.toFixed(1)}, ${w.z.toFixed(1)}) is not in any doorway`);
+      const dy = Math.abs(((hit!.rotY - (w.rotY ?? 0)) % Math.PI + Math.PI) % Math.PI);
+      assert.ok(Math.min(dy, Math.PI - dy) < 1e-6,
+        `the web is turned ${(Math.min(dy, Math.PI - dy) * 57.3).toFixed(0)}° off its own doorway`);
+      assert.ok(Math.abs((w.widthM ?? 0) - hit!.width) < 1e-6,
+        `a ${(w.widthM ?? 0).toFixed(2)}m web across a ${hit!.width.toFixed(2)}m hole`);
+    }
+  }
+  // A detector that finds nothing looks exactly like a codebase with nothing to
+  // find. Webs are rare on purpose (dead ends, off the mainline), so say so.
+  assert.ok(webs >= 3, `only ${webs} webs across ${SEEDS.length * DEPTHS.length} floors — this test measured nothing`);
+});

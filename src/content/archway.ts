@@ -1,5 +1,6 @@
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
 import { revealDepthFor, DEFAULT_WALL_DEPTH } from './frame-depth';
+import { coursedPanel } from './frame-coursing';
 
 // Corridor archway — the stone gate at the mouth of a corridor where it joins a
 // room. Sells the transition between chambers: instead of stepping from one box
@@ -288,6 +289,23 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       mat: 'glow',
     } as PartSpec);
   }
+
+  // ── THE WALL ABOVE THE ARCH ────────────────────────────────────────
+  //
+  // The fill above is a doorway-sized hole in the wall ring, closed with one
+  // box — a median 2.6m of blank stone over every gate, reaching 5.4m at the
+  // worst. Coursed masonry goes on its face, standing proud of the fill so the
+  // two read as stone laid on stone rather than z-fighting as one plane. The
+  // shared panel (content/frame-coursing.ts) lays it on the same world grid the
+  // wall texture uses, so the joints line up with the mortar behind them.
+  //
+  // It starts above the ring's crown: the spandrels are the arch's own stone,
+  // and coursing laid across them would say the mason built the wall first.
+  const crown = g.centreY + g.radius + KEYSTONE_RADIAL;
+  parts.push(...coursedPanel({
+    width: fillWidth, baseY: crown, topY: ceiling,
+    depth: D.fill + 0.08, mat: 'stone', prefix: 'spandrel', seed: 7,
+  }));
 
   // ── THE JAMBS ──────────────────────────────────────────────────────
   const impostY = g.spring - IMPOST_HEIGHT / 2;

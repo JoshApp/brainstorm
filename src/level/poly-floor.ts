@@ -20,6 +20,7 @@ import { planInterior, type InteriorForm } from './room-interior';
 import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
+import { planPortals } from './portals';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation } from './poly-elevation';
 import { resolveSkin } from './skin';
@@ -593,6 +594,11 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     rooms.map((r) => ({
       id: r.id, type: r.type, poly: r.poly, walls: r.walls, occupancy: r.occupancy,
       mouth: mouthOf(r, links),
+      // THE SAME CALL THE FRAMES MAKE. A web and the stone doorway it hangs in
+      // have to agree, and the only way to guarantee that is to ask once.
+      doorways: planPortals(r.id, r.poly, corridors).map((p) => ({
+        x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.width,
+      })),
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
       onMainline: mainline.has(r.id),
       claims: claimsOf(r),

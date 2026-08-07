@@ -52,6 +52,25 @@ export interface DecorRoom {
   occupancy: RoomOccupancy;
   /** Where the player comes in — a web belongs in a mouth, a body does not. */
   mouth: { x: number; z: number } | null;
+  /**
+   * The room's actual DOORWAYS, straight off the portal planner.
+   *
+   * Not the same thing as `mouth`, and the difference shipped a bug. `mouth` is
+   * the end of a corridor RECT that lands inside the polygon — and a corridor
+   * rect deliberately ends inside the room, because that is the only way it can
+   * reach a wall set back from its own bounding box. So the mouth is a point
+   * floating in open floor, a measured median 1.63m from the doorway it names.
+   *
+   * A web hung there was hung at the wrong place, at the wrong ANGLE (the old
+   * code passed the nearest wall's inward NORMAL where the curtain wants the
+   * wall-line yaw the doorframe uses — 90° out on all 6 of 6 sampled webs), and
+   * at a hard-coded 2.0m width in holes measuring 1.4m to 2.6m.
+   *
+   * These come from `planPortals`, the same call `portal-frames.ts` makes for
+   * the stone frame. One source, so the web and the frame it hangs in cannot
+   * disagree about where the doorway is.
+   */
+  doorways: ReadonlyArray<{ x: number; z: number; rotY: number; width: number }>;
   /** How many ways out. Exactly one means a dead end, which is the only place a
    *  web is allowed — see the fence on WEB_CHANCE below. */
   exits: number;
@@ -229,11 +248,18 @@ export function decorPolyFloor(
     // A dead end is where it belongs and where it reads best anyway — a side
     // passage nobody has walked in years. It gates a detour you chose, costs one
     // swing, and can never stand between the player and the stairs.
-    if (r.mouth && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
-      const wall = nearestSurface(r.walls, r.mouth.x, r.mouth.z);
+    if (r.doorways.length && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
+      // The doorway nearest the mouth, so a room with two holes still webs the
+      // one the player arrives through. Position, yaw and width all come off
+      // the portal — see the note on DecorRoom.doorways for what happened when
+      // they were each guessed separately.
+      const door = r.mouth
+        ? [...r.doorways].sort((a, b) =>
+            Math.hypot(a.x - r.mouth!.x, a.z - r.mouth!.z)
+            - Math.hypot(b.x - r.mouth!.x, b.z - r.mouth!.z))[0]
+        : r.doorways[0];
       const web = {
-        kind: 'cobweb', x: r.mouth.x, z: r.mouth.z,
-        rotY: wall ? wall.facingY : 0, widthM: 2.0,
+        kind: 'cobweb', x: door.x, z: door.z, rotY: door.rotY, widthM: door.width,
       } as PropSpec;
       // NOBODY HAS BEEN HERE FOR YEARS is a claim, and a room with a burning
       // cresset standing in it has already made the opposite one. The roll is
