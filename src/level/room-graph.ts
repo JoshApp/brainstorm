@@ -6,13 +6,20 @@
 // still lead to undone ground). It deliberately DUPLICATES two small helpers
 // (sharedOpening, rectAt) from room-culling.ts rather than refactor that file:
 // the culler is the per-frame, feel/perf-sensitive path with delicate
-// logicalOnly/fallback logic, and a cosmetic feature shouldn't risk it. A DRY
-// merge (room-culling consuming this) is a safe, separate follow-up.
+// logicalOnly/fallback logic, and a cosmetic feature shouldn't risk it.
+//
+// HALF OF THAT DEBT IS PAID: `rectAt` — the "which room is this point in" rule,
+// and the one that keeps breaking because a polygon room is not its bounding
+// box — now lives once, in level/rect-at.ts, and both files call it. It moved
+// when a THIRD consumer appeared (the culler resolving which two rooms a
+// doorway joins) and an audit needed to ask the shipping question rather than a
+// copy of it. `sharedOpening` is still duplicated.
 
 import { pointInPoly, type Poly } from './room-shape';
+import { rectAtIn, RECT_EPS } from './rect-at';
 import type { RoomSpec } from './types';
 
-const EPS = 0.05;
+const EPS = RECT_EPS;
 
 export interface GraphNode {
   id: string;
@@ -178,19 +185,7 @@ export function buildRoomGraph(spec: { rooms: RoomSpec[]; corridors: RoomSpec[] 
   // room, in the part its entry corridor's box happens to reach, answered "you
   // are in a corridor". The nav layer only shows door eyes to a player who is in
   // a ROOM, so that alone would keep them shut in exactly the places they matter.
-  const rectAt = (x: number, z: number): GraphNode | null => {
-    let best: GraphNode | null = null;
-    let bestIsReal = false;
-    for (const n of nodes.values()) {
-      if (x < n.cx - n.hw - EPS || x > n.cx + n.hw + EPS ||
-          z < n.cz - n.hd - EPS || z > n.cz + n.hd + EPS) continue;
-      const real = !!n.poly && n.poly.length >= 3 && pointInPoly(n.poly, x, z);
-      if (real && !bestIsReal) { best = n; bestIsReal = true; continue; }
-      if (real !== bestIsReal) continue;                       // a box never beats a floor
-      if (!best || n.hw * n.hd < best.hw * best.hd) best = n;
-    }
-    return best;
-  };
+  const rectAt = (x: number, z: number): GraphNode | null => rectAtIn(nodes.values(), x, z);
   const neighbors = (id: string): string[] => {
     const out: string[] = [];
     for (const e of edges) {

@@ -1441,7 +1441,12 @@ export function buildLevel(
       // can report "this rubble = surface-clutter phase." No-op for
       // gameplay; only read by src/debug/capture.ts.
       built.group.userData.dbgSource = prop._dbg ?? 'authored';
-      built.group.userData.dbgKind = 'prop';
+      // A FRAMED OPENING IS A BOUNDARY OBJECT, not a room's decoration. It
+      // stands IN the wall between two spaces and is seen from both, so the
+      // culler cannot assign it to one of them — see room-culling.ts.
+      // `proximityGlow` is the frame marker: every archway and doorframe sets
+      // it and nothing else does.
+      built.group.userData.dbgKind = prop.proximityGlow ? 'frame' : 'prop';
       // Mood-tint pass: if the spec opts in (moodTintable), recolour
       // its flame material + every additive sprite particle + the
       // attached light to match the average torch tint of the room

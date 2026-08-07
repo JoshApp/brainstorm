@@ -4,7 +4,8 @@ import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
-import { pointInPoly, type Poly } from './room-shape';
+import { type Poly } from './room-shape';
+import { rectAtIn, RECT_EPS } from './rect-at';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -38,7 +39,7 @@ interface RectNode {
 // Doorway-reveal margin (metres): a neighbour room renders when its connecting
 // doorway is within this distance of the view frustum. Generous = less pop-in.
 const MARGIN = 1.5;
-const EPS = 0.05;
+const EPS = RECT_EPS;
 
 // Distance cap on the flood-fill: a doorway beyond FOG_FAR leads ONLY to
 // geometry that's already 100% fog-black (fog reaches full opacity at
@@ -135,6 +136,14 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     }
   }
 
+  // A framed opening is not IN a room, it is BETWEEN two — see the note at the
+  // assignment below. Held apart from `node.objects` because its visibility is
+  // an OR of two rooms, and the per-node loop can only write one answer.
+  const boundary: Array<{ o: THREE.Object3D; a: string | null; b: string | null }> = [];
+  /** How far through a gate to step when asking which rooms it joins. Past the
+   *  wall (0.25m) and past the frame's own reveal, into open floor on each side. */
+  const FRAME_PROBE = 1.0;
+
   // 3) Assign toggleable static objects to rects.
   //    Shells (floor/ceiling/walls) carry userData.dbgSource = "<kind> · <id> …".
   for (const child of level.root.children) {
@@ -156,6 +165,31 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     if (child.userData?.dbgKind === 'prop') {
       const node = rectAt(nodes, child.position.x, child.position.z);
       if (node) node.objects.push(child);
+      continue;
+    }
+    // ── A FRAMED OPENING BELONGS TO BOTH SIDES ────────────────────────────
+    //
+    // Josh, on a screenshot: *"when viewing from an angle like the screenshots
+    // it's there and then it gets culled, part of the doorframe."*
+    //
+    // An archway stands IN the wall between two spaces, so `rectAt` at its
+    // centre resolves it to exactly ONE of them — and the moment that one is
+    // culled the stone vanishes while you are looking straight at it from the
+    // other side. Doors already carry an exemption for the same reason (see the
+    // interactable loop below: "boundary objects that animate in place").
+    //
+    // So resolve both rooms once, at build time, by stepping through the gate
+    // and back. The frame renders while EITHER is rendered, which is stricter
+    // than the door exemption — a doorway three rooms away still culls.
+    if (child.userData?.dbgKind === 'frame') {
+      // The frame's local +Z runs through the gate; rotY is how it was placed.
+      const s = Math.sin(child.rotation.y), c = Math.cos(child.rotation.y);
+      const px = child.position.x, pz = child.position.z;
+      boundary.push({
+        o: child,
+        a: rectAt(nodes, px + s * FRAME_PROBE, pz + c * FRAME_PROBE)?.id ?? null,
+        b: rectAt(nodes, px - s * FRAME_PROBE, pz - c * FRAME_PROBE)?.id ?? null,
+      });
     }
   }
   //    Torches by position (their group is a direct root child not tagged above).
@@ -190,6 +224,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const o of node.objects) o.visible = true;
       setStaticBatchRectVisible(node.id, true);
     }
+    for (const f of boundary) f.o.visible = true;
     showAllStaticBatches();   // instances in rects the culler doesn't track
     for (const e of level.enemies) e.group.visible = true;
     for (const it of getAllInteractables()) {
@@ -276,6 +311,17 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // Static-world BatchedMesh instances belonging to this rect toggle with
       // it (scene/static-batch.ts) — same occlusion granularity, one draw.
       setStaticBatchRectVisible(node.id, vis);
+    }
+
+    // Framed openings — visible while EITHER of the rooms they join is. A frame
+    // that resolved to neither (a fitting opening in geometry the culler does
+    // not track) always renders, erring toward drawing rather than toward the
+    // hole in the wall Josh photographed.
+    for (const f of boundary) {
+      const vis = (f.a === null && f.b === null)
+        || (f.a !== null && visible.has(f.a))
+        || (f.b !== null && visible.has(f.b));
+      if (f.o.visible !== vis) f.o.visible = vis;
     }
 
     // Enemies are occlusion-culled DYNAMICALLY. Unlike shells (assigned once),
@@ -429,17 +475,7 @@ function sharedOpening(a: RectNode, b: RectNode): { x: number; z: number } | nul
  * than merely unobserved. Same fix, same reason, as room-graph.ts's rectAt.
  */
 function rectAt(nodes: Map<string, RectNode>, x: number, z: number): RectNode | null {
-  let best: RectNode | null = null;
-  let bestIsReal = false;
-  for (const n of nodes.values()) {
-    if (x < n.cx - n.hw - EPS || x > n.cx + n.hw + EPS ||
-        z < n.cz - n.hd - EPS || z > n.cz + n.hd + EPS) continue;
-    const real = !!n.poly && pointInPoly(n.poly, x, z);
-    if (real && !bestIsReal) { best = n; bestIsReal = true; continue; }
-    if (real !== bestIsReal) continue;                       // a box never beats a floor
-    if (!best || n.hw * n.hd < best.hw * best.hd) best = n;
-  }
-  return best;
+  return rectAtIn(nodes.values(), x, z);
 }
 
 function nearestRect(nodes: Map<string, RectNode>, x: number, z: number): RectNode | null {
