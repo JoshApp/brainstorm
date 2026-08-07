@@ -43,6 +43,42 @@ const RECESS_MAX = 0.055;
  *  on the nominal plane, so anything proud is stone the player can stand a
  *  centimetre inside. At 3cm nobody will ever know; at 10cm they would. */
 const PROUD_MAX = 0.030;
+/** Bow amplitude at a given wear — the slow wander across the wall, on top of
+ *  the per-course depth. Named because MAX_WALL_RECESS needs it and because
+ *  a second copy of `0.012 + wear * 0.028` is how the two drift apart. */
+const bowAmpFor = (wear: number) => 0.012 + wear * 0.028;
+
+/**
+ * Where the back of a COLLAPSE POCKET sits (see THE COLLAPSED PATCH below), as
+ * an ABSOLUTE inset from the wall plane — not a depth measured from the course
+ * face.
+ *
+ * The difference matters. Measured from the face, a pocket in a course that is
+ * already recessed 5cm and bowed 4cm back would put its floor at 29cm, through
+ * the back of a 25cm wall. Measured from the plane, the void behind the masonry
+ * is at one depth everywhere and the POCKET gets deeper where the course in
+ * front of it has worn back — which is also what actually happens.
+ *
+ * Declared up here with the other depth limits because MAX_WALL_RECESS has to
+ * account for it.
+ */
+const POCKET_BACK = 0.19;
+
+/**
+ * HOW FAR BEHIND THE NOMINAL PLANE THE WALL'S SURFACE CAN GO. Worst case, any
+ * wear, including a hole where a stone used to be.
+ *
+ * Exported because anything that has to MEET this wall — skirting, a cornice,
+ * an engaged pier — has to reach at least this far back or it hangs in the air
+ * wherever the masonry happens to have gone. Josh, on a phone: *"the pillars
+ * embedded into the walls kinda float in thin air where the walls get redacted
+ * a bit."* They were buried 12mm, against a surface that can sink 190mm.
+ *
+ * DERIVED, not written down again. A dressing that hard-coded the number would
+ * be correct until someone tuned RECESS_MAX or POCKET_BACK, and then wrong
+ * silently (docs/DESIGN-METHOD.md: every consumer imports the real thing).
+ */
+export const MAX_WALL_RECESS = Math.max(RECESS_MAX * 1.35 + bowAmpFor(1), POCKET_BACK);
 
 // ── THE COLLAPSED PATCH ──────────────────────────────────────────────────────
 //
@@ -73,17 +109,6 @@ const PROUD_MAX = 0.030;
 // Minimum length is this function's own business, though: a 2m return between
 // two doorways has no room for a patch that reads as anything.
 const COLLAPSE_MIN_LEN = 3.4;
-/**
- * Where the back of a pocket sits, as an ABSOLUTE inset from the wall plane —
- * not a depth measured from the course face.
- *
- * The difference matters. Measured from the face, a pocket in a course that is
- * already recessed 5cm and bowed 4cm back would put its floor at 29cm, through
- * the back of a 25cm wall. Measured from the plane, the void behind the
- * masonry is at one depth everywhere and the POCKET gets deeper where the
- * course in front of it has worn back — which is also what actually happens.
- */
-const POCKET_BACK = 0.19;
 /** How far the rubble spills into the room. The wall's collision stays on the
  *  nominal plane, so this is stone the player can walk a little way into — at
  *  ankle height, under the camera, where the wall face already hides it. Larger
@@ -168,7 +193,7 @@ export function makeCoursedWall(
   // different frequencies is what stops a procedural surface reading as noise:
   // the eye finds the long shape first and the detail second.
   const bowPhase = rand() * Math.PI * 2;
-  const bowAmp = 0.012 + wear * 0.028;
+  const bowAmp = bowAmpFor(wear);
   const bowAt = (x: number) => Math.sin(x / Math.max(1.2, len * 0.31) + bowPhase) * bowAmp;
 
   const pos: number[] = [], uv: number[] = [], idx: number[] = [];

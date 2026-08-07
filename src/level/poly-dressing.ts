@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mountPoints, type WallSurface } from './wall-surfaces';
 import type { Volume } from './room-occupancy';
+import { MAX_WALL_RECESS } from './wall-courses';
 
 // ── MAKING A POLYGON ROOM READ AS BUILT ──────────────────────────────────────
 //
@@ -33,9 +34,36 @@ import type { Volume } from './room-occupancy';
  *  and a rect room standing side by side agree about where the floor is. */
 const SKIRTING = { y: 0.075, h: 0.15, depth: 0.07 };
 const CORNICE = { fromTop: 0.06, h: 0.12, depth: 0.055 };
-/** How far a course sits proud of the wall plane. The rect path uses
- *  depth/2 − 0.012, i.e. buried a sliver so no seam shows. */
+/**
+ * How far a course sits proud of the wall plane.
+ *
+ * ── AND HOW FAR IT REACHES BACK, WHICH IS THE PART THAT WAS WRONG ────────────
+ *
+ * The rect path buries trim by a 12mm sliver, which is right for a wall that IS
+ * the nominal plane. A coursed wall is not: its courses recess, and a slow bow
+ * runs across it, so the real face can sit up to MAX_WALL_RECESS (114mm) behind
+ * where the trim assumed it was. Josh, on a phone: *"the pillars embedded into
+ * the walls kinda float in thin air where the walls get redacted a bit"* — and
+ * he added that it was imperfect even before the coursework, which it was: the
+ * old wall carried a wave of its own.
+ *
+ * So the FRONT face of every piece of dressing stays exactly where it was — the
+ * room must look unchanged from the front — and the BACK is pushed behind the
+ * deepest the masonry can ever go. The extra stone is inside the wall, where
+ * nothing can see it and nothing can see past it.
+ */
 const BURY = 0.012;
+/** Reach behind the nominal plane, with a millimetre to spare so a face exactly
+ *  at the limit still overlaps rather than touching. */
+const REACH_BACK = MAX_WALL_RECESS + 0.01;
+
+/** Turn "stands `proud` metres out of the wall" into the box depth and centre
+ *  offset that also reaches REACH_BACK behind it. One place, because skirting,
+ *  cornice and pier all need the same arithmetic and all got it wrong the same
+ *  way when they each did it themselves. */
+function seatedBox(proud: number): { depth: number; out: number } {
+  return { depth: proud + REACH_BACK, out: (proud - REACH_BACK) / 2 };
+}
 /** A span shorter than this gets no trim — a 0.4m sliver of skirting beside a
  *  doorway reads as a chipped tile, not as coursework. */
 const MIN_TRIM_SPAN = 0.6;
@@ -83,16 +111,25 @@ export function buildPolyDressing(
         { y: elevation + SKIRTING.y, h: SKIRTING.h, depth: SKIRTING.depth },
         { y: elevation + height - CORNICE.fromTop, h: CORNICE.h, depth: CORNICE.depth },
       ]) {
-        parts.push(courseBox(s, s.length, c.h, c.depth, c.y, c.depth / 2 - BURY));
+        const seat = seatedBox(c.depth - BURY);
+        parts.push(courseBox(s, s.length, c.h, seat.depth, c.y, seat.out));
       }
     }
 
   }
 
   for (const p of pilasterPlan(spans, height, elevation, pilaster)) {
-    const geo = new THREE.BoxGeometry(p.width, p.height, p.depth);
+    // SEATED HERE, not in the plan. The plan says how far the pier stands into
+    // the room; the mesh is that plus a tail reaching behind the deepest the
+    // masonry can go, so it meets stone wherever the courses happen to be.
+    const seat = seatedBox(p.depth);
+    const geo = new THREE.BoxGeometry(p.width, p.height, seat.depth);
     const m = new THREE.Matrix4().makeRotationY(p.rotY);
-    m.setPosition(p.x, p.y, p.z);
+    // The plan's x/z is the centre of the visible part; the box's centre sits
+    // further back by half the tail.
+    const shift = seat.out - p.depth / 2;
+    const inward: [number, number] = [Math.sin(p.rotY), Math.cos(p.rotY)];
+    m.setPosition(p.x + inward[0] * shift, p.y, p.z + inward[1] * shift);
     geo.applyMatrix4(m);
     parts.push(geo);
   }
@@ -105,9 +142,20 @@ export function buildPolyDressing(
 }
 
 export interface Pier {
-  /** Centre of the pier, in world space. */
+  /**
+   * Centre of the part of the pier THAT STANDS IN THE ROOM, in world space.
+   *
+   * The plan describes what the room sees; the mesh builder adds the tail that
+   * reaches back into the masonry (see seatedBox). Keeping the split here is not
+   * tidiness — every consumer of a Pier is asking a question about the ROOM.
+   * `pilasterVolumes` reserves floor so nothing is placed inside one; a spawn
+   * checker asks whether a point is clear. Handing those a box whose centre is
+   * buried in the wall answers a question nobody asked, and both immediately
+   * started reporting that piers stand outside the room they are in.
+   */
   x: number; y: number; z: number;
   rotY: number;
+  /** Face width along the wall, and how far it stands PROUD of the wall plane. */
   width: number; depth: number; height: number;
 }
 
@@ -145,13 +193,16 @@ export function pilasterPlan(
     // A single pier centred on a wall reads as an accident. Two or more read as
     // a rhythm, which is the entire point.
     if (piers.length < 2) continue;
+    // The visible pier: from the wall plane out to `proud`. Its centre is half
+    // that far into the room, which is where a Pier's x/z belong.
+    const proud = pilaster.depth - BURY;
     for (const p of piers) {
       out.push({
-        x: p.x + s.inward[0] * (pilaster.depth / 2 - BURY),
+        x: p.x + s.inward[0] * (proud / 2),
         y: elevation + h / 2,
-        z: p.z + s.inward[1] * (pilaster.depth / 2 - BURY),
+        z: p.z + s.inward[1] * (proud / 2),
         rotY: Math.atan2(s.inward[0], s.inward[1]),
-        width: pilaster.width, depth: pilaster.depth, height: h,
+        width: pilaster.width, depth: proud, height: h,
       });
     }
   }

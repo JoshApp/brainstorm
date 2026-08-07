@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildPolyDressing, PILASTER } from '../src/level/poly-dressing';
+import { MAX_WALL_RECESS } from '../src/level/wall-courses';
 import { describeWalls } from '../src/level/wall-surfaces';
 import { ARCHETYPES, generateRoomShape, pointInPoly, type Poly } from '../src/level/room-shape';
 
@@ -52,29 +53,43 @@ test('every archetype gets coursework, and it carries vertex colours', () => {
   }
 });
 
-test('DRESSING STANDS PROUD OF ITS WALL, NOT BURIED IN IT', () => {
-  // A course is offset from the wall plane by half its depth minus a sliver, so
-  // it sits mostly in the room with its back edge hidden. Get the sign backwards
-  // and every skirting in the game buries itself in the masonry — it renders
-  // fine, it is just invisible, which is the worst kind of wrong.
+test('DRESSING STANDS PROUD OF ITS WALL AND REACHES INTO IT', () => {
+  // TWO claims, and the dressing has been wrong about each of them in turn.
   //
-  // Counting vertices inside the polygon does NOT test this (the first version
-  // of this test did, and failed at 38%): by construction roughly half of a
-  // course's corners sit on the buried face. The honest measurement is the
-  // CENTROID, projected onto the wall's own inward normal — one number per wall,
-  // whose SIGN is exactly the thing that can be wrong.
+  // FRONT — it must be visible in the room. Get the sign backwards and every
+  // skirting in the game buries itself in the masonry: it renders fine, it is
+  // just invisible, which is the worst kind of wrong.
+  //
+  // BACK — it must reach behind the deepest the masonry can go. Josh, on a
+  // phone: *"the pillars embedded into the walls kinda float in thin air where
+  // the walls get redacted a bit."* Everything was buried a 12mm sliver against
+  // a surface that recesses, bows, and (where a stone has fallen out) opens a
+  // 190mm pocket. MAX_WALL_RECESS is that worst case, derived in wall-courses.ts
+  // rather than copied here, so tuning the wall moves this test with it.
+  //
+  // MEASURED ON THE BUILT MESH, at both ends of the projection. This used to
+  // measure the CENTROID, which was the right call while the box was symmetric
+  // about the wall plane and became meaningless the moment the back was
+  // deliberately extended: a correctly-seated pier has its centroid inside the
+  // wall, and the old assertion read that as the bug it was invented to catch.
   for (const { kind, poly } of shapes()) {
     for (const s of describeWalls({ poly, height: 4 })) {
       const g = buildPolyDressing([s], 4, 0);
       if (!g) continue;
       const pos = g.getAttribute('position');
-      let cx = 0, cz = 0;
-      for (let i = 0; i < pos.count; i++) { cx += pos.getX(i); cz += pos.getZ(i); }
-      cx /= pos.count; cz /= pos.count;
-      const out = (cx - s.mid[0]) * s.inward[0] + (cz - s.mid[1]) * s.inward[1];
-      assert.ok(out > 0.005,
-        `${kind}: dressing on a ${s.length.toFixed(1)}m wall sits ${out.toFixed(3)}m along its ` +
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        const o = (pos.getX(i) - s.mid[0]) * s.inward[0] + (pos.getZ(i) - s.mid[1]) * s.inward[1];
+        lo = Math.min(lo, o); hi = Math.max(hi, o);
+      }
+      assert.ok(hi > 0.005,
+        `${kind}: dressing on a ${s.length.toFixed(1)}m wall reaches only ${hi.toFixed(3)}m along its ` +
         `inward normal — it is inside the wall, not on it`);
+      assert.ok(lo <= -MAX_WALL_RECESS + 1e-6,
+        `${kind}: dressing reaches ${(-lo).toFixed(3)}m into the wall, and the masonry can go back ` +
+        `${MAX_WALL_RECESS.toFixed(3)}m — it will float where the stone has receded`);
+      assert.ok(-lo < 0.25,
+        `${kind}: dressing reaches ${(-lo).toFixed(3)}m into a 0.25m wall — it comes out the far side`);
       // And the proud face must actually be in the room.
       assert.ok(pointInPoly(poly, s.mid[0] + s.inward[0] * 0.02, s.mid[1] + s.inward[1] * 0.02),
         `${kind}: the wall's own inward normal does not point into the room`);
