@@ -8,6 +8,7 @@ import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { compileCreatureModelSpec } from '../content/build-creature';
 import type { ModelSpec } from '../ecs/model-types';
+import { HOOK_LAMP, CHAIN_RING, IRON_CORONA, COLD_HOOK } from '../content/hanging-lights';
 import { ORIGIN_ARCH } from '../content/origin-arch';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
@@ -98,6 +99,13 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'corpse-curled': { label: 'Fallen delver — curled', spec: makeCorpseModel('curled', 'fleshy', false) },
   'corpse-slumped': { label: 'Fallen delver — slumped, with pack', spec: makeCorpseModel('slumped', 'fleshy', true) },
   'corpse-skeletal': { label: 'Fallen delver — skeletal (curled)', spec: makeCorpseModel('curled', 'skeletal', false) },
+  // HANGING LIGHT — the family, side by side, because the whole point of it is
+  // that its members differ in SIZE and a member looked at alone tells you
+  // nothing about whether it is the small one.
+  'hook-lamp':    { label: 'Hanging light S — lamp on a hook', spec: HOOK_LAMP },
+  'chain-ring':   { label: 'Hanging light M — iron ring, four stubs', spec: CHAIN_RING },
+  'iron-corona':  { label: 'Hanging light L — two tiers, nine flames', spec: IRON_CORONA },
+  'cold-hook':    { label: 'Hanging light — COLD. Nothing burning on it.', spec: COLD_HOOK },
   'chest-wood':   { label: 'Chest — wood (free tier)', spec: CHEST },
   'chest-silver': { label: 'Chest — iron-bound silver (keyed)', spec: CHEST_IRON },
   'chest-gold':   { label: 'Chest — gold, occult sigil + horns (imposing prize)', spec: CHEST_BOSS },
