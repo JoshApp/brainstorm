@@ -199,3 +199,73 @@ export function makeCoursedWall(
 export function wallWear(roomBase: number, rand: () => number): number {
   return Math.max(0, Math.min(1, roomBase + (rand() - 0.5) * 0.5));
 }
+
+// ── FLAGSTONES ───────────────────────────────────────────────────────────────
+//
+// The floor has the same disease the walls had and you look at it more: one
+// plate, one brightness, per-vertex noise that averages to grey at any distance
+// past a metre. A dungeon floor is LAID — in slabs, by somebody, badly — and a
+// slab reads because its neighbour is a slightly different colour, not because
+// it is a slightly different height.
+//
+// Height is deliberately NOT touched. The existing comment on `makeJitteredPlane`
+// is right: a bumpy floor reads as warped beside the dead-flat stairwell rooms,
+// and lumps push the player up. This is tint only, so it costs one attribute
+// rewrite and cannot affect movement.
+//
+// The trick is that the tint must be CONSTANT ACROSS A SLAB. Per-vertex noise
+// on a subdivided plate gives you a gradient, which the eye integrates into
+// nothing. Quantising the triangle's centroid to a jittered grid and hashing
+// the cell gives every triangle in a slab the same value — and a hard edge
+// between slabs is the thing you actually see.
+
+/** Nominal slab size. Jittered per row/column so the grid never reads as one. */
+const FLAG_SIZE = 1.15;
+
+/**
+ * Re-tint a floor plate as laid slabs.
+ *
+ * Expects a DE-INDEXED geometry (the subdivision pass already de-indexes), so
+ * each triangle owns its vertices and can hold its own flat colour. Silently
+ * does nothing on an indexed one rather than producing a gradient, because a
+ * gradient here looks like a bug and is hard to spot.
+ *
+ * `wear` darkens and spreads: a worn floor has more contrast between its slabs
+ * (some scoured pale, some black with filth) than a maintained one.
+ */
+export function tintAsFlagstones(
+  geo: THREE.BufferGeometry, wear: number, seed: number,
+): void {
+  if (geo.index) return;
+  const pos = geo.getAttribute('position');
+  const n = pos.count;
+  const colors = new Float32Array(n * 3);
+  // Cheap stable hash — the same slab must be the same colour every build, and
+  // a floor rebuilt mid-run that repaints itself is worse than a flat one.
+  const hash = (a: number, b: number): number => {
+    let h = (a * 374761393 + b * 668265263 + seed * 2246822519) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const spread = 0.10 + wear * 0.16;
+  for (let t = 0; t < n; t += 3) {
+    // Centroid in the plate's own shape space.
+    let cx = 0, cy = 0;
+    for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); }
+    cx /= 3; cy /= 3;
+    // Rows shift sideways by a per-row amount, so the joints do not line up
+    // into long straight seams across the room — that reads as tiling.
+    const row = Math.floor(cy / FLAG_SIZE);
+    const col = Math.floor((cx + hash(0, row) * FLAG_SIZE) / FLAG_SIZE);
+    const v = 0.80 + (hash(col, row) - 0.5) * 2 * spread;
+    // One slab in twenty is much darker — a stone that cracked and filled with
+    // whatever runs down here. Rare on purpose: it is a punctuation mark, and a
+    // floor of them is just a noisy floor again.
+    const dark = hash(col + 7717, row - 313) < 0.05 ? 0.55 : 1;
+    const c = Math.max(0.25, Math.min(1.1, v * dark));
+    for (let k = 0; k < 3; k++) {
+      colors[(t + k) * 3] = c; colors[(t + k) * 3 + 1] = c; colors[(t + k) * 3 + 2] = c;
+    }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}

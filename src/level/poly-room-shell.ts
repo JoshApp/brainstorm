@@ -11,7 +11,7 @@ import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan
 import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
-import { makeCoursedWall, wallWear } from './wall-courses';
+import { makeCoursedWall, wallWear, tintAsFlagstones } from './wall-courses';
 
 // ── BUILDING A POLYGON ROOM ──────────────────────────────────────────────────
 //
@@ -90,6 +90,13 @@ export function buildPolyRoomShell(
   // vertices with the same origin arithmetic they use on every other floor.
   const local: Poly = poly.map(([x, z]) => [x - rect.x, z - rect.z] as const);
 
+  // HOW RUINED IS THIS ROOM. One number, seeded from the room's id, shared by
+  // the floor and by every wall — a room whose floor is filthy and whose walls
+  // are crisp is two rooms in one place. Each WALL then wanders around it (see
+  // the ring below), which is where a room gets one side that is coming down.
+  const wearRand = seededRand(room.id);
+  const shellWear = 0.18 + wearRand() * 0.5;
+
   // ── FLOOR ──────────────────────────────────────────────────────────
   // A hole whose vertex lands ON the contour makes earcut silently DROP it —
   // the floor comes back as a solid plate with no opening and no error. The
@@ -102,7 +109,11 @@ export function buildPolyRoomShell(
     pointInPoly(poly, hx + rect.x, rect.z - hy)));
   const floorGeo = plateGeometry(local, 'up', safeHoles);
   subdivideToMaxEdge(floorGeo, FLOOR_MAX_EDGE);
-  tintVertices(floorGeo);
+  // LAID, not poured. Same reasoning as the coursed walls, applied to the
+  // surface the player looks at most — see tintAsFlagstones. Tint only: the
+  // floor stays dead flat, so nothing here can push a player up or make a room
+  // read as warped beside the hand-authored ones.
+  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id));
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, elev, rect.z);
@@ -123,7 +134,12 @@ export function buildPolyRoomShell(
   let ceiling: THREE.Mesh;
   if (style === 'flat') {
     const ceilGeo = plateGeometry(local, 'down');
-    tintVertices(ceilGeo);
+    // Subdivided so the slab tint has faces to colour, and so the per-vertex
+    // contact darkening passes have vertices where they need them. Coarser
+    // than the floor's: a ceiling is four metres away in the dark, and detail
+    // you cannot resolve is triangles you are paying for and not seeing.
+    subdivideToMaxEdge(ceilGeo, FLOOR_MAX_EDGE * 2);
+    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed);
     ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(rect.x, elev + H, rect.z);
@@ -162,11 +178,9 @@ export function buildPolyRoomShell(
   //
   // Seeded from the room's id so a floor rebuilds identically — a wall that
   // changes shape when you walk back into it is worse than a flat one.
-  const wearRand = seededRand(room.id);
-  const roomWear = 0.18 + wearRand() * 0.5;
   const pieces: THREE.BufferGeometry[] = [];
   for (const s of spans) {
-    pieces.push(...spanGeometry(s, elev, H, wallWear(roomWear, wearRand), wearRand));
+    pieces.push(...spanGeometry(s, elev, H, wallWear(shellWear, wearRand), wearRand));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
     // movement code already refuses any step that crosses a segment.
@@ -302,11 +316,16 @@ function subdivideToMaxEdge(geo: THREE.BufferGeometry, maxEdge: number): void {
  * The back, top and jambs are plain quads: they exist so the shell is a closed
  * solid, and only the jambs are ever looked at closely.
  */
-/** A stable stream from a string key — same room, same walls, every build. */
-function seededRand(key: string): () => number {
+/** FNV-1a over a string — one stable integer per room id. */
+function hashKey(key: string): number {
   let h = 2166136261;
   for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
-  let x = h >>> 0;
+  return h >>> 0;
+}
+
+/** A stable stream from a string key — same room, same walls, every build. */
+function seededRand(key: string): () => number {
+  let x = hashKey(key);
   return () => {
     x += 0x6D2B79F5;
     let t = x;
