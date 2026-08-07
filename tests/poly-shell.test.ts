@@ -29,6 +29,7 @@ import {
 } from '../src/level/poly-shell-plan';
 import { ARCHETYPES, generateRoomShape, pointInPoly, polyArea, type Poly } from '../src/level/room-shape';
 import { STARTER_POLY } from '../src/level/starter-chamber';
+import { clearance, roomCenter } from '../src/level/floor-region';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -255,6 +256,113 @@ test('the walls are one mesh, and there is a wall segment per span', () => {
   assert.ok(walls, 'walls did not merge into a single mesh');
   assert.equal(segs.length, STARTER_POLY.length,
     'collision segments do not match the number of wall spans');
+});
+
+test('YOU CANNOT SEE OUT OF THE ROOM AT ANY HEIGHT', () => {
+  // The ring tests above check the PLAN. This checks the built mesh, at several
+  // heights, because the two can disagree: the coursed-wall face shipped
+  // authored from the floor up into a slot that expected it centred, so it sat
+  // half a room too high — plan intact, wall missing from the knees down, and
+  // from inside the room you were looking straight out at the clear colour.
+  //
+  // A screenshot did not catch it (it reads as a flat unlit surface, which is
+  // also what a distant wall looks like). A ray does.
+  for (const poly of [STARTER_POLY as Poly,
+    generateRoomShape('hall', { w: 14, d: 13, rand: mulberry(3) }),
+    generateRoomShape('apse', { w: 14, d: 13, rand: mulberry(11) })]) {
+    const H = 4;
+    const { root } = buildShell(poly, H);
+    const walls = root.getObjectByName('polywalls:t') as THREE.Mesh;
+    assert.ok(walls, 'no wall mesh');
+    const ray = new THREE.Raycaster();
+    const inside = roomCenter(poly);
+    let checked = 0;
+    for (const y of [0.15, 0.9, 1.6, 2.4, 3.6]) {
+      for (let a = 0; a < Math.PI * 2 - 1e-6; a += Math.PI / 12) {
+        const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+        ray.set(new THREE.Vector3(inside.x, y, inside.z), dir);
+        checked++;
+        const hit = ray.intersectObject(walls, false)[0];
+        assert.ok(hit, `a ray at y=${y} heading ${(a * 180 / Math.PI).toFixed(0)}° left the room without meeting a wall`);
+        // AND IT HAS TO BE THE INSIDE OF THE WALL. The test harness renders
+        // DoubleSide, so a MISSING inner face still gets a hit — on the wall's
+        // back, whose normal points away from you. That is exactly the shape of
+        // the bug this test exists for, and the first version of it passed
+        // against a wall that was not there. The game's materials are
+        // single-sided, so a face pointing away is a face you see through.
+        assert.ok(hit.face && hit.face.normal.dot(dir) < 0,
+          `at y=${y}, ${(a * 180 / Math.PI).toFixed(0)}°: the nearest surface faces AWAY from the room — you are looking at the back of a wall whose inner face is missing`);
+      }
+    }
+    assert.ok(checked === 120, `expected 120 rays, cast ${checked}`);
+  }
+});
+
+// ── the grime band ───────────────────────────────────────────────────────────
+//
+// The floor's slab tint is seeded noise, and seeded noise has a way of looking
+// exactly like a working feature whether or not the feature is wired up. So the
+// question is not "does the floor have varied colours" — it did before — but
+// "are the slabs BY A WALL darker than the slabs in the middle", which is a
+// claim about the outline and cannot pass by accident.
+//
+// Measured against the REAL `clearance`, not a re-derived distance, so a change
+// to what "near a wall" means moves the test with the game.
+// A note on why this POOLS rooms rather than asserting per room. One slab in
+// twenty is a near-black cracked one, and a single room's 0–0.6m band is only
+// three or four slabs — so a per-room mean is dominated by whether one dark
+// slab happened to land at the wall. Measured with the band DISABLED, one room
+// read 6% "darker at the wall" from that alone, which is exactly the size of
+// effect we are trying to detect. Pooling every archetype makes the claim about
+// the rule instead of about one seed's luck.
+const BANDS = [0.6, 1.2, 2.5, Infinity] as const;
+
+function floorTintByClearance(polys: Poly[]) {
+  const sum = BANDS.map(() => 0), n = BANDS.map(() => 0);
+  const v = new THREE.Vector3();
+  polys.forEach((poly, i) => {
+    const { root } = buildShell(poly, 5);
+    const floor = root.getObjectByName('polyfloor:t') as THREE.Mesh;
+    const pos = floor.geometry.getAttribute('position');
+    const col = floor.geometry.getAttribute('color');
+    void i;
+    for (let t = 0; t < pos.count; t += 3) {
+      let wx = 0, wz = 0, c = 0;
+      for (let k = 0; k < 3; k++) {
+        v.set(pos.getX(t + k), pos.getY(t + k), pos.getZ(t + k)).applyMatrix4(floor.matrixWorld);
+        wx += v.x / 3; wz += v.z / 3; c += col.getX(t + k) / 3;
+      }
+      const d = clearance(poly, wx, wz);
+      if (d <= 0) continue;                       // clipped sliver outside the outline
+      const b = BANDS.findIndex((edge) => d < edge);
+      sum[b] += c; n[b]++;
+    }
+  });
+  return BANDS.map((_, i) => ({ mean: sum[i] / Math.max(1, n[i]), n: n[i] }));
+}
+
+test('THE FLOOR IS DIRTIER AT THE WALLS THAN IN THE MIDDLE', () => {
+  // Every archetype, so a concave room is in the sample — that is where a
+  // "distance to the bounding box" stand-in would agree in the middle of the
+  // room and be wrong in every notch.
+  const polys = [STARTER_POLY as Poly];
+  for (const arch of ARCHETYPES) {
+    for (let seed = 1; seed <= 6; seed++) {
+      const poly = generateRoomShape(arch, { w: 15, d: 13, rand: mulberry(seed * 977 + 13) });
+      if (polyArea(poly) >= 60) polys.push(poly);
+    }
+  }
+  const bands = floorTintByClearance(polys);
+  const show = bands.map((b, i) => `<${BANDS[i]}m ${b.mean.toFixed(3)} (n=${b.n})`).join('  ');
+  for (const b of bands) assert.ok(b.n > 2000, `too few samples to conclude anything — ${show}`);
+  // MONOTONE, not just "the ends differ". Noise can put the two ends either way
+  // round; it does not produce a staircase across four bands.
+  for (let i = 1; i < bands.length; i++) {
+    assert.ok(bands[i].mean > bands[i - 1].mean,
+      `the grime band is not falling off with distance — ${show}`);
+  }
+  assert.ok(bands[0].mean < bands[3].mean * 0.85,
+    `the perimeter is not reading as filthy enough to see — ${show}`);
 });
 
 /** Inside the polygon with `pad` metres of clearance in every direction. */

@@ -476,7 +476,11 @@ const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
  * than on the polygon, which is crude — but a lit room is the point, and torch
  * placement against arbitrary edges is the generator's job, not the preview's.
  */
-function polyRoomScenario(kind: Archetype): Scenario {
+function polyRoomScenario(kind: Archetype, wear?: number): Scenario {
+  // A ruined room's collapsed patch goes on its LONGEST wall, and the default
+  // viewpoint looks down the long axis — which puts that wall behind you. Stand
+  // at the other end so the thing the scenario exists to show is in frame.
+  const flip = wear !== undefined ? -1 : 1;
   const rand = mulberryFor(kind);
   const w = 13 + rand() * 4;
   const d = 11 + rand() * 4;
@@ -489,9 +493,9 @@ function polyRoomScenario(kind: Archetype): Scenario {
     godMode: true,
     level: {
       id: `dbg-poly-${kind}`, depth: 3, displayName: kind.toUpperCase(), fogColor: 0x0c0c12,
-      startPos: { x: rect.x, z: rect.z + rect.d / 2 - 1.6, yaw: 0 },
+      startPos: { x: rect.x, z: rect.z + flip * (rect.d / 2 - 1.6), yaw: flip > 0 ? 0 : Math.PI },
       rooms: [{
-        id: 'poly', rect, height: ceil.height, poly,
+        id: `poly-${kind}`, rect, height: ceil.height, poly, wear,
         ceilingStyle: ceil.style, ceilingRise: ceil.rise,
       }],
       corridors: [],
@@ -516,8 +520,8 @@ function polyRoomScenario(kind: Archetype): Scenario {
     // first thing you see is the far wall and the shape between here and there.
     playerPos: {
       x: rect.x,
-      z: rect.z + rect.d / 2 - 1.6,
-      lookAt: { x: rect.x, z: rect.z - rect.d / 2, y: 1.4 },
+      z: rect.z + flip * (rect.d / 2 - 1.6),
+      lookAt: { x: rect.x, z: rect.z - flip * (rect.d / 2), y: 1.4 },
     },
   };
 }
@@ -2116,6 +2120,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   'polyroom-hall': polyRoomScenario('hall'),
   'polyroom-ell': polyRoomScenario('ell'),
   'polyroom-wedge': polyRoomScenario('wedge'),
+  // The ruined end of the shell's range, forced rather than waited for. Roughly
+  // a third of real rooms come out this way; without a scenario that PINS it,
+  // checking the collapsed patch means rebuilding floors until one shows up.
+  'polyroom-ruined': polyRoomScenario('hall', 0.9),
 
   // FEAR — two of the same creature side by side, one frightened and one not,
   // because a status tell is only as good as the CONTRAST with its absence. The

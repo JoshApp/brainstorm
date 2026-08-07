@@ -49,6 +49,10 @@ import { makeCoursedWall, wallWear, tintAsFlagstones } from './wall-courses';
  *  of it: a connectivity check that guesses the thickness is measuring its own
  *  guess (docs/DESIGN-METHOD.md). */
 export const WALL_T = 0.25;
+/** A room this worn or worse has one wall that has partly come down. Sits inside
+ *  `shellWear`'s [0.18, 0.68] range, so roughly a third of rooms get one — often
+ *  enough to be part of the dungeon's vocabulary, rare enough to still land. */
+const COLLAPSE_ROOM_WEAR = 0.5;
 /** Floor triangles get subdivided until no edge is longer than this. Baked AO
  *  and every contact darkening in the game are PER-VERTEX; a raw ShapeGeometry
  *  is a dozen huge triangles, so the darkening either vanishes or smears across
@@ -94,8 +98,13 @@ export function buildPolyRoomShell(
   // the floor and by every wall — a room whose floor is filthy and whose walls
   // are crisp is two rooms in one place. Each WALL then wanders around it (see
   // the ring below), which is where a room gets one side that is coming down.
+  // A room may also just SAY how ruined it is (RoomSpec.wear) — that is the
+  // seam the content layer authors against when a room's condition is a
+  // statement rather than weather. The stream is still advanced either way, so
+  // an authored room and a derived one make the same downstream draws.
   const wearRand = seededRand(room.id);
-  const shellWear = 0.18 + wearRand() * 0.5;
+  const derivedWear = 0.18 + wearRand() * 0.5;
+  const shellWear = Math.max(0, Math.min(1, room.wear ?? derivedWear));
 
   // ── FLOOR ──────────────────────────────────────────────────────────
   // A hole whose vertex lands ON the contour makes earcut silently DROP it —
@@ -113,7 +122,11 @@ export function buildPolyRoomShell(
   // surface the player looks at most — see tintAsFlagstones. Tint only: the
   // floor stays dead flat, so nothing here can push a player up or make a room
   // read as warped beside the hand-authored ones.
-  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id));
+  // The outline in the plate's OWN space (floor plates mirror Y — see
+  // plateGeometry), so the grime band can ask "how far from a wall is this
+  // slab" without the caller and the tinter disagreeing about a sign.
+  const floorOutline: Poly = local.map(([x, z]) => [x, -z] as const);
+  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id), floorOutline);
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, elev, rect.z);
@@ -139,7 +152,10 @@ export function buildPolyRoomShell(
     // than the floor's: a ceiling is four metres away in the dark, and detail
     // you cannot resolve is triangles you are paying for and not seeing.
     subdivideToMaxEdge(ceilGeo, FLOOR_MAX_EDGE * 2);
-    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed);
+    // Ceiling plates are NOT mirrored, so `local` is already their shape space.
+    // The band here is soot rather than filth — smoke rises, hits the slab and
+    // crawls outward to the walls, so the corners are the black part.
+    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed, local);
     ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(rect.x, elev + H, rect.z);
@@ -178,9 +194,24 @@ export function buildPolyRoomShell(
   //
   // Seeded from the room's id so a floor rebuilds identically — a wall that
   // changes shape when you walk back into it is worse than a flat one.
+  //
+  // AND AT MOST ONE OF THEM HAS COME DOWN. A collapsed patch (missing stones
+  // plus the rubble under them — see wall-courses.ts) is the strongest single
+  // signal that something HAPPENED in a room rather than that the room is old,
+  // and it only works while it is rare. Rolled per wall it read as woodworm;
+  // decided here it is one wall, in a minority of rooms, and it is the wall you
+  // remember the room by. Long walls only, and the LONGEST eligible one, so the
+  // patch lands where there is space to see it.
+  const collapseSpan = shellWear > COLLAPSE_ROOM_WEAR
+    ? spans.reduce<{ i: number; len: number }>((best, s, i) => {
+      const l = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
+      return l > best.len ? { i, len: l } : best;
+    }, { i: -1, len: 0 }).i
+    : -1;
   const pieces: THREE.BufferGeometry[] = [];
-  for (const s of spans) {
-    pieces.push(...spanGeometry(s, elev, H, wallWear(shellWear, wearRand), wearRand));
+  for (let i = 0; i < spans.length; i++) {
+    const s = spans[i];
+    pieces.push(...spanGeometry(s, elev, H, wallWear(shellWear, wearRand), wearRand, i === collapseSpan));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
     // movement code already refuses any step that crosses a segment.
@@ -196,6 +227,11 @@ export function buildPolyRoomShell(
       walls.name = `polywalls:${room.id}`;
       walls.userData.dbgKind = 'wall';
       walls.userData.dbgSource = `polywalls · ${room.id}`;
+      // WHICH span came down, as a fact on the mesh rather than a thing an
+      // audit has to re-derive. A report that recomputes "did this room
+      // collapse" from wear constants is measuring its own copy of the rule
+      // (docs/DESIGN-METHOD.md); this is the rule's own answer.
+      walls.userData.collapsedSpan = collapseSpan;
       root.add(walls);
     }
   }
@@ -337,6 +373,7 @@ function seededRand(key: string): () => number {
 
 function spanGeometry(
   s: WallSpan, baseY: number, H: number, wear: number, rand: () => number,
+  collapse = false,
 ): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
   const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
@@ -351,7 +388,7 @@ function spanGeometry(
   // COURSED, not a slab. See wall-courses.ts — the short version is that a flat
   // plane has one brightness in torchlight however it is warped, and a course
   // line has two.
-  const face = makeCoursedWall(len, H, { wear, rand });
+  const face = makeCoursedWall(len, H, { wear, rand, collapse });
   const m = new THREE.Matrix4().makeRotationY(Math.atan2(ix, iz));
   m.setPosition((s.a[0] + s.b[0]) / 2, baseY + H / 2, (s.a[1] + s.b[1]) / 2);
   face.applyMatrix4(m);

@@ -138,6 +138,16 @@ export type RoomSpec = {
   /** Crown rise above `height` for barrel/pitched ceilings (meters). */
   ceilingRise?: number;
   /**
+   * How ruined this room's SHELL is, 0..1. Drives course wander, floor grime,
+   * and whether one wall has partly come down (see level/wall-courses.ts).
+   *
+   * Omitted, a polygon room derives it from its own id — so the dungeon varies
+   * without anyone authoring anything. Set it when a room's state is a DESIGN
+   * statement rather than weather: a boss arena that should look struck, a
+   * safe room that should look kept. Currently honoured by the polygon shell.
+   */
+  wear?: number;
+  /**
    * Wall treatment. 'stone' (default) is the bare jittered wall. 'braced'
    * adds mine-shaft timber support frames (posts + lintels) at intervals,
    * merged into one mesh — the "dug tunnel" read.
