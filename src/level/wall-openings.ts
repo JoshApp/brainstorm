@@ -1,3 +1,4 @@
+import { pointInPoly } from './room-shape';
 import type { RoomSpec } from './types';
 
 // Wall-opening geometry math, extracted from builder.ts. Pure range/coord
@@ -47,6 +48,31 @@ import type { RoomSpec } from './types';
 // have to prove which side they are on. The vault path is unaffected — on a
 // grid every abutting neighbour is on the far side already, which is the
 // assumption that was being made implicitly.
+//
+// ── AND A POLYGON IS NOT ITS BOUNDING BOX ────────────────────────────────────
+//
+// Josh, still: *"z shaped corridors that are aligned diagonal have still
+// missing walls and leak into nothing."*
+//
+// Everything above reasons about RECTS. For a polygon room the rect is its
+// BOUNDING BOX, and the floor inside it can sit metres back from that box — an
+// apse, a notch, a chamfered corner. CROSSES was added precisely because a
+// corridor meeting a polygon wall ends inside the box; the same rule then
+// punched a doorway wherever a corridor's wall merely PASSED THROUGH the box
+// with no polygon behind it. The corridor opened its flank onto a bounding box
+// and you could walk up to it and look out of the world.
+//
+// Measured on 300 generated floors: 13 openings, 34.2m of corridor wall opening
+// onto nothing — every one of them justified by a polygon room's box.
+//
+// So a polygon neighbour is asked the question the rect could not answer: is
+// there FLOOR just past this wall, here? The candidate range is walked and only
+// the covered part of it survives, which also trims a doorway back to the part
+// the room can actually receive — the "connection to the rooms can be a bit
+// broken if it's angled" half of the same report.
+//
+// Rect neighbours take exactly the path they took before; there is no polygon,
+// so there is nothing to clip and the vault floors cannot notice this.
 export function findOpenings(
   we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
   allRects: RoomSpec[],
@@ -77,7 +103,9 @@ export function findOpenings(
       if (!(farIsPositive ? oSouth > we.perpCoord + EPS : oNorth < we.perpCoord - EPS)) continue;
       const a = Math.max(we.wallStart, o.x - o.w / 2);
       const b = Math.min(we.wallEnd, o.x + o.w / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
+      if (b > a + EPS) {
+        openings.push(...clipToFloor(other, a, b, (t) => [t, we.perpCoord + (farIsPositive ? PROBE : -PROBE)]));
+      }
     } else {
       // wall runs along Z; coincide if any of other's X-edges == we.perpCoord
       const oEast = o.x + o.w / 2;
@@ -88,10 +116,51 @@ export function findOpenings(
       if (!(farIsPositive ? oEast > we.perpCoord + EPS : oWest < we.perpCoord - EPS)) continue;
       const a = Math.max(we.wallStart, o.z - o.d / 2);
       const b = Math.min(we.wallEnd, o.z + o.d / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
+      if (b > a + EPS) {
+        openings.push(...clipToFloor(other, a, b, (t) => [we.perpCoord + (farIsPositive ? PROBE : -PROBE), t]));
+      }
     }
   }
   return openings;
+}
+
+/** How far past the wall to ask "is there floor here". Comfortably inside the
+ *  neighbour and comfortably clear of its boundary, so a sample exactly on the
+ *  polygon edge doesn't decide the answer. */
+const PROBE = 0.12;
+/** Sampling step along the wall. Finer than a doorway is wide by an order of
+ *  magnitude, so no real opening is missed or ragged. */
+const STEP = 0.12;
+
+/**
+ * Keep only the part of [a, b] that has the neighbour's FLOOR behind it.
+ *
+ * A rect neighbour has floor everywhere in its box, so the range passes through
+ * untouched and the vault path is bit-identical to before this existed. A
+ * polygon neighbour gets walked: `probe(t)` returns the world point just past
+ * the wall at position t, and the covered runs are stitched back into ranges.
+ */
+function clipToFloor(
+  other: RoomSpec, a: number, b: number,
+  probe: (t: number) => [number, number],
+): Array<{ start: number; end: number }> {
+  const poly = other.poly;
+  if (!poly || poly.length < 3) return [{ start: a, end: b }];
+  const n = Math.max(2, Math.ceil((b - a) / STEP));
+  const out: Array<{ start: number; end: number }> = [];
+  let runStart: number | null = null;
+  for (let i = 0; i <= n; i++) {
+    const t = a + ((b - a) * i) / n;
+    const [px, pz] = probe(t);
+    const covered = pointInPoly(poly, px, pz);
+    if (covered && runStart === null) runStart = t;
+    if (!covered && runStart !== null) {
+      if (t - runStart > 0.01) out.push({ start: runStart, end: t });
+      runStart = null;
+    }
+  }
+  if (runStart !== null && b - runStart > 0.01) out.push({ start: runStart, end: b });
+  return out;
 }
 
 // Subtract a set of [start, end] openings from a [start, end] range.

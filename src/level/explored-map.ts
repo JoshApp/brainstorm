@@ -15,7 +15,24 @@ import { buildRoomGraph, type RoomGraph, type GraphEdge } from './room-graph';
 import { getArchwayLures, type Lure } from '../scene/threshold-draft';
 import { DEV } from '../debug/dev';
 
-const MATCH_TOL = 0.3;   // m — archway glow (x,z) → doorway-edge midpoint
+/**
+ * How far an archway may sit from its doorway's graph midpoint, in metres.
+ *
+ * Was 0.30, which is the right number for the vault path: there a doorway
+ * midpoint is exact, because both rects are axis-aligned and their shared edge
+ * IS the opening. A polygon room's wall can run at any angle, and the archway is
+ * centred on the CUT SEGMENT of that slanted wall while the graph's midpoint is
+ * where the corridor's centre-line crosses it. On a 45-degree wall those are
+ * most of a metre apart — measured at 0.41m and 0.85m on a real floor, so five
+ * of nine eyes never found their doorway and stayed shut for good.
+ *
+ * 3.0m is deliberately generous, and it is safe because the MATCHING is what
+ * constrains it, not this number: doorways are assigned greedily under a cap of
+ * two archways each (see below), so a loose radius can no longer let one door
+ * swallow three eyes. The cap exists only to refuse a fitting that belongs to no
+ * doorway at all rather than bind it to an unrelated one.
+ */
+const MATCH_TOL = 3.0;   // m — archway glow (x,z) → doorway-edge midpoint
 
 interface ArchwayLink { lure: Lure; a: string; b: string; }
 
@@ -44,18 +61,39 @@ function rebuild(level: LiveLevel): void {
     const n = graph.rectAt(s.x, s.z);
     if (n) objective.add(n.id);
   }
-  // Match each archway lure to its doorway edge by nearest midpoint. A lure that
-  // matches no edge (a perimeter opening to nowhere, a logical seam) gets no link
-  // → never kindled → stays dark (the safe default).
+  // MATCH EACH ARCHWAY TO ITS DOORWAY — ASSIGNED UNDER A CAPACITY, not picked
+  // independently.
+  //
+  // Nearest-wins on its own let three archways bind to one doorway (measured on
+  // a real floor) while a door two rooms over went unclaimed — because each
+  // lure asked its own question and none of them knew a doorway has exactly TWO
+  // faces. Sorting every (lure, doorway) pair by distance and filling greedily
+  // under that cap costs nothing at this size and makes the mis-pair
+  // unrepresentable rather than unlikely.
+  //
+  // A lure that matches nothing within MATCH_TOL, or whose doorways are all
+  // taken by nearer archways, gets no link → never kindled → stays dark. That
+  // is the safe default and the right answer for a perimeter fitting that is
+  // not a doorway at all.
   links = [];
-  for (const lure of getArchwayLures()) {
-    let best: GraphEdge | null = null;
-    let bestD = Infinity;
+  const lures = getArchwayLures();
+  const pairs: Array<{ li: number; e: GraphEdge; d: number }> = [];
+  for (let li = 0; li < lures.length; li++) {
     for (const e of graph.edges) {
-      const d = Math.hypot(e.mx - lure.x, e.mz - lure.z);
-      if (d < bestD) { bestD = d; best = e; }
+      const d = Math.hypot(e.mx - lures[li].x, e.mz - lures[li].z);
+      if (d < MATCH_TOL) pairs.push({ li, e, d });
     }
-    if (best && bestD < MATCH_TOL) links.push({ lure, a: best.a, b: best.b });
+  }
+  pairs.sort((p, q) => p.d - q.d);
+  const takenLure = new Set<number>();
+  const faces = new Map<GraphEdge, number>();
+  for (const p of pairs) {
+    if (takenLure.has(p.li)) continue;
+    const used = faces.get(p.e) ?? 0;
+    if (used >= 2) continue;
+    faces.set(p.e, used + 1);
+    takenLure.add(p.li);
+    links.push({ lure: lures[p.li], a: p.e.a, b: p.e.b });
   }
   activeLevel = level;
 
@@ -63,6 +101,23 @@ function rebuild(level: LiveLevel): void {
   // edges on a real floor (the one thing the unit tests can't cover). Stripped
   // from prod by the DEV gate.
   if (DEV) {
+    // MATCHED vs LURES, once per floor, in the log. The eyes went dead for
+    // months and nothing said so: every piece worked in isolation and the graph
+    // they all read had fourteen edges across two hundred floors. One line here
+    // makes "the nav layer sees nothing" visible in any headless snap.
+    const misses: string[] = [];
+    for (const lure of getArchwayLures()) {
+      let d = Infinity;
+      for (const e of graph.edges) d = Math.min(d, Math.hypot(e.mx - lure.x, e.mz - lure.z));
+      if (d >= MATCH_TOL) misses.push(d.toFixed(2));
+    }
+    // A doorway has two faces, so two lures. Three means the matcher bound an
+    // archway to a door it does not belong to, which is the only way raising
+    // MATCH_TOL could hurt — so it is reported rather than assumed away.
+    const perEdge = new Map<string, number>();
+    for (const l of links) perEdge.set(`${l.a}|${l.b}`, (perEdge.get(`${l.a}|${l.b}`) ?? 0) + 1);
+    const crowded = [...perEdge.entries()].filter(([, n]) => n > 2);
+    console.log(`[exploredMap] ${graph.nodes.size} nodes, ${graph.edges.length} edges · ${links.length}/${getArchwayLures().length} archway lures matched to a doorway${misses.length ? ` · missed by ${misses.join('m, ')}m` : ''}${crowded.length ? ` · OVERCLAIMED ${crowded.map(([k, n]) => `${k}×${n}`).join(', ')}` : ''}`);
     (globalThis as Record<string, unknown>).__exploredMap = () => ({
       nodes: [...graph!.nodes.keys()],
       corridors: [...graph!.nodes.values()].filter((n) => n.isCorridor).map((n) => n.id),

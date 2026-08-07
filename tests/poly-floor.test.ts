@@ -28,6 +28,7 @@ import { WALL_T } from '../src/level/poly-room-shell';
 import { planWallRing } from '../src/level/poly-shell-plan';
 import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
+import { buildRoomGraph } from '../src/level/room-graph';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
 import { roomType } from '../src/level/room-types';
@@ -192,6 +193,47 @@ test('EVERY ROOM IS REACHABLE FROM THE SPAWN', () => {
   }
 });
 
+test('THE NAV GRAPH KNOWS ABOUT THE DOORWAYS THE PLAYER CAN WALK THROUGH', () => {
+  // Josh: *"the eyes above the doors, the eye navigation isn't working, they are
+  // always closed."*
+  //
+  // The eyes read `room-graph.ts`, and so does everything else that reasons
+  // about which way is unexplored. That graph connected two rects when their
+  // EDGES COINCIDED — the vault composer's grid guarantee — and a polygon floor
+  // never produces it: a polygon's wall sits back from its bounding box, so a
+  // corridor that reaches the wall ENDS INSIDE THE BOX and the two merely
+  // overlap. Measured before the fix: 2812 nodes, FOURTEEN edges, 99% of rooms
+  // with no neighbour at all.
+  //
+  // The eyes were the visible half. A nav layer that believes every room is an
+  // island has no way to say anything is worth walking toward.
+  for (const spec of floors()) {
+    const g = buildRoomGraph(spec);
+    // CONNECTED, not merely non-empty. An edge count can look healthy while the
+    // floor is two components that never meet.
+    const start = [...g.nodes.keys()][0];
+    const seen = new Set<string>([start]);
+    const stack = [start];
+    while (stack.length) {
+      for (const v of g.neighbors(stack.pop()!)) if (!seen.has(v)) { seen.add(v); stack.push(v); }
+    }
+    const missing = [...g.nodes.keys()].filter((id) => !seen.has(id));
+    assert.equal(missing.length, 0,
+      `${spec.id}: the nav graph is not one piece — ${missing.length}/${g.nodes.size} nodes unreachable within it (${missing.slice(0, 4).join(', ')})`);
+    // And no doorway is invented. The midpoint sits ON the threshold by
+    // construction, so asking for standing CLEARANCE there is the wrong
+    // question — half a doorway's midpoints are within a body's width of a
+    // jamb. The claim that matters is that it is floor at all: an archway
+    // matcher that binds an eye to a point in fresh air is the failure mode.
+    const inSomeRect = (x: number, z: number) => [...spec.rooms, ...spec.corridors].some((r) =>
+      Math.abs(x - r.rect.x) <= r.rect.w / 2 + 0.05 && Math.abs(z - r.rect.z) <= r.rect.d / 2 + 0.05);
+    for (const e of g.edges) {
+      assert.ok(inSomeRect(e.mx, e.mz),
+        `${spec.id}: doorway ${e.a}↔${e.b} has its midpoint at (${e.mx.toFixed(1)}, ${e.mz.toFixed(1)}), which is not inside any room or corridor`);
+    }
+  }
+});
+
 test('the spawn is not standing inside something', () => {
   // The flood counts its seed cell unconditionally, so "spawn is blocked" reads
   // as a reachable floor of size 1 rather than as an error. Assert on the
@@ -243,6 +285,55 @@ test('NO CORRIDOR END IS ORPHANED', () => {
       }
     }
   }
+});
+
+test('NO DOORWAY OPENS ONTO NOTHING', () => {
+  // Josh, on a phone: *"z shaped corridors that are aligned diagonal have still
+  // missing walls and leak into nothing."*
+  //
+  // The far-side rule (wall-openings.ts) closed the case where a dogleg's legs
+  // sit on the same side of a shared wall line. It could not close this one,
+  // because it reasons about RECTS: a polygon room's rect is its BOUNDING BOX,
+  // its floor sits back from that box, and a corridor whose flank merely passed
+  // through the box got a doorway punched into open air.
+  //
+  // The check is deliberately not "does findOpenings agree with itself" — it
+  // asks the only question that matters, which is whether there is FLOOR just
+  // past every hole the wall builder leaves. 13 openings and 34.2m of wall
+  // failed it when it was written.
+  const EPS = 0.02;
+  const inAnyRect = (rects: RoomSpec[], x: number, z: number) => rects.some((r) =>
+    Math.abs(x - r.rect.x) <= r.rect.w / 2 + EPS && Math.abs(z - r.rect.z) <= r.rect.d / 2 + EPS);
+  let checked = 0;
+  for (const spec of floors()) {
+    const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
+    for (const c of spec.corridors) {
+      const { x, z, w, d } = c.rect;
+      const edges = [
+        { perpAxis: 'z' as const, perpCoord: z - d / 2, wallStart: x - w / 2, wallEnd: x + w / 2 },
+        { perpAxis: 'z' as const, perpCoord: z + d / 2, wallStart: x - w / 2, wallEnd: x + w / 2 },
+        { perpAxis: 'x' as const, perpCoord: x - w / 2, wallStart: z - d / 2, wallEnd: z + d / 2 },
+        { perpAxis: 'x' as const, perpCoord: x + w / 2, wallStart: z - d / 2, wallEnd: z + d / 2 },
+      ];
+      for (const we of edges) {
+        const out = we.perpCoord > (we.perpAxis === 'z' ? z : x) ? 1 : -1;
+        for (const op of findOpenings(we, allRects, c)) {
+          const len = op.end - op.start;
+          if (len < 0.02) continue;
+          const n = Math.max(3, Math.round(len / 0.25));
+          for (let i = 0; i <= n; i++) {
+            const t = op.start + (len * i) / n;
+            const px = we.perpAxis === 'z' ? t : we.perpCoord + out * 0.12;
+            const pz = we.perpAxis === 'z' ? we.perpCoord + out * 0.12 : t;
+            checked++;
+            assert.ok(inAnyRect(allRects, px, pz),
+              `${spec.id}: ${c.id} opens its ${we.perpAxis}@${we.perpCoord.toFixed(2)} wall over ${op.start.toFixed(2)}..${op.end.toFixed(2)}, and (${px.toFixed(2)}, ${pz.toFixed(2)}) just past it is not floor — you can see out of the world here`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checked > 20000, `only ${checked} samples — the sweep is not covering the doorways`);
 });
 
 test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {
