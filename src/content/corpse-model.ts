@@ -40,12 +40,28 @@ const MATERIALS = {
   // Mirrors ossuary PALE_BONE exactly so the whole bone family shares one
   // warmed pipeline and matches the skeleton roster's look.
   bone:    { color: 0xc2b69c, roughness: 0.92, flatShading: 'auto' as const, chroma: 1.8, rim: CORPSE_RIM },
-  // The robe — two close cold tones so folds read without a highlight. Dark
-  // but NOT light-proof: the lamp must be able to reveal the mass (dread-light
-  // rule — near-black albedo makes the body undiscoverable in a dark room).
-  rag:     { color: 0x2b2318, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
-  rag2:    { color: 0x3b2f1f, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
-  leather: { color: 0x2f261b, roughness: 0.85, metalness: 0.0, flatShading: true as const },
+  // ── THE SHROUD IS COLD, AND IT IS A MEASUREMENT ──────────────────────────
+  //
+  // Josh: *"I don't really like the others, they are brown on brown. The
+  // skeleton reads nice with the lighting bouncing off."*
+  //
+  // Measured against the real constants. The floor is 0x0f0d0b, warm (+0.02 on
+  // red-minus-blue). Weighted by limb girth, a SKELETAL delver's albedo is 92×
+  // the floor's luminance, because four fifths of it is bone. A FLESHY one was
+  // 12×, and three quarters of that was these two rags — 4.3× and 7.4× the
+  // floor, at +0.07 and +0.11 warmth. A warm brown, barely brighter than warm
+  // stone, lit by a warm lamp. The skeleton was seven times the read.
+  //
+  // These are the same two tones, turned COLD and lifted. Cold separates from
+  // warm stone at any brightness, which value alone cannot do down here — and
+  // the rim light on this material has always been cold blue (CORPSE_RIM), so
+  // the albedo now agrees with its own edge instead of fighting it. Still far
+  // under the bone: a dead delver is a dim shape you resolve, and the skull is
+  // still the brightest thing on the body, which is why it reads.
+  rag:     { color: 0x363d47, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
+  rag2:    { color: 0x4a5462, roughness: 1.0,  metalness: 0.0, flatShading: true as const, rim: CORPSE_RIM },
+  // Boots and straps — near-neutral, so the feet are not a third brown.
+  leather: { color: 0x33302c, roughness: 0.85, metalness: 0.0, flatShading: true as const },
   metal:   { color: 0x6b6356, roughness: 0.42, metalness: 0.7, flatShading: true as const },
   // Buried-cap darkness — hood interiors, eye sockets, the nasal slit.
   void:    { color: 0x050403, roughness: 1.0,  metalness: 0.0 },
@@ -211,6 +227,13 @@ function hoodedHead(H: Vec3, face: Vec3): PartSpec[] {
     { kind: 'sphere', name: 'cowl', pos: H, radius: 0.12, scale: [1.02, 1.08, 1.0], mat: 'rag2', jitter: 0.013 },
     // Buried void sphere — only its cap shows inside the hood opening.
     { kind: 'sphere', name: 'face_void', pos: add(H, scale(face, 0.075)), radius: 0.072, mat: 'void' },
+    // A JAW IN THE DARK. The hood stays faceless — that read is the good one —
+    // but the head was the only part of a fleshy delver with nothing pale in
+    // it, and the head is where the eye goes. A chin and a cheekbone catch the
+    // lamp under the void, so there is a FACE in there rather than an empty
+    // hood. Sunk and small on purpose; the skull still belongs to the skeleton.
+    { kind: 'sphere', name: 'jaw', pos: add(add(H, scale(face, 0.055)), [0, -0.062, 0]),
+      radius: 0.044, scale: [0.92, 0.5, 0.8], mat: 'flesh', jitter: 0.006 },
     { kind: 'cone', name: 'hood', pos: add(add(H, scale(back, 0.05)), [0, 0.05, 0]), radius: 0.15, height: 0.17,
       rot: yAxisTo(droop), segments: 9, mat: 'rag', jitter: 0.011 },
   ];

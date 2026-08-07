@@ -368,6 +368,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const torches: TorchSpec[] = [];
   const spawns: EnemySpawnSpec[] = [];
   const entrance = rooms[0];
+  // Yaw is filled in below, once the floor knows which way is onward.
   const startPos = { ...roomCenter(entrance.poly), yaw: 0 };
   // THE PLAYER IS A PLACED THING TOO.
   //
@@ -569,6 +570,18 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // gates — a web, and whatever else wants to cost a swing later — belongs off
   // this path, never on it.
   const mainline = mainlineRooms(rooms[0]?.id, last?.id, links);
+  // WHICH WAY THE PLAYER IS LOOKING WHEN THEY ARRIVE.
+  //
+  // Josh: *"when spawning down floors sometimes the player faces a wrong
+  // direction, not towards the exit."* Not sometimes — always. This generator
+  // never computed a facing at all; `startPos.yaw` was the literal 0 it was
+  // initialised with, so every descent on every seed dropped the player looking
+  // down world −Z and the way on was wherever it happened to be.
+  //
+  // A descent is the one moment the dungeon gets to say "that way". Face the
+  // doorway that leads onward — the one whose corridor reaches a room on the
+  // spawn→stairs path — so the first thing in frame is the way through.
+  startPos.yaw = spawnYawToward(startPos, entrance, links, corridors, mainline);
   // WHAT EACH ROOM ALREADY SAYS ABOUT ITSELF, read off the floor as it stands.
   //
   // Through `propFacts`, never a second copy of the claim table — the first
@@ -1357,6 +1370,56 @@ const dist2 = (a: { x: number; z: number }, b: { x: number; z: number }) =>
  * cobwebs is a much smaller problem than a floor with a web across its only way
  * on.
  */
+/**
+ * The yaw that puts the way ONWARD in front of the player.
+ *
+ * Doorways come from `planPortals` — the same call the frames and the webs make
+ * — so this looks at the hole in the wall, not at the corridor rect's end,
+ * which lands metres inside the room and would aim the camera at the floor
+ * beside the door.
+ *
+ * Three's cameras look down their local −Z, so a yaw of θ gazes at
+ * (−sin θ, −cos θ); aiming it at a delta is `atan2(−dx, −dz)`. (Prop facings in
+ * this codebase are `atan2(dx, dz)` — a model's front is its local +Z. Same
+ * rotation, opposite axis, and mixing them up is a 180° error, which is exactly
+ * the "faces a wrong direction" this fixes.)
+ */
+function spawnYawToward(
+  at: { x: number; z: number },
+  entrance: Placed,
+  links: ReadonlyArray<{ from: string; to: string; ids: string[]; spur?: boolean }>,
+  corridors: ReadonlyArray<{ id: string; rect: Box }>,
+  mainline: ReadonlySet<string>,
+): number {
+  const portals = planPortals(entrance.id, entrance.poly, corridors);
+  // A ROOM CAN HAVE NO PORTAL. Measured: 18 of 411 poly rooms, 4 of 72
+  // entrances. `planPortals` refuses a span under 1.2m as a corridor grazing a
+  // corner, but the wall ring cuts its opening from the rects directly — so
+  // those rooms have a way out that the portal planner does not name. (That
+  // disagreement is its own bug and its own ticket; here it just must not send
+  // the player back to staring at a wall.) Aim at the corridor instead.
+  if (!portals.length) {
+    const near = corridors
+      .filter((c) => pointInPoly(entrance.poly, c.rect.x, c.rect.z)
+        || Math.hypot(c.rect.x - at.x, c.rect.z - at.z) < 40)
+      .sort((a, b) => Math.hypot(a.rect.x - at.x, a.rect.z - at.z)
+        - Math.hypot(b.rect.x - at.x, b.rect.z - at.z))[0];
+    return near ? Math.atan2(-(near.rect.x - at.x), -(near.rect.z - at.z)) : 0;
+  }
+  const onward = portals.filter((p) => {
+    const link = links.find((l) => l.ids.includes(p.corridorId));
+    if (!link || link.spur) return false;
+    const other = link.from === entrance.id ? link.to : link.from;
+    return mainline.has(other);
+  });
+  // Fall back to ANY doorway rather than to zero: a room with one hole in it
+  // still has an obvious way on, and "look at a wall" is the bug being fixed.
+  const pick = (onward.length ? onward : portals)
+    .sort((a, b) => Math.hypot(a.mid[0] - at.x, a.mid[1] - at.z)
+      - Math.hypot(b.mid[0] - at.x, b.mid[1] - at.z))[0];
+  return Math.atan2(-(pick.mid[0] - at.x), -(pick.mid[1] - at.z));
+}
+
 function mainlineRooms(
   fromId: string | undefined,
   toId: string | undefined,

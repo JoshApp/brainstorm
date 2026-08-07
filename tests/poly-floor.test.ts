@@ -765,3 +765,53 @@ test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
   // find. Webs are rare on purpose (dead ends, off the mainline), so say so.
   assert.ok(webs >= 3, `only ${webs} webs across ${SEEDS.length * DEPTHS.length} floors — this test measured nothing`);
 });
+
+test('A DESCENT PUTS THE WAY ONWARD IN FRONT OF YOU', () => {
+  // Josh: *"when spawning down floors sometimes the player faces a wrong
+  // direction, not towards the exit."*
+  //
+  // Not sometimes. This generator never computed a facing — `startPos.yaw` was
+  // the 0 it was initialised with — and the entrance's one doorway leaves
+  // toward +Z on every seed, so a yaw of 0 faced EXACTLY away from it on 68 of
+  // 68 sampled floors, a measured 180° off every time.
+  //
+  // Measured against the doorway itself (`planPortals`, the same call the frame
+  // makes), not against the corridor rect, whose end lands metres inside the
+  // room. Three's cameras gaze down local −Z, so a yaw of θ looks at
+  // (−sin θ, −cos θ).
+  let checked = 0, noExit = 0;
+  for (const spec of floors()) {
+    const start = spec.startPos;
+    if (!start) continue;
+    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
+    const room = (spec.rooms ?? []).find((r) => r.poly && pointInPoly(r.poly, start.x, start.z));
+    if (!room?.poly) continue;
+    // Where the player is LOOKING.
+    const gx = -Math.sin(start.yaw), gz = -Math.cos(start.yaw);
+    // Every way out of this room. Portals when it has them; the corridor rects
+    // that reach into it otherwise (4.4% of poly rooms have no portal — see the
+    // note in spawnYawToward).
+    const outs = planPortals(room.id, room.poly, corridors).map((p) => p.mid as readonly [number, number]);
+    if (!outs.length) {
+      noExit++;
+      for (const c of corridors) {
+        if (pointInPoly(room.poly, c.rect.x, c.rect.z)) outs.push([c.rect.x, c.rect.z]);
+      }
+    }
+    if (!outs.length) continue;
+    checked++;
+    let best = Math.PI;
+    for (const [ox, oz] of outs) {
+      const dx = ox - start.x, dz = oz - start.z;
+      const len = Math.hypot(dx, dz) || 1;
+      best = Math.min(best, Math.acos(Math.max(-1, Math.min(1, (gx * dx + gz * dz) / len))));
+    }
+    assert.ok(best < Math.PI / 3,
+      `${spec.id ?? 'floor'}: spawned looking ${(best * 57.3).toFixed(0)}° off the nearest way out`);
+  }
+  assert.ok(checked >= 20, `only ${checked} spawns checked — this test measured nothing`);
+  // Reported, not asserted: a room whose only exit the portal planner refuses
+  // to name is a real inconsistency between two producers, and it is not this
+  // test's job. Printing it keeps it from going quiet.
+  if (noExit) console.log(`  (note: ${noExit} spawn rooms had no PORTAL; fell back to the corridor rect)`);
+});
