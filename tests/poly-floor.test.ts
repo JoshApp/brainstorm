@@ -27,6 +27,7 @@ import { generatePolyFloor } from '../src/level/poly-floor';
 import { WALL_T } from '../src/level/poly-room-shell';
 import { planWallRing } from '../src/level/poly-shell-plan';
 import { findOpenings, subtractRanges } from '../src/level/wall-openings';
+import { wallCutsFor, insidePolyRanges } from '../src/level/portals';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
 import { plateExtentFor, OVERLAP } from '../src/level/corridor-trim';
@@ -75,12 +76,34 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
   const openings = spec.corridors.map((c) => c.rect);
   const segs: WallSegment[] = [];
 
+  // ── THE RING THE BUILDER BUILDS, NOT A SIMPLER ONE ─────────────────────────
+  //
+  // This used to call `planWallRing(poly, WALL_T, openings)` — three arguments,
+  // where poly-room-shell.ts calls it with FIVE, the fifth being
+  // `wallCutsFor(poly, openings)`. That is not a detail: when cuts are given
+  // they REPLACE the ring's own rect clipping entirely, so the two calls
+  // produce different walls. This flood was measuring a dungeon nobody plays.
+  //
+  // What it hid: a corridor arriving across a chamfered corner got no portal,
+  // so it got no cut, so it got NO HOLE. Measured the moment this line was
+  // corrected — 24 of these 72 floors had rooms the player could never reach,
+  // and on four of them the ENTRANCE was sealed: an unbroken 37.7m of wall
+  // around the spawn, while this test reported 72/72 reachable.
+  //
+  // docs/DESIGN-METHOD.md: every audit tool imports the real function. It is
+  // not enough to import it — it has to be CALLED the way the game calls it.
   for (const r of spec.rooms) {
     if (!r.poly || r.poly.length < 3) continue;
-    for (const s of planWallRing(r.poly, WALL_T, openings)) {
+    for (const s of planWallRing(r.poly, WALL_T, openings, undefined, wallCutsFor(r.poly, openings))) {
       segs.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
     }
   }
+  // Corridor walls lose the stretches that run INSIDE a room, exactly as
+  // builder.ts subtracts them — otherwise a corridor's own side walls stand
+  // across the doorway it just cut.
+  const roomPolys = spec.rooms
+    .filter((r) => r.poly && r.poly.length >= 3)
+    .map((r) => r.poly!);
   for (const c of spec.corridors) {
     const { x, z, w, d } = c.rect;
     const edges = [
@@ -90,7 +113,8 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
       { perpAxis: 'x' as const, perpCoord: x + w / 2, wallStart: z - d / 2, wallEnd: z + d / 2 },
     ];
     for (const we of edges) {
-      for (const seg of subtractRanges(we.wallStart, we.wallEnd, findOpenings(we, allRects, c))) {
+      for (const seg of subtractRanges(we.wallStart, we.wallEnd,
+             [...findOpenings(we, allRects, c), ...insidePolyRanges(we, roomPolys)])) {
         if (seg.end - seg.start < 0.01) continue;
         segs.push(we.perpAxis === 'z'
           ? { ax: seg.start, az: we.perpCoord, bx: seg.end, bz: we.perpCoord }

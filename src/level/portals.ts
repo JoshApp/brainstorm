@@ -43,7 +43,8 @@ export interface Rect { x: number; z: number; w: number; d: number }
 export interface Portal {
   roomId: string;
   corridorId: string;
-  /** Index of the polygon edge this hole is cut from. */
+  /** Index of the polygon edge this hole is cut from — the DOMINANT one when
+   *  the opening straddles a corner. The frame is mounted square to this edge. */
   edge: number;
   /** The hole's ends, ON the room's inner outline, world XZ. */
   a: V2;
@@ -57,9 +58,17 @@ export interface Portal {
   rotY: number;
   /** Hole width in metres, measured along the edge. */
   width: number;
-  /** The hole as an edge-local span, 0..1 — what the wall ring cuts. */
+  /** The hole as an edge-local span on `edge`, 0..1. */
   t0: number;
   t1: number;
+  /**
+   * EVERY edge-local span this one opening removes — what the wall ring cuts.
+   *
+   * Usually the single span above. TWO OR THREE when a corridor arrives across a
+   * CHAMFERED CORNER, which is the case that used to seal rooms: the opening was
+   * taken on the best single edge and the rest of it stayed as stone.
+   */
+  cuts: ReadonlyArray<{ edge: number; t0: number; t1: number }>;
 }
 
 /**
@@ -92,11 +101,13 @@ export function planPortals(
   poly: Ring,
   corridors: ReadonlyArray<{ id: string; rect: Rect }>,
 ): Portal[] {
+  const n = poly.length;
   const out: Portal[] = [];
   for (const c of corridors) {
-    let best: { edge: number; t0: number; t1: number; len: number } | null = null;
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i], b = poly[(i + 1) % poly.length];
+    // Every edge this corridor reaches, with the length it covers.
+    const hits: Array<{ edge: number; t0: number; t1: number; len: number }> = [];
+    for (let i = 0; i < n; i++) {
+      const a = poly[i], b = poly[(i + 1) % n];
       const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (edgeLen < 1e-4) continue;
       // NO PADDING. The hole is where the corridor actually is — the wall ring
@@ -104,20 +115,55 @@ export function planPortals(
       // slot on each side of every doorway.
       const hit = clipEdgeToRect(a, b, c.rect, 0);
       if (!hit) continue;
-      const span = (hit[1] - hit[0]) * edgeLen;
-      if (!best || span > best.len) best = { edge: i, t0: hit[0], t1: hit[1], len: span };
+      hits.push({ edge: i, t0: hit[0], t1: hit[1], len: (hit[1] - hit[0]) * edgeLen });
     }
+    if (!hits.length) continue;
+
+    // ── ONE OPENING MAY SPAN A CORNER ──────────────────────────────────────
+    //
+    // This used to take the single best edge and refuse the corridor if THAT
+    // edge came up short of MIN_WIDTH. A polygon room is chamfered, so a
+    // corridor arriving at a corner splits its opening across two edges — 0.8m
+    // here and 0.7m there — and neither half cleared a 1.2m bar that the whole
+    // easily clears.
+    //
+    // That was not a cosmetic loss. `wallCutsFor` is this same function, and
+    // when it hands the ring a cut list, the cuts REPLACE the ring's own rect
+    // clipping (poly-shell-plan.ts) — so a corridor with no portal got no hole
+    // at all. Measured across 72 floors: 24 of them had rooms the player could
+    // never reach, and on four the ENTRANCE itself was sealed, an unbroken
+    // 37.7m of wall around the spawn.
+    //
+    // So group the hits into runs of ADJACENT edges and measure the run. Runs,
+    // not "all hits": a corridor that overlaps a small room deeply can clip the
+    // FAR wall too, and merging those two into one opening would invent a
+    // doorway through the room rather than into it.
+    const runs = adjacentRuns(hits, n);
+    let best: typeof runs[number] | null = null;
+    for (const r of runs) if (!best || r.len > best.len) best = r;
     if (!best || best.len < MIN_WIDTH) continue;
 
-    const a = poly[best.edge], b = poly[(best.edge + 1) % poly.length];
+    // The frame is square to the edge that carries most of the hole; the width
+    // is the WHOLE hole, so a gate straddling a chamfer still covers it.
+    const lead = best.parts.reduce((m, h) => (h.len > m.len ? h : m), best.parts[0]);
+    const a = poly[lead.edge], b = poly[(lead.edge + 1) % n];
     const dx = b[0] - a[0], dz = b[1] - a[1];
-    const pa: V2 = [a[0] + dx * best.t0, a[1] + dz * best.t0];
-    const pb: V2 = [a[0] + dx * best.t1, a[1] + dz * best.t1];
-    const nrm = edgeNormal(poly, best.edge);
+    const pa: V2 = [a[0] + dx * lead.t0, a[1] + dz * lead.t0];
+    const pb: V2 = [a[0] + dx * lead.t1, a[1] + dz * lead.t1];
+    const nrm = edgeNormal(poly, lead.edge);
+    // Midpoint of the WHOLE opening, so a gate on a corner sits in the middle of
+    // the way through rather than at the middle of its widest face.
+    let mx = 0, mz = 0, wsum = 0;
+    for (const h of best.parts) {
+      const ea = poly[h.edge], eb = poly[(h.edge + 1) % n];
+      const ex = eb[0] - ea[0], ez = eb[1] - ea[1];
+      const t = (h.t0 + h.t1) / 2;
+      mx += (ea[0] + ex * t) * h.len; mz += (ea[1] + ez * t) * h.len; wsum += h.len;
+    }
     out.push({
-      roomId, corridorId: c.id, edge: best.edge,
+      roomId, corridorId: c.id, edge: lead.edge,
       a: pa, b: pb,
-      mid: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2],
+      mid: [mx / wsum, mz / wsum],
       normal: nrm,
       // THE FRAME FACES ALONG THE NORMAL, and that is the whole of it.
       //
@@ -133,10 +179,57 @@ export function planPortals(
       // atan2(x, z) — x FIRST — is the codebase's direction→yaw convention.
       rotY: Math.atan2(nrm[0], nrm[1]),
       width: best.len,
-      t0: best.t0, t1: best.t1,
+      t0: lead.t0, t1: lead.t1,
+      // ── CUT EVERY EDGE THE CORRIDOR CROSSES, NOT JUST THE THRESHOLD RUN ──
+      //
+      // The frame goes on ONE run — the way in. The wall ring has to lose them
+      // ALL, because the rule is the same one this generator already lives by
+      // from the other side (`insidePolyRanges`): A WALL SEGMENT INSIDE A
+      // CORRIDOR IS NOT A WALL.
+      //
+      // A polygon room is notched, and a corridor coming down a notch clips the
+      // room's outline TWICE — once at the wall it enters through, and again
+      // across the three sides of the bite it then runs down. Keeping only the
+      // biggest run picked the bite and left the entry wall standing straight
+      // across the passage: measured on seed 555 depth 11, a wall at z=31.6
+      // spanning the corridor's whole 2.2m width, and four rooms behind it that
+      // the player could never reach.
+      cuts: hits.map((h) => ({ edge: h.edge, t0: h.t0, t1: h.t1 })),
     });
   }
   return out;
+}
+
+/**
+ * Group edge hits into runs of edges that are adjacent around the ring.
+ *
+ * Adjacency wraps, because edge n−1 and edge 0 meet at a corner like any other
+ * pair — and a corridor arriving at exactly that corner is not a special case
+ * anywhere else in this file.
+ */
+function adjacentRuns<T extends { edge: number; len: number }>(
+  hits: readonly T[], n: number,
+): Array<{ parts: T[]; len: number }> {
+  const byEdge = new Map<number, T>();
+  for (const h of hits) byEdge.set(h.edge, h);
+  const seen = new Set<number>();
+  const runs: Array<{ parts: T[]; len: number }> = [];
+  for (const h of hits) {
+    if (seen.has(h.edge)) continue;
+    const parts: T[] = [];
+    // Walk backward to the start of this run, then forward through it.
+    let start = h.edge;
+    while (byEdge.has((start - 1 + n) % n) && (start - 1 + n) % n !== h.edge) start = (start - 1 + n) % n;
+    let e = start;
+    do {
+      const p = byEdge.get(e);
+      if (!p || seen.has(e)) break;
+      seen.add(e); parts.push(p);
+      e = (e + 1) % n;
+    } while (e !== start);
+    runs.push({ parts, len: parts.reduce((m, p) => m + p.len, 0) });
+  }
+  return runs;
 }
 
 /**
@@ -174,8 +267,11 @@ export function portalOnWall(
 export function wallCutsFor(
   poly: Ring, rects: ReadonlyArray<Rect>,
 ): Array<{ edge: number; t0: number; t1: number }> {
+  // EVERY cut, not just the leading edge's. A corridor arriving across a
+  // chamfered corner opens two edges, and returning one of them leaves the
+  // other as stone across half the doorway — see the note in planPortals.
   return planPortals('shell', poly, rects.map((rect, i) => ({ id: `o${i}`, rect })))
-    .map((p) => ({ edge: p.edge, t0: p.t0, t1: p.t1 }));
+    .flatMap((p) => p.cuts.map((c) => ({ edge: c.edge, t0: c.t0, t1: c.t1 })));
 }
 
 /**

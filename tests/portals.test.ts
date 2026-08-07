@@ -34,51 +34,54 @@ function floors() {
   return out;
 }
 
-test('THE ROOM\'S HOLE IS THE CORRIDOR\'S WIDTH — not wider', () => {
-  // The whole bug in one assertion. The ring's gap on an edge has to equal the
-  // portal there; anything more is wall that should exist and doesn't.
+test('NOTHING IS REMOVED FROM A WALL WITHOUT FLOOR BEHIND IT', () => {
+  // The whole bug in one assertion, stated as the thing that actually goes
+  // wrong rather than as a proxy for it.
+  //
+  // This used to compare the wall removed on an edge against the width of the
+  // PORTAL reported on that edge. That worked while an opening was always one
+  // edge — and stopped meaning anything when an opening learned to span a
+  // corner, because the portal then names its leading edge while the cuts land
+  // on three. The proxy went red on a corridor that was doing nothing wrong.
+  //
+  // What the original 0.50m surplus actually was: wall removed where there is
+  // NO CORRIDOR. That is checkable directly, and it holds whatever shape an
+  // opening takes — a notch a corridor runs down legitimately loses three
+  // walls, because all three stand inside the corridor's own floor, which is
+  // the same rule `insidePolyRanges` applies from the other side.
+  //
+  // Measured on the CUTS, in the polygon's own edge coordinates, rather than on
+  // the built spans: the ring is offset outward by the wall thickness, so
+  // reading holes back off its geometry needs a quarter-metre of slack — and a
+  // quarter-metre of slack is exactly the size of the bug.
   let checked = 0;
   for (const spec of floors()) {
-    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
+    const rects = spec.corridors.map((c) => c.rect);
+    // Tight. A cut is in the polygon's own coordinates and a corridor rect is
+    // too; the only honest slack is float noise and the ring's 0.14m stub drop.
+    const SLACK = 0.15;
+    const overCorridor = (x: number, z: number) => rects.some((c) =>
+      Math.abs(x - c.x) <= c.w / 2 + SLACK && Math.abs(z - c.z) <= c.d / 2 + SLACK);
+
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      const portals = planPortals(r.id, r.poly, corridors);
-      if (!portals.length) continue;
-      // THE SHIPPING CALL — same helper poly-room-shell.ts uses. The first
-      // version of this test called planWallRing without the cuts and so
-      // measured the path that had just been replaced.
-      const rects = corridors.map((c) => c.rect);
-      const spans = planWallRing(r.poly, WALL_T, rects, undefined, wallCutsFor(r.poly, rects));
-
-      for (const p of portals) {
-        // Total wall REMOVED from this edge = edge length minus what survived.
-        const a = r.poly[p.edge], b = r.poly[(p.edge + 1) % r.poly.length];
-        const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        const kept = spans
-          .filter((s) => s.edge === p.edge)
-          .reduce((t, s) => t + Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]), 0);
-        const removed = edgeLen - kept;
-        // Several corridors can share one edge, so the removal is at LEAST this
-        // portal and never more than the sum of every portal on it.
-        const onEdge = portals.filter((q) => q.edge === p.edge)
-          .reduce((t, q) => t + q.width, 0);
-        // TOLERANCE = 2 × the ring's own minSpan (0.14m), one per jamb.
-        //
-        // The ring drops wall stubs shorter than that — a 4cm pier beside a
-        // doorway is z-fighting, not architecture — so a little more length can
-        // go than the portal asked for. That is NOT the bug this test is about:
-        // a sub-14cm stub sits inside the corridor's own footprint (corridors
-        // overlap into the room by 0.9m), so its side wall is behind it. The
-        // 0.50m surplus that started this was OUTSIDE the corridor entirely,
-        // with nothing behind it at all.
-        assert.ok(removed <= onEdge + 0.28,
-          `${spec.id} ${r.id}: edge ${p.edge} lost ${removed.toFixed(2)}m of wall for `
-          + `${onEdge.toFixed(2)}m of doorway — the surplus is a see-through slot`);
-        checked++;
+      for (const cut of wallCutsFor(r.poly, rects)) {
+        const a = r.poly[cut.edge], b = r.poly[(cut.edge + 1) % r.poly.length];
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const span = Math.hypot(dx, dz) * (cut.t1 - cut.t0);
+        const steps = Math.max(2, Math.ceil(span / 0.25));
+        for (let i = 0; i <= steps; i++) {
+          const t = cut.t0 + ((cut.t1 - cut.t0) * i) / steps;
+          const px = a[0] + dx * t, pz = a[1] + dz * t;
+          assert.ok(overCorridor(px, pz),
+            `${spec.id} ${r.id}: the wall is cut at (${px.toFixed(1)}, ${pz.toFixed(1)}) `
+            + `on edge ${cut.edge} with no corridor behind it — that is a see-through slot`);
+          checked++;
+        }
       }
     }
   }
-  assert.ok(checked > 50, `only ${checked} portals checked — the sample is not measuring anything`);
+  assert.ok(checked > 200, `only ${checked} cut samples — the sample is not measuring anything`);
 });
 
 test('every portal is wide enough to be a way through', () => {
