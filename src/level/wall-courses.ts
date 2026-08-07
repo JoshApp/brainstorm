@@ -72,14 +72,22 @@ const PROUD_MAX = 0.030;
 // Minimum length is this function's own business, though: a 2m return between
 // two doorways has no room for a patch that reads as anything.
 const COLLAPSE_MIN_LEN = 3.4;
-/** How deep a fallen stone leaves its hole. Enough to read as dark, not so deep
- *  it reaches the back of a 25cm wall. */
-const POCKET_DEPTH = 0.16;
+/**
+ * Where the back of a pocket sits, as an ABSOLUTE inset from the wall plane —
+ * not a depth measured from the course face.
+ *
+ * The difference matters. Measured from the face, a pocket in a course that is
+ * already recessed 5cm and bowed 4cm back would put its floor at 29cm, through
+ * the back of a 25cm wall. Measured from the plane, the void behind the
+ * masonry is at one depth everywhere and the POCKET gets deeper where the
+ * course in front of it has worn back — which is also what actually happens.
+ */
+const POCKET_BACK = 0.19;
 /** How far the rubble spills into the room. The wall's collision stays on the
  *  nominal plane, so this is stone the player can walk a little way into — at
  *  ankle height, under the camera, where the wall face already hides it. Larger
  *  than this and you notice your shins passing through a boulder. */
-const TALUS_REACH = 0.30;
+const TALUS_REACH = 0.34;
 
 export interface CoursedWallOpts {
   /** Nominal course height. Real courses vary around it — a perfectly regular
@@ -196,7 +204,12 @@ export function makeCoursedWall(
   let talusFrom = 0, talusTo = 0;
   if (collapsing) {
     const cellKey = (c: number, s: number) => c * 1000 + s;
-    const sc = 1 + Math.floor(rand() * (segs - 2));
+    // CENTRE-WEIGHTED, not uniform. A patch that lands on the last cell before
+    // a corner is a patch nobody sees: you look along a wall from its middle,
+    // and the ends are the part that is edge-on or behind you. Two rands summed
+    // give a triangular distribution — still anywhere, mostly the middle.
+    const sc = Math.max(1, Math.min(segs - 2,
+      Math.round(segs / 2 + (rand() + rand() - 1) * segs * 0.26)));
     const cc = Math.max(1, Math.floor(rows.length * (0.35 + rand() * 0.45)));
     const spread = 1 + Math.floor(rand() * 2);
     for (let c = Math.max(1, cc - spread); c <= Math.min(rows.length - 2, cc + spread); c++) {
@@ -228,8 +241,8 @@ export function makeCoursedWall(
         // reveals joining it to the face. Only the reveals a NEIGHBOUR hasn't
         // already opened — two adjacent holes are one bigger hole, and a
         // reveal between them is a pane of stone floating in the middle of it.
-        const p0 = z0 - POCKET_DEPTH, p1 = z1 - POCKET_DEPTH;
-        push([x0, y0, p0], [x1, y0, p1], [x1, y1, p1], [x0, y1, p0], 0.28);
+        const p0 = -POCKET_BACK, p1 = -POCKET_BACK;
+        push([x0, y0, p0], [x1, y0, p1], [x1, y1, p1], [x0, y1, p0], 0.14);
         if (!isGone(c - 1, s)) push([x0, y0, p0], [x1, y0, p1], [x1, y0, z1], [x0, y0, z0], 0.45);
         if (!isGone(c + 1, s)) push([x0, y1, z0], [x1, y1, z1], [x1, y1, p1], [x0, y1, p0], 0.38);
         if (!isGone(c, s - 1)) push([x0, y0, p0], [x0, y0, z0], [x0, y1, z0], [x0, y1, p0], 0.5);
@@ -258,7 +271,13 @@ export function makeCoursedWall(
     const steps = Math.max(3, Math.round((talusTo - talusFrom) / 0.35));
     // Height and reach both peak under the hole and die at the ends, so the
     // heap has a shape instead of being a kerb.
-    const peak = 0.34 + wear * 0.36;
+    // HEIGHT IS CAPPED BY REACH, and that is the whole lesson from the first
+    // version. It piled 0.9m high in 0.34m of depth — a 69-degree face, which
+    // is to say a face pointing the same way as the wall behind it, lit the
+    // same way, invisible. A heap has to be wider than it is tall or it is just
+    // more wall. Reach is fixed by what the player can walk into, so the height
+    // comes down to meet it.
+    const peak = TALUS_REACH * (0.85 + wear * 0.55);
     const profile = (x: number) => {
       const t = 1 - Math.abs(x - mid) / Math.max(0.001, spanW);
       return Math.max(0, t);
@@ -266,7 +285,7 @@ export function makeCoursedWall(
     // Sampled first, then stitched — a crest height belongs to a POINT along
     // the wall, and reusing the previous point's height for this point's edge
     // is how you get a staircase instead of a heap.
-    const samples: Array<{ x: number; h: number; out: number }> = [];
+    const samples: Array<{ x: number; h: number; out: number; lip: number }> = [];
     for (let i = 0; i <= steps; i++) {
       const x = talusFrom + ((talusTo - talusFrom) * i) / steps;
       const t = profile(x);
@@ -274,6 +293,10 @@ export function makeCoursedWall(
         x,
         h: peak * t * (0.55 + rand() * 0.9),
         out: TALUS_REACH * t * (0.6 + rand() * 0.7),
+        // The crest stands a little off the wall, by a different amount at
+        // every sample — otherwise the heap is a ruled surface, which is a
+        // ramp, and a ramp is not a pile of fallen stone.
+        lip: 0.02 + rand() * 0.09,
       });
     }
     for (let i = 1; i < samples.length; i++) {
@@ -282,7 +305,8 @@ export function makeCoursedWall(
       // into the room. Darker than the wall — loose stone lying in its own
       // shadow, and it wants to separate from the face behind it rather than
       // blend into one grey mass.
-      push([p.x, 0, p.out], [q.x, 0, q.out], [q.x, q.h, bowAt(q.x)], [p.x, p.h, bowAt(p.x)], 0.72);
+      push([p.x, 0, p.out], [q.x, 0, q.out],
+        [q.x, q.h, bowAt(q.x) + q.lip], [p.x, p.h, bowAt(p.x) + p.lip], 0.72);
     }
   }
 

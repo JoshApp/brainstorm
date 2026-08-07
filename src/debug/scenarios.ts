@@ -478,9 +478,10 @@ const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
  */
 function polyRoomScenario(kind: Archetype, wear?: number): Scenario {
   // A ruined room's collapsed patch goes on its LONGEST wall, and the default
-  // viewpoint looks down the long axis — which puts that wall behind you. Stand
-  // at the other end so the thing the scenario exists to show is in frame.
-  const flip = wear !== undefined ? -1 : 1;
+  // viewpoint looks down the long axis — which puts that wall behind you, at
+  // eleven metres, in the dark. Turn round and stand four metres off it: this
+  // scenario exists to look at masonry, and masonry has to be within the lamp.
+  const ruined = wear !== undefined;
   const rand = mulberryFor(kind);
   const w = 13 + rand() * 4;
   const d = 11 + rand() * 4;
@@ -493,7 +494,9 @@ function polyRoomScenario(kind: Archetype, wear?: number): Scenario {
     godMode: true,
     level: {
       id: `dbg-poly-${kind}`, depth: 3, displayName: kind.toUpperCase(), fogColor: 0x0c0c12,
-      startPos: { x: rect.x, z: rect.z + flip * (rect.d / 2 - 1.6), yaw: flip > 0 ? 0 : Math.PI },
+      startPos: ruined
+        ? { x: rect.x, z: rect.z + rect.d / 2 - 6.5, yaw: Math.PI }
+        : { x: rect.x, z: rect.z + rect.d / 2 - 1.6, yaw: 0 },
       rooms: [{
         id: `poly-${kind}`, rect, height: ceil.height, poly, wear,
         ceilingStyle: ceil.style, ceilingRise: ceil.rise,
@@ -518,11 +521,15 @@ function polyRoomScenario(kind: Archetype, wear?: number): Scenario {
     },
     // Stand just inside the near wall looking down the room's long axis, so the
     // first thing you see is the far wall and the shape between here and there.
-    playerPos: {
-      x: rect.x,
-      z: rect.z + flip * (rect.d / 2 - 1.6),
-      lookAt: { x: rect.x, z: rect.z - flip * (rect.d / 2), y: 1.4 },
-    },
+    playerPos: ruined
+      ? {
+        x: rect.x, z: rect.z + rect.d / 2 - 6.5,
+        lookAt: { x: rect.x, z: rect.z + rect.d / 2, y: 1.4 },
+      }
+      : {
+        x: rect.x, z: rect.z + rect.d / 2 - 1.6,
+        lookAt: { x: rect.x, z: rect.z - rect.d / 2, y: 1.4 },
+      },
   };
 }
 
