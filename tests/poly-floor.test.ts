@@ -29,6 +29,7 @@ import { planWallRing } from '../src/level/poly-shell-plan';
 import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
+import { plateExtentFor, OVERLAP } from '../src/level/corridor-trim';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
 import { roomType } from '../src/level/room-types';
@@ -334,6 +335,60 @@ test('NO DOORWAY OPENS ONTO NOTHING', () => {
     }
   }
   assert.ok(checked > 20000, `only ${checked} samples — the sweep is not covering the doorways`);
+});
+
+test('A CORRIDOR DOES NOT LAY ITS FLOOR AND CEILING INSIDE THE ROOM', () => {
+  // Josh, on a phone: *"some corridors ceiling and floor reaches too far into a
+  // room and then there is a small space where I barely stand on the elongated
+  // floor and the room I should be in gets culled"*, and *"you see part of the
+  // corridors top wall sticking into the room."*
+  //
+  // A corridor's RECT ending inside the room is correct and load-bearing — it
+  // is the only way to reach a wall that sits back from its bounding box, and
+  // both `findOpenings` and the room graph depend on it. What was wrong is that
+  // the corridor also BUILT its floor and ceiling over all of it: a ledge at
+  // corridor height and a soffit at corridor height, standing in a room with
+  // its own floor and its own higher ceiling.
+  //
+  // Measured when this was written: 1978 junctions, 98% of them reaching more
+  // than 0.35m past the wall, mean 0.82m, worst 4.21m.
+  //
+  // The assertion is on the PLATE the builder is handed, which is the thing
+  // that changed; the rect is deliberately left alone and is not checked here.
+  let junctions = 0, bad = 0, worst = 0;
+  for (const spec of floors()) {
+    const polys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
+    for (const c of spec.corridors) {
+      const p = plateExtentFor(c.rect, polys);
+      const alongX = p.w >= p.d;
+      const lat = alongX ? p.z : p.x;
+      const lo = (alongX ? p.x : p.z) - (alongX ? p.w : p.d) / 2;
+      const len = alongX ? p.w : p.d;
+      for (const room of spec.rooms) {
+        if (!room.poly) continue;
+        // Longest unbroken run of the plate's centre-line inside this room.
+        const N = 200;
+        let run = 0, deepest = 0;
+        for (let i = 0; i <= N; i++) {
+          const t = lo + (len * i) / N;
+          const inside = pointInPoly(room.poly, alongX ? t : lat, alongX ? lat : t);
+          run = inside ? run + len / N : 0;
+          deepest = Math.max(deepest, run);
+        }
+        if (deepest <= 0.05) continue;
+        junctions++;
+        worst = Math.max(worst, deepest);
+        // OVERLAP is deliberate — a plate that stopped exactly at the polygon is
+        // one rounding away from a hairline gap onto the void. Three times it is
+        // the budget for a corridor almost entirely swallowed by its rooms,
+        // which the trim refuses to erase.
+        if (deepest > OVERLAP * 3 + 0.05) bad++;
+      }
+    }
+  }
+  assert.ok(junctions > 500, `only ${junctions} junctions sampled — not measuring the thing`);
+  assert.ok(bad / junctions < 0.02,
+    `${bad}/${junctions} corridor plates reach more than ${(OVERLAP * 3).toFixed(2)}m into a room (worst ${worst.toFixed(2)}m) — that is a ledge underfoot and a soffit overhead`);
 });
 
 test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {

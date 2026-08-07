@@ -4,6 +4,7 @@ import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
+import { pointInPoly, type Poly } from './room-shape';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -27,6 +28,9 @@ import { CONFIG } from '../config';
 interface RectNode {
   id: string;
   cx: number; cz: number; hw: number; hd: number;   // centre + half-extents
+  /** The room's real floor, when it has one. Its rect is a BOUNDING BOX and a
+   *  corridor's rect reaches inside it — see rectAt. */
+  poly?: Poly;
   objects: THREE.Object3D[];                          // toggleable static content
   neighbors: Array<{ id: string; ox: number; oz: number }>;  // opening midpoints
 }
@@ -83,12 +87,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   //    in an arena's alcove/proper. Excluding logical rooms makes rectAt fall
   //    through to the parent automatically.
   const rects = [
-    ...level.spec.rooms.filter((r) => !r.logicalOnly).map((r) => ({ id: r.id, rect: r.rect })),
-    ...level.spec.corridors.map((c) => ({ id: c.id, rect: c.rect })),
+    ...level.spec.rooms.filter((r) => !r.logicalOnly).map((r) => ({ id: r.id, rect: r.rect, poly: r.poly })),
+    ...level.spec.corridors.map((c) => ({ id: c.id, rect: c.rect, poly: c.poly })),
   ];
-  for (const { id, rect } of rects) {
+  for (const { id, rect, poly } of rects) {
     nodes.set(id, {
       id, cx: rect.x, cz: rect.z, hw: rect.w / 2, hd: rect.d / 2,
+      poly: poly && poly.length >= 3 ? poly : undefined,
       objects: [], neighbors: [],
     });
   }
@@ -404,15 +409,35 @@ function sharedOpening(a: RectNode, b: RectNode): { x: number; z: number } | nul
   return null;
 }
 
-/** Rect whose AABB contains (x, z), or null. Prefers the smallest (so a
- *  corridor nested against a room boundary wins over the room). */
+/**
+ * WHICH RECT AM I IN — the room the cull flood starts from.
+ *
+ * Smallest containing AABB, so a corridor nested against a room boundary wins
+ * over the room. EXCEPT that a node whose POLYGON actually contains the point
+ * beats one that merely boxes it.
+ *
+ * Josh, on a phone: *"there is a small space where I barely stand on the
+ * elongated floor and the room I should be in gets culled, then if I move
+ * forward just a little bit it reappears"* — a flicker on the way through every
+ * doorway. A corridor's rect reaches INTO the room by design (it is the only
+ * way to meet a wall that sits back from its bounding box), and standing on
+ * that overlap, deep inside the room's floor, the smallest-box rule answered
+ * "you are in the corridor" and the flood started from the wrong side.
+ *
+ * The plates that made you notice it are trimmed now (corridor-trim.ts), but
+ * the rect still overlaps and always will — so the rule has to be right rather
+ * than merely unobserved. Same fix, same reason, as room-graph.ts's rectAt.
+ */
 function rectAt(nodes: Map<string, RectNode>, x: number, z: number): RectNode | null {
   let best: RectNode | null = null;
+  let bestIsReal = false;
   for (const n of nodes.values()) {
-    if (x >= n.cx - n.hw - EPS && x <= n.cx + n.hw + EPS &&
-        z >= n.cz - n.hd - EPS && z <= n.cz + n.hd + EPS) {
-      if (!best || n.hw * n.hd < best.hw * best.hd) best = n;
-    }
+    if (x < n.cx - n.hw - EPS || x > n.cx + n.hw + EPS ||
+        z < n.cz - n.hd - EPS || z > n.cz + n.hd + EPS) continue;
+    const real = !!n.poly && pointInPoly(n.poly, x, z);
+    if (real && !bestIsReal) { best = n; bestIsReal = true; continue; }
+    if (real !== bestIsReal) continue;                       // a box never beats a floor
+    if (!best || n.hw * n.hd < best.hw * best.hd) best = n;
   }
   return best;
 }

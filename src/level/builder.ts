@@ -6,6 +6,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell } from './poly-room-shell';
+import { plateExtentFor } from './corridor-trim';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -195,10 +196,30 @@ function buildRoomShell(
   wallSegmentsOut: WallSegment[],
   floorHoles: Array<Array<[number, number]>> = [],
   obstaclesOut: Obstacle[] = [],
+  /**
+   * How big the FLOOR AND CEILING PLATES should be, and where they sit.
+   *
+   * Defaults to the rect, which is every case except a corridor running into a
+   * polygon room — there the rect deliberately ends INSIDE the room (it is the
+   * only way to reach a wall that sits back from its bounding box), and building
+   * the plates over all of it leaves a ledge underfoot and a soffit overhead in
+   * a room that has its own floor and its own higher ceiling. See
+   * level/corridor-trim.ts; measured at 98% of junctions before this existed.
+   *
+   * ONLY the plates. Walls, doorway openings, collision and every connection
+   * rule keep using the full rect, because the overlap is what makes them work.
+   */
+  plate: { w: number; d: number; x: number; z: number } = room.rect,
 ) {
   const { rect, height: H } = room;
   const W = rect.w;
   const D = rect.d;
+  // PLATE EXTENT — the floor and ceiling ONLY. Everything else in this function
+  // keeps using W/D (the rect), because the walls, the doorway openings and the
+  // collision segments all have to stay where the rect says they are. Trimming
+  // those too would move a corridor's side walls off its own rect, which is how
+  // a hole in the world gets shipped.
+  const PW = plate.w, PD = plate.d, PX = plate.x, PZ = plate.z;
 
   // ── ELEVATION ──────────────────────────────────────────────────────
   // Rooms sit flat at their elevation; a corridor whose two ends meet
@@ -268,21 +289,21 @@ function buildRoomShell(
   // and collision glide the smooth line underneath (groundYAt).
   const floorGeo: THREE.BufferGeometry = sloped
     ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M, alongX)
-        ?? makeJitteredPlane(W, D, { flat: true }))
+        ?? makeJitteredPlane(PW, PD, { flat: true }))
     : allFloorHoles.length > 0
-      ? makeFloorWithHoles(W, D, allFloorHoles)
-      : makeJitteredPlane(W, D, { flat: true });
+      ? makeFloorWithHoles(PW, PD, allFloorHoles)
+      : makeJitteredPlane(PW, PD, { flat: true });
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   if (!sloped) {
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(rect.x, elev, rect.z);
+    floor.position.set(PX, elev, PZ);
   }
   floor.receiveShadow = true;
   floor.name = 'floor';
   // Rect (+ whether it carries per-vertex colour) so the prop-contact AO pass
   // can find floors and darken them under props after props are placed.
   // Sloped ramps skip it (the bake assumes a flat plane).
-  if (allFloorHoles.length === 0 && !sloped) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
+  if (allFloorHoles.length === 0 && !sloped) floor.userData.aoRect = { x: PX, z: PZ, w: PW, d: PD };
   floor.userData.dbgKind = 'floor';
   floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
@@ -420,26 +441,26 @@ function buildRoomShell(
       ]);
     }
     const ceilGeo: THREE.BufferGeometry = ceilHoles.length > 0
-      ? makeFloorWithHoles(W, D, ceilHoles)
-      : sloped ? makeJitteredPlane(W, D, { flat: true }) : new THREE.PlaneGeometry(W, D);
+      ? makeFloorWithHoles(PW, PD, ceilHoles)
+      : sloped ? makeJitteredPlane(PW, PD, { flat: true }) : new THREE.PlaneGeometry(PW, PD);
     if (sloped) {
       // Ramped corridor: the ceiling tracks the floor's grade so headroom
       // stays constant down the slope. rotX +π/2 maps local (x, y, z) to
       // world (x, -z, +y): displace local Z by the NEGATIVE target height.
       const pos = ceilGeo.getAttribute('position');
       for (let i = 0; i < pos.count; i++) {
-        const wx = rect.x + pos.getX(i);
-        const wz = rect.z + pos.getY(i);
+        const wx = PX + pos.getX(i);
+        const wz = PZ + pos.getY(i);
         pos.setZ(i, -(groundYAt(wx, wz) + H));
       }
       ceilGeo.computeVertexNormals();
       ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
       ceiling.rotation.x = Math.PI / 2;
-      ceiling.position.set(rect.x, 0, rect.z);
+      ceiling.position.set(PX, 0, PZ);
     } else {
       ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
       ceiling.rotation.x = Math.PI / 2;
-      ceiling.position.set(rect.x, elev + H, rect.z);
+      ceiling.position.set(PX, elev + H, PZ);
     }
   } else {
     const rise = room.ceilingRise ?? (ceilStyle === 'barrel' ? 1.3 : 1.0);
@@ -915,6 +936,11 @@ export function buildLevel(
 
   // --- Geometry: rooms + corridors ---
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
+  // A corridor's floor/ceiling plates stop at the room wall rather than running
+  // on into the room with its rect (corridor-trim.ts). Both lookups are hoisted
+  // here because the shell loop below needs them per rect.
+  const isCorridor = new Set(spec.corridors);
+  const roomPolys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
   // ── THE THRESHOLD BONFIRE ──────────────────────────────────────────
   // Every floor begins at a fire: the player wakes seated beside it
   // (player/arrival.ts) and can REST at it (the level-up menu) any time.
@@ -1202,7 +1228,15 @@ export function buildLevel(
           holes,
         );
       } else {
-        buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
+        // A CORRIDOR'S PLATES STOP AT THE WALL. Its rect runs on into the room
+        // by design (see corridor-trim.ts) and only the connection rules want
+        // that; the floor and ceiling built over it are a ledge and a soffit
+        // standing inside a room that has its own. Rooms pass their own rect,
+        // so nothing but a corridor is affected.
+        const plate = isCorridor.has(r)
+          ? plateExtentFor(r.rect, roomPolys)
+          : r.rect;
+        buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles, plate);
       }
     }
   }
