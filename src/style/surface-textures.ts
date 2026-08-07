@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash } from './stone-grid';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -43,13 +44,13 @@ const mixf = (a: number, b: number, t: number) => a + (b - a) * t;
 const stepf = (e: number, x: number) => (x < e ? 0 : 1);
 const clampf = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 const smooth = (e0: number, e1: number, x: number) => { const t = clampf((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
-function dHash(x: number, y: number, z: number): number {
-  let px = fract(x * 0.3183099 + 0.1), py = fract(y * 0.3183099 + 0.1), pz = fract(z * 0.3183099 + 0.1);
-  px *= 17; py *= 17; pz *= 17;
-  return fract(px * py * pz * (px + py + pz));
-}
+// The one hash, shared with stone-grid.ts so a cell id computed at runtime and
+// a cell id baked into the texture are the same cell.
+const dHash = stoneHash;
 function brickCPU(px: number, py: number, aa: number): [number, number] {
-  const bx = 1.15, by = 0.6;
+  // SHARED WITH THE GEOMETRY. wall-courses.ts lays its real courses on this same
+  // grid — see style/stone-grid.ts for why the two must not each pick a number.
+  const bx = BRICK_W, by = COURSE_H;
   let gx = px / bx; const gy = py / by; const row = Math.floor(gy);
   gx += 0.5 * modf(row, 2);
   const idx = modf(Math.floor(gx), 4), idy = modf(row, 8);
@@ -98,7 +99,7 @@ function grainCPU(u: number, v: number): [number, number] {
 }
 function flagCPU(px: number, py: number, aa: number): [number, number] {
   // Periodic Voronoi (period 5), faithful 2-pass: nearest point then edge dist.
-  const FLAG = 1.05, P = 5; const x = px / FLAG, y = py / FLAG;
+  const FLAG = FLAG_CELL, P = FLAG_PERIOD; const x = px / FLAG, y = py / FLAG;
   const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
   let mrx = 0, mry = 0, mgx = 0, mgy = 0, md = 9;
   for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {

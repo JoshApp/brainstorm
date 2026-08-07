@@ -30,6 +30,7 @@ import {
 import { ARCHETYPES, generateRoomShape, pointInPoly, polyArea, type Poly } from '../src/level/room-shape';
 import { STARTER_POLY } from '../src/level/starter-chamber';
 import { clearance, roomCenter } from '../src/level/floor-region';
+import { COURSE_H, courseRows } from '../src/style/stone-grid';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -256,6 +257,41 @@ test('the walls are one mesh, and there is a wall segment per span', () => {
   assert.ok(walls, 'walls did not merge into a single mesh');
   assert.equal(segs.length, STARTER_POLY.length,
     'collision segments do not match the number of wall spans');
+});
+
+test('THE GEOMETRY LAYS ITS COURSES WHERE THE TEXTURE PAINTS ITS MORTAR', () => {
+  // Josh: *"if we do this kinda wall irregularities shouldn't that sync with the
+  // stone shader so it doesn't read chaotic?"*
+  //
+  // The stone texture is WORLD-PROJECTED and a wall's vertical texture axis is
+  // always world Y, so its brick rows sit at world Y = k · COURSE_H no matter
+  // which room the wall is in or how high its floor is. Geometry that lays
+  // courses from its own base instead puts its light-catching step in the middle
+  // of a painted brick — two courses of masonry for the price of one, which is
+  // exactly the chaos being reported.
+  //
+  // Asserted against a range of floor elevations, because that is the thing that
+  // breaks it: a wall on a plateau is the case where "from the base" and "from
+  // the world" disagree.
+  for (const baseY of [0, 0.4, 1.35, -2.2, 3.05]) {
+    for (const height of [2.6, 3.2, 4.0, 5.5]) {
+      const rows = courseRows(baseY, height);
+      assert.ok(rows.length >= 3, `baseY ${baseY} h ${height}: only ${rows.length - 1} courses`);
+      assert.equal(rows[0], 0, 'the first boundary is not the floor');
+      assert.equal(rows[rows.length - 1], height, 'the last boundary is not the wall top');
+      // Interior boundaries only: the two ends are wherever the floor and the
+      // ceiling are, and a part-course at each is what masonry actually does.
+      for (const y of rows.slice(1, -1)) {
+        const k = (baseY + y) / COURSE_H;
+        assert.ok(Math.abs(k - Math.round(k)) < 1e-6,
+          `baseY ${baseY}: a course boundary at world Y ${(baseY + y).toFixed(3)} is not on the texture's ${COURSE_H}m grid`);
+      }
+      // And they are monotonic, or the wall builds inside out.
+      for (let i = 1; i < rows.length; i++) {
+        assert.ok(rows[i] > rows[i - 1], `baseY ${baseY} h ${height}: rows are not increasing`);
+      }
+    }
+  }
 });
 
 test('YOU CANNOT SEE OUT OF THE ROOM AT ANY HEIGHT', () => {

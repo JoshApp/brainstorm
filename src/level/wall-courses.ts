@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 import { clearance } from './floor-region';
 import type { Poly } from './room-shape';
+import { BRICK_W, COURSE_H, courseRows, flagstoneCell, stoneHash } from '../style/stone-grid';
 
 // ── COURSED MASONRY ──────────────────────────────────────────────────────────
 //
@@ -105,6 +106,16 @@ export interface CoursedWallOpts {
   /** Deterministic stream. The SAME wall must come out the same every time the
    *  floor is built, or a room changes shape when you walk back into it. */
   rand: () => number;
+  /**
+   * WORLD Y OF THE WALL'S FOOT.
+   *
+   * Not decoration: the stone TEXTURE is world-projected, so its mortar lines
+   * sit at world Y multiples of COURSE_H regardless of what room they are in.
+   * A wall that lays its courses from its own base instead lands its steps in
+   * the middle of the texture's bricks, and the two patterns read as noise.
+   * Given this, the geometry's course lines fall exactly on the texture's.
+   */
+  baseY?: number;
   /** Give this wall the collapsed patch — a cluster of missing stones and the
    *  rubble they left. The ROOM decides which of its walls gets one (see
    *  COLLAPSE_MIN_LEN above); a wall too short to carry it declines. */
@@ -133,19 +144,25 @@ export function makeCoursedWall(
 ): THREE.BufferGeometry {
   const rand = opts.rand;
   const wear = Math.max(0, Math.min(1, opts.wear ?? 0.35));
-  const courseH = opts.courseH ?? 0.42;
+  const courseH = opts.courseH ?? COURSE_H;
 
   // ── THE COURSES ────────────────────────────────────────────────────
-  // Heights vary ±18% and the last one absorbs the remainder, so the top of the
-  // wall is always exactly `height` — a wall that overshoots pokes through the
-  // ceiling and one that falls short shows the void above it.
-  const rows: number[] = [0];
-  let y = 0;
-  while (height - y > courseH * 1.55) {
-    y += courseH * (0.82 + rand() * 0.36);
-    rows.push(y);
-  }
-  rows.push(height);
+  //
+  // ON THE TEXTURE'S GRID, not on a grid of their own.
+  //
+  // These used to be 0.42m and wander +/-18%, which read well on its own and
+  // fought the baked stone every frame: the texture draws brick rows 0.6m apart
+  // in WORLD Y, so a geometric step at 0.39m or 0.47m lands in the middle of a
+  // painted brick, and you get two courses of masonry for the price of one.
+  // Josh, on a phone: *"shouldn't that sync with the stone shader so it doesn't
+  // read chaotic?"*
+  //
+  // So the rows come from style/stone-grid.ts, snapped to world Y. The wall's
+  // top and bottom are still exact (a part-course at each end is what real
+  // masonry does where it meets a floor or a ceiling), and ALL the variation
+  // this file ever wanted now lives in DEPTH — which is the thing a texture
+  // cannot do and the reason the geometry exists at all.
+  const rows = courseRows(opts.baseY ?? 0, height);
 
   // A slow bow across the wall, on top of the per-course wander. Two things at
   // different frequencies is what stops a procedural surface reading as noise:
@@ -183,6 +200,12 @@ export function makeCoursedWall(
   }
 
   const half = len / 2;
+  // Where this wall's own X sits on the brick grid, so a cut stone is a WHOLE
+  // stone. Exact on an axis-aligned wall (the texture's horizontal axis is a
+  // world axis); on a slanted one it shares the SIZE, which is the part the eye
+  // is actually comparing. See style/stone-grid.ts.
+  const brickAt = (x: number) => Math.floor((x + half) / BRICK_W);
+  const brickX = (i: number) => -half + i * BRICK_W;
 
   // Does this wall have a patch that came down? Decided before the course loop
   // because it changes how finely the courses are cut: a missing stone has to
@@ -193,7 +216,7 @@ export function makeCoursedWall(
   // triangles when the wall is short — except on a collapsing wall, where the
   // cells double as the grid the missing stones are cut out of.
   const segs = collapsing
-    ? Math.max(4, Math.min(12, Math.round(len / 0.9)))
+    ? Math.max(4, Math.min(14, Math.round(len / BRICK_W)))
     : Math.max(1, Math.min(6, Math.round(len / 1.6)));
 
   // WHICH STONES ARE GONE. A cluster, not a scatter: one centre cell and a
@@ -322,9 +345,14 @@ export function makeCoursedWall(
   for (let i = 0; i < blocks; i++) {
     const c = Math.floor(rand() * (rows.length - 1));
     const y0 = rows[c], y1 = rows[c + 1];
-    const w = 0.45 + rand() * 0.7;
-    if (w > len - 0.2) continue;
-    const x0 = -half + rand() * (len - w), x1 = x0 + w;
+    // ONE STONE, ON THE GRID. This used to pick a width between 0.45m and 1.15m
+    // at a free position, so the "block" that stood proud straddled one and a
+    // half of the bricks the texture had painted — the relief said a stone was
+    // here and the albedo said the mortar ran through the middle of it. A block
+    // is now exactly one brick of the shared grid, in its course.
+    const lastBrick = Math.floor(len / BRICK_W) - 1;
+    if (lastBrick < 0) continue;
+    const x0 = brickX(Math.floor(rand() * (lastBrick + 1))), x1 = x0 + BRICK_W;
     const d = depth[c] + 0.012 + rand() * PROUD_MAX;
     const zc = (x: number) => depth[c] + bowAt(x);
     const z0 = d + bowAt(x0), z1 = d + bowAt(x1);
@@ -396,8 +424,14 @@ export function wallWear(roomBase: number, rand: () => number): number {
 // the cell gives every triangle in a slab the same value — and a hard edge
 // between slabs is the thing you actually see.
 
-/** Nominal slab size. Jittered per row/column so the grid never reads as one. */
-const FLAG_SIZE = 1.15;
+// SLAB SIZE AND SHAPE COME FROM style/stone-grid.ts, not from here.
+//
+// This used to quantise to its own 1.15m axis-aligned grid while the baked floor
+// texture drew a 1.05m VORONOI — irregular slabs with jittered centres. Two
+// flagstone patterns on one floor, at different sizes AND different shapes: the
+// texture painted a seam through the middle of a tinted rectangle and the eye
+// gave up on both. Asking `flagstoneCell` means the tint lands on the slab whose
+// EDGES THE PLAYER CAN SEE, which is the whole point of tinting per slab.
 
 // ── EDGE GRIME ───────────────────────────────────────────────────────────────
 //
@@ -440,6 +474,11 @@ const GRIME_DEPTH = 0.4;
  */
 export function tintAsFlagstones(
   geo: THREE.BufferGeometry, wear: number, seed: number, outline?: Poly,
+  /** Shape-space point → WORLD (x, z). The flagstone Voronoi is world-projected
+   *  in the shader, so the tint has to ask it in world space or the slabs it
+   *  paints are a different set from the slabs it is painting on. Omit and the
+   *  plate is treated as if it sat at the world origin. */
+  toWorld?: (sx: number, sy: number) => [number, number],
 ): void {
   if (geo.index) return;
   const pos = geo.getAttribute('position');
@@ -456,19 +495,21 @@ export function tintAsFlagstones(
   // One clearance query per SLAB, not per triangle — a subdivided plate has
   // dozens of triangles to a slab and `clearance` walks every polygon edge.
   const grimeBySlab = new Map<number, number>();
-  const grimeOf = (row: number, col: number, shift: number): number => {
+  const grimeOf = (site: number, siteZ: number, sx: number, sy: number): number => {
     if (!outline) return 1;
-    const key = (row + 4096) * 8192 + (col + 4096);
+    // Keyed on the PHYSICAL slab (the unwrapped site), never on the wrapped
+    // cell id — the id repeats every five slabs, so keying on it would hand one
+    // slab's distance-from-wall to every fifth slab across the room.
+    const key = (siteZ + 4096) * 8192 + (site + 4096);
     const memo = grimeBySlab.get(key);
     if (memo !== undefined) return memo;
-    // The slab's own centre, undoing the row shift — so the whole slab is
-    // judged by one distance and darkens as a unit.
-    const sx = (col + 0.5) * FLAG_SIZE - shift;
-    const sy = (row + 0.5) * FLAG_SIZE;
+    // Judged at the first point of the slab we met. Memoised per slab so the
+    // whole thing darkens as ONE piece — a per-triangle distance is a gradient,
+    // and a gradient across a slab is the vignette this pass exists to avoid.
     const dist = Math.max(0, clearance(outline, sx, sy));
     // Ragged inner edge: each slab decides for itself how far the filth
     // reached, so the band is not a constant-width outline of the room.
-    const reach = GRIME_REACH * (0.55 + hash(col + 991, row + 77) * 0.9);
+    const reach = GRIME_REACH * (0.55 + hash(site + 991, siteZ + 77) * 0.9);
     const t = Math.max(0, 1 - dist / reach);
     const g = 1 - GRIME_DEPTH * t * t * (0.6 + wear * 0.7);
     grimeBySlab.set(key, g);
@@ -479,17 +520,16 @@ export function tintAsFlagstones(
     let cx = 0, cy = 0;
     for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); }
     cx /= 3; cy /= 3;
-    // Rows shift sideways by a per-row amount, so the joints do not line up
-    // into long straight seams across the room — that reads as tiling.
-    const row = Math.floor(cy / FLAG_SIZE);
-    const shift = hash(0, row) * FLAG_SIZE;
-    const col = Math.floor((cx + shift) / FLAG_SIZE);
+    // WHICH SLAB — asked of the shared grid, in world space, so this is the same
+    // slab the baked texture is drawing the edges of.
+    const [wx, wz] = toWorld ? toWorld(cx, cy) : [cx, cy];
+    const { gx: col, gy: row, sx: site, sy: siteZ } = flagstoneCell(wx, wz);
     const v = 0.80 + (hash(col, row) - 0.5) * 2 * spread;
     // One slab in twenty is much darker — a stone that cracked and filled with
     // whatever runs down here. Rare on purpose: it is a punctuation mark, and a
     // floor of them is just a noisy floor again.
     const dark = hash(col + 7717, row - 313) < 0.05 ? 0.55 : 1;
-    const c = Math.max(0.25, Math.min(1.1, v * dark * grimeOf(row, col, shift)));
+    const c = Math.max(0.25, Math.min(1.1, v * dark * grimeOf(site, siteZ, cx, cy)));
     for (let k = 0; k < 3; k++) {
       colors[(t + k) * 3] = c; colors[(t + k) * 3 + 1] = c; colors[(t + k) * 3 + 2] = c;
     }

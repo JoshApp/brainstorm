@@ -126,7 +126,11 @@ export function buildPolyRoomShell(
   // plateGeometry), so the grime band can ask "how far from a wall is this
   // slab" without the caller and the tinter disagreeing about a sign.
   const floorOutline: Poly = local.map(([x, z]) => [x, -z] as const);
-  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id), floorOutline);
+  // Shape space → WORLD. The flagstone Voronoi the shader draws is projected in
+  // world XZ, so the tint has to be asked there or it colours a different set of
+  // slabs from the ones whose seams the player can see.
+  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id), floorOutline,
+    (sx, sy) => [rect.x + sx, rect.z - sy]);
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, elev, rect.z);
@@ -155,7 +159,8 @@ export function buildPolyRoomShell(
     // Ceiling plates are NOT mirrored, so `local` is already their shape space.
     // The band here is soot rather than filth — smoke rises, hits the slab and
     // crawls outward to the walls, so the corners are the black part.
-    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed, local);
+    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed, local,
+      (sx, sy) => [rect.x + sx, rect.z + sy]);
     ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(rect.x, elev + H, rect.z);
@@ -388,7 +393,9 @@ function spanGeometry(
   // COURSED, not a slab. See wall-courses.ts — the short version is that a flat
   // plane has one brightness in torchlight however it is warped, and a course
   // line has two.
-  const face = makeCoursedWall(len, H, { wear, rand, collapse });
+  // baseY is LOAD-BEARING, not bookkeeping: the courses snap to the world-Y
+  // grid the stone texture is projected on. See style/stone-grid.ts.
+  const face = makeCoursedWall(len, H, { wear, rand, collapse, baseY });
   const m = new THREE.Matrix4().makeRotationY(Math.atan2(ix, iz));
   m.setPosition((s.a[0] + s.b[0]) / 2, baseY + H / 2, (s.a[1] + s.b[1]) / 2);
   face.applyMatrix4(m);
