@@ -21,7 +21,7 @@ import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMIES } from '../content/enemies';
 import { isIncluded } from '../content/content-status';
-import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, type Role } from '../content/encounters';
+import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, type EncounterArchetype, type Role } from '../content/encounters';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
@@ -229,9 +229,15 @@ function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: (
  *  not a grab-bag. Used by the composer's spawn-injection pass. */
 export function rollFloorEnemies(
   depth: number, count: number, intensity: EncounterIntensity, rand: () => number,
+  // THE ROOM'S OWN SHAPE, when the caller knows it. This was hard-coded to
+  // 'mixed' for every room on every polygon floor, which is why a hall was the
+  // same fight as a chamber with more bodies in it — measured, the ranged share
+  // of spawns ran 14.8% / 16.0% / 8.9% across mid / large / hall rooms, flat and
+  // if anything backwards. See level/encounter-shape.ts.
+  archetype: EncounterArchetype = 'mixed',
 ): string[] {
   if (count <= 0) return [];
-  return rollPack({ archetype: 'mixed', intensity }, depth, count, rand);
+  return rollPack({ archetype, intensity }, depth, count, rand);
 }
 
 /**

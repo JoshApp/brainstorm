@@ -27,6 +27,7 @@ import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
+import { archetypeForSpan, roomSpan } from './encounter-shape';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
 import { wallFixtureKindOf, wallFixtureModel } from './lit-fixture-pool';
@@ -1477,7 +1478,13 @@ function furnish(
   const intensity = ambush || r.type === 'arena' ? 'heavy'
     : r.type === 'trap' || r.type === 'finish' ? 'light'
     : 'medium';
-  const ids = rollFloorEnemies(depth, count, intensity, rand);
+  // WHAT THE ROOM IS SHAPED TO FIGHT LIKE. Its span, not its area — an archer
+  // needs a straight line, and a long room has one a square of the same floor
+  // area does not. encounter-shape.ts owns the rule and the reason; the short
+  // version is that a hall used to be the same encounter as a chamber with more
+  // bodies in it, so its space was doing nothing.
+  const archetype = archetypeForSpan(roomSpan(r.poly), rand);
+  const ids = rollFloorEnemies(depth, count, intensity, rand, archetype);
   for (const enemyId of ids) {
     if (!picks.length) break;
     const s = picks[Math.floor(rand() * picks.length)];
