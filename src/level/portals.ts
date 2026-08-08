@@ -357,8 +357,35 @@ function clearSpan(
   }
   const projected = hi - lo;
   // The corridor's clear width is its SHORT side — the long one is its length.
-  return Math.min(projected, Math.min(rect.w, rect.d));
+  // Less the REVEAL, below.
+  return Math.max(0.6, Math.min(projected, Math.min(rect.w, rect.d)) - JAMB_REVEAL);
 }
+
+/**
+ * A FRAME IS SLIGHTLY NARROWER THAN THE PASSAGE IT SITS IN.
+ *
+ * Josh, on a phone: *"the doorframes are stuck inside the corridor's walls so
+ * it's z-fighting on the inside of the corridor where it meets the door frame
+ * ... it's the same as a pipe and the pipe's connector."*
+ *
+ * Exactly, and this is the millimetre that makes the connector a connector.
+ * Sizing the frame to the corridor's clear width — which is what this function
+ * did an hour before this line was written, and was right about — puts the
+ * JAMBS precisely on the corridor's own side-wall planes. Two coplanar
+ * surfaces, both drawn, both claiming the same depth: a shimmer down both sides
+ * of every doorway.
+ *
+ * So the frame gives up a few centimetres a side and stands PROUD into the
+ * opening. Nothing is coplanar any more, the jamb reads as masonry the passage
+ * runs into rather than as part of the wall, and it is what a real doorframe
+ * does: a reveal is always tighter than the passage behind it.
+ *
+ * Small on purpose. Big enough that no depth buffer can confuse the two,
+ * small enough that it never narrows a doorway a body has to fit through —
+ * `gateAdmits` works on the frame's half-band, so a reveal that ate real width
+ * would start refusing mobs the corridor admits.
+ */
+const JAMB_REVEAL = 0.07;
 
 export function insidePolyRanges(
   we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },

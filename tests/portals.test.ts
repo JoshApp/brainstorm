@@ -16,6 +16,8 @@
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import { planPortals, wallCutsFor } from '../src/level/portals';
+import { gateAdmits } from '../src/level/nav-grid';
+import { WIDEST_ROAMER } from '../src/level/anchors';
 import { planWallRing } from '../src/level/poly-shell-plan';
 import { WALL_T } from '../src/level/poly-room-shell';
 
@@ -186,6 +188,28 @@ test('A FRAME IS AS WIDE AS THE WAY THROUGH, NOT AS LONG AS THE CUT', () => {
         if (!c) continue;
         checked++;
         const clear = Math.min(c.rect.w, c.rect.d);
+        // ── AND IT STANDS PROUD OF THE CORRIDOR'S WALLS ────────────────────
+        //
+        // Josh: "the doorframes are stuck inside the corridor's walls so it's
+        // z-fighting ... it's the same as a pipe and the pipe's connector."
+        //
+        // Sizing the frame to EXACTLY the corridor's clear width — which this
+        // test asserted an hour before this block was added, and was right to —
+        // puts the jambs precisely on the corridor's own side-wall planes. Two
+        // coplanar surfaces both claiming the same depth is a shimmer down both
+        // sides of every doorway. The frame gives up a few centimetres a side
+        // so the two can never be confused, which is also what a real reveal
+        // does.
+        const reveal = (clear - p.clearWidth) / 2;
+        assert.ok(reveal > 0.02,
+          `${room.id}: the frame's jamb sits ${reveal.toFixed(3)}m from the corridor wall — `
+          + 'that is the same plane, and it will shimmer');
+        // ...but never so proud that it narrows the way through. The nav gate
+        // reads the FRAME's half-band, so a greedy reveal starts refusing mobs
+        // the corridor itself admits.
+        assert.ok(gateAdmits(p.clearWidth / 2, WIDEST_ROAMER),
+          `${room.id}: a ${p.clearWidth.toFixed(2)}m frame refuses the widest roamer, in a `
+          + `${clear.toFixed(2)}m corridor that admits it`);
         assert.ok(p.clearWidth <= clear + 1e-6,
           `${room.id}: a ${p.clearWidth.toFixed(2)}m frame on a ${clear.toFixed(2)}m corridor — `
           + 'the passage does not fill its own doorway');
