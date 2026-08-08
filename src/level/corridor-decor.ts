@@ -195,6 +195,9 @@ const END_CLEAR = 1.2;
 /** Gap from the wall plane for a floor beat that hugs the side, metres. */
 const WALL_GAP = 0.06;
 
+/** How far to step INTO the wall when checking a mount has stone behind it. */
+const WALL_PROBE = 0.35;
+
 /**
  * How far a beat must stay from a doorway's centre, metres.
  *
@@ -235,6 +238,31 @@ export function dressCorridors(
   roomFloors: ReadonlyArray<Poly>,
   rand: () => number,
 ): PropSpec[] {
+  /**
+   * IS THERE STONE BEHIND THIS WALL MOUNT?
+   *
+   * A wall beat is placed at the corridor rect's edge and faces inward, which
+   * assumes the far side of that edge is wall. Along a straight run it always
+   * is. At a JUNCTION it is not: a dogleg's bend and an L's corner are two
+   * rects overlapping, so one leg's "side wall" is the other leg's floor, and
+   * a set of iron bars mounted there stands in mid-air across the opening.
+   *
+   * Measured before this check: 60 of 636 wall beats — 9.4% — were mounted on
+   * open space, including 9 barred openings and 5 bone niches. Josh
+   * photographed one of them as thin bars floating in a passage.
+   *
+   * Rooms are already excluded when the slot is chosen (a beat may not stand on
+   * a room's floor at all), so this is specifically the corridor-to-corridor
+   * case, and it is asked the same way the audit asked it: step INTO the wall
+   * and see whether you are standing on floor.
+   */
+  const stoneBehind = (x: number, z: number, rotY: number): boolean => {
+    const bx = x - Math.sin(rotY) * WALL_PROBE;
+    const bz = z - Math.cos(rotY) * WALL_PROBE;
+    return !corridors.some((c) =>
+      Math.abs(bx - c.rect.x) <= c.rect.w / 2 && Math.abs(bz - c.rect.z) <= c.rect.d / 2)
+      && !roomFloors.some((poly) => pointInPoly(poly, bx, bz));
+  };
   const out: PropSpec[] = [];
   for (const c of corridors) {
     const section = corridorType(c.corridorType);
@@ -288,12 +316,14 @@ export function dressCorridors(
       const z = alongX ? lateral + off : t;
       if (doorways.some((d) => Math.hypot(x - d.x, z - d.z) < DOOR_CLEAR)) continue;
       if (roomFloors.some((poly) => pointInPoly(poly, x, z))) continue;
+      const rotY = rotFor(beat, alongX, side, rand);
+      if (beat.mount === 'wall' && !stoneBehind(x, z, rotY)) continue;
 
       out.push({
         kind: 'model',
         model: beat.model,
         x, y: beat.mount === 'wall' ? sampleY(beat, rand) : 0, z,
-        rotY: rotFor(beat, alongX, side, rand),
+        rotY,
         _dbg: `corridor-${beat.id}`,
       } as PropSpec);
     }

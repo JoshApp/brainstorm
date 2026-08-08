@@ -12,6 +12,7 @@
  * Flags:
  *   --vault ID      pilot a single authored vault (e.g. chasm-bridge) instead
  *                   of a procgen floor — walk exactly the room I just built
+ *   --q=a=1&b=2     extra URL params (e.g. --q=polyfloors=1)
  *   --seed N        run seed (default random)
  *   --depth M       start depth (default 1)
  *   --do "..."      ';'-separated action script (see VERBS below). Default: just observe.
@@ -176,7 +177,14 @@ async function main() {
     const target = continueRun ? ''
       : vault ? `&vault=${encodeURIComponent(vault)}`
       : `&seed=${seed}&depth=${depth}`;
-    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=${autostartVal}${target}&freeze=false`;
+    // --q=a=1&b=2 passes extra URL params through, the same escape hatch
+    // reach.ts has — so a generator flag (`--q=polyfloors=1`) can be PILOTED
+    // and screenshotted, not just reachability-checked. Without it the one
+    // generator we are actively changing is the one the driving tool cannot
+    // reach, which is how a corridor bug survives to the phone.
+    const extraQ = argv.find((a) => a.startsWith('--q='))?.slice(4);
+    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=${autostartVal}${target}&freeze=false`
+      + (extraQ ? `&${extraQ}` : '');
     const what = continueRun ? 'continue' : vault ? `vault ${vault}` : `seed ${seed} depth ${depth}`;
     console.log(`pilot — ${what}${profile ? ` [profile ${profile}]` : ''}  (${url})\n`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });

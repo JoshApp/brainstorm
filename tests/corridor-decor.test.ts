@@ -30,6 +30,7 @@ import { generatePolyFloor } from '../src/level/poly-floor';
 import { CORRIDOR_BEATS, dressCorridors } from '../src/level/corridor-decor';
 import { corridorType, MIN_WALKABLE_WIDTH } from '../src/level/corridor-types';
 import { planPortals } from '../src/level/portals';
+import { pointInPoly } from '../src/level/room-shape';
 import type { PropSpec, RoomSpec } from '../src/level/types';
 
 let passed = 0, failed = 0;
@@ -150,6 +151,40 @@ test('AND NOTHING STANDS IN A DOORWAY', () => {
     }
   }
   assert.ok(checked > 300, `only ${checked} beats sampled — this measured nothing`);
+});
+
+test('NOTHING IS MOUNTED ON A WALL THAT IS NOT THERE', () => {
+  // Josh, from the phone: thin bars floating in a passage.
+  //
+  // A wall beat is placed at the corridor rect's edge and faces inward, which
+  // assumes the far side of that edge is stone. Along a straight run it is. At
+  // a JUNCTION it is not — a dogleg's bend and an L's corner are two rects
+  // overlapping, so one leg's "side wall" is the other leg's floor. Measured
+  // when this was first shipped: 60 of 636 wall beats, 9.4%, mounted on open
+  // space — including 9 barred openings and 5 bone niches standing in mid-air
+  // across a passage.
+  const PROBE = 0.35;
+  let mounts = 0, floating = 0;
+  for (const { seed, depth, spec } of FLOORS) {
+    const wallIds = new Set(CORRIDOR_BEATS.filter((b) => b.mount === 'wall')
+      .map((b) => `corridor-${b.id}`));
+    for (const p of beatsIn(spec.props ?? [])) {
+      if (!wallIds.has(p._dbg)) continue;
+      mounts++;
+      const rotY = (p as { rotY?: number }).rotY ?? 0;
+      const bx = p.x - Math.sin(rotY) * PROBE;
+      const bz = p.z - Math.cos(rotY) * PROBE;
+      const open = spec.corridors.some((c) =>
+        Math.abs(bx - c.rect.x) <= c.rect.w / 2 && Math.abs(bz - c.rect.z) <= c.rect.d / 2)
+        || spec.rooms.some((r) => r.poly && pointInPoly(r.poly, bx, bz));
+      if (open) floating++;
+      assert.ok(!open,
+        `d${depth}/s${seed}: ${p._dbg} at (${p.x.toFixed(1)}, ${p.z.toFixed(1)}) is mounted `
+        + 'on open space — there is no wall behind it');
+    }
+  }
+  assert.ok(mounts > 200, `only ${mounts} wall mounts sampled — this measured nothing`);
+  assert.equal(floating, 0);
 });
 
 test('A SQUEEZE AND A GALLERY DO NOT CARRY THE SAME THINGS', () => {
