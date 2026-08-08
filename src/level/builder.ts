@@ -2669,6 +2669,23 @@ export function buildLevel(
   // just a fitting in a wall opening. Centre + wall-line rotY + span come
   // straight off the segment; endpoints carried through so the door builder's
   // hinge math is byte-identical.
+  // A GENERATOR MAY JUST SAY WHAT IS IN THE DOORWAY.
+  //
+  // Everything else feeding `pendingFittings` is a TRANSLATION: a `boss-mist`
+  // prop becomes a fog-gate, a `cobweb` prop becomes a cobweb fitting, a
+  // DoorSpec becomes a door. Each of those is a second vocabulary for a thing
+  // the runtime already models directly — `OpeningSpec` has said "a fitting is
+  // whatever is installed in a gap" since it was written, and `spec.openings`
+  // has been the declared migration target the whole time with nothing reading
+  // it.
+  //
+  // So it reads it now. A generator that knows where its doorways are — and a
+  // polygon floor knows exactly, because `planPortals` returns the midpoint,
+  // the rotation and the clear span of every one — can name the fitting instead
+  // of miming it with a prop the builder has to translate back. The prop paths
+  // stay for the vault composer, which still speaks in props.
+  for (const o of spec.openings ?? []) pendingFittings.push({ ...o });
+
   for (const d of spec.doors ?? []) {
     pendingFittings.push({
       id: d.id,

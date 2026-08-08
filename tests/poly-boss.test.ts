@@ -76,20 +76,25 @@ test('AND THE HALL IS HIS ALONE', () => {
 });
 
 test('THE FOG WALL HANGS IN A DOORWAY OF THAT HALL', () => {
-  // Position AND width, because the builder sizes the seal from this prop. The
-  // vault path had to derive the gate from the arena's offset and dims and fell
-  // back to a guessed 3.4m; a polygon floor takes both from the same
-  // `planPortals` call the archway is mounted from, so the mist and the frame
-  // it hangs in cannot disagree.
+  // Position AND width, because the builder sizes the seal from this. The vault
+  // path had to derive the gate from the arena's offset and dims and fell back
+  // to a guessed 3.4m; a polygon floor takes both from the same `planPortals`
+  // call the archway is mounted from, so the mist and the frame it hangs in
+  // cannot disagree.
+  //
+  // Read off `spec.openings`, not `spec.props`: the fog wall is a FITTING now
+  // (`kind: 'fog-gate'`), the same door type the portcullis and the cobweb
+  // curtain are, rather than a bespoke `boss-mist` prop the builder recognised
+  // and translated back into exactly this.
   for (const { depth, seed, spec } of bossFloors()) {
-    const mist = (spec.props ?? []).filter((p) => (p as { kind: string }).kind === 'boss-mist');
+    const mist = (spec.openings ?? []).filter((o) => o.kind === 'fog-gate');
     assert.equal(mist.length, 1, `d${depth}/s${seed}: ${mist.length} fog walls`);
-    const m = mist[0] as unknown as { x: number; z: number; rotY: number; width: number; color: number };
+    const m = mist[0];
 
     // Wide enough to be a way through — the player's collision diameter is
     // 0.60m, and a seal narrower than its own doorway reads as a gap beside it.
-    assert.ok(m.width > 0.9,
-      `d${depth}/s${seed}: a ${m.width?.toFixed?.(2)}m fog wall is not a threshold`);
+    assert.ok(m.widthM > 0.9,
+      `d${depth}/s${seed}: a ${m.widthM?.toFixed?.(2)}m fog wall is not a threshold`);
     assert.ok(Number.isFinite(m.rotY), `d${depth}/s${seed}: fog wall has no rotation`);
     assert.equal(m.color, bossById(actForDepth(depth).bossId).mistColor ?? 0xffd060,
       `d${depth}/s${seed}: the fog wall is not this boss's colour`);
@@ -124,7 +129,7 @@ test('A NON-BOSS FLOOR HAS NEITHER', () => {
   for (const seed of SEEDS.slice(0, 4)) {
     for (const depth of DEPTHS.filter((d) => !isBossDepth(d)).slice(0, 4)) {
       const spec = generatePolyFloor(depth, seed);
-      const mist = (spec.props ?? []).filter((p) => (p as { kind: string }).kind === 'boss-mist');
+      const mist = (spec.openings ?? []).filter((o) => o.kind === 'fog-gate');
       assert.equal(mist.length, 0, `d${depth}/s${seed}: a fog wall on an ordinary floor`);
       const kings = (spec.spawns ?? []).filter((s) => s.enemyId === bossIdAt(depth));
       assert.equal(kings.length, 0, `d${depth}/s${seed}: the act's boss on an ordinary floor`);

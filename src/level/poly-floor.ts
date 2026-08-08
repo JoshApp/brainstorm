@@ -1,4 +1,4 @@
-import type { LevelSpec, RoomSpec, PropSpec, TorchSpec, EnemySpawnSpec, WalkableRect } from './types';
+import type { LevelSpec, RoomSpec, PropSpec, TorchSpec, EnemySpawnSpec, WalkableRect, OpeningSpec } from './types';
 import {
   ARCHETYPES, ceilingFor, generateRoomShape, polyArea, polyBounds,
   type Archetype, type Poly,
@@ -727,6 +727,12 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
 
   // ── 5. FURNISH ─────────────────────────────────────────────────────
   const props: PropSpec[] = [];
+  /** Things installed IN a doorway — see the fog gate below. `spec.openings` is
+   *  the unified fitting list the builder drains; a generator that knows its
+   *  doorways states the fitting rather than emitting a prop for the builder to
+   *  translate back. (Named `fittings` locally: `openings` is already taken in
+   *  this file by the wall-cut rects, which are the HOLES, not what fills them.) */
+  const fittings: OpeningSpec[] = [];
   const torches: TorchSpec[] = [];
   const spawns: EnemySpawnSpec[] = [];
   const entrance = rooms[0];
@@ -886,12 +892,27 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       }, null)
       : ports[0] ?? null;
     if (gate) {
-      props.push({
-        kind: 'boss-mist',
+      // A FITTING, NOT A PROP.
+      //
+      // The fog wall used to be emitted as a `boss-mist` prop that the builder
+      // recognised and translated straight back into an `OpeningSpec` with
+      // `kind: 'fog-gate'` — a private vocabulary for a thing the runtime has
+      // modelled as a door type all along. The portcullis, the arena trap and
+      // the cobweb curtain each had their own version of that round trip.
+      //
+      // A polygon floor has no reason to mime it: `planPortals` already returns
+      // the midpoint, the rotation and the clear span of this doorway, which IS
+      // an OpeningSpec, and it is the same call the archway around it is mounted
+      // from — so the mist and its frame cannot disagree about where the gap is
+      // or how wide. Saying it directly also means the next thing that fills a
+      // doorway is a `kind`, not another prop and another translation.
+      fittings.push({
+        id: `fog-${last.id}`,
+        kind: 'fog-gate',
         x: gate.mid[0], z: gate.mid[1], rotY: gate.rotY,
+        widthM: gate.clearWidth,
         color: boss.mistColor ?? 0xffd060,
-        width: gate.clearWidth,
-      } as PropSpec);
+      });
     }
   }
 
@@ -1268,6 +1289,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     torches,
     spawns,
     doors: [],
+    openings: fittings,
     stairs,
     voids,
   };
