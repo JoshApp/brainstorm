@@ -30,7 +30,7 @@ import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { wallCutsFor, insidePolyRanges } from '../src/level/portals';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
-import { plateExtentFor, OVERLAP } from '../src/level/corridor-trim';
+import { plateExtentFor, WALL_SEAT, LAP } from '../src/level/corridor-trim';
 import { planPortals } from '../src/level/portals';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
@@ -373,25 +373,27 @@ test('NO DOORWAY OPENS ONTO NOTHING', () => {
   assert.ok(checked > 14000, `only ${checked} samples — the sweep is not covering the doorways`);
 });
 
-test('A CORRIDOR DOES NOT LAY ITS FLOOR AND CEILING INSIDE THE ROOM', () => {
-  // Josh, on a phone: *"some corridors ceiling and floor reaches too far into a
-  // room and then there is a small space where I barely stand on the elongated
-  // floor and the room I should be in gets culled"*, and *"you see part of the
-  // corridors top wall sticking into the room."*
+test('A CORRIDOR STOPS AT THE WALL, AND THE FRAME FLOORS THE THRESHOLD', () => {
+  // Josh, twice from two angles: *"the corridor cleanly expands till the floor
+  // and then we stick the doorframe inside the geometry"*, and *"I could see in
+  // between the room and the corridor there was a gap."* Then the model that
+  // named it: *"it's the same as a pipe and the pipe's connector."*
   //
-  // A corridor's RECT ending inside the room is correct and load-bearing — it
-  // is the only way to reach a wall that sits back from its bounding box, and
-  // both `findOpenings` and the room graph depend on it. What was wrong is that
-  // the corridor also BUILT its floor and ceiling over all of it: a ledge at
-  // corridor height and a soffit at corridor height, standing in a room with
-  // its own floor and its own higher ceiling.
+  // ── WHAT THIS TEST USED TO SAY, AND WHY IT CHANGED ─────────────────────────
   //
-  // Measured when this was written: 1978 junctions, 98% of them reaching more
-  // than 0.35m past the wall, mean 0.82m, worst 4.21m.
+  // It measured how far a corridor's PLATE reached inside a room and allowed up
+  // to three overlaps' worth. That was the right check for a model where the two
+  // plates met by overlapping — and that model was the bug. The room's wall is
+  // 0.25m of masonry standing OUTSIDE its floor outline, so a plate reaching
+  // even 0.10m past the outline had already driven through all of it: corridor
+  // slab, room wall and doorframe all claiming one strip of ground.
   //
-  // The assertion is on the PLATE the builder is handed, which is the thing
-  // that changed; the rect is deliberately left alone and is not checked here.
-  let junctions = 0, bad = 0, worst = 0;
+  // The plate now stops at the wall's OUTER FACE and the frame carries the floor
+  // of its own threshold. So the old measurement returns ZERO junctions — and
+  // the old test failed on its own not-measuring-anything guard rather than
+  // passing, which is exactly what that guard is for. What replaces it asserts
+  // the new joint instead of a smaller version of the old number.
+  let stops = 0, intrudes = 0, worst = 0;
   for (const spec of floors()) {
     const polys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
     for (const c of spec.corridors) {
@@ -402,7 +404,6 @@ test('A CORRIDOR DOES NOT LAY ITS FLOOR AND CEILING INSIDE THE ROOM', () => {
       const len = alongX ? p.w : p.d;
       for (const room of spec.rooms) {
         if (!room.poly) continue;
-        // Longest unbroken run of the plate's centre-line inside this room.
         const N = 200;
         let run = 0, deepest = 0;
         for (let i = 0; i <= N; i++) {
@@ -411,20 +412,31 @@ test('A CORRIDOR DOES NOT LAY ITS FLOOR AND CEILING INSIDE THE ROOM', () => {
           run = inside ? run + len / N : 0;
           deepest = Math.max(deepest, run);
         }
-        if (deepest <= 0.05) continue;
-        junctions++;
-        worst = Math.max(worst, deepest);
-        // OVERLAP is deliberate — a plate that stopped exactly at the polygon is
-        // one rounding away from a hairline gap onto the void. Three times it is
-        // the budget for a corridor almost entirely swallowed by its rooms,
-        // which the trim refuses to erase.
-        if (deepest > OVERLAP * 3 + 0.05) bad++;
+        if (deepest > 0.02) { intrudes++; worst = Math.max(worst, deepest); }
       }
+      // Did this plate get trimmed at all? Every corridor that meets a room
+      // should have been pulled back; one that was not is a corridor that never
+      // reached the room, which is a different bug the reach flood catches.
+      if (p.trimmedLo > 0.01 || p.trimmedHi > 0.01) stops++;
     }
   }
-  assert.ok(junctions > 500, `only ${junctions} junctions sampled — not measuring the thing`);
-  assert.ok(bad / junctions < 0.02,
-    `${bad}/${junctions} corridor plates reach more than ${(OVERLAP * 3).toFixed(2)}m into a room (worst ${worst.toFixed(2)}m) — that is a ledge underfoot and a soffit overhead`);
+  assert.ok(stops > 200, `only ${stops} corridors were trimmed at all — this measured nothing`);
+  assert.equal(intrudes, 0,
+    `${intrudes} corridor plates still lay floor inside a room's own floor (worst `
+    + `${worst.toFixed(2)}m) — the pipe is seated in the socket again`);
+
+  // AND THE JOINT LEAVES NO GROUND UNCOVERED. Measured outward from the room's
+  // floor outline: the room's plate ends at 0, the frame's sill spans the wall
+  // band plus a lap each side, and the corridor's plate starts a lap short of
+  // the wall's outer face. Both laps must be positive or there is a hairline of
+  // void at every doorway — which is the second half of what Josh saw.
+  const SILL_LAP = 0.06;   // level/frame.ts
+  const sillFrom = -SILL_LAP, sillTo = WALL_SEAT + SILL_LAP;
+  const plateFrom = WALL_SEAT - LAP;
+  assert.ok(sillFrom < 0, 'the sill does not reach under the room\'s own floor');
+  assert.ok(sillTo > plateFrom,
+    `the sill ends at ${sillTo.toFixed(2)}m and the corridor starts at ${plateFrom.toFixed(2)}m — `
+    + 'that is a gap you can see the void through');
 });
 
 test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {

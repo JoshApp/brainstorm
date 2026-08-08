@@ -1,4 +1,5 @@
 import { pointInPoly, type Poly } from './room-shape';
+import { WALL_T } from './poly-room-shell';
 
 // ── WHERE A CORRIDOR'S FLOOR AND CEILING SHOULD STOP ─────────────────────────
 //
@@ -47,10 +48,32 @@ export interface PlateExtent {
   trimmedLo: number; trimmedHi: number;
 }
 
-/** How much corridor is deliberately left inside the room, so the two floors
- *  overlap rather than meet. Small enough to be invisible, big enough that no
- *  rounding can open a seam. */
-export const OVERLAP = 0.10;
+/**
+ * WHERE THE PIPE STOPS: the OUTER FACE of the room's wall, less a lap.
+ *
+ * This was `+0.10` — ten centimetres of corridor floor left INSIDE the room's
+ * floor outline, so the two plates overlapped rather than met. That reasoning
+ * was right about seams and wrong about what lies between: the room's wall is
+ * 0.25m of masonry standing OUTSIDE its floor outline, so a plate reaching 0.10m
+ * past the outline had already driven through all of it. The corridor's slab,
+ * the room's wall and the doorframe were all claiming the same strip of ground.
+ *
+ * Josh named it exactly: *"the corridor cleanly expands till the floor and then
+ * we stick the doorframe inside the geometry ... it's the same as a pipe and
+ * the pipe's connector."* A pipe stops at the socket's FACE. So the trim now
+ * pulls the plate back by the wall thickness, and the frame floors the band it
+ * vacates (`level/frame.ts` — the sill).
+ *
+ * The lap survives, on the other side of the joint: the plate stops `LAP` short
+ * of the wall's outer face so it and the sill overlap by that much. A joint
+ * that meets exactly is one rounding away from a hairline of void.
+ */
+export const WALL_SEAT = WALL_T;
+export const LAP = 0.05;
+/** Signed, and negative: how far past the room's floor outline the plate may
+ *  reach. Kept exported under the old name because tests and audits measure
+ *  against it, but it is no longer an overlap — it is a SETBACK. */
+export const OVERLAP = -(WALL_SEAT - LAP);
 /** Never trim a corridor down to nothing: a short link between two rooms can be
  *  almost entirely inside them, and a plate has to remain to stand on. */
 const MIN_REMAINING = 0.8;
@@ -94,7 +117,8 @@ export function plateExtentFor(
     if (!inside(lo + len - (len * i) / steps)) break;
     cutHi = (len * i) / steps;
   }
-  // Keep `overlap` of corridor inside the room at each trimmed end.
+  // Pull back to the wall's outer face (see OVERLAP — it is negative now, so
+  // this SUBTRACTS a negative and cuts further than the polygon boundary).
   cutLo = Math.max(0, cutLo - overlap);
   cutHi = Math.max(0, cutHi - overlap);
   // A corridor buried in rooms at BOTH ends trims to nothing and leaves a hole

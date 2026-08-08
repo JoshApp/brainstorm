@@ -38,6 +38,51 @@ export interface FrameChoice {
   model: ModelSpec;
 }
 
+// ── THE FRAME OWNS THE SILL ──────────────────────────────────────────────────
+//
+// Josh, twice, from two angles: *"the corridor cleanly expands till the floor
+// and then we stick the doorframe inside the geometry"*, and *"I could see in
+// between the room and the corridor there was a gap."* Then the model that
+// names it: *"it's the same as a pipe and the pipe's plug or connector."*
+//
+// The floor plan at a doorway has three owners and, until this, a band nobody
+// owned. Going outward from the room:
+//
+//   [ room floor .. outline ]   the room's plate
+//   [ outline .. outline+0.25 ] the room's WALL — 0.25m of masonry with a hole
+//   [ outline+0.25 .. ]         the corridor
+//
+// The middle band is the doorway itself, and neither plate covered it. The
+// corridor "solved" that by running its own floor and ceiling 0.10m PAST the
+// outline — straight through all 0.25m of the wall and out the other side. So
+// the pipe was seated inside the socket rather than stopping at its face: the
+// corridor's slab and the room's wall and the frame all occupying one strip of
+// ground, which is the z-fighting, and any place the corridor's plate fell
+// short of that reach was the gap.
+//
+// Now the corridor stops at the wall's OUTER FACE (corridor-trim.ts) and THE
+// FRAME CARRIES THE FLOOR OF ITS OWN THRESHOLD. That is what a connector is:
+// the joint is one part's job, not an overlap negotiated between two.
+//
+// Done here rather than in `archway()` and `doorframe()` separately, because
+// this is the one seam every framed opening in the game passes through — and a
+// sill authored twice is a sill that disagrees with itself the first time one
+// of them is tuned.
+
+/** How thick the threshold slab is. Deep enough to read as a laid stone from
+ *  a standing eye, shallow enough that it is never a step. */
+const SILL_THICK = 0.10;
+/** How far the sill runs PAST the wall band at each face, so it laps under the
+ *  room's floor on one side and the corridor's plate on the other. A joint that
+ *  meets exactly is a joint one rounding away from a hairline of void. */
+const SILL_LAP = 0.06;
+/** How far the sill reaches past the opening's edges, to pass under the jambs
+ *  rather than stopping at them. */
+const SILL_SHOULDER = 0.18;
+/** A hair proud of both floors so the shared plane is never contested. Well
+ *  under anything the step-up code or a player's feet would notice. */
+const SILL_PROUD = 0.008;
+
 /** The single archway-vs-doorframe decision + the model to build for it. */
 export function chooseFrameModel(o: FrameOpts): FrameChoice {
   const wide = o.width >= ARCHWAY_MIN_WIDTH && !o.slimOnly;
@@ -45,9 +90,36 @@ export function chooseFrameModel(o: FrameOpts): FrameChoice {
     width: o.width, ceilingHeight: o.ceilingHeight,
     openHeight: o.openHeight, wallDepth: o.wallDepth,
   };
-  return wide
+  const choice: FrameChoice = wide
     ? { kind: 'archway', model: archway(opts) }
     : { kind: 'doorframe', model: doorframe(opts) };
+  return o.wallDepth ? withSill(choice, o.width, o.wallDepth) : choice;
+}
+
+/**
+ * Add the threshold slab the frame is responsible for.
+ *
+ * Local frame: +X runs along the opening, +Z passes THROUGH it (see the
+ * rotY note in portals.ts), y = 0 is the floor. So the wall band is
+ * z ∈ [-wallDepth/2, +wallDepth/2] and the sill is a box across it.
+ *
+ * Only when a `wallDepth` is given. A rect-era room's wall is a single plane
+ * with no band to floor, and inventing a slab there would put a lip in every
+ * tilemap doorway in the game.
+ */
+function withSill(choice: FrameChoice, width: number, wallDepth: number): FrameChoice {
+  const parts = [...choice.model.parts, {
+    kind: 'box' as const,
+    name: 'sill',
+    pos: [0, SILL_PROUD - SILL_THICK / 2, 0] as [number, number, number],
+    size: [width + SILL_SHOULDER * 2, SILL_THICK, wallDepth + SILL_LAP * 2] as [number, number, number],
+    mat: 'stone',
+  }];
+  return {
+    kind: choice.kind,
+    // The id is a build-cache key, so it has to move when the geometry does.
+    model: { ...choice.model, id: `${choice.model.id}-sill${wallDepth.toFixed(2)}`, parts },
+  };
 }
 
 // How far past the keystone face to sample when deciding if that face looks
