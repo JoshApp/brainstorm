@@ -464,7 +464,10 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
       // The section's ceiling, not a constant. The frame models already take
       // `openHeight` from this and compress to it, so a squeeze gets a low door
       // and a gallery a tall one without either knowing about the other.
-      corridors.push({ id: ids[k], rect, height: type.height, corridorType: type.id });
+      // `linkId` is the CONNECTION these legs share. Recorded here because this
+      // is the only place that knows it — see the note on RoomSpec.linkId, and
+      // the dead doorframe it exists to prevent.
+      corridors.push({ id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id });
       occupiedBoxes.push(rect);
     });
     links.push({ from, to, rects, ids, legAxis: conn.legAxis, ...kind });
@@ -780,7 +783,13 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
   // the same thing by "the doorway".
   const doorwaysByRoom = new Map<string, Array<{ x: number; z: number }>>();
   for (const r of rooms) {
-    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly, corridors)
+    // `link`, not just `rect` — a dogleg's legs are one way through, so this
+    // must see the SAME doorway the frame emitter and the wall ring see. Passing
+    // the RoomSpecs raw compiles (linkId is not `link`) and quietly reinstates a
+    // doorway per leg here alone, which is how a standoff rule ends up measuring
+    // a door nobody can walk through.
+    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly,
+      corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId })))
       .map((p) => ({ x: p.mid[0], z: p.mid[1] })));
   }
   /**
@@ -980,7 +989,8 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
       mouth: mouthOf(r, links),
       // THE SAME CALL THE FRAMES MAKE. A web and the stone doorway it hangs in
       // have to agree, and the only way to guarantee that is to ask once.
-      doorways: planPortals(r.id, r.poly, corridors).map((p) => ({
+      doorways: planPortals(r.id, r.poly,
+        corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }))).map((p) => ({
         x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.clearWidth,
       })),   // yaw + width too, which the clearance pass above does not need
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,

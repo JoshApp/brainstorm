@@ -61,11 +61,37 @@ export interface DescribeOpts {
   thickness?: number;
   /** Rects that cut doorways (the corridors meeting this room). */
   openings?: ReadonlyArray<OpeningRect>;
+  /**
+   * The doorway cuts the room's wall ring is ACTUALLY built with
+   * (`portals.wallCutsFor`). Pass them whenever they exist.
+   *
+   * ── WHY THIS PARAMETER HAD TO EXIST ──────────────────────────────────────
+   *
+   * Josh: *"make sure the new graph and tech we built isn't superseded by parts
+   * of the old system — so it's not like, we have the info but the old parts
+   * ignore it and cleave things in two anyway."*
+   *
+   * This function is that bug. `poly-room-shell` builds its ring from the
+   * portal CUTS — one opening per connection, on the edge the corridor actually
+   * arrives through — and then described the same room's surfaces by re-running
+   * `planWallRing` on the RECTS alone, which is the guess the cuts were computed
+   * to replace. Two rings, one room.
+   *
+   * Everything mounted on a wall reads THIS one: the dressing, the engaged
+   * piers, the sconces. Measured across 144 floors, the described ring was
+   * missing 216m of wall the shell genuinely builds — trim and piers breaking
+   * for doorways that are not there. (It never went the other way: 0m of
+   * surface was offered where the stone had been cut, which is why nothing was
+   * mounted in mid-air and the bug stayed invisible.)
+   *
+   * Optional because the rect path has no portals and is correct without them.
+   */
+  cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number }>;
 }
 
 /** Every mountable wall face of a room, in polygon order. */
 export function describeWalls(o: DescribeOpts): WallSurface[] {
-  const spans = planWallRing(o.poly, o.thickness ?? 0.25, o.openings ?? []);
+  const spans = planWallRing(o.poly, o.thickness ?? 0.25, o.openings ?? [], undefined, o.cuts);
   const elevation = o.elevation ?? 0;
   return spans.map((s) => {
     const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];

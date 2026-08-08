@@ -114,7 +114,14 @@ export type WallSpan = {
   jambB: boolean;
 };
 
-export type OpeningRect = { x: number; z: number; w: number; d: number };
+export type OpeningRect = {
+  x: number; z: number; w: number; d: number;
+  /** Which CONNECTION this rect belongs to (RoomSpec.linkId). A dogleg's legs
+   *  share one, so the ring cuts ONE doorway for the way through rather than
+   *  one per leg — see `oneDoorPerConnection` in portals.ts. Absent on the
+   *  vault path, where a rect is its own link. */
+  link?: string;
+};
 
 /**
  * Every wall piece this room needs.

@@ -108,6 +108,26 @@ export type RoomSpec = {
    */
   corridorType?: CorridorTypeId;
   /**
+   * Which CONNECTION this corridor rect belongs to.
+   *
+   * A link between two rooms is one connection and often several rects — a
+   * dogleg is three. Each rect is its own entry in `spec.corridors`, so
+   * anything that reasons per-rect treats a bend's legs as separate corridors,
+   * which is right for building them and wrong for asking what they mean.
+   *
+   * Josh, on a phone: *"a corridor had two chances to connect to a room and
+   * went past both — it left an unused, wall-embedded doorframe where it could
+   * have connected but didn't, so the corridor has two doors."* That is a leg
+   * that merely GRAZES the room on its way past being handed a doorway of its
+   * own, because nothing recorded that it and the leg that actually arrives are
+   * the same way through. Measured across 240 floors: 23 extra doorways in 16
+   * rooms of 1628.
+   *
+   * Absent on the vault path, whose corridors are single rects and are their own
+   * link — readers fall back to the rect's own id, so nothing there changes.
+   */
+  linkId?: string;
+  /**
    * Floor elevation in metres (default 0). Rooms are internally FLAT at
    * their elevation — combat, props, splats all live on one plane per
    * room (doors seal on combat, so a fight never spans two elevations).

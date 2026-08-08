@@ -1224,7 +1224,11 @@ export function buildLevel(
         // over, so on a polygon floor the way down was a solid slab.
         buildPolyRoomShell(
           root, r as typeof r & { poly: NonNullable<typeof r.poly> }, materials, wallSegments,
-          spec.corridors.map((c) => c.rect),
+          // The LINK travels with the rect. Without it the ring cuts a doorway
+          // for every leg of a dogleg while the frame emitter mounts one — a
+          // hole with no frame in it, which is strictly worse than the dead
+          // frame this rule exists to remove.
+          spec.corridors.map((c) => ({ ...c.rect, link: c.linkId })),
           holes,
         );
       } else {

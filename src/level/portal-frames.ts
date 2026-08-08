@@ -47,7 +47,7 @@ const MIN_WIDTH = 0.7;
  * A no-op on floors with no polygon rooms, so it is safe to call unconditionally.
  */
 export function emitFramesForPortals(spec: LevelSpec): void {
-  const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
+  const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }));
   if (!corridors.length) return;
 
   for (const room of spec.rooms ?? []) {

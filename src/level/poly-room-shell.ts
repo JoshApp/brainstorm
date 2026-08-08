@@ -202,7 +202,11 @@ export function buildPolyRoomShell(
   // corridor rects itself, padded by the wall thickness — which widened every
   // doorway by 0.5m and punched a second hole whenever a corridor grazed a
   // corner. The portal planner already answers both questions correctly.
-  const spans = planWallRing(poly, WALL_T, openingRects, undefined, wallCutsFor(poly, openingRects));
+  // ONE ring, computed ONCE, shared by the stone and by everything mounted on
+  // it. `describeWalls` used to re-derive its own from the rects — see the note
+  // on DescribeOpts.cuts and the 216m it disagreed by.
+  const cuts = wallCutsFor(poly, openingRects);
+  const spans = planWallRing(poly, WALL_T, openingRects, undefined, cuts);
   // HOW RUINED IS THIS ROOM, and then how ruined is each of its walls. Two
   // levels on purpose: one number per room and the room reads as one place;
   // one number per wall and a room can have three sound sides and a fourth
@@ -259,7 +263,7 @@ export function buildPolyRoomShell(
   // than the shape is a better one. Derived from the same wall surfaces the
   // placers use, so it follows a chamfer and breaks at a doorway for free.
   const dressing = buildPolyDressing(
-    describeWalls({ poly, height: H, elevation: elev, thickness: WALL_T, openings: openingRects }),
+    describeWalls({ poly, height: H, elevation: elev, thickness: WALL_T, openings: openingRects, cuts }),
     H, elev,
   );
   if (dressing) {

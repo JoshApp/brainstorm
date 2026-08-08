@@ -132,7 +132,7 @@ const MIN_WIDTH = 1.2;
 export function planPortals(
   roomId: string,
   poly: Ring,
-  corridors: ReadonlyArray<{ id: string; rect: Rect }>,
+  corridors: ReadonlyArray<{ id: string; rect: Rect; link?: string }>,
 ): Portal[] {
   const n = poly.length;
   const out: Portal[] = [];
@@ -283,7 +283,58 @@ export function planPortals(
       cuts: hits.map((h) => ({ edge: h.edge, t0: h.t0, t1: h.t1 })),
     });
   }
-  return out;
+  return oneDoorPerConnection(out, corridors);
+}
+
+/**
+ * ONE CONNECTION, ONE DOORWAY.
+ *
+ * Josh, on a phone: *"a corridor had two chances to connect to a room — it
+ * could have run straight in after a corner and instead took another corner and
+ * connected somewhere else. It left an unused, wall-embedded doorframe where it
+ * could have connected but didn't, so the corridor has two doors."*
+ *
+ * A link between two rooms is one way through and often several RECTS: a dogleg
+ * is three, and each is its own entry in `spec.corridors`. Everything above
+ * reasons per rect, correctly — it is asked "where does this rect meet the
+ * outline" and it answers. But a leg that merely goes PAST the room on its way
+ * to the corner then gets a doorway of its own: wall cut, frame mounted, and
+ * the corridor's own side wall standing behind it. A door into masonry.
+ *
+ * The rule cannot be stated per rect, which is why it lives here and why the
+ * generator now records `linkId` (see RoomSpec). Keep the WIDEST opening of each
+ * connection — that is the leg the player actually walks through — and let the
+ * grazes stay wall. `wallCutsFor` is this same function, so the wall is never
+ * cut for the doorway that is no longer being made.
+ *
+ * Measured across 240 floors: 16 rooms of 1628 had a link punch more than one
+ * doorway, 23 extra frames in all.
+ *
+ * Corridors with no `link` are their own connection — the vault path's rects,
+ * and every caller that predates this — so they group by id and nothing about
+ * them changes.
+ */
+function oneDoorPerConnection(
+  portals: Portal[],
+  corridors: ReadonlyArray<{ id: string; link?: string }>,
+): Portal[] {
+  if (portals.length < 2) return portals;
+  const linkOf = new Map(corridors.map((c) => [c.id, c.link ?? c.id]));
+  const best = new Map<string, Portal>();
+  for (const p of portals) {
+    const key = linkOf.get(p.corridorId) ?? p.corridorId;
+    const held = best.get(key);
+    // Widest way through wins. On a tie the wider CUT does, so the choice is
+    // total and a floor cannot come out differently on two runs.
+    if (!held || p.clearWidth > held.clearWidth
+      || (p.clearWidth === held.clearWidth && p.width > held.width)) {
+      best.set(key, p);
+    }
+  }
+  // Emission order follows the corridor list, not the Map's insertion order, so
+  // this cannot quietly reorder doorways for anything downstream that indexes
+  // them.
+  return portals.filter((p) => best.get(linkOf.get(p.corridorId) ?? p.corridorId) === p);
 }
 
 /**
@@ -351,12 +402,18 @@ export function portalOnWall(
  * a path the other doesn't take.
  */
 export function wallCutsFor(
-  poly: Ring, rects: ReadonlyArray<Rect>,
+  poly: Ring,
+  /** A rect may carry the CONNECTION it belongs to. When it does, a dogleg's
+   *  legs cut one doorway between them instead of one each — and because this is
+   *  the same function the frame emitter calls, the ring cannot open a hole the
+   *  emitter then declines to fill. Optional: the vault path passes bare rects
+   *  and each is its own link. */
+  rects: ReadonlyArray<Rect & { link?: string }>,
 ): Array<{ edge: number; t0: number; t1: number }> {
   // EVERY cut, not just the leading edge's. A corridor arriving across a
   // chamfered corner opens two edges, and returning one of them leaves the
   // other as stone across half the doorway — see the note in planPortals.
-  return planPortals('shell', poly, rects.map((rect, i) => ({ id: `o${i}`, rect })))
+  return planPortals('shell', poly, rects.map((rect, i) => ({ id: `o${i}`, rect, link: rect.link })))
     .flatMap((p) => p.cuts.map((c) => ({ edge: c.edge, t0: c.t0, t1: c.t1 })));
 }
 
