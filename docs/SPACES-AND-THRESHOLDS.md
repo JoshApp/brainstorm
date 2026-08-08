@@ -434,9 +434,32 @@ foundation and hide whether the seam was ever fixed.
 the shipping openings) and `anchors.ts` (rooms publish what their walls can
 afford, plus the band vocabulary above).
 
-**Step 2 in progress** — anchors are derived and measured but nothing consumes
-them yet, which is deliberate: the derivation gets checked against the shipping
-pipeline BEFORE the pipeline is rebuilt on it.
+**Step 2 is a NO-OP and is dropped.** It assumed authored anchor specs that
+could be restrictive enough to need a rotation search. They are derived, and
+they are abundant: 0 rooms can host no door, median 6 anchors per room. There is
+nothing to satisfy, so rotating to satisfy it would be busywork. Rotation as
+VARIETY is still worth having and is now its own concern, not a migration step.
+
+**Step 3 in progress** — `link-anchors.ts` chooses the anchor pair and the
+agreed width. Pure, tested, and not yet wired, which is deliberate: it gets
+checked against the shipping pipeline BEFORE the pipeline is rebuilt on it.
+
+Over the 183 links the generator really makes:
+
+| | |
+|---|---|
+| links openable as a proper door from the rooms' own walls | **83%** |
+| median mouth for a 2.2m passage | **3.50m** (1.6x — the flare, by default) |
+| links that deliver a gate when one is ASKED for | **42%** |
+| links that widen into a gate without being asked | **0** |
+| links that resolve to a crawl unless one is allowed | **0** |
+
+The remaining 17% are links whose two rooms simply do not face each other by a
+door's width. That is a PLACEMENT problem and it is the next thing to fix — the
+chooser returns null rather than quietly building a 1m mainline, because a
+mainline every mob must walk down is a deadlock that looks like a working floor
+until something chases you. 24 of 183 links did exactly that before the band
+floor existed.
 
 What the anchors measure today, over 323 polygon rooms on 48 floors:
 

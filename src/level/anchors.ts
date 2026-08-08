@@ -153,9 +153,31 @@ export const CRAWL_MAX = widestRefusing(WIDEST_ROAMER);
  * and softer claim — a door with only the structural minimum beside it still
  * reads as jammed into the corner — and is kept separate precisely so the two
  * can be argued about independently.
+ *
+ * ── AND THEN THEY WERE, WITH NUMBERS ─────────────────────────────────────────
+ *
+ * COMFORT started at 0.35, chosen by feel. Swept against 183 real links (the
+ * clearance is charged twice per link, once at each end, so it compounds):
+ *
+ *   clear   link affords a door   a 2.2m one   a 4m gate   median overlap
+ *   0.35            89%              71%          38%          3.38m
+ *   0.50            83%              66%          34%          3.08m
+ *   0.70            73%              61%          26%          2.68m
+ *
+ * A third of the gates and a quarter of the DOORS were being spent on the soft
+ * half of a number nobody had measured. 0.35 clearance is not available — at
+ * that setting a minimum-width opening comes within 0.10m of a real vertex,
+ * under the structural floor, because a chamfered polygon has corners that are
+ * not the ends of the edge you are standing on. 0.50 is the knee: the measured
+ * worst-case gap is 0.50m, comfortably over the 0.35m the masonry needs, and it
+ * buys back 10 points of links and 8 of gates.
+ *
+ * Josh: *"the big entrances are probably better by default."* This is most of
+ * how that gets paid for — not by asking for wider openings, but by stopping
+ * the walls from throwing away the width they already had.
  */
 export const CORNER_STRUCTURAL = PILASTER.width / 2 + 0.14;
-export const CORNER_COMFORT = 0.35;
+export const CORNER_COMFORT = 0.15;
 export const CORNER_CLEAR = CORNER_STRUCTURAL + CORNER_COMFORT;
 
 /**
@@ -185,17 +207,22 @@ export const MIN_DOOR_EDGE = 2 * CORNER_CLEAR + MIN_WALKABLE_WIDTH;
  */
 export function deriveAnchors(
   spaceId: string, poly: Poly, height: number,
-  opts: { minHeight?: number } = {},
+  opts: { minHeight?: number; cornerClear?: number } = {},
 ): PortalAnchor[] {
   const out: PortalAnchor[] = [];
+  // `cornerClear` exists so the clearance can be SWEPT against real floors
+  // rather than argued about — it is what every door on the floor costs, and
+  // the cost is only visible by measuring. Callers in the game never pass it.
+  const clear = opts.cornerClear ?? CORNER_CLEAR;
+  const minEdge = 2 * clear + CRAWL_MIN;
   const ccw = signedArea(poly) > 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length];
     const dx = b[0] - a[0], dz = b[1] - a[1];
     const len = Math.hypot(dx, dz);
-    if (len < MIN_HOSTING_EDGE) continue;
+    if (len < minEdge) continue;
 
-    const t0 = CORNER_CLEAR, t1 = len - CORNER_CLEAR;
+    const t0 = clear, t1 = len - clear;
     const run = t1 - t0;
     if (run < CRAWL_MIN) continue;
 
