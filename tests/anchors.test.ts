@@ -219,16 +219,29 @@ test('THE DOORS THIS CANNOT ACCOUNT FOR ARE THE ONES IN CORNERS', () => {
   }
   const total = withA.length + without.length;
   assert.ok(total > 400, `only ${total} doors sampled — this measured nothing`);
-  assert.ok(withA.length / total > 0.8,
+  // ── THE SET THIS MEASURES HAS NEARLY VANISHED, WHICH IS THE POINT ──────────
+  //
+  // When written, doorways landed wherever a corridor rect crossed a wall line
+  // and 89% had a facing anchor near them; the other 11% (about 72 doors) were
+  // the corner-wrapping ones. Now that `connect` routes on anchors, coverage is
+  // 98% and the unaccounted set is TWELVE doors.
+  //
+  // So the original assertion — "over 75% of the unaccounted doors overlap a
+  // corner" — started failing at exactly 75%, on a sample of 12, without
+  // anything getting worse. A ratio over a near-empty set is noise, and reading
+  // that failure as a regression would have been the wrong lesson entirely.
+  // What is asserted instead: coverage is high, the leftovers are FEW, and they
+  // are still much more corner-bound than the accounted ones.
+  assert.ok(withA.length / total > 0.9,
     `only ${((withA.length / total) * 100).toFixed(0)}% of today's doors have a facing `
     + 'anchor — the derivation is too strict and would cost the layout doors it needs');
+  assert.ok(without.length < total * 0.06,
+    `${without.length} of ${total} doors sit where no wall offered an opening`);
   const inCorner = (xs: number[]) => xs.filter((x) => x < 0).length / xs.length;
-  assert.ok(inCorner(without) > 0.75,
-    `only ${(inCorner(without) * 100).toFixed(0)}% of the unaccounted doors overlap a corner — `
-    + 'they are ordinary doors the walls refuse to offer, which is a different problem');
   assert.ok(inCorner(without) > inCorner(withA) * 2,
-    'the accounted and unaccounted doors are equally corner-bound — the anchors are not '
-    + 'selecting for anything');
+    `the unaccounted doors (${(inCorner(without) * 100).toFixed(0)}% in a corner) are no `
+    + `worse than the accounted ones (${(inCorner(withA) * 100).toFixed(0)}%) — the anchors `
+    + 'are not selecting for anything');
 });
 
 console.log(`${passed} passed, ${failed} failed`);

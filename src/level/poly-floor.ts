@@ -21,7 +21,9 @@ import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
 import { planPortals } from './portals';
-import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES } from './corridor-types';
+import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
+import { deriveAnchors } from './anchors';
+import { chooseLinkRoute } from './corridor-route';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
@@ -349,7 +351,8 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   };
   for (let i = 1; i < rooms.length; i++) {
     const c = connect(rooms[i - 1], rooms[i], rand,
-                      occupiedBoxes.filter((o) => o !== placeholder.get(rooms[i].id)));
+                      occupiedBoxes.filter((o) => o !== placeholder.get(rooms[i].id)),
+                      rooms);
     if (c) addLink(rooms[i - 1].id, rooms[i].id, `cor-${i}`, c);
   }
   // DEAD-END SPURS ARE OWED, NOT ROLLED. One per dedicated plan entry, plus a
@@ -390,7 +393,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       placeholder.set(pocket.id, g.corridor);
       addLink(parent.id, pocket.id, `cor-p${p}`,
               connect(parent, pocket, rand,
-                      occupiedBoxes.filter((o) => o !== g.corridor))
+                      occupiedBoxes.filter((o) => o !== g.corridor), rooms)
                 ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage },
               { spur: true });   // the elevation pass clamps a spur to the spine's floor
       pockets.push({ pocket, parent: parent.id, forLoop: p === LOOP_POCKET });
@@ -848,7 +851,10 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // in mid-air. A rule about the finished floor gets checked on the finished
   // floor.
   evictFromVoids(props, {
-    floors: [...rooms.map((r) => r.rect), ...corridors.map((c) => c.rect)],
+    // The rooms hand over their POLYGONS, not just their boxes — see the note
+    // on EvictSurface. Corridors are rects and have nothing else to give.
+    floors: [...rooms.map((r) => ({ ...r.rect, poly: r.poly })),
+             ...corridors.map((c) => c.rect)],
     voids,
   });
 
@@ -1032,8 +1038,102 @@ interface Connection {
   legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
 }
 
+/**
+ * A CORRIDOR BUILT TO THE WALLS' OWN ANCHORS.
+ *
+ * `connect` below still owns the decision — which section, whether to kink —
+ * but it no longer GUESSES where the rooms' walls are. The rooms said, before
+ * any corridor existed (level/anchors.ts), and the route is picked between two
+ * of those answers (level/corridor-route.ts).
+ *
+ * Measured over 656 doorways before this: 35% overlapped a corner, the 5th
+ * percentile -1.52m — a doorway wrapping a metre and a half PAST the corner and
+ * round onto the next wall. That is the chamfered opening `planPortals` grew
+ * multi-edge cuts for, the frame that cannot sit flat, and the stone door
+ * photographed inset into a winding passage: one cause, three tickets. A wall
+ * knows where its own corners are; nothing else did.
+ *
+ * WHAT THIS STEP DELIBERATELY DOES NOT CHANGE: the rects still reach `OVERLAP`
+ * INTO both rooms. That 0.9m is not geometry, it is the lookup key —
+ * `findOpenings` and `planPortals` cut a hole where a rect crosses a wall line,
+ * so removing the overshoot before the walls cut at their own anchors would
+ * seal every door on the floor. Position first, then the cutting mechanism,
+ * then the repair passes come out. Doing all three at once is how a migration
+ * becomes a rewrite.
+ */
+function routeConnection(
+  a: Placed, b: Placed, type: CorridorType, rooms: readonly Placed[],
+  occupied: readonly Box[], preferBend: boolean,
+): Connection | null {
+  // The mouth this step asks for is the SECTION's own width, not the generous
+  // one `mouthWidth` would give. A splayed mouth needs geometry that does not
+  // exist yet (a wider rect stuck on the end reads as a box, not an embrasure)
+  // — and asking for 3.5m here would make every wall that can only afford 2.5m
+  // decline a link it can perfectly well serve.
+  const sectionMouth = (anchor: { width: readonly [number, number] }): number | null => {
+    const floor = Math.max(anchor.width[0], MIN_WALKABLE_WIDTH);
+    if (anchor.width[1] < floor) return null;
+    return Math.max(floor, Math.min(anchor.width[1], type.width));
+  };
+
+  const A = { poly: a.poly, anchors: deriveAnchors(a.id, a.poly, a.height) };
+  const B = { poly: b.poly, anchors: deriveAnchors(b.id, b.poly, b.height) };
+  const obstacles = rooms.filter((r) => r !== a && r !== b)
+    .map((r) => ({ id: r.id, poly: r.poly }));
+
+  const route = chooseLinkRoute(
+    A, B, { section: type.width }, sectionMouth, obstacles, preferBend,
+  );
+  if (!route) return null;
+
+  const rects: Box[] = [];
+  const legAxis: Array<{ alongX: boolean; fromIsLo: boolean }> = [];
+  const n = route.legs.length;
+  for (let i = 0; i < n; i++) {
+    const leg = route.legs[i];
+    const alongX = Math.abs(leg.to[0] - leg.from[0]) > Math.abs(leg.to[1] - leg.from[1]);
+    let t0 = alongX ? leg.from[0] : leg.from[1];
+    let t1 = alongX ? leg.to[0] : leg.to[1];
+    const lat = alongX ? leg.from[1] : leg.from[0];
+    const dir = Math.sign(t1 - t0) || 1;
+    // Into the rooms at the two ends — the lookup key, above.
+    if (i === 0) t0 -= dir * OVERLAP;
+    if (i === n - 1) t1 += dir * OVERLAP;
+    // ── WHO COVERS THE CORNER ─────────────────────────────────────────────────
+    //
+    // Only the leg LEAVING a joint extends back through it. The leg arriving
+    // stops dead on the corner's centre.
+    //
+    // Extending both was the obvious symmetric thing and it is wrong: the
+    // arriving leg's far end then lands exactly ON the departing leg's outer
+    // edge, and the orphaned-end check — which asks whether a rect's end sits
+    // inside another rect of the same link — is deciding a boundary case
+    // ("corridor cor-2-0 ends at (-7.4, 16.4) — in nothing"). Stopping at the
+    // centre puts that end half a width INSIDE its neighbour, with no epsilon
+    // to argue about, and the departing leg's own half-width covers the whole
+    // corner square on its own.
+    if (i > 0) t0 -= dir * type.width / 2;
+
+    const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+    if (hi - lo < 0.1) return null;
+    rects.push(alongX
+      ? { x: (lo + hi) / 2, z: lat, w: hi - lo, d: type.width }
+      : { z: (lo + hi) / 2, x: lat, d: hi - lo, w: type.width });
+    legAxis.push({ alongX, fromIsLo: t0 <= t1 });
+  }
+
+  // Nothing already placed may be in the way. The two rooms being joined are
+  // expected to overlap their own end rect, so they are excused.
+  const clash = rects.some((rc) => occupied.some((o) =>
+    o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
+  if (clash) return null;
+
+  return { rects, type, legAxis: n > 1 ? legAxis : undefined };
+}
+
 function connect(
   a: Placed, b: Placed, rand: () => number, occupied: readonly Box[],
+  rooms: readonly Placed[] = [],
 ): Connection | null {
   const alongZ = Math.abs(a.rect.x - b.rect.x) < 0.01;
   if (!alongZ && Math.abs(a.rect.z - b.rect.z) >= 0.01) return null;
@@ -1072,7 +1172,25 @@ function connect(
   // OVERLAP at their corners, and until `findOpenings` learned to open a wall
   // line running through another rect's interior, the joints would have been
   // sealed and the dogleg a dead end.
-  if (rand() < DOGLEG_CHANCE) {
+  // -- THE ROUTE, ON THE WALLS' OWN ANCHORS ----------------------------------
+  //
+  // Tried before the blind paths below, and the kink roll is handed to it as a
+  // PREFERENCE rather than being a separate geometry path: a Z route between
+  // two anchors is a dogleg that also lands its doors correctly, so there is no
+  // reason to keep a second way of bending.
+  const wantsKink = rand() < DOGLEG_CHANCE;
+  const routed = routeConnection(a, b, type, rooms, occupied, wantsKink);
+  if (routed) return routed;
+
+  // -- EVERYTHING BELOW IS THE PRE-ANCHOR PATH -------------------------------
+  //
+  // Kept as the fallback, not deleted, because the router declines rather than
+  // improvises: a link whose walls cannot agree gets no route, and a floor that
+  // loses a link is worse than a floor with one guessed corridor. Degrade,
+  // never fail. It fires on 24% of links today; that number is the measure of
+  // how far placement still has to come, and it should be checked before this
+  // path is ever deleted.
+  if (wantsKink) {
     const bent = dogleg(a, b, alongZ, sign, base, width, occupied);
     if (bent) return { rects: bent, type };
   }

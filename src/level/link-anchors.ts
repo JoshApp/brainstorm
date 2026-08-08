@@ -23,10 +23,27 @@ import { MIN_WALKABLE_WIDTH } from './corridor-types';
 //   a wide opening (2.2m)    68%
 //   a gate (4m+)             35%
 //
-// So the pairing works for the large majority and fails for a real minority.
-// That minority is why `chooseLinkOpening` returns null instead of clamping to
-// something illegal: a link whose walls cannot agree is a placement problem to
-// be fixed upstream, and silently building a 0.9m mainline would hide it.
+// ── WHAT LIVES HERE NOW, AND WHAT DIED ───────────────────────────────────────
+//
+// This file once also held `chooseLinkOpening`, which picked a facing anchor
+// PAIR and one width both sides accepted — the straight-corridor model. It has
+// been deleted, and the reason is worth keeping.
+//
+// It was superseded by `corridor-route.chooseLinkRoute` the moment a corridor
+// could bend: once the two ends are separate thresholds, there is no single
+// width for both sides to agree on. But it survived as the "straight only"
+// baseline the tests compared against — and it was UNSOUND as a baseline,
+// because it never checked that the straight line between the two walls stayed
+// out of the rooms. Rooms are not convex; it counted routes that would lay
+// corridor floor indoors, which is exactly the flaw that inflated the router's
+// own first measurement from 80% to 99%.
+//
+// A baseline that flatters the thing it is measuring is worse than no baseline.
+// The comparison now runs inside one sound implementation: how many links does
+// the router serve with a STRAIGHT route, versus with any route at all.
+//
+// What survives is what the router actually calls: `anchorSpan`, and
+// `mouthWidth` — one wall's own answer, which is the only question left.
 
 /** Where an anchor's usable run actually sits in the world, and which way the
  *  wall runs. Both are needed to know whether two anchors can see each other. */
@@ -48,18 +65,6 @@ export function anchorSpan(anchor: PortalAnchor, poly: Poly): AnchorSpan {
     to: [p[0] + ux * anchor.t1, p[1] + uz * anchor.t1],
     alongX: Math.abs(dx) > Math.abs(dz),
   };
-}
-
-/** The opening two anchors settled on. */
-export interface LinkOpening {
-  a: PortalAnchor;
-  b: PortalAnchor;
-  /** The corridor's centre line on the axis perpendicular to travel. */
-  lateral: number;
-  /** Clear width, agreed by both walls. */
-  width: number;
-  /** Which band it landed in — `door` for anything the layout may rely on. */
-  band: 'crawl' | 'door' | 'gate';
 }
 
 export interface LinkSide {
@@ -110,65 +115,6 @@ export interface OpeningWant {
 }
 
 /**
- * Pick the best facing anchor pair for a link, and the width both walls accept.
- *
- * `toward` is the direction from side A to side B; only anchors facing that way
- * and standing on walls PERPENDICULAR to it can serve — a wall parallel to
- * travel cannot be entered head-on.
- *
- * Returns null when no pair overlaps by a usable width. That is a real answer,
- * not a failure to try: it means these two rooms do not face each other enough
- * to be joined here, and the layout should move one or route around.
- */
-export function chooseLinkOpening(
-  A: LinkSide, B: LinkSide, toward: readonly [number, number], want: OpeningWant,
-): LinkOpening | null {
-  const [dx, dz] = toward;
-  const alongX = Math.abs(dx) > Math.abs(dz);
-  let best: LinkOpening | null = null;
-
-  for (const a of A.anchors) {
-    if (!facesToward(a, dx, dz)) continue;
-    const sa = anchorSpan(a, A.poly);
-    if (sa.alongX === alongX) continue;   // wall runs along travel — not enterable
-    const la = lateralRange(sa, alongX);
-
-    for (const b of B.anchors) {
-      if (!facesToward(b, -dx, -dz)) continue;
-      const sb = anchorSpan(b, B.poly);
-      if (sb.alongX === alongX) continue;
-      const lb = lateralRange(sb, alongX);
-
-      const lo = Math.max(la[0], lb[0]), hi = Math.min(la[1], lb[1]);
-      const room = hi - lo;
-      if (room <= 0) continue;
-
-      // Both walls' own published ranges still bound it — an anchor may not be
-      // cut wider than the run it declared, however much the overlap allows.
-      const ceiling = Math.min(room, a.width[1], b.width[1]);
-      // The link's own floor, not just the walls'. A mainline needs a door;
-      // only a link that ASKS for a crawl may go under it.
-      const floor = Math.max(
-        a.width[0], b.width[0],
-        want.minBand === 'crawl' ? 0 : MIN_WALKABLE_WIDTH,
-      );
-      if (ceiling < floor) continue;
-
-      const width = pickWidth(ceiling, want);
-      if (width < floor) continue;
-      const cand: LinkOpening = {
-        a, b, lateral: (lo + hi) / 2, width, band: bandOf(width),
-      };
-      // Widest wins. With "big by default" that is the whole selection rule —
-      // and it is stable, where "closest to the room centres" flips on a
-      // centimetre and makes the floor jitter between seeds.
-      if (!best || cand.width > best.width) best = cand;
-    }
-  }
-  return best;
-}
-
-/**
  * What ONE wall will open to, on its own.
  *
  * The straight-corridor model made both ends agree on a single number, because
@@ -192,12 +138,6 @@ export function mouthWidth(anchor: PortalAnchor, want: OpeningWant): number | nu
   return width >= floor ? width : null;
 }
 
-function lateralRange(s: AnchorSpan, alongX: boolean): [number, number] {
-  const a = alongX ? s.from[1] : s.from[0];
-  const b = alongX ? s.to[1] : s.to[0];
-  return a < b ? [a, b] : [b, a];
-}
-
 /**
  * NOTE — an opening may come out NARROWER than its corridor.
  *
@@ -214,11 +154,6 @@ function pickWidth(ceiling: number, want: OpeningWant): number {
   // Never widen INTO the gate band by accident. An ordinary seam that happens
   // to have 9m of wall available is still an ordinary seam.
   return Math.min(ceiling, generous, GATE_MIN - 0.01);
-}
-
-function bandOf(width: number): 'crawl' | 'door' | 'gate' {
-  if (width >= GATE_MIN) return 'gate';
-  return width >= MIN_WALKABLE_WIDTH ? 'door' : 'crawl';
 }
 
 /** The band an opening of this width belongs to, for callers that have a width

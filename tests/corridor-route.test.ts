@@ -3,9 +3,16 @@
 // Josh: *"can't we just make the corridor shape be more than a linear line?
 // That should get around rooms not facing each other."*
 //
-// It does. Over the 183 links the generator really makes, a straight corridor
-// between two agreeing walls serves 83%; routing serves **99%**, rescuing 32 of
-// the 32 it could not.
+// It does. Over the ~200 links the generator makes, a STRAIGHT route serves
+// about half; allowing bends takes it to 80%.
+//
+// The first version of this header said 83% -> 99%, and both numbers were
+// inflated by the same flaw: neither solver checked that its corridor stayed
+// out of the two rooms it was joining. Rooms are not convex, so a wall can face
+// outward while the line from it re-enters the room's own missing quadrant —
+// and those routes were being counted as served. See the note in
+// link-anchors.ts. 80% is the honest figure, and the remaining 20% is placement,
+// not routing.
 //
 // ── WHY THIS FILE IS MOSTLY SYNTHETIC, WHICH IS UNUSUAL HERE ─────────────────
 //
@@ -23,7 +30,7 @@
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import { deriveAnchors } from '../src/level/anchors';
-import { chooseLinkOpening, mouthWidth } from '../src/level/link-anchors';
+import { mouthWidth } from '../src/level/link-anchors';
 import {
   routeBetween, chooseLinkRoute, routeLength, MIN_LEG_FACTOR,
 } from '../src/level/corridor-route';
@@ -190,13 +197,38 @@ test('AND THE AGGREGATE HOLDS ON REAL FLOORS', () => {
       const B = { poly: touch[1].poly as Poly, anchors: anch(touch[1]) };
       const obst = rooms.filter((r) => r.id !== touch[0].id && r.id !== touch[1].id)
         .map((r) => ({ id: r.id, poly: r.poly as Poly }));
-      if (chooseLinkOpening(A, B, [touch[1].rect.x - touch[0].rect.x,
-        touch[1].rect.z - touch[0].rect.z], want)) straight++;
-      if (chooseLinkRoute(A, B, want, mouthWidth, obst)) routed++;
+      // BOTH SIDES OF THE COMPARISON RUN THE SAME SOLVER. The straight number
+      // used to come from `chooseLinkOpening`, a separate implementation that
+      // never checked whether its straight line stayed out of the rooms — so it
+      // over-counted, and by this stage it was scoring HIGHER than the router
+      // that replaced it. A baseline that flatters what it measures is worse
+      // than none; it has been deleted. "Straight" now means the router found a
+      // route and that route has no bends.
+      const r = chooseLinkRoute(A, B, want, mouthWidth, obst);
+      if (r) { routed++; if (r.bends === 0) straight++; }
     }
   }
   assert.ok(links > 150, `only ${links} links sampled — this measured nothing`);
-  assert.ok(routed / links > 0.97,
+  // ── 80%, AND THE 99% THIS FIRST SAID WAS WRONG ─────────────────────────────
+  //
+  // The first version of this measured 99% and the number was inflated, in a way
+  // worth leaving here because it is the exact shape of a measurement that
+  // flatters itself. `legClear` only tested the OTHER rooms, so a route that ran
+  // back through the polygon it started from counted as served — and rooms are
+  // not convex, so an ell's wall can face outward while the straight line from
+  // it re-enters the room's own missing quadrant. Those routes laid corridor
+  // floor and ceiling INDOORS; the wiring pass found them at 31 of 894 plates,
+  // worst 15.88m.
+  //
+  // With the self-check on, the same sample gives 80%. Isolated by toggling only
+  // that check: 99% off, 80% on, obstacles making no difference either way. So
+  // the whole 19 points were routes that should never have been counted.
+  //
+  // DO NOT RAISE THIS BACK toward 99 by loosening the self-check. The remaining
+  // 20% is placement handing the router pairs whose walls genuinely cannot see
+  // each other, and it is fixed by freeing placement, not by letting corridors
+  // through rooms.
+  assert.ok(routed / links > 0.75,
     `routing serves only ${((routed / links) * 100).toFixed(0)}% of links`);
   assert.ok(routed > straight,
     `routing (${routed}) served no more links than a straight corridor (${straight}) — `

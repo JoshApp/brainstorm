@@ -469,12 +469,43 @@ live).
 
 | | straight only | routed |
 |---|---|---|
-| of the 183 real links, served | 83% | **99%** |
+| of the real links, served | ~50% | **80%** |
+
+**The 83% -> 99% this first claimed was wrong**, and the correction is the more
+useful fact. Neither solver checked that its corridor stayed out of the two
+rooms it was joining — and rooms are not convex, so a wall can face outward
+while the line from it re-enters the room's own missing quadrant. Those routes
+were counted as served and would have laid corridor floor and ceiling INDOORS;
+the wiring pass caught them at 31 of 894 plates, worst 15.88m. Toggling only
+that check gives 99% off / 80% on. The whole 19 points were never real.
+
+The straight-only baseline (`chooseLinkOpening`) had the same flaw and by the
+end was scoring HIGHER than the router replacing it, so it has been deleted
+rather than kept as a comparison — a baseline that flatters what it measures is
+worse than no baseline. Straight-vs-bent is now measured inside the one solver.
 
 And the two ends stop being one opening both sides must accept. They become
 **two thresholds**, each negotiated with the single wall it is cut into — which
 is simpler, and hands us the splayed mouth for free: a 3.5m mouth on a 2.2m
 passage is just a threshold wider than the leg behind it.
+
+### WIRED, AND WHAT IT MOVED
+
+`connect()` now routes on anchors before falling back to the pre-anchor paths.
+Measured over 640 doorways on 48 floors, against 656 before:
+
+| | before | after |
+|---|---|---|
+| doorways OVERLAPPING a corner | 35% | **16%** |
+| corner clearance, p25 | -0.64m | **+0.45m** |
+| doorways with a facing anchor | 89% | **98%** |
+| built plates over-reaching into a room | 0% | 0% (already clean) |
+
+The router serves 76% of links and the blind fallback still fires on 24% — and
+that 24% is where the remaining corner-wrapping doorways come from. It is kept,
+not deleted, because the router DECLINES rather than improvises and a floor that
+loses a link is worse than one guessed corridor. Degrade, never fail. That
+number is the measure of how far placement has to come.
 
 ### THE GRID IS NO LONGER LOAD-BEARING
 

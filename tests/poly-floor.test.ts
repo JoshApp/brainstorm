@@ -439,16 +439,33 @@ test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {
       byLink.set(m[1], [...(byLink.get(m[1]) ?? []), c]);
     }
     for (const [id, parts] of byLink) {
-      assert.equal(parts.length, 3, `${spec.id}: bend ${id} has ${parts.length} pieces, expected 3`);
+      // TWO pieces or three. The old dogleg was always three (leg, cross, leg)
+      // and this asserted the shape; the router also produces an L, which is
+      // two perpendicular legs and breaks the sightline just as completely. The
+      // shape was never the point — assert the PROPERTY.
+      assert.ok(parts.length === 2 || parts.length === 3,
+        `${spec.id}: bend ${id} has ${parts.length} pieces, expected 2 (an L) or 3 (a Z)`);
       bends++;
-      // The two LEGS run along the connecting axis; the cross runs across it.
-      // Their perpendicular offsets must differ, or nothing is blocked.
-      const legs = parts.filter((p) => p.rect.d > p.rect.w).length > 1
-        ? parts.filter((p) => p.rect.d > p.rect.w).map((p) => p.rect.x)
-        : parts.filter((p) => p.rect.w > p.rect.d).map((p) => p.rect.z);
-      const spread = Math.max(...legs) - Math.min(...legs);
-      assert.ok(spread > 1.5,
-        `${spec.id}: bend ${id}'s legs are only ${spread.toFixed(1)}m apart — you can see straight through`);
+      const alongZ = parts.filter((p) => p.rect.d > p.rect.w);
+      const alongX = parts.filter((p) => p.rect.w > p.rect.d);
+      if (alongZ.length >= 2 || alongX.length >= 2) {
+        // Two legs on the SAME axis: a Z. They must sit at different laterals
+        // or it is a straight corridor in three pieces — more geometry, same
+        // telescope.
+        const legs = alongZ.length >= 2 ? alongZ.map((p) => p.rect.x) : alongX.map((p) => p.rect.z);
+        const spread = Math.max(...legs) - Math.min(...legs);
+        assert.ok(spread > 1.5,
+          `${spec.id}: bend ${id}'s legs are only ${spread.toFixed(1)}m apart — you can see straight through`);
+      } else {
+        // One leg per axis: an L. Perpendicular legs cannot be seen along, so
+        // the sightline is broken by construction — but only if both are long
+        // enough to actually be legs rather than a fat corner.
+        assert.equal(parts.length, 2, `${spec.id}: bend ${id} mixes axes in ${parts.length} pieces`);
+        for (const p of parts) {
+          assert.ok(Math.max(p.rect.w, p.rect.d) > Math.min(p.rect.w, p.rect.d) * 1.2,
+            `${spec.id}: bend ${id} has a leg that is basically square — that is a landing, not a turn`);
+        }
+      }
     }
   }
   assert.ok(bends > 5, `only ${bends} bends across every sampled floor — the dogleg never fires`);

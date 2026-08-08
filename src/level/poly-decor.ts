@@ -229,10 +229,23 @@ export function decorPolyFloor(
       // codebase reads a boundary point as outside — which is correct of them
       // and wrong for a thing whose home IS the wall. Same 6cm the vault path's
       // rune scatter uses.
-      const x = runeWall.a[0] + (runeWall.b[0] - runeWall.a[0]) * t + runeWall.inward[0] * RUNE_NUDGE;
-      const z = runeWall.a[1] + (runeWall.b[1] - runeWall.a[1]) * t + runeWall.inward[1] * RUNE_NUDGE;
-      props.push({ kind: 'wall-rune', x, z, rotY: runeWall.facingY, height: 1.3 + rand() * 0.4 } as PropSpec);
-      note('wall-rune');
+      // ...and CHECKED, not assumed. 6cm is enough on almost every wall and was
+      // not on one in 133: a wall whose inward normal runs along a chamfer
+      // leaves a boundary point still reading as outside. Rather than growing
+      // the constant until the sample stops complaining — guessing with extra
+      // steps — push until the polygon agrees, and decline if it never does.
+      const bx = runeWall.a[0] + (runeWall.b[0] - runeWall.a[0]) * t;
+      const bz = runeWall.a[1] + (runeWall.b[1] - runeWall.a[1]) * t;
+      let x = 0, z = 0, seated = false;
+      for (const nudge of [RUNE_NUDGE, RUNE_NUDGE * 2, RUNE_NUDGE * 4]) {
+        x = bx + runeWall.inward[0] * nudge;
+        z = bz + runeWall.inward[1] * nudge;
+        if (pointInPoly(r.poly, x, z)) { seated = true; break; }
+      }
+      if (seated) {
+        props.push({ kind: 'wall-rune', x, z, rotY: runeWall.facingY, height: 1.3 + rand() * 0.4 } as PropSpec);
+        note('wall-rune');
+      }
     }
 
     // A WEB ACROSS A MOUTH, AND ONLY INTO A DEAD END.

@@ -1,4 +1,5 @@
 import type { PropSpec, WalkableRect } from './types';
+import { pointInPoly, type Poly } from './room-shape';
 
 // ── NOTHING STANDS OVER A HOLE ───────────────────────────────────────────────
 //
@@ -33,10 +34,21 @@ import type { PropSpec, WalkableRect } from './types';
 // within reach. Both outcomes are counted, because a pass that silently deletes
 // content looks exactly like a floor that never had any.
 
-/** Room/corridor rects, so a nudged prop lands on real floor rather than in the
- *  gap between two rooms. */
+/**
+ * Room/corridor floors, so a nudged prop lands on real floor rather than in the
+ * gap between two rooms.
+ *
+ * A floor may carry its POLYGON, and where it does the polygon is what counts.
+ * Testing the rect alone is the codebase's oldest bug wearing a new hat — **a
+ * polygon room is not its bounding box** — and it shipped here: the ring search
+ * pushed a wall-rune 24cm through the wall of an ell, because the spot it found
+ * was inside the room's bounding box and outside the room. One in 133, and
+ * invisible until the corridor rework moved a wall under it.
+ *
+ * Corridors have no polygon and pass none; their rect IS their shape.
+ */
 export interface EvictSurface {
-  floors: readonly WalkableRect[];
+  floors: ReadonlyArray<WalkableRect & { poly?: Poly }>;
   voids: readonly WalkableRect[];
 }
 
@@ -66,10 +78,26 @@ export function overVoid(x: number, z: number, voids: readonly WalkableRect[]): 
   return voids.some((v) => inRect(x, z, v, LIP));
 }
 
-/** Solid ground: inside some floor rect and outside every void. */
+/** Solid ground: inside some floor's actual shape, and outside every void. */
 function solid(x: number, z: number, s: EvictSurface): boolean {
   if (overVoid(x, z, s.voids)) return false;
-  return s.floors.some((r) => inRect(x, z, r, -0.35));   // inset, so not in a wall
+  return s.floors.some((r) => (r.poly
+    // Inside the polygon AND off its wall line — a point exactly on the
+    // boundary is a prop embedded in masonry, which is what this is preventing.
+    ? pointInPoly(r.poly, x, z) && !nearPolyEdge(r.poly, x, z, 0.3)
+    : inRect(x, z, r, -0.35)));   // inset, so not in a wall
+}
+
+/** Is this point within `pad` of the polygon's outline? */
+function nearPolyEdge(poly: Poly, x: number, z: number, pad: number): boolean {
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dx = b[0] - a[0], dz = b[1] - a[1];
+    const L2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L2));
+    if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < pad) return true;
+  }
+  return false;
 }
 
 /** Nearest solid spot on a widening ring, or null if there isn't one nearby. */

@@ -1,26 +1,32 @@
-// TWO WALLS AGREE ON ONE OPENING.
+// ONE WALL'S OWN ANSWER.
 //
-// Step 3 of docs/SPACES-AND-THRESHOLDS.md, checked before it is wired in. This
-// is the step that removes the overshoot: today `connect()` guesses a lateral
-// offset, ray-casts to find where a wall happens to be, and pushes 0.9m past it
-// so a rect-crossing finder can see the crossing. With anchors both endpoints
-// are already known and there is nothing to push past.
+// Step 3 of docs/SPACES-AND-THRESHOLDS.md. A link no longer makes two walls
+// agree on a single number — once a corridor can bend (`corridor-route.ts`) its
+// two ends are separate thresholds, each cut into one wall — so the question
+// left here is small and sharp: **how wide will this wall open, and when will it
+// decline?**
 //
-// What this measures, against the real generator rather than a fixture: can the
-// rooms a floor actually links serve those links from their own walls, and how
-// wide can they go. Josh asked for big entrances by default, so the width the
-// chooser returns is checked for being GENEROUS, not merely legal.
+// ── WHAT USED TO BE HERE ─────────────────────────────────────────────────────
+//
+// `chooseLinkOpening`, the straight-corridor model: pick a facing anchor PAIR,
+// intersect their ranges, take one width. It was superseded by the router and
+// then deleted, because as a "straight only" baseline it was unsound — it never
+// checked that the line between the two walls stayed out of the rooms, so it
+// counted routes that would lay corridor floor indoors. By the end it was
+// scoring HIGHER than the router that replaced it, which is exactly how a
+// flattering baseline lies. The straight-vs-bent comparison now runs inside one
+// solver, in corridor-route.test.ts.
 //
 //   npm test -- link-anchors
 
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
-import { deriveAnchors } from '../src/level/anchors';
+import { deriveAnchors, CRAWL_MIN, PORTAL_BANDS } from '../src/level/anchors';
 import {
-  chooseLinkOpening, anchorSpan, GATE_MIN, GENEROSITY, bandForWidth,
+  mouthWidth, anchorSpan, GATE_MIN, GENEROSITY, bandForWidth,
 } from '../src/level/link-anchors';
 import { MIN_WALKABLE_WIDTH } from '../src/level/corridor-types';
-import { pointInPoly, type Poly } from '../src/level/room-shape';
+import { type Poly } from '../src/level/room-shape';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -30,147 +36,93 @@ function test(name: string, fn: () => void) {
 
 const SEEDS = [7, 4242, 90210, 31337, 11, 222, 3333, 44444];
 const DEPTHS = [1, 2, 5, 6, 8, 11];
-const FLOORS = SEEDS.flatMap((seed) => DEPTHS.map((depth) => generatePolyFloor(depth, seed)));
+const SECTION = 2.2;   // corridor-types 'passage' — the common case
 
-/**
- * Every room pair the shipping generator actually joined, with the anchors
- * their walls publish.
- *
- * Reconstructed from the built corridors rather than from a re-implementation
- * of the layout: the question is whether anchors can serve the links the game
- * REALLY makes, and a hand-rolled set of pairs would answer a different one.
- */
-const LINKS = (() => {
-  const out: Array<{ A: { poly: Poly; anchors: ReturnType<typeof deriveAnchors> };
-                     B: { poly: Poly; anchors: ReturnType<typeof deriveAnchors> };
-                     toward: [number, number]; ids: string }> = [];
-  for (const spec of FLOORS) {
-    const rooms = spec.rooms.filter((r) => r.poly && r.poly.length >= 3);
-    const cache = new Map<string, ReturnType<typeof deriveAnchors>>();
-    const anch = (r: typeof rooms[number]) => {
-      let v = cache.get(r.id);
-      if (!v) cache.set(r.id, v = deriveAnchors(r.id, r.poly as Poly, r.height));
-      return v;
-    };
-    for (const c of spec.corridors) {
-      const ends: Array<[number, number]> = [
-        [c.rect.x - c.rect.w / 2, c.rect.z], [c.rect.x + c.rect.w / 2, c.rect.z],
-        [c.rect.x, c.rect.z - c.rect.d / 2], [c.rect.x, c.rect.z + c.rect.d / 2],
-      ];
-      const touch = rooms.filter((r) => ends.some((e) => pointInPoly(r.poly as Poly, e[0], e[1])));
-      if (touch.length < 2) continue;
-      const [ra, rb] = touch;
-      out.push({
-        A: { poly: ra.poly as Poly, anchors: anch(ra) },
-        B: { poly: rb.poly as Poly, anchors: anch(rb) },
-        toward: [rb.rect.x - ra.rect.x, rb.rect.z - ra.rect.z],
-        ids: `${ra.id}→${rb.id}`,
-      });
+/** Every anchor every polygon room on the sample publishes. */
+const ANCHORS = (() => {
+  const out: Array<{ anchor: ReturnType<typeof deriveAnchors>[number]; poly: Poly }> = [];
+  for (const seed of SEEDS) for (const depth of DEPTHS) {
+    for (const r of generatePolyFloor(depth, seed).rooms) {
+      if (!r.poly || r.poly.length < 3) continue;
+      for (const a of deriveAnchors(r.id, r.poly as Poly, r.height)) {
+        out.push({ anchor: a, poly: r.poly as Poly });
+      }
     }
   }
   return out;
 })();
 
-const SECTION = 2.2;   // corridor-types 'passage' — the common case
-
-test('THE WALLS CAN SERVE THE LINKS THE FLOOR ACTUALLY MAKES', () => {
-  assert.ok(LINKS.length > 150, `only ${LINKS.length} links sampled — this measured nothing`);
-  const opened = LINKS.map((l) => chooseLinkOpening(l.A, l.B, l.toward, { section: SECTION }));
-  const served = opened.filter(Boolean).length;
-  assert.ok(served / LINKS.length > 0.8,
-    `only ${((served / LINKS.length) * 100).toFixed(0)}% of links can be opened from the rooms' `
-    + 'own walls — the layout would have to move rooms it currently does not');
-
-  // A door, not a crawl. A mainline the roster cannot walk down is a deadlock,
-  // and it would look exactly like a working floor until something chased you.
-  const crawls = opened.filter((o) => o && o.band === 'crawl').length;
-  assert.equal(crawls, 0,
-    `${crawls} links resolved to a crawl — a mainline every mob must use`);
-});
-
-test('...and the opening is GENEROUS, not merely legal', () => {
-  // Josh: "the big entrances are probably better by default." The chooser opens
-  // the seam out beyond the corridor's own section wherever both walls allow,
-  // which is the splayed mouth the design doc argues for — the flare belongs on
-  // the threshold, never on the corridor.
-  const ws = LINKS
-    .map((l) => chooseLinkOpening(l.A, l.B, l.toward, { section: SECTION }))
-    .filter(Boolean).map((o) => o!.width).sort((a, b) => a - b);
-  const median = ws[ws.length >> 1];
+test('A WALL OPENS WIDER THAN THE CORRIDOR BEHIND IT', () => {
+  // Josh: "the big entrances are probably better by default."
+  //
+  // The default is not "whatever the section is" — it is the section opened out
+  // as far as the wall can afford. That is the splayed embrasure the design doc
+  // argues for: the flare belongs on the threshold, never on the corridor,
+  // because a variable-width corridor breaks one-section-per-link and grows a
+  // parameter in five placement systems.
+  assert.ok(ANCHORS.length > 1000, `only ${ANCHORS.length} anchors — this measured nothing`);
+  const widths = ANCHORS.map(({ anchor }) => mouthWidth(anchor, { section: SECTION }))
+    .filter((w): w is number => w != null).sort((a, b) => a - b);
+  const median = widths[widths.length >> 1];
   assert.ok(median > SECTION,
-    `the median opening is ${median.toFixed(2)}m for a ${SECTION}m section — the seam is not `
+    `the median mouth is ${median.toFixed(2)}m for a ${SECTION}m section — walls are not `
     + 'opening out at all, so every doorway is exactly as wide as its corridor');
-  assert.ok(ws.filter((w) => w > SECTION).length / ws.length > 0.5,
-    'fewer than half the seams open out beyond their corridor');
+  assert.ok(widths.filter((w) => w > SECTION).length / widths.length > 0.7,
+    'fewer than 70% of walls open out beyond their corridor');
 });
 
 test('A GATE IS ASKED FOR, NEVER INHERITED', () => {
-  // The failure mode of "big by default" is that every seam with a long wall
+  // The failure mode of "big by default" is that every wall with a long run
   // beside it becomes a monument, and then nothing is one. Supply is not the
-  // limit — 35% of links could afford 4m — so the scarcity has to be a
-  // decision, and this is the assertion that keeps it one.
-  const ordinary = LINKS
-    .map((l) => chooseLinkOpening(l.A, l.B, l.toward, { section: SECTION }))
-    .filter(Boolean);
-  assert.equal(ordinary.filter((o) => o!.band === 'gate').length, 0,
-    'an ordinary seam widened itself into the gate band');
+  // limit, so the scarcity has to be a decision — this is what keeps it one.
+  const ordinary = ANCHORS.map(({ anchor }) => mouthWidth(anchor, { section: SECTION }));
+  assert.equal(ordinary.filter((w) => w != null && w >= GATE_MIN).length, 0,
+    'an ordinary wall widened itself into the gate band');
 
-  // And when it IS asked for, it is delivered wherever the walls can afford it.
-  const asked = LINKS
-    .map((l) => chooseLinkOpening(l.A, l.B, l.toward, { section: SECTION, monumental: true }))
-    .filter(Boolean);
-  const gates = asked.filter((o) => o!.band === 'gate').length;
-  assert.ok(gates / asked.length > 0.25,
-    `only ${((gates / asked.length) * 100).toFixed(0)}% of links could deliver a gate when asked`);
+  const asked = ANCHORS.map(({ anchor }) => mouthWidth(anchor, { section: SECTION, monumental: true }))
+    .filter((w): w is number => w != null);
+  // 43% of ANCHORS, which is the same fact as "77% of ROOMS could host a 4m
+  // opening" seen per-wall instead of per-room: most rooms publish several
+  // anchors and only their longest runs reach the gate band. Supply is not the
+  // constraint either way.
+  const gates = asked.filter((w) => w >= GATE_MIN).length;
+  assert.ok(gates / asked.length > 0.35,
+    `only ${((gates / asked.length) * 100).toFixed(0)}% of walls could deliver a gate when asked`);
 });
 
-test('AN OPENING NEVER EXCEEDS WHAT EITHER WALL PUBLISHED', () => {
-  // The whole point of a range is that it is binding on both sides. An opening
-  // wider than a wall's own declared run is the overshoot again, wearing the
-  // new model's clothes.
-  for (const l of LINKS) {
+test('A MOUTH NEVER EXCEEDS WHAT ITS WALL PUBLISHED', () => {
+  // The whole point of a range is that it binds. A mouth wider than the run its
+  // own wall declared is the overshoot again, wearing the new model's clothes.
+  for (const { anchor, poly } of ANCHORS) {
     for (const want of [{ section: SECTION }, { section: SECTION, monumental: true },
-                        { section: 3.6 }, { section: 1.55 }]) {
-      const o = chooseLinkOpening(l.A, l.B, l.toward, want);
-      if (!o) continue;
-      assert.ok(o.width <= o.a.width[1] + 1e-9 && o.width <= o.b.width[1] + 1e-9,
-        `${l.ids}: a ${o.width.toFixed(2)}m opening on walls offering at most `
-        + `${Math.min(o.a.width[1], o.b.width[1]).toFixed(2)}m`);
-      assert.ok(o.width >= o.a.width[0] - 1e-9 && o.width >= o.b.width[0] - 1e-9,
-        `${l.ids}: a ${o.width.toFixed(2)}m opening under a wall's own minimum`);
-
-      // And it sits INSIDE both usable runs — an opening centred on the overlap
-      // but wider than it would be cut through a corner, which is the bug this
-      // whole model exists to end.
-      const alongX = Math.abs(l.toward[0]) > Math.abs(l.toward[1]);
-      for (const [anchor, poly] of [[o.a, l.A.poly], [o.b, l.B.poly]] as const) {
-        const s = anchorSpan(anchor, poly);
-        const lo = Math.min(alongX ? s.from[1] : s.from[0], alongX ? s.to[1] : s.to[0]);
-        const hi = Math.max(alongX ? s.from[1] : s.from[0], alongX ? s.to[1] : s.to[0]);
-        assert.ok(o.lateral - o.width / 2 >= lo - 1e-6 && o.lateral + o.width / 2 <= hi + 1e-6,
-          `${l.ids}: the opening runs off the end of a wall's usable span`);
-      }
+                        { section: 3.6 }, { section: 1.55 },
+                        { section: 1.55, minBand: 'crawl' as const }]) {
+      const w = mouthWidth(anchor, want);
+      if (w == null) continue;
+      assert.ok(w <= anchor.width[1] + 1e-9,
+        `a ${w.toFixed(2)}m mouth on a wall offering at most ${anchor.width[1].toFixed(2)}m`);
+      assert.ok(w >= anchor.width[0] - 1e-9,
+        `a ${w.toFixed(2)}m mouth under its wall's own minimum`);
+      // And it fits inside the usable run with the corner clearance intact.
+      const s = anchorSpan(anchor, poly);
+      const run = Math.hypot(s.to[0] - s.from[0], s.to[1] - s.from[1]);
+      assert.ok(w <= run + 1e-6, `a ${w.toFixed(2)}m mouth on a ${run.toFixed(2)}m run`);
     }
   }
 });
 
-test('A LINK THAT CANNOT BE OPENED SAYS SO', () => {
-  // Rather than clamping to something illegal. A 0.9m mainline built quietly is
-  // worse than a link the layout is told to re-route, because it looks fine
-  // right up until a stoneguard has to use it.
-  const far: Poly = [[100, 100], [110, 100], [110, 110], [100, 110]];
-  const near: Poly = [[0, 0], [10, 0], [10, 10], [0, 10]];
-  const A = { poly: near, anchors: deriveAnchors('a', near, 3) };
-  const B = { poly: far, anchors: deriveAnchors('b', far, 3) };
-  assert.equal(chooseLinkOpening(A, B, [1, 0], { section: SECTION }), null,
-    'two rooms with no shared lateral produced an opening anyway');
-
-  // A wall run too short for the section still yields the widest legal opening
-  // rather than nothing — the range exists so most mismatches resolve.
-  const slot: Poly = [[0, 0], [10, 0], [10, 3.6], [0, 3.6]];
-  const C = { poly: slot, anchors: deriveAnchors('c', slot, 3) };
-  const o = chooseLinkOpening(A, C, [0, -1], { section: 3.6 });
-  assert.ok(o && o.width >= MIN_WALKABLE_WIDTH, 'two facing walls failed to agree at all');
+test('A WALL THAT CANNOT SERVE A MAINLINE DECLINES', () => {
+  // Rather than shaving the width down to something illegal. A 0.9m mainline
+  // built quietly is worse than a link the layout is told to re-route, because
+  // it looks fine right up until a stoneguard has to use it.
+  const tight = { width: [CRAWL_MIN, 1.0] as const, t0: 0, t1: 1 };
+  assert.equal(mouthWidth(tight as never, { section: SECTION }), null,
+    'a wall too narrow for the roster offered a mainline door anyway');
+  // ...but it will happily serve a link that ASKED for a crawl. Josh: "having
+  // the option for smaller ways could be handy for secret passages."
+  const crawl = mouthWidth(tight as never, { section: SECTION, minBand: 'crawl' });
+  assert.ok(crawl != null && crawl < MIN_WALKABLE_WIDTH,
+    'a crawl was asked for and a door came back');
 });
 
 test('THE BAND VOCABULARY AGREES WITH ITSELF', () => {
@@ -179,6 +131,11 @@ test('THE BAND VOCABULARY AGREES WITH ITSELF', () => {
   assert.equal(bandForWidth(5)?.id, 'gate');
   assert.ok(GATE_MIN > MIN_WALKABLE_WIDTH * GENEROSITY,
     'a generously-opened mainline door reaches the gate band on arithmetic alone');
+  // The bands are ordered and disjoint, or "which band is this" has no answer.
+  for (let i = 1; i < PORTAL_BANDS.length; i++) {
+    assert.ok(PORTAL_BANDS[i].width[0] > PORTAL_BANDS[i - 1].width[1],
+      `the ${PORTAL_BANDS[i - 1].id} and ${PORTAL_BANDS[i].id} bands overlap`);
+  }
 });
 
 console.log(`${passed} passed, ${failed} failed`);

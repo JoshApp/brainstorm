@@ -72,6 +72,11 @@ export const MIN_LEG_FACTOR = 1.2;
 /** Lateral agreement tolerance for calling two opposed anchors collinear. */
 const COLLINEAR_EPS = 0.05;
 
+/** How far into a room a route's two extreme ends may legitimately reach — the
+ *  mouth. Beyond this, a leg inside a room is a corridor laying its floor and
+ *  ceiling indoors, which is the bug this whole model exists to end. */
+const MOUTH_DEPTH = 1.2;
+
 export interface RouteObstacle {
   id: string;
   poly: Poly;
@@ -97,7 +102,28 @@ export function routeBetween(
   const ra = centreRange(sa, aWidth), rb = centreRange(sb, bWidth);
   if (!ra || !rb) return null;
 
-  const free = (legs: RouteLeg[]) => legs.every((l) => legClear(l, obstacles));
+  /**
+   * A LEG MAY NOT LIE INSIDE ITS OWN ROOMS EITHER.
+   *
+   * The obstacle list is the OTHER rooms, and checking only those was wrong in
+   * a way that took a full wiring pass to surface: a room is not convex. An
+   * ell's wall can face outward while the straight line from it re-enters the
+   * room's own missing quadrant, so the corridor lays 15m of floor and ceiling
+   * INSIDE the room it started from. Measured on the first wired build: 31 of
+   * 894 plates reached more than 0.3m into a room, worst 15.88m.
+   *
+   * The two ends are legitimately inside — that is the mouth — so the check
+   * skips a margin at each extreme of the ROUTE (not of each leg; an interior
+   * leg gets no exemption at all).
+   */
+  const selfRooms: RouteObstacle[] = [
+    { id: '#a', poly: aPoly }, { id: '#b', poly: bPoly },
+  ];
+  const free = (legs: RouteLeg[]) => legs.every((l, i) => {
+    if (!legClear(l, obstacles, 0, 0)) return false;
+    return legClear(l, selfRooms, i === 0 ? MOUTH_DEPTH : 0,
+      i === legs.length - 1 ? MOUTH_DEPTH : 0);
+  });
   const minLeg = section * MIN_LEG_FACTOR;
 
   const aAxisX = Math.abs(a.normal[0]) > 0.5;   // A exits along X
@@ -186,8 +212,21 @@ export function chooseLinkRoute(
   A: LinkSide, B: LinkSide, want: OpeningWant,
   mouth: (anchor: PortalAnchor, want: OpeningWant) => number | null,
   obstacles: readonly RouteObstacle[] = [],
+  /**
+   * Invert the bend preference — take the kinked route when one exists.
+   *
+   * A straight corridor between two rooms is a telescope: you stand in one
+   * doorway and read the whole of the next before committing to it, which is
+   * the single thing that makes a procedural floor read as a diagram. The
+   * layout rolls for this deliberately. It is a request for a REVEAL, not a
+   * different geometry model — the route is still anchored at both ends.
+   */
+  preferBend = false,
 ): LinkRoute | null {
   let best: LinkRoute | null = null;
+  const better = (r: LinkRoute, than: LinkRoute) => (preferBend
+    ? (r.bends > than.bends || (r.bends === than.bends && routeLength(r) < routeLength(than)))
+    : (r.bends < than.bends || (r.bends === than.bends && routeLength(r) < routeLength(than))));
   for (const a of A.anchors) {
     const wa = mouth(a, want);
     if (wa == null) continue;
@@ -196,8 +235,7 @@ export function chooseLinkRoute(
       if (wb == null) continue;
       const r = routeBetween(a, A.poly, wa, b, B.poly, wb, want.section, obstacles);
       if (!r) continue;
-      if (!best || r.bends < best.bends
-        || (r.bends === best.bends && routeLength(r) < routeLength(best))) best = r;
+      if (!best || better(r, best)) best = r;
     }
   }
   return best;
@@ -263,7 +301,10 @@ function candidates(r: readonly [number, number]): number[] {
  * polygon clipping is deliberate: at a 0.25m step against rooms metres across
  * it cannot miss an intersection that matters, and it stays readable.
  */
-function legClear(leg: RouteLeg, obstacles: readonly RouteObstacle[]): boolean {
+function legClear(
+  leg: RouteLeg, obstacles: readonly RouteObstacle[],
+  skipStart = 0, skipEnd = 0,
+): boolean {
   if (obstacles.length === 0) return true;
   const dx = leg.to[0] - leg.from[0], dz = leg.to[1] - leg.from[1];
   const L = Math.hypot(dx, dz);
@@ -271,9 +312,11 @@ function legClear(leg: RouteLeg, obstacles: readonly RouteObstacle[]): boolean {
   const ux = dx / L, uz = dz / L;
   // Perpendicular, for the band edges.
   const px = -uz, pz = ux;
-  const steps = Math.max(2, Math.ceil(L / 0.25));
+  const t0 = skipStart, t1 = L - skipEnd;
+  if (t1 <= t0) return true;
+  const steps = Math.max(2, Math.ceil((t1 - t0) / 0.25));
   for (let i = 0; i <= steps; i++) {
-    const t = (i / steps) * L;
+    const t = t0 + (i / steps) * (t1 - t0);
     for (const off of [0, leg.width / 2, -leg.width / 2]) {
       const x = leg.from[0] + ux * t + px * off;
       const z = leg.from[1] + uz * t + pz * off;
