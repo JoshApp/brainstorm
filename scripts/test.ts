@@ -16,16 +16,29 @@
 // threading issue, all is blocking and slow at the same time."* Correct
 // diagnosis. The suite was 313s wall clock on 4 cores doing maybe 90s of work.
 //
-//   npm test                # run everything
-//   npm test -- --jobs=1    # serial, for debugging interleaved output
-//   npm test -- poly floor  # only files whose name contains any of these
-//   tsx tests/foo.test.ts   # still run one file directly
+//   npm test                     # run everything
+//   npm test -- --affected       # only tests that can reach what you changed
+//   npm test -- --affected --since=origin/main
+//   npm test -- --jobs=1         # serial, for debugging interleaved output
+//   npm test -- poly floor       # only files whose name contains any of these
+//   tsx tests/foo.test.ts        # still run one file directly
+//
+// ── --affected: THE INNER LOOP ───────────────────────────────────────────────
+//
+// 109 files and ten minutes, paid on every commit, most of it wasted — editing
+// content/buffs.ts cannot break corridor-route. `--affected` walks the import
+// graph from each test and runs only those that can reach a changed file. See
+// scripts/test-impact.ts for the three rules that keep it safe; the important
+// one is that anything the analysis cannot account for runs EVERYTHING, and an
+// affected run never writes the full-pass stamp. The gate does not get weaker,
+// only the loop gets faster.
 //
 // Output is BUFFERED per file and printed when that file finishes, so parallel
 // runs don't interleave into nonsense. A file's output still appears as one
 // contiguous block exactly as it did serially.
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { buildImpactGraph, selectAffected } from './test-impact';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -40,6 +53,8 @@ const jobsArg = argv.find((a) => a.startsWith('--jobs='));
 // Leave a core for the parent and the OS. One job would be the old behaviour.
 const JOBS = jobsArg ? Math.max(1, Number(jobsArg.slice(7))) : Math.max(1, cpus().length - 1);
 const filters = argv.filter((a) => !a.startsWith('--'));
+const affected = argv.includes('--affected');
+const sinceArg = argv.find((a) => a.startsWith('--since='));
 
 let files = readdirSync(join(root, 'tests'))
   .filter((f) => f.endsWith('.test.ts'))
@@ -48,6 +63,43 @@ if (filters.length) files = files.filter((f) => filters.some((q) => f.includes(q
 if (files.length === 0) {
   console.log(`no test files match ${filters.join(' ')}`);
   process.exit(1);
+}
+
+// ── AFFECTED SELECTION ───────────────────────────────────────────────────────
+/** Repo-relative paths of everything that differs from the baseline. */
+function changedFiles(): string[] | null {
+  const git = (args: string[]) => spawnSync('git', args, { cwd: root, maxBuffer: 1 << 28 });
+  const out = new Set<string>();
+  // Against a ref when asked (what a branch changed); otherwise the working
+  // tree against HEAD (what you are editing right now).
+  const ranges = sinceArg
+    ? [['diff', '--name-only', `${sinceArg.slice(8)}...HEAD`], ['diff', '--name-only', 'HEAD']]
+    : [['diff', '--name-only', 'HEAD']];
+  for (const r of ranges) {
+    const res = git(r);
+    if (res.status !== 0) return null;      // no git / bad ref → caller runs everything
+    for (const f of res.stdout.toString().split('\n').filter(Boolean)) out.add(f);
+  }
+  const others = git(['ls-files', '--others', '--exclude-standard']);
+  if (others.status !== 0) return null;
+  for (const f of others.stdout.toString().split('\n').filter(Boolean)) out.add(f);
+  return [...out];
+}
+
+/** True when the run covered every test file — gates the cache stamp. */
+let ranEverything = filters.length === 0;
+
+if (affected) {
+  const changed = changedFiles();
+  if (!changed) {
+    console.log('[affected] git unavailable — running everything');
+  } else {
+    const graph = buildImpactGraph(root, files);
+    const sel = selectAffected(graph, files, changed);
+    console.log(`[affected] ${sel.reason}`);
+    files = sel.files;
+    ranEverything = sel.full;
+  }
 }
 
 /**
@@ -98,7 +150,7 @@ function treeHash(): string | null {
 }
 
 const forced = process.env.FORCE_TESTS === '1' || argv.includes('--force');
-const full = filters.length === 0;
+const full = ranEverything;
 const hash = full && !forced ? treeHash() : null;
 
 if (hash) {
