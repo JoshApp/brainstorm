@@ -12,7 +12,13 @@
 
 import assert from 'node:assert/strict';
 import { polygoniseRooms } from '../src/level/polygonise';
-import { generateFloor } from '../src/level/procgen';
+// generateVaultFloor, not generateFloor: `polygoniseRooms` is the pass that
+// turns the VAULT composer's rectangles into polygons. Polygon floors are born
+// polygonal and never run it, so once they took the default this suite fed
+// already-cut rooms into a cutter — it reported "converted NOTHING" and then
+// "a model is inside the wall", both of which were the test pointing at the
+// wrong generator rather than the pass misbehaving.
+import { generateVaultFloor } from '../src/level/procgen';
 import { pointInPoly } from '../src/level/room-shape';
 import type { LevelSpec, RoomSpec } from '../src/level/types';
 
@@ -25,7 +31,7 @@ function test(name: string, fn: () => void) {
 function floors(n = 8): LevelSpec[] {
   const out: LevelSpec[] = [];
   for (let depth = 1; depth <= n; depth++) {
-    for (let i = 0; i < 4; i++) out.push(generateFloor(depth, 4200 + i * 7919 + depth));
+    for (let i = 0; i < 4; i++) out.push(generateVaultFloor(depth, 4200 + i * 7919 + depth));
   }
   return out;
 }

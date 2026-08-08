@@ -23,6 +23,7 @@
 
 import assert from 'node:assert/strict';
 import { generateFloor } from '../src/level/procgen';
+import { pointInPoly } from '../src/level/room-shape';
 import {
   ALL_CLAIMS, claimsConflict, propFacts, resolveRoomClaims, roomAdmits,
   type Claim,
@@ -74,19 +75,30 @@ test('a declared claim is never overridden', () => {
 
 // ── the finished floor ───────────────────────────────────────────────────────
 
-interface Room { id: string; roomType?: string; logicalOnly?: boolean; rect: { x: number; z: number; w: number; d: number } }
+interface Room { id: string; roomType?: string; logicalOnly?: boolean; poly?: Array<[number, number]>; rect: { x: number; z: number; w: number; d: number } }
 interface Spec { rooms: Room[]; props: Array<Record<string, unknown>> }
 
 const SEEDS = 40;
 const floors = (depth: number): Spec[] =>
   Array.from({ length: SEEDS }, (_, s) => generateFloor(depth, 90210 + s * 6151) as unknown as Spec);
 
-/** Every prop standing inside a room's rect. */
+/**
+ * Every prop standing inside a room — its POLYGON when it has one.
+ *
+ * A polygon room is not its bounding box. Filtering on `r.rect` credits a shaped
+ * room with everything in the corners it does not own: three gouges and a bone
+ * pile that stand in the corridor space beside an L-shaped shop were reported as
+ * the shop's own contradiction, and the dressing pass that placed them was
+ * correct every time. This is the same substitution that has produced a bug in
+ * doorway planning, corridor trimming, wall cutting and prop eviction — the
+ * rect is a hint for broad-phase, never the room.
+ */
 function propsIn(f: Spec, r: Room) {
   return f.props.filter((p) => {
     const x = p.x as number | undefined, z = p.z as number | undefined;
     if (typeof x !== 'number' || typeof z !== 'number') return false;
-    return Math.abs(x - r.rect.x) <= r.rect.w / 2 && Math.abs(z - r.rect.z) <= r.rect.d / 2;
+    if (Math.abs(x - r.rect.x) > r.rect.w / 2 || Math.abs(z - r.rect.z) > r.rect.d / 2) return false;
+    return r.poly ? pointInPoly(r.poly, x, z) : true;
   });
 }
 

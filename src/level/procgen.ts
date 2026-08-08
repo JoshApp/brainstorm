@@ -28,10 +28,23 @@ import { seedBuildRng } from '../engine/rng';
 import { generatePolyFloor } from './poly-floor';
 import { densityMultiplier, type ResolvedPaletteV1 } from './palette';
 
-/** Content flag: build floors from polygon rooms instead of ASCII vaults. */
+/**
+ * Build floors from polygon rooms instead of ASCII vaults. THE DEFAULT.
+ *
+ * `?polyfloors=0` puts the vault composer back — the escape hatch for comparing
+ * against the old generator on a phone, and the thing to reach for first if a
+ * floor misbehaves in a way that might be shape-related. Not a DEV flag: it
+ * changes what gets GENERATED and grants nothing, so it works on the live site
+ * the way `?content=dev` does.
+ *
+ * In node (`typeof location === 'undefined'`) the answer is the default too, so
+ * a tool that generates a floor headlessly sees the floor the player sees. It
+ * used to return false there, which quietly made every audit, balance sweep and
+ * `delve` command measure the generator we were replacing.
+ */
 function usePolyFloors(): boolean {
-  if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('polyfloors') === '1';
+  if (typeof location === 'undefined') return true;
+  return new URLSearchParams(location.search).get('polyfloors') !== '0';
 }
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
@@ -429,34 +442,56 @@ export function generateFloor(
    *  exists for test scenarios that want a specific destination. */
   nextLevelIdOverride?: string,
 ): LevelSpec {
-  const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
+  // ── POLYGON FLOORS — THE GENERATOR ──────────────────────────────────
+  //
+  // level/poly-floor.ts builds a floor out of SHAPES and places its content by
+  // asking each room, rather than by stamping a tilemap. `generateVaultFloor`
+  // below is the composer it replaced, still reachable with `?polyfloors=0`.
+  //
+  // What had to be true before it could take the default, and now is:
+  //
+  //   IT STAGES A FLOOR. Floor-plan contract, shops, arenas, modifiers and the
+  //   DIRECTOR all moved across; floors with nothing to take or use went 15% → 2%.
+  //   IT IS ONE GENERATOR ALL THE WAY DOWN. Boss depths used to fall through to
+  //   the composer, so a run swapped generator every fifth floor at the one
+  //   moment a floor is most trying to make an impression.
+  //   IT FIELDS A FIGHT. Two silent caps in the spawn pass were standing up 6.6
+  //   enemies where the vault floor stands 12.5; it fields 11.7 now
+  //   (tests/poly-spawns.test.ts).
+  //   YOU CAN FINISH IT. 3 floors in 520 shipped with the spawn joined to
+  //   nothing — a sound graph and a dead run. The reroll now checks the BUILT
+  //   floor and ranks an uncrossable one below every other kind of flaw
+  //   (level/floor-connectivity.ts, tests/floor-connectivity.test.ts); 0 in 1170.
+  //   IT IS DRESSED. The decorate pass is in (level/poly-surface.ts,
+  //   poly-decor.ts): debris with a cause, vase clusters, cobwebs, wall runes.
+  //
+  // What a polygon floor still does not have is the content that only ever
+  // existed inside HAND-AUTHORED vaults — the reliquary, wall hints, scenery
+  // corpses. Those are not a porting job; they are a decision about whether the
+  // ASCII vault library survives at all, which is its own piece of work.
+  return usePolyFloors()
+    ? generatePolyFloor(depth, runSeed, nextLevelIdOverride)
+    : generateVaultFloor(depth, runSeed, nextLevelIdOverride);
+}
 
-  // ── POLYGON FLOORS (preview) ────────────────────────────────────────
-  // `?polyfloors=1` swaps the vault composer for level/poly-floor.ts, which
-  // builds a floor out of SHAPES and places its content by asking each room
-  // rather than by stamping a tilemap. It is a CONTENT flag, not a cheat — it
-  // grants nothing, it changes what gets generated — so it lives outside the
-  // DEV gate the way `?content=dev` does, and can be walked on the live site.
-  //
-  // NOT the default yet, but much closer. The floor-plan contract, shops,
-  // arenas, modifiers and the DIRECTOR (the floor's staged reward + its
-  // question) have all moved across; floors with nothing to take or use went
-  // from 15% to 2%.
-  //
-  // What is still missing is the DECORATE pass — corpses, pickups, keys, vase
-  // clusters, cobwebs, the small found things a tilemap used to bake in. A poly
-  // floor is legible and correctly staged, and still barer than a vault floor
-  // between its beats.
-  // Boss depths included. They used to fall through to the vault composer, so a
-  // run on polygon floors swapped generator every fifth floor — different rooms,
-  // different corridors, different everything, at the one moment a floor is most
-  // trying to make an impression. `poly-floor` now stands the act's boss in the
-  // finish room and hangs the fog wall in its doorway, taking the gate's
-  // position and width from the SAME `planPortals` call the archway is mounted
-  // from rather than deriving it from the arena's offset and dims.
-  if (usePolyFloors()) {
-    return generatePolyFloor(depth, runSeed);
-  }
+/**
+ * The ASCII-vault composer — the generator polygon floors replaced.
+ *
+ * Reachable in the game with `?polyfloors=0`, and exported by NAME so that a
+ * headless caller can ask for it explicitly. That matters because the flag reads
+ * `location`, which does not exist in node: once polygon floors took the
+ * default, `generateFloor` in a test meant "polygon", and the suites that exist
+ * to measure the VAULT LIBRARY — pool size, repeats within a floor, two runs
+ * reading the same — were suddenly measuring a generator that has no vaults at
+ * all and reporting a pool of 1. A test about vaults should name vaults rather
+ * than depend on which generator a global happens to select.
+ */
+export function generateVaultFloor(
+  depth: number,
+  runSeed: number,
+  nextLevelIdOverride?: string,
+): LevelSpec {
+  const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
 
   const rand = rng(seedForFloor);
   // Seed the build stream BEFORE composeFloor — vault-compose → parseTileMap

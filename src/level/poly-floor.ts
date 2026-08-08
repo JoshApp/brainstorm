@@ -32,6 +32,8 @@ import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
 import { plateExtentFor } from './corridor-trim';
+import { connectivityFaults } from './floor-connectivity';
+import { CONFIG } from '../config';
 import { archetypeForSpan, roomSpan } from './encounter-shape';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
@@ -292,8 +294,16 @@ const DOGLEG_OFFSETS: ReadonlyArray<readonly [number, number]> = [
  * Deterministic for (depth, seed) — every floor in this game must regenerate
  * identically on resume, so nothing here may touch Math.random.
  */
-export function generatePolyFloor(depth: number, seed: number): LevelSpec {
-  return rollUntilSound(depth, seed);
+export function generatePolyFloor(
+  depth: number, seed: number,
+  /** Where this floor's stair goes, when the caller knows better than the act
+   *  rule — the proving grounds chain their own depths, and several debug
+   *  scenarios name a specific destination. Deliberately NOT folded into the
+   *  seed: the same (depth, seed) is the same floor whatever its stair points
+   *  at. */
+  nextLevelIdOverride?: string,
+): LevelSpec {
+  return rollUntilSound(depth, seed, nextLevelIdOverride);
 }
 
 /**
@@ -316,22 +326,49 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
  * fails — the last attempt ships even if it is faulty, because a floor with a
  * flaw is recoverable and a floor that does not exist is not.
  */
-const MAX_ATTEMPTS = 6;
+const MAX_ATTEMPTS = 12;
 
-function rollUntilSound(depth: number, seed: number): LevelSpec {
-  let last: LevelSpec | null = null;
+/**
+ * How much worse an uncrossable floor is than any other kind of faulty floor.
+ *
+ * Larger than any plausible fault count, so "you can walk from the spawn to the
+ * stair" is not a term in a sum — it is the first question, and everything else
+ * is a tie-break underneath it.
+ */
+const UNCROSSABLE_PENALTY = 1000;
+
+function rollUntilSound(depth: number, seed: number, nextLevelId?: string): LevelSpec {
+  const stamp = (spec: LevelSpec, n: number) => {
+    (spec as { generationAttempts?: number }).generationAttempts = n;
+    return spec;
+  };
+
+  // WHEN EVERY ROLL IS FAULTY, SHIP THE LEAST-BAD ONE — NOT THE LAST ONE.
+  //
+  // This used to keep `last` and return it, which is a coin flip dressed as a
+  // policy: attempt 3 could be a perfectly crossable floor with a cosmetic
+  // complaint about corridor anchoring, and attempt 6 a floor whose spawn room
+  // joins nothing, and the loop would ship attempt 6.
+  //
+  // The faults are not equal and the fallback has to know it. A floor built
+  // mostly by guesswork is a floor that looks a bit worse. A floor you cannot
+  // cross is a dead run that looks exactly like a hard one until the player has
+  // searched every wall for the door. So crossability dominates the ranking
+  // outright, and only then does fault count break the tie.
+  let best: { spec: LevelSpec; score: number } | null = null;
+
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const spec = buildPolyFloor(depth, seed, attempt);
-    last = spec;
-    if (!spec.graph) break;
+    const spec = buildPolyFloor(depth, seed, attempt, nextLevelId);
+    // No graph is not a fault, it is a floor shape this check does not apply to.
+    if (!spec.graph) return stamp(spec, attempt + 1);
+
     const bad = [...faults(spec.graph), ...craftFaults(spec)];
-    if (!bad.length) {
-      (spec as { generationAttempts?: number }).generationAttempts = attempt + 1;
-      return spec;
-    }
+    if (!bad.length) return stamp(spec, attempt + 1);
+
+    const score = (connectivityFaults(spec).length ? UNCROSSABLE_PENALTY : 0) + bad.length;
+    if (!best || score < best.score) best = { spec, score };
   }
-  (last as { generationAttempts?: number }).generationAttempts = MAX_ATTEMPTS;
-  return last!;
+  return stamp(best!.spec, MAX_ATTEMPTS);
 }
 
 /**
@@ -367,18 +404,26 @@ const linkTally = { routed: 0, guessed: 0 };
 const MAX_GUESS_SHARE = 1 / 3;
 
 function craftFaults(spec: LevelSpec): string[] {
+  // CAN THE FLOOR BE CROSSED. Checked on the built rects rather than on the
+  // graph, because the graph is the plan: it says two rooms are linked, and
+  // whether the router actually emitted a corridor between them is decided
+  // later and is allowed to fail. 3 floors in 520 shipped with the spawn room
+  // joined to nothing — a sound graph and a dead run. See floor-connectivity.ts.
+  const out = connectivityFaults(spec);
+
   const t = spec.anchoredLinks;
-  if (!t) return [];
+  if (!t) return out;
   const total = t.routed + t.guessed;
-  if (total < 3) return [];   // too few links for a share to mean anything
+  if (total < 3) return out;   // too few links for a share to mean anything
   const share = t.guessed / total;
-  return share > MAX_GUESS_SHARE
-    ? [`${t.guessed} of ${total} corridors could not be anchored to a wall `
-       + `(${(share * 100).toFixed(0)}%, over the ${(MAX_GUESS_SHARE * 100).toFixed(0)}% bar)`]
-    : [];
+  if (share > MAX_GUESS_SHARE) {
+    out.push(`${t.guessed} of ${total} corridors could not be anchored to a wall `
+      + `(${(share * 100).toFixed(0)}%, over the ${(MAX_GUESS_SHARE * 100).toFixed(0)}% bar)`);
+  }
+  return out;
 }
 
-function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec {
+function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelId?: string): LevelSpec {
   linkTally.routed = 0;
   linkTally.guessed = 0;
   // The attempt index folds into the stream, so a reroll is a DIFFERENT floor
@@ -744,7 +789,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
         // The stair descends along its rotY; it must point AT the wall, i.e.
         // opposite the wall's inward normal.
         rotY: Math.atan2(-stairWall.inward[0], -stairWall.inward[1]),
-        targetLevel: nextLevelAfter(depth),
+        targetLevel: nextLevelId ?? nextLevelAfter(depth),
       }]
     : [];
 
@@ -800,6 +845,19 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
                 props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent,
                 boss && r === last ? boss : undefined)) guardedRooms.add(r.id);
   }
+
+  // ── THE FLOOR'S OWN MINIMUM ────────────────────────────────────────
+  //
+  // Every room budgets its own pack from its own area, and nothing until now
+  // asked what that adds up to. On a small depth-1 floor it adds up to three,
+  // and `CONTENT_BUDGET.COMBAT_MIN` — the regression lock written for exactly
+  // this bug on the vault composer, where shallow depths could roll a floor with
+  // no fight in it — was never consulted by this generator at all. Measured:
+  // 8.6% of floors under the minimum, every one of them depth 1.
+  //
+  // A per-room rule cannot see a floor-level guarantee. So the guarantee is
+  // checked where it is stated — on the finished floor.
+  topUpCombat(rooms, spawns, depth, rand, boss ? last.id : null);
 
   // ── THE FOG WALL ───────────────────────────────────────────────────
   //
@@ -1838,6 +1896,59 @@ function mouthOf(
 }
 
 // ── furnishing, by query ─────────────────────────────────────────────────────
+
+/**
+ * Bring a floor up to `CONTENT_BUDGET.COMBAT_MIN` live enemies.
+ *
+ * LIVE, not total: a dormant ambusher is a fight you have not met yet, and a
+ * floor whose whole garrison is asleep in pockets reads as empty until it
+ * suddenly isn't. The budget is a promise about what the player meets walking
+ * in, so the count that matters is the awake one.
+ *
+ * Tops up the rooms that already take a pack, largest first — a big room has the
+ * space to absorb another body without it landing in your face — and stands them
+ * awake, spread from what is already there. Silent when the floor is already
+ * over the bar, which is 91% of the time.
+ */
+function topUpCombat(
+  rooms: readonly Placed[], spawns: EnemySpawnSpec[], depth: number, rand: () => number,
+  /** The boss's hall, if this floor has one. Topped-up bodies never go there:
+   *  the hall is his alone (tests/poly-boss.test.ts), and behind a sealed gate a
+   *  pack on top of a boss is not survivable. The APPROACH still has to be a
+   *  dungeon though — skipping the whole floor because it has a boss left the
+   *  rooms before the gate holding nothing but sleeping ambushers. */
+  bossRoomId: string | null,
+): void {
+  const MIN = CONFIG.CONTENT_BUDGET.COMBAT_MIN;
+  let live = spawns.filter((s) => !s.dormant).length;
+  if (live >= MIN) return;
+
+  const eligible = [...rooms]
+    .filter((r) => r.id !== bossRoomId && roomType(r.type).enemies)
+    .sort((a, b) => polyArea(b.poly) - polyArea(a.poly));
+  if (!eligible.length) return;
+
+  for (const r of eligible) {
+    if (live >= MIN) break;
+    const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
+    if (!open.length) continue;
+    const taken = spawns.filter((s) => s.roomId === r.id);
+    const want = MIN - live;
+    const ids = rollFloorEnemies(depth, want, 'medium', rand, archetypeForSpan(roomSpan(r.poly), rand));
+    // Spread from the bodies already standing, so a top-up does not double a
+    // pack up in one corner of a room that is mostly empty.
+    const anchor = taken.length ? taken[taken.length - 1] : null;
+    let next = 0;
+    for (const s of spreadPick(open, open.length, anchor)) {
+      if (next >= ids.length || live >= MIN) break;
+      const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.8, y0: 0, y1: 1.8 };
+      if (!r.occupancy.fits(vol, 0.2)) continue;
+      r.occupancy.reserve(vol, 'spawn');
+      spawns.push({ enemyId: ids[next++], x: s.x, z: s.z, roomId: r.id });
+      live++;
+    }
+  }
+}
 
 function furnish(
   r: Placed, mouth: { x: number; z: number } | null,
