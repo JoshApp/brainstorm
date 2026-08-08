@@ -40,6 +40,8 @@ import { directFloor } from './floor-director';
 import type { ContentSpot } from './floor-fill';
 import { rollDropTable } from '../content/drop-tables';
 import { decorPolyFloor, clusterSomeVases } from './poly-decor';
+import { surfaceDressRoom } from './poly-surface';
+import { roomWear } from './room-wear';
 
 // ── A FLOOR MADE OF POLYGONS ─────────────────────────────────────────────────
 //
@@ -1010,6 +1012,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
     depth, rand);
   props.push(...decor.props);
 
+
   // ── EVIDENCE IN THE CORRIDORS ──────────────────────────────────────
   //
   // Rooms stage events; corridors hold residue. Measured before this existed:
@@ -1027,6 +1030,35 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
     rooms.map((r) => r.poly),
     dressRand));
   clusterSomeVases(props, rand);
+
+  // Placed LAST, after every producer that READS `props`. It appends to the
+  // same array `clusterSomeVases` walks, so running it earlier changed how many
+  // vases that pass considered and moved them — which is what `A THEME CHANGE
+  // IS NOT A LEVEL CHANGE` caught. Its own stream stops it moving anything by
+  // RANDOMNESS; being last stops it moving anything by ORDER.
+  // ── THE GRIT ───────────────────────────────────────────────────────
+  //
+  // The DECORATE pass procgen.ts's note has named as missing since polygon
+  // floors were switched on: *"legible and correctly staged, and still barer
+  // than a vault floor between its beats."* Measured against the vault path,
+  // 50 floors each: 83.8 surface props and 53.5 geometry props per floor there,
+  // ZERO here. Everything else in that comparison is within a factor of two.
+  //
+  // On `dressRand`, not `rand`: what a floor is strewn with must never be able
+  // to move a spawn or a staged beat. Same rule the corridor pass below follows,
+  // and the same reason it exists.
+  //
+  // AFTER decor and furnishing, so it sees a full occupancy and dresses AROUND
+  // the things the floor is about rather than needing them to dodge it.
+  for (const r of rooms) {
+    surfaceDressRoom({
+      id: r.id, type: r.type, poly: r.poly, walls: r.walls,
+      occupancy: r.occupancy, claims: claimsOf(r),
+      // The SAME call the wall shell makes, so a room whose masonry is coming
+      // down is a room with rubble on its floor.
+      wear: roomWear(r.id),
+    }, props);
+  }
 
   // NOTHING STANDS OVER A HOLE — the same final-state check the vault path runs
   // (level/void-evict.ts). The rift pass fires BEFORE furnishing and reserves

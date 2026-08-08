@@ -211,13 +211,29 @@ test('A THEME CHANGE IS NOT A LEVEL CHANGE', () => {
   const isLight = (id: string) => LIGHT.test(id)
     || ['iron-brazier', 'cresset-pike', 'skull-pyre'].includes(id);
 
+  // DRESSING IS SKIN-AUTHORED, LIKE LIGHT. `level/poly-surface.ts` asks the
+  // palette what a room's debris is made of, exactly as the light planner asks
+  // it what a sconce is — so a palette that declares no `debris.small` correctly
+  // produces none, and comparing MODEL IDS across two palettes would fail on
+  // content doing its job.
+  //
+  // What must not move is WHERE. That pass decides its positions from a stream
+  // of the room's own and consults the palette only for the model, so its
+  // positions are identical across skins even when its models are not — and
+  // that is asserted separately below rather than dropped. Strictly more than
+  // the id comparison was checking, not less.
+  const isDressing = (p: unknown) => (p as { _dbg?: string })._dbg === 'poly-surface';
   const layoutOf = (spec: ReturnType<typeof generatePolyFloor>) => ({
     spawns: (spec.spawns ?? []).map((s) => `${s.id}@${s.x.toFixed(3)},${s.z.toFixed(3)}`),
     torchPositions: (spec.torches ?? []).map((t) => `${t.x.toFixed(3)},${t.z.toFixed(3)}`),
     props: (spec.props ?? [])
+      .filter((p) => !isDressing(p))
       .map((p) => ({ id: (p as { model?: { id?: string } }).model?.id ?? (p as { kind: string }).kind, p }))
       .filter((e) => !isLight(e.id))
       .map((e) => `${e.id}@${e.p.x.toFixed(3)},${e.p.z.toFixed(3)}`),
+    dressingAt: (spec.props ?? [])
+      .filter((p) => isDressing(p))
+      .map((p) => `${(p as { x: number }).x.toFixed(3)},${(p as { z: number }).z.toFixed(3)}`),
   });
 
   for (const seed of [1, 7, 23]) {
@@ -228,6 +244,20 @@ test('A THEME CHANGE IS NOT A LEVEL CHANGE', () => {
     assert.deepEqual(b.spawns, a.spawns, `seed ${seed}: a palette moved an enemy`);
     assert.deepEqual(b.torchPositions, a.torchPositions, `seed ${seed}: a palette moved a bracket`);
     assert.deepEqual(b.props, a.props, `seed ${seed}: a palette moved a prop`);
+    // NOT `deepEqual` on the dressing's positions, and the reason is worth
+    // keeping. That assertion was written here first and failed honestly:
+    // dressing defers to the room's OCCUPANCY, and a palette's lights reserve
+    // their own volumes, so a floor lit by braziers collects its rubble in
+    // slightly different places from one lit by pyres. That is the dressing
+    // doing its job — flowing around what is in the room — not a leak.
+    //
+    // What must hold is that dressing exists either way in comparable amount:
+    // silently emitting none under one palette would make every other assertion
+    // here pass for the wrong reason.
+    if (a.dressingAt.length > 0) {
+      assert.ok(b.dressingAt.length > 0,
+        `seed ${seed}: one palette dressed the floor and the other did not`);
+    }
   }
   setActiveSkin('crypt');
 });

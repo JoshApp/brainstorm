@@ -6,6 +6,7 @@ import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
+import { wearStream, WEAR_MIN, WEAR_RANGE } from './room-wear';
 import { polyBounds, pointInPoly, type Poly } from './room-shape';
 import { planWallRing, WALL_T, type OpeningRect, type WallSpan } from './poly-shell-plan';
 import { wallCutsFor } from './portals';
@@ -113,9 +114,18 @@ export function buildPolyRoomShell(
   // seam the content layer authors against when a room's condition is a
   // statement rather than weather. The stream is still advanced either way, so
   // an authored room and a derived one make the same downstream draws.
-  const wearRand = seededRand(room.id);
-  const derivedWear = 0.18 + wearRand() * 0.5;
-  const shellWear = Math.max(0, Math.min(1, room.wear ?? derivedWear));
+  // ONE producer for this number — see level/room-wear.ts. The floor's debris
+  // pass reads the same call, so the stone and the grit agree about what
+  // happened in here.
+  // The wear draw comes OFF THIS STREAM, not from a second call beside it: the
+  // walls below keep drawing from `wearRand`, and taking the first value
+  // elsewhere would start them one draw early and re-roll every room's masonry
+  // in the game. `roomWear(id)` returns exactly this number for every other
+  // reader (level/poly-surface.ts).
+  const wearRand = wearStream(room.id);
+  const shellWear = room.wear !== undefined
+    ? Math.max(0, Math.min(1, room.wear))
+    : WEAR_MIN + wearRand() * WEAR_RANGE;
 
   // ── FLOOR ──────────────────────────────────────────────────────────
   // A hole whose vertex lands ON the contour makes earcut silently DROP it —
