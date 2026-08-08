@@ -30,6 +30,7 @@ import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
+import { plateExtentFor } from './corridor-trim';
 import { archetypeForSpan, roomSpan } from './encounter-shape';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
@@ -79,9 +80,21 @@ import { decorPolyFloor, clusterSomeVases } from './poly-decor';
 // question answered — `free()` is the real polygon plus a 3D occupancy, where
 // the composer could only offer a grid of tilemap cells.
 
+/**
+ * The shortest spine any floor is allowed: arrive, meet one thing, leave.
+ *
+ * Two rooms would be a corridor with a door at each end — there is nowhere to
+ * put the floor's beat. Three is the real minimum and a depth-1 floor does
+ * reach it (measured: 1 floor in 96, d1/s222, entrance → combat → finish, both
+ * links routed). Exported so an audit asserts the generator's own floor rather
+ * than a number that merely happened to hold on the sample it was written
+ * against.
+ */
+export const MIN_SPINE = 3;
+
 /** Rooms on the main spine, by depth. Small floors early, longer later. */
 function spineLength(depth: number, rand: () => number): number {
-  const base = depth <= 2 ? 3 : depth <= 6 ? 4 : 5;
+  const base = depth <= 2 ? MIN_SPINE : depth <= 6 ? 4 : 5;
   return base + (rand() < 0.4 ? 1 : 0);
 }
 
@@ -176,6 +189,15 @@ type Box = { x: number; z: number; w: number; d: number };
 type Dir = 'N' | 'S' | 'E' | 'W';
 
 export const MARGIN = 1.5;          // gap between unrelated boxes, so walls never clip
+/**
+ * How far off its predecessor's centre line the next room may sit, metres.
+ *
+ * Swept against 72 floors with the reroll in place: 0 faulty floors at every
+ * setting up to 2.2m, 1 at 3.0m. Off-line pairs jump to 68% by 0.8m and do not
+ * climb after — the variety is bought early — so 1.5m takes it without spending
+ * the reroll's patience (1.58 attempts against 1.13 on the grid).
+ */
+const LATERAL_FREEDOM = 1.5;
 /** Metres between two spikes of a `hazard` room. Closer and it stops being a
  *  line you pick and becomes a maze you thread. */
 const HAZARD_SPREAD = 3.2;
@@ -584,6 +606,17 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
     const span = Math.abs(spineOf(loopPocket!.parent) - spineOf(b.id)) + 1;
     if (!chordSkipFits(span, run)) continue;
     if (linkRectsMisplaced({ from: a.id, to: b.id, rects: conn.rects }, roomRects)) continue;
+    // ── AND NO LEG MAY LIE INSIDE A ROOM ──────────────────────────────────
+    //
+    // `connectL` is the pre-anchor path and has no self-room check — the router
+    // grew one (rooms are not convex, so a wall can face outward while the line
+    // from it re-enters the room's own missing quadrant), but the chord builder
+    // never did. On the grid it rarely mattered; with placement freed it put
+    // 3.84m of corridor floor inside a room on d11/s777.
+    //
+    // Checked on the PLATE the builder is handed, not on the rect: the rect is
+    // meant to end inside the room, and measuring it would reject every chord.
+    if (conn.rects.some((rc) => plateInsideRoom(rc, rooms))) continue;
     addLink(a.id, b.id, 'cor-l0', { ...conn, type: loopType }, { chord: true });
     break;
   }
@@ -1108,7 +1141,7 @@ function stepFrom(
   const order: Dir[] = rand() < 0.55 ? [heading, t0, t1] : [heading, t1, t0];
   for (const dir of order) {
     const len = 4 + rand() * 4;
-    const g = geometryFor(from, size, dir, len);
+    const g = geometryFor(from, size, dir, len, (rand() * 2 - 1) * LATERAL_FREEDOM);
     const clear = !occupied.some((o) => overlaps(o, g.at, MARGIN))
       && !occupied.some((o) => o !== from && overlaps(o, g.corridor, MARGIN));
     if (clear) return { ...g, dir };
@@ -1298,8 +1331,19 @@ function connect(
   a: Placed, b: Placed, rand: () => number, occupied: readonly Box[],
   rooms: readonly Placed[] = [],
 ): Connection | null {
+  // ── ALIGNED, OR NOT ───────────────────────────────────────────────────────
+  //
+  // This guard used to REFUSE any pair not sharing a centre line, first thing.
+  // It belongs to the blind paths below — they lay one rect down a shared
+  // lateral and can do nothing else — but sitting at the top it also refused
+  // the ROUTER, which needs no such thing.
+  //
+  // Freeing placement without moving it took links from 337 to 127 across 60
+  // floors and drove every one to the reroll ceiling: rooms slid off the line,
+  // `connect` returned null on sight, and the router was never asked a single
+  // question. It now guards only what needs guarding.
   const alongZ = Math.abs(a.rect.x - b.rect.x) < 0.01;
-  if (!alongZ && Math.abs(a.rect.z - b.rect.z) >= 0.01) return null;
+  const aligned = alongZ || Math.abs(a.rect.z - b.rect.z) < 0.01;
   const sign = alongZ ? Math.sign(b.rect.z - a.rect.z) : Math.sign(b.rect.x - a.rect.x);
   // The lateral is ABSOLUTE and SHARED. Measuring each room's exit from its own
   // `roomCenter` and then laying the corridor down at `rect.x` is two different
@@ -1317,10 +1361,15 @@ function connect(
   // ONE TYPE FOR THE WHOLE LINK, including a dogleg's three legs: a passage that
   // changes width and ceiling halfway along does not read as architecture, it
   // reads as a bug.
-  const eA = exitPoint(a, alongZ, sign, base), eB = exitPoint(b, alongZ, -sign, base);
+  //
+  // Off the centre line there is no shared lateral to measure along, so the run
+  // falls back to the distance between the rooms' boxes. An estimate, and it
+  // always was — its only job is to pick a word.
+  const eA = aligned ? exitPoint(a, alongZ, sign, base) : null;
+  const eB = aligned ? exitPoint(b, alongZ, -sign, base) : null;
   const run = eA && eB
     ? Math.abs(eA.at - eB.at)
-    : Math.abs((alongZ ? b.rect.z - a.rect.z : b.rect.x - a.rect.x));
+    : Math.hypot(b.rect.x - a.rect.x, b.rect.z - a.rect.z);
   const type = corridorTypeFor(run, rand);
   const width = type.width;
 
@@ -1347,6 +1396,11 @@ function connect(
   linkTally.guessed++;
 
   // -- EVERYTHING BELOW IS THE PRE-ANCHOR PATH -------------------------------
+  //
+  // It can only lay rects down a shared lateral, so it is unreachable for a pair
+  // without one. Those links live or die by the router — which is the point of
+  // freeing placement, and why the reroll's guess-share bar matters more now.
+  if (!aligned) return null;
 
   //
   // Kept as the fallback, not deleted, because the router declines rather than
@@ -1444,6 +1498,41 @@ function connect(
  */
 function landsInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
   return rooms.some((r) => pointInPoly(r.poly, rect.x, rect.z));
+}
+
+/**
+ * Does the plate this rect will actually BUILD lie inside a room's floor?
+ *
+ * `landsInsideRoom` above asks about the rect's CENTRE, which answers a
+ * different question: a leg is meant to end inside the room it serves, so its
+ * centre being outside says nothing about the metres of slab behind it.
+ *
+ * This measures the plate the trim will hand the builder — pulled back to the
+ * wall's outer face — and walks its length looking for a continuous run inside
+ * a room's polygon. That is the thing the player can see: corridor floor
+ * standing in a room that has its own. Via `plateExtentFor`, so it is the
+ * builder's own answer rather than a second opinion about it.
+ */
+function plateInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
+  const polys = rooms.map((r) => r.poly);
+  const p = plateExtentFor(rect, polys);
+  const alongX = p.w >= p.d;
+  const lat = alongX ? p.z : p.x;
+  const lo = (alongX ? p.x : p.z) - (alongX ? p.w : p.d) / 2;
+  const len = alongX ? p.w : p.d;
+  for (const poly of polys) {
+    let run = 0;
+    for (let i = 0; i <= 120; i++) {
+      const t = lo + (len * i) / 120;
+      const inside = pointInPoly(poly, alongX ? t : lat, alongX ? lat : t);
+      // A CONTINUOUS run, not a count: a plate legitimately clips a chamfered
+      // corner for a few centimetres, and rejecting that would refuse most
+      // chords for doing their job.
+      run = inside ? run + len / 120 : 0;
+      if (run > 0.05) return true;
+    }
+  }
+  return false;
 }
 
 function connectL(

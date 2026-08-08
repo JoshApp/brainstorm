@@ -18,7 +18,7 @@ import { generatePolyFloor } from '../src/level/poly-floor';
 import { planPortals, wallCutsFor } from '../src/level/portals';
 import { gateAdmits } from '../src/level/nav-grid';
 import { WIDEST_ROAMER } from '../src/level/anchors';
-import { planWallRing } from '../src/level/poly-shell-plan';
+import { planWallRing, type Ring } from '../src/level/poly-shell-plan';
 import { WALL_T } from '../src/level/poly-room-shell';
 
 let passed = 0, failed = 0;
@@ -146,7 +146,63 @@ test('A FRAME IN AN AXIS-ALIGNED WALL IS SQUARE TO THE WORLD', () => {
     }
   }
   assert.ok(axisAligned > 50, `only ${axisAligned} axis-aligned portals — not measuring much`);
-  assert.ok(offAxis > 0, 'no chamfered doorway in the sample — the rotation freedom is untested');
+  // NOT `assert.ok(offAxis > 0)`. That guard stood here to stop the test passing
+  // vacuously, and it was the right instinct aimed at the wrong thing: it made a
+  // GENERATOR outcome load-bearing for a GEOMETRY check. Freeing corridor
+  // placement let the router pick flat runs over chamfers, doorways on diagonal
+  // edges went to zero, and a test of `rotY` went red over a change that never
+  // touched `rotY`. The branch is pinned directly below instead.
+  void offAxis;
+});
+
+test('A FRAME IN A CHAMFERED WALL TURNS TO MATCH IT', () => {
+  // The counterpart to the check above, and the reason portals carry a rotY at
+  // all. A sign error here mounts the archway ACROSS its own doorway — invisible
+  // to any reachability test and extremely visible on a phone.
+  //
+  // Synthetic, deliberately. The generator produced diagonal doorways when this
+  // was written and stopped producing them the same afternoon; a branch that
+  // only runs when procgen feels like it is a branch that is not tested. Build
+  // the shape that forces it.
+  //
+  // A square room with one corner cut, and a corridor straddling only the cut —
+  // the neighbouring walls end before the corridor reaches them, so the chamfer
+  // is the one edge it can come through.
+  const room = (cut: number): Ring => [[-6, -6], [6, -6], [6, 6 - cut], [6 - cut, 6], [-6, 6]];
+  for (const cut of [4, 6, 2.5]) {
+    const poly = room(cut);
+    // Straddling the chamfer's midpoint, nudged outward so the corridor leaves
+    // the room rather than sitting inside it. The neighbouring walls stop short
+    // of the rect on both sides, so the cut edge is the only one it can clip —
+    // asserted below by demanding exactly one doorway.
+    const at = 6 - cut / 2 + 0.6;   // the chamfer's midpoint is at x = z = 6 - cut/2
+    const portals = planPortals('probe', poly, [{ id: 'cor', rect: { x: at, z: at, w: 3, d: 3 } }]);
+    assert.equal(portals.length, 1, `a ${cut}m chamfer got ${portals.length} doorways, not 1`);
+    const p = portals[0];
+
+    // The edge runs (6, 6-cut) → (6-cut, 6): direction (-1, 1)/√2 whatever the
+    // cut, so its outward normal is (1, 1)/√2 — 45°, and the same for all three
+    // sizes. Checked as a value rather than "not axis aligned", because a normal
+    // that is merely off-axis can still be off by a sign.
+    assert.ok(Math.abs(p.normal[0] - Math.SQRT1_2) < 1e-6 && Math.abs(p.normal[1] - Math.SQRT1_2) < 1e-6,
+      `a ${cut}m chamfer got normal (${p.normal.map((v) => v.toFixed(3)).join(', ')}), expected the outward diagonal`);
+
+    // And rotY must AGREE with that normal, not merely be non-zero. Reconstruct
+    // the facing from the angle and compare: this is the assertion a sign error
+    // fails, and it is stated in terms of the frame's own direction rather than
+    // by copying `atan2(nrm[0], nrm[1])` out of portals.ts — a test that repeats
+    // the implementation's arithmetic passes for whatever the implementation
+    // does, including the wrong thing.
+    const faced: [number, number] = [Math.sin(p.rotY), Math.cos(p.rotY)];
+    assert.ok(Math.hypot(faced[0] - p.normal[0], faced[1] - p.normal[1]) < 1e-6,
+      `a ${cut}m chamfer's frame faces (${faced.map((v) => v.toFixed(3)).join(', ')}) `
+      + `but its wall faces (${p.normal.map((v) => v.toFixed(3)).join(', ')}) — the frame is across the doorway`);
+
+    // Not a quarter turn — the whole point of the freedom.
+    const q = p.rotY / (Math.PI / 2);
+    assert.ok(Math.abs(q - Math.round(q)) > 1e-3,
+      `a ${cut}m chamfer produced an axis-aligned frame at ${(p.rotY * 180 / Math.PI).toFixed(1)}°`);
+  }
 });
 
 // NOT TESTED HERE, AND THE REASON IS WORTH KEEPING.

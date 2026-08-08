@@ -20,7 +20,7 @@
 //   npm test -- floor-graph
 
 import assert from 'node:assert/strict';
-import { generatePolyFloor } from '../src/level/poly-floor';
+import { generatePolyFloor, MIN_SPINE } from '../src/level/poly-floor';
 import {
   reachableFrom, pathBetween, mainline, leaves, degree, cycleCount, faults,
   type FloorGraph,
@@ -42,12 +42,29 @@ const FLOORS = SEEDS.flatMap((seed) => DEPTHS.map((depth) => ({
 const graphs = () => FLOORS.map((f) => ({ ...f, g: f.spec.graph as FloorGraph }));
 
 test('EVERY PROCGEN FLOOR CARRIES ONE', () => {
+  // The floor is MIN_SPINE, imported rather than restated. This assertion read
+  // `>= 4` for as long as 4 happened to be the smallest floor the sample threw,
+  // and freeing corridor placement immediately produced a legitimate 3 — a
+  // depth-1 floor of entrance → combat → finish, both links routed, no guesses,
+  // nothing dropped. A threshold tuned against a sample is a claim about the
+  // sample; this one is a claim about the generator.
+  const seen: number[] = [];
   for (const { seed, depth, spec } of FLOORS) {
     assert.ok(spec.graph, `d${depth}/s${seed} has no graph`);
-    assert.ok(spec.graph!.nodes.length >= 4, `d${depth}/s${seed}: ${spec.graph!.nodes.length} nodes`);
-    assert.equal(spec.graph!.nodes.length, spec.rooms.length,
+    const n = spec.graph!.nodes.length;
+    seen.push(n);
+    assert.ok(n >= MIN_SPINE,
+      `d${depth}/s${seed}: ${n} rooms, below the ${MIN_SPINE}-room spine the generator plans`);
+    assert.equal(n, spec.rooms.length,
       `d${depth}/s${seed}: the graph has a different number of rooms than the floor does`);
   }
+  // And the floor is a floor, not the ceiling. If every floor collapsed to the
+  // minimum the assertion above would still pass while the game got much worse,
+  // which is the failure mode of checking only one end of a range. Measured
+  // across 96 floors when this was written: min 3, p10 5, p50 7, max 9.
+  const median = seen.slice().sort((a, b) => a - b)[Math.floor(seen.length / 2)];
+  assert.ok(median >= 6,
+    `the median floor is ${median} rooms — floors are collapsing toward the minimum`);
 });
 
 test('THE GRAPH AGREES WITH THE STONE', () => {

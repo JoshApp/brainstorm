@@ -223,6 +223,31 @@ export function faults(g: FloorGraph): string[] {
     nonChord.set(e.from, (nonChord.get(e.from) ?? 0) + 1);
     nonChord.set(e.to, (nonChord.get(e.to) ?? 0) + 1);
   }
+  // ── A CHORD IS A SHORTCUT, OR IT IS NOT A CHORD ───────────────────────────
+  //
+  // The loop pass adds one edge that closes a cycle. Its whole meaning is "a
+  // way back that is not the way you came" — which requires the floor to work
+  // WITHOUT it. When a spine link fails to build, the chord silently becomes
+  // the only route to everything behind it, and every rule downstream that
+  // strips chords before reasoning is then reasoning about a broken floor:
+  // the mainline is computed on spine edges alone, and so is the descent's
+  // monotonic elevation, so a detour ends up deeper than the stairs.
+  //
+  // Surfaced the moment placement was freed — links that used to be trivially
+  // routable stopped being, and `connect` returns null rather than guessing.
+  // Reachability alone cannot see it, because the chord makes it reachable.
+  if (g.edges.some((e) => e.kind === 'chord')) {
+    const spineOnly: FloorGraph = { ...g, edges: g.edges.filter((e) => e.kind !== 'chord') };
+    if (g.entrance) {
+      const without = reachableFrom(spineOnly, g.entrance);
+      const stranded = g.nodes.filter((n) => !without.has(n.id));
+      if (stranded.length) {
+        out.push(`the loop is carrying ${stranded.length} room(s) rather than shortcutting them `
+          + `(${stranded.map((n) => n.id).join(', ')}) — a chord that cannot be removed is a spine`);
+      }
+    }
+  }
+
   for (const e of g.edges) {
     if (e.kind !== 'spur') continue;
     const solid = nonChord.get(e.to) ?? 0;
