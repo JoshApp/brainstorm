@@ -125,9 +125,9 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   // the wall above a gate is a median 2.6m tall under a 4.8m ceiling, which is
   // the case that made Josh call the old fill "a dumb block".
   'archway-tall':   { label: 'Archway under a median 4.8m ceiling — the spandrel case', spec: archway({ width: 2.4, ceilingHeight: 4.8, wallDepth: 0.25 }) },
-  'doorframe-tall': { label: 'Doorframe under a median 4.8m ceiling — relieving arch + coursing', spec: doorframe({ width: 1.7, ceilingHeight: 4.8, wallDepth: 0.25 }) },
+  'doorframe-tall': { label: 'Postern under a median 4.8m ceiling — round arch + coursed spandrel', spec: doorframe({ width: 1.7, ceilingHeight: 4.8, wallDepth: 0.25 }) },
   'archway-narrow': { label: 'Archway at its minimum width (1.3m)', spec: archway({ width: 1.3, ceilingHeight: 3.0 }) },
-  'doorframe':      { label: 'Doorframe — the slim threshold, for narrow openings', spec: doorframe({ width: 1.1, ceilingHeight: 3.2 }) },
+  'doorframe':      { label: 'Postern — the narrow stone gate, round arch (cf. the wide segmental one)', spec: doorframe({ width: 1.1, ceilingHeight: 3.2 }) },
 };
 
 // Pre-composed subjects — hand + object compositions that AREN'T weapons
