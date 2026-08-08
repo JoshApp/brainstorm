@@ -125,8 +125,12 @@ export function formatBuffEffect(buffId: string, duration: number): string {
   }
   if (spec.tickInterval && spec.tickEffect) {
     const e = spec.tickEffect;
-    if (e.type === 'heal') parts.push(`+${e.amount} HP every ${spec.tickInterval}s`);
-    if (e.type === 'damage') parts.push(`-${e.amount} HP every ${spec.tickInterval}s`);
+    // One decimal. The DoT intervals are DERIVED from the health pool now
+    // (config.ts DOT_BUDGET), so they are no longer round numbers — printing
+    // `spec.tickInterval` raw put "-1 HP every 1.28s" on an item card.
+    const every = `${(Math.round(spec.tickInterval * 10) / 10).toFixed(1)}s`;
+    if (e.type === 'heal') parts.push(`+${e.amount} HP every ${every}`);
+    if (e.type === 'damage') parts.push(`-${e.amount} HP every ${every}`);
   }
   const effectStr = parts.length ? ` (${parts.join(', ')})` : '';
   return `${name}${effectStr} for ${duration}s`;

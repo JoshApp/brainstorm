@@ -1,4 +1,22 @@
 import type { BuffSpec } from '../ecs/types';
+import { CONFIG } from '../config';
+
+/**
+ * The tick interval that spends `share` of the starting health bar per second
+ * once a status is at full stacks.
+ *
+ * Every DoT below used to state its interval directly, tuned by hand against a
+ * pool that has since changed — so bleed's "capped so it doesn't melt you" was
+ * draining the entire bar in one second. Stating the SHARE and deriving the
+ * interval means the pool can move again and the statuses keep the lethality
+ * they were designed with (config.ts DOT_BUDGET has the full account).
+ *
+ *   interval = (stacks × damage) ÷ (share × pool)
+ */
+function tickFor(share: number, damagePerTick: number, maxStacks: number): number {
+  const perSecond = share * CONFIG.PLAYER_HP_MAX;
+  return Math.round(((maxStacks * damagePerTick) / perSecond) * 100) / 100;
+}
 
 // Buff library. Each entry is data — composed of effect primitives, no custom
 // code. Future buffs (poison, burning, stunned, hasted, etc.) are just more
@@ -93,29 +111,31 @@ export const BUFFS: Record<string, BuffSpec> = {
 
   // BURN — bursty: does NOT stack (re-applying just refreshes). Physical.
   // "Light it and back off." A blade that remembers heat. Ticked every
-  // 0.4s it shaved ~6 of the player's 8 HP off a single proc — slowed to
-  // 0.6s so a burn stings without being a near-kill on its own.
+  // 0.4s it shaved ~6 of the player's 8 HP off a single proc — slowed so a
+  // burn stings without being a near-kill on its own. That "slowed" is now
+  // DOT_BUDGET.BURN, and the interval follows the pool instead of outliving it.
   burn: {
     harmful: true,
     id: 'burn',
     displayName: 'BURN',
     color: 0xff6020,
-    tickInterval: 0.6,
+    tickInterval: tickFor(CONFIG.DOT_BUDGET.BURN, 1, 1),
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
     vfx: { color: 0xff6824, style: 'rise' },
   },
 
   // BLEED — builds with each hit: STACKS (per strike), physical. Rewards
-  // fast weapons — daggers shred. At 5 stacks / 0.5s it hit 10 dmg/sec,
-  // more than the player's whole 8-HP bar in a second. Slowed to 0.8s and
-  // capped at 4 stacks (peak ~5/sec) so it still ramps under pressure but
-  // doesn't melt you — mirrors the poison attrition tune.
+  // fast weapons — daggers shred. At 5 stacks / 0.5s it hit 10 dmg/sec, more
+  // than the player's whole 8-HP bar in a second; it was capped at 4 stacks and
+  // slowed so it still ramps under pressure without melting you. Then the pool
+  // became 5 and 0.8s WAS the whole bar in a second again — the exact failure
+  // that tune existed to prevent, reintroduced by a constant in another file.
   bleed: {
     harmful: true,
     id: 'bleed',
     displayName: 'BLEED',
     color: 0xcc1418,
-    tickInterval: 0.8,
+    tickInterval: tickFor(CONFIG.DOT_BUDGET.BLEED, 1, 4),
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
     maxStacks: 4,
     vfx: { color: 0xcc1418, style: 'drip' },
@@ -129,11 +149,12 @@ export const BUFFS: Record<string, BuffSpec> = {
     id: 'poison',
     displayName: 'POISON',
     color: 0x66cc33,
-    // Attrition = SLOW drip, not a shredder. ~1 tick/sec, capped lower than
-    // burn/bleed's burst so a spider swarm wears you down instead of melting
-    // you (it bypasses physical armour, so the per-second rate has to be
-    // gentler than the physical DoTs to stay fair).
-    tickInterval: 1.0,
+    // Attrition = SLOW drip, not a shredder. Capped lower than bleed's burst so
+    // a spider swarm wears you down instead of melting you — it bypasses
+    // physical armour, so its per-second rate has to be gentler than the
+    // physical DoTs to stay fair. On the 5-point pool the old flat 1.0s was
+    // taking 80% of your bar per second THROUGH armour, which is not attrition.
+    tickInterval: tickFor(CONFIG.DOT_BUDGET.POISON, 1, 4),
     tickEffect: { type: 'damage', amount: 1, damageType: 'magic' },
     maxStacks: 4,
     vfx: { color: 0x66cc33, style: 'drip' },

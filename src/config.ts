@@ -6,6 +6,13 @@
 // Tweaking it auto-updates the costs.
 const STAMINA_MAX = 100;
 
+// The health pool, hoisted for the same reason STAMINA_MAX is: several numbers
+// below are only meaningful as FRACTIONS of it — what a sip restores, how fast a
+// status may drain you, what an altar charges in blood. Written as literals they
+// silently stop meaning what they meant the moment this changes, which is
+// exactly what happened when it went from 8 to 5 (see DOT_BUDGET).
+const PLAYER_HP_MAX = 5;
+
 export const CONFIG = {
   // === PALETTE ===
   // Restrained, grimdark. No saturated colors.
@@ -964,7 +971,7 @@ export const CONFIG = {
      */
     MAX_CLEAR_HEIGHT_M: 0.75,
   },
-  PLAYER_HP_MAX: 5,
+  PLAYER_HP_MAX,
   /**
    * WHAT BLOOD COSTS — as a FRACTION of your max pool, never as a flat number.
    *
@@ -983,6 +990,45 @@ export const CONFIG = {
     TITHE: 0.2,
   },
 
+  /**
+   * HOW FAST A STATUS MAY KILL YOU — as a share of the STARTING bar per second,
+   * at full stacks.
+   *
+   * Same disease as BLOOD_PRICE, different cure, and the difference matters.
+   *
+   * The disease: `content/buffs.ts` tuned each DoT by picking a tick interval
+   * against an 8-point pool, and every comment there still argues about eighths.
+   * The pool became 5 and nothing was re-derived, so bleed went from draining
+   * 63% of your bar per second to draining ALL of it — the comment above it
+   * literally reads "so it still ramps under pressure but doesn't melt you."
+   * Poison went from half your bar per second to 80%, and it is magic-typed, so
+   * armour never touched it.
+   *
+   * The cure is NOT the blood price's cure. A price you choose to pay should
+   * follow your live pool — that is what makes it a price. Damage coming AT you
+   * must not: if a DoT scaled with your max HP, every point of HP you bought
+   * would be cancelled the moment anything bled you, and the stat would be a
+   * lie. So these are a share of the BASE pool, resolved once, and a player who
+   * invests in HP genuinely survives poison longer.
+   *
+   * What the numbers preserve is the original DESIGN INTENT, restated as the
+   * thing that was actually meant: SECONDS TO KILL AN UNARMOURED PLAYER. Each
+   * share below is the one the old interval produced against the 8-point pool,
+   * so every DoT kills in the same time it was tuned to and nothing about how
+   * they feel relative to each other moves.
+   *
+   * `content/buffs.ts` derives the tick interval from this — change the pool and
+   * the intervals follow, which is the whole point.
+   */
+  DOT_BUDGET: {
+    /** Bursty, physical, stacks per strike. Fast weapons shred. ~1.6s to kill. */
+    BLEED: 0.625,
+    /** Attrition, magic-typed so armour does not answer it. Gentler on purpose. */
+    POISON: 0.5,
+    /** A single sting that does not stack — light it and back off. */
+    BURN: 0.208,
+  },
+
   // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===
   // The primary sustain: a fixed pool of CHARGES that refills at the bonfire.
   // Turns healing from scattered-potion litter into a managed resource, so every
@@ -990,7 +1036,17 @@ export const CONFIG = {
   // capacity growth comes later); shards grow capacity mid-run, draughts top up.
   FLASK: {
     START_CAPACITY: 3,     // charges at run start + after a full bonfire refill
-    HEAL_PER_CHARGE: 3,    // HP restored per charge (of PLAYER_HP_MAX 8 → ~⅜ bar; the primary heal)
+    /**
+     * HP restored per charge — the SAME drift as the DoTs, in the other
+     * direction. Written as 3 against an 8-point pool ("~⅜ bar", as the comment
+     * here said for months); on the 5-point pool that is 60% of your health in
+     * one sip. So the statuses got 60% harsher and the answer to them got 60%
+     * stronger, from one edit to PLAYER_HP_MAX that touched neither file.
+     *
+     * Derived from the fraction that was meant, so a future change to the pool
+     * carries it. Kept at least 1 — a sip is never nothing.
+     */
+    HEAL_PER_CHARGE: Math.max(1, Math.round(0.375 * PLAYER_HP_MAX)),
     // The DRINK is a channel, not an instant tap (player/flask-drink.ts): raise,
     // sip, lower. Committing to it under pressure is the whole Souls tension.
     DRINK_S: 1.25,         // full raise→sip→lower duration (player clock)
