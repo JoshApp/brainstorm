@@ -149,6 +149,34 @@ The tell that this had gone wrong was not a playtest — it was reading the comm
 next to the constant and noticing it disagreed with the constant next to it.
 That is a ten-second check nobody was running.
 
+### The same constant, reused for the opposite question
+
+`corridor-types.WIDEST_ROAMER_RADIUS` is 0.62 — deliberately padded above the
+roster's real widest roamer (the stoneguard, 0.55). That padding is correct for
+the question it was written for: *how wide must a corridor be so everything
+fits.* Erring generous there costs a few centimetres of stone; erring tight
+wedges a mob in a doorway.
+
+Then the "crawl" — a doorway sized to pass the player but refuse the big
+things — derived its maximum width from the same constant, because it was the
+obvious one to reach for and it was even named correctly. But a crawl asks the
+OPPOSITE question: *how narrow must this be so something is kept out.* Padding
+is the safe error in one direction and the fatal error in the other. The
+resulting band, 0.85–1.25m, excluded **nobody** — all 23 mobs walked through
+it — while looking entirely reasonable in the source.
+
+**A constant carries the direction its safety margin was chosen for.** Before
+reusing one, ask which way its error falls, and whether that is still the safe
+way in the new question. When it isn't, derive a fresh one from the data
+(`WIDEST_ROAMER` is now read off `ENEMIES`), and note in both places why there
+are two.
+
+And the test that catches it is not the one asserting the numbers — those were
+all self-consistent. It is the one asserting the **property**: at every width
+across the band, the set of mobs that fit must be strictly smaller than the set
+an ordinary door fits. Written that way, the bug fails immediately and the
+message names the mob that walked through.
+
 ---
 
 ## 5. Simulation finds degeneracy, not fun
@@ -211,5 +239,7 @@ that request lets the work check itself.
 - Every audit tool calls the real function; every unit test feeds the caller's real values.
 - Check final-state rules against the final state.
 - Costs in another system's units are fractions.
+- A constant carries the direction its safety margin was chosen for; check that
+  direction before reusing it, and assert the property, not the numbers.
 - Simulate to find outliers, then go and feel the ones that survive.
 - Brief a role and a ceiling, not a vibe.

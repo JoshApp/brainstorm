@@ -22,9 +22,20 @@ Measured over 36 floors:
 | how deep, median / p90 / max | **0.73m / 0.83m / 3.60m** |
 | of those, ceiling heights differing by >0.15m | **442 (92%)** |
 
-That last row is the bug Josh keeps photographing: a 3.0m passage reaching 0.73m
-into a 5.2m hall stands its ceiling slab and its side walls **inside the room**,
-so from indoors you are looking at the outside of a tunnel.
+**Read that table carefully — it measures the RECT, and the rect is bookkeeping.**
+When first written this section said "480 penetrations, 92% with a ceiling
+mismatch — that's the leak," which was wrong in the specific way
+DESIGN-METHOD.md warns about: *measure the thing that ships, not a proxy.* Run
+the same check on the plate that is actually BUILT (`plateExtentFor`, which
+clips the rect back to the wall) and it is **4 of 1221, 0.33%**. The repair
+passes work. What the 480 measures is how much rope the model needs to hold
+itself up, not how much of it is visible.
+
+So the case for this migration is NOT "the geometry is broken everywhere." It is
+that seven systems exist to undo one deliberate lie, they each know a piece of
+the truth, and every geometry bug this session was two of them disagreeing —
+including the 0.33% that still leaks. The photographed bug is real; the number
+that explains it is 4, not 480.
 
 ## The seven repair passes
 
@@ -108,10 +119,15 @@ interface PortalAnchor {
   at: [number, number];             // the point, ON that edge
   normal: [number, number];         // outward
   /** What this wall can AFFORD: [min, max]. Derived, not typed in — the flat
-   *  run available between corners and pilasters sets the max; the walkable
-   *  floor (corridor-types.MIN_WALKABLE_WIDTH) sets the min. An edge too short
+   *  run available between corners and pilasters sets the max; the narrowest
+   *  hole the game cuts anywhere (`CRAWL_MIN`) sets the min. An edge too short
    *  to hold the min publishes no anchor at all, which is how a room says
-   *  "not through here" without anybody special-casing it. */
+   *  "not through here" without anybody special-casing it.
+   *
+   *  Note the min is CAPABILITY, not requirement: a wall is perfectly able to
+   *  hold a hole too tight for a stoneguard, and saying so is what makes a
+   *  crawl placeable at all. Needing a link mobs can use is the LAYOUT's
+   *  requirement, and it asks for it by BAND (below). */
   width: [number, number];
   /** Likewise capped by the room's own height — an opening cannot be taller
    *  than the wall it is cut into. */
@@ -128,6 +144,45 @@ clamped into the band. Only when the bands do NOT overlap is there a decision to
 make, and then **the tighter one wins**: an opening that does not fit one of its
 sides is not an opening. With ranges that case should be rare, and it is worth
 counting rather than assuming — if it is common, the ranges are wrong.
+
+### Three bands, and one of them is a mechanic
+
+Josh: *"I love the occasional massive portal as well as a sneaky way."*
+
+The **massive portal** turned out to be a supply question with the supply
+already in hand. Across 323 polygon rooms the widest run a room can offer is
+p50 **6.6m**, p90 **11.1m**; **77%** could host a 4m opening and **54%** a 6m
+one. The shapes were never the constraint — nothing was asking them. So a gate
+being rare has to be a DECISION, and if it ever reads as rare-because-geometry
+that is a bug in the layout, not in the shapes.
+
+The **sneaky way** is not a supply question and it is not a small door. It is a
+door the big things cannot use. The player's collision radius is 0.3; the widest
+ROAMING enemy is the stoneguard at 0.55. An opening sized into that gap passes
+you and refuses what is chasing you — an escape route, a shortcut with a cost
+(you cannot fight in it), a place where only the small things follow.
+
+| band | width | job |
+|---|---|---|
+| `crawl` | 0.85 – 1.15m | who may follow you |
+| `door` | 1.35 – 3.2m | circulation; the only band the layout may hang a mainline on |
+| `gate` | 4.0 – 12.0m | a statement |
+
+All three are solved through `gateAdmits`, the same predicate the nav grid uses
+at runtime, so "the stoneguard cannot follow you in here" is computed rather
+than asserted. And the crawl is a **gradient**, which is the nice part: at 1.15m
+it refuses the stoneguard and the wraith; at 0.85m it refuses six of the roster,
+ghoul and defiler and lasher included.
+
+**The failure this already had, recorded because it looked exactly like
+success.** The first version derived the crawl's max from
+`corridor-types.WIDEST_ROAMER_RADIUS` (0.62) — a figure deliberately padded
+*above* the roster so corridors fit everything. Padding is the safe error for
+"how wide must this be so everything fits" and the WRONG error for "how narrow
+must this be so something is kept out." The resulting crawl band admitted all 23
+mobs and excluded nothing, while looking entirely plausible in the source. The
+fix is that `WIDEST_ROAMER` is now read off `ENEMIES` itself, and the test
+asserts the *exclusion* at every width across the band rather than the numbers.
 
 ### The SHAPE declares its anchors, and the generator rotates it to fit
 
@@ -375,10 +430,34 @@ foundation and hide whether the seam was ever fixed.
 
 ## Status
 
-Step 0 (this document + the measurement) is done. Nothing below it has landed
-yet. The numbers to beat, from the current generator:
+**Step 1 done** — `threshold.ts` (the seam type + solver, reproducing 99.7% of
+the shipping openings) and `anchors.ts` (rooms publish what their walls can
+afford, plus the band vocabulary above).
 
-- corridor/room penetrations: **480** (target 0)
-- of those with a ceiling mismatch: **442**
+**Step 2 in progress** — anchors are derived and measured but nothing consumes
+them yet, which is deliberate: the derivation gets checked against the shipping
+pipeline BEFORE the pipeline is rebuilt on it.
+
+What the anchors measure today, over 323 polygon rooms on 48 floors:
+
+| | |
+|---|---|
+| rooms that can host no door at all | **0** |
+| anchors per room, median | **6** |
+| widest run a room can offer, p50 / p90 | **6.6m / 11.1m** |
+| rooms that could host a `gate` (4m+) | **77%** |
+| today's doorways with a facing anchor near them | **89%** |
+| median corner clearance — covered doors vs uncovered | **+1.02m vs −0.83m** |
+
+That last row is the result the model rests on: of the doorways the walls cannot
+account for, **92% overlap a corner**. The doors the anchors miss are almost
+exactly the doors that should not be there.
+
+The numbers to beat, from the current generator:
+
+- corridor/room penetrations, RECT: **480** — bookkeeping, expected to go to 0
+  as a side effect, not the goal
+- corridor/room penetrations, BUILT PLATE: **4 / 1221 (0.33%)** — this is the
+  one that is actually visible, and the one to drive to zero
 - wall beats needing a stone-behind probe: was 60/636, currently fixed by a
-  probe that step 3 should make unnecessary
+  probe that step 6 should make unnecessary

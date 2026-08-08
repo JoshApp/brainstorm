@@ -30,6 +30,8 @@ import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import {
   deriveAnchors, facesToward, CORNER_CLEAR, CORNER_STRUCTURAL, MIN_HOSTING_EDGE,
+  MIN_DOOR_EDGE, CRAWL_MIN, CRAWL_MAX, WIDEST_ROAMER, PORTAL_BANDS,
+  whoFitsThrough, canHost, hostableBands,
 } from '../src/level/anchors';
 import { MIN_WALKABLE_WIDTH } from '../src/level/corridor-types';
 import { PILASTER } from '../src/level/poly-dressing';
@@ -116,8 +118,10 @@ test('THE WIDTH IS A RANGE, AND IT IS DERIVED', () => {
   // clamped into the overlap with the other side.
   for (const { room, anchors } of walled()) {
     for (const a of anchors) {
-      assert.equal(a.width[0], MIN_WALKABLE_WIDTH,
-        'the narrow end of the range must be the walkable floor, not a taste call');
+      assert.equal(a.width[0], CRAWL_MIN,
+        'the narrow end of the range must be the narrowest hole the game cuts '
+        + 'anywhere, not a taste call — and NOT MIN_WALKABLE_WIDTH, which is the '
+        + "layout's requirement rather than the wall's capability");
       assert.ok(a.width[1] >= a.width[0],
         `${room.id} published an empty width range [${a.width[0]}, ${a.width[1]}]`);
       assert.ok(Math.abs(a.width[1] - (a.t1 - a.t0)) < 0.01,
@@ -134,6 +138,65 @@ test('THE WIDTH IS A RANGE, AND IT IS DERIVED', () => {
     'the structural clearance has drifted from the pilaster and the wall ring');
   assert.ok(MIN_HOSTING_EDGE > 2 * CORNER_CLEAR,
     'an edge could host a door with no stone left beside it');
+  assert.ok(MIN_DOOR_EDGE > MIN_HOSTING_EDGE,
+    'a mainline door needs more wall than a crawl does, or the two are the same rule');
+});
+
+test('A CRAWL IS A DOOR THE BIG THINGS CANNOT USE', () => {
+  // Josh: "I love the occasional massive portal as well as a sneaky way."
+  //
+  // The sneaky way is a MECHANIC, not a size, and this is the assertion that
+  // says so. The first version of this band was derived from
+  // WIDEST_ROAMER_RADIUS — a figure deliberately padded ABOVE the roster so
+  // corridors fit everything — and the resulting "crawl" admitted all 23 mobs.
+  // It looked exactly like a working one. Hence: assert the exclusion, never
+  // the numbers.
+  const door = PORTAL_BANDS.find((b) => b.id === 'door')!;
+  const crawl = PORTAL_BANDS.find((b) => b.id === 'crawl')!;
+  assert.ok(CRAWL_MIN < CRAWL_MAX,
+    `the crawl band is empty (${CRAWL_MIN}..${CRAWL_MAX}) — the roster has outgrown `
+    + 'the idea and this must fail rather than become an ordinary door');
+  assert.ok(CRAWL_MAX < door.width[0], 'a crawl can be cut as wide as an ordinary door');
+
+  const fitsDoor = new Set(whoFitsThrough(door.width[0]));
+  // Sampled ACROSS the band, not just at its ends: the layout may cut anywhere
+  // inside it, and a band that only works at one width is not a band.
+  for (let w = CRAWL_MIN; w <= CRAWL_MAX + 1e-9; w += 0.05) {
+    const fits = whoFitsThrough(w);
+    assert.ok(fits.length < fitsDoor.size,
+      `a ${w.toFixed(2)}m crawl lets through everything an ordinary door does — it excludes nothing`);
+    for (const id of fits) assert.ok(fitsDoor.has(id), 'a crawl admits something a door refuses');
+    // The two named ends of the mechanic.
+    assert.ok(!fits.includes('stoneguard'),
+      `the stoneguard follows you through a ${w.toFixed(2)}m crawl`);
+  }
+  // The widest roamer is read off the ROSTER, so a new heavy mob moves the band
+  // instead of silently walking through it.
+  assert.equal(WIDEST_ROAMER, 0.55, 'the widest roamer changed — re-check the crawl band');
+  // And every ROAMER fits an ordinary door, or "door" is not circulation. Only
+  // roamers: the bosses are 0.70 and 1.20 wide and live in arenas they never
+  // leave, and sizing every doorway in the game for the marrow-sovereign would
+  // put a 2.5m hole in every wall.
+  assert.ok(whoFitsThrough(MIN_WALKABLE_WIDTH).includes('stoneguard'),
+    'the widest roamer cannot use a mainline door — the layout would deadlock');
+  assert.ok(2 * WIDEST_ROAMER + 0.06 <= MIN_WALKABLE_WIDTH,
+    'MIN_WALKABLE_WIDTH has drifted below the widest roamer');
+
+  // Both jobs are placeable on real floors, and a gate is scarce by DECISION
+  // rather than by geometry — three quarters of rooms could hold one.
+  const rooms = walled();
+  const hosts = (id: string) => rooms.filter((r) =>
+    r.anchors.some((a) => canHost(a, PORTAL_BANDS.find((b) => b.id === id)!))).length;
+  assert.equal(hosts('crawl'), rooms.length, 'some room cannot hold a crawl anywhere');
+  assert.equal(hosts('door'), rooms.length, 'some room cannot hold a door anywhere');
+  assert.ok(hosts('gate') / rooms.length > 0.5,
+    `only ${((hosts('gate') / rooms.length) * 100).toFixed(0)}% of rooms could hold a gate — `
+    + 'the massive portal would be rare because the shapes cannot, not because we chose');
+  // canHost must read BOTH ends of the range. Checking only the wide end says
+  // yes to everything, which is what it did before this test existed.
+  assert.ok(!canHost({ ...rooms[0].anchors[0], width: [6, 9] }, crawl),
+    'a wall that can only hold a 6m opening was offered a crawl');
+  assert.ok(hostableBands(rooms[0].anchors[0]).length >= 1);
 });
 
 test('THE DOORS THIS CANNOT ACCOUNT FOR ARE THE ONES IN CORNERS', () => {
