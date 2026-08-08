@@ -22,6 +22,7 @@ import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
 import { planPortals } from './portals';
 import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
+import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
 import { deriveAnchors } from './anchors';
 import { chooseLinkRoute } from './corridor-route';
 import { ceilingForLink } from './corridor-ceiling';
@@ -321,6 +322,10 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
 
   // Dead-end pockets, off a middle room. Bonus exploration, and the shapes that
   // read best small (tomb, cavern) only ever appear here.
+  //
+  // How many rooms the SPINE has, captured before pockets start joining `rooms`
+  // — the parent pick below must not be able to choose one of them.
+  const spineCount = rooms.length;
   const corridors: RoomSpec[] = [];
   // A LINK IS A LIST OF RECTS, not one. A dogleg is three, and every downstream
   // reader — wall cutting, doorway finding, the light pass — has to see all of
@@ -379,7 +384,17 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   const LOOP_POCKET = spurTypes.length;
   spurTypes.push(rand() < 0.5 ? 'quiet' : 'combat');
   for (let p = 0; p < spurTypes.length; p++) {
-    const parent = rooms[1 + Math.floor(rand() * Math.max(1, rooms.length - 2))];
+    // OFF A SPINE ROOM, NOT OFF ANOTHER POCKET.
+    //
+    // `rooms` grows as pockets land, so picking from it let a later pocket hang
+    // off an earlier one — and the moment it does, the first pocket has two ways
+    // out and is not a detour any more. That is the same failure that took
+    // cobwebs to zero (a web only hangs where there is one exit), arriving by a
+    // different route. 3 of 60 floors.
+    //
+    // Found by the floor graph on its first day, from the rule "a spur leads to
+    // a dead end" — which is one line there and was invisible in the walk.
+    const parent = rooms[1 + Math.floor(rand() * Math.max(1, spineCount - 2))];
     const pocket = shapeRoom(`poly-pocket-${p}`, spurTypes[p], depth, rand);
     const dirs: Dir[] = shuffle(['N', 'S', 'E', 'W'], rand);
     for (const dir of dirs) {
@@ -418,7 +433,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // on it. Nearest pair first, so the loop is a shortcut you would plausibly
   // take rather than a tunnel across the map.
   //
-  // A SHORTCUT, NOT A RE-ROUTE. `mainlineRooms` takes the SPINE links only (see
+  // A SHORTCUT, NOT A RE-ROUTE. The mainline takes the SPINE edges only (see
   // its call below), so a loop can never pull a room off the intended route and
   // un-gate the content the floor plan put there. The spine is still the way
   // through; the loop is the other way back.
@@ -772,11 +787,34 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // Which rooms the player MUST walk through to reach the stairs. Anything that
   // gates — a web, and whatever else wants to cost a swing later — belongs off
   // this path, never on it.
-  // THE SPINE LINKS ONLY. A chord is a shortcut, not a re-route: `mainlineRooms`
-  // is a shortest-path BFS, so handing it the loop edge would let the mainline
-  // cut the corner and silently drop the room it skipped — un-gating that room's
-  // content and pointing the descent spawn down the wrong corridor.
-  const mainline = mainlineRooms(rooms[0]?.id, last?.id, links.filter((l) => !l.chord));
+  // ── THE FLOOR, AS A GRAPH ─────────────────────────────────────────────────
+  //
+  // The walk above already decided a topology — a spine, pockets hung off it,
+  // sometimes a chord. Until now that only existed in control flow, so every
+  // question about it downstream was re-derived from rectangles. Here it becomes
+  // a thing (level/floor-graph.ts), and rides on the spec so the audits and the
+  // placement rules can ask it directly.
+  //
+  // Nothing about the built floor changes. That is the point of doing it as a
+  // refactor: an extraction with no behaviour delta can be PROVED equivalent
+  // against the shipping pipeline, where a new generator could only be argued
+  // for. Constraints and reroll come next, on this seam.
+  const graph: FloorGraph = {
+    nodes: rooms.map((r, i) => ({ id: r.id, type: r.type, index: i })),
+    edges: links.map((l, i): GraphEdge => ({
+      id: l.ids[0] ?? `edge-${i}`,
+      from: l.from,
+      to: l.to,
+      kind: l.chord ? 'chord' : l.spur ? 'spur' : 'spine',
+    })),
+    entrance: rooms[0]?.id,
+    exit: last?.id,
+  };
+  // THE SPINE EDGES ONLY. A chord is a shortcut, not a re-route: the mainline is
+  // a shortest path, so leaving the loop edge in would let it cut the corner and
+  // silently drop the room it skipped — un-gating that room's content and
+  // pointing the descent spawn down the wrong corridor.
+  const mainline = graphMainline({ ...graph, edges: graph.edges.filter((e) => e.kind !== 'chord') });
   // WHICH WAY THE PLAYER IS LOOKING WHEN THEY ARRIVE.
   //
   // Josh: *"when spawning down floors sometimes the player faces a wrong
@@ -887,6 +925,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     displayName: undefined,
     composerManagedFires: true,
     startPos,
+    graph,
     rooms: rooms.map((r) => {
       const m = mods.byRoom.get(r.id);
       return {
@@ -1933,38 +1972,6 @@ function spawnYawToward(
   return Math.atan2(-(pick.mid[0] - at.x), -(pick.mid[1] - at.z));
 }
 
-function mainlineRooms(
-  fromId: string | undefined,
-  toId: string | undefined,
-  links: ReadonlyArray<{ from: string; to: string }>,
-): Set<string> {
-  const all = new Set<string>();
-  for (const l of links) { all.add(l.from); all.add(l.to); }
-  if (!fromId || !toId) return all;
-
-  const adj = new Map<string, string[]>();
-  const link = (a: string, b: string) => {
-    const list = adj.get(a); if (list) list.push(b); else adj.set(a, [b]);
-  };
-  for (const l of links) { link(l.from, l.to); link(l.to, l.from); }
-
-  const parent = new Map<string, string | null>([[fromId, null]]);
-  const queue = [fromId];
-  for (let i = 0; i < queue.length; i++) {
-    const cur = queue[i];
-    if (cur === toId) break;
-    for (const next of adj.get(cur) ?? []) {
-      if (parent.has(next)) continue;
-      parent.set(next, cur);
-      queue.push(next);
-    }
-  }
-  if (!parent.has(toId)) return all;
-
-  const path = new Set<string>();
-  for (let at: string | null | undefined = toId; at; at = parent.get(at)) path.add(at);
-  return path;
-}
 
 // ── seeded rng ───────────────────────────────────────────────────────────────
 

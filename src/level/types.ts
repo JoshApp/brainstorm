@@ -7,6 +7,7 @@
 
 import type { FittingKind, Edge } from './opening';
 import type { CorridorTypeId } from './corridor-types';
+import type { FloorGraph } from './floor-graph';
 
 export type Vec2 = { x: number; z: number };
 
@@ -790,6 +791,16 @@ export type LevelSpec = {
   composerManagedFires?: boolean;
   /** Player spawn — position + initial yaw (radians). */
   startPos: { x: number; z: number; yaw: number };
+  /**
+   * The floor's TOPOLOGY: rooms as nodes, links as edges (level/floor-graph.ts).
+   *
+   * Present on procgen floors, absent on hand-authored ones. Every question of
+   * the form "must the player pass through here", "is this a dead end", "does
+   * this floor have a loop" is a question about this and not about geometry —
+   * and answering them from rectangles is how a rule about the MAINLINE ends up
+   * counting doors instead, twice.
+   */
+  graph?: FloorGraph;
   /**
    * 1-based floor depth. Feeds the difficulty-scaling pipeline
    * (src/content/modifiers.ts) which multiplies mob HP / damage /
