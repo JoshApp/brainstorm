@@ -1021,12 +1021,44 @@ export const CONFIG = {
    * the intervals follow, which is the whole point.
    */
   DOT_BUDGET: {
-    /** Bursty, physical, stacks per strike. Fast weapons shred. ~1.6s to kill. */
-    BLEED: 0.625,
-    /** Attrition, magic-typed so armour does not answer it. Gentler on purpose. */
-    POISON: 0.5,
-    /** A single sting that does not stack — light it and back off. */
-    BURN: 0.208,
+    /**
+     * The hard ceiling on a SINGLE tick, as a share of the bar.
+     *
+     * The rate ceiling below is not enough on its own, and this is the part that
+     * actually made a rat lethal. Stacks multiply the tick (`ecs/buffs.ts`:
+     * `amount × stacks`), so at the old cap of 4 stacks one poison tick landed
+     * 4 damage on a 5-point bar — 80% of your health between two frames, with no
+     * warning and nothing to react to. Slowing the interval does not touch that;
+     * it just spaces out the near-kills.
+     *
+     * So the stack cap is DERIVED from this rather than picked: a status may
+     * stack only as far as one tick stays under this share.
+     */
+    MAX_TICK_SHARE: 0.4,
+
+    /**
+     * Per status: `share` is the portion of the bar it drains per second at full
+     * stacks, `maxStacks` how far it builds. `content/buffs.ts` derives both the
+     * tick interval and the stack cap from these.
+     *
+     * These are much gentler than the values they replace, and deliberately
+     * gentler than the ones the game was ORIGINALLY tuned with. Restoring the
+     * old intent got bleed back to emptying a full bar in 1.6 seconds, which was
+     * the design all along and is still wrong: a rat lands one bite and you are
+     * most of the way dead with no counterplay. A damage-over-time effect is
+     * PRESSURE — it should make you back off, drink, or finish the fight faster.
+     * It should not be the thing that kills you.
+     *
+     * Seconds-to-kill from full at CAP (which is itself rare): bleed 5.0s,
+     * poison 6.3s, burn 10.0s. A single-stack proc over its usual 2.5–3s
+     * duration costs 1 HP — a fifth of the bar, felt but survivable.
+     */
+    /** Bursty, physical, builds per strike. Fast weapons still shred. */
+    BLEED: { share: 0.20, maxStacks: 2 },
+    /** Attrition, magic-typed so armour does not answer it — gentlest rate. */
+    POISON: { share: 0.16, maxStacks: 2 },
+    /** A single sting that does not stack. Light it and back off. */
+    BURN: { share: 0.10, maxStacks: 1 },
   },
 
   // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===

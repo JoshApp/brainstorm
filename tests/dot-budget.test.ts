@@ -1,7 +1,7 @@
-// A STATUS EFFECT'S LETHALITY IS MEASURED IN SECONDS, NOT IN HP.
+// A STATUS EFFECT IS PRESSURE, NOT A DEATH SENTENCE.
 //
-// Every damage-over-time in the game was tuned by hand-picking a tick interval
-// against an 8-point health pool. The pool became 5. Nothing re-derived, and the
+// Every damage-over-time was tuned by hand-picking a tick interval against an
+// 8-point health pool. The pool became 5, nothing was re-derived, and the
 // comments in content/buffs.ts still argued about eighths for months:
 //
 //   bleed   0.8s × 4 stacks  →  5 HP/s  →  100% of the bar per second
@@ -9,21 +9,29 @@
 //   flask   3 HP per sip     →           →   60% of the bar in one sip
 //
 // So the statuses got 60% harsher and the answer to them got 60% stronger, from
-// a single edit that touched neither file. The comment directly above bleed read
-// "so it still ramps under pressure but doesn't melt you" while it melted you.
+// one edit that touched neither file. The comment directly above bleed read "so
+// it still ramps under pressure but doesn't melt you" while it melted you.
 //
-// This is docs/DESIGN-METHOD.md's "a cost denominated in another system's units
-// is a FRACTION, not a number" — with one refinement this suite exists to
-// protect. The blood altar's fix was to follow the player's LIVE pool, because a
-// price you choose to pay should scale with what you have. Damage coming AT you
-// must NOT: a DoT that scaled with max HP would cancel every point of HP a
-// player ever buys, and the stat would be a lie. So these follow the BASE pool,
-// resolved once, and investing in health genuinely buys you seconds.
+// TWO SEPARATE RULES, because fixing only the first one is not enough:
 //
-// The load-bearing assertion here is the last one. The first three would all
-// pass again on a future edit that hard-codes an interval that happens to be
-// right today; only "the interval is DERIVED" catches the bug that actually
-// happened, which was a literal outliving its reason.
+//   THE RATE. How fast a status drains you at full stacks. This is the drift
+//   above, and the cure is docs/DESIGN-METHOD.md's "a cost denominated in
+//   another system's units is a FRACTION" — with one refinement. The blood
+//   altar's fix was to follow the player's LIVE pool, because a price you choose
+//   to pay should scale with what you have. Damage coming AT you must not, or
+//   every point of max HP a player buys is cancelled the moment anything bleeds
+//   them. So these follow the BASE pool, resolved once.
+//
+//   THE SPIKE. `ecs/buffs.ts` multiplies the tick by stacks, so at the old cap
+//   of 4 ONE poison tick was 4 damage on a 5-point bar — 80% of your health
+//   between two frames, nothing to react to. A rate ceiling cannot see this: it
+//   is satisfied by spacing the near-kills further apart. The stack cap is
+//   derived from MAX_TICK_SHARE instead of picked.
+//
+// The numbers are deliberately gentler than the ones the game was ORIGINALLY
+// tuned with. Restoring the old intent got bleed back to emptying a full bar in
+// 1.6s, which was the design all along and is still wrong — a rat lands one bite
+// and you are most of the way dead with no counterplay.
 //
 //   npm test -- dot-budget
 
@@ -40,10 +48,15 @@ function test(name: string, fn: () => void) {
 
 /** The three damage-over-time statuses and the budget each is meant to spend. */
 const DOTS: ReadonlyArray<{ id: string; share: number }> = [
-  { id: 'bleed', share: CONFIG.DOT_BUDGET.BLEED },
-  { id: 'poison', share: CONFIG.DOT_BUDGET.POISON },
-  { id: 'burn', share: CONFIG.DOT_BUDGET.BURN },
+  { id: 'bleed', share: CONFIG.DOT_BUDGET.BLEED.share },
+  { id: 'poison', share: CONFIG.DOT_BUDGET.POISON.share },
+  { id: 'burn', share: CONFIG.DOT_BUDGET.BURN.share },
 ];
+
+/** Damage from ONE tick at full stacks — `ecs/buffs.ts` multiplies by stacks. */
+function tickAtCap(b: BuffSpec): number {
+  return (b.maxStacks ?? 1) * ((b.tickEffect as { amount?: number } | undefined)?.amount ?? 0);
+}
 
 /** HP per second at full stacks — read off the shipped spec, never re-inlined. */
 function dpsAtCap(b: BuffSpec): number {
@@ -75,12 +88,50 @@ test('NO STATUS SPENDS MORE OF THE BAR THAN ITS BUDGET', () => {
   }
 });
 
-test('AND NONE OF THEM KILLS A FULL-HEALTH PLAYER IN UNDER A SECOND AND A HALF', () => {
-  // The player-facing statement of the same rule, and the one a designer would
-  // actually recognise. Bleed at cap emptied a full bar in 1.0s; the slowest a
-  // status may be allowed to kill from full is a real design floor because
-  // below it there is no time to react, drink, or disengage.
-  const FLOOR_S = 1.5;
+test('NO SINGLE TICK IS MOST OF YOUR HEALTH', () => {
+  // THE ONE THAT MADE A RAT LETHAL, and the one a rate ceiling cannot express.
+  //
+  // Stacks multiply the tick, so at the old cap of 4 a single poison tick was 4
+  // damage on a 5-point bar: 80% of your health between two frames, no warning,
+  // nothing to react to. Slowing the interval does not touch a spike like that —
+  // it only spaces the near-kills further apart. The stack cap is derived from
+  // MAX_TICK_SHARE for exactly this reason; this asserts the derivation held.
+  for (const { id } of DOTS) {
+    const share = tickAtCap(BUFFS[id]) / CONFIG.PLAYER_HP_MAX;
+    assert.ok(share <= CONFIG.DOT_BUDGET.MAX_TICK_SHARE + 0.001,
+      `one ${id} tick at full stacks is ${(share * 100).toFixed(0)}% of the bar, `
+      + `over the ${(CONFIG.DOT_BUDGET.MAX_TICK_SHARE * 100).toFixed(0)}% ceiling`);
+  }
+});
+
+test('AND ONE PROC FROM ONE BITE IS A FIFTH OF THE BAR, NOT MOST OF IT', () => {
+  // What the player actually meets. Enemies and affixes apply these for 2.5-4s
+  // at a single stack (content/enemies.ts, content/affixes.ts), so the honest
+  // question is not the rate at cap — it is what ONE rat bite costs. It used to
+  // be 2-3 HP of a 5-point bar off a chance proc, which is how a trash mob
+  // became a lethal threat without ever hitting you twice.
+  const DURATION_S = 3;        // typical onHit duration across the content
+  for (const { id } of DOTS) {
+    const b = BUFFS[id];
+    const amount = (b.tickEffect as { amount?: number }).amount ?? 0;
+    const ticks = Math.floor(DURATION_S / (b.tickInterval ?? Infinity));
+    const share = (ticks * amount) / CONFIG.PLAYER_HP_MAX;
+    assert.ok(share <= 0.25,
+      `a single-stack ${id} proc over ${DURATION_S}s costs ${(share * 100).toFixed(0)}% of the bar`);
+    // And it must still DO something — a status that expires before it ticks is
+    // a proc the player never sees and an enemy design that quietly does nothing.
+    assert.ok(ticks >= 1, `a single-stack ${id} proc over ${DURATION_S}s never ticks at all`);
+  }
+});
+
+test('AND NONE OF THEM KILLS A FULL-HEALTH PLAYER IN UNDER FIVE SECONDS', () => {
+  // The player-facing statement of the rate rule. Bleed at cap emptied a full
+  // bar in 1.0s, and restoring its ORIGINAL tuning only got that to 1.6s —
+  // which was the design all along and still too fast to be anything but a
+  // death sentence. A DoT is pressure: it should make you back off, drink, or
+  // finish the fight faster. Five seconds is the floor at which those are
+  // actually choices.
+  const FLOOR_S = 5;
   for (const { id } of DOTS) {
     const seconds = CONFIG.PLAYER_HP_MAX / dpsAtCap(BUFFS[id]);
     assert.ok(seconds >= FLOOR_S,
@@ -108,8 +159,7 @@ test('THE INTERVALS ARE DERIVED FROM THE POOL, NOT WRITTEN DOWN', () => {
   // until someone changes PLAYER_HP_MAX, which is the moment this test is for.
   for (const { id, share } of DOTS) {
     const b = BUFFS[id];
-    const amount = (b.tickEffect as { amount?: number }).amount ?? 0;
-    const expected = (b.maxStacks ?? 1) * amount;
+    const expected = tickAtCap(b);
     const actual = (b.tickInterval ?? 0) * share * CONFIG.PLAYER_HP_MAX;
     assert.ok(Math.abs(actual - expected) < 0.05,
       `${id}: interval ${b.tickInterval}s does not follow from DOT_BUDGET — `

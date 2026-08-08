@@ -2,20 +2,26 @@ import type { BuffSpec } from '../ecs/types';
 import { CONFIG } from '../config';
 
 /**
- * The tick interval that spends `share` of the starting health bar per second
- * once a status is at full stacks.
+ * Turn a status's BUDGET into the two numbers the runtime needs.
  *
- * Every DoT below used to state its interval directly, tuned by hand against a
- * pool that has since changed — so bleed's "capped so it doesn't melt you" was
- * draining the entire bar in one second. Stating the SHARE and deriving the
- * interval means the pool can move again and the statuses keep the lethality
- * they were designed with (config.ts DOT_BUDGET has the full account).
+ * Every DoT below used to state its interval and stack cap directly, tuned by
+ * hand against a health pool that has since changed — so bleed's "capped so it
+ * doesn't melt you" was draining the whole bar in a second, and one poison tick
+ * at cap was 80% of it. Both now come from config.ts DOT_BUDGET, which has the
+ * full account:
  *
+ *   stacks   = the most that keeps ONE tick under MAX_TICK_SHARE of the bar
  *   interval = (stacks × damage) ÷ (share × pool)
+ *
+ * so the pool can move again and neither the rate nor the spike follows it out
+ * of the range they were designed for.
  */
-function tickFor(share: number, damagePerTick: number, maxStacks: number): number {
-  const perSecond = share * CONFIG.PLAYER_HP_MAX;
-  return Math.round(((maxStacks * damagePerTick) / perSecond) * 100) / 100;
+function dot(budget: { share: number; maxStacks: number }, damagePerTick: number) {
+  const pool = CONFIG.PLAYER_HP_MAX;
+  const ceiling = Math.max(1, Math.floor((CONFIG.DOT_BUDGET.MAX_TICK_SHARE * pool) / damagePerTick));
+  const maxStacks = Math.min(budget.maxStacks, ceiling);
+  const interval = (maxStacks * damagePerTick) / (budget.share * pool);
+  return { maxStacks, tickInterval: Math.round(interval * 100) / 100 };
 }
 
 // Buff library. Each entry is data — composed of effect primitives, no custom
@@ -119,7 +125,7 @@ export const BUFFS: Record<string, BuffSpec> = {
     id: 'burn',
     displayName: 'BURN',
     color: 0xff6020,
-    tickInterval: tickFor(CONFIG.DOT_BUDGET.BURN, 1, 1),
+    ...dot(CONFIG.DOT_BUDGET.BURN, 1),
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
     vfx: { color: 0xff6824, style: 'rise' },
   },
@@ -135,9 +141,8 @@ export const BUFFS: Record<string, BuffSpec> = {
     id: 'bleed',
     displayName: 'BLEED',
     color: 0xcc1418,
-    tickInterval: tickFor(CONFIG.DOT_BUDGET.BLEED, 1, 4),
+    ...dot(CONFIG.DOT_BUDGET.BLEED, 1),
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
-    maxStacks: 4,
     vfx: { color: 0xcc1418, style: 'drip' },
   },
 
@@ -154,9 +159,8 @@ export const BUFFS: Record<string, BuffSpec> = {
     // physical armour, so its per-second rate has to be gentler than the
     // physical DoTs to stay fair. On the 5-point pool the old flat 1.0s was
     // taking 80% of your bar per second THROUGH armour, which is not attrition.
-    tickInterval: tickFor(CONFIG.DOT_BUDGET.POISON, 1, 4),
+    ...dot(CONFIG.DOT_BUDGET.POISON, 1),
     tickEffect: { type: 'damage', amount: 1, damageType: 'magic' },
-    maxStacks: 4,
     vfx: { color: 0x66cc33, style: 'drip' },
   },
 
