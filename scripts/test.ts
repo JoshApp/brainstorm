@@ -168,13 +168,24 @@ const start = Date.now();
 const failures: string[] = [];
 let next = 0;
 
+/** Per-file wall time. Printed as a tail at the end of a full run.
+ *
+ *  Not vanity: the last time this suite got slow the cause was ONE file
+ *  regenerating its 72-floor corpus 22 times — 42% of the total — and it took a
+ *  measurement to find, because a wall-clock number for the whole suite tells
+ *  you nothing about where to look. Optimising the runner without this is
+ *  guessing. */
+const durations = new Map<string, number>();
+
 function runOne(file: string): Promise<void> {
   return new Promise((resolve) => {
+    const t0 = Date.now();
     const child = spawn(tsx, [join('tests', file)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     const chunks: Buffer[] = [];
     child.stdout.on('data', (c) => chunks.push(c));
     child.stderr.on('data', (c) => chunks.push(c));
     child.on('close', (code) => {
+      durations.set(file, Date.now() - t0);
       // One contiguous block per file, printed on completion — parallel output
       // that interleaves line-by-line is unreadable and hides which file failed.
       process.stdout.write(Buffer.concat(chunks));
@@ -192,6 +203,17 @@ await Promise.all(Array.from({ length: Math.min(JOBS, files.length) }, worker));
 
 const secs = ((Date.now() - start) / 1000).toFixed(1);
 console.log('\n' + '─'.repeat(52));
+// WHERE THE TIME WENT. The slowest few, with their share, so the next person
+// asking "why is the suite slow" reads it instead of guessing.
+const ranked = [...durations].sort((a, b) => b[1] - a[1]);
+const totalMs = ranked.reduce((n, [, ms]) => n + ms, 0);
+if (ranked.length > 4 && !argv.includes('--quiet')) {
+  console.log(`\nslowest files (${(totalMs / 1000).toFixed(0)}s of CPU across ${ranked.length}):`);
+  for (const [f, ms] of ranked.slice(0, 8)) {
+    console.log(`    ${(ms / 1000).toFixed(1).padStart(6)}s  ${((100 * ms) / totalMs).toFixed(0).padStart(3)}%  ${f}`);
+  }
+}
+
 if (failures.length === 0) {
   console.log(`✓ ${files.length} test files passed  (${secs}s, ${JOBS} jobs)`);
   // Re-hash rather than reuse: a file edited WHILE the suite ran was not the

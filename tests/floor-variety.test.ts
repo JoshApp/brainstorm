@@ -30,10 +30,33 @@ interface Prop { kind: string; tier?: string; loot?: { items?: Array<{ kind: str
 interface Spec { rooms: Room[]; props: Prop[] }
 
 const SEEDS = 60;
+/** The sample a RATE claim needs, as opposed to a presence claim.
+ *
+ *  60 floors yields ~39 silver chests at depth 1, and a 20% bar on n=39 has a
+ *  standard error of ±6pp — so the silver-chest assertion was reading noise, and
+ *  duly fired at 21% on a generator whose true rate is 16.3%. 200 floors yields
+ *  ~129 at the thinnest depth, comfortably past the minimum that test enforces,
+ *  and costs a third less than the 300 it was first raised to. */
+const RATE_SEEDS = 200;
 /** The floors the PLAYER gets — polygon rooms. Use this for anything about the
- *  economy or the content a floor stages. */
+ *  economy or the content a floor stages.
+ *
+ *  MEMOISED per (depth, count). Six tests sweep the same depths, and each used
+ *  to generate its own copy: measured, this file was 209s, 17% of the suite's
+ *  CPU, almost all of it regenerating floors it had already built. A floor is
+ *  deterministic per (depth, seed) and nothing here mutates one, so a shared
+ *  instance is exactly what each test would have made for itself. */
+const FLOOR_CACHE = new Map<number, Spec[]>();
 function floors(depth: number, n: number = SEEDS): Spec[] {
-  return Array.from({ length: n }, (_, s) => generateFloor(depth, 5000 + s * 7919) as unknown as Spec);
+  // GROW, never rebuild. The seeds are a fixed sequence, so a 200-floor request
+  // is a superset of a 60-floor one — keyed on (depth, n) the two would share
+  // nothing and the wide sample would be generated on top of the narrow one.
+  const have = FLOOR_CACHE.get(depth) ?? [];
+  for (let s = have.length; s < n; s++) {
+    have.push(generateFloor(depth, 5000 + s * 7919) as unknown as Spec);
+  }
+  FLOOR_CACHE.set(depth, have);
+  return have.slice(0, n);
 }
 /** The floors the VAULT LIBRARY produces, named explicitly.
  *
@@ -92,7 +115,7 @@ test('A SILVER CHEST IS NOT A TRINKET DISPENSER', () => {
   // falls out.
   for (const depth of [1, 3, 6]) {
     let silver = 0, withRelic = 0;
-    for (const f of floors(depth, 300)) {
+    for (const f of floors(depth, RATE_SEEDS)) {
       for (const p of f.props) {
         if (p.kind !== 'chest' || p.tier !== 'silver') continue;
         silver++;

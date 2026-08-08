@@ -79,8 +79,18 @@ interface Room { id: string; roomType?: string; logicalOnly?: boolean; poly?: Ar
 interface Spec { rooms: Room[]; props: Array<Record<string, unknown>> }
 
 const SEEDS = 40;
-const floors = (depth: number): Spec[] =>
-  Array.from({ length: SEEDS }, (_, s) => generateFloor(depth, 90210 + s * 6151) as unknown as Spec);
+/** MEMOISED per depth — three tests sweep overlapping depth lists and each used
+ *  to build its own copy of the same floors (99s, 8% of the suite's CPU). Floors
+ *  are deterministic per (depth, seed) and nothing here mutates one. */
+const FLOOR_CACHE = new Map<number, Spec[]>();
+function floors(depth: number): Spec[] {
+  let hit = FLOOR_CACHE.get(depth);
+  if (!hit) {
+    hit = Array.from({ length: SEEDS }, (_, s) => generateFloor(depth, 90210 + s * 6151) as unknown as Spec);
+    FLOOR_CACHE.set(depth, hit);
+  }
+  return hit;
+}
 
 /**
  * Every prop standing inside a room — its POLYGON when it has one.

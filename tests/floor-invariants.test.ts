@@ -74,9 +74,32 @@ function stairsReachable(spec: LevelSpec): boolean {
 
 // Deterministic sample: depths 1..13 × 25 seeds.
 const SEEDS = Array.from({ length: 25 }, (_, i) => 4242 + i * 1009);
+const DEPTHS = Array.from({ length: 13 }, (_, i) => i + 1);
+
+/**
+ * GENERATE THE CORPUS ONCE.
+ *
+ * Every test below wants the same 325 floors, and each used to build its own —
+ * seven independent sweeps of the whole sample. Measured with the runner's
+ * per-file timing, this ONE file was 525s, 42% of the entire suite's CPU, for
+ * 2275 floor generations where 325 would do. That is the same shape as the last
+ * time the suite got slow (a file regenerating its 72-floor corpus 22 times),
+ * which is why the runner now prints where the time went.
+ *
+ * Memoised, not precomputed: a filtered run of one test still pays for only
+ * what that test asks for. Floors are deterministic per (depth, seed), so a
+ * shared instance is the same object every test would have built for itself —
+ * and nothing here mutates a spec.
+ */
+let CORPUS: Array<{ d: number; s: number; spec: LevelSpec }> | null = null;
+function corpus(): Array<{ d: number; s: number; spec: LevelSpec }> {
+  return (CORPUS ??= DEPTHS.flatMap((d) => SEEDS.map((s) => ({ d, s, spec: generateFloor(d, s) }))));
+}
 
 test('generation never throws', () => {
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) generateFloor(d, s);
+  // Building the corpus IS the assertion — `generateFloor` runs for every
+  // (depth, seed) in the sample and this test fails if any of them throws.
+  assert.equal(corpus().length, DEPTHS.length * SEEDS.length);
 });
 
 // The empty-early-floors bug: a floor could roll zero combat when few combat
@@ -85,8 +108,7 @@ test('generation never throws', () => {
 // enemies, seeded into open cells of any room. This is the regression lock.
 test('every floor meets the combat budget minimum (never empty)', () => {
   const MIN = CONFIG.CONTENT_BUDGET.COMBAT_MIN;
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     const live = (spec.spawns ?? []).filter(
       (sp) => !(sp as { dormant?: boolean }).dormant,
     ).length;
@@ -101,8 +123,7 @@ test('every floor meets the combat budget minimum (never empty)', () => {
 // player a real passage — no choke, no soft-lock at a doorway.
 test('no archway chokes a passage below the player', () => {
   const MIN_BAND = 0.5;   // required passable centre-band (player diameter 0.6, w/ margin)
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     for (const p of spec.props as Array<{ _dbg?: string; collision?: Array<{ kind: string; r: number; ox?: number; oz?: number }> }>) {
       if (p._dbg !== 'archway' || !p.collision || p.collision.length < 2) continue;
       const [a, b] = p.collision;
@@ -127,8 +148,7 @@ test('no column-archway on the perimeter of a stair room', () => {
       && px >= r.x - r.w / 2 - 0.4 && px <= r.x + r.w / 2 + 0.4;
     return onV || onH;
   };
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     const stairRooms = spec.rooms.filter((r) => !r.logicalOnly && (spec.stairs ?? []).some((st) =>
       Math.abs(st.x - r.rect.x) <= r.rect.w / 2 && Math.abs(st.z - r.rect.z) <= r.rect.d / 2));
     for (const p of spec.props as Array<{ _dbg?: string; x: number; z: number; collision?: unknown[] }>) {
@@ -145,8 +165,7 @@ test('no clutter prop floats inside a void (pit)', () => {
   // with no floor under it. The clutter passes shape the room from spec.voids
   // FIRST, then place props that avoid those rects (tooClose rejects void
   // cells). Guards against clutter regressing to ignore voids.
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     for (const p of spec.props as Array<{ _dbg?: string; x?: number; z?: number; kind: string }>) {
       // Only clutter-generated props — authored vault props are the author's
       // problem, and some intentionally sit at a void edge.
@@ -161,8 +180,7 @@ test('no clutter prop floats inside a void (pit)', () => {
 });
 
 test('no two vaults overlap on any floor', () => {
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     const rooms = spec.rooms.filter((r) => !r.logicalOnly).map((r) => r.rect);
     for (let i = 0; i < rooms.length; i++)
       for (let j = i + 1; j < rooms.length; j++)
@@ -172,8 +190,7 @@ test('no two vaults overlap on any floor', () => {
 });
 
 test('stairs are always reachable from spawn (incl. chasm bridges)', () => {
-  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
-    const spec = generateFloor(d, s);
+  for (const { d, s, spec } of corpus()) {
     assert.ok(stairsReachable(spec), `depth ${d} seed ${s}: stairs unreachable`);
   }
 });
