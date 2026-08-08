@@ -47,7 +47,67 @@ its bounding box.** The overshoot is the disease; those seven are medication.
 
 ---
 
+## Why it pushes in at all
+
+Not for geometry — for **bookkeeping**. The only mechanism for cutting a hole in
+a wall is rect-overlap: `findOpenings` and `planPortals` look for a corridor
+rect crossing a wall line. A corridor cannot know where a polygon room's real
+wall sits, so it overshoots `OVERLAP = 0.9m` to *guarantee* that crossing is
+visible to the finder. The 0.9m is not a corridor reaching into a room; it is a
+lookup key.
+
+Everything downstream — the trim, the height clamp, the misplaced-rect veto, the
+side-wall subtraction in `builder.ts` — is the price of making that one lookup
+work.
+
 ## The model
+
+**Josh, and this supersedes the ray-marched version this document was first
+written with:**
+
+> *"shouldn't we be able to cleanly build things by doing portal ANCHORS in the
+> room and connecting them from there? The room itself saying how the door can
+> be carved — we can specify intent on how big, what kind — and then we connect
+> the anchors. That way we can also build the anchor as a door opening, frame,
+> whatever we want, and the corridors properly connect, stopping the z-fighting
+> and all the overlap shenanigans, because it gets clean."*
+
+That is right, and it is one step further than solving the seam by ray-marching
+from a room's centre. Marching still asks *"where is the wall?"* — better than
+overshooting, but still a question with an answer that can be wrong. **An anchor
+is not a question.** The room places it ON its own wall, so it is correct by
+construction:
+
+- The room knows its polygon, its corners, its pilasters and where its
+  centrepiece stands. It can put doors on flat runs, clear of corners, aligned
+  to the coursing — none of which a corridor arriving from outside can know.
+- It carries **intent**: how wide, how tall, what `kind`. The frame is authored
+  at the anchor; the corridor is built to it.
+- It is authorable. A hand-built vault can declare "one door, on the north
+  face, a gate" and the layout has to honour it. A sealed room declares none.
+
+So a room publishes its doors, the layout picks which to use, and a corridor
+runs **anchor to anchor** — starting and ending exactly on two planes that were
+correct before it existed. There is nothing to overshoot toward, so there is
+nothing to trim, clamp, veto or subtract afterwards.
+
+```ts
+interface PortalAnchor {
+  id: string;
+  edge: number;                  // which polygon edge it sits on
+  at: [number, number];          // the point, ON that edge
+  normal: [number, number];      // outward
+  width: number;                 // what this wall can afford
+  height: number;
+  kind: ThresholdKind;           // gap | half | frame | gate
+  used?: string;                 // the link that claimed it
+}
+```
+
+A **threshold** is then just a pair of claimed anchors that agree — two rooms'
+anchors, or a room's and a corridor's. The type below is unchanged; only how it
+is *obtained* changes, from solved to declared.
+
 
 **ONE PRIMITIVE — a SPACE.** A polygon, a height, a floor elevation. Rooms are
 spaces. Corridors are spaces. There is no second kind of thing.
@@ -152,21 +212,28 @@ use, with no new branch. That is why this is tractable rather than a rewrite.
 
 Order, each step measurable on its own:
 
-1. **`threshold.ts`** — the type and the solver. Emitted alongside today's
-   geometry, consumed by nobody yet. Verify: a threshold exists for every
-   opening `planPortals` finds today.
-2. **Corridors stop at thresholds.** Kill the overshoot. Verify: the 480
-   penetrations go to 0, and the reachability suite stays green.
-3. **Corridors carry a polygon.** Stroked centreline. Verify: the wall ring
-   closes, no orphaned ends, wall beats stop needing the stone-behind probe.
-4. **Walls cut thresholds.** `planWallRing` takes thresholds; `findOpenings`
-   inference retires.
-5. **Delete the repair passes**, one commit each, guarded by the suite. Each
+1. **`threshold.ts`** — the type, and a solver kept as a migration aid so the
+   declared answer can be checked against the inferred one. DONE: it reproduces
+   656 of 658 openings `planPortals` finds, 99.7%, median offset 2cm.
+2. **Rooms publish anchors.** `shapeRoom` emits candidate doors on its own wall
+   runs — flat spans, clear of corners and pilasters. Verify: every room the
+   layout wants to connect has an anchor facing the right way, and the anchors
+   agree with where the current pipeline actually puts doors.
+3. **The layout links anchors, not rooms.** Routing becomes anchor→anchor,
+   which is also *easier*: both endpoints are known exactly instead of being
+   searched for. Corridor geometry starts and ends on the anchor planes.
+   Verify: overshoot deleted, reachability green.
+4. **Walls cut at their own anchors.** `planWallRing` takes the room's claimed
+   anchors; `findOpenings`' rect-crossing inference retires.
+5. **Corridors carry a polygon** — stroked centreline between two anchors, so a
+   bend is one shape. Verify: no orphaned ends, wall beats stop needing the
+   stone-behind probe.
+6. **Delete the repair passes**, one commit each, guarded by the suite. Each
    should be a deletion with no behaviour change — if a deletion moves a
    number, the model is not finished.
-6. **Threshold `kind`** — the door vocabulary, and the frames built from it.
+7. **Anchor `kind`** — the door vocabulary, and the frames built from it.
 
-Do not skip step 5 into step 6. The repair passes going inert *is* the proof
+Do not skip step 6 into step 7. The repair passes going inert *is* the proof
 the model works; adding the vocabulary first would build new content on the old
 foundation and hide whether the seam was ever fixed.
 
