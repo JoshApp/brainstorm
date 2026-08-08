@@ -53,6 +53,40 @@ function distPointSeg(px: number, pz: number, ax: number, az: number, bx: number
 }
 
 /**
+ * THE MIDDLE OF THE ROOM: the interior point furthest from any wall. Memoised —
+ * see below; the algorithm is on `computeRoomCenter`.
+ */
+/**
+ * ── THE MEMO TABLES ────────────────────────────────────────────────────────
+ *
+ * `roomCenter` and the clearance grid behind `candidateSpots` are pure
+ * functions of a room's polygon, and both are asked the same question about the
+ * same room many times per floor — by the spawn pass, the light pass, the
+ * centrepiece planner, the dressing pass. Profiled, `distPointSeg` and its two
+ * callers were 31% of all floor generation after the corridor router was fixed.
+ *
+ * Keyed on the polygon by IDENTITY (a WeakMap), which is exact here: a room's
+ * poly array is built once and never mutated, and two rooms with equal outlines
+ * are still separate arrays, so a hit is always the same room. Nothing is
+ * retained after the floor is dropped.
+ *
+ * Both hand back COPIES. The cost they save is the clearance maths, not the
+ * allocation, and returning the cached instance would make a caller that sorts
+ * or nudges its result corrupt every later caller's answer — a bug that would
+ * surface as an unrelated pass placing something in the wrong spot.
+ */
+const CENTER_MEMO = new WeakMap<Poly, Vec2>();
+const GRID_MEMO = new WeakMap<Poly, Map<number, ReadonlyArray<Vec2 & { clearance: number }>>>();
+
+export function roomCenter(poly: Poly): Vec2 {
+  const memo = CENTER_MEMO.get(poly);
+  if (memo) return { x: memo.x, z: memo.z };
+  const found = computeRoomCenter(poly);
+  CENTER_MEMO.set(poly, found);
+  return { x: found.x, z: found.z };
+}
+
+/**
  * THE MIDDLE OF THE ROOM: the interior point furthest from any wall.
  *
  * Coarse grid, then a shrinking local search around the best cell — a poor
@@ -61,7 +95,7 @@ function distPointSeg(px: number, pz: number, ax: number, az: number, bx: number
  * placement cares about; the grid alone already beats the bbox centre by the
  * only measure that matters (it is always actually inside the room).
  */
-export function roomCenter(poly: Poly): Vec2 {
+function computeRoomCenter(poly: Poly): Vec2 {
   const b = polyBounds(poly);
   const step0 = Math.max(0.25, Math.min(b.maxX - b.minX, b.maxZ - b.minZ) / 16);
   let best: Vec2 = { x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 };
@@ -109,20 +143,41 @@ export interface SpotOpts {
  * gets a sensible answer without thinking about it.
  */
 export function candidateSpots(poly: Poly, o: SpotOpts): Array<Vec2 & { clearance: number }> {
-  const b = polyBounds(poly);
   const pitch = o.pitch ?? 0.5;
   const [lo, hi] = o.band ?? [0, Infinity];
+  // Only the GRID is memoised. The radius/band/taken filters are per-call by
+  // nature — `taken` changes as a room fills up — but they are three cheap
+  // comparisons against a number that has already been computed. What is
+  // expensive is `clearance`, which walks every edge of the polygon for every
+  // cell, and that answer depends on the outline and the pitch alone.
   const out: Array<Vec2 & { clearance: number }> = [];
-  for (let x = b.minX + pitch / 2; x < b.maxX; x += pitch) {
-    for (let z = b.minZ + pitch / 2; z < b.maxZ; z += pitch) {
-      const c = clearance(poly, x, z);
-      if (c < o.radius || c < lo || c > hi) continue;
-      if (o.taken?.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + o.radius)) continue;
-      out.push({ x, z, clearance: c });
-    }
+  for (const g of clearanceGrid(poly, pitch)) {
+    if (g.clearance < o.radius || g.clearance < lo || g.clearance > hi) continue;
+    if (o.taken?.some((t) => Math.hypot(t.x - g.x, t.z - g.z) < t.r + o.radius)) continue;
+    out.push({ x: g.x, z: g.z, clearance: g.clearance });
   }
   out.sort((p, q) => q.clearance - p.clearance);
   return out;
+}
+
+/** Every cell of this outline at this pitch, with its clearance. Built once per
+ *  (poly, pitch); the iteration order is the original x-outer/z-inner sweep, so
+ *  ties after the sort below resolve exactly as they always did. */
+function clearanceGrid(poly: Poly, pitch: number): ReadonlyArray<Vec2 & { clearance: number }> {
+  let byPitch = GRID_MEMO.get(poly);
+  if (!byPitch) { byPitch = new Map(); GRID_MEMO.set(poly, byPitch); }
+  const hit = byPitch.get(pitch);
+  if (hit) return hit;
+
+  const b = polyBounds(poly);
+  const grid: Array<Vec2 & { clearance: number }> = [];
+  for (let x = b.minX + pitch / 2; x < b.maxX; x += pitch) {
+    for (let z = b.minZ + pitch / 2; z < b.maxZ; z += pitch) {
+      grid.push({ x, z, clearance: clearance(poly, x, z) });
+    }
+  }
+  byPitch.set(pitch, grid);
+  return grid;
 }
 
 /**
