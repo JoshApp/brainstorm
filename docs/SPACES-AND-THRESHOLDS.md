@@ -127,24 +127,30 @@ interface Threshold {
 }
 ```
 
-The threshold is **decided before any corridor geometry exists**, and it is the
-only place the question "where does this wall actually sit" is ever asked.
+The threshold is **decided before any corridor geometry exists** — and with
+anchors the question "where does this wall actually sit" is never asked at all,
+because the room answered it while it still owned the wall.
 
 ### How a floor is built
 
-1. Shape the rooms (unchanged).
-2. Route a link between two rooms: a **centreline** polyline, and a section
-   (`corridor-types.ts` — squeeze / passage / gallery) giving width and height.
-3. Solve a **threshold** at each end, by marching from the room's interior along
-   the centreline until the polygon boundary is crossed. This is the existing
-   `exitPoint`, promoted from a helper to the thing that owns the answer.
+1. Shape the room, and have it **publish its anchors** — candidate doors on its
+   own flat wall runs, clear of its corners and pilasters, each carrying a
+   width, a height and a `kind`. The room is the only thing that knows all of
+   that, so it is the only thing that should decide.
+2. The layout **claims a pair of anchors** and routes between them. Both
+   endpoints are known exactly, which makes routing easier than searching for a
+   wall: a centreline polyline plus a section (`corridor-types.ts`) for width
+   and height.
+3. Reconcile the pair into a **threshold** — one width, one height, one floor
+   level, agreed by both. Where the two anchors disagree the tighter one wins,
+   because an opening that does not fit one of its sides is not an opening.
 4. Build the corridor's polygon as the centreline **stroked** to the section's
-   width and **stopped at both threshold planes**. It never enters a room.
-5. Every space cuts its own wall ring, with openings at exactly the thresholds
-   that touch it. `planWallRing` already does this; it just needs thresholds
-   instead of inferred rect crossings.
-6. The frame is built from the threshold's declared width / height / kind — so
-   it **cannot** fight the corridor, because the corridor was built from the
+   width and **stopped on both anchor planes**. It never enters a room, because
+   there is nothing to reach toward — the wall's position was known first.
+5. Every space cuts its own wall ring at its own claimed anchors. `planWallRing`
+   already takes openings; they stop being inferred from rect crossings.
+6. The frame is built at the anchor, from its declared width / height / kind —
+   so it **cannot** fight the corridor, because the corridor was built to the
    same numbers.
 
 ### What this deletes
