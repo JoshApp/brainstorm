@@ -1138,6 +1138,31 @@ function connect(
  * the corridor's width instead of its length. So the leg axes are returned with
  * the rects rather than left to be guessed.
  */
+/**
+ * A PIECE PINNED TO NEITHER END MUST NOT LAND INSIDE A ROOM.
+ *
+ * The end legs of a bend are pinned to their room's wall, so the plate trim
+ * knows where to clip them and the seam is level by construction. The CORNER is
+ * pinned to nothing — it is placed where the two axes cross, and nothing stops
+ * that crossing from being inside one of the rooms the link joins. When it is,
+ * the trim cannot rescue it (it will not cut a corridor down to nothing, and
+ * correctly so), and the result is a slab of corridor floor and ceiling
+ * standing several metres inside a room that has its own.
+ *
+ * Measured across 96 floors: 4 of 1221 built plates reached more than 0.30m
+ * into a room whose ceiling differed — 3 legs and 1 landing, every one of them
+ * on a bend. Rare, but it is the visible end of the overshoot, and it is the
+ * case `plateExtentFor` was never able to reach.
+ *
+ * Checked against the POLYGONS, not the rects. The rooms this link joins are
+ * excused from the ordinary clash test precisely because a leg is supposed to
+ * meet their wall — so the box test cannot see this, and a polygon room is not
+ * its bounding box.
+ */
+function landsInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
+  return rooms.some((r) => pointInPoly(r.poly, rect.x, rect.z));
+}
+
 function connectL(
   a: Placed, b: Placed, width: number, occupied: readonly Box[],
 ): Pick<Connection, 'rects' | 'legAxis'> | null {
@@ -1185,6 +1210,9 @@ function connectL(
     // A leg shorter than the landing it meets is not a leg — the corner has
     // already swallowed it, and the "corridor" is a single square room.
     if (Math.max(legA.w, legA.d) < width || Math.max(legB.w, legB.d) < width) continue;
+
+    // The corner is pinned to neither room, so it may not stand in one.
+    if (landsInsideRoom(corner, [a, b])) continue;
 
     const rects = [legA, corner, legB];
     // Nothing already placed may be in the way. The two rooms this joins are
@@ -1241,6 +1269,10 @@ function dogleg(
     const cross = alongZ
       ? { x: (lat1 + lat2) / 2, z: mid, w: Math.abs(lat2 - lat1) + width, d: width }
       : { z: (lat1 + lat2) / 2, x: mid, d: Math.abs(lat2 - lat1) + width, w: width };
+
+    // The cross piece is pinned to neither room, so it may not stand in one.
+    // Same rule as the L's corner — see landsInsideRoom.
+    if (landsInsideRoom(cross, [a, b])) continue;
 
     const parts = [legA, cross, legB];
     // Nothing the layout already placed may be in the way. The two rooms this
