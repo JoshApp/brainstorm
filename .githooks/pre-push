@@ -37,7 +37,11 @@ echo "[pre-push] ✓ typecheck passed"
 # reserved/duplicate enemy tile char white-screened the live game once;
 # tsc + vite build don't execute the module, the test suite does), plus
 # composer invariants (vault overlap, unreachable stairs) and vault
-# structure. Fast (~couple seconds). Skipped if tsx isn't installed.
+# structure. Skipped if tsx isn't installed.
+#
+# Usually FREE: `npm test` short-circuits when the tree's content hash matches
+# the last full pass, which is the normal case here — you just ran it. When it
+# does run it is ~60s (parallel, one process per file). FORCE_TESTS=1 re-runs.
 if [ -x node_modules/.bin/tsx ]; then
   echo "[pre-push] running tests…"
   if ! npm test --silent; then

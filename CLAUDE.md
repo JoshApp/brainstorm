@@ -657,6 +657,26 @@ npm run live
 git rebase --abort
 ```
 
+### The test suite — don't wait on it more than once
+
+The gate is `tsc --noEmit` (~13s) plus `npm test`. Three things make the loop
+cheap; use them:
+
+- **`npm test -- <substring> …`** runs only files whose names match. During
+  iteration this is the one that matters — `npm test -- anchors threshold` is a
+  few seconds against a full-suite minute. Run the full suite before you commit,
+  not after every edit.
+- **The full suite is parallel** (one process per file, `cpus-1` at a time,
+  slowest-first). ~60s. `--jobs=1` for readable output when debugging.
+- **A full pass is CACHED against the tree's content hash**, so the pre-push
+  hook re-running it costs nothing when you just ran it yourself. It prints
+  `CACHED` when it skips — that word is the difference between a verified run
+  and a remembered one, so read it. `FORCE_TESTS=1` re-runs regardless.
+
+If a suite run ever feels slow again, measure per-file before optimising the
+runner: on 2026-08-08 one file was 42% of the wall clock because it regenerated
+its 72-floor corpus 22 times.
+
 ### `npm run ship` mechanics
 
 - Pre-push hook typechecks; a type error aborts before anything reaches

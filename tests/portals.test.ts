@@ -28,10 +28,13 @@ function test(name: string, fn: () => void) {
 const SEEDS = [7, 4242, 90210];
 const DEPTHS = [2, 5, 8];
 
+// Generated once — the checks below only read it. See poly-floor.test.ts.
+let CORPUS: ReturnType<typeof generatePolyFloor>[] | null = null;
 function floors() {
+  if (CORPUS) return CORPUS;
   const out = [];
   for (const s of SEEDS) for (const d of DEPTHS) out.push(generatePolyFloor(d, s));
-  return out;
+  return (CORPUS = out);
 }
 
 test('NOTHING IS REMOVED FROM A WALL WITHOUT FLOOR BEHIND IT', () => {

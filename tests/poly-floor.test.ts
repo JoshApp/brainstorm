@@ -58,10 +58,17 @@ function test(name: string, fn: () => void) {
 const SEEDS = [7, 4242, 90210, 31337, 11, 222, 3333, 44444, 555, 66, 777, 8888];
 const DEPTHS = [1, 2, 5, 6, 8, 11];
 
+// GENERATED ONCE. `floors()` is called by 22 separate checks in this file, and
+// generating the corpus per call made this one file 132 seconds — 42% of the
+// entire suite — for 1584 floor generations where 72 would do. The specs are
+// read-only here; the determinism check below deliberately calls
+// `generatePolyFloor` directly so it still compares two FRESH generations.
+let CORPUS: LevelSpec[] | null = null;
 function floors(): LevelSpec[] {
+  if (CORPUS) return CORPUS;
   const out: LevelSpec[] = [];
   for (const seed of SEEDS) for (const depth of DEPTHS) out.push(generatePolyFloor(depth, seed));
-  return out;
+  return (CORPUS = out);
 }
 
 /**

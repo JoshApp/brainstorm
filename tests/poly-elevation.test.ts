@@ -30,10 +30,15 @@ function test(name: string, fn: () => void) {
 
 const SEEDS = [7, 4242, 90210, 31337];
 const DEPTHS = [2, 3, 5, 8, 11];
+// Generated once — the checks below only read it. See the note in
+// poly-floor.test.ts: regenerating per call is what made the floor tests
+// dominate the suite's wall clock.
+let CORPUS: LevelSpec[] | null = null;
 function floors(): LevelSpec[] {
+  if (CORPUS) return CORPUS;
   const out: LevelSpec[] = [];
   for (const s of SEEDS) for (const d of DEPTHS) out.push(generatePolyFloor(d, s));
-  return out;
+  return (CORPUS = out);
 }
 
 test('NO STEP WHERE A CORRIDOR MEETS A ROOM', () => {
