@@ -20,6 +20,7 @@ import { gateAdmits } from '../src/level/nav-grid';
 import { WIDEST_ROAMER } from '../src/level/anchors';
 import { planWallRing, type Ring } from '../src/level/poly-shell-plan';
 import { WALL_T } from '../src/level/poly-room-shell';
+import { plateExtentFor } from '../src/level/corridor-trim';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -87,6 +88,58 @@ test('NOTHING IS REMOVED FROM A WALL WITHOUT FLOOR BEHIND IT', () => {
     }
   }
   assert.ok(checked > 200, `only ${checked} cut samples — the sample is not measuring anything`);
+});
+
+test('NOR WITHOUT FLOOR THAT IS ACTUALLY BUILT', () => {
+  // The test above is the same question asked of the corridor's RECT, and the
+  // rect is bookkeeping: it deliberately runs deep into the room so that every
+  // connection rule can see the two overlap. The corridor's FLOOR does not go
+  // there — the trim pulls the plate back to the wall's outer face.
+  //
+  // So the rect version passed while the doorway chased the room's outline
+  // around a chamfered corner that the plate's rectangle never reached, and
+  // Josh found the result on a phone: *"a small void between the doorframe and
+  // the room's wall."* Measured on this same sample before the fix: 8.82m of
+  // wall cut with nothing built behind it, worst single run 1.05m.
+  //
+  // This is docs/DESIGN-METHOD.md's "measure the thing that ships" — and the
+  // reason it is a SECOND test rather than an edit of the first is that both
+  // are true and they fail for different reasons. A cut with no rect behind it
+  // is a routing bug; a cut with a rect but no plate is a trim bug.
+  const SETBACK = 0.30;   // the plate stops WALL_SEAT − LAP = 0.20m outside the
+                          // outline BY DESIGN; the frame's sill floors that band.
+  let cut = 0, bare = 0, worstRun = 0, where = '';
+  for (const spec of floors()) {
+    const polys = spec.rooms.filter((r) => r.poly).map((r) => r.poly as NonNullable<typeof r.poly>);
+    const plates = spec.corridors.map((c) => plateExtentFor(c.rect, polys));
+    for (const r of spec.rooms) {
+      if (!r.poly) continue;
+      for (const k of wallCutsFor(r.poly, spec.corridors.map((c) => c.rect))) {
+        const a = r.poly[k.edge], b = r.poly[(k.edge + 1) % r.poly.length];
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const span = Math.hypot(dx, dz) * (k.t1 - k.t0);
+        const steps = Math.max(2, Math.ceil(span / 0.1));
+        let run = 0;
+        for (let i = 0; i <= steps; i++) {
+          const t = k.t0 + ((k.t1 - k.t0) * i) / steps;
+          const px = a[0] + dx * t, pz = a[1] + dz * t;
+          cut += span / steps;
+          const onPlate = plates.some((p) =>
+            Math.abs(px - p.x) <= p.w / 2 + SETBACK && Math.abs(pz - p.z) <= p.d / 2 + SETBACK);
+          if (onPlate) { run = 0; continue; }
+          bare += span / steps;
+          run += span / steps;
+          if (run > worstRun) { worstRun = run; where = `${spec.id} ${r.id} edge ${k.edge} at (${px.toFixed(1)}, ${pz.toFixed(1)})`; }
+        }
+      }
+    }
+  }
+  assert.ok(cut > 200, `only ${cut.toFixed(0)}m of cut sampled — this measured nothing`);
+  // A CONTINUOUS run, because that is what a void is. Isolated samples at the
+  // very lip of a plate are float noise; a third of a metre of unbacked wall in
+  // a row is a hole you can see through.
+  assert.ok(worstRun < 0.35,
+    `${worstRun.toFixed(2)}m of wall removed with no corridor floor behind it — ${where}`);
 });
 
 test('every portal is wide enough to be a way through', () => {

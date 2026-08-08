@@ -1,4 +1,8 @@
-import { clipEdgeToRect, edgeNormal, type Ring, type V2 } from './poly-shell-plan';
+import { clipEdgeToRect, edgeNormal, WALL_T, type Ring, type V2 } from './poly-shell-plan';
+import { plateExtentFor } from './corridor-trim';
+
+/** One edge of the room's outline, clipped to a corridor's footprint. */
+type Hit = { edge: number; t0: number; t1: number; len: number };
 
 // ── ONE OPENING, COMPUTED ONCE ───────────────────────────────────────────────
 //
@@ -134,20 +138,57 @@ export function planPortals(
   const out: Portal[] = [];
   for (const c of corridors) {
     // Every edge this corridor reaches, with the length it covers.
-    const hits: Array<{ edge: number; t0: number; t1: number; len: number }> = [];
-    for (let i = 0; i < n; i++) {
-      const a = poly[i], b = poly[(i + 1) % n];
-      const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (edgeLen < 1e-4) continue;
-      // NO PADDING. The hole is where the corridor actually is — the wall ring
-      // used to inflate this by the wall thickness, which is the quarter-metre
-      // slot on each side of every doorway.
-      const hit = clipEdgeToRect(a, b, c.rect, 0);
-      if (!hit) continue;
-      hits.push({ edge: i, t0: hit[0], t1: hit[1], len: (hit[1] - hit[0]) * edgeLen });
-    }
-    if (!hits.length) continue;
+    const gather = (rect: Rect): Hit[] => {
+      const hits: Hit[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = poly[i], b = poly[(i + 1) % n];
+        const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (edgeLen < 1e-4) continue;
+        // NO PADDING. The hole is where the corridor actually is — the wall ring
+        // used to inflate this by the wall thickness, which is the quarter-metre
+        // slot on each side of every doorway.
+        const hit = clipEdgeToRect(a, b, rect, 0);
+        if (!hit) continue;
+        hits.push({ edge: i, t0: hit[0], t1: hit[1], len: (hit[1] - hit[0]) * edgeLen });
+      }
+      return hits;
+    };
 
+    // ── CUT AGAINST WHAT IS BUILT, NOT AGAINST THE BOOKKEEPING ─────────────
+    //
+    // Josh, on a phone: *"it was carved but there is a small void between the
+    // doorframe and the room's wall."*
+    //
+    // A corridor's RECT deliberately runs deep into the room — that overlap is
+    // what makes every connection rule work. Its FLOOR does not: the trim pulls
+    // the plate back to the wall's outer face. Clipping the doorway against the
+    // rect therefore chases the room's outline further than the corridor
+    // actually goes, and on a chamfer it chases it around a corner the plate's
+    // rectangle never reaches. Wall is removed; nothing is built behind it.
+    //
+    // Measured across 144 floors: 120.7m of cut wall with no corridor floor
+    // behind it, 2.3% of all cut length, 130 places with more than 0.4m bare —
+    // about one per floor, which is the rate at which you find one by walking.
+    //
+    // So clip against the PLATE, grown along the corridor's long axis by the
+    // wall band it has to cross to reach the room at all. Not grown laterally:
+    // sideways is the passage's own width, and widening that is the opposite of
+    // the question being asked.
+    const plate = plateExtentFor(c.rect, [poly]);
+    const alongX = plate.w >= plate.d;
+    const socket: Rect = {
+      x: plate.x, z: plate.z,
+      w: plate.w + (alongX ? 2 * WALL_T : 0),
+      d: plate.d + (alongX ? 0 : 2 * WALL_T),
+    };
+    // ...BUT A SEALED ROOM IS A FAR WORSE BUG THAN A VOID.
+    //
+    // A corridor almost entirely swallowed by its rooms trims to `MIN_REMAINING`
+    // and its plate can stop short of the wall it is supposed to open. Tightening
+    // this rule without a way back is what sealed 24 of 72 floors the last time
+    // (see the note on `width` below). 18 of 1943 doorways — 0.9% — need the
+    // rect, and they get it: a doorway that would vanish falls back to the old
+    // clip and keeps its surplus.
     // ── ONE OPENING MAY SPAN A CORNER ──────────────────────────────────────
     //
     // This used to take the single best edge and refuse the corridor if THAT
@@ -167,10 +208,25 @@ export function planPortals(
     // not "all hits": a corridor that overlaps a small room deeply can clip the
     // FAR wall too, and merging those two into one opening would invent a
     // doorway through the room rather than into it.
-    const runs = adjacentRuns(hits, n);
-    let best: typeof runs[number] | null = null;
-    for (const r of runs) if (!best || r.len > best.len) best = r;
-    if (!best || best.len < MIN_WIDTH) continue;
+    //
+    // The opening is chosen from the socket if that yields one, and from the
+    // rect if it does not — the fallback described above. Stated as "pick the
+    // widest run, and if it is not a doorway try the wider clip" rather than as
+    // two code paths, so the corner rule below can never apply to one and not
+    // the other.
+    // Returns the hits TOO, not just the winning run: the `cuts` this portal
+    // publishes are every hit, and they have to come from the same clip the run
+    // did or the ring opens one shape while the frame is sized for another.
+    const openingFrom = (rect: Rect): { best: { parts: Hit[]; len: number }; hits: Hit[] } | null => {
+      const hits = gather(rect);
+      if (!hits.length) return null;
+      let widest: { parts: Hit[]; len: number } | null = null;
+      for (const r of adjacentRuns(hits, n)) if (!widest || r.len > widest.len) widest = r;
+      return widest && widest.len >= MIN_WIDTH ? { best: widest, hits } : null;
+    };
+    const opening = openingFrom(socket) ?? openingFrom(c.rect);
+    if (!opening) continue;
+    const { best, hits } = opening;
 
     // The frame is square to the edge that carries most of the hole; the width
     // is the WHOLE hole, so a gate straddling a chamfer still covers it.

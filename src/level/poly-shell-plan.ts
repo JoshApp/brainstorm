@@ -1,3 +1,13 @@
+/**
+ * Wall thickness in metres.
+ *
+ * Lives here, in the module with no imports, because it is a fact about the
+ * wall PLAN rather than about the mesh built from it. `poly-room-shell`
+ * re-exports it under its old name — that is where every existing caller reads
+ * it from, and none of them had to change.
+ */
+export const WALL_T = 0.25;
+
 // ── THE WALL RING — pure geometry, no Three ──────────────────────────────────
 //
 // How do you build a polygon room's walls so they ACTUALLY CLOSE?

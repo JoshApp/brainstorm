@@ -1,5 +1,5 @@
 import { pointInPoly, type Poly } from './room-shape';
-import { WALL_T } from './poly-room-shell';
+import { WALL_T } from './poly-shell-plan';
 
 // ── WHERE A CORRIDOR'S FLOOR AND CEILING SHOULD STOP ─────────────────────────
 //

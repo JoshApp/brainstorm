@@ -7,7 +7,7 @@ import { groundYAt } from './elevation';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
 import { polyBounds, pointInPoly, type Poly } from './room-shape';
-import { planWallRing, type OpeningRect, type WallSpan } from './poly-shell-plan';
+import { planWallRing, WALL_T, type OpeningRect, type WallSpan } from './poly-shell-plan';
 import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
@@ -44,11 +44,22 @@ import { makeCoursedWall, wallWear, tintAsFlagstones } from './wall-courses';
 // rectangle standing next to real masonry, which is a worse look than the shape
 // is a better one.)
 
-/** Wall thickness in metres — matches the visual weight of the rect shell.
- *  Exported so an audit can plan the SAME ring this builds rather than a copy
- *  of it: a connectivity check that guesses the thickness is measuring its own
- *  guess (docs/DESIGN-METHOD.md). */
-export const WALL_T = 0.25;
+/**
+ * Wall thickness in metres — matches the visual weight of the rect shell.
+ *
+ * DEFINED IN `poly-shell-plan` (a leaf module with no imports of its own) and
+ * re-exported here, which is where everything has always imported it from. It
+ * had to move: this file is the THREE-heavy builder and it imports `portals`,
+ * so anything pure that wanted the thickness — `corridor-trim`, and now
+ * `portals` itself — could only get it by closing a cycle back through the
+ * renderer. The constant belongs with the wall PLAN, not with the thing that
+ * builds meshes from it.
+ *
+ * Still exported so an audit can plan the SAME ring this builds rather than a
+ * copy of it: a connectivity check that guesses the thickness is measuring its
+ * own guess (docs/DESIGN-METHOD.md).
+ */
+export { WALL_T };
 /** A room this worn or worse has one wall that has partly come down. Sits inside
  *  `shellWear`'s [0.18, 0.68] range, so roughly a third of rooms get one — often
  *  enough to be part of the dungeon's vocabulary, rare enough to still land. */
