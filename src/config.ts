@@ -1022,43 +1022,46 @@ export const CONFIG = {
    */
   DOT_BUDGET: {
     /**
-     * The hard ceiling on a SINGLE tick, as a share of the bar.
+     * The ceiling on a SINGLE tick, as a share of the bar.
      *
-     * The rate ceiling below is not enough on its own, and this is the part that
-     * actually made a rat lethal. Stacks multiply the tick (`ecs/buffs.ts`:
-     * `amount × stacks`), so at the old cap of 4 stacks one poison tick landed
-     * 4 damage on a 5-point bar — 80% of your health between two frames, with no
-     * warning and nothing to react to. Slowing the interval does not touch that;
-     * it just spaces out the near-kills.
+     * Not enough on its own to state, and the part that made a rat lethal:
+     * stacks multiply the tick (`ecs/buffs.ts`: `amount × stacks`), so with 4
+     * stacks of 1 damage one poison tick landed 4 on a 5-point bar — 80% of your
+     * health between two frames, nothing to react to. Slowing the interval does
+     * not touch that; it spaces the near-kills further apart.
      *
-     * So the stack cap is DERIVED from this rather than picked: a status may
-     * stack only as far as one tick stays under this share.
+     * The first fix derived the STACK CAP from this, which capped bleed and
+     * poison at 2 — and that also capped what a player's bleed build stacks onto
+     * enemies, which is a build nerf nobody asked for. Josh: keep the stacks.
+     *
+     * So the tick gets smaller instead. Half-point damage costs nothing: the HP
+     * path does no rounding and the heart HUD fills fractionally (a clip rect at
+     * `fraction × width`), so half a point reads as half a half-heart. Statuses
+     * keep four stacks, the spike stays under this ceiling, and a single-stack
+     * proc still ticks inside its own duration — which a 4-stack, 1-damage,
+     * slow-enough-to-be-fair status mathematically cannot do on a 5-point pool.
      */
     MAX_TICK_SHARE: 0.4,
 
     /**
-     * Per status: `share` is the portion of the bar it drains per second at full
-     * stacks, `maxStacks` how far it builds. `content/buffs.ts` derives both the
-     * tick interval and the stack cap from these.
+     * Per status: `share` of the bar drained per second at full stacks,
+     * `maxStacks` how far it builds, `tickDamage` what one stack lands per tick.
+     * `content/buffs.ts` derives the interval; nothing here is capped or clamped
+     * behind your back.
      *
-     * These are much gentler than the values they replace, and deliberately
-     * gentler than the ones the game was ORIGINALLY tuned with. Restoring the
-     * old intent got bleed back to emptying a full bar in 1.6 seconds, which was
-     * the design all along and is still wrong: a rat lands one bite and you are
-     * most of the way dead with no counterplay. A damage-over-time effect is
-     * PRESSURE — it should make you back off, drink, or finish the fight faster.
-     * It should not be the thing that kills you.
+     * Much gentler than the values they replace and than the ones the game was
+     * ORIGINALLY tuned with — restoring the old intent got bleed back to
+     * emptying a full bar in 1.6s, which was the design all along and still
+     * wrong. A DoT is PRESSURE: back off, drink, or finish the fight faster.
      *
-     * Seconds-to-kill from full at CAP (which is itself rare): bleed 5.0s,
-     * poison 6.3s, burn 10.0s. A single-stack proc over its usual 2.5–3s
-     * duration costs 1 HP — a fifth of the bar, felt but survivable.
+     * Seconds-to-kill from full at CAP: bleed 5.0s, poison 6.3s, burn 10.0s.
      */
     /** Bursty, physical, builds per strike. Fast weapons still shred. */
-    BLEED: { share: 0.20, maxStacks: 2 },
+    BLEED: { share: 0.20, maxStacks: 4, tickDamage: 0.5 },
     /** Attrition, magic-typed so armour does not answer it — gentlest rate. */
-    POISON: { share: 0.16, maxStacks: 2 },
+    POISON: { share: 0.16, maxStacks: 4, tickDamage: 0.5 },
     /** A single sting that does not stack. Light it and back off. */
-    BURN: { share: 0.10, maxStacks: 1 },
+    BURN: { share: 0.10, maxStacks: 1, tickDamage: 0.5 },
   },
 
   // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===
