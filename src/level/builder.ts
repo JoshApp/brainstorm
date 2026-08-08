@@ -66,6 +66,7 @@ import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
 import { ORIGIN_ARCH } from '../content/origin-arch';
+import { originArchSite } from './origin-arch-site';
 import { registerFateFire } from './fate-fire';
 import { clearFateGate } from '../state/fate-gate';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
@@ -976,45 +977,21 @@ export function buildLevel(
       // spawn to the containing room's wall; skip when a doorway sits
       // there (another rect just beyond the wall line) — closed doors
       // beside an open passage would lie.
-      const sx = spec.startPos.x, sz = spec.startPos.z;
-      const startRoom = spec.rooms.find((r) => {
-        const hw = r.rect.w / 2, hd = r.rect.d / 2;
-        return !r.logicalOnly
-          && sx >= r.rect.x - hw && sx <= r.rect.x + hw
-          && sz >= r.rect.z - hd && sz <= r.rect.z + hd;
-      });
-      if (startRoom) {
-        const hw = startRoom.rect.w / 2, hd = startRoom.rect.d / 2;
-        // Backward = opposite the facing/fire direction.
-        const ux = -fx, uz = -fz;
-        const tx = ux > 1e-6 ? (startRoom.rect.x + hw - sx) / ux
-          : ux < -1e-6 ? (startRoom.rect.x - hw - sx) / ux : Infinity;
-        const tz = uz > 1e-6 ? (startRoom.rect.z + hd - sz) / uz
-          : uz < -1e-6 ? (startRoom.rect.z - hd - sz) / uz : Infinity;
-        const tWall = Math.min(tx, tz);
-        if (isFinite(tWall) && tWall > 0.8 && tWall < 12) {
-          const ax = sx + ux * tWall;
-          const az = sz + uz * tWall;
-          // A rect just beyond the wall here = an opening/passage — skip.
-          const px = sx + ux * (tWall + 0.6);
-          const pz = sz + uz * (tWall + 0.6);
-          const passage = [...spec.rooms, ...spec.corridors].some((r) => {
-            const w2 = r.rect.w / 2, d2 = r.rect.d / 2;
-            return px >= r.rect.x - w2 && px <= r.rect.x + w2
-              && pz >= r.rect.z - d2 && pz <= r.rect.z + d2;
-          });
-          if (!passage) {
-            spec.props.push({
-              kind: 'model', model: ORIGIN_ARCH,
-              x: ax, y: 0, z: az,
-              // +Z faces INTO the room (toward the spawn): under rotY,
-              // model +Z maps to (sin, cos) — the forward direction is
-              // (−sin yaw, −cos yaw), so rotY = yaw + π faces it.
-              rotY: yaw + Math.PI,
-              _dbg: 'origin-arch',
-            });
-          }
-        }
+      // WHERE the doors go is a polygon question, and it is answered in
+      // level/origin-arch-site.ts. It used to be cast to this room's RECT — the
+      // bounding box — which on a poly room stands back from the real wall by up
+      // to metres, so the doors floated outside the room or sat buried in stone.
+      // A null site is a real answer: a spawn wall that is actually a doorway
+      // gets no sealed doors, because barring a way that is open is a worse lie
+      // than saying nothing.
+      const site = originArchSite(spec.startPos, spec.rooms, spec.corridors ?? []);
+      if (site) {
+        spec.props.push({
+          kind: 'model', model: ORIGIN_ARCH,
+          x: site.x, y: 0, z: site.z,
+          rotY: site.rotY,
+          _dbg: 'origin-arch',
+        });
       }
     }
   }
