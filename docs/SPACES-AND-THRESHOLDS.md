@@ -454,12 +454,50 @@ Over the 183 links the generator really makes:
 | links that widen into a gate without being asked | **0** |
 | links that resolve to a crawl unless one is allowed | **0** |
 
-The remaining 17% are links whose two rooms simply do not face each other by a
-door's width. That is a PLACEMENT problem and it is the next thing to fix — the
-chooser returns null rather than quietly building a 1m mainline, because a
-mainline every mob must walk down is a deadlock that looks like a working floor
-until something chases you. 24 of 183 links did exactly that before the band
-floor existed.
+**Step 5 came early, because it dissolves step 3's remainder.** Josh: *"can't we
+just make the corridor shape be more than a linear line? That should get around
+rooms not facing each other. We made a room flexible; making the corridors
+flexible is good as well."*
+
+Right, and it is not a workaround — it removes the conjunction. A straight
+corridor needs two walls to face each other AND to overlap laterally by a
+door's width. `corridor-route.ts` needs neither: it leaves A perpendicular to
+A's wall, arrives at B perpendicular to B's, and bends in between (straight, L,
+or Z; U is refused, and diagonals are deliberately deferred — 11% of anchors sit
+on exact-45° chamfers, and diagonal geometry is where this codebase's bugs
+live).
+
+| | straight only | routed |
+|---|---|---|
+| of the 183 real links, served | 83% | **99%** |
+
+And the two ends stop being one opening both sides must accept. They become
+**two thresholds**, each negotiated with the single wall it is cut into — which
+is simpler, and hands us the splayed mouth for free: a 3.5m mouth on a 2.2m
+passage is just a threshold wider than the leg behind it.
+
+### THE GRID IS NO LONGER LOAD-BEARING
+
+The remaining question was placement. `geometryFor` puts every room on its
+predecessor's exact centre line, which is why 0 of 183 link pairs are
+perpendicular to each other and why the L branch never fires on live data.
+Simulated by displacing every room and re-routing:
+
+| lateral freedom | straight only | routed |
+|---|---|---|
+| ±0m (today's grid) | 83% | 99% |
+| ±2m | 83% | 99% |
+| ±3m | 81% | 99% |
+| ±5m | **69%** | **99%** |
+
+Routing holds flat while the straight model collapses. **Placement can be freed
+to whatever degree the design wants and the router absorbs it** — the grid was
+never a layout decision, it was a tax the corridor model charged.
+
+That is the next step and it is a load-bearing rewrite, not a patch: `connect()`
+stops producing rects and starts consuming routes, `geometryFor` stops aligning
+centre lines, and the elevation pass takes its leg axes from the route instead
+of inferring them.
 
 What the anchors measure today, over 323 polygon rooms on 48 floors:
 

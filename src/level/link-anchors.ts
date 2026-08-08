@@ -168,6 +168,30 @@ export function chooseLinkOpening(
   return best;
 }
 
+/**
+ * What ONE wall will open to, on its own.
+ *
+ * The straight-corridor model made both ends agree on a single number, because
+ * a rectangle has one width. Once a corridor can bend (`corridor-route.ts`) the
+ * two ends are separate thresholds, each cut into a single wall — so each is
+ * negotiated with that wall alone and they need not match. That is not a
+ * loosening of the contract; it is the contract finally being asked of the
+ * thing that actually owns it.
+ *
+ * Returns null when the wall cannot host the link's minimum band at all, which
+ * is how an anchor declines without anybody special-casing it.
+ */
+export function mouthWidth(anchor: PortalAnchor, want: OpeningWant): number | null {
+  const floor = Math.max(
+    anchor.width[0],
+    want.minBand === 'crawl' ? 0 : MIN_WALKABLE_WIDTH,
+  );
+  const ceiling = anchor.width[1];
+  if (ceiling < floor) return null;
+  const width = pickWidth(ceiling, want);
+  return width >= floor ? width : null;
+}
+
 function lateralRange(s: AnchorSpan, alongX: boolean): [number, number] {
   const a = alongX ? s.from[1] : s.from[0];
   const b = alongX ? s.to[1] : s.to[0];
