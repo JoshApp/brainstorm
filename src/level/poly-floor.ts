@@ -201,6 +201,16 @@ const LATERAL_FREEDOM = 1.5;
 /** Metres between two spikes of a `hazard` room. Closer and it stops being a
  *  line you pick and becomes a maze you thread. */
 const HAZARD_SPREAD = 3.2;
+/**
+ * Metres of floor around the descent that nothing may stand in.
+ *
+ * The stair itself is mounted off a 2.2m wall run and set back 2.9m, so its own
+ * body is most of this; the rest is the standing room you need to see it and
+ * turn onto it. Measured from the failure: pillars landed as close as 0.47m, and
+ * 104 more sat between 1.0m and 2.2m — close enough to crowd the mouth even when
+ * they were not on it.
+ */
+const DESCENT_CLEAR = 2.2;
 /** How far a corridor pushes past a room's wall, so the opening rect straddles
  *  the wall it is meant to cut instead of stopping at it. */
 const OVERLAP = 0.9;
@@ -1738,6 +1748,31 @@ function furnish(
   /** The stair, if this room holds it. The way on always gets marked. */
   descent?: { x: number; z: number },
 ): boolean {
+  // ── THE WAY DOWN IS CLAIMED BEFORE ANYTHING ELSE IS PLACED ─────────
+  //
+  // Josh: *"some pillars generate over the descent. The descent stairs are
+  // essential enough that it should happen early enough in the event passes,
+  // with intent, not to be overlapped by pillars etc."*
+  //
+  // Exactly right, and the descent was already KNOWN here — it is passed in, and
+  // was used only to light the way on. Nothing told the room's occupancy about
+  // it, so the interior planner laid its colonnade straight through the stair.
+  //
+  // Measured across 240 floors: 36 pillars standing within a metre of a stair
+  // and 104 more inside 2.2m. Only pillars — nothing else on a floor does this,
+  // because everything else goes through the occupancy and the pillars are
+  // planned from the polygon alone.
+  //
+  // So it is claimed FIRST, in the same occupancy every other placer already
+  // respects. Not a special case in the pillar planner: a rule that lives in one
+  // producer is a rule the next producer will break (see tests/one-ring.test.ts
+  // for the four times that has cost us).
+  if (descent) {
+    r.occupancy.reserve(
+      { kind: 'cylinder', x: descent.x, z: descent.z, r: DESCENT_CLEAR, y0: 0, y1: r.height },
+      'descent');
+  }
+
   // ── THE CENTREPIECE — the one thing the room is ABOUT ──────────────
   //
   // `planCentrepiece` is the shipping stager: it lays a trove's three plinths
