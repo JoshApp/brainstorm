@@ -204,6 +204,22 @@ const LATERAL_FREEDOM = 1.5;
 /** Metres between two spikes of a `hazard` room. Closer and it stops being a
  *  line you pick and becomes a maze you thread. */
 const HAZARD_SPREAD = 3.2;
+/** How far a lurker's own patch of dark reaches. The light planner may not put a
+ *  standing source inside this of an ambusher — rule 4, an ambush in a lit
+ *  corner is not an ambush. */
+const SHADOW_REACH = 3.2;
+/**
+ * The most of a room's floor that ambush pockets may claim as dark.
+ *
+ * AN AMBUSH IS A POCKET, NOT A BLACKOUT — and that only became load-bearing once
+ * ambush rooms started fielding their whole pack. One lurker takes ~32 m² of
+ * shadow; four, scattered by the farthest-point walk that places them, took a
+ * 107 m² hall entirely off the light planner's table and the middle of the room
+ * went black. Rule 4 and "a hall does not lie about its size" are both real, and
+ * this is the seam between them: the pockets FURTHEST from the room's middle
+ * stay dark, the rest of the pack stands in whatever light the room has.
+ */
+const SHADOW_SHARE = 0.35;
 /**
  * Metres of floor around the descent that nothing may stand in.
  *
@@ -2011,10 +2027,24 @@ function furnish(
   if (def.enemies) {
   const ambush = mod === 'ambush' || (r.type === 'combat' && rand() < 0.45);
   const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
-  const pool = ambush && mouth
+  // WHERE THE ROOM WOULD PREFER THEM. An ambush wants to be out of the
+  // entrance's sightline, so you are inside before you see anyone.
+  //
+  // This is a PREFERENCE, and the distinction matters: the fallback here used to
+  // be `hidden.length ? hidden : open`, which only rescues the pack when NOTHING
+  // is hidden. The interesting case is one spot hidden — and the better a room
+  // is at being an open hall, the likelier that is. A 134 m² combat chamber
+  // offered 142 standing spots of which exactly 1 was out of sightline, so a
+  // three-body pack was cut to one candidate and the room shipped EMPTY. That is
+  // 7% of all combat rooms, and it selects for precisely the big handsome halls
+  // the polygon generator exists to make.
+  //
+  // So hidden spots are a preferred TIER, not a filter: the pack fills them
+  // first and spills into the open floor for whatever is left over.
+  const hidden = ambush && mouth
     ? open.filter((s) => !hasSightline(r.poly, mouth, s))
     : open;
-  const picks = pool.length ? pool : open;
+  const picks = hidden.length ? hidden : open;
   const count = Math.max(1, Math.round(polyArea(r.poly) / 40));
   // Intensity rides the room's ROLE: an ambush is a hard beat, a passage is a
   // speed bump. The pack roller keeps the group coherent so a room reads as a
@@ -2039,14 +2069,49 @@ function furnish(
     r.occupancy.reserve(vol, 'boss');
     spawns.push({ enemyId: boss.enemyId, x: c.x, z: c.z, roomId: r.id });
   }
-  for (const enemyId of ids) {
-    if (!picks.length) break;
-    const s = picks[Math.floor(rand() * picks.length)];
+  // WALK THE SPOTS, NOT THE BODIES.
+  //
+  // This loop used to iterate the PACK and take one random spot per enemy. A
+  // spot that was already taken — by clutter, a pilaster, the centrepiece, or by
+  // the enemy placed a moment earlier, since `picks` was never consumed — cost
+  // that ENEMY, with no second try. Measured across 288 floors it dropped 54% of
+  // every pack the roller produced: a 107 m² combat room asked for three bodies
+  // and stood up 1.25, and a polygon floor fielded half the enemies of the vault
+  // floor it replaces (6.6 against 12.5). The room budget was real; the bodies
+  // were quietly not there.
+  //
+  // Inverting it costs a SPOT when one is occupied, of which a room has many,
+  // instead of a body, of which it has exactly what the floor budgeted. The
+  // queue is the pack's spread first — `spreadPick` is a farthest-point walk, so
+  // an uncluttered room gets the spacing the old loop was hoping for by chance —
+  // then EVERY remaining candidate as fallback, so a cluttered room degrades to
+  // "stand somewhere" rather than to "do not exist". Deliberately not
+  // `spreadPick` over the whole queue: that walk is O(n²·pool), so a queue of
+  // four spots per body did not finish the 288-floor corpus in two minutes, and
+  // the two-spots-per-body queue that did placed 10.07/floor against the 11.21
+  // this two-tier list places — slower AND thinner.
+  const anchor = picks[Math.floor(rand() * picks.length)] ?? null;
+  const spread = spreadPick(picks, ids.length, anchor);
+  const taken = new Set(spread);
+  // Preferred spots first (spread, then the rest of them), open floor last. When
+  // the room is not an ambush `hidden === open`, so the third tier is empty and
+  // this is just "spread, then anywhere".
+  const queue = [
+    ...spread.map((s) => ({ s, lurk: true })),
+    ...picks.filter((p) => !taken.has(p)).map((s) => ({ s, lurk: true })),
+    ...open.filter((p) => !taken.has(p) && !picks.includes(p)).map((s) => ({ s, lurk: false })),
+  ];
+  let next = 0;
+  for (const { s, lurk } of queue) {
+    if (next >= ids.length) break;
     const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.8, y0: 0, y1: 1.8 };
     if (!r.occupancy.fits(vol, 0.2)) continue;
     r.occupancy.reserve(vol, 'spawn');
-    spawns.push({ enemyId, x: s.x, z: s.z, roomId: r.id, dormant: ambush });
-    if (ambush) ambushSpots.push({ x: s.x, z: s.z });
+    // Dormant only where the spot can actually hide someone. An enemy standing
+    // in the open that ignores you until you are close does not read as an
+    // ambush, it reads as broken — so the spill-over tier stays awake.
+    spawns.push({ enemyId: ids[next++], x: s.x, z: s.z, roomId: r.id, dormant: ambush && lurk });
+    if (ambush && lurk) ambushSpots.push({ x: s.x, z: s.z });
   }
   }   // ── end of "something wanders in here" ─────────────────────────
 
@@ -2093,6 +2158,19 @@ function lightRoom(
     mounts = near.length ? [near[0]] : mounts.slice(0, 1);
   }
 
+  // WHICH LURKERS GET TO KEEP THEIR DARK. See SHADOW_SHARE: a room's ambush
+  // pockets are bounded by its floor area, and the ones kept are those furthest
+  // from its middle — so a hall stays readable through the middle while its
+  // corners stay dangerous. Computed once and used for every question below that
+  // asks about ambushes, so the shadow discs, the interior anchors and the
+  // fallback spot cannot disagree about which spots are hidden.
+  const roomArea = polyArea(r.poly);
+  const middle = roomCenter(r.poly);
+  const maxPockets = Math.max(1, Math.floor((roomArea * SHADOW_SHARE) / (Math.PI * SHADOW_REACH ** 2)));
+  const pockets = [...ambushSpots]
+    .sort((a, b) => Math.hypot(b.x - middle.x, b.z - middle.z) - Math.hypot(a.x - middle.x, a.z - middle.z))
+    .slice(0, maxPockets);
+
   // What the room is ABOUT — the centrepiece's own footprint, not the room's
   // geometric middle. A merchant stands behind his counter; the light belongs on
   // the counter.
@@ -2110,16 +2188,16 @@ function lightRoom(
       : undefined,
     descent,
     // Rule 4: an ambush in a lit corner is not an ambush.
-    shadow: ambushSpots.map((a) => ({ x: a.x, z: a.z, r: 3.2 })),
+    shadow: pockets.map((a) => ({ x: a.x, z: a.z, r: SHADOW_REACH })),
     mounts,
-    area: polyArea(r.poly),
+    area: roomArea,
     height: r.height,
     // A `dark` room is a DECISION, and it outranks the size rule the way an
     // ambush does. A hall the player cannot see the end of is a bug; a hall the
     // player cannot see the end of BECAUSE the room is marked dark is the beat.
     // Caught by the suite: without this, 1 dark room in 20 floors lit itself.
-    interiorAnchors: mod === 'dark' ? undefined : interiorLightAnchors(r, piers, ambushSpots),
-    fallback: fallbackLightSpot(r, mouth, ambushSpots),
+    interiorAnchors: mod === 'dark' ? undefined : interiorLightAnchors(r, piers, pockets),
+    fallback: fallbackLightSpot(r, mouth, pockets),
   });
 
   // THE LIGHT PLAN SAYS SHAPE; THE SKIN SAYS MODEL. Everything above decided
