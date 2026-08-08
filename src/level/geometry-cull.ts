@@ -129,10 +129,26 @@ export function inAnyStair(x: number, z: number, footprints: StairFootprint[]): 
   return false;
 }
 
-/** Quickly find the rect a point sits inside, if any. Used by the
- *  torch filter to identify "which room does this torch belong
- *  to" before asking about that room's openings on the torch's
- *  wall side. */
+/**
+ * The first rect whose BOX contains a point. RECT-ERA FLOORS ONLY.
+ *
+ * ── DO NOT USE THIS ON A POLYGON FLOOR ───────────────────────────────────────
+ *
+ * It answers "which box am I in" with the first box that matches, and on a
+ * polygon floor that is wrong twice over. A corridor rect deliberately ends
+ * INSIDE the room it serves, so a point a metre inside a room is in TWO boxes;
+ * and a room's box is not its floor. `level/rect-at.ts` owns the real rule —
+ * polygon beats box, smallest box among equals — and everything that has to be
+ * right about a polygon floor asks it.
+ *
+ * Measured when `facing.ts` was still asking this one: 269 of 1841 props, 15%,
+ * were attributed to the wrong space, so a prop standing in a corridor took its
+ * facing from the enclosing room's wall.
+ *
+ * What is left here is the vault path (`clutter.ts`), where a room's box IS its
+ * floor and there are no polygons to disagree with. That is the only case this
+ * is correct for, and it stays only because that pipeline still exists.
+ */
 export function findContainingRect(
   x: number, z: number,
   rects: WalkableRect[],

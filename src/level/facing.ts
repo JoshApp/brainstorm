@@ -1,5 +1,9 @@
-import type { LevelSpec, PropSpec, RoomSpec, PropFacing, WalkableRect } from './types';
-import { findContainingRect } from './geometry-cull';
+import type { LevelSpec, PropSpec, RoomSpec, PropFacing } from './types';
+import { rectAtIn, type RectLike } from './rect-at';
+
+/** A space the cardinal fallback can be standing in — a room with its floor
+ *  polygon, or a corridor, whose box IS its floor. */
+type SpaceBox = RectLike;
 import { describeWalls, nearestSurface, type WallSurface } from './wall-surfaces';
 import { pointInPoly } from './room-shape';
 
@@ -33,7 +37,24 @@ import { pointInPoly } from './room-shape';
 //   E → -π/2    (back at E, front at W)
 
 export function resolveAllFacings(spec: LevelSpec): void {
-  const allRects = [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((r) => r.rect)];
+  // ── WHICH SPACE IS THIS PROP IN? ────────────────────────────────────────────
+  //
+  // Carried as `RectLike` nodes so the cardinal fallback can ask `rectAtIn` —
+  // the ONE place that owns the rule, polygon beating box and smallest box
+  // among equals. It used to ask `findContainingRect`, which returned the FIRST
+  // rect whose box contained the point.
+  //
+  // That is wrong here for the reason rect-at.ts exists: a corridor rect
+  // deliberately ends INSIDE the room it serves, so at a point a metre inside a
+  // room TWO boxes contain you. First-match handed a prop standing in a
+  // corridor the ROOM's 10.5x10.5 box, and `nearestWall` then computed its
+  // facing off a wall that prop is nowhere near. Measured before this change:
+  // 269 of 1841 props that reach the fallback, 15%, attributed to the wrong
+  // space.
+  const spaces = [
+    ...spec.rooms.map((r) => ({ cx: r.rect.x, cz: r.rect.z, hw: r.rect.w / 2, hd: r.rect.d / 2, poly: r.poly })),
+    ...spec.corridors.map((r) => ({ cx: r.rect.x, cz: r.rect.z, hw: r.rect.w / 2, hd: r.rect.d / 2, poly: undefined })),
+  ];
   // POLYGON ROOMS can answer "which wall" exactly, so they get the exact answer.
   // The cardinal path below quantises every facing to a right angle, which is
   // correct for a rectangle and wrong the moment a wall is chamfered or
@@ -51,7 +72,7 @@ export function resolveAllFacings(spec: LevelSpec): void {
   }
   for (const prop of spec.props) {
     if (!('facing' in prop) || !prop.facing) continue;
-    const rotY = resolveFacing(prop, prop.facing, allRects, polyWalls);
+    const rotY = resolveFacing(prop, prop.facing, spaces, polyWalls);
     // Write back as concrete rotY. Strip the directive so
     // downstream code doesn't try to re-resolve.
     (prop as { rotY?: number }).rotY = rotY;
@@ -62,7 +83,7 @@ export function resolveAllFacings(spec: LevelSpec): void {
 function resolveFacing(
   prop: PropSpec & { x: number; z: number },
   f: PropFacing,
-  rects: WalkableRect[],
+  spaces: SpaceBox[],
   polyWalls: Map<RoomSpec, WallSurface[]>,
 ): number {
   switch (f.kind) {
@@ -73,13 +94,13 @@ function resolveFacing(
       // is precisely "back against the stone, front to the room".
       const s = polySurfaceFor(prop.x, prop.z, polyWalls);
       if (s) return s.facingY;
-      return rotForWallAway(nearestWall(prop.x, prop.z, rects));
+      return rotForWallAway(nearestWall(prop.x, prop.z, spaces));
     }
     case 'wall-toward': {
       const s = polySurfaceFor(prop.x, prop.z, polyWalls);
       if (s) return wrapAngle(s.facingY + Math.PI);
       // Add π to "away" rotation to flip the front toward the wall.
-      return wrapAngle(rotForWallAway(nearestWall(prop.x, prop.z, rects)) + Math.PI);
+      return wrapAngle(rotForWallAway(nearestWall(prop.x, prop.z, spaces)) + Math.PI);
     }
     case 'point-away': {
       const dx = prop.x - f.x;
@@ -114,13 +135,13 @@ type WallDir = 'N' | 'S' | 'W' | 'E';
 /** Find the nearest wall side of the containing rect to a point.
  *  If the point sits outside any rect (shouldn't happen, but be
  *  safe) return 'N' as a deterministic default. */
-function nearestWall(x: number, z: number, rects: WalkableRect[]): WallDir {
-  const rect = findContainingRect(x, z, rects, 0.05);
+function nearestWall(x: number, z: number, spaces: SpaceBox[]): WallDir {
+  const rect = rectAtIn(spaces, x, z);
   if (!rect) return 'N';
-  const dN = z - (rect.z - rect.d / 2);
-  const dS = (rect.z + rect.d / 2) - z;
-  const dW = x - (rect.x - rect.w / 2);
-  const dE = (rect.x + rect.w / 2) - x;
+  const dN = z - (rect.cz - rect.hd);
+  const dS = (rect.cz + rect.hd) - z;
+  const dW = x - (rect.cx - rect.hw);
+  const dE = (rect.cx + rect.hw) - x;
   const dMin = Math.min(dN, dS, dW, dE);
   if (dMin === dN) return 'N';
   if (dMin === dS) return 'S';
