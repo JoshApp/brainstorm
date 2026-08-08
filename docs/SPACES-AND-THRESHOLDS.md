@@ -129,6 +129,74 @@ make, and then **the tighter one wins**: an opening that does not fit one of its
 sides is not an opening. With ranges that case should be rare, and it is worth
 counting rather than assuming — if it is common, the ranges are wrong.
 
+### The SHAPE declares its anchors, and the generator rotates it to fit
+
+Josh: *"not all rooms need to have all sides open — some might not work. So a
+room can declare possible anchors and the generator needs to rotate the room
+shape to mix and match. That way we can also use room shapes rotated, which
+makes some looping easier and allows more variety. Portal carving becomes a
+problem of the room itself, and that way we can also do way better opening
+entrance geometry."*
+
+This is the piece that turns the anchor idea into a system, and it changes what
+a room shape IS: not a polygon the layout happens to place, but a **template
+with a connection contract**.
+
+```ts
+interface RoomShape {
+  id: string;
+  poly: Poly;                       // authored in its own local frame
+  /** Where this shape is WILLING to be entered. An ell says "the two long
+   *  faces, never the inner corner"; a sanctum says "one face, and it is a
+   *  gate". A shape that declares none is a room the layout cannot use, which
+   *  is a legitimate thing to say. */
+  anchors: AnchorSpec[];
+  /** Which presentations are allowed. Quarter turns and mirrors only —
+   *  everything downstream assumes axis-aligned walls, and a free rotation
+   *  would hand us diagonal geometry, which is where the bugs live. */
+  symmetry: 'rot4' | 'rot4-mirror' | 'fixed';
+}
+```
+
+**Placement becomes a small constraint solve instead of a search.** Today
+`stepFrom` picks a direction, drops a box, and `connect()` then goes looking for
+a wall to punch. With declared anchors the layout asks the opposite question —
+*"which rotation of this shape has a free anchor facing the way I am coming
+from, and another facing onward?"* — tries the four (or eight) presentations,
+and keeps one that satisfies it. If none does, the shape simply is not used
+here, and the layout picks another. Degrade, never fail.
+
+Three things fall out, and the third is the one that matters most:
+
+**1. Variety for free.** One authored shape is four or eight presentations. The
+content layer authors a good ell once and the floor gets it in every
+orientation, with its doors always on the faces that suit it.
+
+**2. Loops get much easier.** The loop pass measured earlier this session found
+that of 383 candidate room pairs, ZERO were connectable, because `stepFrom` only
+ever produces alignment between spine neighbours — a loop had to wait for a
+geometric coincidence that never came. A room that declares THREE anchors is
+saying "spine in, spine out, and one more" out loud, and the layout can plan a
+cycle instead of hoping for one.
+
+**3. THE FRAME STOPS BEING A PROP.** This is the deep one. Today a doorway is a
+hole punched in a wall ring, with a separate archway model stood in the gap —
+two independent meshes asked to occupy the same plane, which is the z-fighting,
+the inset stone doors, and the mass-above-the-arch, all of it. If the room owns
+its openings, the opening is part of the room's own shell: one mesh with a
+shaped hole, jambs and reveal and threshold cut as geometry rather than
+delivered as a prop that has to line up. Two surfaces cannot fight for a plane
+when there is only one surface.
+
+That also unlocks the entrance geometry Josh is after — a splayed reveal, a
+stepped threshold, a segmental head — because they become part of how the wall
+is built rather than a model that must be sized to a hole somebody else made.
+
+**Migration note:** declared anchors and derived ones are not exclusive. A shape
+with no `anchors` falls back to deriving candidates from its flat wall runs (the
+rule above). That keeps this incremental — nothing has to be authored up front,
+and a shape earns hand-placed doors when it turns out to need them.
+
 ### On flaring the corridor instead
 
 Josh: *"or kinda make the corridor get wider from one side to the other."*
@@ -276,24 +344,30 @@ Order, each step measurable on its own:
    declared answer can be checked against the inferred one. DONE: it reproduces
    656 of 658 openings `planPortals` finds, 99.7%, median offset 2cm.
 2. **Rooms publish anchors.** `shapeRoom` emits candidate doors on its own wall
-   runs — flat spans, clear of corners and pilasters. Verify: every room the
-   layout wants to connect has an anchor facing the right way, and the anchors
+   runs — flat spans, clear of corners and pilasters, each with a width RANGE.
+   Derived first; a shape may override with declared ones. Verify: every room
+   the layout wants to connect has an anchor facing the right way, and they
    agree with where the current pipeline actually puts doors.
-3. **The layout links anchors, not rooms.** Routing becomes anchor→anchor,
+3. **Placement chooses a rotation that satisfies the anchors.** Quarter turns
+   and mirrors. Verify: floors still generate at every seed (degrade, never
+   fail), and count how often no presentation fits — if that is common, the
+   shapes are over-constrained.
+4. **The layout links anchors, not rooms.** Routing becomes anchor→anchor,
    which is also *easier*: both endpoints are known exactly instead of being
    searched for. Corridor geometry starts and ends on the anchor planes.
    Verify: overshoot deleted, reachability green.
-4. **Walls cut at their own anchors.** `planWallRing` takes the room's claimed
+5. **Walls cut at their own anchors.** `planWallRing` takes the room's claimed
    anchors; `findOpenings`' rect-crossing inference retires.
-5. **Corridors carry a polygon** — stroked centreline between two anchors, so a
+6. **Corridors carry a polygon** — stroked centreline between two anchors, so a
    bend is one shape. Verify: no orphaned ends, wall beats stop needing the
    stone-behind probe.
-6. **Delete the repair passes**, one commit each, guarded by the suite. Each
+7. **Delete the repair passes**, one commit each, guarded by the suite. Each
    should be a deletion with no behaviour change — if a deletion moves a
    number, the model is not finished.
-7. **Anchor `kind`** — the door vocabulary, and the frames built from it.
+8. **Anchor `kind`** — the door vocabulary, and the opening geometry built
+   INTO the shell rather than stood in the hole.
 
-Do not skip step 6 into step 7. The repair passes going inert *is* the proof
+Do not skip step 7 into step 8. The repair passes going inert *is* the proof
 the model works; adding the vocabulary first would build new content on the old
 foundation and hide whether the seam was ever fixed.
 
