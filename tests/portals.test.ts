@@ -161,5 +161,48 @@ test('A FRAME IN AN AXIS-ALIGNED WALL IS SQUARE TO THE WORLD', () => {
 // should stop at the room's wall plane. That is the next piece of work, and it
 // needs its own model rather than a symmetric mirror of the room's.
 
+test('A FRAME IS AS WIDE AS THE WAY THROUGH, NOT AS LONG AS THE CUT', () => {
+  // Josh, on a phone: *"a smaller corridor connected to a big gate by embedding
+  // a tiny corridor inside the middle of the big gate."*
+  //
+  // `width` is how much OUTLINE the hole eats, summed across a run of adjacent
+  // edges — and the outline around a chamfered corner is longer than the line
+  // across it. Sizing the frame from that built a 4.94m gate for a 2.20m
+  // passage on 5% of doorways, with the corridor's own side walls then standing
+  // inside the frame's opening. Two questions, one number; now two numbers.
+  //
+  // The CUT still wants the arc: getting THAT wrong the other way left walls
+  // standing across passages and sealed rooms on 24 of 72 floors. So both halves
+  // are asserted — the cut is never shorter than the span it must clear, and the
+  // frame is never wider than the corridor behind it.
+  let checked = 0, chamfered = 0;
+  for (const spec of floors()) {
+    const byId = new Map(spec.corridors.map((c) => [c.id, c]));
+    const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
+    for (const room of spec.rooms) {
+      if (!room.poly || room.poly.length < 3) continue;
+      for (const p of planPortals(room.id, room.poly, cors)) {
+        const c = byId.get(p.corridorId);
+        if (!c) continue;
+        checked++;
+        const clear = Math.min(c.rect.w, c.rect.d);
+        assert.ok(p.clearWidth <= clear + 1e-6,
+          `${room.id}: a ${p.clearWidth.toFixed(2)}m frame on a ${clear.toFixed(2)}m corridor — `
+          + 'the passage does not fill its own doorway');
+        assert.ok(p.width >= p.clearWidth - 1e-6,
+          `${room.id}: the cut (${p.width.toFixed(2)}m) is shorter than the span it must clear `
+          + `(${p.clearWidth.toFixed(2)}m) — that leaves masonry across the way through`);
+        if (p.width > p.clearWidth + 0.05) chamfered++;
+      }
+    }
+  }
+  assert.ok(checked > 100, `only ${checked} doorways sampled — this measured nothing`);
+  // And the two genuinely differ somewhere, or the distinction is decorative and
+  // the next reader collapses it again.
+  assert.ok(chamfered > 10,
+    `the cut and the clear span never disagreed across ${checked} doorways — either the `
+    + 'shapes stopped being chamfered, or one of them is not being computed');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -62,7 +62,7 @@ export function emitFramesForPortals(spec: LevelSpec): void {
       && Math.abs(st.z - room.rect.z) <= room.rect.d / 2);
 
     for (const p of planPortals(room.id, room.poly, corridors)) {
-      if (p.width < MIN_WIDTH) continue;
+      if (p.clearWidth < MIN_WIDTH) continue;
       const corridor = (spec.corridors ?? []).find((c) => c.id === p.corridorId);
       if (!corridor) continue;
 
@@ -76,8 +76,12 @@ export function emitFramesForPortals(spec: LevelSpec): void {
       // short of a ceiling; `openHeight` caps the lintel to the corridor's own
       // interior so no slit of void shows above it in a low tunnel.
       const ceiling = Math.max(room.height, corridor.height);
+      // THE CLEAR SPAN, NOT THE CUT. `p.width` is how much outline the hole
+      // eats — arc length around a chamfer, which is longer than the way
+      // through. Sizing the frame from it built a 4.94m gate for a 2.20m
+      // passage. See the note on Portal.clearWidth.
       const { kind, model } = chooseFrameModel({
-        width: p.width,
+        width: p.clearWidth,
         ceilingHeight: ceiling,
         openHeight: corridor.height,
         // The frame is set INTO this wall, so its depths are solved from it —
@@ -97,18 +101,18 @@ export function emitFramesForPortals(spec: LevelSpec): void {
         spec.props.push({
           ...base,
           _dbg: 'doorframe-portal',
-          collision: stairMouth ? undefined : doorframeCollision(p.width),
+          collision: stairMouth ? undefined : doorframeCollision(p.clearWidth),
         } as PropSpec);
         (spec.navGates ??= []).push({
           x, z, rotY: p.rotY,
-          halfBand: stairMouth ? p.width / 2 : doorframePassableHalfBand(p.width),
+          halfBand: stairMouth ? p.clearWidth / 2 : doorframePassableHalfBand(p.clearWidth),
         });
       } else {
         // Column blockers at the visible column centres, r 0.18 to match their
         // half-width plus a hair. Same numbers as the rect emitter — every
         // centimetre here narrows the gap a player has to walk through, and the
         // soft-lock guarantee is computed against exactly these.
-        const colOffset = archwayColumnOffset(p.width);
+        const colOffset = archwayColumnOffset(p.clearWidth);
         spec.props.push({
           ...base,
           _dbg: 'archway-portal',
@@ -118,7 +122,7 @@ export function emitFramesForPortals(spec: LevelSpec): void {
           ],
         } as PropSpec);
         (spec.navGates ??= []).push({
-          x, z, rotY: p.rotY, halfBand: archwayPassableHalfBand(p.width),
+          x, z, rotY: p.rotY, halfBand: archwayPassableHalfBand(p.clearWidth),
         });
       }
     }

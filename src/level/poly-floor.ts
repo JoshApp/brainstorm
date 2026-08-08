@@ -855,7 +855,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       // THE SAME CALL THE FRAMES MAKE. A web and the stone doorway it hangs in
       // have to agree, and the only way to guarantee that is to ask once.
       doorways: planPortals(r.id, r.poly, corridors).map((p) => ({
-        x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.width,
+        x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.clearWidth,
       })),   // yaw + width too, which the clearance pass above does not need
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
       onMainline: mainline.has(r.id),

@@ -56,8 +56,37 @@ export interface Portal {
   /** Yaw for a model whose lintel runs along its local X, mounted in this hole.
    *  Derived from the normal, so a chamfered wall gets a square frame. */
   rotY: number;
-  /** Hole width in metres, measured along the edge. */
+  /**
+   * How much OUTLINE the hole eats, in metres, summed across every edge of the
+   * run. This is the CUT — what the wall ring must lose — and it is not a
+   * distance across anything.
+   */
   width: number;
+  /**
+   * The clear span a frame square to this doorway has to cover: the extent of
+   * the hole PROJECTED onto the lead edge, then capped by the corridor's own
+   * clear width.
+   *
+   * ── WHY THESE ARE TWO NUMBERS ────────────────────────────────────────────
+   *
+   * They were one, and it shipped the bug Josh photographed: *"a smaller
+   * corridor connected to a big gate by embedding a tiny corridor inside the
+   * middle of the big gate."*
+   *
+   * A corridor crossing a CHAMFERED corner clips three edges, and the outline
+   * around a corner is longer than the straight line across it. Sizing the
+   * frame from the arc length built a 4.94m gate for a 2.20m passage — 2.25x —
+   * on 5% of doorways, with the corridor's own side walls then standing inside
+   * the frame's opening, which is the z-fighting at the jambs.
+   *
+   * The cut wants the arc: every edge the corridor crosses must go, or a wall
+   * is left standing across the passage (measured: 24 of 72 floors had rooms
+   * nobody could reach when this was got wrong the other way). The frame wants
+   * the chord: it is a door, and a door is as wide as what walks through it.
+   * One number could not be both, and the one it was is the one the wall ring
+   * needed — so the frame was the caller that had to change.
+   */
+  clearWidth: number;
   /** The hole as an edge-local span on `edge`, 0..1. */
   t0: number;
   t1: number;
@@ -179,6 +208,7 @@ export function planPortals(
       // atan2(x, z) — x FIRST — is the codebase's direction→yaw convention.
       rotY: Math.atan2(nrm[0], nrm[1]),
       width: best.len,
+      clearWidth: clearSpan(poly, best.parts, lead, c.rect),
       t0: lead.t0, t1: lead.t1,
       // ── CUT EVERY EDGE THE CORRIDOR CROSSES, NOT JUST THE THRESHOLD RUN ──
       //
@@ -295,6 +325,41 @@ export function wallCutsFor(
  * on a room's own boundary but can for a corridor that ends in one — so the
  * pairing starts from the first crossing either way.
  */
+/**
+ * The clear span across an opening, in the direction a frame square to `lead`
+ * would run.
+ *
+ * Projects every part of the run onto the lead edge's own axis and takes the
+ * extent — so a chamfer's contribution counts for its shadow on that axis
+ * rather than its full length — then caps by the corridor's clear width,
+ * because a frame wider than the passage behind it is a hole with a tunnel in
+ * the middle of it.
+ */
+function clearSpan(
+  poly: Ring,
+  parts: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
+  lead: { edge: number },
+  rect: { w: number; d: number },
+): number {
+  const n = poly.length;
+  const a = poly[lead.edge], b = poly[(lead.edge + 1) % n];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+  let lo = Infinity, hi = -Infinity;
+  for (const h of parts) {
+    const ea = poly[h.edge], eb = poly[(h.edge + 1) % n];
+    const ex = eb[0] - ea[0], ez = eb[1] - ea[1];
+    for (const t of [h.t0, h.t1]) {
+      const s = (ea[0] + ex * t) * ux + (ea[1] + ez * t) * uz;
+      if (s < lo) lo = s;
+      if (s > hi) hi = s;
+    }
+  }
+  const projected = hi - lo;
+  // The corridor's clear width is its SHORT side — the long one is its length.
+  return Math.min(projected, Math.min(rect.w, rect.d));
+}
+
 export function insidePolyRanges(
   we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
   polys: ReadonlyArray<Ring>,

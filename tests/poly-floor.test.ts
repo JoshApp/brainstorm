@@ -792,7 +792,7 @@ test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
   let webs = 0;
   for (const spec of floors()) {
     const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
-    const portals: Array<{ mid: readonly [number, number]; rotY: number; width: number }> = [];
+    const portals: Array<{ mid: readonly [number, number]; rotY: number; clearWidth: number }> = [];
     for (const room of spec.rooms ?? []) {
       if (!room.poly || room.poly.length < 3) continue;
       portals.push(...planPortals(room.id, room.poly, corridors));
@@ -807,8 +807,13 @@ test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
       const dy = Math.abs(((hit!.rotY - (w.rotY ?? 0)) % Math.PI + Math.PI) % Math.PI);
       assert.ok(Math.min(dy, Math.PI - dy) < 1e-6,
         `the web is turned ${(Math.min(dy, Math.PI - dy) * 57.3).toFixed(0)}° off its own doorway`);
-      assert.ok(Math.abs((w.widthM ?? 0) - hit!.width) < 1e-6,
-        `a ${(w.widthM ?? 0).toFixed(2)}m web across a ${hit!.width.toFixed(2)}m hole`);
+      // THE CLEAR SPAN, not the cut. `width` is how much outline the hole eats,
+      // which around a chamfer is longer than the way through — a web sized to
+      // it hangs past the opening into the stone either side. Same distinction
+      // the frame now makes, and the web must agree with the FRAME, which is
+      // what "one source" meant all along.
+      assert.ok(Math.abs((w.widthM ?? 0) - hit!.clearWidth) < 1e-6,
+        `a ${(w.widthM ?? 0).toFixed(2)}m web across a ${hit!.clearWidth.toFixed(2)}m opening`);
     }
   }
   // A detector that finds nothing looks exactly like a codebase with nothing to
