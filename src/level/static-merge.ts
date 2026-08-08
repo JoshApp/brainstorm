@@ -75,9 +75,40 @@ export function batchStaticFixtures(level: LiveLevel): void {
       for (const it of items) it.geo.dispose();
       continue;
     }
-    const merged = mergeGeometries(items.map((it) => it.geo), false);
+    // ONE ATTRIBUTE SHAPE PER BATCH.
+    //
+    // `mergeGeometries` refuses a batch that mixes indexed and non-indexed
+    // geometry, and it refuses by returning null rather than throwing — straight
+    // into the `continue` below, which leaves the originals unmerged. Silent, and
+    // the loudest thing about it was a Three.js console line nobody was reading.
+    //
+    // Measured on a polygon floor: 8 room batches failed this way, of 20–30
+    // fixtures each. The rooms with the MOST fixtures were exactly the ones
+    // still paying a draw call per part — this function's whole purpose,
+    // inverted, on the rooms that needed it most.
+    //
+    // Fixture geometry comes from several builders and they don't agree about
+    // indexing. De-indexing is the safe common denominator: every geometry can
+    // drop an index, not every one can be given a meaningful one. Only paid when
+    // a batch is actually mixed.
+    const geos = items.map((it) => it.geo);
+    const indexed = geos.reduce((n, g) => n + (g.index ? 1 : 0), 0);
+    const mixed = indexed !== 0 && indexed !== geos.length;
+    const batch = mixed ? geos.map((g) => (g.index ? g.toNonIndexed() : g)) : geos;
+
+    const merged = mergeGeometries(batch, false);
+    if (mixed) for (let i = 0; i < batch.length; i++) if (batch[i] !== geos[i]) batch[i].dispose();
     for (const it of items) it.geo.dispose();
-    if (!merged) continue;             // attribute mismatch — leave originals intact
+    if (!merged) {
+      // Still refused — a genuine attribute mismatch, not the index case. The
+      // originals stay and the room just costs more; say so where a developer
+      // will see it rather than losing it in the Three.js line above.
+      if (import.meta.env.DEV) {
+        console.warn(`[static-merge] ${key}: ${batch.length} fixtures would not merge `
+          + `(${[...new Set(batch.map((g) => Object.keys(g.attributes).sort().join('+')))].join(' vs ')})`);
+      }
+      continue;
+    }
 
     const roomId = key.slice(0, key.indexOf('|'));
     const mesh = new THREE.Mesh(merged, mat);
