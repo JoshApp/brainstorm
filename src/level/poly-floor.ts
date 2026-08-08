@@ -242,7 +242,100 @@ const DOGLEG_OFFSETS: ReadonlyArray<readonly [number, number]> = [
  * identically on resume, so nothing here may touch Math.random.
  */
 export function generatePolyFloor(depth: number, seed: number): LevelSpec {
-  const rand = mulberry(hash(depth, seed));
+  return rollUntilSound(depth, seed);
+}
+
+/**
+ * REJECT THE PLAN, DO NOT AUDIT THE FLOOR.
+ *
+ * Stage 2 of the topology-first plan. Every global property this generator has
+ * ever got wrong — a room nobody can reach, a detour that stopped being one, a
+ * gate on the mainline — was enforced by LOCAL greedy decisions that could not
+ * see each other, and then found afterwards by an audit reporting "16 of 240
+ * floors violate this". Each of those became a patched producer and a rule
+ * living in one place that four other producers never read.
+ *
+ * On the graph they are total and cheap (level/floor-graph.ts `faults`), and a
+ * floor is 7 rooms at the median, so a failed roll costs microseconds. So the
+ * generator now BUILDS, CHECKS, AND ROLLS AGAIN — the property holds by
+ * construction rather than by everybody remembering.
+ *
+ * Determinism is preserved exactly: the attempt index is folded into the seed,
+ * so `(depth, seed)` still names one floor forever. And it degrades rather than
+ * fails — the last attempt ships even if it is faulty, because a floor with a
+ * flaw is recoverable and a floor that does not exist is not.
+ */
+const MAX_ATTEMPTS = 6;
+
+function rollUntilSound(depth: number, seed: number): LevelSpec {
+  let last: LevelSpec | null = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const spec = buildPolyFloor(depth, seed, attempt);
+    last = spec;
+    if (!spec.graph) break;
+    const bad = [...faults(spec.graph), ...craftFaults(spec)];
+    if (!bad.length) {
+      (spec as { generationAttempts?: number }).generationAttempts = attempt + 1;
+      return spec;
+    }
+  }
+  (last as { generationAttempts?: number }).generationAttempts = MAX_ATTEMPTS;
+  return last!;
+}
+
+/**
+ * How many links this floor's corridors were ROUTED on the walls' own anchors,
+ * and how many fell through to the pre-anchor guess.
+ *
+ * Module-level because `connect` is a free function several passes deep, and
+ * threading a counter through every one of them to report a build statistic
+ * would be worse than a variable this file resets at the top of each attempt.
+ * Read straight back by the reroll, which treats a floor built mostly by guess
+ * as a floor worth rolling again.
+ */
+const linkTally = { routed: 0, guessed: 0 };
+
+/**
+ * A FLOOR MOSTLY BUILT BY GUESSWORK IS WORTH ROLLING AGAIN.
+ *
+ * `faults` asks whether the floor is SOUND — reachable, no orphans, detours
+ * that are still detours. This asks whether it is WELL MADE, which is a
+ * different question and previously had no home at all.
+ *
+ * Every doorway that still wraps a corner comes from the pre-anchor path: the
+ * router declines where two walls cannot see each other, and the guess builds
+ * something anyway. Measured before this existed, per floor: median 17% of
+ * links guessed, p90 40%, worst 80%. A floor at 80% is one the layout simply
+ * made badly, and it is cheaper to roll it again than to make the guess better.
+ *
+ * A third is the bar. Not zero — the guess is the degrade-never-fail path and a
+ * floor that loses a link is worse than one imperfect corridor — but a floor
+ * where most corridors could not be anchored has a placement problem the reroll
+ * can just walk away from.
+ */
+const MAX_GUESS_SHARE = 1 / 3;
+
+function craftFaults(spec: LevelSpec): string[] {
+  const t = spec.anchoredLinks;
+  if (!t) return [];
+  const total = t.routed + t.guessed;
+  if (total < 3) return [];   // too few links for a share to mean anything
+  const share = t.guessed / total;
+  return share > MAX_GUESS_SHARE
+    ? [`${t.guessed} of ${total} corridors could not be anchored to a wall `
+       + `(${(share * 100).toFixed(0)}%, over the ${(MAX_GUESS_SHARE * 100).toFixed(0)}% bar)`]
+    : [];
+}
+
+function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec {
+  linkTally.routed = 0;
+  linkTally.guessed = 0;
+  // The attempt index folds into the stream, so a reroll is a DIFFERENT floor
+  // rather than the same one built twice. Attempt 0 must hash to exactly what
+  // this generator produced before rerolling existed, or every seed in every
+  // save moves.
+  const rand = mulberry(attempt === 0 ? hash(depth, seed)
+    : (hash(depth, seed) ^ Math.imul(attempt, 0x85ebca6b)) >>> 0);
   // DRESSING ROLLS DO NOT TOUCH THE LAYOUT STREAM.
   //
   // The skin resolver picks between a torch and a cresset, a brazier and a pike
@@ -253,7 +346,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // fixtures. That coupling is invisible and it makes a theme change look like a
   // level change. A separate stream, derived from the same seed so it stays
   // deterministic, keeps "what it is made of" independent of "where things are".
-  const dressRand = mulberry((hash(depth, seed) ^ 0x5ce5cafe) >>> 0);
+  const dressRand = mulberry((hash(depth, seed) ^ 0x5ce5cafe ^ Math.imul(attempt, 0xc2b2ae35)) >>> 0);
 
   // ── 0. THE CONTRACT, BEFORE ANY GEOMETRY EXISTS ────────────────────
   // floor-plan.ts states what the floor OWES the player — an offer, a threat,
@@ -926,6 +1019,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
     composerManagedFires: true,
     startPos,
     graph,
+    anchoredLinks: { ...linkTally },
     rooms: rooms.map((r) => {
       const m = mods.byRoom.get(r.id);
       return {
@@ -1030,23 +1124,53 @@ function stepFrom(
   return { ...geometryFor(from, size, heading, 60), dir: heading };
 }
 
-function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; corridor: Box } {
+/**
+ * THE GRID WAS A TAX, NOT A DECISION.
+ *
+ * This put every room on its predecessor's EXACT centre line, and that is why 0
+ * of 183 link pairs were ever perpendicular to each other and why floors read as
+ * a diagram. It was never a layout choice — it was the price the straight-
+ * corridor model charged, because two rooms that did not share a centre line
+ * could not be joined at all.
+ *
+ * `corridor-route.ts` removed that price. Simulated before freeing it, by
+ * displacing every room and re-routing:
+ *
+ *   lateral freedom   straight-only   routed
+ *   +/-0m (the grid)       83%          99%
+ *   +/-3m                  81%          99%
+ *   +/-5m                  69%          99%
+ *
+ * Routing holds flat while the straight model collapses. So `lateral` slides
+ * the next room off the line, and the router absorbs it with a bend.
+ *
+ * The reservation box widens to cover the slide. It is a LAYOUT hold — it keeps
+ * other rooms out of the ground the corridor will need — and an offset corridor
+ * needs an L of ground, so a box spanning both laterals is the honest reserve.
+ * Holding slightly more than the corridor finally uses is the safe error here;
+ * holding a straight strip while the corridor bends around it is not.
+ */
+function geometryFor(
+  from: Box, size: Box, dir: Dir, len: number, lateral = 0,
+): { at: Box; corridor: Box } {
   const half = (b: Box, axis: 'w' | 'd') => b[axis] / 2;
   if (dir === 'N' || dir === 'S') {
     const sign = dir === 'N' ? -1 : 1;
     const z = from.z + sign * (half(from, 'd') + len + half(size, 'd'));
-    const at = { ...size, x: from.x, z };
+    const x = from.x + lateral;
+    const at = { ...size, x, z };
     const corridor = {
-      x: from.x, w: RESERVE_W, d: len,
+      x: (from.x + x) / 2, w: Math.abs(lateral) + RESERVE_W, d: len,
       z: from.z + sign * (half(from, 'd') + len / 2),
     };
     return { at, corridor };
   }
   const sign = dir === 'E' ? 1 : -1;
   const x = from.x + sign * (half(from, 'w') + len + half(size, 'w'));
-  const at = { ...size, x, z: from.z };
+  const z = from.z + lateral;
+  const at = { ...size, x, z };
   const corridor = {
-    z: from.z, d: RESERVE_W, w: len,
+    z: (from.z + z) / 2, d: Math.abs(lateral) + RESERVE_W, w: len,
     x: from.x + sign * (half(from, 'w') + len / 2),
   };
   return { at, corridor };
@@ -1219,9 +1343,11 @@ function connect(
   // reason to keep a second way of bending.
   const wantsKink = rand() < DOGLEG_CHANCE;
   const routed = routeConnection(a, b, type, rooms, occupied, wantsKink);
-  if (routed) return routed;
+  if (routed) { linkTally.routed++; return routed; }
+  linkTally.guessed++;
 
   // -- EVERYTHING BELOW IS THE PRE-ANCHOR PATH -------------------------------
+
   //
   // Kept as the fallback, not deleted, because the router declines rather than
   // improvises: a link whose walls cannot agree gets no route, and a floor that

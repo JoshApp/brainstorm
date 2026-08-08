@@ -802,6 +802,16 @@ export type LevelSpec = {
    */
   graph?: FloorGraph;
   /**
+   * How this floor's corridors were built: `routed` on the walls' own published
+   * anchors, `guessed` by the pre-anchor path that tries lateral offsets and
+   * ray-casts for a wall.
+   *
+   * A build statistic, not geometry — but a load-bearing one, because every
+   * doorway that still wraps a corner comes from the guessed set. The generator
+   * rerolls a floor that is mostly guesswork rather than shipping it.
+   */
+  anchoredLinks?: { routed: number; guessed: number };
+  /**
    * 1-based floor depth. Feeds the difficulty-scaling pipeline
    * (src/content/modifiers.ts) which multiplies mob HP / damage /
    * reward at spawn time. Hand-authored floors set this explicitly;
