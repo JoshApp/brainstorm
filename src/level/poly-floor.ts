@@ -10,7 +10,8 @@ import { pointInPoly } from './room-shape';
 import { RoomOccupancy } from './room-occupancy';
 import { pilasterVolumes } from './poly-dressing';
 import { rollFloorEnemies } from './procgen';
-import { nextLevelAfter } from './acts';
+import { nextLevelAfter, isBossDepth, actForDepth } from './acts';
+import { bossById, type BossSpec } from '../content/bosses';
 import { planFloor, dedicatedEntries } from './floor-plan';
 import { planCentrepiece } from './centrepieces';
 import { roomType, type RoomTypeId, type RoomModifier } from './room-types';
@@ -763,11 +764,61 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
     }
   }
 
+  // ── THE ACT'S BOSS ─────────────────────────────────────────────────
+  //
+  // Boss depths used to fall through to the vault composer entirely
+  // (`procgen.ts`: `usePolyFloors() && !isBossDepth(depth)`), so a run on
+  // polygon floors changed generator every fifth floor — different rooms,
+  // different corridors, different everything, at the one moment the floor is
+  // most trying to make an impression.
+  //
+  // The hall is the FINISH room: you fight the boss and the stairs out are in
+  // the same chamber, which is what `nextLevelAfter` already says about a boss
+  // depth (its stair targets the act's safe room, not the next depth).
+  const boss = isBossDepth(depth) ? bossById(actForDepth(depth).bossId) : null;
+
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
     const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
     if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand, dressRand,
-                props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent)) guardedRooms.add(r.id);
+                props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent,
+                boss && r === last ? boss : undefined)) guardedRooms.add(r.id);
+  }
+
+  // ── THE FOG WALL ───────────────────────────────────────────────────
+  //
+  // The mist across the arena's threshold: you can walk through it, and it
+  // seals behind you. The builder wires the trigger and the seal off this prop
+  // alone, so all this has to get right is WHERE and HOW WIDE.
+  //
+  // Which is the one thing the vault path had to work at — it derives the gate
+  // from the arena's offset, its dims and the direction it was placed from
+  // (`bossGatePlacement`), then guesses 3.4m when it cannot find the corridor.
+  // A polygon floor already knows: `planPortals` returns the doorway's
+  // midpoint, its rotation and the clear span of the passage behind it, and it
+  // is the SAME call the frame is mounted from — so the mist and the archway it
+  // hangs in cannot disagree.
+  if (boss) {
+    const mouth = mouthOf(last, links);
+    const ports = planPortals(last.id, last.poly,
+      corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId })));
+    // The one you come in by. Nearest the mouth — a boss hall is a leaf, so
+    // there is normally exactly one, and picking the nearest is only doing work
+    // on the floors where the loop pass gave it a second way in.
+    const gate = mouth
+      ? ports.reduce<typeof ports[number] | null>((best, p) => {
+        const d = Math.hypot(p.mid[0] - mouth.x, p.mid[1] - mouth.z);
+        return !best || d < Math.hypot(best.mid[0] - mouth.x, best.mid[1] - mouth.z) ? p : best;
+      }, null)
+      : ports[0] ?? null;
+    if (gate) {
+      props.push({
+        kind: 'boss-mist',
+        x: gate.mid[0], z: gate.mid[1], rotY: gate.rotY,
+        color: boss.mistColor ?? 0xffd060,
+        width: gate.clearWidth,
+      } as PropSpec);
+    }
   }
 
   // ── 6. THE DIRECTOR — the floor's reward and its question ──────────
@@ -1101,6 +1152,10 @@ function buildPolyFloor(depth: number, seed: number, attempt: number): LevelSpec
     seed,
     depth,
     displayName: undefined,
+    // A boss may recolour its own hall — the Marrow Sovereign's charnel red.
+    // Left undefined otherwise so the act's palette applies, exactly as the
+    // vault path does it (`procgen.ts` passes the same two fields).
+    fogColor: boss?.arenaFogColor,
     composerManagedFires: true,
     startPos,
     graph,
@@ -1779,6 +1834,14 @@ function furnish(
   mod?: RoomModifier,
   /** The stair, if this room holds it. The way on always gets marked. */
   descent?: { x: number; z: number },
+  /**
+   * Set ONLY on the room that holds the act's boss.
+   *
+   * A boss hall does not get a pack. The floor's ordinary roller would fill it
+   * with whatever the depth rolls and you would fight the king in a crowd —
+   * which is not the fight, and on a sealed arena it is not survivable either.
+   */
+  boss?: BossSpec,
 ): boolean {
   // ── THE WAY DOWN IS CLAIMED BEFORE ANYTHING ELSE IS PLACED ─────────
   //
@@ -1965,7 +2028,17 @@ function furnish(
   // version is that a hall used to be the same encounter as a chamber with more
   // bodies in it, so its space was doing nothing.
   const archetype = archetypeForSpan(roomSpan(r.poly), rand);
-  const ids = rollFloorEnemies(depth, count, intensity, rand, archetype);
+  // THE HALL BELONGS TO ONE THING. A boss arena takes no pack: the act's boss
+  // stands in it alone, at the room's own focal point, and everything the
+  // ordinary roller would have put there is simply not rolled — so the enemy
+  // budget for this floor is not spent twice either.
+  const ids = boss ? [] : rollFloorEnemies(depth, count, intensity, rand, archetype);
+  if (boss) {
+    const c = roomCenter(r.poly);
+    const vol = { kind: 'cylinder' as const, x: c.x, z: c.z, r: 1.6, y0: 0, y1: 2.6 };
+    r.occupancy.reserve(vol, 'boss');
+    spawns.push({ enemyId: boss.enemyId, x: c.x, z: c.z, roomId: r.id });
+  }
   for (const enemyId of ids) {
     if (!picks.length) break;
     const s = picks[Math.floor(rand() * picks.length)];

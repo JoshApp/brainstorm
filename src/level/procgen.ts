@@ -447,7 +447,14 @@ export function generateFloor(
   // clusters, cobwebs, the small found things a tilemap used to bake in. A poly
   // floor is legible and correctly staged, and still barer than a vault floor
   // between its beats.
-  if (usePolyFloors() && !isBossDepth(depth)) {
+  // Boss depths included. They used to fall through to the vault composer, so a
+  // run on polygon floors swapped generator every fifth floor — different rooms,
+  // different corridors, different everything, at the one moment a floor is most
+  // trying to make an impression. `poly-floor` now stands the act's boss in the
+  // finish room and hangs the fog wall in its doorway, taking the gate's
+  // position and width from the SAME `planPortals` call the archway is mounted
+  // from rather than deriving it from the arena's offset and dims.
+  if (usePolyFloors()) {
     return generatePolyFloor(depth, runSeed);
   }
 
