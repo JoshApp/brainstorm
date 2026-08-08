@@ -750,8 +750,6 @@ test('the same seed builds the same floor', () => {
   }
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
 
 test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
   // Josh, on a screenshot: *"cobweb placement sealing doorways is off."*
@@ -889,3 +887,12 @@ test('A BARGAIN IS NOT REACHABLE FROM THE THRESHOLD', () => {
     `${((tooClose / deals) * 100).toFixed(0)}% of deals stand within 3m of a doorway`);
 });
 
+// THE SUMMARY GOES LAST, AND THAT IS NOT A STYLE POINT.
+//
+// It used to sit two thirds of the way down this file, with four tests after
+// it. Those four could not fail the run: the count was already printed and
+// `process.exit(1)` had already been skipped, so a red assertion in any of them
+// exited 0. It surfaced when the cobweb check went from healthy to zero and the
+// file still reported "20 passed, 0 failed" on its own.
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);

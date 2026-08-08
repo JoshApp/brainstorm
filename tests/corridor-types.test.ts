@@ -62,11 +62,11 @@ const widthOf = (c: RoomSpec) => Math.min(c.rect.w, c.rect.d);
  * one imaginary link called `cor`, which is what the first version of this did
  * before it went red.
  */
-const LEG = /^(cor-p?\d+)-\d+$/;
+const LEG = /^(cor-[a-z]?\d+)-\d+$/;
 function linksOf(spec: LevelSpec): Map<string, RoomSpec[]> {
   const out = new Map<string, RoomSpec[]>();
   for (const c of spec.corridors) {
-    assert.ok(/^cor-p?\d+(-\d+)?$/.test(c.id),
+    assert.ok(/^cor-[a-z]?\d+(-\d+)?$/.test(c.id),
       `corridor id ${c.id} does not match the naming these tests group by`);
     const link = LEG.exec(c.id)?.[1] ?? c.id;
     (out.get(link) ?? out.set(link, []).get(link)!).push(c);

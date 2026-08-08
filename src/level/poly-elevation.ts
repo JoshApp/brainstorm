@@ -49,6 +49,39 @@ export interface ElevLink {
   ids: readonly string[];
   /** True for a dead-end pocket hung off the spine. See the clamp below. */
   spur?: boolean;
+  /**
+   * True for a LOOP EDGE — a corridor joining two rooms the spine already
+   * placed, so the floor stops being a tree.
+   *
+   * It changes this pass fundamentally: every other link DECIDES how deep its
+   * far room sits, and a chord decides nothing. Both its ends are already at a
+   * height somebody else chose, and all it may do is carry the difference. If
+   * it re-rolled a drop and reassigned `to`, the room would move under the
+   * corridor that put it there and the seam at the OTHER end would step —
+   * which is the failure the seam check in poly-elevation.test.ts was written
+   * for.
+   *
+   * The caller guarantees the fall is carryable at the signed-off grade; it
+   * cannot be checked here, because by the time this runs the corridor is built
+   * and there is nothing to do about a bad one. See `chordSkipFits`.
+   */
+  chord?: boolean;
+  /**
+   * PER-LEG TRAVEL, for a link whose legs do not share one axis.
+   *
+   * Everything the spine builds runs between two rooms that share an axis, so
+   * this pass derived ONE travel direction for a whole link and measured every
+   * leg along it. An L-corridor breaks that: it leaves one room going north and
+   * enters the other going east, and a ramp built along the link's axis would
+   * run ACROSS one of the two legs instead of down it.
+   *
+   * So the builder declares it, per rect, because the builder is the only thing
+   * that knows. `alongX` is the leg's direction of travel; `fromIsLo` says
+   * whether the `from` end of that leg sits at the LOWER world coordinate along
+   * it, which is what decides whether the ramp's low end is its start or its
+   * finish. Omit for the ordinary case and the old derivation applies unchanged.
+   */
+  legAxis?: ReadonlyArray<{ alongX: boolean; fromIsLo: boolean }>;
 }
 
 /** What to stamp on one corridor RoomSpec. A ramping rect gets the axis and its
@@ -110,8 +143,12 @@ export function planElevation(
   // path shares, the LAST link of the spine takes the biggest drop it can
   // legally carry. It is also the most earned one: the room at the end of it
   // holds the stair.
+  // A LOOP EDGE IS NOT THE SPINE. It is neither a spur nor part of the descent,
+  // and it decides no elevation at all — so if the forced drop lands on one it
+  // is simply discarded and the floor comes out flat. Measured when loops first
+  // shipped: 17 of 20 sampled floors stopped descending.
   let lastSpine = -1;
-  for (let i = 0; i < links.length; i++) if (!links[i].spur) lastSpine = i;
+  for (let i = 0; i < links.length; i++) if (!links[i].spur && !links[i].chord) lastSpine = i;
   const biggestDrop = CONFIG.ELEVATION_DROP_WEIGHTS
     .reduce((m, d) => Math.max(m, d.drop), 0);
 
@@ -139,33 +176,23 @@ export function planElevation(
     // link with any rect over the wrong room simply does not fall. Bounding
     // boxes rather than polygons, deliberately: a rect that clips the box but
     // misses the shape costs one drop and never costs a player their footing.
-    const overlapsBox = (rc: Box, rr: Box): boolean =>
-      Math.abs(rc.x - rr.x) < (rc.w + rr.w) / 2 - 0.05
-      && Math.abs(rc.z - rr.z) < (rc.d + rr.d) / 2 - 0.05;
-    /** Which room, if any, this rect's ends are pinned to. A dogleg's landing
-     *  is pinned to neither, so it must clear BOTH. */
-    const pinnedTo = (i: number): readonly string[] =>
-      link.rects.length === 1 ? [link.from, link.to]
-        : i === 0 ? [link.from] : i === link.rects.length - 1 ? [link.to] : [];
-    const misplaced = link.rects.some((rc, i) => {
-      const allowed = pinnedTo(i);
-      for (const [id, rr] of roomRect) {
-        if (allowed.includes(id)) continue;
-        if (overlapsBox(rc, rr)) return true;
-      }
-      return false;
-    });
+    const misplaced = linkRectsMisplaced(link, roomRect);
 
     // THE CONNECTION AXIS IS THE ROOMS' AXIS, not any rect's longer side. A
     // stubby wide leg's long side is perpendicular to travel, and a ramp built
     // along it runs across the corridor instead of down it.
-    const alongX = Math.abs(a.x - b.x) >= Math.abs(a.z - b.z);
-    const travel = (r: Box): number => (alongX ? r.w : r.d);
-    const fromIsLo = (alongX ? a.x : a.z) <= (alongX ? b.x : b.z);
+    const linkAlongX = Math.abs(a.x - b.x) >= Math.abs(a.z - b.z);
+    const linkFromIsLo = (linkAlongX ? a.x : a.z) <= (linkAlongX ? b.x : b.z);
+    /** This leg's travel axis — declared by the builder for an L, derived from
+     *  the rooms otherwise. */
+    const legAlongX = (i: number): boolean => link.legAxis?.[i]?.alongX ?? linkAlongX;
+    /** Whether this leg's `from` end is at the lower coordinate along its axis. */
+    const legFromIsLo = (i: number): boolean => link.legAxis?.[i]?.fromIsLo ?? linkFromIsLo;
+    const travel = (r: Box, i: number): number => (legAlongX(i) ? r.w : r.d);
 
     // Which rects can carry slope: the single rect, or a dogleg's two legs.
     const legs = link.rects.length === 3 ? [0, 2] : link.rects.length === 1 ? [0] : [];
-    const runs = legs.map((i) => corridorRampRun(travel(link.rects[i])));
+    const runs = legs.map((i) => corridorRampRun(travel(link.rects[i], i)));
     const runTotal = runs.reduce((t, r) => t + r, 0);
 
     // A rolled drop, clamped to what this link's stair-run actually carries at
@@ -192,11 +219,19 @@ export function planElevation(
     // always built AFTER the spine (they hang off a room already placed), so by
     // the time one is reached the spine's depth is known and the clamp is exact
     // rather than a guess.
-    const eTo = link.spur
-      ? Math.max(eFrom - drop, deepestSpine)
-      : eFrom - drop;
-    if (!link.spur) deepestSpine = Math.min(deepestSpine, eTo);
-    room.set(link.to, eTo);
+    // A CHORD DECIDES NOTHING. Both its ends are already placed, so it takes
+    // the height it finds and carries the difference. The roll above is still
+    // drawn — see the note there: a stream that skips draws is a stream whose
+    // output depends on geometry.
+    const known = link.chord ? room.get(link.to) : undefined;
+    if (link.chord && known === undefined) continue;
+    const eTo = link.chord ? known!
+      : link.spur ? Math.max(eFrom - drop, deepestSpine)
+        : eFrom - drop;
+    if (!link.chord) {
+      if (!link.spur) deepestSpine = Math.min(deepestSpine, eTo);
+      room.set(link.to, eTo);
+    }
 
     // What the link ACTUALLY falls, after the spur clamp. Ramping to the rolled
     // drop while the room sits at the clamped one is a corridor that ends in a
@@ -214,9 +249,9 @@ export function planElevation(
 
     if (legs.length === 1) {
       corridor.set(link.ids[0], {
-        rampAlongX: alongX,
-        rampLoElev: fromIsLo ? eFrom : eTo,
-        rampHiElev: fromIsLo ? eTo : eFrom,
+        rampAlongX: legAlongX(0),
+        rampLoElev: legFromIsLo(0) ? eFrom : eTo,
+        rampHiElev: legFromIsLo(0) ? eTo : eFrom,
       });
       continue;
     }
@@ -226,19 +261,82 @@ export function planElevation(
     // instead of both getting half.
     const eMid = eFrom - fall * (runs[0] / runTotal);
     corridor.set(link.ids[0], {
-      rampAlongX: alongX,
-      rampLoElev: fromIsLo ? eFrom : eMid,
-      rampHiElev: fromIsLo ? eMid : eFrom,
+      rampAlongX: legAlongX(0),
+      rampLoElev: legFromIsLo(0) ? eFrom : eMid,
+      rampHiElev: legFromIsLo(0) ? eMid : eFrom,
     });
     corridor.set(link.ids[1], { elevation: eMid });   // the landing
     corridor.set(link.ids[2], {
-      rampAlongX: alongX,
-      rampLoElev: fromIsLo ? eMid : eTo,
-      rampHiElev: fromIsLo ? eTo : eMid,
+      rampAlongX: legAlongX(2),
+      rampLoElev: legFromIsLo(2) ? eMid : eTo,
+      rampHiElev: legFromIsLo(2) ? eTo : eMid,
     });
   }
 
   let lowest = 0;
   for (const e of room.values()) lowest = Math.min(lowest, e);
   return { room, corridor, totalDrop: -lowest };
+}
+
+/**
+ * Does any of this link's rects overlap a room it is NOT pinned to?
+ *
+ * The elevation field lets corridors WIN over rooms where the two overlap,
+ * because a corridor's end is pinned to its room's plateau and the seam is
+ * therefore level by construction. That reasoning holds for the room a rect's
+ * end is pinned to and collapses for any other — the rect then ends inside a
+ * room at a different height, and the ground steps in a doorway.
+ *
+ * Exported because the loop-edge selector has to ask the same question BEFORE
+ * it builds a chord, and asking it with a second copy of the rule is how the
+ * two drift apart.
+ *
+ * Bounding boxes rather than polygons, deliberately: a rect that clips the box
+ * but misses the shape costs one drop and never costs a player their footing.
+ */
+export function linkRectsMisplaced(
+  link: Pick<ElevLink, 'from' | 'to' | 'rects'>,
+  roomRect: ReadonlyMap<string, Box>,
+): boolean {
+  const overlapsBox = (rc: Box, rr: Box): boolean =>
+    Math.abs(rc.x - rr.x) < (rc.w + rr.w) / 2 - 0.05
+    && Math.abs(rc.z - rr.z) < (rc.d + rr.d) / 2 - 0.05;
+  /** Which room, if any, this rect's ends are pinned to. A dogleg's landing is
+   *  pinned to neither, so it must clear BOTH. */
+  const pinnedTo = (i: number): readonly string[] =>
+    link.rects.length === 1 ? [link.from, link.to]
+      : i === 0 ? [link.from] : i === link.rects.length - 1 ? [link.to] : [];
+  return link.rects.some((rc, i) => {
+    const allowed = pinnedTo(i);
+    for (const [id, rr] of roomRect) {
+      if (allowed.includes(id)) continue;
+      if (overlapsBox(rc, rr)) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * CAN A LOOP EDGE SKIPPING `spineSteps` ROOMS CARRY THE FALL IT MIGHT FIND?
+ *
+ * The awkward ordering this answers: chords are chosen while the floor is being
+ * laid out, and elevations are not computed until three hundred lines later,
+ * after the walls are already described. By the time the fall is knowable there
+ * is nothing to be done about a chord that cannot hold it.
+ *
+ * So the question is asked in the WORST CASE instead of the actual one. Each
+ * spine link the chord skips past can drop at most the biggest entry in the
+ * drop table, so a chord over n links faces at most `n * biggestDrop`, and it
+ * can hold that if its stair-run carries it at the signed-off grade.
+ *
+ * Conservative on purpose. Measured over 72 floors, the real delta across
+ * candidate pairs was a median of ZERO and a maximum of 0.30 grade against a
+ * limit of 0.40 — so an actual-value test would have admitted everything and
+ * looked identical to this one, right up until the drop table was retuned.
+ * "It happens to hold today" is the shape of the bug, not the check.
+ */
+export function chordSkipFits(spineSteps: number, rampRun: number): boolean {
+  const biggestDrop = CONFIG.ELEVATION_DROP_WEIGHTS
+    .reduce((m, d) => Math.max(m, d.drop), 0);
+  return spineSteps * biggestDrop <= rampRun * CONFIG.ELEVATION_MAX_GRADE;
 }

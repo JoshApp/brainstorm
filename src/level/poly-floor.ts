@@ -25,7 +25,8 @@ import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES } from './corridor-t
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
-import { planElevation } from './poly-elevation';
+import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
+import { corridorRampRun } from './elevation';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
 import { wallFixtureKindOf, wallFixtureModel } from './lit-fixture-pool';
@@ -206,6 +207,22 @@ const VOID_CHANCE = 0.70;
  * left as a comment that a later widening can quietly outgrow.
  */
 export const RESERVE_W = 2.2;
+/**
+ * The gap a loop edge may span, metres, measured between the two rooms' boxes.
+ *
+ * Under the floor it is not a corridor, it is two rooms sharing a wall. Over
+ * the ceiling it is a tunnel long enough that using it costs more than walking
+ * back the way you came, which is a shortcut nobody takes.
+ */
+/**
+ * How far apart two rooms may be, centre to centre, and still be worth looping.
+ *
+ * A sanity bound, not the real gate — the loop already has to skip exactly one
+ * spine room, and those sit a measured p50 32m and p90 36m apart. Set at 26
+ * first, from a guess, and it admitted 5 pairs across 72 floors.
+ */
+const LOOP_MAX_REACH = 45;
+
 /** How often a connection bends instead of running straight. */
 const DOGLEG_CHANCE = 0.45;
 /** (exit lateral, entry lateral) offsets to try for a bend, nearest first. The
@@ -305,8 +322,15 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // A LINK IS A LIST OF RECTS, not one. A dogleg is three, and every downstream
   // reader — wall cutting, doorway finding, the light pass — has to see all of
   // them or it will cut a doorway into the middle of a bend.
-  const links: Array<{ from: string; to: string; rects: Box[]; ids: string[]; spur?: boolean }> = [];
-  const addLink = (from: string, to: string, id: string, conn: Connection, spur = false): void => {
+  const links: Array<{
+    from: string; to: string; rects: Box[]; ids: string[];
+    spur?: boolean; chord?: boolean;
+    legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+  }> = [];
+  const addLink = (
+    from: string, to: string, id: string, conn: Connection,
+    kind: { spur?: boolean; chord?: boolean } = {},
+  ): void => {
     const { rects, type } = conn;
     // The rect ids are kept alongside the rects because the ELEVATION pass has
     // to stamp a ramp on a specific corridor RoomSpec, and re-deriving the
@@ -320,7 +344,7 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
       corridors.push({ id: ids[k], rect, height: type.height, corridorType: type.id });
       occupiedBoxes.push(rect);
     });
-    links.push({ from, to, rects, ids, spur });
+    links.push({ from, to, rects, ids, legAxis: conn.legAxis, ...kind });
   };
   for (let i = 1; i < rooms.length; i++) {
     const c = connect(rooms[i - 1], rooms[i], rand,
@@ -331,7 +355,25 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // spare when the floor asked for none — a floor with no detour at all is a
   // corridor with rooms on it.
   const spurTypes: RoomTypeId[] = dedicated.map((e) => e.id);
+  /** The pockets that actually landed, with the spine room each hangs off.
+   *  The loop pass below needs both; a pocket that failed to place has neither. */
+  const pockets: Array<{ pocket: Placed; parent: string; forLoop: boolean }> = [];
   if (spurTypes.length === 0) spurTypes.push(rand() < 0.5 ? 'quiet' : 'combat');
+  // ONE MORE THAN THE PLAN OWES, and it is the one the loop is allowed to eat.
+  //
+  // The loop wants a pocket — a room hung off the spine at its own angle, which
+  // is the only thing on this floor another corridor can reach (see the header
+  // at 2.75). But a pocket that stops being a dead end stops being a detour,
+  // and floor-plan.ts asked for those by name. Measured when the loop was free
+  // to take any pocket: cobwebs across 72 floors went to ZERO, because a web
+  // only hangs in a room with one exit and the search took the owed pocket
+  // every time. The webs were the symptom; the floor quietly losing its
+  // cul-de-sac was the disease.
+  //
+  // So the floor grows a spare. The plan's detours stay dead ends; the spare is
+  // the one that comes out somewhere.
+  const LOOP_POCKET = spurTypes.length;
+  spurTypes.push(rand() < 0.5 ? 'quiet' : 'combat');
   for (let p = 0; p < spurTypes.length; p++) {
     const parent = rooms[1 + Math.floor(rand() * Math.max(1, rooms.length - 2))];
     const pocket = shapeRoom(`poly-pocket-${p}`, spurTypes[p], depth, rand);
@@ -349,9 +391,89 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
               connect(parent, pocket, rand,
                       occupiedBoxes.filter((o) => o !== g.corridor))
                 ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage },
-              true);   // a SPUR — the elevation pass clamps it to the spine's floor
+              { spur: true });   // the elevation pass clamps a spur to the spine's floor
+      pockets.push({ pocket, parent: parent.id, forLoop: p === LOOP_POCKET });
       break;
     }
+  }
+
+  // ── 2.75. ONE LOOP, SO THE FLOOR STOPS BEING A TREE ───────────────────────
+  //
+  // Until here every floor is a TREE: a spine with dead-end pockets hung off
+  // it. A tree has exactly one route between any two rooms, so every room you
+  // clear you also walk back out of the way you came, and a fork in a corridor
+  // can only ever be a detour you will have to undo. One cycle changes both —
+  // you can come back a different way, and a junction becomes a real choice.
+  //
+  // This needed `connectL` to exist first; the header on that function has the
+  // measurement, and the short version is that until it did, every corridor
+  // this generator could build joined two rooms that were already joined.
+  //
+  // ONE. Two cycles on a six-room floor is a maze, and the point is not to make
+  // the floor hard to read — it is to stop it reading as a corridor with rooms
+  // on it. Nearest pair first, so the loop is a shortcut you would plausibly
+  // take rather than a tunnel across the map.
+  //
+  // A SHORTCUT, NOT A RE-ROUTE. `mainlineRooms` takes the SPINE links only (see
+  // its call below), so a loop can never pull a room off the intended route and
+  // un-gate the content the floor plan put there. The spine is still the way
+  // through; the loop is the other way back.
+  //
+  // THREE THINGS DISQUALIFY A CANDIDATE, and each is a rule that already lives
+  // somewhere else in the generator:
+  //
+  //   1. It must SKIP something. Adjacent rooms are already linked, and a
+  //      second corridor between them is a double door, not a loop.
+  //   2. It must be able to CARRY THE FALL. Elevation is not computed until
+  //      three hundred lines below, after the walls are described, so the
+  //      question is asked in the WORST case — `chordSkipFits` in
+  //      poly-elevation.ts owns that reasoning.
+  //   3. Its rects must not overlap a room they are not pinned to, via the same
+  //      `linkRectsMisplaced` the elevation pass uses. A chord that ends inside
+  //      a third room steps at that room's doorway, and unlike a spine link
+  //      there is no drop to veto — both its ends are already fixed.
+  //
+  // AND IT MUST NOT TOUCH A POCKET. This looked like the better loop — the dead
+  // end you went into for the loot now comes out further along — and it is what
+  // the first working version did. Then the cobweb count went from healthy to
+  // ZERO across 72 floors, because a web only hangs in a room with exactly one
+  // exit and the nearest-pair search was taking the floor's pocket every single
+  // time. The webs were the symptom; the disease is that `floor-plan.ts` OWES
+  // this floor a detour and the loop was quietly spending it. A pocket that is
+  // no longer a cul-de-sac is not a pocket.
+  const linked = new Set(links.map((l) => `${l.from}|${l.to}`));
+  const roomRects = new Map(rooms.map((r) => [r.id, r.rect] as const));
+  const spineOf = (id: string) => rooms.findIndex((r) => r.id === id);
+  const loopType = CORRIDOR_TYPES.passage;
+  const loopPocket = pockets.find((p) => p.forLoop);
+  const pairs: Array<{ a: Placed; b: Placed; d: number }> = [];
+  if (loopPocket) {
+    const owned = new Set(pockets.map((p) => p.pocket.id));
+    for (const b of rooms) {
+      if (b.id === loopPocket.pocket.id || b.id === loopPocket.parent) continue;
+      if (owned.has(b.id)) continue;                       // pocket to pocket is not a loop
+      const a = loopPocket.pocket;
+      if (linked.has(`${a.id}|${b.id}`) || linked.has(`${b.id}|${a.id}`)) continue;
+      const d = Math.hypot(a.rect.x - b.rect.x, a.rect.z - b.rect.z);
+      if (d > LOOP_MAX_REACH) continue;
+      pairs.push({ a, b, d });
+    }
+  }
+  pairs.sort((p, q) => p.d - q.d);
+  for (const { a, b } of pairs) {
+    const conn = connectL(a, b, loopType.width, occupiedBoxes);
+    if (!conn) continue;
+    // The stair-run this loop offers, from the same helper the elevation pass
+    // measures a ramp with. The landing carries no slope.
+    const run = conn.rects.reduce((t, rc, k) => (k === 1 ? t
+      : t + corridorRampRun(conn.legAxis![k].alongX ? rc.w : rc.d)), 0);
+    // The pocket sits one link off its parent, so the fall this has to carry is
+    // bounded by that link plus the spine span from the parent to the target.
+    const span = Math.abs(spineOf(loopPocket!.parent) - spineOf(b.id)) + 1;
+    if (!chordSkipFits(span, run)) continue;
+    if (linkRectsMisplaced({ from: a.id, to: b.id, rects: conn.rects }, roomRects)) continue;
+    addLink(a.id, b.id, 'cor-l0', { ...conn, type: loopType }, { chord: true });
+    break;
   }
 
   // ── 2.5. NO CORRIDOR TALLER THAN THE ROOM IT OPENS INTO ───────────────────
@@ -646,7 +768,11 @@ export function generatePolyFloor(depth: number, seed: number): LevelSpec {
   // Which rooms the player MUST walk through to reach the stairs. Anything that
   // gates — a web, and whatever else wants to cost a swing later — belongs off
   // this path, never on it.
-  const mainline = mainlineRooms(rooms[0]?.id, last?.id, links);
+  // THE SPINE LINKS ONLY. A chord is a shortcut, not a re-route: `mainlineRooms`
+  // is a shortest-path BFS, so handing it the loop edge would let the mainline
+  // cut the corner and silently drop the room it skipped — un-gating that room's
+  // content and pointing the descent spawn down the wrong corridor.
+  const mainline = mainlineRooms(rooms[0]?.id, last?.id, links.filter((l) => !l.chord));
   // WHICH WAY THE PLAYER IS LOOKING WHEN THEY ARRIVE.
   //
   // Josh: *"when spawning down floors sometimes the player faces a wrong
@@ -897,7 +1023,13 @@ function geometryFor(from: Box, size: Box, dir: Dir, len: number): { at: Box; co
  * meant to cut. If the centre line misses the polygon (an ell's centre line can
  * exit through the missing quadrant), try lateral offsets before giving up.
  */
-interface Connection { rects: Box[]; type: CorridorType }
+interface Connection {
+  rects: Box[];
+  type: CorridorType;
+  /** Set when the legs do not share a travel axis (an L). Handed straight to
+   *  the elevation pass, which cannot derive it — see ElevLink.legAxis. */
+  legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+}
 
 function connect(
   a: Placed, b: Placed, rand: () => number, occupied: readonly Box[],
@@ -960,6 +1092,115 @@ function connect(
         ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
         : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }],
       type,
+    };
+  }
+  return null;
+}
+
+/**
+ * AN L. Two rooms that share NO axis, joined by a corridor that turns once.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ *
+ * `connect()` above begins by refusing any pair of rooms that do not share an
+ * axis exactly. That was never a design choice — it was written for two rooms
+ * the spine had just placed next to each other, and it does not look for
+ * anything in the way. But `stepFrom` puts each new room ON the axis it
+ * travelled to reach it, so that alignment holds between NEIGHBOURS and
+ * essentially nowhere else.
+ *
+ * The consequence, measured over 72 floors before this function existed: of 383
+ * candidate room pairs, 82 were a pocket and its own parent, 287 shared no
+ * axis, 14 were aligned across an intervening room, and ZERO were connectable.
+ * Every corridor this generator could build joined two rooms that were already
+ * joined. That is why a DELVE floor has always been a tree, and why no amount
+ * of picking cleverer pairs was ever going to produce a loop — the geometry had
+ * no way to express one.
+ *
+ * ── THE SHAPE ───────────────────────────────────────────────────────────────
+ *
+ * Out of A along one axis to a corner, then along the other axis into B. Three
+ * rects, the same count a dogleg produces, so every downstream reader that
+ * already understands "leg, landing, leg" understands this too — the wall
+ * cutter, the trim pass, the section stamp, the elevation ramp split.
+ *
+ * The corner is either (A's lateral, B's lateral) or (B's, A's); both are
+ * tried. The landing is a square at the turn, sized to the wider of the two
+ * legs so neither runs out of floor mid-corner.
+ *
+ * ── WHAT IT HAS TO TELL THE ELEVATION PASS ──────────────────────────────────
+ *
+ * That its legs travel on DIFFERENT axes. Everything else in this generator
+ * runs both legs of a link along one direction, so the elevation pass derived a
+ * single travel axis per link and measured every ramp along it. Handed an L
+ * without being told, it would build one of the two ramps sideways — running up
+ * the corridor's width instead of its length. So the leg axes are returned with
+ * the rects rather than left to be guessed.
+ */
+function connectL(
+  a: Placed, b: Placed, width: number, occupied: readonly Box[],
+): Pick<Connection, 'rects' | 'legAxis'> | null {
+  const dx = b.rect.x - a.rect.x, dz = b.rect.z - a.rect.z;
+  // Needs a real offset on BOTH axes, or this is a job for connect().
+  if (Math.abs(dx) < width || Math.abs(dz) < width) return null;
+
+  // Two corners to try: leave A along Z and enter B along X, or the reverse.
+  for (const aFirstAlongZ of [true, false]) {
+    const cornerX = aFirstAlongZ ? a.rect.x : b.rect.x;
+    const cornerZ = aFirstAlongZ ? b.rect.z : a.rect.z;
+
+    // Leg out of A, travelling on its own axis at the corner's lateral.
+    const aAlongZ = aFirstAlongZ;
+    const aSign = Math.sign(aAlongZ ? cornerZ - a.rect.z : cornerX - a.rect.x);
+    const exitA = exitPoint(a, aAlongZ, aSign, aAlongZ ? cornerX : cornerZ);
+    // Leg into B, on the other axis.
+    const bAlongZ = !aFirstAlongZ;
+    const bSign = Math.sign(bAlongZ ? cornerZ - b.rect.z : cornerX - b.rect.x);
+    const exitB = exitPoint(b, bAlongZ, bSign, bAlongZ ? cornerX : cornerZ);
+    if (!exitA || !exitB) continue;
+
+    // The landing, square and centred on the turn.
+    const corner: Box = { x: cornerX, z: cornerZ, w: width, d: width };
+
+    // Each leg spans from its room's wall (pushed OVERLAP inside, so the
+    // opening straddles the stone) to the landing's near face.
+    //
+    // BOTH LEGS RUN TO THE CORNER'S CENTRE, not to its near face. Stopping half
+    // a width short leaves the landing square poking out past both of them, and
+    // its two far ends then sit in open space — which is exactly what the
+    // orphaned-end check catches ("corridor cor-loop-1 ends at (17.1, 50.7) —
+    // in nothing"). Running through means every rect's ends land inside another
+    // rect of the same link, the way a dogleg's do.
+    const legFor = (alongZ: boolean, at: number, toward: number, lat: number): Box => {
+      const stop = toward;
+      const t0 = Math.min(at, stop) - (at < stop ? OVERLAP : 0);
+      const t1 = Math.max(at, stop) + (at > stop ? OVERLAP : 0);
+      return alongZ
+        ? { x: lat, z: (t0 + t1) / 2, w: width, d: Math.max(0.1, t1 - t0) }
+        : { z: lat, x: (t0 + t1) / 2, d: width, w: Math.max(0.1, t1 - t0) };
+    };
+    const legA = legFor(aAlongZ, exitA.at, aAlongZ ? cornerZ : cornerX, aAlongZ ? cornerX : cornerZ);
+    const legB = legFor(bAlongZ, exitB.at, bAlongZ ? cornerZ : cornerX, bAlongZ ? cornerX : cornerZ);
+    // A leg shorter than the landing it meets is not a leg — the corner has
+    // already swallowed it, and the "corridor" is a single square room.
+    if (Math.max(legA.w, legA.d) < width || Math.max(legB.w, legB.d) < width) continue;
+
+    const rects = [legA, corner, legB];
+    // Nothing already placed may be in the way. The two rooms this joins are
+    // expected to overlap their own leg's end, so they are excused.
+    const clash = rects.some((rc) => occupied.some((o) =>
+      o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
+    if (clash) continue;
+
+    return {
+      rects,
+      legAxis: [
+        // `fromIsLo`: is the A end of this leg at the lower world coordinate?
+        { alongX: !aAlongZ, fromIsLo: exitA.at <= (aAlongZ ? cornerZ : cornerX) },
+        { alongX: !aAlongZ, fromIsLo: true },   // the landing carries no ramp
+        // Leg B runs from the landing INTO B, so its `from` end is the corner.
+        { alongX: !bAlongZ, fromIsLo: (bAlongZ ? cornerZ : cornerX) <= exitB.at },
+      ],
     };
   }
   return null;
