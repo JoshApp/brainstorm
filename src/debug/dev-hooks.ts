@@ -134,6 +134,24 @@ export function installDevHooks(deps: DevHookDeps): void {
   // ── World / repro hooks ───────────────────────────────────────────────
   // __descend() walks the run one floor down through the SAME loadLevel path
   // the stairs use.
+  // SMASH the first N destructibles — exercises the real break path (loot roll,
+  // shatter burst, walkable splice, and the static batch's instance retirement)
+  // without swinging a sword at them. The batch case is why this exists: once a
+  // vase's meshes live inside a floor-wide BatchedMesh, removing its group from
+  // the scene draws nothing down, and the only way to catch a regression there
+  // is to break one and look.
+  w.__smash = (n = 1) => {
+    const level = getLevel();
+    if (!level) return { smashed: 0, error: 'no level' };
+    let smashed = 0;
+    for (const d of level.destructibles) {
+      if (smashed >= n) break;
+      if (!d.alive) continue;
+      d.takeDamage({ amount: 999, kind: 'melee', source: 'player' } as never);
+      smashed++;
+    }
+    return { smashed, remaining: level.destructibles.filter((d) => d.alive).length };
+  };
   w.__descend = () => {
     const next = getLevel()?.spec.stairs?.[0]?.targetLevel;
     if (next) loadLevel(next);

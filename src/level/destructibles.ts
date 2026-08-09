@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { retireBatchedGroup } from '../scene/static-batch';
 import { groundYAt } from './elevation';
 import { buildModel } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase';
@@ -156,6 +157,11 @@ export function spawnVase(
         for (const item of bundle.items) createPickup(scene, tmpDropPos, item);
       }
       // Remove from scene; reclaim this vase's geometry.
+      // Its meshes may live inside a floor-wide BatchedMesh (scene/static-batch),
+      // in which case the group is already empty and removing it draws nothing
+      // down — the batch has to be told to hide the instances. Harmless no-op
+      // when this one was never batched.
+      retireBatchedGroup(group);
       scene.remove(group);
       // Dispose ONLY this vase's own (non-pooled) geometry. Two hazards this guards:
       //   1. POOLED geometry is SHARED across every vase/prop (buildModel pulls from
@@ -238,6 +244,11 @@ export function spawnCobweb(
       // frame may still reference the buffers ("used in submit while destroyed"
       // → device loss). GC reclaims the web's own geometry once the group
       // leaves the scene.
+      // Its meshes may live inside a floor-wide BatchedMesh (scene/static-batch),
+      // in which case the group is already empty and removing it draws nothing
+      // down — the batch has to be told to hide the instances. Harmless no-op
+      // when this one was never batched.
+      retireBatchedGroup(group);
       scene.remove(group);
       return applied;
     },
@@ -302,6 +313,11 @@ export function spawnBreakableDecoration(
       // No obstacle to splice (decoration never blocked), no loot. Same
       // no-synchronous-dispose rule as the other destructibles (pooled geo
       // is shared; a WebGPU frame may still reference the buffers).
+      // Its meshes may live inside a floor-wide BatchedMesh (scene/static-batch),
+      // in which case the group is already empty and removing it draws nothing
+      // down — the batch has to be told to hide the instances. Harmless no-op
+      // when this one was never batched.
+      retireBatchedGroup(group);
       scene.remove(group);
       return applied;
     },

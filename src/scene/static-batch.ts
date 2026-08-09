@@ -52,8 +52,19 @@ export function staticWorldBatchingEnabled(): boolean {
   return new URLSearchParams(location.search).get('batchworld') !== '0';
 }
 
+/** One instance inside a batch. `retired` is permanent removal — a smashed
+ *  vase — as distinct from the culler's per-frame hide, which must never bring
+ *  it back. Shared by reference between the rect index and the group index so
+ *  either can retire it and both see it. */
+interface BatchInstance { batch: THREE.BatchedMesh; id: number; retired: boolean }
+
 // rectId → the batch instances belonging to that room rect (culler toggles).
-const rectIndex = new Map<string, Array<{ batch: THREE.BatchedMesh; id: number }>>();
+const rectIndex = new Map<string, BatchInstance[]>();
+// Top-level scene child → its instances. Only DESTRUCTIBLES need this: they are
+// the one batched thing that can leave the world mid-floor, and the batch has to
+// be told, because removing the (now empty) group from the scene no longer
+// removes anything drawable.
+const groupIndex = new Map<THREE.Object3D, BatchInstance[]>();
 let liveBatches: THREE.BatchedMesh[] = [];
 
 /** Value-signature for collapsing per-instance-cloned but visually identical
@@ -119,7 +130,7 @@ function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
   return bestId;
 }
 
-interface Item { mesh: THREE.Mesh; rectId: string; geo: THREE.BufferGeometry }
+interface Item { mesh: THREE.Mesh; rectId: string; geo: THREE.BufferGeometry; owner: THREE.Object3D | null }
 
 // ── COLOUR → VERTEX BAKE ─────────────────────────────────────────────────────
 // Most static materials differ ONLY by colour (the census: ~13 flat-shaded
@@ -226,12 +237,22 @@ const BLACK = new THREE.Color(0x000000);
 export function batchStaticWorld(level: LiveLevel): void {
   if (!staticWorldBatchingEnabled()) return;
   rectIndex.clear();
+  groupIndex.clear();
   liveBatches = [];
 
   // Same exclusion set as the freeze pass: things that animate, open, or die.
   const excluded = new Set<THREE.Object3D>();
   for (const i of getAllInteractables()) { const g = i.built?.group; if (g) excluded.add(g); }
-  for (const d of level.destructibles) excluded.add(d.group);
+  // DESTRUCTIBLES ARE BATCHED. They were excluded with the enemies and the
+  // interactables, on the reasoning that they "animate, open, or die" — but a
+  // vase does none of the first two. It stands perfectly still until one swing
+  // deletes it, and it is the single biggest bucket of drawables on a floor
+  // (34% of visible drawables, measured). Nothing flashes it (userData.flash is
+  // set only by enemy-presentation) and nothing raycasts it (tap-target sees
+  // enemies and interactables only), so while it lives it is as static as a
+  // wall. Its death is handled by retiring its instances — see below.
+  const destructibleGroups = new Set<THREE.Object3D>();
+  for (const d of level.destructibles) destructibleGroups.add(d.group);
   for (const t of level.torches) excluded.add(t.group);
   for (const e of level.enemies) excluded.add(e.group);
 
@@ -246,7 +267,13 @@ export function batchStaticWorld(level: LiveLevel): void {
   for (const child of level.root.children.slice()) {
     if (excluded.has(child)) continue;
     let rectId: string | null = null;
-    if (child.userData?.dbgKind === 'prop') rectId = rectIdAt(level, child.position.x, child.position.z);
+    const isDestructible = destructibleGroups.has(child);
+    // A destructible group carries no dbgKind/dbgSource (it is spawned straight
+    // into the root by destructibles.ts), so resolve its rect by position the
+    // same way a prop does — otherwise it silently fails the lookup below and
+    // never batches at all.
+    if (isDestructible) rectId = rectIdAt(level, child.position.x, child.position.z);
+    else if (child.userData?.dbgKind === 'prop') rectId = rectIdAt(level, child.position.x, child.position.z);
     else if (typeof child.userData?.dbgSource === 'string') rectId = shellRectId(child.userData.dbgSource);
     if (!rectId) continue;
     child.traverse((o) => {
@@ -273,7 +300,7 @@ export function batchStaticWorld(level: LiveLevel): void {
       const key = `${keyMat}§${attrSig(geo)}§${m.castShadow ? 'c' : ''}${m.receiveShadow ? 'r' : ''}`;
       let g = byKey.get(key);
       if (!g) { g = { mat: batchMat, cast: m.castShadow, receive: m.receiveShadow, items: [] }; byKey.set(key, g); }
-      g.items.push({ mesh: m, rectId: rectId!, geo });
+      g.items.push({ mesh: m, rectId: rectId!, geo, owner: isDestructible ? child : null });
     });
   }
 
@@ -342,9 +369,15 @@ export function batchStaticWorld(level: LiveLevel): void {
       const id = batch.addInstance(geoId);
       it.mesh.updateWorldMatrix(true, false);
       batch.setMatrixAt(id, it.mesh.matrixWorld);
+      const inst: BatchInstance = { batch, id, retired: false };
       let list = rectIndex.get(it.rectId);
       if (!list) { list = []; rectIndex.set(it.rectId, list); }
-      list.push({ batch, id });
+      list.push(inst);
+      if (it.owner) {
+        let owned = groupIndex.get(it.owner);
+        if (!owned) { owned = []; groupIndex.set(it.owner, owned); }
+        owned.push(inst);
+      }
       it.mesh.removeFromParent();        // the batch draws it now (source geo stays un-disposed;
       batched++;                         // pooled geometry is shared, baked geometry GC's)
     }
@@ -368,12 +401,34 @@ export function batchStaticWorld(level: LiveLevel): void {
 export function setStaticBatchRectVisible(rectId: string, on: boolean): void {
   const list = rectIndex.get(rectId);
   if (!list) return;
-  for (const e of list) e.batch.setVisibleAt(e.id, on);
+  // A RETIRED instance stays hidden. Without this guard the culler resurrects
+  // every smashed vase the moment its room comes back into view.
+  for (const e of list) if (!e.retired) e.batch.setVisibleAt(e.id, on);
+}
+
+/**
+ * Permanently hide the instances a destructible contributed — call when it
+ * dies, INSTEAD of relying on removing its group from the scene. The group is
+ * empty by then (the batch owns its meshes), so removing it draws nothing down.
+ *
+ * Returns true if this group was batched, so the caller can tell "handled" from
+ * "never batched" (batching off, transparent material, singleton below the
+ * two-item threshold — all of which still hold their own meshes).
+ */
+export function retireBatchedGroup(group: THREE.Object3D): boolean {
+  const owned = groupIndex.get(group);
+  if (!owned || owned.length === 0) return false;
+  for (const e of owned) {
+    e.retired = true;
+    e.batch.setVisibleAt(e.id, false);
+  }
+  groupIndex.delete(group);
+  return true;
 }
 
 /** Room-culler hook: restore every batched instance (culling disabled/dispose). */
 export function showAllStaticBatches(): void {
-  for (const [, list] of rectIndex) for (const e of list) e.batch.setVisibleAt(e.id, true);
+  for (const [, list] of rectIndex) for (const e of list) if (!e.retired) e.batch.setVisibleAt(e.id, true);
 }
 
 /** Level teardown: dispose the batches (their internal geometry AND the
