@@ -144,7 +144,14 @@ export function installFrameFittings(
   looksIntoCorridor?: (px: number, pz: number) => boolean,
 ): void {
   const glow = built.materials.get('glow');
-  if (glow) registerArchwayGlow(glow as THREE.MeshStandardMaterial, x, z);
+  if (glow) {
+    // This material's emissive is written EVERY FRAME by player proximity, so
+    // nothing downstream may treat it as a constant. In particular the static
+    // batcher's colour/emissive→vertex bake would freeze it at its build-time
+    // value, which is 0 — every crown on the floor dark for good.
+    glow.userData.animatedEmissive = true;
+    registerArchwayGlow(glow as THREE.MeshStandardMaterial, x, z);
+  }
   built.group.updateMatrixWorld(true);
   for (const slotName of ['eye_front', 'eye_back'] as const) {
     const slot = built.slots.get(slotName);

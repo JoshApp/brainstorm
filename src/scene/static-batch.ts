@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { attribute as tslAttribute } from 'three/tsl';
 import type { LiveLevel } from '../level/builder';
 import { getAllInteractables } from '../interactables/system';
 import { deferGpuDispose } from '../style/render-webgpu';
@@ -139,7 +140,18 @@ function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
   return (m as THREE.MeshStandardMaterial).isMeshStandardMaterial === true
     && !m.map && !m.transparent && (m.alphaTest ?? 0) === 0
     && m.side === THREE.FrontSide && !m.vertexColors
-    && m.emissive !== undefined && m.emissive.getHex() === 0x000000;
+    // A material that already OWNS its emissive — a creature's reveal/rim/
+    // dissolve chain (ecs/build-model.ts) or anything else that installed an
+    // emissiveNode — must keep it. Baking would overwrite the whole chain with
+    // a flat attribute read and silently delete the rim.
+    && !(m.userData as { reveal?: unknown }).reveal
+    && (m as { emissiveNode?: unknown }).emissiveNode === undefined
+    // …and a material whose emissive is DRIVEN AT RUNTIME cannot be baked at
+    // all: the archway crown glow (scene/threshold-draft.ts writes
+    // emissiveIntensity by player proximity) currently sits at intensity 0 when
+    // the floor is built, so baking would freeze every gate dark forever. The
+    // tag is set where the animation is installed — see level/frame.ts.
+    && !(m.userData as { animatedEmissive?: boolean }).animatedEmissive;
 }
 
 function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
@@ -154,6 +166,18 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
       flatShading: src.flatShading,
       fog: (src as THREE.Material & { fog?: boolean }).fog,
     });
+    // EMISSIVE RIDES THE VERTICES TOO, so a faint self-glow stops forking a
+    // batch. Six of twelve static material families were unbakeable purely
+    // because they carried a near-black emissive (06050a, 040303, 0a0805) —
+    // values under 4% brightness, each buying its own render object.
+    //
+    // Same mechanism the creature reveal path has shipped on for months
+    // (ecs/build-model.ts: "variation rides on attributes, not new shaders"):
+    // an emissiveNode reading a per-vertex attribute. Three's WebGPU backend
+    // carries `*Node` properties through its classic→node material conversion,
+    // which is why this works on a plain MeshStandardMaterial.
+    (m as unknown as { emissiveNode?: unknown }).emissiveNode =
+      (tslAttribute as (n: string, t: string) => unknown)('aRevealEmissive', 'vec3');
     m.name = `static-batch-baked:${key}`;
     bakedMats.set(key, m);   // module-lifetime — pins the batch pipeline across floors
   }
@@ -166,19 +190,33 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
 function coloredVariant(
   cache: Map<string, THREE.BufferGeometry>,
   geo: THREE.BufferGeometry,
-  color: THREE.Color,
+  src: THREE.MeshStandardMaterial,
 ): THREE.BufferGeometry {
-  const key = `${geo.uuid}|${color.getHexString()}`;
+  const color = src.color;
+  // Emissive is premultiplied by its intensity here, exactly as the creature
+  // reveal path does (build-model.ts) — the shared material has no emissive
+  // scalar left to apply, so the attribute has to carry the finished value.
+  const ei = src.emissiveIntensity ?? 1;
+  const em = src.emissive ?? BLACK;
+  const er = em.r * ei, eg = em.g * ei, eb = em.b * ei;
+  const key = `${geo.uuid}|${color.getHexString()}|${em.getHexString()}|${ei.toFixed(3)}`;
   let v = cache.get(key);
   if (v) return v;
   v = geo.clone();
   const n = v.attributes.position.count;
   const arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b; }
+  const eArr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b;
+    eArr[i * 3] = er; eArr[i * 3 + 1] = eg; eArr[i * 3 + 2] = eb;
+  }
   v.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  v.setAttribute('aRevealEmissive', new THREE.BufferAttribute(eArr, 3));
   cache.set(key, v);
   return v;
 }
+
+const BLACK = new THREE.Color(0x000000);
 
 /**
  * Fold the level's static meshes into floor-wide BatchedMeshes (one per
@@ -227,7 +265,7 @@ export function batchStaticWorld(level: LiveLevel): void {
       let keyMat: string;
       if (isBakeable(mat)) {
         batchMat = bakedMaterial(mat);
-        geo = coloredVariant(variantCache, geo, mat.color);
+        geo = coloredVariant(variantCache, geo, mat);
         keyMat = `bake|${bakeFamilyKey(mat)}`;
       } else {
         keyMat = matSig(mat);
