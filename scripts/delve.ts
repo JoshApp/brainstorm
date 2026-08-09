@@ -4,18 +4,17 @@
  * run instantly in Node; the browser-driven ones delegate to their scripts.
  *
  *   npm run delve                          this index
- *   npm run delve list [vaults|mobs|items] what can I point the tools at?
+ *   npm run delve list [mobs|items]        what can I point the tools at?
  *   npm run delve weapons                  weapon stat table (derived reach · class · arc)
  *   npm run delve bench <subject> [...]    MODEL author/inspect loop (--hand --ortho --debug)
  *   npm run delve check <seed> <depth>     fast STATIC floor analysis (no browser)
  *   npm run delve reach <seed> <depth>     FAITHFUL reachability (live walkable, browser)
- *   npm run delve snap  <target> [...]     headless screenshot (vault-<id>, mob-<id>, scenario)
+ *   npm run delve snap  <target> [...]     headless screenshot (mob-<id>, item-<id>, scenario)
  *   npm run delve pilot <target> [--do …]  drive + inspect the live world
  *   npm run delve play  [...]              autonomous bot episode
  *   npm run delve test                     validation suite
  */
 import { spawn } from 'node:child_process';
-import { VAULTS } from '../src/level/vault-library';
 import { ENEMIES } from '../src/content/enemies';
 import { ITEMS } from '../src/content/items';
 import { generateFloor } from '../src/level/procgen';
@@ -33,7 +32,7 @@ function index() {
 DELVE — creator suite (author · preview · debug · play)
 
   MODELS & CONTENT
-  delve list [vaults|mobs|items]    what can I point the tools at?
+  delve list [mobs|items]           what can I point the tools at?
   delve inventory [--json f|--md f] FULL catalog (all families + include-flag status)
   delve audit [--floors N|--json f]  THEORETICAL telemetry — sweep the generator, read
                                       the loot economy + research-grounded health flags
@@ -49,24 +48,16 @@ DELVE — creator suite (author · preview · debug · play)
   WORLD & PLAY
   delve check <seed> <depth>        fast STATIC floor analysis (overlap / archway / reachability)
   delve reach <seed> <depth>        FAITHFUL reachability — live walkable, real collision (browser)
-  delve snap  <target> [vp] [--frames=N]   screenshot: vault-<id>, mob-<id>, item, any scenario
-  delve pilot --vault <id> --do "…"        drive + inspect the world; goto/move/attack/observe
+  delve snap  <target> [vp] [--frames=N]   screenshot: mob-<id>, item-<id>, any scenario
   delve play  [--seed N --turns T]         autonomous bot episode
-  delve test                        validation suite (load + vault + floor invariants)
+  delve test                        validation suite (load + floor invariants)
 
-registry: ${VAULTS.length} vaults · ${Object.keys(ENEMIES).length} mobs · ${Object.keys(ITEMS).length} items
+registry: ${Object.keys(ENEMIES).length} mobs · ${Object.keys(ITEMS).length} items
 (prefix npm: e.g. \`npm run delve check 1780376544217 4\`)
 `);
 }
 
 function list(kind = 'all') {
-  if (kind === 'vaults' || kind === 'all') {
-    console.log(`\nVAULTS (${VAULTS.length})  —  snap vault-<id> · pilot --vault <id>`);
-    for (const v of VAULTS) {
-      const enc = (v as { encounter?: { archetype: string } }).encounter;
-      console.log(`  ${v.id.padEnd(22)} [${v.tags.join(',')}]${enc ? '  enc=' + enc.archetype : ''}`);
-    }
-  }
   if (kind === 'mobs' || kind === 'all') {
     console.log(`\nMOBS (${Object.keys(ENEMIES).length})  —  snap mob-<id>`);
     for (const [id, e] of Object.entries(ENEMIES)) {
@@ -97,7 +88,7 @@ function check(seed: number, depth: number) {
   for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
     const a = rooms[i], b = rooms[j];
     const pen = Math.min((a.w + b.w) / 2 - Math.abs(a.x - b.x), (a.d + b.d) / 2 - Math.abs(a.z - b.z));
-    if (pen > 0.05) issues.push(`vault overlap ${pen.toFixed(2)}m`);
+    if (pen > 0.05) issues.push(`room overlap ${pen.toFixed(2)}m`);
   }
   for (const p of spec.props) if (p._dbg === 'archway' && p.collision) for (const st of spec.stairs ?? []) {
     const d = Math.hypot(p.x - st.x, p.z - st.z);

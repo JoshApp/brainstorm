@@ -117,7 +117,7 @@ import { addItemSilently, getAllItems } from './player/inventory';
 import { getReliquary } from './player/reliquary';
 import { setOwnedItemsProvider } from './content/loot';
 import { get as getEntity } from './ecs/world';
-import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
+import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { initAiGizmos } from './debug/ai-gizmos';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
@@ -1398,26 +1398,6 @@ function handleAutostart(): boolean {
     // strands the descent loading UI + the world beneath it (black screen).
     void startRun(s.floorId, s.depth).then(hideBootLoading);
     return true;
-  }
-
-  // VAULT preview entry — `?vault=<id>` loads a single authored vault
-  // (unfrozen, harness-controllable) so the pilot driver can walk exactly
-  // the room I just built. DEV-only + gated behind harness/dev like ?depth.
-  const vaultId = url.get('vault');
-  if (import.meta.env.DEV && vaultId && (HARNESS_ENABLED || url.get('dev') === '1')) {
-    const spec = buildVaultPreviewLevel(vaultId);
-    if (spec) {
-      clearSave();
-      LEVELS[spec.id] = spec;
-      startNewRun(spec.id, { depth: 5 });
-      recordRunStart();
-      resetRunDiscoveries();
-      applyState(null);
-      setSlot('weapon', ITEMS['rusted-sword']);
-      void startRun(spec.id, 5);
-      return true;
-    }
-    console.warn(`?vault=${vaultId} not found in the vault library`);
   }
 
   // SAFE-ROOM preview entry — `?saferoom=N` loads the act-N checkpoint safe room

@@ -33,6 +33,26 @@ if ! node_modules/.bin/tsc --noEmit; then
 fi
 echo "[pre-push] ✓ typecheck passed"
 
+# PARSE the files tsc does not look at. `tsconfig.json` includes "src" only, so
+# scripts/ and tests/ are entirely unchecked — and on 2026-08-08 two scripts were
+# pushed with a stray `}` in them, past a green tsc and a green test run, because
+# nothing had ever parsed them. `delve` and `inventory` were simply broken until
+# someone ran them.
+#
+# This is a SYNTAX check, not a typecheck: those trees carry ~88 pre-existing
+# type errors and demanding they be clean would just get this hook bypassed. A
+# file that cannot be parsed is a different class of problem — it is broken for
+# everybody, always — and esbuild finds it across every script and test in under
+# a second.
+if [ -x node_modules/.bin/esbuild ]; then
+  if ! node_modules/.bin/esbuild scripts/*.ts tests/*.ts --outdir="$(mktemp -d)" --log-level=error >/dev/null; then
+    echo ""
+    echo "[pre-push] ✗ a script or test does not PARSE — push aborted."
+    exit 1
+  fi
+  echo "[pre-push] ✓ scripts + tests parse"
+fi
+
 # Tests — catch what tsc can't: a module that THROWS at runtime init (a
 # reserved/duplicate enemy tile char white-screened the live game once;
 # tsc + vite build don't execute the module, the test suite does), plus

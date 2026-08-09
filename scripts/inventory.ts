@@ -3,7 +3,7 @@
  *
  * Walks every content registry and emits a normalized catalog: one row per
  * entity (enemies, items, weapons, relics, bosses, cards, rites, affixes,
- * vaults, drop tables) with its id, name, include-flag `status`, and the key
+ * drop tables) with its id, name, include-flag `status`, and the key
  * balance fields. The point is a single source of truth a human OR the planned
  * AI-authoring layer can consume — "what does this game contain right now?" —
  * without reading 20 content files.
@@ -25,7 +25,6 @@ import { RITES } from '../src/content/rites';
 import { AFFIXES } from '../src/content/affixes';
 import { SETS } from '../src/content/sets';
 import { TABLES } from '../src/content/drop-tables';
-import { VAULTS } from '../src/level/vault-library';
 import { statusOf, type ContentStatus } from '../src/content/content-status';
 
 // A flattened catalog row — the shape every family collapses to. `fields` holds
@@ -71,7 +70,7 @@ function buildCatalog(): Row[] {
   }
   for (const [id, b] of Object.entries(BOSSES)) {
     push('boss', id, f(b, 'defaultName') as string ?? id, b, {
-      enemy: b.enemyId, vault: f(b, 'preferredVaultId'),
+      enemy: b.enemyId,
     });
   }
   for (const [id, c] of Object.entries(CARDS)) {
@@ -85,11 +84,6 @@ function buildCatalog(): Row[] {
   }
   for (const [id, s] of Object.entries(SETS)) {
     push('set', id, f(s, 'name') as string ?? id, s, {});
-  }
-  for (const v of VAULTS) {
-    push('vault', v.id, v.id, v, {
-      tags: f(v, 'tags'), minDepth: f(v, 'minDepth'), maxDepth: f(v, 'maxDepth'), weight: f(v, 'weight'),
-    });
   }
   for (const [id, t] of Object.entries(TABLES)) {
     push('droptable', id, id, t, { pools: (t as { pools?: unknown[] }).pools?.length });

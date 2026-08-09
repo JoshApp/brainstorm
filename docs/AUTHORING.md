@@ -138,9 +138,14 @@ Add one entry to `ENEMIES` in `content/enemies.ts`:
 },
 ```
 
-Then place it: put its `tileChar` in a vault map (`content/vault-library.ts`)
-or let procgen roll it. **That's the whole wiring** — `tilemap.ts` and
-`procgen.ts` both derive the char from the registry, validated at load.
+Then place it: nothing. **That's the whole wiring.** A new enemy is reachable
+the moment it is in the registry and appears in a depth's roll table
+(`level/procgen.ts` `rollTableForRaw`) — the generator asks each room what
+should fight in it and rolls from there.
+
+(This used to say "put its `tileChar` in a vault map". Enemies were placed by
+stamping a character into a hand-authored ASCII tilemap. That whole format is
+retired — `tileChar` no longer places anything.)
 
 The flat `windup/strike/recover/attackRange` fields synthesize a default
 attack. For **multiple attacks or movement attacks**, add `abilities` (see

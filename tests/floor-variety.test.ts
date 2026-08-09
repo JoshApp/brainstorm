@@ -14,10 +14,16 @@
 // neither is wrong on its own — the floor is. DESIGN-METHOD §3: check a rule
 // about the final state against the final state.
 //
+// The three VAULT-POOL tests that used to live here — a floor not repeating a
+// vault, two runs not sharing one, depth 1 having a pool worth drawing from —
+// are gone with the vault library. They measured how a bag of hand-authored
+// tilemaps was dealt out. There is no bag; a polygon floor's variety comes from
+// its shape grammar, and tests/floor-loop + poly-floor cover that.
+//
 //   npm test
 
 import assert from 'node:assert/strict';
-import { generateFloor, generateVaultFloor } from '../src/level/procgen';
+import { generateFloor } from '../src/level/procgen';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -58,56 +64,10 @@ function floors(depth: number, n: number = SEEDS): Spec[] {
   FLOOR_CACHE.set(depth, have);
   return have.slice(0, n);
 }
-/** The floors the VAULT LIBRARY produces, named explicitly.
- *
- *  The three assertions below are about the pool of hand-authored vaults — how
- *  many there are, whether a floor repeats one, whether two runs read the same.
- *  A polygon floor has no vaults at all, so once it took the default these
- *  measured `vaultId ?? '?'` on every room and reported a pool of exactly 1.
- *  A test about vaults names vaults; it does not inherit whichever generator a
- *  global happens to select. */
-function vaultFloors(depth: number): Spec[] {
-  return Array.from({ length: SEEDS }, (_, s) => generateVaultFloor(depth, 5000 + s * 7919) as unknown as Spec);
-}
 const roomVaults = (f: Spec) => f.rooms.filter((r) => !r.logicalOnly).map((r) => r.vaultId ?? '?');
 
-test('a floor does not keep stamping the same vault', () => {
-  // The bag (vault-compose makeVaultBag) deals the pool out before repeating, so
-  // duplication should only survive where the pool is genuinely smaller than the
-  // floor. Depth 1 is the tightest pool and therefore the real test.
-  for (const depth of [1, 2, 3]) {
-    let dup = 0, total = 0;
-    for (const f of vaultFloors(depth)) {
-      const ids = roomVaults(f);
-      dup += ids.length - new Set(ids).size;
-      total += ids.length;
-    }
-    const pct = dup / total;
-    assert.ok(pct <= 0.12,
-      `depth ${depth}: ${(pct * 100).toFixed(0)}% of rooms repeat a vault the floor already used`);
-  }
-});
 
-test('two fresh runs are not mostly the same rooms', () => {
-  // The report was about NEW runs specifically, so depth 1 is what it measures.
-  const fs = vaultFloors(1).map((f) => new Set(roomVaults(f)));
-  let sum = 0, pairs = 0;
-  for (let i = 0; i < 30; i++) for (let j = i + 1; j < 30; j++) {
-    const inter = [...fs[i]].filter((v) => fs[j].has(v)).length;
-    sum += inter / Math.max(1, Math.min(fs[i].size, fs[j].size));
-    pairs++;
-  }
-  const overlap = sum / pairs;
-  assert.ok(overlap <= 0.52,
-    `two depth-1 runs share ${(overlap * 100).toFixed(0)}% of their vaults — a new run reads as the last one`);
-});
 
-test('depth 1 has a pool worth drawing from', () => {
-  const seen = new Set<string>();
-  for (const f of vaultFloors(1)) for (const v of roomVaults(f)) seen.add(v);
-  assert.ok(seen.size >= 14,
-    `only ${seen.size} distinct vaults can appear on depth 1 — no amount of shuffling fixes a pool that small`);
-});
 
 test('A SILVER CHEST IS NOT A TRINKET DISPENSER', () => {
   // The player-facing claim, checked exactly as the player would experience it:

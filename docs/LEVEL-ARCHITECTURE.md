@@ -1,5 +1,13 @@
 # The level pipeline, reauthored: compositions, not tilemaps
 
+> **2026-08-08 — the vault composer is RETIRED.** This document describes a
+> pipeline in which floors were composed from hand-authored ASCII vaults. That
+> generator, its library, its tilemap parser and its carve/decor/lighting passes
+> are deleted; `level/poly-floor.ts` builds every floor from polygon rooms and is
+> the only generator. The DIAGNOSIS and the reasoning below still stand — they
+> are why the change happened — but read any description of what the code DOES as
+> a record of what it did.
+
 Written 2026-08-05. Supersedes the "keep the ASCII vaults" recommendation in
 `LEVEL-OWNERSHIP.md` §2 — that document's diagnosis of *ownership* still stands
 and its placement authority shipped, but its conclusion about the vault format

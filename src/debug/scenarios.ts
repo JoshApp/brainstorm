@@ -11,8 +11,6 @@ import { setWorldFrozen } from './freeze';
 import { generateFloor } from '../level/procgen';
 import { generateSafeRoom } from '../level/safe-room';
 import { buildStarterChamber } from '../level/starter-chamber';
-import { buildVaultPreview } from '../level/vault-compose';
-import { VAULTS } from '../level/vault-library';
 import { ENEMIES } from '../content/enemies';
 import { listMobs, listWeapons, listItems } from './authorables';
 import { debugUseAll, debugTickAll } from '../interactables/system';
@@ -2397,47 +2395,12 @@ export const SCENARIOS: Record<string, Scenario> = {
 };
 
 // ── Vault inspector previews (DEV only) ─────────────────────────────────
-// One scenario per vault — `?scenario=vault-<id>` (snap: `npm run snap
-// vault-<id>`). Builds the single vault with its REAL treatment (ceiling
-// style via ceilingFor, wallVariant, voids) and frames it from an elevated
-// interior camera, so authored geometry can be inspected directly instead of
-// walking a whole floor hunting for the room. DEV-gated so it never runs (or
-// bloats) the production bundle.
-
-/** Build a single-vault preview LevelSpec by vault id, or null if unknown.
- *  Delegates to the composer's faithful per-vault build (resolves X enemies,
- *  expands prop groups, resolves facings) so previews + piloting match what
- *  the room is in-game. The freeze lives on the SCENARIO, not the spec, so the
- *  same spec loads frozen (inspector snap) or unfrozen (pilot). */
-export function buildVaultPreviewLevel(id: string): LevelSpec | null {
-  return buildVaultPreview(id);
-}
-
-if (import.meta.env.DEV) {
-  for (const v of VAULTS) {
-    const innerD = Math.max(0, v.map.length - 2);
-    SCENARIOS[`vault-${v.id}`] = {
-      freeze: true,
-      hideSword: true,
-      inspect: true,
-      level: buildVaultPreview(v.id) ?? undefined,
-      // Elevated interior view from the south edge, looking north across the
-      // room — shows floor layout, walls, the ceiling underside, and any void.
-      playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
-    };
-    // Palette / pass demo: re-snap each vault at depth=1 (Act I's
-    // sparse-amber palette) so the procedural lighting pass output
-    // is visible. Compare `palette-<id>` vs `vault-<id>` to see what
-    // the cascade added.
-    SCENARIOS[`palette-${v.id}`] = {
-      freeze: true,
-      hideSword: true,
-      inspect: true,
-      level: buildVaultPreview(v.id, 1) ?? undefined,
-      playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
-    };
-  }
-}
+// The per-vault preview scenarios (`?scenario=vault-<id>` / `palette-<id>`)
+// lived here. They previewed a single hand-authored ASCII vault with its real
+// treatment, which was the right tool while vaults were what a floor was made
+// of. The vault library is retired — polygon rooms are the only floor now — so
+// there is no vault to preview. Room-shape work uses `?scenario=` on a real
+// floor, or `delve reach` / `delve snap` against a seed.
 
 // ── Auto-generated subject previews ──────────────────────────────────
 // Every mob/weapon/item in the registries gets a preview scenario for free,

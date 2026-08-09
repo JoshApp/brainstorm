@@ -1,5 +1,13 @@
 # The level pipeline: what's actually wrong, and what to change
 
+> **2026-08-08 — the vault composer is RETIRED.** This document describes a
+> pipeline in which floors were composed from hand-authored ASCII vaults. That
+> generator, its library, its tilemap parser and its carve/decor/lighting passes
+> are deleted; `level/poly-floor.ts` builds every floor from polygon rooms and is
+> the only generator. The DIAGNOSIS and the reasoning below still stand — they
+> are why the change happened — but read any description of what the code DOES as
+> a record of what it did.
+
 Written 2026-08-04 after Josh: *"the vault and generator and whatever all of the
 room building is kinda still doing a lot of legacy we have never fully cleaned…
 I don't wanna have a buggy thing like culling at the end. can we instead

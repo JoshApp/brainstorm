@@ -53,7 +53,7 @@ function test(name: string, fn: () => void) {
 // never seen. A sample that can only find a bug once is a sample that retires
 // itself the moment the bug is fixed.
 //
-// 12 seeds × 6 depths spans every act (safe rooms at 3/7/12 are vault-composed,
+// 12 seeds × 6 depths spans every act (safe rooms at 3/7/12 are hand-authored,
 // so the depths here are the procgen ones) and still runs in a few seconds.
 const SEEDS = [7, 4242, 90210, 31337, 11, 222, 3333, 44444, 555, 66, 777, 8888];
 const DEPTHS = [1, 2, 5, 6, 8, 11];

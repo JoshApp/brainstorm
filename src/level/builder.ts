@@ -74,17 +74,8 @@ import { resetSplatMap } from '../scene/splat-map';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
-import { decorateFloor } from './decorate';
 import { roomType } from './room-types';
 
-/** Prop kinds the procgen decoration pass must keep an apron clear around —
- *  anything the player walks up to and uses. Debris crowding one of these is the
- *  "things stuck inside things" report. */
-const DECOR_KEEPOUT_KINDS = new Set<string>([
-  'chest', 'stash-chest', 'altar', 'blood-altar', 'starter-altar', 'challenge-offering',
-  'fountain', 'tithe-basin', 'reliquary', 'tome-pillar', 'merchant', 'trinket-merchant',
-  'blacksmith', 'offering', 'corpse', 'searchable', 'spike-trap',
-]);
 import { seedBuildRng, buildRng, gameRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft } from '../scene/threshold-draft';
 import { installFrameFittings } from './frame';
@@ -841,7 +832,6 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
 import { insidePolyRanges } from './portals';
-import { polygoniseRooms } from './polygonise';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
 // Scatter a few lamp-revealed wall-runes across a floor's rooms so the dungeon
@@ -909,15 +899,6 @@ export function buildLevel(
   // sample short-circuits.
   setElevationField(buildElevationField(spec.rooms, spec.corridors));
 
-  // ROOM SHAPE v2, applied to the dungeon we already have. Every eligible room
-  // gets its corners cut, but ONLY if every prop, sconce, spawn, door, stair
-  // body and start position it already holds still clears the new outline —
-  // otherwise it stays a rectangle. Runs here, at the top of the build, because
-  // this is the first moment the spec is final: the composer has finished
-  // placing, so the fit gate is checking the ROOM THE PLAYER WILL SEE rather
-  // than an intermediate one. (docs/DESIGN-METHOD.md: check final-state rules
-  // against the final state.)
-  polygoniseRooms(spec);
 
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
@@ -1014,11 +995,6 @@ export function buildLevel(
   // Destructibles — vases + future breakable props. Built
   // inline alongside the props loop, returned in LiveLevel.
   const destructibles: Destructible[] = [];
-  // Parallel list of stair-footprint AABBs in world XZ — same shape as
-  // the stair obstacles above. Passed to decorateFloor so the procgen
-  // sigils/cracks/rubble decorator skips cells that sit on the cut-out
-  // stairwell floor.
-  const stairFootprintAabbs: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [];
   // Pre-compute floor holes (one per stairwell) keyed by which room the
   // stairwell sits inside. Each hole is a 4-corner polygon in floor-mesh
   // shape coordinates (shape Y maps to world -Z after the -π/2 X rotation
@@ -1154,7 +1130,6 @@ export function buildLevel(
       // Decorator AABB uses the FULL (unclipped) footprint so cells
       // beyond the room rect can't sprout sigils either — even though
       // those cells fall outside the floor, the grid loop iterates them.
-      stairFootprintAabbs.push({ minX, maxX, minZ, maxZ });
     }
     // Chasm voids inside this room → a floor hole (clamped just inside the
     // contour so earcut keeps it) + an edge-barrier obstacle covering the
@@ -2343,33 +2318,6 @@ export function buildLevel(
   }
 
   // --- Procgen decoration pass (instanced) ---
-  // procgenDecor is set by src/level/procgen.ts at generation time.
-  // decorateFloor builds InstancedMesh batches of sigils + cracks +
-  // rubble in a few draw calls instead of dozens of individual meshes.
-  if (spec.procgenDecor) {
-    const d = spec.procgenDecor;
-    // KEEP-OUT: the stair cuts, plus two things this pass is far enough
-    // downstream to have been ignoring — CLEAN rooms (a trove/shop floor is a
-    // stage; see room-types.ts `clean`) and a small apron around everything you
-    // can interact with (so a chest doesn't open into a rubble pile). Clutter is
-    // the cheapest thing on the floor, so clutter is what yields.
-    const keepOut = [...stairFootprintAabbs];
-    for (const room of spec.rooms) {
-      if (room.logicalOnly || !room.roomType || !roomType(room.roomType).clean) continue;
-      keepOut.push({
-        minX: room.rect.x - room.rect.w / 2, maxX: room.rect.x + room.rect.w / 2,
-        minZ: room.rect.z - room.rect.d / 2, maxZ: room.rect.z + room.rect.d / 2,
-      });
-    }
-    const APRON = 1.25;   // model half-width + a step to stand in
-    for (const p of spec.props) {
-      if (!DECOR_KEEPOUT_KINDS.has(p.kind)) continue;
-      const q = p as { x?: number; z?: number };
-      if (typeof q.x !== 'number' || typeof q.z !== 'number') continue;
-      keepOut.push({ minX: q.x - APRON, maxX: q.x + APRON, minZ: q.z - APRON, maxZ: q.z + APRON });
-    }
-    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root, keepOut);
-  }
 
   // --- Per-floor fog tint ---
   // Atmospheric depth without flattening mood. The scene's Fog instance

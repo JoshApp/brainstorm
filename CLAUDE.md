@@ -22,7 +22,7 @@ game, and this repository is the shared substrate they read and write.
   charter), sets direction, and delegates to the layers below.
 - **Coding layer** — all the engineering: systems, refactors, build, deploy.
   (The layer authoring these very lines.)
-- **Content / items layer** — items, affixes, enemies, vaults, events authored
+- **Content / items layer** — items, affixes, enemies, room types, events authored
   as DATA that the coding layer's systems consume.
 - **Narration layer** — names, descriptions, epitaphs, bloodstain narration,
   the broadcast/announcer voice.
@@ -55,7 +55,7 @@ If you're reading this to figure out where to start, read this section first —
 
 ### Core loop
 - 3-act dungeon (`src/level/acts.ts`) with hand-authored safe rooms between acts and procgen floors in between
-- Vault-based procgen (`src/level/{procgen,vault,vault-compose,vault-library}.ts`) — ASCII tile chunks chained into floors, deterministic per run seed
+- Polygon-room procgen (`src/level/poly-floor.ts` and friends) — floors built from SHAPES, not a tilemap: a room is an outline, content is placed by asking the room, and the floor is rerolled until its graph AND its built rects are sound. Deterministic per run seed. The ASCII vault composer it replaced is deleted; there is one generator.
 - Multi-room levels with corridors, doors that seal on combat and open on room-clear
 - Tutorial chamber for first-time players (`src/level/tutorial.ts`)
 
@@ -75,7 +75,7 @@ If you're reading this to figure out where to start, read this section first —
 ### Atmosphere & rendering
 - Three swappable art styles: PS1 / flat-shaded / procedural stone (`src/style/`)
 - Slot-based light pool with LOS culling (`src/scene/light-pool.ts`) — prevents Three.js shader recompiles on light-count change
-- Torchlight flicker, handheld lamp, candle/bonfire flame stacks, god rays in signature vaults
+- Torchlight flicker, handheld lamp, candle/bonfire flame stacks, god rays anchoring content
 - Drifting motes, XP wisps, gold coins (`src/effects/`)
 - Web Audio synth for ambient bed + impacts (`src/audio/sfx.ts`)
 
@@ -368,7 +368,7 @@ Rules:
   sickly-green, moonlight-blue — each is a promise about what's in
   the room. The fill light system auto-tints to match (see
   `averageTorchTintInRect` in builder.ts) so all sources read in
-  agreement once a vault commits to a palette.
+  agreement once a room commits to a palette.
 - **The player's lamp is the BASELINE everywhere.** Anything brighter
   than the lamp or in a colour the lamp isn't carrying is a signal.
 

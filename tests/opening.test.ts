@@ -19,7 +19,8 @@ function test(name: string, fn: () => void) {
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
 
 // The way the player heads IN per connection direction; the gate normal must
-// point this way (into the arena). Matches DIR_VEC in vault-compose.
+// point this way (into the arena). The direction convention the retired
+// vault composer used; level/opening.ts is its single source now.
 const DIR_VEC: Record<Edge, { x: number; z: number }> = {
   N: { x: 0, z: -1 }, S: { x: 0, z: 1 }, E: { x: 1, z: 0 }, W: { x: -1, z: 0 },
 };

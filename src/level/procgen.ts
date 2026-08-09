@@ -1,71 +1,26 @@
-// Procedural floor generation.
+// The floor entry point, and the depth-scaled enemy tables every floor rolls
+// from.
 //
-// Strategy: a library of hand-authored ASCII tile-map TEMPLATES, parsed
-// into LevelSpecs at descent time. Templates contain spawn slots ('X'
-// for a generic enemy, 'B' for a tougher one) that the populator
-// fills with depth-appropriate enemies — so the SHAPE of the floor is
-// hand-tuned but the threat level scales.
-//
-// Each floor gets a SEED (depth + run start time) so resume regenerates
-// the same floor. Floors deeper than the template library cycle, with
-// rotated/mirrored variants to keep things varied.
+// This file used to BE the generator: a library of hand-authored ASCII tile-map
+// templates, a composer that stamped them into a floor, and a populator that
+// substituted depth-appropriate enemies into their spawn slots. All of that is
+// gone — level/poly-floor.ts builds floors out of shapes now, and it is the only
+// generator. What is left here is the part the composer and the polygon
+// generator always shared: what fights on a floor this deep.
 //
 // API:
 //   generateFloor(depth, seed) → LevelSpec
+//   rollFloorEnemies(depth, count, intensity, rand, archetype) → enemy ids
 //
-// The loader checks the LEVELS registry first; if the id isn't found,
-// it calls generateFloor with the depth implied by the id ('depth-3').
+// The loader checks the LEVELS registry first (hand-authored levels — the
+// tutorial, the safe rooms); if the id isn't found, it calls generateFloor with
+// the depth implied by the id ('depth-3').
 
-import type { LevelSpec, EnemySpawnSpec, TileMap, PropSpec } from './types';
-import { composeFloor } from './vault-compose';
-import { VAULTS } from './vault-library';
+import type { LevelSpec } from './types';
 import { ENEMIES } from '../content/enemies';
 import { isIncluded } from '../content/content-status';
 import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, type EncounterArchetype, type Role } from '../content/encounters';
-import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
-import { bossById } from '../content/bosses';
-import { seedBuildRng } from '../engine/rng';
 import { generatePolyFloor } from './poly-floor';
-import { densityMultiplier, type ResolvedPaletteV1 } from './palette';
-
-/**
- * Build floors from polygon rooms instead of ASCII vaults. THE DEFAULT.
- *
- * `?polyfloors=0` puts the vault composer back — the escape hatch for comparing
- * against the old generator on a phone, and the thing to reach for first if a
- * floor misbehaves in a way that might be shape-related. Not a DEV flag: it
- * changes what gets GENERATED and grants nothing, so it works on the live site
- * the way `?content=dev` does.
- *
- * In node (`typeof location === 'undefined'`) the answer is the default too, so
- * a tool that generates a floor headlessly sees the floor the player sees. It
- * used to return false there, which quietly made every audit, balance sweep and
- * `delve` command measure the generator we were replacing.
- */
-function usePolyFloors(): boolean {
-  if (typeof location === 'undefined') return true;
-  return new URLSearchParams(location.search).get('polyfloors') !== '0';
-}
-
-// Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
-function rng(seed: number) {
-  let s = seed >>> 0;
-  return function next(): number {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Hash an id like 'depth-3' + a seed into a deterministic 32-bit number.
-function hashSeed(idOrDepth: string | number, seed: number): number {
-  const s = String(idOrDepth);
-  let h = seed >>> 0;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
 
 // ── Enemy roll tables by depth ────────────────────────────────────────
 // Each row: cumulative probability for the listed enemyIds at that depth.
@@ -184,14 +139,6 @@ function rollTableForRaw(depth: number): EnemyRoll[] {
   }
 })();
 
-function bossFor(depth: number): string {
-  // Single source of truth — each Act carries its bossId; we look
-  // up the BossSpec to translate it into the EnemySpec id the
-  // spawner actually uses. Adding/swapping a boss now means
-  // editing acts.ts and bosses.ts, not this function.
-  return bossById(actForDepth(depth).bossId).enemyId;
-}
-
 function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
   const total = rows.reduce((s, r) => s + r.weight, 0);
   let pick = rand() * total;
@@ -238,8 +185,8 @@ function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: (
 
 /** Roll a coherent pack of `count` enemy ids for the v3 floor CONTENT BUDGET —
  *  a floor-level "mixed" squad scaled to the floor's intensity. Reuses rollPack
- *  so budget-injected enemies read as coherent as an authored vault encounter,
- *  not a grab-bag. Used by the composer's spawn-injection pass. */
+ *  so a room's pack reads as a designed fight rather than a grab-bag. Called
+ *  per room by poly-floor's furnish pass and by its floor-level top-up. */
 export function rollFloorEnemies(
   depth: number, count: number, intensity: EncounterIntensity, rand: () => number,
   // THE ROOM'S OWN SHAPE, when the caller knows it. This was hard-coded to
@@ -254,354 +201,31 @@ export function rollFloorEnemies(
 }
 
 /**
- * Replace 'X' and 'B' tile chars with concrete enemy chars picked from
- * depth-appropriate roll tables. Exported so the vault composer can call this
- * per-vault before parseTileMap runs.
- *
- * When `encounter` is set, the X slots are filled from ONE coherent pack
- * (see rollPack) instead of rolled independently — so the room reads as a
- * designed fight, not a grab-bag. B (boss) is unaffected.
- */
-/** Vault-local cell coordinate for a spawn extracted from an X or B
- *  tile during populateTemplate. The caller (vault-compose) converts
- *  cell → world coords via the vault's grid dimensions + placement
- *  offset, then adds it to the floor's spawns list. ALL spawns (X
- *  rolls + B boss expansions + future spawn-tile-chars) go through
- *  this channel — the parser never sees a tile char that means
- *  "spawn enemy X here." */
-export interface SpawnCell {
-  col: number;
-  row: number;
-  enemyId: string;
-  /** True for boss spawns extracted from the B tile — the spawn
-   *  starts in the dormant aiState so the boss doesn't aggro until
-   *  the player crosses the fog wall. Composer copies this onto the
-   *  EnemySpawnSpec.dormant field. */
-  dormant?: boolean;
-}
-
-/** A procgen-rolled FEATURE (chest / fountain / altar) from a $ or ?
- *  slot, recorded as cell coords + a bare PropSpec. Routed through the
- *  SAME cellProps → applyProcgenDefaults path as authored props (so a
- *  rolled chest gets its tier/loot), NOT injected as a map char — a raw
- *  decor char in the populated map has no parser case anymore and the
- *  boundary scanner reads it as a wall, standing up an X of wall faces
- *  in the middle of the room. */
-export interface FeatureCell {
-  col: number;
-  row: number;
-  prop: PropSpec;
-}
-
-export interface PopulatedTemplate {
-  map: TileMap;
-  /** Every X-rolled enemy + B-expanded boss from the template,
-   *  recorded as cell coords + concrete enemy id. The composer
-   *  translates these into world-coord spawn entries. Bypasses the
-   *  ASCII tile-char dictionary entirely — no 26-letter ceiling. */
-  spawns: SpawnCell[];
-  /** $ / ? slot rolls that landed a chest / fountain / altar. */
-  features: FeatureCell[];
-}
-
-export function populateTemplate(
-  template: TileMap, depth: number, rand: () => number, encounter?: EncounterSpec,
-  palette?: ResolvedPaletteV1,
-  /** When false, B tiles are treated as X (rolled enemy) instead of
-   *  expanding to the boss spawn. Set this for any vault that
-   *  ISN'T the boss arena — guards against a stray B in a combat
-   *  vault accidentally spawning a second boss in a pre-arena
-   *  room. composeFloor opts only the boss-tagged vault in. */
-  allowBossExpansion: boolean = true,
-  /**
-   * What the ROOM ITSELF tolerates, from its room-type (level/room-types.ts).
-   * A vault's `$` and `?` slots are authored blind — the template has no idea it
-   * will be promoted to the floor's trove or its shop — so a room that declares
-   * `minorLoot: false` was still getting a rolled chest wedged beside its
-   * offerings, and a room that declares no hazards still grew spikes. The type
-   * table is the authority on what may happen in a room; this is where a slot
-   * asks it.
-   *
-   * Both rolls still HAPPEN when refused, and their results are discarded. The
-   * rng sequence is shared with the rest of the floor's layout, so skipping a
-   * roll would reshuffle every room downstream of a promotion.
-   */
-  roomCaps: { minorLoot?: boolean; hazards?: boolean } = {},
-): PopulatedTemplate {
-  const allowMinorLoot = roomCaps.minorLoot !== false;
-  const allowHazards = roomCaps.hazards !== false;
-  // Encounter / event multipliers — both default to 1.0 (current
-  // behaviour) so existing seeds reproduce when the palette is
-  // omitted. < 1.0 gates the slot's fill via an extra rand() — the
-  // gate is SKIPPED when the multiplier is 1.0 so the rng sequence
-  // stays bit-identical to pre-pass output.
-  const encounterMul = palette ? densityMultiplier(palette.encounter.density) : 1.0;
-  const eventMul = palette ? densityMultiplier(palette.events.density) : 1.0;
-  const table = rollTableFor(depth);
-  // Pre-roll a coherent pack sized to the X-slot count when an archetype is set.
-  let packIds: string[] | null = null;
-  let packIdx = 0;
-  if (encounter) {
-    let n = 0;
-    for (const row of template) for (const ch of row) if (ch === 'X') n++;
-    if (n > 0) packIds = rollPack(encounter, depth, n, rand);
-  }
-  const spawns: SpawnCell[] = [];
-  const features: FeatureCell[] = [];
-  // Walk the grid left-to-right, top-to-bottom. X cells roll an
-  // enemy id (from the pack if the vault declared an encounter,
-  // otherwise from the depth table); B cells resolve to the act's
-  // boss. Both cell types become '.' in the output map so
-  // parseTileMap walks through them; the actual mob instantiation
-  // is handled by the composer reading the spawns list.
-  const map = template.map((row, rowIdx) => {
-    let out = '';
-    for (let colIdx = 0; colIdx < row.length; colIdx++) {
-      const ch = row[colIdx];
-      if (ch === 'X') {
-        // Encounter pass gate: skip this slot when density-multiplier
-        // drops a roll. Gate is SKIPPED entirely at multiplier 1.0 so
-        // the rng sequence matches pre-pass output for existing seeds.
-        if (encounterMul < 1.0 && rand() >= encounterMul) {
-          out += '.';
-          // Note: we DON'T advance packIdx so the next surviving X
-          // gets the next pack slot in order.
-        } else {
-          const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
-          // The boss ARENA is boss-only by default: the fight is the boss, not the
-          // boss plus a room of trash. We still ROLL (so the rng sequence — and thus
-          // the rest of the floor's layout — stays identical) but DON'T place the
-          // rolled mob when this is the boss-arena vault (allowBossExpansion). The
-          // approach floor's combat vaults are unaffected. `B` (the boss) still spawns.
-          if (!allowBossExpansion) spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
-          out += '.';
-        }
-      } else if (ch === 'B') {
-        if (allowBossExpansion) {
-          // dormant: boss waits in the arena until the player crosses
-          // the fog wall + the engagement flag flips.
-          spawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth), dormant: true });
-        } else {
-          // Stray B in a non-boss vault — treat as X so a centerpiece
-          // encounter spawns a rolled mob instead of a duplicate
-          // boss. (Prevents the "two slime kings, one in the room
-          // before the arena" bug.)
-          const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
-          spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
-        }
-        out += '.';
-      } else if (ch === '$') {
-        // Loot slot — PARTIAL fill: a chest sometimes appears here, the
-        // chance rising slightly with depth. The cell ALWAYS becomes '.'
-        // in the map (a chest is a floor cell with a prop on it, carrying
-        // its own collision); a hit pushes a `chest` FEATURE routed through
-        // the cellProps/applyProcgenDefaults path. Event pass gates this
-        // BEFORE the inner roll when eventMul < 1.0; same rng-skip rule as
-        // encounter so 1.0 reproduces exactly.
-        out += '.';
-        if (eventMul < 1.0 && rand() >= eventMul) {
-          // gated out — empty
-        } else if (rand() < Math.min(0.8, 0.5 + depth * 0.02) && allowMinorLoot) {
-          features.push({ col: colIdx, row: rowIdx, prop: { kind: 'chest', x: 0, z: 0 } });
-        }
-      } else if (ch === '?') {
-        // Hazard slot. DEALS are now the FLOOR DIRECTOR's job — one staged,
-        // depth-tuned, variety-controlled deal per floor (floor-director.ts) —
-        // so the '?' slot no longer rolls fountains/altars (that was the second,
-        // random source of deals we're retiring). It stays a spike-trap-or-
-        // nothing slot: the trap is an in-map '^' the parser emits. Same
-        // event-mul gating as before.
-        if (eventMul < 1.0 && rand() >= eventMul) {
-          out += '.';
-        } else {
-          out += (rand() < 0.44 && allowHazards) ? '^' : '.';
-        }
-      } else {
-        out += ch;
-      }
-    }
-    return out;
-  });
-  return { map, spawns, features };
-}
-
-// ── Public API ───────────────────────────────────────────────────────
-
-/**
  * Generate a floor for the given depth, with reproducible seed.
  *
  *   depth        1-based depth number for display + difficulty rolls
  *   runSeed      seed for this RUN (so resume regenerates same floor)
  *   nextLevelId  the id to assign to the stairs ('depth-N+1')
+ *
+ * ── ONE GENERATOR ───────────────────────────────────────────────────────────
+ *
+ * level/poly-floor.ts builds a floor out of SHAPES and places its content by
+ * asking each room. It is the only floor generator; the ASCII vault composer it
+ * replaced (vault-library, vault-compose, tilemap, and the carve/decor/lighting
+ * passes that served them) is deleted.
+ *
+ * This function is a one-line forward and stays only because ~40 call sites and
+ * the level loader name it. What used to live here — a tile-grid composer, the
+ * `?polyfloors` flag that chose between the two, and a template populator — was
+ * ~6,500 lines that nothing on a shipping floor executed any more.
  */
 export function generateFloor(
   depth: number,
   runSeed: number,
-  /** Override the stair target. Pass undefined to let acts.ts
-   *  decide (boss-floor → safe-N, else → depth-N+1). The override
-   *  exists for test scenarios that want a specific destination. */
+  /** Override the stair target. Pass undefined to let acts.ts decide
+   *  (boss-floor → safe-N, else → depth-N+1). The override exists for the
+   *  proving grounds and test scenarios that want a specific destination. */
   nextLevelIdOverride?: string,
 ): LevelSpec {
-  // ── POLYGON FLOORS — THE GENERATOR ──────────────────────────────────
-  //
-  // level/poly-floor.ts builds a floor out of SHAPES and places its content by
-  // asking each room, rather than by stamping a tilemap. `generateVaultFloor`
-  // below is the composer it replaced, still reachable with `?polyfloors=0`.
-  //
-  // What had to be true before it could take the default, and now is:
-  //
-  //   IT STAGES A FLOOR. Floor-plan contract, shops, arenas, modifiers and the
-  //   DIRECTOR all moved across; floors with nothing to take or use went 15% → 2%.
-  //   IT IS ONE GENERATOR ALL THE WAY DOWN. Boss depths used to fall through to
-  //   the composer, so a run swapped generator every fifth floor at the one
-  //   moment a floor is most trying to make an impression.
-  //   IT FIELDS A FIGHT. Two silent caps in the spawn pass were standing up 6.6
-  //   enemies where the vault floor stands 12.5; it fields 11.7 now
-  //   (tests/poly-spawns.test.ts).
-  //   YOU CAN FINISH IT. 3 floors in 520 shipped with the spawn joined to
-  //   nothing — a sound graph and a dead run. The reroll now checks the BUILT
-  //   floor and ranks an uncrossable one below every other kind of flaw
-  //   (level/floor-connectivity.ts, tests/floor-connectivity.test.ts); 0 in 1170.
-  //   IT IS DRESSED. The decorate pass is in (level/poly-surface.ts,
-  //   poly-decor.ts): debris with a cause, vase clusters, cobwebs, wall runes.
-  //
-  // What a polygon floor still does not have is the content that only ever
-  // existed inside HAND-AUTHORED vaults — the reliquary, wall hints, scenery
-  // corpses. Those are not a porting job; they are a decision about whether the
-  // ASCII vault library survives at all, which is its own piece of work.
-  return usePolyFloors()
-    ? generatePolyFloor(depth, runSeed, nextLevelIdOverride)
-    : generateVaultFloor(depth, runSeed, nextLevelIdOverride);
+  return generatePolyFloor(depth, runSeed, nextLevelIdOverride);
 }
-
-/**
- * The ASCII-vault composer — the generator polygon floors replaced.
- *
- * Reachable in the game with `?polyfloors=0`, and exported by NAME so that a
- * headless caller can ask for it explicitly. That matters because the flag reads
- * `location`, which does not exist in node: once polygon floors took the
- * default, `generateFloor` in a test meant "polygon", and the suites that exist
- * to measure the VAULT LIBRARY — pool size, repeats within a floor, two runs
- * reading the same — were suddenly measuring a generator that has no vaults at
- * all and reporting a pool of 1. A test about vaults should name vaults rather
- * than depend on which generator a global happens to select.
- */
-export function generateVaultFloor(
-  depth: number,
-  runSeed: number,
-  nextLevelIdOverride?: string,
-): LevelSpec {
-  const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
-
-  const rand = rng(seedForFloor);
-  // Seed the build stream BEFORE composeFloor — vault-compose → parseTileMap
-  // bakes corpse rotation + wall-fixture rolls into the spec, and those must
-  // be reproducible per floor seed too.
-  seedBuildRng(seedForFloor);
-
-  // Act → palette + boss-flag. Stair target follows from the act
-  // rule (boss floor → safe room; else → next depth).
-  const act = actForDepth(depth);
-  const nextLevelId = nextLevelIdOverride ?? nextLevelAfter(depth);
-  const bossFloor = isBossDepth(depth);
-  // On boss floors, hand the BossSpec's preferred vault to the
-  // composer so the king slime gets the grand hall and the wraith
-  // gets the cathedral. The composer falls back to weighted-pick
-  // when the preference isn't in the eligible pool.
-  const preferredBossVaultId = bossFloor
-    ? bossById(act.bossId).preferredVaultId
-    : undefined;
-
-  const id = `depth-${depth}`;
-  const spec = composeFloor(depth, rand, nextLevelId, {
-    id,
-    displayName: `${romanize(depth)} — ${act.name}`,
-    // Boss floors can recolour their whole arena to the boss's nature
-    // (the Marrow Sovereign's charnel-red hall) — both the torches AND the
-    // fog wash. Falls back to the act palette when the boss leaves them
-    // unset, so other bosses are unaffected until styled.
-    torchTint: bossFloor ? (bossById(act.bossId).arenaTorchTint ?? act.torchTint) : act.torchTint,
-    fogColor: bossFloor ? (bossById(act.bossId).arenaFogColor ?? act.fogColor) : act.fogColor,
-    isBossFloor: bossFloor,
-    preferredBossVaultId,
-    // Per-boss fog-wall tint. Default amber when the boss spec
-    // doesn't pick one — keeps the soulslike-mist colour
-    // recognisable even on bosses we haven't styled yet.
-    bossMistColor: bossFloor ? (bossById(act.bossId).mistColor ?? 0xffd060) : undefined,
-  });
-  // Apply X→enemy substitution per spawn. parseTileMap doesn't handle
-  // 'X' itself (it's only in vault grids); the composer's spawn list
-  // already came back with 'X'-resolved enemies via the per-vault
-  // populate step above. (See composeFloor for the populateTemplate
-  // call on each vault's map.)
-
-  // Modifier rolls per spawn — drives the difficulty system. The
-  // deeper you go, the more often spawns get tagged with a modifier
-  // (and the more likely they stack two).
-  const modPool = ['fierce', 'swift', 'tough', 'withered', 'bloated'];
-  const modChance = depth <= 2 ? 0
-    : depth <= 4 ? 0.12
-    : depth <= 7 ? 0.22
-    : 0.35;
-  for (const s of spec.spawns) {
-    if (rand() < modChance) {
-      const first = modPool[Math.floor(rand() * modPool.length)];
-      s.modifiers = [first];
-      if (depth >= 8 && rand() < 0.20) {
-        const second = modPool[Math.floor(rand() * modPool.length)];
-        if (second !== first) s.modifiers.push(second);
-      }
-    }
-  }
-
-  // Decoration is skipped for vault-composed floors in V1 — the
-  // decorator's grid-based anchor system assumes a single contiguous
-  // tilemap. Per-vault decoration is a follow-up pass.
-
-  // Sanity: every composed floor must contain a player spawn + a
-  // stairs. composeFloor's vault chain guarantees both by tag
-  // (start vault has 'S', exit/boss vault has '/'), but warn loudly
-  // if a vault library entry violates that contract.
-  if (!hasSpawn(spec)) {
-    // eslint-disable-next-line no-console
-    console.warn(`Composed floor depth ${depth} lacks player spawn 'S'`);
-  }
-  if (spec.stairs?.length === 0) {
-    // eslint-disable-next-line no-console
-    console.warn(`Composed floor depth ${depth} lacks stairs '/'`);
-  }
-  // Stamp the floor seed so buildLevel re-seeds the build stream identically.
-  spec.seed = seedForFloor;
-  return spec;
-}
-
-function hasSpawn(spec: LevelSpec): boolean {
-  return spec.startPos.x !== 0 || spec.startPos.z !== 0
-    || spec.spawns.length > 0;  // soft check
-}
-
-function romanize(n: number): string {
-  const numerals: [number, string][] = [
-    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
-  ];
-  let out = '';
-  for (const [v, s] of numerals) {
-    while (n >= v) { out += s; n -= v; }
-  }
-  return out || 'I';
-}
-
-// Convenience used by tests / debug — picks the first START vault and
-// returns its populated grid as a preview string. (The full floor
-// preview is harder now that floors are composed of multiple vaults;
-// this just spot-checks the X-enemy substitution math.)
-export function previewPopulated(depth: number, runSeed: number): string {
-  const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
-  const rand = rng(seedForFloor);
-  const startVault = VAULTS.find((v) => v.tags.includes('start'));
-  if (!startVault) return '';
-  return populateTemplate(startVault.map, depth, rand).map.join('\n');
-}
-
-// Re-export TileMap typedef ergonomically.
-export type { TileMap };
