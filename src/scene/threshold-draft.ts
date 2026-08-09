@@ -266,9 +266,27 @@ function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote):
  *  archway frames glow brighter as you approach. */
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
   // Archway crown — its natural warm proximity glow (decoration, not the cue).
-  for (const f of frameGlows) {
-    const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+  //
+  // DRIVEN BY THE NEAREST GATE, not per-gate, because the material is SHARED.
+  // ecs/build-model.ts pools materials by canonical definition, so every archway
+  // on the floor hands the same object to registerArchwayGlow — the old loop
+  // wrote that one object once per gate and the LAST registration won, which
+  // meant the crowns lit by your distance to whichever gate happened to be
+  // registered last rather than the one you were standing at.
+  //
+  // Taking the minimum is not a compromise here: the ramp is 2.5m→1.0m and
+  // gates sit at opposite ends of corridors, so you are only ever inside one
+  // gate's radius at a time. Same look, and it is the gate you are AT.
+  if (frameGlows.length > 0) {
+    let nearest = Infinity;
+    for (const f of frameGlows) {
+      const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
+      if (dist < nearest) nearest = dist;
+    }
+    const intensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, nearest);
+    // Still written per registration: pooling is an implementation detail of
+    // the model builder, and a future unpooled material must not go dark.
+    for (const f of frameGlows) f.mat.emissiveIntensity = intensity;
   }
 
   // Exit eyes — OPEN only where it's a NEAR entrance (adjacent to the current
