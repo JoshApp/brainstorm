@@ -103,7 +103,12 @@ export interface Harness {
 }
 
 function buildUrl(base: string, cfg: SampleConfig): string {
-  const params = new URLSearchParams({ scenario: cfg.scenario, freeze: 'false' });
+  const params = new URLSearchParams({ freeze: 'false' });
+  // An EMPTY scenario means "not a posed scenario" — the caller is booting a
+  // real seeded run instead (autostart + seed + depth, the `delve repro` path).
+  // Sending `scenario=` would put the loader down the scenario branch looking
+  // for a registry entry named ''. See scripts/perf-depths.ts.
+  if (cfg.scenario) params.set('scenario', cfg.scenario);
   for (const [k, v] of Object.entries(cfg.flags ?? {})) params.set(k, v);
   return `${base}/brainstorm/?${params.toString()}`;
 }

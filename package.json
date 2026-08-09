@@ -24,6 +24,7 @@
     "bench": "tsx scripts/bench.ts",
     "balance": "tsx scripts/balance.ts",
     "audit": "tsx scripts/audit.ts",
+    "perf-depths": "tsx scripts/perf-depths.ts",
     "perf": "tsx scripts/perf.ts",
     "perf:read": "tsx scripts/perf-read.ts",
     "perf:ab": "tsx scripts/perf-ab.ts",

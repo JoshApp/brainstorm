@@ -66,7 +66,25 @@ function printReport(r: PerfAggregate, viewportName: string, viewport: Viewport,
     console.log(`  GC churn: heap not exposed by this browser build.`);
   }
   console.log('─'.repeat(56));
-  console.log(`  (headless swiftshader — counts are real, FPS is not. ${r.samples} samples.)\n`);
+  console.log(`  (headless swiftshader — FPS is not real. ${r.samples} samples.)`);
+  // THE COUNTERS ABOVE CAN BE A LIE, AND SILENCE WOULD LAUNDER IT.
+  //
+  // Every renderer-derived figure here comes from `renderer.info`, and under the
+  // WebGPU node RenderPipeline this game renders through, those fields are never
+  // written: draws, triangles, geometries and the pipeline cache all sit at 0
+  // while the game renders perfectly well. (info.memory.textures and
+  // renderTargets DO populate, which is how you can tell the renderer is not
+  // merely idle.) A zero here means "not measured", not "free" — so say so
+  // rather than let a reader take 0 draw calls for a result.
+  if (r.draws.max === 0 && r.tris.max === 0) {
+    console.log('');
+    console.log('  ⚠ draws / triangles / geometries / shader programs read ZERO.');
+    console.log('    renderer.info is not populated by the node RenderPipeline, so these are');
+    console.log('    UNMEASURED, not cheap. Do not conclude anything from them.');
+    console.log('    For real structural counts use `npm run perf-depths` (walks the scene');
+    console.log('    graph via window.__drawData) or the on-screen PERF METER on a device.');
+  }
+  console.log('');
 }
 
 async function main() {
