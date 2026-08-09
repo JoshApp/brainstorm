@@ -1,4 +1,4 @@
-import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES, FRAME_CAPS, type FrameCap } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES, FRAME_CAPS, DAYLIGHT_PRESETS, nearestDaylightPreset, type FrameCap, type DaylightPresetId } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
 import { THEME, FONT_DISPLAY, applyCarvedFrame } from './theme';
 import { HUD_STYLES, setHudStyle, type HudStyleId } from './hud-style';
@@ -473,9 +473,31 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().surfaceDetail,
       set: (v) => updateSettings({ surfaceDetail: v }),
     }),
+    // FIRST in the light group, and named for the ROOM rather than for a
+    // quantity. A player who cannot see the game does not think "my gamma is
+    // low", they think "I'm outside" — so the control they need to find is the
+    // one that asks where they are. Brightness stays below it as the fine dial.
+    makeSelect<DaylightPresetId>({
+      label: 'WHERE YOU’RE PLAYING',
+      description:
+        'Opens the bottom of the picture so the dark stays readable in the light ' +
+        'you are actually in. Brightness alone cannot do this: sun on the glass ' +
+        'ADDS to every pixel, and multiplying a black pixel leaves it black. ' +
+        'Dark room gives back the authored dungeon; direct sun trades the dark ' +
+        'for being able to play at all.',
+      options: DAYLIGHT_PRESETS.map((p) => ({ id: p.id, label: p.label })),
+      get: () => nearestDaylightPreset(getSettings().daylight),
+      set: (id) => {
+        const p = DAYLIGHT_PRESETS.find((q) => q.id === id);
+        if (p) updateSettings({ daylight: p.amount });
+      },
+    }),
     makeSlider({
       label: 'BRIGHTNESS',
-      description: 'Master output brightness. 1.00 is the authored exposure.',
+      description:
+        'Master output brightness — a straight multiplier on the exposure. ' +
+        '1.00 is authored. Reach for WHERE YOU’RE PLAYING first if the problem ' +
+        'is glare; this dial scales everything and cannot lift black off black.',
       min: 0.6, max: 1.6, step: 0.05,
       get: () => getSettings().brightness,
       set: (v) => updateSettings({ brightness: v }),
@@ -504,8 +526,8 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       description:
         'Let the phone’s light sensor lift the dark when you play in a bright ' +
         'room, and give it back when you don’t — the way the screen already ' +
-        'does. Rides on top of your own calibration; it never overwrites it. ' +
-        sensorNote(),
+        'does. Rides on top of WHERE YOU’RE PLAYING and your own calibration; ' +
+        'it never overwrites either. ' + sensorNote(),
       get: () => getSettings().autoWick,
       set: (v) => updateSettings({ autoWick: v }),
     }),

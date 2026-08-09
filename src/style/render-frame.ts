@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled, setSceneOnly } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt, setWebGPUBrightness, setWebGPULegibility, setWebGPUInscatterEnabled, setWebGPUDepthCrushEnabled, setSceneOnly } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 import type { DelveRenderer } from '../scene/create-renderer';
 
@@ -133,6 +133,13 @@ export function getRenderPixelRatio(): number { return rendererRef ? rendererRef
  *  slider. Forwarded to the WebGPU grade's expose multiplier. */
 export function setMasterBrightness(v: number): void {
   setWebGPUBrightness(v);
+}
+
+/** Daylight legibility, 0 (authored dark room) .. 1 (direct sun) — the display
+ *  curve that survives light reflecting off the glass, which a brightness
+ *  multiplier cannot. See LEGIBILITY_* in style/render-webgpu.ts. */
+export function setDisplayLegibility(v: number): void {
+  setWebGPULegibility(v);
 }
 
 export function setDarkAdapt(amount: number): void {

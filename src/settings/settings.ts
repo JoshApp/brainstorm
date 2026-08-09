@@ -168,6 +168,22 @@ export interface Settings {
    *  calibration rather than replacing it, and does nothing at all on a device
    *  with no readable sensor — which today is most of them, iOS included. */
   autoWick: boolean;
+  /** WHERE YOU ARE PLAYING — 0 a dark room, 1 direct sun. Drives the display
+   *  legibility curve (style/render-webgpu.ts LEGIBILITY_*): a shadow-toe
+   *  expansion plus a black-point pedestal, so the bottom of the image survives
+   *  the light reflecting off the glass.
+   *
+   *  This is a SEPARATE lever from `brightness` and `wick` on purpose. Brightness
+   *  is a gain and a gain cannot beat a reflection (it scales the signal and the
+   *  glare floor stays where it is). The wick re-lights the SCENE, which is the
+   *  right answer indoors but has a ceiling before the dungeon stops being dark.
+   *  This one changes the display curve and is the only one of the three that
+   *  makes near-black readable in a park.
+   *
+   *  Defaults to DAYLIGHT_DEFAULT rather than 0: the authored dark-room look is
+   *  correct for a dark room and unplayable everywhere else, and most players
+   *  never open a settings menu to find that out. */
+  daylight: number;
   /** Live tuning multipliers for ALL environment lights (torches,
    *  sconces, chandeliers). Debug/feel dials — 1 = the authored values. */
   torchStrengthMul: number;
@@ -224,6 +240,44 @@ export const DASH_GESTURES: { id: Settings['dashGesture']; label: string }[] = [
 
 const STORAGE_KEY = 'delve-settings';
 
+/**
+ * ── WHERE ARE YOU PLAYING? ───────────────────────────────────────────────────
+ *
+ * Four named conditions rather than a bare slider, because "0.35" means nothing
+ * to a player and "on a bus" does. Each is an amount for the display legibility
+ * curve; the settings screen still exposes the raw number for anyone who wants
+ * to split the difference.
+ *
+ * The DEFAULT is INDOORS, not DARK ROOM. The authored grade assumes a dark room
+ * and is genuinely unplayable outside one — and a player who cannot see does not
+ * go looking through a graphics menu for the reason, they just stop. Shipping
+ * the atmospheric default to everybody optimises for the screenshot over the
+ * person holding the phone. Anyone who IS in the dark gets the authored look
+ * back with one tap, and that is the right way round.
+ */
+export const DAYLIGHT_PRESETS = [
+  { id: 'dark',    label: 'Dark room',  amount: 0.00, hint: 'The authored dungeon. Lights off, curtains shut.' },
+  { id: 'indoors', label: 'Indoors',    amount: 0.30, hint: 'A normal lit room. The default.' },
+  { id: 'bright',  label: 'Bright',     amount: 0.60, hint: 'By a window, or a bus in daylight.' },
+  { id: 'sun',     label: 'Direct sun', amount: 1.00, hint: 'Outside. Trades the dark for being able to play at all.' },
+] as const;
+
+export type DaylightPresetId = typeof DAYLIGHT_PRESETS[number]['id'];
+
+export const DAYLIGHT_DEFAULT = 0.30;
+
+/** The preset whose amount is nearest `v` — for showing which chip is active
+ *  when the underlying value came from a slider or the light sensor. */
+export function nearestDaylightPreset(v: number): DaylightPresetId {
+  let best: DaylightPresetId = DAYLIGHT_PRESETS[0].id;
+  let bestGap = Infinity;
+  for (const p of DAYLIGHT_PRESETS) {
+    const gap = Math.abs(p.amount - v);
+    if (gap < bestGap) { bestGap = gap; best = p.id; }
+  }
+  return best;
+}
+
 const DEFAULTS: Settings = {
   lookSensitivity: CONFIG.LOOK_SENSITIVITY,
   hybridLook: false,
@@ -273,6 +327,7 @@ const DEFAULTS: Settings = {
   brightness: 1.0,
   wick: 1.0,
   autoWick: true,
+  daylight: DAYLIGHT_DEFAULT,
   torchStrengthMul: 1.0,
   torchRangeMul: 1.0,
   hudStyle: 'minimal',

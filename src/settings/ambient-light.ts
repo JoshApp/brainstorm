@@ -1,5 +1,6 @@
 import { getSettings } from './settings';
 import { setWickFillMul } from '../scene/light-pool';
+import { setDisplayLegibility } from '../style/render-frame';
 
 // THE ROOM YOU ARE ACTUALLY IN — driving the wick from the phone's light sensor.
 //
@@ -156,6 +157,49 @@ export async function startAmbientLight(): Promise<void> {
   }
 }
 
+/** The most the sensor may push DAYLIGHT LEGIBILITY on top of the player's own
+ *  choice. Same shape as MAX_LIFT above and the same reasoning: it rides on the
+ *  setting rather than replacing it, so someone who picked "dark room" indoors
+ *  still gets a readable screen when they walk outside, and gets their darkness
+ *  back when they come in. Capped below 1 so the sensor alone can never flatten
+ *  the game to its most washed-out state — that remains a deliberate choice. */
+const MAX_DAYLIGHT_BOOST = 0.55;
+
+/** How much legibility the measured room wants ON TOP of the player's setting.
+ *  0 when unsupported, disabled, or in a dark room — so this is always safe to
+ *  add unconditionally. */
+export function ambientDaylightBoost(): number {
+  if (!getSettings().autoWick || smoothedLux === null) return 0;
+  return boostForLux(smoothedLux);
+}
+
+/** Log ramp between DARK_LUX and BRIGHT_LUX, same curve the wick lift uses —
+ *  perceived brightness is logarithmic and a linear ramp spends itself in the
+ *  first few percent of the useful range. */
+export function boostForLux(lux: number): number {
+  if (!(lux > 0) || lux <= DARK_LUX) return 0;
+  const t = Math.log(lux / DARK_LUX) / Math.log(BRIGHT_LUX / DARK_LUX);
+  return Math.min(1, Math.max(0, t)) * MAX_DAYLIGHT_BOOST;
+}
+
+/** The player's choice plus whatever the sensor is asking for, clamped. THE one
+ *  place the two combine, so the settings screen and the sensor cannot disagree
+ *  about who last wrote it. */
+export function effectiveDaylight(): number {
+  return Math.min(1, Math.max(0, getSettings().daylight + ambientDaylightBoost()));
+}
+
+let appliedDaylight = -1;
+
+/** Push the effective daylight legibility into the render grade. Called every
+ *  frame; early-outs unless the value actually moved. */
+export function applyDaylight(): void {
+  const d = effectiveDaylight();
+  if (Math.abs(d - appliedDaylight) < 0.002) return;
+  appliedDaylight = d;
+  setDisplayLegibility(d);
+}
+
 let appliedWick = -1;
 
 /**
@@ -182,4 +226,5 @@ export function stopAmbientLight(): void {
   rawLux = null;
   smoothedLux = null;
   lift = 1;
+  appliedDaylight = -1;
 }

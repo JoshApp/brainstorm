@@ -136,7 +136,7 @@ import { triggerAttack } from './controls/attack-input';
 import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, tickLightPool } from './scene/light-pool';
-import { applyAmbientWick, startAmbientLight, stopAmbientLight } from './settings/ambient-light';
+import { applyAmbientWick, applyDaylight, startAmbientLight, stopAmbientLight } from './settings/ambient-light';
 import { warmThumbnailRig, requestThumbnail } from './ui/item-thumbnail';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
 import { warmSceneCompile, waitForPresentedFrames, warmRenderWebGPU, flushWarmRenders, setWarmLowRes, captureDisplayFrame } from './style/render-webgpu';
@@ -352,6 +352,7 @@ initArenaLightArc();
 setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);
+applyDaylight();
 setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
 applyAmbientWick();
 // The item-thumbnail rig makes its own little WebGL context. Build it during
@@ -1559,6 +1560,7 @@ onSettingsChanged((s) => {
   setSurfaceAOStrength(s.aoStrength);
   setSurfaceDetailEnabled(s.surfaceDetail);
   setMasterBrightness(s.brightness);
+  applyDaylight();
   setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
   applyAmbientWick();
   if (s.autoWick) void startAmbientLight(); else stopAmbientLight();

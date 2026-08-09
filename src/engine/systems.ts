@@ -10,7 +10,7 @@ import { updateTorchlight } from '../scene/torchlight';
 import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
-import { tickAmbientLight, applyAmbientWick } from '../settings/ambient-light';
+import { tickAmbientLight, applyAmbientWick, applyDaylight } from '../settings/ambient-light';
 import { tickArrivalThreshold, endArrivalThreshold } from '../player/arrival';
 import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
@@ -443,7 +443,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // 'always': the sun does not pause when you open a menu, and coming back to a
     // brightly-lit screen after pausing indoors is exactly when you'd notice. A
     // no-op on every device without a readable sensor, which is most of them.
-    { name: 'ambient-light', phase: 'always', tick(ctx) { tickAmbientLight(ctx.realDt); applyAmbientWick(); } },
+    { name: 'ambient-light', phase: 'always', tick(ctx) { tickAmbientLight(ctx.realDt); applyAmbientWick(); applyDaylight(); } },
     // Left arm IK — must run AFTER 'lamp' so the hinge it targets has
     // its latest position from this frame's pendulum + stowed-ease.
     { name: 'lamp-arm', phase: 'always', tick(ctx) { tickLampArm(ctx.realDt); } },

@@ -264,6 +264,43 @@ const brightnessNode = (uniform as any)(1);
 export function setWebGPUBrightness(v: number): void {
   (brightnessNode as any).value = v;
 }
+
+// ── DAYLIGHT LEGIBILITY — the lever that actually survives sunlight ──────────
+//
+// You cannot MULTIPLY your way out of playing outdoors, and that is what the
+// brightness slider above does. Sunlight on the glass adds a roughly constant
+// reflected luminance to every pixel; two near-black pixels at 0.01 and 0.02
+// scaled by 1.24 are still 0.012 and 0.025, both drowned by a reflection worth
+// an order of magnitude more. A gain preserves RATIOS, and the ratio is exactly
+// what stops mattering when the floor is raised by something outside the screen.
+//
+// What survives is matching the reflection with a pedestal of our own, and
+// re-expanding the contrast that the crushed toe never had:
+//   GAMMA first  — pow(<1) on the display-space image pulls the bottom decade
+//                  apart, so shape returns to the darks instead of one flat mass.
+//   PEDESTAL then — lifts the black point ABOVE the ambient wash so the darkest
+//                  content is a distinguishable grey rather than glare-coloured.
+// White is pinned, so the highlights and the torch pools do not blow out; only
+// the bottom of the range moves, which is where every legibility complaint is.
+//
+// This is a deliberate trade of atmosphere for readability, so it is a knob the
+// player owns rather than something we sneak into the grade.
+const LEGIBILITY_FLOOR = 0.18;   // display-space black point at amount 1
+const LEGIBILITY_GAMMA = 0.62;   // display-space shadow expansion at amount 1
+const legibilityNode = (uniform as any)(0);
+// ?daylight=<0..1> PINS the amount, so the four presets can be compared as
+// snaps of the same room without driving the settings menu from a script.
+const LEGIBILITY_PIN = (() => {
+  const q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('daylight');
+  const n = q == null || q === false ? NaN : parseFloat(q);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : null;
+})();
+if (LEGIBILITY_PIN != null) (legibilityNode as any).value = LEGIBILITY_PIN;
+/** Daylight legibility, 0 (authored dark) .. 1 (direct sun). */
+export function setWebGPULegibility(v: number): void {
+  if (LEGIBILITY_PIN != null) return;   // pinned for a comparison snap
+  (legibilityNode as any).value = Math.min(1, Math.max(0, v));
+}
 // The reveal is the GATED DEEP-DARK gain we tuned earlier — surgical: only the
 // truly near-black gets amplified (a high multiply that pulls faint form out of
 // the void), so it CAN'T wash the mid-dark like the broad WebGL darkness-weighted
@@ -584,6 +621,20 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
     const a: any = (darkAdaptNode as any).mul(darkW).mul(_float(G.adaptScale));   // adapt, restricted to the darks
     col = col.add((vec3 as any)(ADAPT_LIFT[0], ADAPT_LIFT[1], ADAPT_LIFT[2]).mul(a));
     col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));
+  }
+
+  // ── DAYLIGHT LEGIBILITY (see LEGIBILITY_* above) ──
+  // Placed BEFORE the dither+quantize below, deliberately: lifting after the
+  // quantize would squeeze all 32 levels into the top of the range and band the
+  // shadows we just made visible. Lifting first lets the newly-opened darks get
+  // their own levels, and the dither breaks up what is left.
+  {
+    const amt: any = legibilityNode;
+    let d: any = col.max(_float(0.0)).pow(_float(1.0 / 2.2));            // linear → display
+    d = d.pow((mix as any)(_float(1.0), _float(LEGIBILITY_GAMMA), amt)); // open the shadow toe
+    const floorV: any = amt.mul(_float(LEGIBILITY_FLOOR));
+    d = d.mul(_float(1.0).sub(floorV)).add(floorV);                      // pedestal; white pinned
+    col = d.pow(_float(2.2));                                            // display → linear
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
