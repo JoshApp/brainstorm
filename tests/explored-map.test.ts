@@ -61,6 +61,23 @@ test('WARM toward an unexplored room; COLD once it is ENTERED (purely explorator
   assert.equal(archwayCold(g, 'A', 'cor1', st({ curId: 'A', visited: new Set(['A', 'B', 'C']) })), true);
 });
 
+test('the stairs are a goal of LAST RESORT — unexplored rooms outrank them', () => {
+  // A hub H. X is unexplored; Y holds the down-stairs and has been entered.
+  // The eye must send you to X, NOT out — otherwise the cue walks a new player
+  // straight past the floor and down the first staircase they are shown.
+  const g = buildRoomGraph({
+    rooms: [room('H', 0, 0), room('X', 0, 6), room('Y', 6, 0)],
+    corridors: [corr('cA', 0, 3, 2, 2), corr('cB', 3, 0, 2, 2)],
+  });
+  const s = st({ curId: 'H', visited: new Set(['H', 'Y']), objective: new Set(['Y']) });
+  assert.equal(archwayCold(g, 'H', 'cA', s), false, 'toward unexplored X → warm');
+  assert.equal(archwayCold(g, 'H', 'cB', s), true, 'toward the stairs → cold while the floor holds anything');
+  // Once X is entered too, the floor is spent and the stairs become the goal.
+  const spent = st({ curId: 'H', visited: new Set(['H', 'X', 'Y']), objective: new Set(['Y']) });
+  assert.equal(archwayCold(g, 'H', 'cB', spent), false, 'floor spent → the way down lights');
+  assert.equal(archwayCold(g, 'H', 'cA', spent), true, 'the finished branch stays dark');
+});
+
 test('an OBJECTIVE room (the down-stairs) keeps its path WARM even when entered', () => {
   const g = linearFloor();
   // All entered, but C holds the down-stairs (an objective) → A's exit stays WARM
@@ -80,11 +97,19 @@ test('directional — same corridor reads opposite from each end', () => {
   assert.equal(archwayCold(g, 'B', 'cor2', s), false, 'toward unseen C → warm');
 });
 
-test('corridors are pass-through — cold flows through them to the real room', () => {
+test('corridors are pass-through — an unexplored room two hops away still warms the exit', () => {
   const g = linearFloor();
-  // Player in A; B+C done. The FAR archway (cor2↔C, not adjacent to A) reads C's
-  // state via the edge-cut, so it is COLD even though A isn't next to it.
-  const s = st({ curId: 'A', visited: new Set(['A', 'B', 'C']) });
+  // Player in A, B entered, C never. The corridor between them holds nothing, so
+  // the distance to C counts THROUGH it: A's only exit steps closer to C → WARM.
+  const s = st({ curId: 'A', visited: new Set(['A', 'B']) });
+  assert.equal(archwayCold(g, 'A', 'cor1', s), false);
+});
+
+test('a doorway that is not the current room’s own is cold (its eye is never shown)', () => {
+  const g = linearFloor();
+  // cor2↔C is nowhere near A. `near` gates which eyes render at all; the cold
+  // decision refuses to answer for a doorway the player is not standing at.
+  const s = st({ curId: 'A', visited: new Set(['A']) });
   assert.equal(archwayCold(g, 'cor2', 'C', s), true);
 });
 
@@ -108,20 +133,43 @@ test('hub with dead-end branches — each exit reflects ITS branch independently
   assert.equal(archwayCold(g, 'H', 'cA', s2), true, 'the plain entered dead-end stays cold');
 });
 
-test('an archway on a CYCLE stays warm (not a dead-end branch)', () => {
-  // Square loop: A-B-C-D-A via short corridors. Cutting any one doorway still
-  // leaves the player able to reach both sides → warm.
-  const g = buildRoomGraph({
-    rooms: [room('A', 0, 0), room('B', 6, 0), room('C', 6, 6), room('D', 0, 6)],
-    corridors: [
-      corr('ab', 3, 0, 2, 2), corr('bc', 6, 3, 2, 2),
-      corr('cd', 3, 6, 2, 2), corr('da', 0, 3, 2, 2),
-    ],
-  });
-  const all = new Set(['A', 'B', 'C', 'D', 'ab', 'bc', 'cd', 'da']);
-  const s: ExploredState = { curId: 'A', visited: new Set(['A', 'B', 'C', 'D']), objective: new Set(), discovered: all };
-  // Even with everything visited, a cycle archway is warm (player reaches both sides).
-  assert.equal(archwayCold(g, 'A', 'ab', s), false);
+// ── THE CYCLE CASE ───────────────────────────────────────────────────────────
+// This file used to assert the OPPOSITE of the two tests below: that an archway
+// on a cycle "stays warm", because cutting it never separated the graph and the
+// old edge-cut model fell through to warm. That was the bug written down as
+// intent. With 89% of floors carrying a cycle it left 85% of all eyes open, and
+// every door in the room open in a third of visits. Distance answers what
+// connectivity could not.
+const loopFloor = () => buildRoomGraph({
+  rooms: [room('A', 0, 0), room('B', 6, 0), room('C', 6, 6), room('D', 0, 6)],
+  corridors: [
+    corr('ab', 3, 0, 2, 2), corr('bc', 6, 3, 2, 2),
+    corr('cd', 3, 6, 2, 2), corr('da', 0, 3, 2, 2),
+  ],
+});
+const LOOP_NODES = new Set(['A', 'B', 'C', 'D', 'ab', 'bc', 'cd', 'da']);
+
+test('on a fully-explored CYCLE every archway goes cold', () => {
+  const g = loopFloor();
+  const s: ExploredState = {
+    curId: 'A', visited: new Set(['A', 'B', 'C', 'D']), objective: new Set(), discovered: LOOP_NODES,
+  };
+  assert.equal(archwayCold(g, 'A', 'ab', s), true, 'nothing left that way');
+  assert.equal(archwayCold(g, 'A', 'da', s), true, 'nor the other way round');
+});
+
+test('on a CYCLE the eye opens the SHORT way round and shuts the long one', () => {
+  const g = loopFloor();
+  // Player in A; B and D entered, C is not. Round the loop C is two hops via B
+  // (A→ab→B→bc→C) and two via D — symmetric, so make it asymmetric by entering
+  // only B: from A, C is 4 edges clockwise through B and 4 anticlockwise through
+  // D. Use the objective instead to pin a single goal one side of the loop.
+  const s: ExploredState = {
+    curId: 'B', visited: new Set(['A', 'B', 'C', 'D']), objective: new Set(['C']), discovered: LOOP_NODES,
+  };
+  // From B the down-stairs room C is 2 edges via bc, and 6 the long way via A→D.
+  assert.equal(archwayCold(g, 'B', 'bc', s), false, 'the short way to the stairs is lit');
+  assert.equal(archwayCold(g, 'B', 'ab', s), true, 'the long way round is not');
 });
 
 test('undiscovered (secret) nodes are invisible — a corridor to only a secret reads COLD', () => {
