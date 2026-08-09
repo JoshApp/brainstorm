@@ -61,21 +61,86 @@ test('WARM toward an unexplored room; COLD once it is ENTERED (purely explorator
   assert.equal(archwayCold(g, 'A', 'cor1', st({ curId: 'A', visited: new Set(['A', 'B', 'C']) })), true);
 });
 
-test('the stairs are a goal of LAST RESORT — unexplored rooms outrank them', () => {
-  // A hub H. X is unexplored; Y holds the down-stairs and has been entered.
-  // The eye must send you to X, NOT out — otherwise the cue walks a new player
-  // straight past the floor and down the first staircase they are shown.
-  const g = buildRoomGraph({
-    rooms: [room('H', 0, 0), room('X', 0, 6), room('Y', 6, 0)],
-    corridors: [corr('cA', 0, 3, 2, 2), corr('cB', 3, 0, 2, 2)],
+// ── TIER A: A DOOR ONTO UNEXPLORED GROUND IS ALWAYS OPEN ─────────────────────
+// Two corridors from A to the same room B, one short and one long. This is the
+// case that names the whole rule.
+//
+//   A ═══ short ═══ B
+//    ╚══ long (2 corridor hops) ══╝
+// Rooms are 12 wide so two corridors can leave the same wall without touching
+// each other (rects must ABUT to become graph edges — a 1m gap is no doorway,
+// and two corridors sharing a boundary would wire to each other as well).
+//   A ══ short ══════════════ B      (2 edges)
+//    ╚═ longA ═ longB ════════╝      (3 edges)
+function twinCorridorFloor() {
+  return buildRoomGraph({
+    rooms: [room('A', 0, 0, 12, 4), room('B', 0, 12, 12, 4)],
+    corridors: [
+      corr('short', 4, 6, 2, 8),
+      corr('longA', -4, 4, 2, 4), corr('longB', -4, 8, 2, 4),
+    ],
   });
-  const s = st({ curId: 'H', visited: new Set(['H', 'Y']), objective: new Set(['Y']) });
-  assert.equal(archwayCold(g, 'H', 'cA', s), false, 'toward unexplored X → warm');
-  assert.equal(archwayCold(g, 'H', 'cB', s), true, 'toward the stairs → cold while the floor holds anything');
-  // Once X is entered too, the floor is spent and the stairs become the goal.
-  const spent = st({ curId: 'H', visited: new Set(['H', 'X', 'Y']), objective: new Set(['Y']) });
-  assert.equal(archwayCold(g, 'H', 'cB', spent), false, 'floor spent → the way down lights');
-  assert.equal(archwayCold(g, 'H', 'cA', spent), true, 'the finished branch stays dark');
+}
+
+/** Two SEPARATE corridors of equal length between the same pair of rooms. */
+function parallelFloor() {
+  return buildRoomGraph({
+    rooms: [room('A', 0, 0, 12, 4), room('B', 0, 8, 12, 4)],
+    corridors: [corr('p', -4, 4, 2, 4), corr('q', 4, 4, 2, 4)],
+  });
+}
+
+test('two corridors to the SAME unexplored room — both eyes open', () => {
+  const g = parallelFloor();
+  assert.deepEqual(g.neighbors('A').sort(), ['p', 'q'], 'fixture: A has both corridors');
+  const all = new Set(['A', 'B', 'p', 'q']);
+  const s: ExploredState = { curId: 'A', visited: new Set(['A']), objective: new Set(), discovered: all };
+  // Both lead to B, which has never been entered. Distance is irrelevant here —
+  // an unexplored room is not something the architecture may hide.
+  assert.equal(archwayCold(g, 'A', 'p', s), false);
+  assert.equal(archwayCold(g, 'A', 'q', s), false);
+  // Once B is entered neither door leads anywhere new, and with nothing left on
+  // the floor at all both go dark.
+  const seen: ExploredState = { ...s, visited: new Set(['A', 'B']) };
+  assert.equal(archwayCold(g, 'A', 'p', seen), true);
+  assert.equal(archwayCold(g, 'A', 'q', seen), true);
+});
+
+test('once the room is seen, the SHORT way stays open and the long way round shuts', () => {
+  const g = twinCorridorFloor();
+  const all = new Set(['A', 'B', 'short', 'longA', 'longB']);
+  // B entered, and B holds the down-stairs — so there is still a reason to walk
+  // there, and the two routes can be ranked.
+  const s: ExploredState = {
+    curId: 'A', visited: new Set(['A', 'B']), objective: new Set(['B']), discovered: all,
+  };
+  assert.equal(archwayCold(g, 'A', 'short', s), false, 'one hop to B → open');
+  assert.equal(archwayCold(g, 'A', 'longA', s), true, 'two hops to the same place → shut');
+});
+
+test('equal-length routes to the exit BOTH stay open — a tie is a real tie', () => {
+  const g = parallelFloor();
+  const all = new Set(['A', 'B', 'p', 'q']);
+  const s: ExploredState = {
+    curId: 'A', visited: new Set(['A', 'B']), objective: new Set(['B']), discovered: all,
+  };
+  assert.equal(archwayCold(g, 'A', 'p', s), false);
+  assert.equal(archwayCold(g, 'A', 'q', s), false);
+});
+
+test('a door onto an unexplored room stays open even when a nearer goal is elsewhere', () => {
+  // Hub H: X is one hop away and unexplored; Y is THREE hops away and also
+  // unexplored. A pure nearest-goal rule would light only the X door and leave
+  // the Y door dark, which would be the architecture lying about Y.
+  const g = buildRoomGraph({
+    rooms: [room('H', 0, 0, 8, 4), room('X', 0, 6), room('Y', 12, 0)],
+    corridors: [corr('cX', 0, 3, 2, 2), corr('y1', 5, 0, 2, 2), corr('y2', 7, 0, 2, 2), corr('y3', 9, 0, 2, 2)],
+  });
+  const all = new Set(['H', 'X', 'Y', 'cX', 'y1', 'y2', 'y3']);
+  assert.deepEqual(g.neighbors('Y'), ['y3'], 'fixture: the long branch reaches Y');
+  const s: ExploredState = { curId: 'H', visited: new Set(['H']), objective: new Set(), discovered: all };
+  assert.equal(archwayCold(g, 'H', 'cX', s), false, 'the near unexplored room');
+  assert.equal(archwayCold(g, 'H', 'y1', s), false, 'the far one is no less unexplored');
 });
 
 test('an OBJECTIVE room (the down-stairs) keeps its path WARM even when entered', () => {

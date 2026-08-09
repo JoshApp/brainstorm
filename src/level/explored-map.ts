@@ -1,8 +1,11 @@
 // Explored-map nav cue — "fog-of-war as light". Decides each archway's warm/cold
-// state: an archway is WARM when going through it gets you CLOSER to somewhere
-// you haven't finished, and COLD otherwise. Directional — the same corridor
-// reads warm from the side that leads onward and cold from the side that only
-// leads back, and on a loop it opens the short way round and shuts the long one.
+// state in two tiers: a door that LEADS TO A ROOM YOU HAVE NOT ENTERED is open,
+// full stop; among doors whose destinations you have already seen, the one that
+// steps CLOSER to the nearest goal (an unentered room, or the way down) is open
+// and the rest are shut. Directional — the same corridor reads warm from the
+// side that leads onward and cold from the side that only leads back — and on a
+// loop it opens the short way round and shuts the long one, while a genuine tie
+// leaves both open.
 //
 // Presentation-only: this is an UNTAGGED system (excluded from the sim digest /
 // headless replay). It reads camera position + the live level, and writes the
@@ -49,10 +52,12 @@ const discovered = new Set<string>();
 // Today that's the room with the down-stairs: the descent is always worth
 // finding, so its path never goes cold. Computed once per floor on rebuild.
 const objective = new Set<string>();
-// The cached nav distance fields + the `visited.size` they were built for.
-// Invalidated on floor rebuild and whenever the player enters a new room.
+// The cached nav distance field + the state it was built for. Invalidated on
+// floor rebuild, when the player enters a new room, and when they move between
+// rooms (the goal set drops the room underfoot — see navField).
 let field: NavField | null = null;
 let fieldVisited = -1;
+let fieldRoom: string | undefined;
 
 function rebuild(level: LiveLevel): void {
   graph = buildRoomGraph(level.spec);
@@ -61,6 +66,7 @@ function rebuild(level: LiveLevel): void {
   objective.clear();
   field = null;
   fieldVisited = -1;
+  fieldRoom = undefined;
   for (const id of graph.nodes.keys()) discovered.add(id);
   // The down-stairs room is always an objective — its path never goes cold.
   for (const s of level.spec.stairs ?? []) {
@@ -172,24 +178,36 @@ function unseenRooms(graph: RoomGraph, s: ExploredState): string[] {
  * it opens the short way round and shuts the long one, which is the read a
  * player wants and the old model could not express.
  *
- * ── NEAREST GOAL, NOT EVERY GOAL ────────────────────────────────────────────
+ * ── BUT DISTANCE IS THE TIE-BREAK, NOT THE WHOLE RULE ───────────────────────
  *
- * The first version of this lit a door if ANY unfinished room was closer that
- * way, on the argument that a door onto new ground is worth taking even when
- * there is nearer new ground elsewhere. Measured across a walk of 1632 rooms
- * that is still not a cue: in a three-exit room it lit two exits 291 times out
- * of 382, and in a four-exit room it lit three of them half the time. Aiming at
- * the SINGLE nearest goal lights exactly one exit in 284 of those 384 rooms,
- * which is the difference between a hint and a wall of open eyes.
+ * Distance alone is too clever. A pure nearest-goal rule lights exactly one
+ * door, which means a door onto a room you have never set foot in can be DARK
+ * because something else happened to be a step closer. The architecture would be
+ * lying: there is obviously something that way.
  *
- * ── THE STAIRS ARE A GOAL OF LAST RESORT ────────────────────────────────────
+ * So there are two tiers, and the first one wins outright:
  *
- * The old model made the down-stairs room "never done" so the way out stayed
- * lit. Under a nearest-goal rule that is actively harmful: if the stairs happen
- * to be the closest unfinished thing on arrival, the eye walks a new player
- * straight past the floor and down. So the objective is a SECOND TIER — it
- * becomes a goal only once every room has been entered. The eye leads you
- * around the floor, and when the floor is spent, it leads you out.
+ *   A. WHERE DOES THIS DOOR ACTUALLY GO? Follow it through any corridor to the
+ *      first ROOM (or rooms — a corridor may fork). If any of them is one you
+ *      have not entered, the eye is OPEN. No distance test, no competition.
+ *      Unexplored is unexplored.
+ *
+ *   B. OTHERWISE — both destinations already seen — distance decides: open iff
+ *      stepping through gets you strictly closer to the nearest goal, where a
+ *      goal is any unentered room OR the down-stairs.
+ *
+ * The behaviour that falls out, which is the point:
+ *   - Two corridors from here to the same unexplored room: BOTH eyes open (A).
+ *   - You take one; now that room is seen. Tier A is done with both, so B ranks
+ *     them — the shorter way stays open, the long way round shuts.
+ *   - Equal length, and the room beyond leads to the exit: both stay open,
+ *     because a tie is a genuine tie and neither is worse.
+ *
+ * The stairs sit in the goal set as a peer, not a last resort. That was a
+ * hazard under the pure-distance rule — the eye could walk a new player past the
+ * whole floor and out the first staircase it showed them — but tier A removes
+ * it: every door onto unexplored ground is lit regardless, so the way down is
+ * additional information rather than the only information.
  */
 export interface NavField {
   /** Steps from each discovered node to the nearest goal. Absent = no route. */
@@ -222,20 +240,56 @@ function distancesTo(graph: RoomGraph, sources: readonly string[], s: ExploredSt
 /** The distance field the cold decision reads. Recompute when `visited` changes;
  *  it is constant between room entries. */
 export function navField(graph: RoomGraph, s: ExploredState): NavField {
-  const unseen = unseenRooms(graph, s);
-  // Tier 1: rooms you have not entered. Tier 2 (only once the floor is spent):
-  // the way down. See the comment above — promoting the stairs to a first-class
-  // goal would point a lost player at the exit instead of at the dungeon.
-  const goals = unseen.length > 0 ? unseen : [...s.objective];
+  // Rooms you have not entered, AND the way down — peers in one multi-source
+  // sweep, so `toGoal` is "steps to the nearest thing worth walking to".
+  //
+  // MINUS THE ROOM YOU ARE STANDING IN. A goal underfoot is a goal achieved, and
+  // leaving it in the source set puts the player at distance 0, which makes
+  // every neighbour "further" and shuts every eye in the room. Measured before
+  // this line existed: 43 room-visits in 1632 left the player with no lit door
+  // at all while unexplored rooms remained, every one of them standing on the
+  // stairs. An unentered room can never be the current one (entering marks it),
+  // so in practice this only ever drops the objective.
+  const goals = [...unseenRooms(graph, s), ...s.objective].filter((id) => id !== s.curId);
   return { toGoal: distancesTo(graph, goals, s) };
 }
 
 /**
+ * The first ROOMS this doorway actually leads to — walk out through `via` and
+ * keep going while the nodes are corridors, collecting each room you arrive at.
+ * Never doubles back through `from`, so "where does this door go" is answered
+ * from the player's side of it.
+ *
+ * A corridor is not a destination (it holds nothing), which is why this can't
+ * just look at the neighbour: most doorways open onto a passage, and the room at
+ * the end of it is what the player means when they say a corridor "leads to" a
+ * room. A forking corridor legitimately has more than one destination.
+ */
+function destinationRooms(graph: RoomGraph, from: string, via: string, s: ExploredState): string[] {
+  if (!s.discovered.has(via)) return [];
+  const rooms: string[] = [];
+  const seen = new Set<string>([from, via]);
+  const queue = [via];
+  for (let i = 0; i < queue.length; i++) {
+    const u = queue[i];
+    if (!graph.nodes.get(u)?.isCorridor) { rooms.push(u); continue; }   // arrived — stop here
+    for (const v of graph.neighbors(u)) {
+      if (seen.has(v) || !s.discovered.has(v)) continue;
+      seen.add(v);
+      queue.push(v);
+    }
+  }
+  return rooms;
+}
+
+/**
  * Cold decision for one archway edge (a,b), from where the player is standing.
- * WARM iff some unfinished room is STRICTLY closer through this doorway than it
- * is from the room the player occupies. Cold otherwise — including when the
- * doorway is not one of the current room's own (those eyes are never shown; see
- * `near` in threshold-draft.ts) and when nothing unfinished remains at all.
+ * Two tiers, described in full above:
+ *   A. the door leads to a room you have not entered → WARM, unconditionally;
+ *   B. otherwise WARM iff it steps strictly closer to the nearest goal.
+ * Cold otherwise — including when the doorway is not one of the current room's
+ * own (those eyes are never shown; see `near` in threshold-draft.ts) and when
+ * there is nothing left to walk to.
  *
  * Pass `field` to reuse one build across every doorway on the floor; omit it and
  * one is built for this call.
@@ -247,10 +301,15 @@ export function archwayCold(
   if (cur === undefined) return true;                       // player nowhere — nothing to point at
   const far = cur === a ? b : cur === b ? a : undefined;
   if (far === undefined) return true;                       // not a doorway of this room
+  // TIER A — it goes somewhere you have not been. Nothing else matters.
+  for (const room of destinationRooms(graph, cur, far, s)) {
+    if (!s.visited.has(room)) return false;
+  }
+  // TIER B — everything through here is already seen, so rank by distance.
   const f = field ?? navField(graph, s);
   const here = f.toGoal.get(cur);
   const there = f.toGoal.get(far);
-  if (here === undefined || there === undefined) return true;   // no route to anything unfinished
+  if (here === undefined || there === undefined) return true;   // no route to anything left
   return !(there < here);                                       // steps closer → WARM
 }
 
@@ -271,9 +330,11 @@ export function tickExploredMap(camera: THREE.Camera, level: LiveLevel | null | 
   // The distance fields only change when the set of unfinished rooms does — i.e.
   // when the player ENTERS a new room. Rebuilding them every frame would be a
   // BFS per unfinished room per frame for no new answer.
-  if (visited.size !== fieldVisited) {
+  // …and on WHICH room, because the goal set excludes the one underfoot.
+  if (visited.size !== fieldVisited || curId !== fieldRoom) {
     field = navField(graph, state);
     fieldVisited = visited.size;
+    fieldRoom = curId;
   }
   for (const link of links) {
     link.lure.cold = archwayCold(graph, link.a, link.b, state, field ?? undefined);
@@ -291,4 +352,5 @@ export function resetExploredMap(): void {
   objective.clear();
   field = null;
   fieldVisited = -1;
+  fieldRoom = undefined;
 }
