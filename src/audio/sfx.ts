@@ -1759,6 +1759,76 @@ export function playParry() {
   }
 }
 
+/**
+ * THE FINISHER — the sound of an execution landing.
+ *
+ * Not a louder playImpact: a different EVENT. Three layers, and each one is
+ * doing a distinct job so the moment can't be mistaken for a big hit —
+ *
+ *   · a SUB drop, the body's weight going out of it,
+ *   · a bone-and-meat CRUNCH, wetter and lower than the impact crack,
+ *   · a long, low, inharmonic TOLL that hangs past the hit — the deep noticing.
+ *     Un-positioned on purpose: the first two happen out there where the corpse
+ *     is, the toll happens behind the player's eyes.
+ *
+ * No brightness anywhere in it. An execution is not a fanfare; nothing in this
+ * place congratulates you.
+ */
+export function playFinisher(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.5, VOCAL_FALLOFF) : masterGain;
+
+  // SUB — deeper and longer than the impact thud, and it starts lower, so a
+  // finisher reads as the floor dropping rather than as another knock.
+  const sub = c.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(96, t0);
+  sub.frequency.exponentialRampToValueAtTime(28, t0 + 0.38);
+  const subGain = c.createGain();
+  subGain.gain.setValueAtTime(0.0001, t0);
+  subGain.gain.exponentialRampToValueAtTime(0.85, t0 + 0.008);
+  subGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.46);
+  sub.connect(subGain).connect(out);
+  sub.start(t0); sub.stop(t0 + 0.5);
+
+  // CRUNCH — noise through a low bandpass sweeping DOWN (the impact crack
+  // sweeps nothing and sits at 1.5kHz+; this is the wet, low cousin of it).
+  const cd = 0.16;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * cd), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const env = Math.pow(1 - i / d.length, 2.2);
+    d[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = c.createBufferSource(); src.buffer = buf;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 1.1;
+  bp.frequency.setValueAtTime(1100, t0);
+  bp.frequency.exponentialRampToValueAtTime(320, t0 + cd);
+  const cg = c.createGain(); cg.gain.value = 0.5;
+  src.connect(bp).connect(cg).connect(out);
+  src.start(t0); src.stop(t0 + cd + 0.01);
+
+  // TOLL — three inharmonic low partials with a slow attack and a long tail,
+  // arriving a beat AFTER the blow so it reads as a response to the kill and
+  // not as part of it. Quiet: it should sit under the hush, not announce it.
+  for (const [freq, vol, dur] of [[74, 0.16, 1.5], [111, 0.09, 1.2], [173, 0.05, 0.9]] as const) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t0);
+    // A touch of downward drift over the tail — a bell that is giving up.
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.94, t0 + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.13);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05 + dur);
+    osc.connect(g).connect(masterGain);
+    osc.start(t0 + 0.05); osc.stop(t0 + 0.1 + dur);
+  }
+}
+
 // ── Bullet-time (perfect-dodge slow-mo) ─────────────────────────────────
 
 /** Drive the master muffle each frame. `amount` 0 (open) → 1 (deepest dip).

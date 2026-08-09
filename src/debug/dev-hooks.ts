@@ -152,6 +152,22 @@ export function installDevHooks(deps: DevHookDeps): void {
     }
     return { smashed, remaining: level.destructibles.filter((d) => d.alive).length };
   };
+  // __finisher() — open the execution hush without having to poise-break a mob,
+  // charge a heavy and land the kill. The ceremony is a 0.6s window with a warm
+  // close-in and a narrowed view, so the only way to LOOK at it (snap, or a
+  // desktop eyeball) is to be able to hold it open on demand.
+  // `holdMs` re-opens the hush on a short interval so it stays pinned at its
+  // deepest point for that long — a 0.6s window is not something a headless
+  // screenshot can be aimed at.
+  w.__finisher = async (holdMs = 0) => {
+    const { triggerFinisher, finisherIntensity } = await import('../combat/finisher');
+    triggerFinisher();
+    if (holdMs > 0) {
+      const id = setInterval(() => triggerFinisher(), 100);
+      setTimeout(() => clearInterval(id), holdMs);
+    }
+    return { intensity: finisherIntensity() };
+  };
   w.__descend = () => {
     const next = getLevel()?.spec.stairs?.[0]?.targetLevel;
     if (next) loadLevel(next);

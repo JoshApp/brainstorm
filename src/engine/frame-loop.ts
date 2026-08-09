@@ -12,6 +12,7 @@ import { getTimeScale, tickDeath } from '../player/death';
 import { tickBulletTime, getWorldTimeScale } from '../combat/reactive-defense';
 import { tickBossSlowmo, getBossSlowmoTimeScale } from '../combat/boss-slowmo';
 import { tickStillness, getStillnessTimeScale } from '../combat/rite-stillness';
+import { tickFinisher, finisherWorldTimeScale } from '../combat/finisher';
 import { tickPlayerAction } from '../combat/player-action';
 import { tickArrival } from '../player/arrival';
 import { tickChasmPresence } from '../effects/chasm-presence';
@@ -134,6 +135,43 @@ function fillInterpTargets(): void {
   }
 }
 
+// ── THE CLOCKS ───────────────────────────────────────────────────────────────
+//
+// TWO clocks and a third for ambience, composed HERE and nowhere else.
+//
+//   base  = hit-pause × death slow-mo × boss-death slow-mo. These freeze
+//           EVERYONE, player included — the world stops, and so do you.
+//   world = perfect-dodge bullet-time × the rite's held stillness × the
+//           finisher hush. These slow only the WORLD (enemies, projectiles,
+//           ambient FX) while the player keeps acting at full speed. That
+//           asymmetry IS the payoff for a dodge, a rite, or an execution.
+//
+//   scaledDt = base × world   → the world
+//   playerDt = base           → camera / movement / attack
+//   fxDt     = world          → dust and motes, which should hang with the
+//                               world during a dip but never stutter on a
+//                               hit-pause (base is deliberately absent)
+//
+// Three call sites needed this identical expression (fixed-step sim, present
+// pass, legacy variable path), which is three places for a new contributor to
+// be added to only two of. One function instead.
+function tickTimeScales(realDt: number): void {
+  // All advanced in REAL time, so no dip is ever slowed by its own dilation.
+  tickDeath(realDt);
+  tickBulletTime(realDt);
+  tickBossSlowmo(realDt);
+  tickStillness(realDt);
+  tickFinisher(realDt);
+}
+
+interface Clocks { scaledDt: number; playerDt: number; fxDt: number }
+
+function composeClocks(dt: number): Clocks {
+  const base = getTimeScale() * getBossSlowmoTimeScale();
+  const world = getWorldTimeScale() * getStillnessTimeScale() * finisherWorldTimeScale();
+  return { scaledDt: dt * base * world, playerDt: dt * base, fxDt: dt * world };
+}
+
 /** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
  *  sim systems, all on the fixed clock (so the world is deterministic). */
 function advanceSimStep(dt: number): void {
@@ -145,15 +183,10 @@ function advanceSimStep(dt: number): void {
   // recorded tape, breaking replay determinism for any run that opened a menu.
   if (!shouldFreezeGameClock()) advanceGameClock(dt);
   // Time-scale drivers on the FIXED clock (deterministic hit-pause / bullet-
-  // time / death slow-mo), then the same two-clock split the variable path uses.
-  tickDeath(dt);
-  tickBulletTime(dt);
-  tickBossSlowmo(dt);
-  tickStillness(dt);
-  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-  const scaledDt = dt * baseScale * getWorldTimeScale() * getStillnessTimeScale();
-  const playerDt = dt * baseScale;
-  const fxDt = dt * getWorldTimeScale() * getStillnessTimeScale();
+  // time / death slow-mo / finisher hush), then the same clock split every
+  // other path uses.
+  tickTimeScales(dt);
+  const { scaledDt, playerDt, fxDt } = composeClocks(dt);
   if (!isWorldPaused()) tickPlayerAction(playerDt);
   const paused = isWorldPaused();
   if (paused) { deps.input.lookDx = 0; deps.input.lookDy = 0; }
@@ -170,12 +203,9 @@ function presentPass(realDt: number): void {
   if (import.meta.env.DEV) tickNavOverlay();   // DEV nav-grid overlay (strips in prod)
   tickArrival(deps.camera, realDt);
   if (!isWorldPaused()) tickChasmPresence(deps.camera, realDt);
-  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
   runSystems(PRESENT_SYSTEMS, {
     realDt,
-    scaledDt: realDt * baseScale * getWorldTimeScale() * getStillnessTimeScale(),
-    playerDt: realDt * baseScale,
-    fxDt: realDt * getWorldTimeScale() * getStillnessTimeScale(),
+    ...composeClocks(realDt),
     paused: isWorldPaused(),
     mode: getGameMode(),
     playing: isPlaying(),
@@ -239,22 +269,8 @@ function tickInner() {
   } else {
     // VARIABLE-dt path (?varstep=1) — the legacy interleaved pass, unchanged.
     tickArrival(deps.camera, realDt);
-    tickDeath(realDt);
-    tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
-    tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
-    tickStillness(realDt);   // and the rite's held world, for the same reason
-    // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
-    // player included). worldScale = the reactive-defense bullet-time, which
-    // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
-    // they crawl while the player keeps acting at full speed (the asymmetric
-    // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
-    const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-    const scaledDt = realDt * baseScale * getWorldTimeScale() * getStillnessTimeScale();
-    const playerDt = realDt * baseScale;
-    // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
-    // dust hangs with the world during a perfect-dodge dip but never stutters on
-    // a hit-pause/death freeze (those aren't in getWorldTimeScale).
-    const fxDt = realDt * getWorldTimeScale() * getStillnessTimeScale();
+    tickTimeScales(realDt);
+    const { scaledDt, playerDt, fxDt } = composeClocks(realDt);
     // Advance the player-action FSM on the PLAYER clock, BEFORE input is
     // processed below, so a committed dodge/parry that expires this frame frees
     // the next action immediately.

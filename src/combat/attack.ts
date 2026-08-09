@@ -28,6 +28,7 @@ import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChar
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { isDeflectEmpowerActive, consumeDeflectEmpower } from './reactive-defense';
+import { triggerFinisher } from './finisher';
 import { fireCombatVerb } from './combat-verbs';
 import { canStartAction } from './player-action';
 import { flashStaminaBar } from '../ui/stamina-bar';
@@ -754,6 +755,9 @@ export function createCombatSystem(
     let anyHeavy = false;
     let anyExecute = false;
     let anyStagger = false;
+    /** Where a finisher LANDED A KILL this swing, if one did — the ceremony's
+     *  trigger and the point its sting plays from. */
+    let executedKill: { x: number; y: number; z: number } | undefined;
     // targets are sorted NEAREST-first, so index 0 is the primary (full) hit and
     // each subsequent cleaved target takes the geometric falloff cut.
     for (let ti = 0; ti < targets.length; ti++) {
@@ -865,6 +869,15 @@ export function createCombatSystem(
         anyExecute = true;
         if (CONFIG.EXECUTE.HEAL > 0) healPlayer(CONFIG.EXECUTE.HEAL);
         if (CONFIG.EXECUTE.STAMINA > 0) gainStamina(CONFIG.EXECUTE.STAMINA);
+        // Did it FINISH? The ceremony (below) is reserved for a finisher that
+        // actually put the thing down — a hush and a lean over something still
+        // standing would be a lie, and one that fired on every charged heavy
+        // into a stagger would be worn out inside a floor. `alive` is already
+        // post-takeDamage here, so this is the real outcome, not a prediction
+        // from the numbers.
+        if (!target.alive) {
+          executedKill = { x: target.position.x, y: target.position.y, z: target.position.z };
+        }
       }
 
       // On-hit statuses roll per-target on heavies (mobs) — vases
@@ -981,6 +994,11 @@ export function createCombatSystem(
         kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 2.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 1.3);
         hapticVibrate(CONFIG.HAPTIC_HIT_MS * 2);
         playImpact(impactAt);
+        // …and if it FINISHED, the ceremony: the freeze above is beat one (the
+        // crack), and combat/finisher.ts holds off until it releases before
+        // opening beat two (the hush). Everything above this line is emphasis
+        // on a hit; this is the thing that makes it a moment.
+        if (executedKill) triggerFinisher(executedKill);
       }
       // STAGGER BREAK punctuation — a snappy hitch + buzz so breaking a guard
       // is FELT, distinct from a normal hit (the popup + crack carry the rest).

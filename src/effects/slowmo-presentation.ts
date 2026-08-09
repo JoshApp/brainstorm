@@ -1,25 +1,35 @@
 import * as THREE from 'three';
 import { setFovOffset, applyFov } from './camera-fov';
 import { getBulletTimeIntensity } from '../combat/reactive-defense';
+import { finisherIntensity } from '../combat/finisher';
+import { CONFIG } from '../config';
 import { setSlowmoAmount, playSlowmoExit } from '../audio/sfx';
 
-// Bullet-time PRESENTATION — the image + camera half of the perfect-dodge
-// slow-mo (the audio muffle is driven from here too, via setSlowmoAmount; the
-// world-slow itself lives in reactive-defense). Reads getBulletTimeIntensity()
-// (0 idle → 1 at the held floor) each frame and layers:
+// SLOW-MO PRESENTATION — the image + camera half of every time dip the game
+// runs (the audio muffle is driven from here too, via setSlowmoAmount; the
+// world-slow itself lives with whichever system owns the dip).
 //
-//   · a COLD vignette — a cool, desaturated wash creeping in from the edges as
-//     the dip deepens, so the world reads as going still + cold (the warmth of
-//     the torches receding), not merely slow,
-//   · a TRIGGER POP — a brief brighter flash + a small FOV zoom-in on the
-//     instant the dip opens, to sell the snap-in,
-//   · the AUDIO muffle amount, and the release "whoosh" on the dip's tail.
+// TWO dips share this layer, and they are dressed as OPPOSITES on purpose,
+// because they mean opposite things:
 //
-// Pure DOM overlay (no shader/post pass — mobile-cheap) + a transient FOV
-// offset on the camera. Reset on floor load.
+//   · the perfect-dodge dip (reactive-defense) reads COLD — a cool, desaturated
+//     wash creeping in from the edges, the torchlight pulling back. You survived
+//     something. The world went still and it went away from you.
+//   · the finisher hush (combat/finisher) reads WARM and CLOSE — deep blood-red
+//     drawing in tight, plus a lean of the view toward what you just killed. You
+//     did something. The world went still and it came in to look.
+//
+// One presentation module rather than two so `camera.fov` and the audio muffle
+// keep a single writer each — the mistake this file's own history records (see
+// effects/camera-fov.ts) is exactly what two independent dips writing the same
+// property would recreate.
+//
+// Pure DOM overlays (no shader/post pass — mobile-cheap) + named FOV offsets.
+// Reset on floor load.
 
 let coldEl: HTMLDivElement | null = null;   // the steady cold vignette (opacity ∝ intensity)
 let popEl: HTMLDivElement | null = null;    // the entry flash (decays on its own)
+let warmEl: HTMLDivElement | null = null;   // the finisher's close-in (opacity ∝ intensity)
 
 let fovKick = 0;       // current transient FOV offset (negative = zoom-in)
 let popLeft = 0;       // entry-flash countdown (s)
@@ -51,6 +61,19 @@ function ensureEls(): void {
     background: 'radial-gradient(ellipse at center, rgba(200,225,255,0.22) 0%, rgba(150,190,255,0.10) 45%, transparent 70%)',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(popEl);
+
+  warmEl = document.createElement('div');
+  warmEl.id = 'finisher-close';
+  Object.assign(warmEl.style, {
+    position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '7',
+    opacity: '0', willChange: 'opacity',
+    // Old blood drawing in TIGHT — the clear core is smaller than the cold
+    // vignette's, so the frame closes around the kill instead of merely
+    // darkening the corners. Warm and dry, not a bright arterial red: this is
+    // the colour of the floor in here, brought up for a moment.
+    background: 'radial-gradient(ellipse at center, rgba(70,10,10,0) 18%, rgba(74,14,12,0.55) 58%, rgba(40,6,6,0.92) 100%)',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(warmEl);
 }
 
 /** Drive the slow-mo image/camera/audio cues. Call every frame (real time, so
@@ -71,8 +94,17 @@ export function tickSlowmoPresentation(camera: THREE.PerspectiveCamera, realDt: 
   }
   prevIntensity = intensity;
 
-  // Audio muffle tracks the dip.
-  setSlowmoAmount(intensity);
+  // THE FINISHER HUSH — warm close-in + a steady lean of the view toward the
+  // kill. Both are driven straight off the dip's own intensity rather than off
+  // a decaying kick of their own, so the frame opens back up at exactly the
+  // rate the world speeds back up. Nothing to keep in sync.
+  const fin = finisherIntensity();
+  if (warmEl) warmEl.style.opacity = String(fin * CONFIG.EXECUTE.CEREMONY.VIGNETTE);
+  setFovOffset('finisher', -CONFIG.EXECUTE.CEREMONY.FOV_PUNCH * fin);
+
+  // Audio muffle tracks whichever dip is deeper — one writer, so the two can
+  // never fight over the master low-pass.
+  setSlowmoAmount(Math.max(intensity, fin));
 
   // Cold vignette opacity tracks the dip.
   if (coldEl) coldEl.style.opacity = String(intensity * COLD_MAX_OPACITY);
@@ -105,7 +137,9 @@ export function resetSlowmoPresentation(camera?: THREE.PerspectiveCamera): void 
   fovKick = 0;
   if (coldEl) coldEl.style.opacity = '0';
   if (popEl) popEl.style.opacity = '0';
+  if (warmEl) warmEl.style.opacity = '0';
   setSlowmoAmount(0);
   setFovOffset('slowmo', 0);
+  setFovOffset('finisher', 0);
   if (camera) applyFov(camera);
 }

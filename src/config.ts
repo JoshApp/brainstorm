@@ -593,6 +593,25 @@ export const CONFIG = {
     // damage, then HEAVY-FINISH to execute. A clean tap is charge 0, so it's
     // cleanly excluded; this low bar means a brief, deliberate hold qualifies.
     MIN_CHARGE: 0.15,
+    // THE CEREMONY — what makes an execution read as a MOMENT rather than as a
+    // louder hit. The mechanic was whole long before this; what it lacked was a
+    // SHAPE: a crack, a held hush, a release you feel end.
+    //
+    // Fires ONLY on a finisher that KILLS. A ceremony over something still
+    // standing is a lie, and one that fires on every charged heavy into a
+    // stagger would wear out in a floor. Non-lethal finishers keep the plain
+    // heavy crunch they have today.
+    //
+    // The dip slows the WORLD and not the player — the same asymmetry the
+    // perfect-dodge bullet-time uses, so you can keep swinging through your own
+    // execution instead of standing in a cutscene. See combat/finisher.ts.
+    CEREMONY: {
+      DURATION_S: 0.60,    // real-time length of the whole hush
+      WORLD_SCALE: 0.22,   // world speed at the floor of the dip (player unaffected)
+      HOLD_FRAC: 0.40,     // fraction of the window held at the floor before release
+      FOV_PUNCH: 5,        // degrees the view narrows at the deepest point
+      VIGNETTE: 0.5,       // peak opacity of the warm close-in
+    },
   },
   // BACKSTAB — a blow landed in the back of a creature that CANNOT ANSWER IT.
   // Two ways to earn one, and they bracket the fight:
