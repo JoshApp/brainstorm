@@ -1,33 +1,38 @@
 import type { PropSpec } from './types';
+import type { Poly } from './room-shape';
+import { clearance } from './floor-region';
 import { FLOOR_CANDLE } from '../content/candle';
-import { ALTAR_SKULL } from '../content/relics';
 import { floorGlow } from '../content/light-props';
 
-// Prop groups — named modular setpieces. A vault drops ONE entry
-// like:
+// Prop groups — named modular setpieces, expanded by the PRODUCER into real
+// props before the spec leaves the generator.
 //
-//   { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 }
+// ── WHY EXPANSION HAPPENS HERE AND NOT IN THE BUILDER ────────────────────────
 //
-// and the composer expands it into the group's child props (altar +
-// flanking candles + corpse pile), translated into the vault-local
-// coordinate space, then clearance-culled against the vault's walls
-// so children that would clip into a wall quietly disappear.
+// It used to be a spec KIND: a pass emitted `{ kind: 'group', groupId: … }` and
+// the vault composer expanded it downstream. That composer is gone, and the
+// group kind outlived it by exactly one commit — the bone shrine was still
+// being emitted onto every fifteenth floor and rendering as nothing at all,
+// because the only code that knew how to expand it had been deleted. The floor
+// hash could not see it: the SPEC was byte-identical, and the loss was entirely
+// in what the builder made of it.
+//
+// So there is no longer a group prop kind. A prefab is a authoring convenience
+// for the pass that places it, and the spec only ever contains props something
+// renders. That removes the whole class of bug rather than the one instance.
 //
 // Authoring rules:
-//   - Each child is a full PropSpec in GROUP-LOCAL coords (group
-//     centre = (0, 0)).
-//   - Set minClearance on children that should drop if they're too
-//     close to a wall (typical: 0.4-0.6m for candles, larger for
-//     altars).
-//   - Keep groups SMALL — 2-5 children. Composability comes from
-//     stacking multiple groups in a vault, not from monstrous
-//     setpieces.
+//   - Each child is a full PropSpec in GROUP-LOCAL coords (group centre = 0,0).
+//   - Set minClearance on children that should drop if they land too close to a
+//     wall (typical: 0.4-0.6m for candles, larger for altars).
+//   - Keep groups SMALL — 2-5 children. Composability comes from stacking
+//     groups, not from monstrous setpieces.
 
 export interface GroupChild {
   /** Full PropSpec entry, with x/z relative to the group centre. */
   prop: PropSpec;
-  /** Drop this child if it would land within this distance of any
-   *  vault wall (in metres). 0 / undefined = always place. */
+  /** Drop this child if it would land within this distance of the room's wall
+   *  (in metres). 0 / undefined = always place. */
   minClearance?: number;
 }
 
@@ -41,74 +46,14 @@ export interface PropGroupSpec {
 // will generate context-specific lines.
 const CORPSE_NOTE = 'They were here before.\nSomething took them apart.';
 
-// Floor glow shades for group-internal accents.
-const GLOW_RITUAL = floorGlow(0xff3020);
-const GLOW_BONE   = floorGlow(0x80a0a0);
-const GLOW_CACHE  = floorGlow(0xffd060);
+const GLOW_BONE = floorGlow(0x80a0a0);
 
+// Six more groups lived here — altar-ritual, fountain-shrine, tithe-shrine,
+// ritual-circle, chest-cache, pillar-pair. Every one of them was addressed only
+// by an ASCII vault map, and those are gone; centrepieces.ts stages altars,
+// basins and troves now, with a room's own shape to place them against. They
+// were deleted with the composer rather than left as data with no address.
 export const PROP_GROUPS: Record<string, PropGroupSpec> = {
-  // Altar + flanking candles + a corpse who died at its foot.
-  'altar-ritual': {
-    id: 'altar-ritual',
-    children: [
-      { prop: { kind: 'altar', x: 0, z: 0 } },
-      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: 0.25 } },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
-      // Corpse sprawled at the altar's foot, facing AWAY from
-      // the altar — they died crawling away. The facing
-      // directive resolves at compose time using world coords;
-      // expandGroup rotates / translates the target point so
-      // the directive lands correctly even when the whole group
-      // is rotated or offset within a vault.
-      { prop: { kind: 'corpse', x: 0, z: 1.4, facing: { kind: 'point-away', x: 0, z: 0 }, note: CORPSE_NOTE }, minClearance: 0.6 },
-    ],
-  },
-
-  // Healing fountain + a bone-glow patch on the floor in front of
-  // it. The candles that used to flank the basin were felt to be
-  // too busy — the fountain already carries its own basin glow,
-  // and Josh wanted the silhouette cleaner. Glow stays as the
-  // floor accent that draws the eye to the front of the basin.
-  // Kept for hand-authored vaults that genuinely want water. NOT used by the
-  // procgen pool any more — a heal basin is no longer something a floor stages
-  // (the bonfire is the mend), so a vault must not smuggle one in.
-  'fountain-shrine': {
-    id: 'fountain-shrine',
-    children: [
-      { prop: { kind: 'fountain', x: 0, z: 0 } },
-      { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.6 }, minClearance: 0.4 },
-    ],
-  },
-
-  // The tithe basin with the same bone-glow accent — a QUESTION where the heal
-  // fountain used to be, so the chamber still has a reason to exist.
-  'tithe-shrine': {
-    id: 'tithe-shrine',
-    children: [
-      { prop: { kind: 'tithe-basin', x: 0, z: 0 } },
-      { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.6 }, minClearance: 0.4 },
-    ],
-  },
-
-  // Four candles around a BLOOD ALTAR with a skull. The centre is a real
-  // interactable now — all the heavy lighting (the red focal glow, the skull,
-  // the violet god ray that lands here in COMBAT_HALL) finally ANCHORS
-  // something: a cursed offering you bleed for, rolled by depth. The decorative
-  // altar slab is gone; the blood-altar renders its own basin. Light = signal.
-  'ritual-circle': {
-    id: 'ritual-circle',
-    children: [
-      { prop: { kind: 'blood-altar', x: 0, z: 0 } },   // itemId omitted → rolls a cursed item by depth
-      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: -0.4 } },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x:  1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z:  1.1 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x:  1.1, y: 0, z:  1.1 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: GLOW_RITUAL, x: 0, y: 0, z: 0 } },
-    ],
-  },
-
   // Single ritual candle + a corpse + a bone-glow patch. The "single
   // forlorn corpse" beat — sparse, used in encounter rooms.
   'bone-shrine': {
@@ -119,29 +64,58 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
       { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 0 } },
     ],
   },
-
-  // Chest with two flanking candles + a corpse defender — the "the
-  // last guy died protecting this loot" arrangement. The chest
-  // faces the corpse (defender fell trying to open it); corpse
-  // faces the chest (still reaching).
-  'chest-cache': {
-    id: 'chest-cache',
-    children: [
-      { prop: { kind: 'loot-anchor', prominence: 'minor', x: 0, z: 0, facing: { kind: 'point-toward', x: 0, z: 1.3 } } },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
-      { prop: { kind: 'corpse', x: 0, z: 1.3, facing: { kind: 'point-toward', x: 0, z: 0 }, note: CORPSE_NOTE }, minClearance: 0.6 },
-      { prop: { kind: 'model', model: GLOW_CACHE, x: 0, y: 0, z: 0 } },
-    ],
-  },
-
-  // Pillar pair with a candle between them — a colonnade fragment.
-  'pillar-pair': {
-    id: 'pillar-pair',
-    children: [
-      { prop: { kind: 'pillar', x: -1.1, z: 0 } },
-      { prop: { kind: 'pillar', x:  1.1, z: 0 } },
-      { prop: { kind: 'model', model: FLOOR_CANDLE, x: 0, y: 0, z: 0 }, minClearance: 0.4 },
-    ],
-  },
 };
+
+/**
+ * Expand a group into its child props, placed at (x, z) and rotated about that
+ * origin by rotY. Children are culled against the ROOM POLYGON, not a bounding
+ * rect: a candle 0.4m inside the box of an L-shaped room can be outside the
+ * room, and placing it there is the single most repeated bug in this generator.
+ * `clearance` is signed, so one comparison answers both "is it in the room" and
+ * "has it got space" — a child outside scores negative and always fails.
+ */
+export function expandGroup(
+  groupId: string,
+  x: number,
+  z: number,
+  rotY: number,
+  poly: Poly,
+): PropSpec[] {
+  const spec = PROP_GROUPS[groupId];
+  if (!spec) throw new Error(`Unknown propGroup id: ${groupId}`);
+  const cos = Math.cos(rotY), sin = Math.sin(rotY);
+  const out: PropSpec[] = [];
+  for (const child of spec.children) {
+    const placed = transformChild(child, x, z, cos, sin, rotY);
+    if (clearance(poly, placed.x, placed.z) < (child.minClearance ?? 0)) continue;
+    out.push(placed);
+  }
+  return out;
+}
+
+/** Rotate the child's (x, z) about the group origin, then translate. */
+function transformChild(
+  child: GroupChild, gx: number, gz: number, cos: number, sin: number, rotY: number,
+): PropSpec & { x: number; z: number } {
+  const cx = child.prop.x, cz = child.prop.z;
+  const result = { ...child.prop, x: gx + (cx * cos - cz * sin), z: gz + (cx * sin + cz * cos) };
+  // A child's own rotY compounds with the group's.
+  if ('rotY' in child.prop && rotY !== 0) {
+    (result as { rotY?: number }).rotY = (child.prop.rotY ?? 0) + rotY;
+  }
+  // A `facing` directive that names a WORLD POINT (point-away / point-toward)
+  // has to be moved into the same world space as the prop, or the corpse looks
+  // at wherever the group's local origin happened to land on the last floor.
+  // Coordinate-free kinds (fixed / wall-*) pass through untouched.
+  if ('facing' in child.prop && child.prop.facing) {
+    const f = child.prop.facing;
+    if (f.kind === 'point-away' || f.kind === 'point-toward') {
+      (result as { facing?: typeof f }).facing = {
+        kind: f.kind,
+        x: gx + (f.x * cos - f.z * sin),
+        z: gz + (f.x * sin + f.z * cos),
+      };
+    }
+  }
+  return result;
+}

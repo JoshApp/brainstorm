@@ -5,6 +5,7 @@ import { nearestSurface, type WallSurface } from './wall-surfaces';
 import type { RoomOccupancy } from './room-occupancy';
 import { roomType, type RoomTypeId } from './room-types';
 import { propFacts, claimsConflict, type Claim } from './prop-taxonomy';
+import { expandGroup } from './prop-groups';
 
 // ── THE SMALL FOUND THINGS ───────────────────────────────────────────────────
 //
@@ -205,7 +206,11 @@ export function decorPolyFloor(
     const r = bodyRooms[Math.floor(rand() * bodyRooms.length)];
     const spot = openSpot(r, rand, 1.1);
     if (spot) {
-      props.push({ kind: 'group', groupId: 'bone-shrine', x: spot.x, z: spot.z, rotY: rand() * Math.PI * 2 } as PropSpec);
+      // Expanded HERE, not downstream: the spec carries the corpse, the candle
+      // and the glow, never a prefab reference. See prop-groups.ts for why.
+      for (const child of expandGroup('bone-shrine', spot.x, spot.z, rand() * Math.PI * 2, r.poly)) {
+        props.push(child);
+      }
       r.occupancy.reserve({ kind: 'cylinder', x: spot.x, z: spot.z, r: 1.1, y0: 0, y1: 1.0 }, 'shrine');
       note('bone-shrine');
     }

@@ -90,7 +90,6 @@ export function getPropAABB(prop: PropSpec): PropAABB | null {
     // around it).
     case 'cobweb':
     case 'hint':
-    case 'group':
       return null;
   }
   return null;

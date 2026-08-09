@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
+import { DEV } from '../debug/dev';
 import { spawnNetworkBloodstains } from './network-bloodstains';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
@@ -1310,6 +1311,17 @@ export function buildLevel(
     // below receives its base Y from here so props ride their room's
     // elevation (and a prop in a sloped corridor sits on the ramp).
     const gy = groundYAt(prop.x, prop.z);
+    // A loot anchor is a REQUEST, not a thing: loot-director.ts resolves each
+    // one into the chest / offering / trove it decided on and drops the anchor
+    // from the list. One reaching the builder means the director never ran on
+    // this spec, so say so rather than rendering nothing and calling it fine.
+    if (prop.kind === 'loot-anchor') {
+      if (DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(`unresolved loot-anchor at (${prop.x.toFixed(1)}, ${prop.z.toFixed(1)}) — loot-director did not run`);
+      }
+      continue;
+    }
     if (prop.kind === 'pillar') {
       if (pillarBlocksOpening(prop.x, prop.z)) continue;   // crowds a doorway — drop it
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -1851,6 +1863,20 @@ export function buildLevel(
         lingerMs: prop.lingerMs,
         dismissOn: prop.dismissOn,
       });
+    } else {
+      // EXHAUSTIVENESS. If `prop` is not `never` here, some PropSpec kind can
+      // be emitted onto a floor and this loop renders nothing for it — the
+      // failure is invisible, because the spec is well-formed and every audit
+      // that reads specs agrees the thing is there. That is exactly how the
+      // bone shrine vanished: its expander lived in the vault composer, the
+      // composer was deleted, and the floor hash stayed byte-identical because
+      // the loss was entirely on this side of the spec.
+      //
+      // Kinds resolved BEFORE this loop (loot-anchor, the fittings drained out
+      // of spec.openings) never reach here. Anything else is a bug, and tsc
+      // says so at build time rather than a player finding a hole in a room.
+      const unhandled: never = prop;
+      void unhandled;
     }
   }
 

@@ -534,19 +534,15 @@ export type PropSpec =
       lingerMs?: number;
       dismissOn?: 'attack:hit' | 'item:picked-up' | 'enemy:killed';
     }
-  // 'group' = a named modular prefab from src/level/prop-groups.ts.
-  // The composer looks up the group and expands it into individual
-  // PropSpec children at compose time, applying clearance checks so
-  // children that would clip into a wall are dropped. Use for
-  // atmospheric setpieces (altar-ritual, fountain-shrine, etc.)
-  // without forcing every vault to repeat the layout.
-  | { kind: 'group'; groupId: string; x: number; z: number; rotY?: number }
-  // Specific-mob spawn at a precise sub-cell position. Lets a vault
-  // author drop a particular enemy (boss, mini-boss, theme-pinned
-  // mob) without needing a per-id tile char in the ASCII map — the
-  // tile-char dictionary is finite, this is not. Procgen's boss-slot
-  // expansion (B tile) emits one of these per boss floor.
-  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string }
+  // (There is no 'group' prop kind. Prefabs live in level/prop-groups.ts and
+  //  are expanded by the pass that places them — `expandGroup` — so a spec only
+  //  ever holds props something renders. The kind used to exist and the
+  //  composer that expanded it was deleted a commit before the kind was; the
+  //  bone shrine went on being emitted and rendering as nothing.)
+  // (Nor a 'spawn' prop kind. It existed so an ASCII map could pin a specific
+  //  mob without spending a tile char, and the composer turned it into a real
+  //  spawn. Enemies ride `LevelSpec.spawns` now; a spawn PROP had no producer
+  //  and no consumer left, which makes it a hole an author can fall into.)
   // Boss-arena fog wall — vertical mist curtain at the threshold of
   // a boss vault. Walking through it seals the arena (the mist
   // becomes a collider) and engages the boss bar. Tinted per boss
