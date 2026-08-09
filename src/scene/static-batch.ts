@@ -75,11 +75,22 @@ function matSig(mat: THREE.Material): string {
   ].join('|');
 }
 
-/** Attribute-layout signature — every geometry in one BatchedMesh must share
- *  the exact attribute set (names, item sizes, indexed-ness). */
+/**
+ * Attribute-layout signature — every geometry in one BatchedMesh must share the
+ * exact attribute set (names, item sizes).
+ *
+ * INDEXED-NESS IS DELIBERATELY NOT IN THIS KEY. It used to be, and it split
+ * batches whose attribute layout was otherwise character-for-character
+ * identical: measured on depth 12, three of twenty batches existed only because
+ * `…position:3,uv:2|i` and `…position:3,uv:2|n` were treated as different
+ * layouts. Indexed-ness is not a property of the SHADING, it is an accident of
+ * how each geometry happened to be built — so it is resolved at batch-assembly
+ * time instead (de-index the group when it is mixed, exactly as
+ * level/static-merge.ts already does for the same reason).
+ */
 function attrSig(geo: THREE.BufferGeometry): string {
   const names = Object.keys(geo.attributes).sort();
-  return names.map((n) => `${n}:${geo.attributes[n].itemSize}`).join(',') + (geo.index ? '|i' : '|n');
+  return names.map((n) => `${n}:${geo.attributes[n].itemSize}`).join(',');
 }
 
 function shellRectId(src: string): string | null {
@@ -228,10 +239,28 @@ export function batchStaticWorld(level: LiveLevel): void {
     });
   }
 
+  // De-indexed variants, per floor build. Keyed by the SOURCE geometry so a
+  // pooled geometry shared by twenty props is flattened once, not twenty times.
+  const deindexCache = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
   let batched = 0;
   let batchCount = 0;
-  for (const { mat, cast, receive, items } of byKey.values()) {
+  for (const [batchKey, { mat, cast, receive, items }] of byKey.entries()) {
     if (items.length < 2) continue;   // a batch of one saves nothing — keep the mesh
+    // MIXED INDEXED-NESS → de-index the group. BatchedMesh needs one or the
+    // other across its geometries, and the layout key no longer splits on it
+    // (see attrSig). De-indexing is the cheap, lossless direction — building an
+    // index means deduplicating vertices, and it only costs the vertex sharing
+    // on the minority side, which is why this runs ONLY when the group is
+    // genuinely mixed. A uniform group is left exactly as it was.
+    const indexedCount = items.reduce((n, it) => n + (it.geo.index ? 1 : 0), 0);
+    if (indexedCount !== 0 && indexedCount !== items.length) {
+      for (const it of items) {
+        if (!it.geo.index) continue;
+        let flat = deindexCache.get(it.geo);
+        if (!flat) { flat = it.geo.toNonIndexed(); deindexCache.set(it.geo, flat); }
+        it.geo = flat;
+      }
+    }
     // Size the batch: unique geometries (pooled geometry repeats across props).
     const uniqueGeos = new Map<THREE.BufferGeometry, number>();   // geo → vertex count (dedup)
     let maxVerts = 0, maxIndices = 0;
@@ -244,6 +273,13 @@ export function batchStaticWorld(level: LiveLevel): void {
     }
     const batch = new THREE.BatchedMesh(items.length, maxVerts, maxIndices, mat);
     batch.name = `static-batch-world`;
+    // THE KEY THAT PUT THESE TOGETHER, kept on the object. A BatchedMesh earns
+    // its keep by collapsing many objects into ONE render object, so the number
+    // of batches is the number that matters — and when it is higher than it
+    // should be, the only way to find out WHY is to see which of the three key
+    // dimensions (material · attribute layout · shadow flags) split them. That
+    // was invisible until this line existed.
+    batch.userData.batchKey = batchKey;
     batch.castShadow = cast;
     batch.receiveShadow = receive;
     batch.frustumCulled = false;         // instances span the floor
