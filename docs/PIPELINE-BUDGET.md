@@ -216,6 +216,48 @@ correlates with NOTHING (draws −0.05, triangles −0.38, uploads −0.05), sit
 flat at ~7.4ms. That is a fixed per-frame cost and only the pass structure can
 move it. Not yet investigated.
 
+### The ~350 loose meshes were a GATE, not a limit (fixed 2026-08-10)
+
+The paragraph above says "the ~350 loose meshes that remain are the bill," which
+read as a ceiling — the leftovers too fragmented to batch. They were not. The
+batcher's own DEV line, once anyone captured it, said:
+
+```
+[static-batch] 280/282 static meshes → 19 batches
+```
+
+It **saw 282** meshes on a floor holding ~570 and batched **99% of what reached
+it**. Everything else was rejected before the batcher looked at it, by an
+implicit allowlist in `batchStaticWorld`: a root child had to be a destructible,
+or tagged `dbgKind:'prop'`, or carry a `"<kind> · <rect>"` dbgSource. Anything
+else hit `if (!rectId) continue`. On a depth-3 floor that was **179 of 240 root
+children holding 351 meshes** — an unnamed 88-box masonry construct, an unnamed
+40-piece arch, sixteen identical 7-part fixtures, candelabra bodies. The most
+static objects in the dungeon, each paying a render object every frame.
+
+Resolving those by **bounds** (`containedRectId`) took the floor from
+**282 → 520 candidates, 280 → 517 batched, in the SAME 22 batches**: loose meshes
+**503 → 266**, ~237 render objects × ~16.6 µs ≈ **3.9 ms/frame** of upload gone.
+Holds across depths (depth 8: 645/651; depth 15: 545/547).
+
+Two rules make it safe, and both are pinned in `tests/static-batch-rect.test.ts`:
+
+- **A rect id is not a label — it is what the room culler toggles.** File stone
+  under the wrong room and it blinks out while the player looks straight at it
+  (the doorframe bug). So overhang into the VOID is accepted (masonry leans out
+  of its room by design; rejecting it threw away the biggest groups on the
+  floor), while overlap into ANOTHER rect is refused.
+- **A group that genuinely spans rects batches UNCULLED** (`NO_RECT`) rather than
+  staying loose: it joins a batch, but never enters the rect index, so nothing
+  toggles it. That is bit-for-bit the visibility it already had — the culler
+  skips unlabelled children too — at one render object instead of eighty.
+
+The cost of that second rule: ~85–110 groups a floor are now always-submitted
+triangles rather than always-submitted draw calls. We are draw-call bound, not
+triangle bound, so this is the right side of the trade — but if a floor ever goes
+triangle-heavy, giving those groups a real rect (or a multi-rect membership like
+the one `room-culling.ts` already gives framed openings) is the way out.
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
 [UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook

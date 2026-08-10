@@ -130,6 +130,56 @@ function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
   return bestId;
 }
 
+// ── THE UNLABELLED RESIDENTS ─────────────────────────────────────────────────
+//
+// The rect lookups in batchStaticWorld are an implicit ALLOWLIST: a root child
+// that is not a destructible, not tagged `dbgKind:'prop'`, and carries no
+// "<kind> · <rect>" dbgSource falls straight through `continue` and never
+// reaches the batcher at all.
+//
+// Measured on a depth-3 floor (2026-08-10): the batcher SAW 282 static meshes
+// and batched 280 of them — 99% efficiency on what reaches it — while ~300 more
+// sat in 58 unlabelled root groups it never looked at (an unnamed 88-box
+// masonry construct, an unnamed 40-piece arch, 16 identical 7-part fixtures,
+// candelabra bodies…). The GATE was the ceiling, not the batcher. At the
+// measured ~16.6µs of per-object GPU upload per frame, that is milliseconds a
+// frame spent on stone that never moves.
+//
+// So: resolve those by BOUNDS. The fit check is the load-bearing part. A rect
+// assignment drives room culling (setStaticBatchRectVisible), so getting it
+// wrong does not cost a draw call — it makes stone VANISH while you are
+// looking straight at it. That is the doorframe bug Josh reported, and
+// room-culling.ts answers it for framed openings by assigning them to BOTH
+// sides; a batch instance lives in exactly one rect and has no such answer.
+// A group that straddles two rects is instead batched UNCULLED (rect id
+// NO_RECT): it joins a batch — killing the per-object cost, which is the whole
+// point — but never enters the rect index, so nothing ever toggles it. That is
+// bit-for-bit the visibility it already had, since the room culler skips
+// unlabelled children too. Cheaper, and it cannot make anything disappear.
+export const NO_RECT = '*';
+const fitBox = new THREE.Box3();
+
+export function containedRectId(level: LiveLevel, obj: THREE.Object3D): string | null {
+  fitBox.setFromObject(obj);
+  if (fitBox.isEmpty()) return null;
+  const id = rectIdAt(level, (fitBox.min.x + fitBox.max.x) / 2, (fitBox.min.z + fitBox.max.z) / 2);
+  if (!id) return null;
+  // No footprint corner may land in a DIFFERENT rect. Overhang into the void
+  // (null — wall thickness, the dead space between rooms) is fine and normal:
+  // masonry sits at the room edge and leans out of it by design, and rejecting
+  // that threw away the biggest groups on the floor. What must never happen is
+  // an object that also stands in the NEXT room getting filed under this one,
+  // because then it blinks out with this room while you watch it from there.
+  for (const [x, z] of [
+    [fitBox.min.x, fitBox.min.z], [fitBox.max.x, fitBox.min.z],
+    [fitBox.min.x, fitBox.max.z], [fitBox.max.x, fitBox.max.z],
+  ]) {
+    const corner = rectIdAt(level, x, z);
+    if (corner !== null && corner !== id) return null;
+  }
+  return id;
+}
+
 interface Item { mesh: THREE.Mesh; rectId: string; geo: THREE.BufferGeometry; owner: THREE.Object3D | null }
 
 // ── COLOUR → VERTEX BAKE ─────────────────────────────────────────────────────
@@ -264,6 +314,7 @@ export function batchStaticWorld(level: LiveLevel): void {
   const byKey = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; items: Item[] }>();
   const variantCache = new Map<string, THREE.BufferGeometry>();   // per-floor colour-variant cache
   let candidates = 0;
+  let straddled = 0;      // unlabelled groups that span two rects — no safe rect
   for (const child of level.root.children.slice()) {
     if (excluded.has(child)) continue;
     let rectId: string | null = null;
@@ -275,6 +326,14 @@ export function batchStaticWorld(level: LiveLevel): void {
     if (isDestructible) rectId = rectIdAt(level, child.position.x, child.position.z);
     else if (child.userData?.dbgKind === 'prop') rectId = rectIdAt(level, child.position.x, child.position.z);
     else if (typeof child.userData?.dbgSource === 'string') rectId = shellRectId(child.userData.dbgSource);
+    // Unlabelled static residents — see containedRectId. Doors are the one
+    // dbgKind excluded by name: a door's whole job is to move, and unlike a
+    // torch or an enemy it is not guaranteed to be in the interactable set
+    // by the time this runs.
+    if (!rectId && child.userData?.dbgKind !== 'door') {
+      rectId = containedRectId(level, child);
+      if (!rectId) { rectId = NO_RECT; straddled++; }
+    }
     if (!rectId) continue;
     child.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -370,9 +429,13 @@ export function batchStaticWorld(level: LiveLevel): void {
       it.mesh.updateWorldMatrix(true, false);
       batch.setMatrixAt(id, it.mesh.matrixWorld);
       const inst: BatchInstance = { batch, id, retired: false };
-      let list = rectIndex.get(it.rectId);
-      if (!list) { list = []; rectIndex.set(it.rectId, list); }
-      list.push(inst);
+      // NO_RECT instances stay out of the index on purpose — nothing toggles
+      // them, so they draw always, exactly as they did unbatched.
+      if (it.rectId !== NO_RECT) {
+        let list = rectIndex.get(it.rectId);
+        if (!list) { list = []; rectIndex.set(it.rectId, list); }
+        list.push(inst);
+      }
       if (it.owner) {
         let owned = groupIndex.get(it.owner);
         if (!owned) { owned = []; groupIndex.set(it.owner, owned); }
@@ -393,7 +456,8 @@ export function batchStaticWorld(level: LiveLevel): void {
 
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches (${bakedMats.size} baked families)`);
+    console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches `
+      + `(${bakedMats.size} baked families, ${straddled} groups batched uncullable: no single containing rect)`);
   }
 }
 
