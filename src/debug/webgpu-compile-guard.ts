@@ -147,6 +147,11 @@ let banner: HTMLDivElement | null = null;
 function ensureBanner(): HTMLDivElement {
   if (banner) return banner;
   banner = document.createElement('div');
+  // Identified + classed so anything that hides the HUD hides this too. It had
+  // neither, which is why it survived `body.hud-hidden` AND a display:none
+  // stylesheet and sat in the corner of every snap, bench shot and look sheet.
+  banner.id = 'compile-hitch-banner';
+  banner.classList.add('game-hud');
   Object.assign(banner.style, {
     position: 'fixed', top: '8px', left: '50%', transform: 'translateX(-50%)',
     zIndex: '9999', pointerEvents: 'none', padding: '3px 10px', borderRadius: '4px',
@@ -172,15 +177,23 @@ export function tickCompileWatch(): void {
   const laggy = frameMs > SPIKE_MS;
   if (compiled) compileHitches += newCompiles;
   if (laggy) laggyFrames++;
-  if (!compiled && !laggy) { if (banner) banner.style.opacity = '0'; return; }
+  // ONLY a compile hitch gets a banner.
+  //
+  // Josh: *"can you remove the lag no compile etc banner that is ever present
+  // in snaps and bench etc."* The amber variant fired on ANY frame over
+  // SPIKE_MS, and under the headless swiftshader every frame is over it — so a
+  // diagnostic for a rare, fixable event was printing itself across the top of
+  // every screenshot the project takes, permanently.
+  //
+  // It also said nothing actionable. "This frame was slow and it was NOT a
+  // compile" is a non-event with no next step, and the count is still kept in
+  // `laggyFrames` and readable from __compileStats() by anyone who wants it.
+  // The RED compile-hitch banner stays: that one names a real bug with a real
+  // fix (a missing warmable), which is the entire reason this guard exists.
+  if (!compiled) { if (banner) banner.style.opacity = '0'; return; }
   const el = ensureBanner();
-  if (compiled) {
-    el.textContent = `⚠ COMPILE HITCH ×${newCompiles} · ${Math.round(frameMs)}ms · WARM GAP — __compileStats().gaps`;
-    el.style.background = 'rgba(170,28,20,0.9)';
-  } else {
-    el.textContent = `lag ${Math.round(frameMs)}ms · no compile (GC/CPU)`;
-    el.style.background = 'rgba(150,95,20,0.8)';
-  }
+  el.textContent = `⚠ COMPILE HITCH ×${newCompiles} · ${Math.round(frameMs)}ms · WARM GAP — __compileStats().gaps`;
+  el.style.background = 'rgba(170,28,20,0.9)';
   el.style.opacity = '1';
 }
 

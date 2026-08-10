@@ -21,6 +21,7 @@ import { requestLux, showLuxCard, luxTour, LUX_BANDS } from './lux';
 import { installPerfProbe } from './perf-probe';
 import { installInspector } from './inspector';
 import type { RoomCuller } from '../level/room-culling';
+import { applyLook, LOOKS, LOOK_ORDER } from '../style/look-presets';
 
 // DEV-only console hooks + URL overrides — every window.__* inspection handle
 // and DEV URL flag that used to live inline in main.ts. Called ONLY inside an
@@ -83,6 +84,23 @@ export function installDevHooks(deps: DevHookDeps): void {
         requestFlaskDrink();
       }, 2000);
     })();
+  }
+
+  // ── ART DIRECTION: try a LOOK without implementing one ────────────────
+  // window.__look('drawn') on the console, or ?look=drawn on the URL — the
+  // whole point of style/look-presets.ts is that a look is data you can put on
+  // the running game, so the contact sheet (npm run delve look) is just this
+  // hook plus a screenshot. Applied AFTER the level builds, since the level
+  // sets scene.fog from its own spec and would otherwise win.
+  w.__look = (id: string) => applyLook(id, scene);
+  w.__looks = () => LOOK_ORDER.map((id) => ({ id, name: LOOKS[id].name, note: LOOKS[id].note }));
+  {
+    const wanted = new URLSearchParams(window.location.search).get('look');
+    if (wanted && LOOKS[wanted]) {
+      // One frame after boot: the level build assigns fog from the level spec,
+      // so a look applied during module init is overwritten before it renders.
+      setTimeout(() => applyLook(wanted, scene), 0);
+    }
   }
 
   // ── GPU / material forensics ──────────────────────────────────────────

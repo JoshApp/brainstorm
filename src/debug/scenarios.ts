@@ -545,6 +545,72 @@ function mulberryFor(kind: string): () => number {
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
+  // ── THE BEAUTY CORNER — the control variable for art direction ────────────
+  //
+  // Josh: *"a small section like a scene ... and then we kinda rapidly
+  // prototype against it since you can screenshot and snap etc."*
+  //
+  // This is that scene, and the ONE rule about it is that IT NEVER CHANGES.
+  // Comparing two looks is only meaningful if everything except the look is
+  // held still, so the moment someone "improves" the corner, every sheet shot
+  // before that moment becomes incomparable. Change the presets, not this.
+  //
+  // It holds one of everything a look has to survive, because a style that
+  // flatters a bare wall and falls apart on a creature is not a style:
+  //
+  //   · lit stone AND unlit stone (the value range the whole look rides on)
+  //   · a framed doorway — the silhouette shape the game repeats most
+  //   · a torch (warm, saturated — the "rhetoric" light) and a dark corner
+  //   · a destructible + a chest: small forms, the ones that go to mush first
+  //   · two creatures, one ABSORBED and one PAINTED (docs/VISUAL-LANGUAGE.md)
+  //   · the viewmodel — it is a third of the frame on a phone and gets
+  //     forgotten in every screenshot that isn't a real gameplay pose
+  //
+  // Frozen and posed from a standing eye at a slight down-pitch: the shot is
+  // the shot the player actually gets, not a beauty angle no one will ever see.
+  'look-lab': {
+    level: {
+      id: 'look-lab', depth: 3, displayName: 'LOOK LAB', fogColor: 0x0a0a0c,
+      startPos: { x: 0, z: 7.4, yaw: 0 },
+      rooms: [
+        { id: 'lab', rect: { x: 0, z: 0, w: 14, d: 16 }, height: 4.6 },
+        // The room BEYOND the doorway — so the frame has a lit near field, a
+        // dark threshold, and something faintly readable past it. That depth
+        // sandwich is where a fog colour either sings or dies.
+        { id: 'beyond', rect: { x: 0, z: -13, w: 8, d: 10 }, height: 4.0 },
+      ],
+      corridors: [{ id: 'link', rect: { x: 0, z: -8.2, w: 2.6, d: 3.0 }, height: 3.0 }],
+      props: [
+        { kind: 'vase', x: -2.6, z: 1.4 },
+        { kind: 'vase', x: -3.4, z: 0.2 },
+        { kind: 'chest', x: 3.2, z: 0.4, rotY: -0.5, tier: 'wood' },
+      ],
+      torches: [
+        // ONE warm source, off to one side. A centred pair flattens everything
+        // and hides exactly the falloff a look has to be judged on.
+        { x: -6.9, z: 1.0, wall: 'W', height: 2.7, colorTint: 0xff9a40, intensityMul: 1.15 },
+        // A far, dim one past the threshold — gives the beyond-room a reason
+        // to be faintly visible instead of a black hole.
+        { x: 0, z: -17.8, wall: 'N', height: 2.6, colorTint: 0x6690c0, intensityMul: 0.7 },
+      ],
+      spawns: [
+        { enemyId: 'husk', x: -1.4, z: -2.6 },      // ABSORBED — mundane, dark
+        { enemyId: 'ooze-small', x: 1.8, z: -1.9 },  // the accent body
+      ],
+      doors: [], stairs: [],
+    },
+    // Standing eye, slight down-pitch — a real gameplay pose, not a beauty angle.
+    // yaw 0 = facing -Z, INTO the room and down the threshold. (Authored as
+    // Math.PI first, which points at +Z — the back wall — and produced a
+    // sheet of a corner with no doorway, no creature and no depth in it.
+    // Worth the comment: a beauty corner facing the wrong way silently
+    // makes every look comparison meaningless.)
+    playerPos: { x: 0, z: 7.4, yaw: 0, pitch: -0.10 },
+    freeze: true,          // deterministic: the LOOK is the only variable
+    godMode: true,
+    enemiesInvincible: true,
+  },
+
   // ── SUBSTRATE SLICE — the blood-drinker fun-check (docs/BUILD-ECONOMY.md) ──
   // Bleed weapon (bone-needle) + the two bleed relics + a clustered pack: hit
   // one, it bleeds, it dies, the burst CHAINS bleed to its neighbours, and every
