@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stdMat, basicMat } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
@@ -227,7 +228,9 @@ export function spawnStairs(
 
   // Darkness through the opening — pure black chamber walls beyond the
   // arch, so the fire floats in void until it wakes.
-  const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+  // Pure black, never animated — one shared instance across every staircase
+  // on the floor (material-registry pool; see tests/material-authority).
+  const voidMat = basicMat({ color: 0x000000, fog: false });
   const voidBack = new THREE.Mesh(pooledPlane(STEP_WIDTH, totalDrop + 1.6), voidMat);
   voidBack.position.set(0, -totalDrop / 2 - 0.2, archZ + 1.6);
   group.add(voidBack);
@@ -246,7 +249,11 @@ export function spawnStairs(
   const fireZ = archZ + 0.95;
   const leafH = ARCH_SPRING + ARCH_RISE * 0.55;
   const leafW = ARCH_W / 2 + 0.04;
-  const ironMat = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55, metalness: 0.55, flatShading: true });
+  // Static iron — no per-staircase tween touches it, so it pools too. (The
+  // fire/outline/shaft materials below CANNOT: each staircase tweens its own
+  // colour and opacity between passive and active, and sharing them would
+  // light every staircase on the floor at once.)
+  const ironMat = stdMat({ color: 0x15171b, roughness: 0.55, metalness: 0.55, flatShading: true });
   for (const side of [-1, 1]) {
     const hinge = new THREE.Group();
     hinge.position.set(side * (ARCH_W / 2), landY, archZ + 0.12);
