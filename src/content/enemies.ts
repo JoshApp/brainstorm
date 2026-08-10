@@ -122,7 +122,18 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // the black; only its hot eyes give it away until your lamp finds it.
         // (Self-glow is reserved for arcane things now.)
         flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto' },
-        claw: { color: 0x2a2620, roughness: 0.85, flatShading: 'auto' },
+        // BONE, pushed through the rot. This is the ghoul's answer to "brown
+        // lump": the albedo was already near-black (0x14100c) — the brown is the
+        // torch, and every rough surface in a warm room returns the same brown
+        // whatever you tint it. What the light CANNOT flatten is a small area of
+        // genuinely bright albedo, which is the entire reason the skeleton reads
+        // from across a room. Ribs, shoulder caps and a jaw give this body the
+        // high-frequency light/dark break a smooth capsule torso cannot have.
+        bone: { color: 0xb0a488, roughness: 0.75, flatShading: 'auto' },
+        // Claws catch a HIGHLIGHT rather than sitting a shade paler than the
+        // flesh — a specular glint survives a room that washes everything warm;
+        // a slightly-lighter matte brown does not.
+        claw: { color: 0x1d1a16, roughness: 0.3, metalness: 0.25, flatShading: 'auto' },
         eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
@@ -135,9 +146,32 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'sphere', joint: 'head', radius: 0.15, scale: [0.9, 1.05, 1.12], jitter: 0.02, mat: 'flesh' },
         { kind: 'sphere', joint: 'head', radius: 0.038, pos: [-0.07, 0.0, -0.14], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.038, pos: [0.07, 0.0, -0.14], mat: 'eyes' },
-        // Thin bony shoulders.
+        // A jaw the rot has stripped — the one bright note on the head, right
+        // under the eyes, so the face reads as a face at four metres.
+        { kind: 'box', joint: 'head', size: [0.13, 0.05, 0.09], pos: [0, -0.10, -0.10], jitter: 0.012, mat: 'bone' },
+        // Shoulders stay FLESH. They were bone for one build and the two pale
+        // round caps sat at head height reading as a second pair of hot dots —
+        // "eyes are sacred, no part may imitate them" (docs/VISUAL-LANGUAGE.md),
+        // and a round bright thing beside a face imitates them. The bone goes
+        // where it makes a STRIPE (ribs) or a JAW, never where it makes a pair
+        // of circles.
         { kind: 'sphere', joint: 'shoulderL', radius: 0.08, mat: 'flesh' },
         { kind: 'sphere', joint: 'shoulderR', radius: 0.08, mat: 'flesh' },
+        // NO RIBS HERE, and the failure is worth keeping written down.
+        //
+        // Tried twice: three pale bars inside the torso outline, then two wider
+        // ones tilted so their ends jut past it. Both read at 3.4 m as planks
+        // painted on (or driven through) a solid body — not as anatomy. The
+        // premise was right and the execution cannot work: the skeleton reads
+        // because its bright parts ARE the silhouette and you see black BETWEEN
+        // them. On a closed capsule torso there is no between. A bright decal on
+        // an unbroken mass stays a decal however you angle it.
+        //
+        // The real fix is GEOMETRY — a ribcage with gaps you can see the dark
+        // through — which is a model rework, not a material pass, so it is not
+        // being smuggled in here. What survives on this creature is the JAW
+        // (above): it sits on the head's own outline, which is exactly why it
+        // works where the ribs did not.
         // Long thin arms.
         { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.05, mat: 'flesh' },
         { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.042, mat: 'flesh' },
@@ -199,9 +233,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // length), a small head so the snout dominates the face.
       proportions: { height: 0.28, girth: 0.18, legLength: 0.12, headSize: 0.09, neckLength: 0.06 },
       materials: {
-        fur: { color: 0x2a1a14, roughness: 1, flatShading: 'auto' },
-        // Bald rat skin — desaturated mauve-grey, NOT cute pink (grimdark).
-        skin: { color: 0x5a4744, roughness: 0.9, flatShading: 'auto' },
+        fur: { color: 0x241c22, roughness: 1, flatShading: 'auto' },
+        // WET, not pale. This was 0x5a4744 — a mid-value warm grey, and under a
+        // torch that is precisely the colour of the floor the rat is standing on,
+        // which is why a rat at four metres was an invisible brown lump. Same
+        // darkness as the fur now, but glossy: tail, ears and snout return a
+        // moving highlight instead of a flat tone. A glint reads on a dark body;
+        // a lighter brown does not.
+        skin: { color: 0x2e2226, roughness: 0.25, metalness: 0.1, flatShading: 'auto' },
         eyes: { color: 0xff2a0a, emissive: 0xff2a0a, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
@@ -333,7 +372,17 @@ export const ENEMIES: Record<string, EnemySpec> = {
       proportions: { height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16 },
       materials: {
         flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto' },   // Absorbed — no rim (mundane beast)
-        cloth: { color: 0x2a201a, roughness: 1, flatShading: 'auto' },
+        // COOL cloth under a warm room. The sash was 0x2a201a — warm brown lit
+        // by an orange torch, i.e. the floor's exact colour at the floor's exact
+        // value. Albedo multiplies the light, so a cold blue-grey comes back as a
+        // DESATURATED warm grey while the stone around it stays saturated: the
+        // separation is in chroma, which survives one illuminant, instead of in
+        // hue, which does not.
+        cloth: { color: 0x1b2029, roughness: 1, flatShading: 'auto' },
+        // Filthy wrappings on the off-arm — the small bright note. Same job as
+        // the ghoul's ribs: a little genuinely-pale albedo the torch cannot mix
+        // down into the wall.
+        wrap: { color: 0xa89c86, roughness: 0.95, flatShading: 'auto' },
         blade: { color: 0x3a3e44, roughness: 0.4, metalness: 0.5, flatShading: 'auto' },
         eyes: { color: 0xffb060, emissive: 0xffb060, emissiveIntensity: 2.0 },
       },
@@ -344,6 +393,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Cloth wraps — a chest sash + a loincloth over the pelvis.
         { kind: 'box', joint: 'spine', size: [0.42, 0.16, 0.4], pos: [0, -0.1, 0], rot: [0, 0, 0.4], mat: 'cloth' },
         { kind: 'box', joint: 'pelvis', size: [0.38, 0.3, 0.3], pos: [0, -0.06, 0], mat: 'cloth' },
+        // Bandages banding the shield arm — two pale rings, so the limb has an
+        // internal light/dark rhythm instead of reading as one tapered tube.
+        { kind: 'cylinder', joint: 'elbowL', radius: 0.062, height: 0.09, pos: [0, 0.06, 0], mat: 'wrap' },
+        { kind: 'cylinder', joint: 'handL', radius: 0.056, height: 0.07, pos: [0, 0.08, 0], mat: 'wrap' },
         // Crude blade gripped in the right fist, held FORWARD-ready (not hanging
         // straight down the arm). rot.x tilts the blade off the forearm line so
         // it reads as a WEAPON in the hand, not an extension of the limb; the
@@ -402,11 +455,33 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'ghost',
       proportions: { height: 1.7, girth: 0.2, armLength: 0.52, headSize: 0.15 },
       materials: {
-        robe: { color: 0x1a1a22, roughness: 1, flatShading: 'auto', rim: { color: 0x66ffaa, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        // NO RIM ON THE ROBE. It had one — green, intensity 0.4, darkReactive —
+        // and it was the whole problem. A fresnel rim edges a form only if the
+        // form HAS edges; the robe is a single smooth lathe, so its normals graze
+        // the view across nearly the entire silhouette and the "rim" came out as
+        // a solid green wash. Measured: killing every rim in the frame changed
+        // 70k of 328k pixels, and the acolyte went from a green blob to a dark
+        // hooded figure carrying a green light — which is the read we wanted all
+        // along. Rims belong on faceted, high-frequency forms, not on revolved
+        // masses. The green now lives ONLY in things that emit it.
+        robe: { color: 0x15151c, roughness: 1, flatShading: 'auto' },
+        // The cowl reads as its own value against the robe, so the head is a
+        // shape rather than the top of one continuous cone. This is the internal
+        // value break the lathe cannot give itself.
+        cowl: { color: 0x0b0b11, roughness: 1, flatShading: 'auto' },
+        // The hem catches light by being SMOOTH, not by being pale — a specular
+        // band is a highlight the room's warm torch cannot flatten into the same
+        // mid-brown as everything else, whereas raising the albedo just adds
+        // another mid-value surface.
+        hem: { color: 0x1d2028, roughness: 0.35, metalness: 0.35, flatShading: 'auto' },
         // Near-black shadow under the hood — the face we never quite see.
         flesh: { color: 0x0a0a09, roughness: 1, flatShading: 'auto' },
         staff: { color: 0x2a2018, roughness: 0.9, flatShading: 'auto' },
         orb: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.2 },
+        // Small, dimmer siblings of the orb: the charm at the collar and the
+        // votives at the hem. Same hue, a third the intensity, a fraction of the
+        // area — glowing PARTS on a dark body, not a glowing body.
+        sigil: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 0.9 },
         eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.5 },
       },
       eyes: { material: 'eyes', emissive: 2.5 },
@@ -432,8 +507,18 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.06, radiusTop: 0.045, mat: 'robe' },
         // Shadowed face + a deep cowl drawn over it (rounded, not a peak).
         { kind: 'sphere', joint: 'head', radius: 0.11, mat: 'flesh' },
-        { kind: 'sphere', joint: 'head', radius: 0.145, scale: [1.0, 1.05, 1.0], pos: [0, 0.04, 0.05], mat: 'robe' },
-        { kind: 'cone', joint: 'head', radius: 0.165, height: 0.22, pos: [0, 0.12, 0.04], rot: [0.18, 0, 0], jitter: 0.02, mat: 'robe' },
+        { kind: 'sphere', joint: 'head', radius: 0.145, scale: [1.0, 1.05, 1.0], pos: [0, 0.04, 0.05], mat: 'cowl' },
+        { kind: 'cone', joint: 'head', radius: 0.165, height: 0.22, pos: [0, 0.12, 0.04], rot: [0.18, 0, 0], jitter: 0.02, mat: 'cowl' },
+        // A smooth collar ring where cowl meets robe — the one place on this
+        // body with a specular response, so the shoulders have a lit edge that
+        // is not the same wash as the torso.
+        { kind: 'torus', joint: 'spine', radius: 0.115, tube: 0.022, pos: [0, 0.33, 0], rot: [1.5708, 0, 0], mat: 'hem' },
+        // A charm at the throat: the smallest of the three green lights.
+        { kind: 'sphere', joint: 'spine', radius: 0.026, pos: [0, 0.27, -0.075], mat: 'sigil' },
+        // Two votives low on the flare — they light the robe's own fabric from
+        // below, so the mass reads as folds instead of a cone.
+        { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [-0.20, -0.42, -0.20], mat: 'sigil' },
+        { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [0.21, -0.46, -0.16], mat: 'sigil' },
         // Cold green eyes set deep in the cowl shadow.
         { kind: 'sphere', joint: 'head', radius: 0.032, pos: [-0.05, -0.01, -0.092], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.032, pos: [0.05, -0.01, -0.092], mat: 'eyes' },

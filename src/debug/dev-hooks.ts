@@ -181,6 +181,33 @@ export function installDevHooks(deps: DevHookDeps): void {
   // Reports each enemy's world position, its normalised device coords (|x|,|y|
   // < 1 and z < 1 = on screen) and its distance, so posing a lab scenario is a
   // measurement instead of a guess.
+  // Scale every creature's RIM in place. The rim colour·intensity rides on the
+  // aRevealRim vec4 (xyz), same per-vertex trick as the emissive, so this drives
+  // the shipping path — and it answers a question the material spec cannot:
+  // a fresnel rim on a SMOOTH revolved body (the acolyte's robe is one lathe)
+  // grazes across most of the visible silhouette rather than edging it, so a
+  // 0.4-intensity "rim" can read as a solid colour wash. __mobRim(0) vs
+  // __mobRim(1) separates "the robe is green" from "the rim is washing it".
+  w.__mobRim = (scale: number) => {
+    const level = getLevel();
+    if (!level) return 0;
+    let touched = 0;
+    level.enemies.forEach((e) => {
+      e.group.traverse((o: THREE.Object3D) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const attr = mesh.geometry?.getAttribute?.('aRevealRim') as THREE.BufferAttribute | undefined;
+        if (!attr) return;
+        for (let v = 0; v < attr.count; v++) {
+          attr.setXYZW(v, attr.getX(v) * scale, attr.getY(v) * scale, attr.getZ(v) * scale, attr.getW(v));
+        }
+        attr.needsUpdate = true;
+        touched++;
+      });
+    });
+    return touched;
+  };
+
   // Hide/show the whole roster. Pairs with __mobs for the POP SCORE probe:
   // shoot the frame, hide the mobs, shoot it again, and the pixels that changed
   // are exactly the creature pixels — which turns "does it read against the
