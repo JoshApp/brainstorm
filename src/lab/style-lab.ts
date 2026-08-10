@@ -113,7 +113,10 @@ export function buildLabScene(): LabScene {
   // cannot answer "do these reveal modes live together" — that question is
   // about a ROOM, so the room needs more than one thing in it.
   const creatureGroups: THREE.Mesh[][] = [];
-  for (const [cx, cz] of [[-2.2, -2.4], [1.4, -4.6], [3.4, -1.4]] as const) {
+  for (const [cx, cz] of [
+    [-2.2, -2.4], [1.4, -4.6], [3.4, -1.4], [-4.2, -5.2], [0.2, -7.4],
+    [2.6, -6.2], [-1.0, -0.2], [4.4, -3.8], [-3.6, -8.0], [1.0, -9.4],
+  ] as const) {
     const body = mesh(new THREE.CapsuleGeometry(0.38, 0.9, 4, 10), cx, 1.0, cz);
     const head = mesh(new THREE.SphereGeometry(0.3, 12, 10), cx, 1.8, cz);
     const armL = mesh(new THREE.CapsuleGeometry(0.09, 0.7, 3, 6), cx - 0.5, 1.1, cz + 0.1);
@@ -309,12 +312,15 @@ function applyReveal(lab: LabScene, meshes: THREE.Mesh[], mode: Reveal, tint: nu
   }
   // EDGED — near-black body, bright hull behind it. The body vanishes; the
   // outline is the only thing the dark gives up.
+  // Thicker and brighter than the first pass. At 1.07 the line was a hairline
+  // that vanished past three metres, and the sheet read that as "EDGED is the
+  // weak mode" when it was really "the tuning was too timid to judge."
   const rimMat = new THREE.MeshBasicMaterial({ color: tint, side: THREE.BackSide });
   for (const m of meshes) {
-    m.material = new THREE.MeshLambertMaterial({ color: 0x0d0d10 });
+    m.material = new THREE.MeshLambertMaterial({ color: 0x08080b });
     const o = new THREE.Mesh(m.geometry, rimMat);
     o.position.copy(m.position); o.rotation.copy(m.rotation);
-    o.scale.setScalar(1.07);
+    o.scale.setScalar(1.16);
     lab.scene.add(o);
   }
 }
@@ -549,6 +555,35 @@ export const STYLES: Record<string, StyleRecipe> = {
       const modes: Reveal[] = ['reflected', 'edged', 'selflit'];
       const tints = [0xffffff, 0xffb066, 0x7fd4ff];
       lab.creatureGroups.forEach((g, i) => applyReveal(lab, g, modes[i % 3], tints[i % 3]));
+    },
+  },
+
+
+  // THE RATIO TEST. The modes coexisting in a 3-creature room is one thing; a
+  // real encounter is another. 6 absorbed : 2 reflected : 1 edged : 1 self-lit,
+  // which is the distribution the frequency rule implies — the dark keeps most
+  // of them, a couple take the room's colour, one is an outline, and exactly
+  // ONE makes its own light and therefore means something.
+  //
+  // ABSORBED is included here as a fourth state even though it is not a reveal
+  // MODE: it is the absence of one. That is the point. Most of a room should be
+  // things the dark did NOT give up, or the ones it did stop counting.
+  encounter: {
+    id: 'encounter', name: 'ENCOUNTER 6:2:1:1', note: 'A real room under the rule — 6 absorbed, 2 reflected, 1 edged, 1 self-lit.',
+    apply(lab) {
+      revealRoom(lab);
+      lab.creatureGroups.forEach((g, i) => {
+        if (i < 6) {
+          // ABSORBED — near-black, no rim, no glow. Shape and eyes only.
+          for (const m of g) m.material = new THREE.MeshLambertMaterial({ color: 0x14120f });
+        } else if (i < 8) {
+          applyReveal(lab, g, 'reflected', 0xffffff);
+        } else if (i < 9) {
+          applyReveal(lab, g, 'edged', 0xffb066);
+        } else {
+          applyReveal(lab, g, 'selflit', 0x7fd4ff);
+        }
+      });
     },
   },
 
@@ -807,7 +842,7 @@ export const STYLES: Record<string, StyleRecipe> = {
 };
 
 export const STYLE_ORDER: readonly string[] = [
-  'revReflected', 'revEdged', 'revSelflit', 'revMixed',
+  'encounter', 'revReflected', 'revEdged', 'revSelflit', 'revMixed',
   'importance', 'importancehue', 'bonelight', 'riso3', 'mignola', 'hatch', 'obradinn',
   'riso1', 'riso2', 'riso4',
   'baseline', 'bleached', 'summoned',
