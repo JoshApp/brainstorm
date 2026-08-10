@@ -174,6 +174,43 @@ What this means for the rules above:
   reaches for `renderScale` or polycount here is optimising the one thing that
   was never the cost.
 
+### Is this three.js's fault or ours? (traced 2026-08-10, three 0.185.1)
+
+Neither, quite. The mechanism is in the source, not in our usage:
+
+- `NodeManager.updateGroup` (:120): `if ( groupNode.updateType === NodeUpdateType.OBJECT ) return true;`
+  — an object-scoped uniform group is *always* considered for update, per render
+  object, per frame.
+- `UniformsGroup.updateMatrix4` (:499) DOES dirty-check via `arraysEqual`, so an
+  unchanged value uploads nothing. three is not being careless here.
+- But the object group carries the model-VIEW matrix, and `ModelNode` (:155)
+  computes it as `camera.matrixWorldInverse × object.matrixWorld`. It is
+  camera-relative, so it changes for every object the moment the camera moves —
+  a static wall included. The dirty-check cannot save you in a first-person game.
+- Changed → `Bindings._update` (:359) → `backend.updateBinding` → one
+  `queue.writeBuffer`.
+
+So the per-frame upload count is essentially THE NUMBER OF SEPARATELY-BOUND
+RENDER OBJECTS DRAWN. On desktop that is free (500 × ~1 µs = 0.5ms, invisible).
+On mobile each `writeBuffer` crosses into the GPU process and costs ~16 µs
+measured, so the same design costs 8ms. Nothing is misconfigured; we are simply
+on the expensive side of a tradeoff three makes for us, and the engine's own
+remedy is the one this codebase already applies in places — InstancedMesh /
+BatchedMesh collapse N objects into ONE render object with one object buffer.
+The world shell is already 18 BatchedMeshes and creatures are instanced; the
+~350 loose meshes that remain are the bill.
+
+**An attempted falsification that did NOT settle it, recorded so nobody repeats
+it.** If model-view is the driver, a stationary camera should upload far less.
+Splitting 5370 pooled frames by whether yaw/pitch changed gives 548 uploads/frame
+still vs 570 moving — a 4% difference, nothing like the prediction. That looks
+like a refutation and is not one: the recording's `cam` field stores only YAW and
+PITCH, not position, so "still" there includes walking in a straight line, which
+moves the view matrix exactly as much as turning does. The test cannot
+discriminate. To actually settle it, stand completely motionless (no walk, no
+turn) for a few seconds during a recording and compare — or add position to the
+`cam` column.
+
 The GPU side is separate and still unexplained: across 2756 pooled frames it
 correlates with NOTHING (draws −0.05, triangles −0.38, uploads −0.05), sitting
 flat at ~7.4ms. That is a fixed per-frame cost and only the pass structure can
