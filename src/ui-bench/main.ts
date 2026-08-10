@@ -527,7 +527,9 @@ const SPECIMENS: Specimen[] = [
     mount: () => {
       configureSettingsMenu({ abandonRun: () => {}, quitToMenu: () => {}, exitGame: () => {} });
       createSettingsMenu();
-      openSettings();
+      // ?tab=graphics etc. — snap a specific settings tab instead of the
+      // default RUN one.
+      openSettings((new URLSearchParams(location.search).get('tab') as Parameters<typeof openSettings>[0]) ?? undefined);
     },
   },
   {

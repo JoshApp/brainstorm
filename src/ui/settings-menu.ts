@@ -19,6 +19,7 @@ import { openWickRitual } from './wick-ritual';
 import { ambientLightSupported, ambientLux } from '../settings/ambient-light';
 
 import { openBugReport } from '../report/bug-report';
+import { activeGraphicsBackend } from '../scene/create-renderer';
 import {
   BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
   type BindableAction,
@@ -115,18 +116,19 @@ export function createSettingsMenu() {
 
 /** Public API — called by other UI (e.g. the inventory header gear)
  *  to open the settings panel. Idempotent. */
-export function openSettings() { openPanel(); }
+export function openSettings(tab?: TabId) { openPanel(tab); }
 export function closeSettings() { closePanel(); }
 export function toggleSettings() {
   if (panelOpen) closePanel(); else openPanel();
 }
 
-function openPanel() {
+function openPanel(tab?: TabId) {
   if (!panel) return;
   // Always open focused on RUN — the most-reached mid-game affordances
   // (CHARACTER, QUIT, etc.) land under the thumb every time. buildPanelContents
-  // falls back to CONTROLS when there's no live run (title screen).
-  activeTab = 'run';
+  // falls back to CONTROLS when there's no live run (title screen). A caller may
+  // name a tab instead; the UI bench does, so a specific tab can be snapped.
+  activeTab = tab ?? 'run';
   buildPanelContents();
   panel.style.display = 'flex';
   panelOpen = true;
@@ -386,6 +388,29 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       options: SHADOW_MODES,
       get: () => getSettings().shadows,
       set: (v) => updateSettings({ shadows: v }),
+    }),
+    makeSelect<'auto' | 'webgl2'>({
+      label: 'GRAPHICS BACKEND'
+        + (activeGraphicsBackend() === 'unknown' ? '' : `  (now: ${activeGraphicsBackend() === 'webgpu' ? 'WEBGPU' : 'WEBGL2'})`),
+      description:
+        'Which GPU API the world is drawn through. Auto takes WebGPU where the ' +
+        'device has it. WebGL2 forces the older path — worth trying if the phone ' +
+        'stutters or runs hot, since the two spend their time very differently. ' +
+        'The renderer is built once at startup, so changing this RELOADS the game ' +
+        '(a run in progress resumes at the start of the floor).',
+      options: [
+        { id: 'auto', label: 'AUTO' },
+        { id: 'webgl2', label: 'WEBGL2' },
+      ],
+      get: () => getSettings().graphicsBackend,
+      set: (v) => {
+        if (v === getSettings().graphicsBackend) return;
+        updateSettings({ graphicsBackend: v });
+        // The backend is chosen in the WebGPURenderer constructor and there is
+        // no way to swap it under a live scene — every material, pipeline and
+        // buffer belongs to that device. Reload is the honest implementation.
+        window.location.reload();
+      },
     }),
     makeSlider({
       label: 'RENDER SCALE',

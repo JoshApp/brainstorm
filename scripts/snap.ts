@@ -280,7 +280,8 @@ async function main() {
     // (no engine) via ui-bench.html. e.g. `ui-gallery`, `ui-settings`, `ui-codex`.
     if (scenario.startsWith('ui-')) {
       const specimen = scenario.slice('ui-'.length);
-      url = `http://127.0.0.1:${port}/brainstorm/ui-bench.html?ui=${encodeURIComponent(specimen)}`;
+      // --q rides along here too, so `--q=tab=graphics` snaps a named settings tab.
+      url = `http://127.0.0.1:${port}/brainstorm/ui-bench.html?ui=${encodeURIComponent(specimen)}${extraQ}`;
     }
     else if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;

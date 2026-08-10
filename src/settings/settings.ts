@@ -71,6 +71,20 @@ export interface Settings {
    *  same way the perf meter does — off by default; zero footprint until
    *  flipped on. */
   profilerTools: boolean;
+  /** Which GPU backend the renderer is built on.
+   *
+   *  'auto'   — WebGPU where the device has it, WebGL2 otherwise (the default,
+   *             and what every device did before this setting existed).
+   *  'webgl2' — force the WebGL2 backend even on a WebGPU device.
+   *
+   *  Worth having as a SETTING and not just the `?webgpu=0` URL flag: the flag
+   *  cannot be typed into an installed PWA, which launches at its own start_url
+   *  and never shows an address bar. This persists, so it survives the launch.
+   *
+   *  Read ONCE, at renderer construction (scene/create-renderer.ts) — the
+   *  renderer is built at boot and never rebuilt, so changing this mid-run
+   *  reloads the page. */
+  graphicsBackend: 'auto' | 'webgl2';
   /** Touch control scheme. Only 'default' (left-joystick / right-aim,
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
@@ -295,6 +309,7 @@ const DEFAULTS: Settings = {
   debugHitCones: false,
   debugGoreSplats: false,
   profilerTools: false,
+  graphicsBackend: 'auto',
   controlScheme: 'default',
   // BUTTON by default. Both gestures take the steering thumb off steering and
   // ask it to aim-and-release, which is hard mid-fight and is what the

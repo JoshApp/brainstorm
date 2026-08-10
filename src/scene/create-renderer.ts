@@ -12,6 +12,12 @@ import { installBundlePassOrderFix } from './bundle-pass-order';
  *  `as unknown as THREE.WebGLRenderer` cast is gone. */
 export type DelveRenderer = WebGPURenderer;
 
+let activeBackend: 'webgpu' | 'webgl2' | 'unknown' = 'unknown';
+
+/** The backend the renderer actually came up on — 'unknown' before boot
+ *  finishes. Set once, in createRenderer. */
+export function activeGraphicsBackend(): 'webgpu' | 'webgl2' | 'unknown' { return activeBackend; }
+
 /** Compiled render-pipeline count — the WebGPU analogue of the old WebGL
  *  `info.programs.length` (which the node renderer never populates). Reads the
  *  private pipeline cache; profiler/report plumbing only. */
@@ -37,7 +43,12 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // headless). Without the up-front force, THREE's failed 'webgpu' getContext
   // attempt can poison the canvas and the auto-fallback then gets a NULL webgl2
   // context — init rejects and boot dies where a graceful WebGL2 boot was possible.
+  // …or because the player asked for it in SETTINGS. That exists alongside the
+  // URL flag because an installed PWA launches at its own start_url with no
+  // address bar — there is nowhere to type `?webgpu=0` on the device where you
+  // most want to try the other backend.
   const forceWebGL = new URLSearchParams(window.location.search).get('webgpu') === '0'
+    || getSettings().graphicsBackend === 'webgl2'
     || !('gpu' in navigator);
   // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res
   // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks
@@ -92,6 +103,11 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   }
 
   await renderer.init();
+  // What the device ACTUALLY gave us, for the settings screen to report. 'auto'
+  // is a request, not an outcome — a phone with no WebGPU silently lands on
+  // WebGL2 — and a backend picker that can't tell you which one you're running
+  // is a switch with no lamp.
+  activeBackend = (renderer.backend as { isWebGPUBackend?: boolean })?.isWebGPUBackend ? 'webgpu' : 'webgl2';
 
   // r185 executes render bundles AFTER transparents (end of pass), letting
   // bundled opaque walls paint over additive flames — this reorders the flush
