@@ -122,6 +122,36 @@ test('resetCensus unwraps even mid-census', () => {
   assert.equal(takeCensus(), null);
 });
 
+test('RE-ARMS, and the previous result stays readable until replaced', () => {
+  // The census runs on a timer while the profiler ring rolls, because the
+  // recordings people actually take are SAVE LAST 15s snapshots of a ring that
+  // filled before the button was pressed — arming once at record-start
+  // attributed nothing at all (measured: the first recording on the census
+  // build came back empty). So a second arm must work, and a snapshot taken
+  // between censuses must still find the previous one.
+  resetCensus();
+  const { renderer, queue } = fakeRenderer();
+  const raw = queue.writeBuffer;
+
+  armCensus(renderer, 0);
+  queue.writeBuffer({ id: 'A' }, 0, new Uint8Array(4));
+  tickCensus(0); tickCensus(1);
+  assert.equal(takeCensus()!.totalCalls, 1);
+
+  // Between censuses the queue is clean and the old result is still there.
+  assert.equal(queue.writeBuffer, raw, 'queue must be unwrapped between censuses');
+  assert.equal(takeCensus()!.totalCalls, 1, 'result must survive until replaced');
+
+  armCensus(renderer, 10);
+  queue.writeBuffer({ id: 'B' }, 0, new Uint8Array(4));
+  queue.writeBuffer({ id: 'C' }, 0, new Uint8Array(4));
+  tickCensus(10); tickCensus(11);
+  const res = takeCensus()!;
+  assert.equal(res.totalCalls, 2, 'second census replaces the first, not adds to it');
+  assert.deepEqual(res.censusFrames, [10, 11], 'reports the frames it actually ran on');
+  assert.equal(queue.writeBuffer, raw, 'still unwrapped after the second census');
+});
+
 resetCensus();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

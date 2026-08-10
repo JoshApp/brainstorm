@@ -33,7 +33,7 @@ import type { SceneAudit } from './scene-audit';
 let sceneAuditProvider: (() => SceneAudit) | null = null;
 export function setSceneAuditProvider(fn: () => SceneAudit): void { sceneAuditProvider = fn; }
 import { getSettings } from '../settings/settings';
-import { armCensus, tickCensus, takeCensus, resetCensus, type CensusResult } from './upload-census';
+import { armCensus, tickCensus, takeCensus, resetCensus, CENSUS_PERIOD_MS, type CensusResult } from './upload-census';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -221,7 +221,15 @@ function graphicsSnapshot(): Record<string, unknown> {
 
 function onRingFrame(s: FrameSample): void {
   const now = performance.now();
-  if (recording) tickCensus(censusFrame++);
+  // Census on a timer while the ring rolls — NOT at record-start. A SAVE LAST
+  // 15s snapshot is a slice of a ring that filled before the button was
+  // pressed, so arming on start attributes nothing (measured: the first
+  // recording on the census build came back with no census at all).
+  tickCensus(censusFrame++);
+  if (now - lastCensusAt > CENSUS_PERIOD_MS) {
+    lastCensusAt = now;
+    armCensus(censusRenderer, censusFrame);
+  }
   const evList = pendingEvents.length ? pendingEvents.slice() : [];
   pendingEvents.length = 0;
   // Fold in any shader programs that compiled this frame, tagged by type
@@ -272,6 +280,7 @@ function onRingFrame(s: FrameSample): void {
  *  otherwise has no reason to know about it. */
 let censusRenderer: unknown = null;
 let censusFrame = 0;
+let lastCensusAt = -Infinity;
 export function setCensusRenderer(r: unknown): void { censusRenderer = r; }
 
 /** Turn the dashcam ring on/off. Driven by the PROFILER TOOLS setting. */
@@ -287,6 +296,8 @@ export function setRollingEnabled(on: boolean): void {
     pendingEvents.length = 0;
     lastAutoSpikeAt = -Infinity;
     autoSpikeCount = 0;
+    lastCensusAt = -Infinity;   // census promptly once the ring comes up
+    resetCensus();
     addFrameListener(onRingFrame);
     // Per-pass GPU spans (render/compute split) are passive WebGPU timestamp
     // queries — always on, so every recording carries them automatically.
@@ -307,13 +318,9 @@ export function startRecording(label?: string): void {
   if (!rolling) setRollingEnabled(true);   // self-arm if called directly
   recording = true;
   recordStartAbs = performance.now();
-  // Census the first couple of frames of the recording. It costs those frames a
-  // few ms (a stack capture per upload) and then removes itself; the export
-  // names the frames it touched so the hitch it causes is never mistaken for
-  // the bug it is measuring.
-  resetCensus();
-  censusFrame = 0;
-  armCensus(censusRenderer, 0);
+  // No census arming here on purpose — it runs on a timer in onRingFrame so
+  // that the SAVE LAST 15s path (which is how recordings are actually taken)
+  // gets one too.
   pendingLabel = label;
   showBadge();
   stateListener?.(true);

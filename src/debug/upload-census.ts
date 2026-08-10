@@ -19,13 +19,23 @@
 // census attaches itself to the front of a recording and arrives in the same
 // file. No new thing to learn, no console on a phone.
 //
+// IT RUNS ON A TIMER, NOT AT RECORD-START. First version armed in
+// startRecording() and produced nothing, because the recordings people
+// actually make come from SAVE LAST 15s — a snapshot of a ring buffer that was
+// already full by the time the button is pressed. You cannot census the past.
+// So it re-arms every CENSUS_PERIOD_MS while the ring is rolling and keeps the
+// most recent result; any snapshot then carries an attribution measured within
+// the last few seconds, in the same scene it depicts.
+//
 // COST, stated because it is not free: `new Error().stack` is a few µs, so a
-// census frame pays roughly 2–4ms extra. It runs for CENSUS_FRAMES frames at
-// the START of a recording and then removes itself, and the frames it touched
+// census frame pays roughly 2–4ms extra. That lands on CENSUS_FRAMES frames
+// every CENSUS_PERIOD_MS — about 2 frames in 300 — and the frames it touched
 // are named in the export (`censusFrames`) so nobody mistakes the hitch it
 // causes for the bug it is measuring.
 
 const CENSUS_FRAMES = 2;
+/** How often to re-census while the profiler ring is rolling. */
+export const CENSUS_PERIOD_MS = 5000;
 
 /** One call site, and what it uploaded. */
 export interface CensusSite {
@@ -98,7 +108,10 @@ function record(dest: unknown, bytes: number): void {
  * (no device → does nothing and reports nothing, exactly like the counter).
  */
 export function armCensus(renderer: unknown, atFrame: number): void {
-  if (active || result) return;
+  // Re-armable. The previous result is deliberately NOT cleared here — it stays
+  // readable until a new census finishes and replaces it, so a snapshot taken
+  // at any moment always has an attribution to carry.
+  if (active) return;
   const queue = (renderer as { backend?: { device?: { queue?: QueueLike } } })
     .backend?.device?.queue;
   if (!queue || typeof queue.writeBuffer !== 'function') return;
