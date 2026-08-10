@@ -205,6 +205,90 @@ function setAll(lab: LabScene, make: (role: keyof LabScene['roles'], m: THREE.Me
   }
 }
 
+
+// ── THE RISO FAMILY — does "hue means depth" survive a real palette? ─────────
+//
+// RISO was the strongest thing the lab produced, so the next question is not
+// "is it pretty" but "is it a SYSTEM". Hollow Knight's power is that hue means
+// PLACE: you know which region you are in from a thumbnail. The claim to test
+// here is the descent version — hue means DEPTH.
+//
+// A family, not a set of one-offs. Every member runs the SAME recipe and
+// differs in exactly three numbers: paper, ink A, ink B. Holding the recipe
+// identical is what makes the sheet an experiment instead of four drawings —
+// if act 3 reads as more menacing than act 1, that is the PALETTE talking, and
+// nothing else was free to talk.
+//
+// Two things a family has to do at once, and they pull against each other:
+//   DISTINCT   — the four cells must be tellable apart at a glance, or depth
+//                is not legible and the whole idea fails.
+//   KIN        — they must read as one game. Four unrelated colour schemes is
+//                not an art direction, it is four art directions.
+// The sheet is where you find out whether a given set does both.
+function risoRecipe(
+  id: string, name: string, note: string,
+  paper: number, inkA: number, inkB: number,
+): StyleRecipe {
+  return {
+    id, name, note,
+    apply(lab) {
+      const paperC = new THREE.Color(paper);
+      lab.scene.background = paperC;
+      lab.scene.fog = new THREE.Fog(paper, 10, 26);
+      // The shell gets paper pulled a little toward ink A — still only two
+      // inks, but the room has a BODY. Pure paper walls made the first riso
+      // cell an archway floating in nothing: striking, and useless for judging
+      // whether a room reads.
+      const shellC = paperC.clone().lerp(new THREE.Color(inkA), 0.18);
+      setAll(lab, (role) => new THREE.MeshBasicMaterial({
+        color: role === 'creature' || role === 'emissive' ? inkB
+             : role === 'shell' ? shellC.getHex() : inkA,
+      }));
+      for (const l of lab.lights) l.visible = false;
+      addHullOutline(lab, 0.03);
+    },
+  };
+}
+
+/**
+ * One pair per act, arranged as a DESCENT.
+ *
+ * The progression is deliberate rather than decorative: paper DARKENS as you go
+ * down, ink A goes from earth to stone to black, and ink B — always the
+ * creature, always the only warm thing in frame — goes from rust to sickly to
+ * arterial. So the thing that is ALIVE gets more alive-looking the deeper you
+ * are, which is the read the fiction wants anyway.
+ *
+ * The paper darkening is not decoration either, and the first version of this
+ * family got it wrong in a way worth recording. The papers were 0xdcd3bd,
+ * 0xc3c6c4, 0xd6cfc0 — luminance 211, 197, 207. Flat. The comment claimed a
+ * descent and the numbers did not perform one, so on the sheet acts I-III were
+ * IDENTICAL in the grayscale row: distinguishable by hue alone.
+ *
+ * That is the failure this project's own look-sheet rule exists to catch — a
+ * look carried only by hue collapses the moment a screen washes out, and depth
+ * legibility is not something to stake on colour vision. Papers now run 211 /
+ * 169 / 130, so the descent is in the VALUE and the hue is the second signal
+ * rather than the only one.
+ */
+function risoFamily(): Record<string, StyleRecipe> {
+  const members = [
+    ['riso1', 'RISO · ACT I', 'Warm paper, iron ink, rust creature — the place still remembers being a building.',
+     0xdcd3bd, 0x2b2419, 0xb0492f],
+    ['riso2', 'RISO · ACT II', 'Cold paper, slate ink, verdigris creature — stone and damp, no warmth left in it.',
+     0xa8aaa6, 0x1d2b3a, 0x63996a],
+    ['riso3', 'RISO · ACT III', 'Bone paper, black ink, arterial creature — the deep, and the only warm thing is meat.',
+     0x8a8175, 0x14100f, 0xc4262a],
+    ['riso4', 'RISO · SUNKEN', 'Inverted: ink paper, bone ink. Does the family survive being turned inside out?',
+     0x191d24, 0xb9b3a2, 0xc46a2a],
+  ] as const;
+  const out: Record<string, StyleRecipe> = {};
+  for (const [id, name, note, paper, a, b] of members) {
+    out[id] = risoRecipe(id, name, note, paper, a, b);
+  }
+  return out;
+}
+
 export const STYLES: Record<string, StyleRecipe> = {
   baseline: {
     id: 'baseline', name: 'BASELINE', note: 'Plain lit stone. The control — every other cell is judged against this.',
@@ -351,21 +435,7 @@ export const STYLES: Record<string, StyleRecipe> = {
   // 2. TWO INKS AND PAPER. Not a palette — a risograph. Every hue in frame is
   //    one of two, and DEPTH is carried by which ink you are in. Cheap,
   //    memorable, and the room-mood tint system already supplies the second ink.
-  riso: {
-    id: 'riso', name: 'RISO 2-INK', note: 'Two inks on paper, nothing else. Depth carried by WHICH ink, not by value.',
-    apply(lab) {
-      const paper = 0xdad2c0, inkA = 0x1d2b4a, inkB = 0xb0402f;
-      lab.scene.background = new THREE.Color(paper);
-      lab.scene.fog = new THREE.Fog(paper, 10, 26);
-      setAll(lab, (role) => new THREE.MeshBasicMaterial({
-        color: role === 'creature' ? inkB
-             : role === 'emissive' ? inkB
-             : role === 'shell' ? paper : inkA,
-      }));
-      for (const l of lab.lights) l.visible = false;
-      addHullOutline(lab, 0.03);
-    },
-  },
+  ...risoFamily(),
 
   // 3. THE LAMP DRAWS THE WORLD. VOID taken seriously as geometry rather than
   //    as fog: outside the lamp there is no surface, only paper. Things enter
@@ -411,7 +481,8 @@ export const STYLES: Record<string, StyleRecipe> = {
 };
 
 export const STYLE_ORDER: readonly string[] = [
-  'baseline', 'bleached', 'riso', 'summoned',
+  'riso1', 'riso2', 'riso3', 'riso4',
+  'baseline', 'bleached', 'summoned',
   'toonink', 'toon', 'silhouette',
   'bonewash', 'matcapstone', 'emberglass', 'blueprint',
 ];
