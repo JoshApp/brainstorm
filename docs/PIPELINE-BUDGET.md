@@ -498,6 +498,69 @@ Nobody has "solved" this in the sense of a portable persistent cache — the Web
 spec deferred it post-MVP. Engines that don't stutter either ship precompiled PSOs
 (impossible here) or never tear down the process (option 2).
 
+### The scene audit: 42 material configurations, 247 loose level meshes
+
+Josh: *"the complexity of what we have should be nothing — is something about the
+way we build things from primitives in code actively hurting us?"* Measured on a
+depth-3 floor (`seed=4242`, WebGL2 headless, so CPU-side structures only):
+
+| | |
+| --- | --- |
+| triangles | 35,075 |
+| draws | 124 |
+| pipelines | 255 |
+| **distinct material configurations** | **42** |
+| batched meshes (BatchedMesh objects) | 10 |
+| **loose meshes still under the level root** | **247** |
+
+**Geometrically the answer is no.** 35k triangles is nothing, the GPU sits at
+6-8ms, and the frame is pinned at the 60fps cap. Primitives are cheap. The two
+real costs are object COUNT and material VARIETY — and the second is the one that
+sets load time, because every material × attribute layout × render state is a
+pipeline to compile. 255 pipelines for 35k triangles is ~137 triangles per
+pipeline, which is the number that does not belong.
+
+**The loose meshes**, despite the batcher reporting `520/520 static meshes → 10
+batches` on the same floor:
+
+| count | what |
+| --- | --- |
+| 107 | transparent, unnamed, no dbgKind |
+| 47 | opaque, unnamed, no material name |
+| 42 | opaque, `modeldef:opa:plain` |
+| 14 | enemies (correctly excluded — dynamic) |
+| 12 | opaque, `modeldef:opa:plain+f` |
+| 14 | `shared:std` (8 single + 6 instanced) |
+
+So ~101 OPAQUE level meshes are not in a batch. The batcher's own gates explain
+part of it — `items.length < 2` skips a group of one, and the batch key includes
+the RECT, so a floor with many rooms fragments each material into many small
+per-room groups, any of which can fall to one item. Transparency is the other
+100, and that one is not a bug: batching transparent geometry breaks back-to-front
+ordering.
+
+**The material variety is mostly accidental, not designed.** The 42
+configurations are not 42 intended looks:
+
+- `modeldef:opa:plain` appears TWICE — `fog:1` (×42) and `fog:0` (×17). Same
+  material, one flag apart.
+- `shared:std` appears at least three times (`fog:0`, `flat:1 fog:1`,
+  `trans:1 side:2`).
+- ~61 MeshStandardMaterial instances across four UNNAMED configurations
+  (`side:2` ×22, `side:0` ×22, `flat:1 trans:1` ×9, `trans:1 side:2` ×8) — these
+  bypass the model-material pool entirely, so they can never dedup.
+- ~9 distinct MeshBasicMaterial configurations for effects, differing only in
+  side / depthWrite / blending / fog.
+- 105 SpriteMaterial INSTANCES sharing one configuration — one material object
+  per sprite where one shared object would do.
+
+The pattern is the same in every row: **the same few materials, re-specified
+slightly differently by different call sites.** That is what "should just be a
+handful" is running into. The fix is not fewer looks; it is routing every material
+through the pool (`build-model.ts createMaterial` already dedups by a canonical
+def key) instead of hand-constructing `new MeshStandardMaterial(...)` at the call
+site, and collapsing flags that don't need to differ.
+
 ### The remaining hitches are not compiles
 
 With compiles accounted for, the spikes that are left have no compile and no GC:
