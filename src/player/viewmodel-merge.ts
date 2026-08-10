@@ -3,10 +3,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 // Merge a viewmodel subtree's STATIC bone meshes into one mesh per material.
 //
-// The first-person hand is ~88 separate bone meshes, and the whole viewmodel is
-// drawn TWICE every frame (the depth pre-pass in render-target.ts + the main
-// scene pass), so those meshes cost ~176 draws — ~a quarter of the frame, always
-// on screen. But the hand is RIGID in play: the finger curl is baked once per
+// The first-person hand is ~88 separate bone meshes, always on screen and never
+// culled — a large, permanent slice of the frame. But the hand is RIGID in
+// play: the finger curl is baked once per
 // weapon at compose time (adjustFingersForGrip); per frame only the whole group
 // bobs/sways. So its bones never move relative to each other and can collapse
 // into a handful of merged meshes.
@@ -18,6 +17,17 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 //
 // NOT for the arms — those are IK-driven (the elbow bends per frame), so their
 // bones DO move relative to each other and must stay separate.
+//
+// WHAT THIS CANNOT DO, and why that is fine (measured 2026-08-10). Buckets key
+// on material SIGNATURE, so a sword's blade/guard/grip/pommel — four colours —
+// are four buckets of one and merge into nothing. static-batch.ts solves exactly
+// that for the world by baking colour into a vertex attribute so everything in a
+// shading family shares one material. Applying the same trick here takes the
+// viewmodel's 31 visible meshes to 13 shading families on paper — but most of
+// those families are singletons anyway, and several members are the IK arm bones
+// that must stay apart regardless. The real yield is ~8-12 meshes, against a
+// change that reaches into how the weapon is coloured and flashed. Not worth it
+// at this price; revisit only if the viewmodel grows.
 export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Object3D | null, label = 'hand-merged'): void {
   group.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
