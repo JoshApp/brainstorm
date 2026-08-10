@@ -121,7 +121,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // ABSORBED mode — dark rotted flesh, NO rim. A mundane beast hides in
         // the black; only its hot eyes give it away until your lamp finds it.
         // (Self-glow is reserved for arcane things now.)
-        flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto' },
+        flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto', chroma: 0.3 },
         // BONE, pushed through the rot. This is the ghoul's answer to "brown
         // lump": the albedo was already near-black (0x14100c) — the brown is the
         // torch, and every rough surface in a warm room returns the same brown
@@ -233,7 +233,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // length), a small head so the snout dominates the face.
       proportions: { height: 0.28, girth: 0.18, legLength: 0.12, headSize: 0.09, neckLength: 0.06 },
       materials: {
-        fur: { color: 0x241c22, roughness: 1, flatShading: 'auto' },
+        fur: { color: 0x241c22, roughness: 1, flatShading: 'auto', chroma: 0.3 },
         // WET, not pale. This was 0x5a4744 — a mid-value warm grey, and under a
         // torch that is precisely the colour of the floor the rat is standing on,
         // which is why a rat at four metres was an invisible brown lump. Same
@@ -371,7 +371,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'biped',
       proportions: { height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16 },
       materials: {
-        flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto' },   // Absorbed — no rim (mundane beast)
+        flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto', chroma: 0.3 },   // Absorbed — no rim (mundane beast)
         // COOL cloth under a warm room. The sash was 0x2a201a — warm brown lit
         // by an orange torch, i.e. the floor's exact colour at the floor's exact
         // value. Albedo multiplies the light, so a cold blue-grey comes back as a
@@ -677,6 +677,19 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // should be. Nearly opaque so the glow reads AGAINST a true void.
         void: { color: 0x05080a, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.92 },
         eyes: { color: 0x8effc6, emissive: 0x8effc6, emissiveIntensity: 3.2 },
+        // THE SOUL — what the shroud is wrapped AROUND. Sits inside the 0.62-
+        // opacity robe, so it does not read as a bright ball stuck on the chest;
+        // it reads as the cloth being lit from within. This is the one place a
+        // full-body glow is right rather than a bug: the acolyte's robe washing
+        // green was a fresnel accident on a mundane caster, but a wraith IS a
+        // light with clothes on, and the shroud is the diffuser.
+        soul: { color: 0x2a4a44, emissive: 0x4fd8a8, emissiveIntensity: 0.45, transparent: true, opacity: 0.42 },
+        // The other voices. Dimmer than the eyes on purpose — the pair in the
+        // hood stays the thing you look at, and these hang around it.
+        voice: { color: 0x8effc6, emissive: 0x8effc6, emissiveIntensity: 1.1, transparent: true, opacity: 0.8 },
+        // Claw tips only. The hand ENDS in light, so a reach out of the dark
+        // arrives before the arm does.
+        ember: { color: 0xbaffe0, emissive: 0x8effc6, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 3.2 },
       flash: { material: 'robe' },
@@ -698,9 +711,19 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'cone', joint: 'spine', radius: 0.08, height: 0.7, pos: [-0.22, -1.15, 0.05], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
         { kind: 'cone', joint: 'spine', radius: 0.07, height: 0.85, pos: [0.18, -1.25, -0.08], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
         { kind: 'cone', joint: 'spine', radius: 0.06, height: 0.6, pos: [0.05, -1.1, 0.18], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
+        // The soul burning inside the shroud — a large soft core in the chest
+        // and a smaller one further down, so the glow has a FALLOFF through the
+        // cloth rather than one even panel of light.
+        { kind: 'sphere', joint: 'spine', radius: 0.26, scale: [0.85, 1.25, 0.8], pos: [0, 0.02, 0], mat: 'soul' },
+        { kind: 'sphere', joint: 'spine', radius: 0.14, pos: [0, -0.48, 0], mat: 'soul' },
         // Hunched shoulders rising into a deep peaked hood (grim, overhanging).
         { kind: 'sphere', joint: 'shoulderL', radius: 0.2, jitter: 0.05, mat: 'robe' },
         { kind: 'sphere', joint: 'shoulderR', radius: 0.2, jitter: 0.05, mat: 'robe' },
+        // Loose voices orbiting the hood — the CHOIR is not one thing. Small and
+        // scattered off-centre so they read as a swarm, not as decoration.
+        { kind: 'sphere', joint: 'head', radius: 0.032, pos: [-0.34, 0.16, 0.06], mat: 'voice' },
+        { kind: 'sphere', joint: 'head', radius: 0.026, pos: [0.31, 0.30, -0.04], mat: 'voice' },
+        { kind: 'sphere', joint: 'head', radius: 0.020, pos: [0.16, -0.22, 0.20], mat: 'voice' },
         // The HOLLOW: a lightless cavity where a face should be, the hood drawn
         // forward over it so the glow stares out of pure shadow.
         { kind: 'sphere', joint: 'head', radius: 0.2, scale: [0.95, 1.05, 1.0], mat: 'void' },
@@ -724,6 +747,15 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.34, pos: [-0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
         { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.4, pos: [0, -0.05, -0.04], rot: [2.6, 0, 0], mat: 'bone' },
         { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.34, pos: [0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
+        // Burning tips on the reaching claws — six small lights at the ends of
+        // the longest thing on the model, so the silhouette's furthest point is
+        // also its brightest.
+        { kind: 'sphere', joint: 'handL', radius: 0.028, pos: [-0.05, -0.20, -0.20], mat: 'ember' },
+        { kind: 'sphere', joint: 'handL', radius: 0.030, pos: [0, -0.23, -0.23], mat: 'ember' },
+        { kind: 'sphere', joint: 'handL', radius: 0.028, pos: [0.05, -0.20, -0.20], mat: 'ember' },
+        { kind: 'sphere', joint: 'handR', radius: 0.028, pos: [-0.05, -0.20, -0.20], mat: 'ember' },
+        { kind: 'sphere', joint: 'handR', radius: 0.030, pos: [0, -0.23, -0.23], mat: 'ember' },
+        { kind: 'sphere', joint: 'handR', radius: 0.028, pos: [0.05, -0.20, -0.20], mat: 'ember' },
       ],
     },
     baseEyeEmissive: 3.2,

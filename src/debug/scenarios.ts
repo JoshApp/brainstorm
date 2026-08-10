@@ -2199,6 +2199,30 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.4 } },
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
   },
+  // The Hollow Choir, staged for a LOOK — one dim cool torch far behind it, so
+  // what you see is the thing's own light rather than a lit statue.
+  'mob-wraith': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-wraith', depth: 6, displayName: 'wraith', fogColor: 0x06080c,
+      startPos: { x: 0, z: 4.2, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 8, d: 10 }, height: 4.6 }],
+      corridors: [], props: [],
+      // Two real torches, not one dim one. A near-black room makes the exposure
+      // lift until the walls read pale grey, which is the opposite of the frame
+      // this thing has to be judged in — the wraith must be a light in a dark
+      // room, not a pale shape in a lit one.
+      torches: [
+        { x: -3.9, z: -3.6, height: 2.6, wall: 'W', colorTint: 0x6688b0, intensityMul: 0.9 },
+        { x: 3.9, z: 2.0, height: 2.6, wall: 'E', colorTint: 0xff9a40, intensityMul: 1.0 },
+      ],
+      spawns: [{ enemyId: 'wraith', x: 0, z: -0.6, roomId: 'r', dormant: true }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4.2, lookAt: { x: 0, z: -0.6, y: 1.6 } },
+    godMode: true, enemiesInvincible: true,
+  },
+
   'mob-sump-wisp': {
     freeze: true, hideSword: true,
     level: {
