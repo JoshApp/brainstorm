@@ -116,7 +116,30 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'ghoul',
       archetype: 'biped',
-      proportions: { height: 1.5, girth: 0.13, armLength: 0.74, legLength: 0.6, headSize: 0.16, hunch: 0.18 },
+      // STOOPED, with arms past the knee. The old proportions made an upright
+      // rectangle: head on torso on legs, arms tucked in. At six metres that is
+      // indistinguishable from a delver, a statue, or a barrel — the lamp-test
+      // baseline showed it reduced to two eye-dots and nothing else. A deep
+      // hunch and long arms give the outline a diagonal and two hanging verticals
+      // that no other silhouette in the dungeon has.
+      // `girth` is SHOULDER HALF-WIDTH (skeletons.ts: shX = girth * 1.05), and
+      // the arms hang straight down at exactly ±shX. Narrowing it to 0.11 while
+      // lengthening the arms pressed both limbs flat against a 0.05-radius spine
+      // and the whole creature rendered as one grey plank — worse than what it
+      // replaced. Wide shoulders are what put AIR between the arms and the body,
+      // which is what makes the hanging limbs read as limbs at six metres.
+      // Hunch bends the whole spine chain (a vulture slump); 0.5 threw the head
+      // 0.55 m forward on a 1.5 m body, which foreshortens to a face pasted on a
+      // chest from the front. 0.36 keeps the stoop and the face.
+      proportions: {
+        height: 1.5, girth: 0.20, armLength: 0.95, legLength: 0.56, headSize: 0.16, hunch: 0.36,
+        // Rig v3 gesture. Splay puts real air between the hanging arms and the
+        // ribcage (without it the limbs press flat and the whole thing is a
+        // slab); reach carries the hands forward so it reads as CLOSING even
+        // standing still; the wide stance braces it; lopsided makes the left
+        // side outgrow the right so no two ghouls in a room are the same shape.
+        armSplay: 0.14, armReach: 0.26, stance: 1.2, lopsided: 0.5,
+      },
       materials: {
         // ABSORBED mode — dark rotted flesh, NO rim. A mundane beast hides in
         // the black; only its hot eyes give it away until your lamp finds it.
@@ -129,7 +152,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // genuinely bright albedo, which is the entire reason the skeleton reads
         // from across a room. Ribs, shoulder caps and a jaw give this body the
         // high-frequency light/dark break a smooth capsule torso cannot have.
-        bone: { color: 0xb0a488, roughness: 0.75, flatShading: 'auto' },
+        bone: { color: 0x9c9078, roughness: 0.75, flatShading: 'auto' },
         // Claws catch a HIGHLIGHT rather than sitting a shade paler than the
         // flesh — a specular glint survives a room that washes everything warm;
         // a slightly-lighter matte brown does not.
@@ -139,13 +162,44 @@ export const ENEMIES: Record<string, EnemySpec> = {
       eyes: { material: 'eyes', emissive: 2.0 },
       flash: { material: 'flesh' },
       skin: [
-        // Gaunt tapered torso + small pelvis, gnarled (jitter).
-        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.42, jitter: 0.02, mat: 'flesh' },
-        { kind: 'box', joint: 'pelvis', size: [0.3, 0.26, 0.22], jitter: 0.02, mat: 'flesh' },
-        // Hunched, slightly elongated head; sunken glowing eyes.
-        { kind: 'sphere', joint: 'head', radius: 0.15, scale: [0.9, 1.05, 1.12], jitter: 0.02, mat: 'flesh' },
-        { kind: 'sphere', joint: 'head', radius: 0.038, pos: [-0.07, 0.0, -0.14], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.038, pos: [0.07, 0.0, -0.14], mat: 'eyes' },
+        // ── AN OPEN RIBCAGE, not a closed torso ──────────────────────────
+        // The torso used to be one 0.16-radius capsule. Bright ribs painted on
+        // it read as planks (tried twice, both failed) because a closed capsule
+        // has no BETWEEN — and "between" is the whole reason a skeleton reads
+        // across a room. So the mass is gone: what is left is a thin spine, four
+        // bars hung off it, and air. The lamp now makes light/dark/light/dark
+        // down the chest instead of one flat panel, and at distance the gaps
+        // let the room show through the body.
+        { kind: 'capsule', joint: 'spine', radius: 0.052, height: 0.34, jitter: 0.015, mat: 'flesh' },
+        // Four ribs. Lengths and tilts all differ — an even ladder reads as
+        // manufactured, and this thing should look like it was assembled by rot.
+        { kind: 'capsule', joint: 'spine', radius: 0.018, height: 0.29, pos: [0.005, 0.17, -0.035], rot: [0, 0, 1.68], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.019, height: 0.34, pos: [-0.01, 0.06, -0.042], rot: [0, 0, 1.51], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.018, height: 0.31, pos: [0.012, -0.05, -0.040], rot: [0, 0, 1.62], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.015, height: 0.22, pos: [-0.02, -0.15, -0.032], rot: [0, 0, 1.46], jitter: 0.008, mat: 'bone' },
+        // A sternum closing the front — without it the ribs read as loose sticks
+        // rather than a cage, and the cage is what makes the gaps legible AS gaps.
+        { kind: 'box', joint: 'spine', size: [0.028, 0.21, 0.022], pos: [0, 0.05, -0.10], rot: [0, 0, 0.06], jitter: 0.01, mat: 'bone' },
+        // What is left of the gut, slung under the cage. A ghoul is rot, not a
+        // skeleton — this is the one soft mass on the body, and it hangs LOW so
+        // the ribs above it stay open.
+        { kind: 'capsule', joint: 'pelvis', radius: 0.10, height: 0.09, pos: [0, 0.13, -0.03], jitter: 0.012, mat: 'flesh' },
+        { kind: 'box', joint: 'pelvis', size: [0.25, 0.20, 0.18], jitter: 0.02, mat: 'flesh' },
+        // FACETED, not wobbly. A default sphere is 12×10 segments, and jitter on
+        // top of that many segments makes a lumpy ball — which is what every
+        // creature's head has been. At [5,4] the same sphere is a handful of big
+        // flat planes, so the lamp gives it a lit side, a shadow side and a hard
+        // terminator between them. That is the whole PS1/flat-shaded idiom the
+        // project is aiming at (docs: Lunacid, Cruelty Squad, Manifold Garden),
+        // and it costs one parameter. Jitter drops right down too — with few
+        // facets, a little goes a long way, and a lot just wrecks the planes.
+        { kind: 'sphere', joint: 'head', radius: 0.155, segments: [5, 4], scale: [0.88, 1.05, 1.15], jitter: 0.008, mat: 'flesh' },
+        // A brow ridge over the eyes — an angular plate that throws the sockets
+        // into shadow. The eyes stop being dots stuck on a ball and become eyes
+        // set UNDER something.
+        { kind: 'box', joint: 'head', size: [0.20, 0.045, 0.10], pos: [0, 0.055, -0.10], rot: [-0.28, 0, 0], jitter: 0.008, mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.034, segments: [5, 4], pos: [-0.065, -0.005, -0.135], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.034, segments: [5, 4], pos: [0.065, -0.005, -0.135], mat: 'eyes' },
         // A jaw the rot has stripped — the one bright note on the head, right
         // under the eyes, so the face reads as a face at four metres.
         { kind: 'box', joint: 'head', size: [0.13, 0.05, 0.09], pos: [0, -0.10, -0.10], jitter: 0.012, mat: 'bone' },
@@ -155,8 +209,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // and a round bright thing beside a face imitates them. The bone goes
         // where it makes a STRIPE (ribs) or a JAW, never where it makes a pair
         // of circles.
-        { kind: 'sphere', joint: 'shoulderL', radius: 0.08, mat: 'flesh' },
-        { kind: 'sphere', joint: 'shoulderR', radius: 0.08, mat: 'flesh' },
+        // ASYMMETRIC on purpose. Equal shoulders make a symmetrical outline, and
+        // a symmetrical outline reads as an object rather than a creature — it is
+        // also the single cheapest way to stop three ghouls in a room looking
+        // like three copies. Left rides higher and heavier; the right scapula has
+        // torn loose and juts out of the back.
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.092, segments: [5, 3], scale: [1.0, 1.15, 1.0], pos: [0, 0.02, 0], jitter: 0.008, mat: 'flesh' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.064, segments: [5, 3], pos: [0, -0.03, 0], jitter: 0.008, mat: 'flesh' },
+        { kind: 'box', joint: 'shoulderR', size: [0.09, 0.15, 0.045], pos: [0.035, 0.05, 0.055], rot: [0.42, 0, -0.34], jitter: 0.012, mat: 'bone' },
         // NO RIBS HERE, and the failure is worth keeping written down.
         //
         // Tried twice: three pale bars inside the torso outline, then two wider

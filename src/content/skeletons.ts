@@ -6,6 +6,12 @@ import type { SlotSpec, Vec3 } from '../ecs/model-types';
 // frame, feet at y=0) plus the metadata the auto-hurtbox + animation read
 // (spine chain, head joint, limb chains). See docs/CREATURE-SYSTEM.md.
 
+/** Rig v3 gesture knobs at their NEUTRAL values. Spread into every archetype's
+ *  defaults so an existing creature that names none of them gets exactly the
+ *  skeleton it had before. See Proportions in creature-types.ts for what each
+ *  one does and why the rig needed them. */
+const GESTURE_NEUTRAL = { armSplay: 0, armReach: 0, stance: 1, lopsided: 0 } as const;
+
 /** Height-derived proportion defaults — set `height` and the rest follow, so a
  *  minimal spec is a few lines. Override any field on top. */
 function defaultsFor(a: Archetype, height: number): Proportions {
@@ -18,29 +24,29 @@ function defaultsFor(a: Archetype, height: number): Proportions {
         armLength: height * 0.42,
         legLength: height * 0.46,
         neckLength: height * 0.06,
-        hunch: 0,
+        hunch: 0, ...GESTURE_NEUTRAL,
       };
     case 'quadruped':
       return {
         height, girth: height * 0.7, headSize: height * 0.85,
-        armLength: 0, legLength: height * 0.9, neckLength: height * 0.4, hunch: 0,
+        armLength: 0, legLength: height * 0.9, neckLength: height * 0.4, hunch: 0, ...GESTURE_NEUTRAL,
       };
     case 'blob':
       return {
         height, girth: height * 0.6, headSize: height * 0.3,
-        armLength: 0, legLength: 0, neckLength: 0, hunch: 0,
+        armLength: 0, legLength: 0, neckLength: 0, hunch: 0, ...GESTURE_NEUTRAL,
       };
     case 'ghost':
       return {
         height, girth: height * 0.18, headSize: height * 0.11,
-        armLength: height * 0.4, legLength: 0, neckLength: 0, hunch: 0,
+        armLength: height * 0.4, legLength: 0, neckLength: 0, hunch: 0, ...GESTURE_NEUTRAL,
       };
     case 'arachnid':
       return {
         // height = body height off ground; girth = body radius; legLength = leg
         // reach (legs splay well past the body).
         height, girth: height * 1.1, headSize: height * 0.5,
-        armLength: 0, legLength: height * 2.2, neckLength: 0, hunch: 0,
+        armLength: 0, legLength: height * 2.2, neckLength: 0, hunch: 0, ...GESTURE_NEUTRAL,
       };
     case 'flier':
       return {
@@ -48,7 +54,7 @@ function defaultsFor(a: Archetype, height: number): Proportions {
         // hit-target radius — kept generous relative to the tiny visible body so
         // a fast swarmer is still catchable by a cleave. armLength = wingspan.
         height, girth: height * 0.09, headSize: height * 0.03,
-        armLength: height * 0.14, legLength: 0, neckLength: 0, hunch: 0,
+        armLength: height * 0.14, legLength: 0, neckLength: 0, hunch: 0, ...GESTURE_NEUTRAL,
       };
   }
 }
@@ -92,24 +98,42 @@ function bipedSkeleton(p: Proportions): SkeletonDef {
   const neckYv = neckY - p.hunch * 0.25;
   const headZ = -p.hunch * 1.1;
   const headYv = headY - p.hunch * 0.45;
+  // ── GESTURE v3 ────────────────────────────────────────────────────────
+  // Arms used to run straight down the ±shX line with no way to move them, so
+  // a long-armed creature pressed both limbs flat against its own torso and
+  // rendered as one slab. Splay pushes the hands outboard (air between limb and
+  // body — that gap is what makes an arm read as an arm in silhouette), reach
+  // pulls them forward, and `lopsided` breaks left/right symmetry, which is
+  // what stops a creature reading as an object. At the neutral defaults every
+  // expression below collapses to the original constant.
+  const elbowX = shX + p.armSplay * 0.5;
+  const handX = shX + p.armSplay;
+  const elbowZ = shoulderZ * 0.6 - p.armReach * 0.45;
+  const handZ = shoulderZ * 0.3 - p.armReach;
+  // The left side rides higher and reaches further.
+  const shYL = shoulderY + p.lopsided * 0.05;
+  const shYR = shoulderY - p.lopsided * 0.03;
+  const armL = p.armLength * (1 + p.lopsided * 0.12);
+  const armR = p.armLength * (1 - p.lopsided * 0.06);
+  const hipXs = hipX * p.stance;
   const j: JointDef[] = [
     { name: 'root', abs: [0, 0, 0] },
     { name: 'pelvis', parent: 'root', abs: [0, hipY, 0] },
     { name: 'spine', parent: 'pelvis', abs: [0, chestYv, chestZ] },
     { name: 'neck', parent: 'spine', abs: [0, neckYv, neckZ] },
     { name: 'head', parent: 'neck', abs: [0, headYv, headZ] },
-    { name: 'shoulderL', parent: 'spine', abs: [-shX, shoulderY, shoulderZ] },
-    { name: 'shoulderR', parent: 'spine', abs: [shX, shoulderY, shoulderZ] },
-    { name: 'elbowL', parent: 'shoulderL', abs: [-shX, shoulderY - p.armLength * 0.5, shoulderZ * 0.6] },
-    { name: 'elbowR', parent: 'shoulderR', abs: [shX, shoulderY - p.armLength * 0.5, shoulderZ * 0.6] },
-    { name: 'handL', parent: 'elbowL', abs: [-shX, shoulderY - p.armLength, shoulderZ * 0.3] },
-    { name: 'handR', parent: 'elbowR', abs: [shX, shoulderY - p.armLength, shoulderZ * 0.3] },
-    { name: 'hipL', parent: 'pelvis', abs: [-hipX, hipY, 0] },
-    { name: 'hipR', parent: 'pelvis', abs: [hipX, hipY, 0] },
-    { name: 'kneeL', parent: 'hipL', abs: [-hipX, hipY - p.legLength * 0.5, 0] },
-    { name: 'kneeR', parent: 'hipR', abs: [hipX, hipY - p.legLength * 0.5, 0] },
-    { name: 'footL', parent: 'kneeL', abs: [-hipX, 0, 0.04] },
-    { name: 'footR', parent: 'kneeR', abs: [hipX, 0, 0.04] },
+    { name: 'shoulderL', parent: 'spine', abs: [-shX, shYL, shoulderZ] },
+    { name: 'shoulderR', parent: 'spine', abs: [shX, shYR, shoulderZ] },
+    { name: 'elbowL', parent: 'shoulderL', abs: [-elbowX, shYL - armL * 0.5, elbowZ] },
+    { name: 'elbowR', parent: 'shoulderR', abs: [elbowX, shYR - armR * 0.5, elbowZ] },
+    { name: 'handL', parent: 'elbowL', abs: [-handX, shYL - armL, handZ] },
+    { name: 'handR', parent: 'elbowR', abs: [handX, shYR - armR, handZ] },
+    { name: 'hipL', parent: 'pelvis', abs: [-hipXs, hipY, 0] },
+    { name: 'hipR', parent: 'pelvis', abs: [hipXs, hipY, 0] },
+    { name: 'kneeL', parent: 'hipL', abs: [-hipXs, hipY - p.legLength * 0.5, 0] },
+    { name: 'kneeR', parent: 'hipR', abs: [hipXs, hipY - p.legLength * 0.5, 0] },
+    { name: 'footL', parent: 'kneeL', abs: [-hipXs, 0, 0.04] },
+    { name: 'footR', parent: 'kneeR', abs: [hipXs, 0, 0.04] },
   ];
   return {
     joints: j,

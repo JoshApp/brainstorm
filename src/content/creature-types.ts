@@ -21,6 +21,32 @@ export interface Proportions {
   legLength: number;   // hip → foot
   neckLength: number;  // chest → head base
   hunch: number;       // head forward lean (stoop)
+  // ── GESTURE (rig v3) ────────────────────────────────────────────────────
+  // `hunch` used to be the ONLY thing that could change a creature's rest pose,
+  // and it bends the spine only. Everything else came out of the same upright
+  // mannequin: arms straight down at exactly ±girth, legs at a fixed track,
+  // both sides identical. That is why every biped in the roster reads as the
+  // same silhouette with different lumps on it — at six metres, in fog, the
+  // outline is the ONLY information left, and we were authoring one outline.
+  //
+  // These four are pure gesture. All default to the neutral value, and at their
+  // defaults the skeleton is byte-identical to the old one, so adopting them is
+  // opt-in per creature.
+  /** Metres the hands sit OUTSIDE the shoulder line. 0 = straight down, flush
+   *  against the body. Positive splays the arms out and puts AIR between limb
+   *  and torso — the difference between a plank and a figure. */
+  armSplay: number;
+  /** Metres the hands reach FORWARD (−Z) of the shoulder. Turns a hanging arm
+   *  into a reaching one without an animation. */
+  armReach: number;
+  /** Multiplier on hip half-width. >1 widens the stance (braced, bow-legged),
+   *  <1 narrows it (spindly, unsteady). */
+  stance: number;
+  /** 0..1 — how far the LEFT side outgrows the right: shoulder rides higher,
+   *  arm hangs longer. Symmetry is what makes a creature read as an object;
+   *  this is the cheapest cure, and it also stops three of the same mob in one
+   *  room looking like three copies. */
+  lopsided: number;
 }
 
 /** A skin primitive hung on a joint. Same vocabulary as ModelSpec parts, but

@@ -2199,6 +2199,43 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.4 } },
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
   },
+  // ── THE LAMP TEST ────────────────────────────────────────────────────────
+  //
+  // The two distances a creature actually has to survive, in one frame:
+  //
+  //   NEAR (~3 m)  the player's lamp is full on it. This is where a dark body
+  //                stops being dark — the lamp lifts every rough surface to the
+  //                same value as the floor, which is why "make it darker" has
+  //                never fixed anything.
+  //   FAR  (~6 m)  past the lamp, inside the torch falloff, just short of the
+  //                fog (FOG_FAR 9). This is where silhouette is the ONLY read.
+  //
+  // A creature that works at one and dies at the other is not done. `?mob=<id>`
+  // swaps the subject, so this is the bench for the whole roster, not one mob.
+  // Deliberately warm-lit, from the side, with a plain floor under it: no mood
+  // lighting to flatter the model, and no second creature to hide behind.
+  'lamp-test': {
+    freeze: true, hideSword: true, godMode: true, enemiesInvincible: true,
+    level: (() => {
+      const mob = new URLSearchParams(location.search).get('mob') ?? 'ghoul';
+      return {
+        id: 'lamp-test', depth: 3, displayName: 'LAMP TEST', fogColor: 0x0a0a0c,
+        startPos: { x: 0, z: 4.6, yaw: 0 },
+        rooms: [{ id: 'r', rect: { x: 0, z: -1, w: 8, d: 14 }, height: 4.2 }],
+        corridors: [], props: [],
+        // One warm source, off to one side and BEHIND the near subject, so the
+        // near body is lit by the lamp and the far one is rim-lit by the room.
+        torches: [{ x: -3.9, z: -2.0, height: 2.6, wall: 'W', colorTint: 0xff9a40, intensityMul: 1.15 }],
+        spawns: [
+          { enemyId: mob, x: -0.75, z: 1.7, roomId: 'r', dormant: true },   // ≈3.0 m
+          { enemyId: mob, x: 0.95, z: -1.3, roomId: 'r', dormant: true },   // ≈6.0 m
+        ],
+        doors: [], stairs: [],
+      };
+    })(),
+    playerPos: { x: 0, z: 4.6, yaw: 0, pitch: -0.06 },
+  },
+
   // The Hollow Choir, staged for a LOOK — one dim cool torch far behind it, so
   // what you see is the thing's own light rather than a lit statue.
   'mob-wraith': {
