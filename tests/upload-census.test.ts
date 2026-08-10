@@ -28,6 +28,7 @@ function test(name: string, fn: () => void) {
 /** A renderer-shaped object with a queue we can watch. */
 function fakeRenderer() {
   const calls: Array<{ dest: unknown; bytes: number }> = [];
+  const bound: unknown[] = [];
   const queue = {
     writeBuffer(dest: unknown, _off: unknown, data: unknown, _do?: unknown, size?: number) {
       calls.push({ dest, bytes: size ?? (data as { byteLength?: number })?.byteLength ?? 0 });
@@ -36,7 +37,20 @@ function fakeRenderer() {
       calls.push({ dest, bytes: (data as { byteLength?: number })?.byteLength ?? 0 });
     },
   };
-  return { renderer: { backend: { device: { queue } } }, queue, calls };
+  const backend = {
+    device: { queue },
+    updateBinding(binding: unknown) { bound.push(binding); },
+  };
+  return { renderer: { backend }, queue, calls, backend, bound };
+}
+
+/** A binding shaped like three's NodeUniformsGroup. */
+function binding(group: string, scope: string, uniforms: string[], shared = false, bytes = 192) {
+  return {
+    name: group, byteLength: bytes,
+    uniforms: uniforms.map((n) => ({ name: n })),
+    groupNode: { name: group, shared, updateType: scope },
+  };
 }
 
 test('no device (WebGL2 backend) → arms nothing and reports nothing', () => {
@@ -150,6 +164,47 @@ test('RE-ARMS, and the previous result stays readable until replaced', () => {
   assert.equal(res.totalCalls, 2, 'second census replaces the first, not adds to it');
   assert.deepEqual(res.censusFrames, [10, 11], 'reports the frames it actually ran on');
   assert.equal(queue.writeBuffer, raw, 'still unwrapped after the second census');
+});
+
+test('attributes buffers to their OWNER, and restores updateBinding', () => {
+  // The queue wrapper only sees an anonymous GPUBuffer, so it can say that 500
+  // buffers are written and never which. updateBinding receives the binding,
+  // which knows its uniform group and contents — the difference between
+  // "something writes 500 buffers" and "the object group does, holding
+  // modelViewMatrix". Splitting the camera-driven uploads from the ones that
+  // happen regardless is the entire point.
+  resetCensus();
+  const { renderer, backend, bound } = fakeRenderer();
+  const originalUB = backend.updateBinding;
+
+  armCensus(renderer, 0);
+  assert.notEqual(backend.updateBinding, originalUB, 'updateBinding should be wrapped');
+
+  const objA = binding('object', 'OBJECT', ['modelViewMatrix', 'normalMatrix']);
+  const objB = binding('object', 'OBJECT', ['modelViewMatrix', 'normalMatrix']);
+  const timeG = binding('frame', 'FRAME', ['time'], true);
+  backend.updateBinding(objA);
+  backend.updateBinding(objB);
+  backend.updateBinding(timeG);
+  backend.updateBinding(timeG);
+  tickCensus(0); tickCensus(1);
+
+  const owners = takeCensus()!.owners!;
+  assert.ok(owners.length >= 2, 'should split by owner, not lump together');
+  const obj = owners.find((o) => o.owner.includes('modelViewMatrix'));
+  const time = owners.find((o) => o.owner.includes('time'));
+  assert.ok(obj, 'object group must be identified by its contents');
+  assert.equal(obj!.calls, 2);
+  assert.equal(obj!.buffers, 2, 'two distinct object bindings');
+  assert.ok(time, 'shared frame group must be identified separately');
+  assert.equal(time!.calls, 2);
+  assert.equal(time!.buffers, 1, 'one shared buffer written twice — the waste signal');
+  assert.equal(time!.shared, true, 'shared flag carried through, it is what marks the waste');
+
+  // Every binding still reaches the real backend — an instrument that swallowed
+  // them would blank the screen rather than measure it.
+  assert.equal(bound.length, 4);
+  assert.equal(backend.updateBinding, originalUB, 'updateBinding must be restored');
 });
 
 resetCensus();

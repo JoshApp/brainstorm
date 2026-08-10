@@ -53,6 +53,7 @@ interface Rec {
     uploadCensus?: {
       frames: number; totalCalls: number; totalKB: number; censusFrames: [number, number];
       sites: Array<{ site: string; calls: number; kb: number; buffers: number }>;
+      owners?: Array<{ owner: string; calls: number; kb: number; buffers: number; shared: boolean }>;
     };
   };
   systemNames: string[];
@@ -221,6 +222,19 @@ function main(): void {
     console.log(`\n── upload census ── ${Math.round(perFrame)} calls/frame, ${(census.totalKB / Math.max(1, census.frames)).toFixed(1)} KB/frame`);
     console.log(`  captured over frames ${census.censusFrames[0]}–${census.censusFrames[1]} of the recording (those frames cost a few ms extra — exclude them)`);
     console.log(`  ${'calls/f'.padStart(8)} ${'KB/f'.padStart(7)} ${'bufs'.padStart(5)}  call site`);
+    if (census.owners?.length) {
+      console.log(`\n  WHOSE buffers — the column that decides the fix:`);
+      console.log(`  ${'calls/f'.padStart(8)} ${'bufs'.padStart(5)} ${'per buf'.padStart(8)}  uniform group [scope]  contents`);
+      for (const o of census.owners.slice(0, 14)) {
+        const cpf = o.calls / Math.max(1, census.frames);
+        const perBuf = o.buffers ? cpf / o.buffers : 0;
+        // A SHARED group uploading many times a frame is pure waste — shared
+        // means one copy should serve every render object that reads it.
+        const flag = o.shared && cpf > 4 ? '  ⟵ SHARED yet uploaded per-object: waste' : '';
+        console.log(`  ${cpf.toFixed(0).padStart(8)} ${String(o.buffers).padStart(5)} ${perBuf.toFixed(2).padStart(8)}  ${o.owner}${flag}`);
+      }
+      console.log('');
+    }
     for (const st of census.sites.slice(0, 12)) {
       const cpf = st.calls / Math.max(1, census.frames);
       // Many calls against few buffers = the SAME buffer rewritten repeatedly,

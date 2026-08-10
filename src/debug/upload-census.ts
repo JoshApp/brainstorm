@@ -37,6 +37,23 @@ const CENSUS_FRAMES = 2;
 /** How often to re-census while the profiler ring is rolling. */
 export const CENSUS_PERIOD_MS = 5000;
 
+/** One BINDING OWNER, and what it uploaded. The `site` column says which code
+ *  calls writeBuffer and, for the binding path, that is always the same three
+ *  lines — useless for deciding what to fix. This says WHOSE buffer it was. */
+export interface CensusOwner {
+  /** `<groupName> [updateType] <uniform, uniform, …>` — the uniform group's
+   *  identity plus the uniforms inside it. The uniform list is the payload:
+   *  a group that re-uploads every frame while holding only a time value is a
+   *  different problem from one holding modelViewMatrix. */
+  owner: string;
+  calls: number;
+  kb: number;
+  buffers: number;
+  /** Whether three considers this group SHARED across render objects. A shared
+   *  group uploading hundreds of times a frame is pure waste. */
+  shared: boolean;
+}
+
 /** One call site, and what it uploaded. */
 export interface CensusSite {
   /** Trimmed stack signature — the first few frames outside this module. */
@@ -55,6 +72,9 @@ export interface CensusResult {
   /** Frame indices (relative to the recording) the census ran on. */
   censusFrames: [number, number];
   sites: CensusSite[];
+  /** Per binding-owner attribution. Only the binding path appears here; the
+   *  attribute/texture uploads have no uniform group and stay in `sites`. */
+  owners?: CensusOwner[];
 }
 
 interface QueueLike {
@@ -67,6 +87,7 @@ let framesLeft = 0;
 let startFrame = 0;
 let frameIndex = 0;
 const byCall = new Map<string, { calls: number; bytes: number; buffers: Set<unknown> }>();
+const byOwner = new Map<string, { calls: number; bytes: number; buffers: Set<unknown>; shared: boolean }>();
 let result: CensusResult | null = null;
 let restore: (() => void) | null = null;
 
@@ -87,6 +108,33 @@ function signature(stack: string | undefined): string {
     return m ? `${m[1]} @${m[2].replace(/-[a-zA-Z0-9]{6,}\./, '.')}:${m[3]}` : l.slice(0, 70);
   });
   return keep.join(' ← ') || '(empty)';
+}
+
+/**
+ * Identify whose uniform buffer this is. `groupNode` carries the group's name,
+ * whether three treats it as shared, and its update scope; the uniform list
+ * says what is actually in the buffer — which is what decides the fix. A group
+ * holding modelViewMatrix is dirtied by the camera and wants fewer render
+ * objects; a group holding a time value is dirtied unconditionally and wants
+ * hoisting into one shared frame-scoped group.
+ */
+function ownerOf(binding: unknown): { key: string; shared: boolean; bytes: number } {
+  const b = binding as {
+    name?: string;
+    byteLength?: number;
+    buffer?: { byteLength?: number };
+    uniforms?: Array<{ name?: string }>;
+    groupNode?: { name?: string; shared?: boolean; updateType?: string };
+  };
+  const g = b.groupNode;
+  const uniforms = (b.uniforms ?? []).map((u) => u?.name ?? '?').slice(0, 8).join(',');
+  const scope = g?.updateType ?? '?';
+  const name = g?.name ?? b.name ?? '?';
+  return {
+    key: `${name} [${scope}]${g?.shared ? ' SHARED' : ''}  ${uniforms}`,
+    shared: !!g?.shared,
+    bytes: b.byteLength ?? b.buffer?.byteLength ?? 0,
+  };
 }
 
 function byteLen(data: unknown): number {
@@ -121,6 +169,7 @@ export function armCensus(renderer: unknown, atFrame: number): void {
   startFrame = atFrame;
   frameIndex = 0;
   byCall.clear();
+  byOwner.clear();
 
   // Keep the RAW method references and re-apply them with .call, rather than
   // stashing `fn.bind(queue)`. Restoring a bound copy puts a different function
@@ -138,7 +187,30 @@ export function armCensus(renderer: unknown, atFrame: number): void {
     record((args[0] as { texture?: unknown } | undefined)?.texture, byteLen(args[1]));
     return origWT.apply(queue, args as never);
   };
-  restore = () => { queue.writeBuffer = origWB; queue.writeTexture = origWT; };
+  // ALSO wrap the backend's updateBinding. The queue wrapper can only see the
+  // destination GPUBuffer, which is anonymous; updateBinding receives the
+  // BINDING, which knows its uniform group, its scope and its contents. That is
+  // the difference between "something writes 500 buffers" and "these groups do,
+  // holding these uniforms".
+  const backend = (renderer as { backend?: Record<string, unknown> }).backend;
+  const origUB = backend?.updateBinding as ((b: unknown) => void) | undefined;
+  if (backend && typeof origUB === 'function') {
+    backend.updateBinding = function (this: unknown, binding: unknown) {
+      const { key, shared, bytes } = ownerOf(binding);
+      let e = byOwner.get(key);
+      if (!e) { e = { calls: 0, bytes: 0, buffers: new Set(), shared }; byOwner.set(key, e); }
+      e.calls++;
+      e.bytes += bytes;
+      e.buffers.add(binding);
+      return origUB.call(backend, binding);
+    };
+  }
+
+  restore = () => {
+    queue.writeBuffer = origWB;
+    queue.writeTexture = origWT;
+    if (backend && origUB) backend.updateBinding = origUB;
+  };
 }
 
 /** Call once per frame while a recording runs. Ends the census on its own. */
@@ -157,6 +229,14 @@ export function tickCensus(atFrame: number): void {
     sites.push({ site, calls: e.calls, kb: Math.round((e.bytes / 1024) * 10) / 10, buffers: e.buffers.size });
   }
   sites.sort((a, b) => b.calls - a.calls);
+  const owners: CensusOwner[] = [];
+  for (const [owner, e] of byOwner) {
+    owners.push({
+      owner, calls: e.calls, shared: e.shared,
+      kb: Math.round((e.bytes / 1024) * 10) / 10, buffers: e.buffers.size,
+    });
+  }
+  owners.sort((a, b) => b.calls - a.calls);
   result = {
     frames: frameIndex,
     totalCalls,
@@ -165,8 +245,10 @@ export function tickCensus(atFrame: number): void {
     // Cap the list: a long tail of one-call sites is noise, and the export
     // rides in a file someone has to upload from a phone.
     sites: sites.slice(0, 25),
+    owners: owners.slice(0, 25),
   };
   byCall.clear();
+  byOwner.clear();
 }
 
 /** The aggregate, or null if the census never ran (WebGL2, or not armed). */
@@ -178,4 +260,5 @@ export function resetCensus(): void {
   active = false;
   result = null;
   byCall.clear();
+  byOwner.clear();
 }
