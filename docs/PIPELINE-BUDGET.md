@@ -443,6 +443,61 @@ Note the counting subtlety this exposed: `gaps` can only classify pipelines stil
 RESIDENT, and of the 215 only 4 survived to capture. Without the cumulative
 `inPlaySeen` counter the same session reads as "4 gaps, basically fine."
 
+### Why a "new run" costs a full boot: it IS a full boot
+
+Josh: *"pressing descend again still does the whole loading screen the same as
+booting up the app."* It does, because it is literally booting up the app.
+
+`quitToMenu` and `abandonRun` are `location.reload()` (main.ts), and so is the
+death→retry path (player/death.ts). A reload destroys the JS context, so:
+
+- `rosterPrecompiled` resets to false,
+- three's in-process pipeline cache — 250-odd pipelines, guaranteed to hit — is
+  thrown away entirely,
+- and whether the next run warms or skips falls to `canSkipRosterWarm()`.
+
+Which sets up an alternating cycle, and it explains both halves of what the
+recordings caught. Session A pays the full warm and writes the marker. Session B
+reloads, hits the marker, skips, and — if Dawn's disk cache didn't survive — pays
+215 in-play compiles. That trips the self-heal, so session C pays the full warm
+again: **the long loading screen, every other run.**
+
+So the biggest available win is not a better cache. It is **not dropping the one
+cache that cannot miss.** Ending a run by tearing down the level and starting a
+new one in the SAME context keeps `rosterPrecompiled`, keeps three's pipeline
+cache, and skips the warm honestly rather than optimistically. That is a real
+teardown-correctness job (every module-level singleton has to be resettable),
+which is exactly why reload was chosen in the first place — but it is the lever
+with the most travel.
+
+### What the platform actually gives you (the "tricks")
+
+There is no `GPUPipelineCache` and no way to ship precompiled pipelines, so the
+levers are narrow and worth stating exactly:
+
+1. **`navigator.storage.persist()`** — by default an origin's storage is
+   "best-effort" and the browser may evict it under pressure, taking Dawn's
+   pipeline blob cache with it. Persistent storage is not auto-evicted. Chrome
+   grants it silently for an installed PWA or an engaged site. We were not asking;
+   we do now (`pwa-update.ts requestPersistentStorage`). This is the one genuine
+   platform trick for cache DURABILITY.
+2. **Don't reload** (above). The in-process cache is the only one with a
+   guaranteed hit rate.
+3. **Keep the WGSL stable across deploys.** Dawn keys its cache on shader content,
+   not on our build SHA — so a deploy that doesn't change generated shader text
+   can still hit. Our `variantKey` includes `__BUILD_SHA__`, which forces a full
+   re-warm on EVERY deploy even when no shader changed. That is deliberately
+   conservative and could be narrowed to something shader-relevant, at the cost of
+   having to be right about what affects codegen.
+4. **`createRenderPipelineAsync`** — non-blocking creation, already considered and
+   rejected: three's render path creates pipelines synchronously, and warming
+   through `compileAsync` warms at the wrong target format unless the PSX target
+   is bound first (see WARMUP.md).
+
+Nobody has "solved" this in the sense of a portable persistent cache — the WebGPU
+spec deferred it post-MVP. Engines that don't stutter either ship precompiled PSOs
+(impossible here) or never tear down the process (option 2).
+
 ### The remaining hitches are not compiles
 
 With compiles accounted for, the spikes that are left have no compile and no GC:

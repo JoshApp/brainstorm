@@ -44,7 +44,43 @@ let updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let registration: ServiceWorkerRegistration | null = null;
 const listeners: Array<(s: UpdateStatus) => void> = [];
 
+/** Ask the browser to make this origin's storage PERSISTENT.
+ *
+ *  WebGPU exposes no pipeline cache we can control, so the only thing standing
+ *  between us and a full recompile is Chrome/Dawn's own blob cache — and by
+ *  default that lives in "best-effort" storage, which the browser is free to
+ *  evict under pressure without telling anyone. An evicted cache is exactly the
+ *  state where the roster skip (content/warm-cache.ts) bets wrong and the whole
+ *  roster compiles in play; a phone recording caught that costing 215 in-play
+ *  compiles in one session.
+ *
+ *  `navigator.storage.persist()` moves the origin to persistent storage, which
+ *  the browser will not clear automatically. Chrome grants it silently for an
+ *  installed PWA or a site with real engagement, so this is usually a no-prompt
+ *  yes — and where it isn't, we're no worse off than before. It is the one real
+ *  lever the platform gives us over pipeline-cache durability.
+ *
+ *  Best-effort by construction: never blocks boot, never throws. */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    const s = navigator.storage;
+    if (!s?.persist) return false;
+    // Already persistent (installed PWA, previously granted) — don't re-ask.
+    if (await s.persisted?.()) return true;
+    const granted = await s.persist();
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.log(`[storage] persistent storage ${granted ? 'GRANTED' : 'denied'} — `
+        + 'granted means the pipeline cache survives storage pressure.');
+    }
+    return granted;
+  } catch { return false; }
+}
+
 export function setupPwaAutoUpdate(): void {
+  // Durability first — it costs nothing and protects the pipeline cache that
+  // every warm decision downstream is betting on.
+  void requestPersistentStorage();
   if (!('serviceWorker' in navigator)) return;
   // Lazy-load the Vite PWA virtual module. A STATIC `import ... from
   // 'virtual:pwa-register'` poisons EVERY test whose import graph reaches this
