@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { VASE_TALL, VASE_FLASK, VASE_BROKEN } from '../content/vase';
+import { archway } from '../content/archway';
+import { buildSpecMeshes, meshesOf } from './spec-mesh';
 
 // ── THE STYLE LAB — bounce ideas off a fake dungeon ──────────────────────────
 //
@@ -77,23 +80,28 @@ export function buildLabScene(): LabScene {
   const wallB = mesh(new THREE.BoxGeometry(12, 4.6, 0.4), 0, 2.1, -12);
   roles.shell.push(floor, ceil, wallL, wallR, wallB);
 
-  // A doorway in the back wall: two jambs + a lintel, so there is a silhouette
-  // shape and a hole to see depth through.
-  const jambL = mesh(new THREE.BoxGeometry(0.5, 3.0, 0.7), -1.5, 1.5, -11.9);
-  const jambR = mesh(new THREE.BoxGeometry(0.5, 3.0, 0.7), 1.5, 1.5, -11.9);
-  const lintel = mesh(new THREE.BoxGeometry(3.5, 0.5, 0.7), 0, 3.2, -11.9);
-  roles.frame.push(jambL, jambR, lintel);
+  // THE REAL ARCHWAY. Not three invented boxes — the actual ModelSpec the
+  // dungeon builds at every wide opening, rebuilt as plain meshes by
+  // lab/spec-mesh.ts. This is the shape the player sees more than any other, so
+  // it is the one a style has to survive.
+  const arch = buildSpecMeshes(archway({ width: 2.6, ceilingHeight: 4.2 }));
+  arch.position.set(0, 0, -11.9);
+  scene.add(arch);
+  roles.frame.push(...meshesOf(arch));
   // Something faintly visible THROUGH the doorway — depth needs a beyond.
   const beyond = mesh(new THREE.BoxGeometry(6, 4.6, 0.4), 0, 2.1, -17);
   roles.shell.push(beyond);
 
-  // Clutter — small forms, the first things to turn to mush in a bad style.
-  roles.clutter.push(
-    mesh(new THREE.CylinderGeometry(0.32, 0.42, 0.9, 10), -2.6, 0.45, 1.2),
-    mesh(new THREE.CylinderGeometry(0.26, 0.34, 0.7, 10), -3.3, 0.35, 0.2),
-    mesh(new THREE.BoxGeometry(1.1, 0.8, 0.7), 3.0, 0.4, 0.6),
-    mesh(new THREE.BoxGeometry(0.5, 1.9, 0.5), 4.6, 0.95, -3.4),
-  );
+  // Clutter — the REAL vases. Small forms are the first things a bad style turns
+  // to mush, and these are the actual ones, lathe profiles and all.
+  for (const [spec, x, z] of [
+    [VASE_TALL, -2.6, 1.2], [VASE_FLASK, -3.4, 0.1], [VASE_BROKEN, 3.0, 0.6],
+  ] as const) {
+    const g = buildSpecMeshes(spec);
+    g.position.set(x, 0, z);
+    scene.add(g);
+    roles.clutter.push(...meshesOf(g));
+  }
 
   // A creature: capsule body, sphere head, two thin arms. Not good — it only
   // has to have a SILHOUETTE, because that is the thing a style either
@@ -307,10 +315,104 @@ export const STYLES: Record<string, StyleRecipe> = {
       (lab.lights[0] as THREE.PointLight).intensity = 40;
     },
   },
+
+  // ── THE THREE UNEXPLORED DIRECTIONS ───────────────────────────────────────
+  // Every look tried so far assumes darkness is the ground and light is the
+  // information. These three each break one of those assumptions on purpose.
+
+  // 1. INVERT THE VALUE. Bone walls, ink creatures, and the lamp casting a
+  //    SHADOW instead of a glow. Unexplored, instantly distinctive, and it
+  //    solves daylight legibility outright — you cannot wash out a page. Less
+  //    of a betrayal of "grimdark through restraint" than it sounds: Mörk Borg
+  //    is mostly cream paper.
+  bleached: {
+    id: 'bleached', name: 'BLEACHED', note: 'Pale dungeon, ink creatures, light as ABSENCE. Kill the assumption that dark is the ground.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0xe4dccb);
+      lab.scene.fog = new THREE.Fog(0xe4dccb, 8, 30);
+      setAll(lab, (role) => {
+        if (role === 'creature') return new THREE.MeshBasicMaterial({ color: 0x100e10 });
+        if (role === 'emissive') return new THREE.MeshBasicMaterial({ color: 0x3a2a18 });
+        if (role === 'clutter' || role === 'frame') return new THREE.MeshLambertMaterial({ color: 0x8d867a });
+        return new THREE.MeshLambertMaterial({ color: 0xded6c4 });
+      });
+      // A DARK light: the lamp subtracts. Three cannot do negative lights, so
+      // the effect comes from an ambient that is already near-full and a point
+      // light tinted below it — the room dims toward the torch instead of
+      // brightening. Crude, and exactly the sort of thing a sandbox is for.
+      for (const l of lab.lights) l.visible = false;
+      lab.scene.add(new THREE.AmbientLight(0xffffff, 2.4));
+      const shade = new THREE.PointLight(0x2a2438, 26, 14, 2);
+      shade.position.set(-4.4, 2.5, -1.0);
+      lab.scene.add(shade);
+    },
+  },
+
+  // 2. TWO INKS AND PAPER. Not a palette — a risograph. Every hue in frame is
+  //    one of two, and DEPTH is carried by which ink you are in. Cheap,
+  //    memorable, and the room-mood tint system already supplies the second ink.
+  riso: {
+    id: 'riso', name: 'RISO 2-INK', note: 'Two inks on paper, nothing else. Depth carried by WHICH ink, not by value.',
+    apply(lab) {
+      const paper = 0xdad2c0, inkA = 0x1d2b4a, inkB = 0xb0402f;
+      lab.scene.background = new THREE.Color(paper);
+      lab.scene.fog = new THREE.Fog(paper, 10, 26);
+      setAll(lab, (role) => new THREE.MeshBasicMaterial({
+        color: role === 'creature' ? inkB
+             : role === 'emissive' ? inkB
+             : role === 'shell' ? paper : inkA,
+      }));
+      for (const l of lab.lights) l.visible = false;
+      addHullOutline(lab, 0.03);
+    },
+  },
+
+  // 3. THE LAMP DRAWS THE WORLD. VOID taken seriously as geometry rather than
+  //    as fog: outside the lamp there is no surface, only paper. Things enter
+  //    existence as you illuminate them. The one that would get filmed — and
+  //    the one most likely to be unreadable, which is exactly why it belongs in
+  //    a sandbox and not in a sprint.
+  summoned: {
+    id: 'summoned', name: 'SUMMONED', note: 'NOT WORKING YET — the reveal radius keeps missing the subject. See the note below.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0x07060a);
+      // A HARD fog wall rather than a gradient: near and far almost equal, so
+      // there is no fade — a surface is either present or it is not.
+      lab.scene.fog = new THREE.Fog(0x07060a, 5.6, 8.2);
+      setAll(lab, (role) => role === 'emissive'
+        ? new THREE.MeshBasicMaterial({ color: 0xffe6b0 })
+        : new THREE.MeshLambertMaterial({ color: role === 'creature' ? 0x6a5a4a : 0xcfc7b4 }));
+      for (const l of lab.lights) l.visible = false;
+      // TWO staging attempts, both recorded because the sensitivity IS the
+      // finding: a hard reveal wall is brutally sensitive to what you point it
+      // at. First pass had the wall at 5m with the archway 18m away — empty
+      // black frame. Second moved the camera to 5.4m from the arch and the wall
+      // was STILL 5.0 — empty again, by four tenths of a metre. A style whose
+      // entire read depends on one object falling inside a hard radius needs
+      // the radius and the staging designed together, which is a real cost to
+      // weigh before anyone builds this for the game.
+      //
+      // MOVE UP. A hard 5m reveal wall with the archway 18m away renders an
+      // empty black frame — the first sheet showed exactly that, and it read as
+      // "the recipe is broken" when the recipe was fine and the STAGING was
+      // wrong. A style that only shows what is within arm's reach has to be
+      // judged from within arm's reach of something. Recipes may move the
+      // camera; that is part of what a look decides.
+      lab.camera.position.set(0, 1.6, -6.5);
+      lab.camera.lookAt(0, 1.4, -13);
+      // The lamp sits AT the camera — the reveal has to follow the eye, which
+      // is the whole conceit.
+      const lamp = new THREE.PointLight(0xfff0d0, 30, 6.5, 1.6);
+      lamp.position.copy(lab.camera.position);
+      lab.scene.add(lamp);
+      lab.scene.add(new THREE.AmbientLight(0x0a0a12, 0.4));
+    },
+  },
 };
 
 export const STYLE_ORDER: readonly string[] = [
-  'baseline', 'toonink', 'toon', 'silhouette',
+  'baseline', 'bleached', 'riso', 'summoned',
+  'toonink', 'toon', 'silhouette',
   'bonewash', 'matcapstone', 'emberglass', 'blueprint',
 ];
 
