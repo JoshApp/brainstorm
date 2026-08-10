@@ -17,10 +17,20 @@
  *             costs too much every time. Fix the per-frame cost.
  *
  * The second thing it prints is the one that stops people optimising the wrong
- * thing: a REGRESSION OF COST AGAINST DRAW COUNT. The slope is what one more
- * draw call costs; the intercept is what the frame costs with no draws at all.
- * A big intercept means the scene's contents are not the problem and no amount
- * of culling, batching or resolution will help — something fixed is.
+ * thing: it regresses cost against draws, triangles AND uniform buffers, and
+ * names whichever one actually explains the frame. That matters — on the first
+ * four recordings from Josh's phone, renderer CPU tracked UNIFORM BUFFERS at
+ * r=+0.92 while draws managed r=+0.27 and triangles r=+0.22. Fitting against
+ * draws alone (which is what this tool did first, because draw calls are what
+ * everyone assumes a frame is made of) would have sent us batching geometry to
+ * fix a problem that has nothing to do with geometry.
+ *
+ * When nothing correlates, that is itself the answer: the cost is FIXED per
+ * frame, and no amount of culling, batching or resolution will move it.
+ *
+ * Pass several recordings at once. Within a single recording the draw count
+ * barely varies, so the fit is unstable — the same four recordings put the
+ * fitted fixed cost anywhere from 0.9ms to 11.5ms when read one at a time.
  *
  * Reads only the recording. No engine imports, so it can be pointed at a file
  * from any build, including one this checkout does not have.
@@ -67,13 +77,19 @@ function fit(xs: number[], ys: number[]): { slope: number; intercept: number; r:
 
 function main(): void {
   const args = process.argv.slice(2);
-  const path = args.find((a) => !a.startsWith('--'));
-  if (!path) {
-    console.log('usage: npm run delve rec <recording.json> [--frames]');
+  const paths = args.filter((a) => !a.startsWith('--'));
+  if (!paths.length) {
+    console.log('usage: npm run delve rec <recording.json> [more.json …] [--frames]');
+    console.log('  Pass SEVERAL recordings to pool them. Within one recording the draw');
+    console.log('  count barely varies, so a fit against it is unstable — four pooled');
+    console.log('  recordings swung the fitted fixed cost from 0.9ms to 11.5ms apart.');
     process.exit(1);
   }
-  const rec = JSON.parse(readFileSync(path, 'utf8')) as Rec;
-  const { meta: m, frames: F, systemNames: SN, gpuPhaseNames: GN } = rec;
+  const recs = paths.map((p) => JSON.parse(readFileSync(p, 'utf8')) as Rec);
+  const rec = recs[0];
+  const { meta: m, systemNames: SN, gpuPhaseNames: GN } = rec;
+  const F = recs.flatMap((r) => r.frames);
+  const path = paths.length === 1 ? paths[0] : `${paths.length} recordings pooled`;
   const target = m.targetMs;
 
   const dts = F.map((f) => f.dt);
@@ -83,6 +99,7 @@ function main(): void {
   const spikes = F.filter((f) => f.dt > target * 2).length;
 
   console.log(`\n═══ ${path.split('/').pop()} ═══`);
+  if (paths.length > 1) console.log(`  ${paths.map((p) => p.split('/').pop()).join('\n  ')}`);
   console.log(`build ${String(m.build ?? '?')}  ·  ${F.length} frames over ${(m.durationMs / 1000).toFixed(1)}s  ·  target ${target.toFixed(1)}ms`);
   const rt = `${Math.round(m.viewport[0] * m.pixelRatio * m.renderScale)}×${Math.round(m.viewport[1] * m.pixelRatio * m.renderScale)}`;
   console.log(`viewport ${m.viewport[0]}×${m.viewport[1]}  pixelRatio ${m.pixelRatio}  renderScale ${m.renderScale}  →  RENDER TARGET ${rt} px`);
@@ -135,12 +152,57 @@ function main(): void {
     });
   }
 
-  // ── Cost per draw call, and the fixed floor underneath it ──
+  // ── What actually predicts the frame? ──
+  //
+  // The first version of this regressed cost against DRAW CALLS only, because
+  // draw calls are what everyone assumes a frame is made of. Pooling four
+  // recordings said otherwise, decisively: CPU render cost tracks the number of
+  // UNIFORM BUFFERS at r=+0.92, while draws (r=+0.27) and triangles (r=+0.22)
+  // explain almost nothing. Fitting only against draws would have had us
+  // batching geometry to fix a problem that is not geometry.
+  //
+  // So it fits all three and names the winner. Correlation is not cause — but a
+  // near-perfect fit against one variable and noise against the others tells you
+  // which one to go and read the code for, which is the whole job of this report.
   const draws = F.map((f) => f.draws);
-  console.log('\n── what does the scene actually cost? ──');
-  for (const [label, ys] of [['cpu', F.map((f) => f.cpu)], ['gpu', F.map((f) => f.gpu)]] as Array<[string, number[]]>) {
-    const { slope, intercept, r } = fit(draws, ys);
-    console.log(`  ${label}: ${(slope * 1000).toFixed(1)} µs per draw call, plus ${intercept.toFixed(2)}ms FIXED  (r=${r.toFixed(2)})`);
+  // Fit on STEADY frames only. A least-squares fit is dominated by its extremes,
+  // and a handful of 200ms+ stalls (which are not the renderer scaling with
+  // anything — see the worst-frames list) drag every correlation toward noise:
+  // including them turned an r=+0.92 signal into r=+0.68 and flipped the
+  // verdict. Outliers are a separate question from "what does a normal frame
+  // cost", and this section is asking the second one.
+  const steady = F.filter((f) => f.dt < target * 3.5);
+  const dropped = F.length - steady.length;
+  // Regress the RENDERER's own submission cost, not total CPU — total CPU folds
+  // in gameplay systems that scale with entirely different things.
+  const sceneIdx = SN.indexOf('render·scene');
+  const sceneCost = sceneIdx >= 0 ? steady.map((f) => f.sys[sceneIdx] ?? 0) : steady.map((f) => f.cpu);
+  const preds: Array<[string, number[], string]> = [
+    ['draws', steady.map((f) => f.draws), 'µs/draw'],
+    ['triangles', steady.map((f) => f.tris), 'ns/tri'],
+    ['uniformBufs', steady.map((f) => f.ub), 'µs/buffer'],
+  ];
+  console.log(`\n── what predicts the frame? (r near ±1 = that variable IS the cost) ──`);
+  console.log(`  fitted on ${steady.length} steady frames; ${dropped} outlier${dropped === 1 ? '' : 's'} above ${(target * 3.5).toFixed(0)}ms excluded`);
+  for (const [label, ys] of [
+    [sceneIdx >= 0 ? 'render·scene' : 'cpu', sceneCost],
+    ['gpu', steady.map((f) => f.gpu)],
+  ] as Array<[string, number[]]>) {
+    let best = { name: '', r: 0 };
+    for (const [pname, xs, unit] of preds) {
+      const { slope, intercept, r } = fit(xs, ys);
+      const scaled = unit === 'ns/tri' ? slope * 1e6 : slope * 1000;
+      const flag = Math.abs(r) > 0.7 ? '  ←' : '';
+      console.log(`  ${label} vs ${pname.padEnd(12)} ${scaled.toFixed(2).padStart(9)} ${unit.padEnd(10)} + ${intercept.toFixed(2).padStart(6)}ms fixed   r=${r >= 0 ? '+' : ''}${r.toFixed(3)}${flag}`);
+      if (Math.abs(r) > Math.abs(best.r)) best = { name: pname, r };
+    }
+    if (Math.abs(best.r) > 0.7) {
+      console.log(`  → ${label} is explained by ${best.name.toUpperCase()} (r=${best.r.toFixed(2)}). Go read the code that touches it.`);
+    } else {
+      console.log(`  → ${label} correlates with NOTHING in the scene (best r=${best.r.toFixed(2)}). It is a FIXED per-frame cost —`);
+      console.log(`    culling, batching, resolution and content will not move it. Look at the pass structure.`);
+    }
+    console.log('');
   }
   console.log(`  draws ${Math.round(mean(draws))} mean / ${Math.max(...draws)} max   tris ${Math.round(mean(F.map((f) => f.tris)))} mean   ${Math.round(mean(F.map((f) => f.tris / Math.max(1, f.draws))))} tris per draw`);
   console.log(`  uniform buffers ${Math.round(mean(F.map((f) => f.ub)))} mean / ${Math.max(...F.map((f) => f.ub))} max  (${Math.round(mean(F.map((f) => f.ub)) / Math.max(1, mean(draws)) * 10) / 10} per draw)`);
