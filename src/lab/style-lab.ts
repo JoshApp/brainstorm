@@ -225,6 +225,37 @@ function setAll(lab: LabScene, make: (role: keyof LabScene['roles'], m: THREE.Me
 //   KIN        — they must read as one game. Four unrelated colour schemes is
 //                not an art direction, it is four art directions.
 // The sheet is where you find out whether a given set does both.
+
+/** A tiling pattern texture — bayer dots for 1-bit, diagonal rules for
+ *  engraving. UV-space, not screen-space: the lines follow each primitive's
+ *  own mapping, so they shift scale between a wall and a vase. True hatching is
+ *  a screen-space post pass; this is the sandbox approximation, and the seams
+ *  it produces are an artefact of the shortcut, not of the idea. */
+function patternTexture(kind: 'bayer' | 'hatch', repeat: number): THREE.DataTexture {
+  const N = 8;
+  const data = new Uint8Array(N * N * 4);
+  const BAYER = [
+    0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22,
+    3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21,
+  ];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = (y * N + x) * 4;
+    const v = kind === 'bayer'
+      ? (BAYER[y * N + x] / 63) * 255
+      : ((x + y) % 4 === 0 ? 40 : 235);   // diagonal rules
+    data[i] = data[i + 1] = data[i + 2] = v;
+    data[i + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function risoRecipe(
   id: string, name: string, note: string,
   paper: number, inkA: number, inkB: number,
@@ -400,6 +431,115 @@ export const STYLES: Record<string, StyleRecipe> = {
     },
   },
 
+
+  // ── THE FOUR BORROWED DIRECTIONS ──────────────────────────────────────────
+
+  // BONELIGHT — Josh's own discovery, generalised. He noticed the skeleton
+  // shifting red→yellow→white with distance and light, and loved it. That is
+  // not an accident of the skeleton: a HIGH-ALBEDO, LOW-CHROMA surface has no
+  // opinion of its own, so it reports whatever light hits it. It is a light
+  // meter (docs/VISUAL-LANGUAGE.md already calls this the PAINTED mode).
+  //
+  // Which gives the diagnosis of the sepia problem from the other side: our
+  // WALLS are pre-coloured. A brown wall cannot be made browner by a warm torch
+  // or cold by a blue one — the surfaces spent the colour budget before the
+  // lights got a turn. So this recipe does the opposite of "add more hues":
+  // desaturate the shell to near-neutral dark, saturate the LIGHTS, and put
+  // bone where the colour should land.
+  bonelight: {
+    id: 'bonelight', name: 'BONELIGHT', note: 'Neutral dark shell, bone creatures, saturated lights — the skeleton effect as a system.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0x050507);
+      lab.scene.fog = new THREE.Fog(0x050507, 4, 20);
+      setAll(lab, (role) => {
+        if (role === 'emissive') return new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+        // BONE: high albedo, no chroma of its own. The light does the colouring.
+        if (role === 'creature' || role === 'clutter') {
+          return new THREE.MeshLambertMaterial({ color: 0xf2ece0 });
+        }
+        // The shell gives up its brown so the lights can speak.
+        return new THREE.MeshLambertMaterial({ color: role === 'frame' ? 0x3a3a3e : 0x2a2a2e });
+      });
+      for (const l of lab.lights) l.visible = false;
+      // Two SATURATED sources of different hue, so one bone surface is sampled
+      // by both and the shift is visible across a single object.
+      const warm = new THREE.PointLight(0xff5a1e, 34, 15, 2);
+      warm.position.set(-4.4, 2.5, -1.0);
+      const cold = new THREE.PointLight(0x2e6cff, 22, 16, 2);
+      cold.position.set(3.6, 2.6, -8.0);
+      lab.scene.add(warm, cold, new THREE.AmbientLight(0x0c1018, 0.35));
+    },
+  },
+
+  // MIGNOLA — enormous flat black masses, almost no midtone, ONE hot accent,
+  // hard contour. The closest published thing to what this game is reaching
+  // for, and the intersection of the three cells the lab has already shown work
+  // (SILHOUETTE + RISO + INK).
+  mignola: {
+    id: 'mignola', name: 'MIGNOLA', note: 'Flat black masses on a saturated field, one hot accent, hard ink. No midtones.',
+    apply(lab) {
+      const field = 0x8a2b1e;   // the saturated ground a Mignola panel sits on
+      lab.scene.background = new THREE.Color(field);
+      lab.scene.fog = new THREE.Fog(field, 12, 30);
+      setAll(lab, (role) => new THREE.MeshBasicMaterial({
+        color: role === 'emissive' ? 0xffc24a
+             : role === 'shell' ? field
+             : 0x08070a,   // everything solid is one black mass
+      }));
+      for (const l of lab.lights) l.visible = false;
+      addHullOutline(lab, 0.028);
+    },
+  },
+
+  // HATCH — engraving. Line DENSITY as the shading model instead of smooth
+  // falloff, which suits torchlight: a woodcut has no gradients either.
+  hatch: {
+    id: 'hatch', name: 'HATCH', note: 'Dürer, not a renderer: shading by line density. UV-space approximation — see patternTexture.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0xd8d2c2);
+      lab.scene.fog = new THREE.Fog(0xd8d2c2, 12, 30);
+      const ramp = toonRamp(4);
+      setAll(lab, (role) => role === 'emissive'
+        ? new THREE.MeshBasicMaterial({ color: 0x241a10 })
+        : new THREE.MeshToonMaterial({
+            color: role === 'creature' ? 0x8a7a68 : 0xcac2b0,
+            gradientMap: ramp,
+            map: patternTexture('hatch', role === 'shell' ? 14 : 4),
+          }));
+      for (const l of lab.lights) l.visible = false;
+      const key = new THREE.DirectionalLight(0xffffff, 3.0);
+      key.position.set(-4, 6, 3);
+      lab.scene.add(key, new THREE.AmbientLight(0xffffff, 0.55));
+      addHullOutline(lab, 0.02);
+    },
+  },
+
+  // OBRA DINN — 1-bit. No palette at all; form carried purely by value and a
+  // dither pattern. The extreme end, and the lesson transfers even if the style
+  // does not: if dithering can do the shading, colour is freed entirely for
+  // MEANING. (Approximated: a 2-step ramp plus a bayer map. The real thing
+  // dithers in SCREEN space as a post pass, which this sandbox has no
+  // composer for.)
+  obradinn: {
+    id: 'obradinn', name: '1-BIT', note: 'Two values, dithered. If pattern can shade, colour is freed entirely for meaning.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0xe8e4d8);
+      lab.scene.fog = new THREE.Fog(0xe8e4d8, 10, 26);
+      const ramp = toonRamp(2);
+      setAll(lab, (role) => role === 'emissive'
+        ? new THREE.MeshBasicMaterial({ color: 0x111111 })
+        : new THREE.MeshToonMaterial({
+            color: 0xffffff, gradientMap: ramp,
+            map: patternTexture('bayer', role === 'shell' ? 20 : 6),
+          }));
+      for (const l of lab.lights) l.visible = false;
+      const key = new THREE.DirectionalLight(0xffffff, 3.2);
+      key.position.set(-4, 6, 3);
+      lab.scene.add(key, new THREE.AmbientLight(0xffffff, 0.35));
+      addHullOutline(lab, 0.022);
+    },
+  },
+
   // ── THE THREE UNEXPLORED DIRECTIONS ───────────────────────────────────────
   // Every look tried so far assumes darkness is the ground and light is the
   // information. These three each break one of those assumptions on purpose.
@@ -481,7 +621,8 @@ export const STYLES: Record<string, StyleRecipe> = {
 };
 
 export const STYLE_ORDER: readonly string[] = [
-  'riso1', 'riso2', 'riso3', 'riso4',
+  'riso3', 'bonelight', 'mignola', 'hatch', 'obradinn',
+  'riso1', 'riso2', 'riso4',
   'baseline', 'bleached', 'summoned',
   'toonink', 'toon', 'silhouette',
   'bonewash', 'matcapstone', 'emberglass', 'blueprint',
