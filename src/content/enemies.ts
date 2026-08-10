@@ -690,8 +690,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'blob',
       proportions: { height: 0.72, girth: 0.36 },
       materials: {
-        body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
-          dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
+        body: { color: 0x18220f, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+          dissolvable: true, },
         core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
       },
       eyes: { material: 'core', emissive: 1.8 },   // the core IS the windup tell
@@ -742,7 +742,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'blob',
       proportions: { height: 0.4, girth: 0.2 },
       materials: {
-        body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+        body: { color: 0x18220f, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
           dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
         core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
       },
@@ -802,8 +802,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       proportions: { height: 0.16, girth: 0.13 },
       materials: {
         // Sickly larval cream, faintly translucent + wet-rimmed.
-        flesh: { color: 0xcabd92, roughness: 0.5, flatShading: 'auto', transparent: true, opacity: 0.93,
-          rim: { color: 0xe6dbaa, power: 2, intensity: 0.35, darkReactive: 0.4 } },
+        flesh: { color: 0xc9c5bd, roughness: 0.5, flatShading: 'auto', transparent: true, opacity: 0.93,
+          },
         dark:  { color: 0x241c12, roughness: 0.85 },   // the maw
         eyes:  { color: 0x14100a, emissive: 0x000000, emissiveIntensity: 0 },  // lightless specks
       },
@@ -872,7 +872,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'blob',
       proportions: { height: 0.72, girth: 0.36 },
       materials: {
-        body: { color: 0x1a3a78, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+        body: { color: 0x141a26, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
           dissolvable: true, rim: { color: 0x66ccff, power: 2, intensity: 0.55, darkReactive: 0.5 } },
         core: { color: 0x66ccff, emissive: 0x66ccff, emissiveIntensity: 2.6 },
       },
@@ -948,7 +948,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // the toy-robot uprightness (bolt-upright is the SKELETON's gesture).
       proportions: { height: 1.95, girth: 0.36, armLength: 0.86, hunch: 0.1 },
       materials: {
-        stone: { color: 0x3a3530, roughness: 1, flatShading: 'auto' },
+        stone: { color: 0xa8a49c, roughness: 1, flatShading: 'auto' },
         dark: { color: 0x222019, roughness: 1, flatShading: 'auto' },   // recesses / chips / joints
         // The molten core, glimpsed through the chest fissure at rest — barely
         // an ember (the stagger-opened core zone is the real reveal). Not a rim,
@@ -1964,7 +1964,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'blob',
       proportions: { height: 0.9, girth: 0.42 },
       materials: {
-        flesh: { color: 0x6a4a18, roughness: 0.9, flatShading: 'auto', rim: { color: 0xa8d870, power: 2, intensity: 0.4, darkReactive: 0.4 } },
+        flesh: { color: 0x1e1710, roughness: 0.9, flatShading: 'auto', rim: { color: 0xa8d870, power: 2, intensity: 0.4, darkReactive: 0.4 } },
         core: { color: 0xa8d870, emissive: 0xa8d870, emissiveIntensity: 1.6 },
       },
       eyes: { material: 'core', emissive: 1.6 },
@@ -2290,7 +2290,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'blob',
       proportions: { height: 2.0, girth: 0.34 },
       materials: {
-        flesh: { color: 0x2a3a1a, roughness: 0.9, flatShading: 'auto', rim: { color: 0x88dd44, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        flesh: { color: 0x171c12, roughness: 0.9, flatShading: 'auto', },
         maw: { color: 0x4a1a1a, roughness: 0.7, flatShading: 'auto' },
         teeth: { color: 0xddd8c0, roughness: 0.5, flatShading: 'auto' },
         eyes: { color: 0xffdd44, emissive: 0xffdd44, emissiveIntensity: 2.4 },
