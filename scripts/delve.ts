@@ -11,6 +11,7 @@
  *   npm run delve reach <seed> <depth>     FAITHFUL reachability (live walkable, browser)
  *   npm run delve snap  <target> [...]     headless screenshot (mob-<id>, item-<id>, scenario)
  *   npm run delve look  [ids...]           art-direction contact sheet (looks x beauty corner)
+ *   npm run delve styles [ids...]          style-LAB sheet — free-form recipes, no game underneath
  *   npm run delve pilot <target> [--do …]  drive + inspect the live world
  *   npm run delve play  [...]              autonomous bot episode
  *   npm run delve test                     validation suite
@@ -171,6 +172,7 @@ switch (cmd) {
   case 'optimize': delegate('optimize-images'); break;
   case 'snap': delegate('snap'); break;
   case 'look': delegate('look-sheet'); break;
+  case 'styles': delegate('look-sheet', ['--lab', ...rest]); break;
   case 'pilot': delegate('pilot'); break;
   case 'play': delegate('play'); break;
   case 'test': { const p = spawn('npm', ['test'], { stdio: 'inherit' }); p.on('exit', (c) => process.exit(c ?? 0)); break; }

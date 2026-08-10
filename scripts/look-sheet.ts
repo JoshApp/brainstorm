@@ -5,6 +5,13 @@
  *   npm run delve look drawn boneink   just these two, bigger cells
  *   npm run delve look --scenario=spawn   judge a look somewhere else
  *   npm run delve look --no-gray       skip the grayscale row
+ *   npm run delve look --lab           shoot the STYLE LAB instead of the game
+ *
+ * --lab points the same composer at style-lab.html — a sandbox with its own
+ * scene and no game code under it, where a recipe may do anything (see
+ * src/lab/style-lab.ts). One sheet layout, two subjects: what we HAVE and what
+ * we WANT. They are never mixed on one sheet, because a cell showing something
+ * the engine cannot do would quietly become a promise.
  *
  * Renders the BEAUTY CORNER (?scenario=look-lab — see debug/scenarios.ts) once
  * per look and lays the frames out as a contact sheet, with a GRAYSCALE copy of
@@ -96,7 +103,15 @@ async function main() {
   const wanted = argv.filter((a) => !a.startsWith('--'));
   const withGray = !flags.includes('--no-gray');
   const scenario = flags.find((f) => f.startsWith('--scenario='))?.split('=')[1] ?? 'look-lab';
-  const out = flags.find((f) => f.startsWith('--out='))?.split('=')[1] ?? '/tmp/look-sheet.png';
+  const lab = flags.includes('--lab');
+  const out = flags.find((f) => f.startsWith('--out='))?.split('=')[1]
+    ?? (lab ? '/tmp/style-sheet.png' : '/tmp/look-sheet.png');
+  // One URL builder for both subjects, so the only difference between a look
+  // sheet and a style sheet is which page it points at.
+  const urlFor = (base: string, id?: string) => lab
+    ? `${base}style-lab.html?bare=1${id ? `&style=${id}` : ''}`
+    : `${base}?scenario=${scenario}${id ? `&look=${id}` : ''}&webgpu=0&nowarm=1&freeze=false`;
+  const probe = lab ? 'window.__styles()' : 'window.__looks()';
 
   const chromiumPath = resolveChromium();
   if (!existsSync(chromiumPath)) throw new Error(`Chromium not found at ${chromiumPath}`);
@@ -115,13 +130,15 @@ async function main() {
     const page: Page = await ctx.newPage();
 
     const base = `http://127.0.0.1:${port}/brainstorm/`;
-    await page.goto(`${base}?scenario=${scenario}&webgpu=0&nowarm=1&freeze=false`, { waitUntil: 'networkidle', timeout: 40_000 });
-    await page.waitForTimeout(3000);
+    await page.goto(urlFor(base), { waitUntil: 'networkidle', timeout: 40_000 });
+    await page.waitForTimeout(lab ? 900 : 3000);
 
-    const builtLevel = await page.evaluate(`(window.__scene && (() => {\n      let n = null; window.__scene.traverse((o) => { if (!n && o.name && o.name.indexOf('level-') === 0) n = o.name; }); return n;\n    })()) || 'UNKNOWN'`);
-    console.log(`scene: ${builtLevel}  (expected level-${scenario})`);
+    if (!lab) {
+      const builtLevel = await page.evaluate(`(window.__scene && (() => {\n        let n = null; window.__scene.traverse((o) => { if (!n && o.name && o.name.indexOf('level-') === 0) n = o.name; }); return n;\n      })()) || 'UNKNOWN'`);
+      console.log(`scene: ${builtLevel}  (expected level-${scenario})`);
+    }
 
-    const all = await page.evaluate('window.__looks()') as LookInfo[];
+    const all = await page.evaluate(probe) as LookInfo[];
     const looks = wanted.length ? all.filter((l) => wanted.includes(l.id)) : all;
     if (looks.length === 0) {
       console.log(`No such look. Available: ${all.map((l) => l.id).join(', ')}`);
@@ -133,13 +150,14 @@ async function main() {
       // Re-navigate per look rather than applying in place: a look touches
       // material recompiles and render-target scale, and carrying one preset's
       // side effects into the next is exactly how a comparison sheet lies.
-      await page.goto(`${base}?scenario=${scenario}&look=${look.id}&webgpu=0&nowarm=1&freeze=false`,
-                      { waitUntil: 'networkidle', timeout: 40_000 });
-      await page.waitForFunction(`(function () {
-        var el = document.getElementById('descent-fade');
-        return !el || parseFloat(getComputedStyle(el).opacity) < 0.05;
-      })()`, undefined, { timeout: 30_000 }).catch(() => { /* capture anyway */ });
-      await page.waitForTimeout(1600);
+      await page.goto(urlFor(base, look.id), { waitUntil: 'networkidle', timeout: 40_000 });
+      if (!lab) {
+        await page.waitForFunction(`(function () {
+          var el = document.getElementById('descent-fade');
+          return !el || parseFloat(getComputedStyle(el).opacity) < 0.05;
+        })()`, undefined, { timeout: 30_000 }).catch(() => { /* capture anyway */ });
+      }
+      await page.waitForTimeout(lab ? 500 : 1600);
       // The HUD is not the art direction. Same class the inspector uses.
       // The HUD and the profiler readout are not the art direction.
       // The HUD and the profiler readout are not the art direction. A
@@ -184,7 +202,7 @@ async function main() {
     });
 
     writeFileSync(out, PNG.sync.write(sheet));
-    console.log(`\n${shots.length} looks · ${scenario} · ${withGray ? 'colour + grayscale' : 'colour only'}`);
+    console.log(`\n${shots.length} ${lab ? 'styles · style-lab' : `looks · ${scenario}`} · ${withGray ? 'colour + grayscale' : 'colour only'}`);
     console.log(`→ ${out}`);
     console.log('\nlegend (top-left to bottom-right):');
     shots.forEach((s, i) => console.log(`  ${i + 1}. ${s.look.name.padEnd(14)} ${s.look.note}`));

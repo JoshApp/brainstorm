@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Delve · Style Lab</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+      canvas { display: block; width: 100%; height: 100%; }
+      /* The picker is deliberately plain — it is scaffolding, and anything
+         styled here competes with the thing being judged. Hidden for capture
+         via ?bare=1 so a contact sheet gets the frame and nothing else. */
+      #picker {
+        position: fixed; top: 0; left: 0; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;
+        font: 11px ui-monospace, monospace; z-index: 10;
+      }
+      #picker button {
+        background: rgba(20,20,24,0.85); color: #ddd6c4; border: 1px solid #444;
+        padding: 3px 7px; cursor: pointer; font: inherit;
+      }
+      #picker button:hover { background: #333; }
+      #note {
+        position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 8px;
+        font: 11px ui-monospace, monospace; color: #cfc7b4;
+        background: rgba(10,10,12,0.75); z-index: 10;
+      }
+      body.bare #picker, body.bare #note { display: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="lab"></canvas>
+    <div id="picker"></div>
+    <div id="note"></div>
+    <script type="module">
+      import { mountStyleLab, STYLES, STYLE_ORDER } from './src/lab/style-lab.ts';
+
+      const canvas = document.getElementById('lab');
+      mountStyleLab(canvas);
+
+      if (new URLSearchParams(location.search).get('bare') === '1') {
+        document.body.classList.add('bare');
+      }
+
+      const picker = document.getElementById('picker');
+      const note = document.getElementById('note');
+      function select(id) {
+        window.__style(id);
+        note.textContent = `${STYLES[id].name} — ${STYLES[id].note}`;
+        const url = new URL(location.href);
+        url.searchParams.set('style', id);
+        history.replaceState(null, '', url);
+      }
+      for (const id of STYLE_ORDER) {
+        const b = document.createElement('button');
+        b.textContent = STYLES[id].name;
+        b.onclick = () => select(id);
+        picker.appendChild(b);
+      }
+      select(new URLSearchParams(location.search).get('style') ?? 'baseline');
+    </script>
+  </body>
+</html>
