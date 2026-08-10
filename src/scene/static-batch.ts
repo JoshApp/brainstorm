@@ -418,15 +418,34 @@ export function batchStaticWorld(level: LiveLevel): void {
     batch.castShadow = cast;
     batch.receiveShadow = receive;
     batch.frustumCulled = false;         // instances span the floor
-    // Per-INSTANCE frustum culling OFF: r185 rewrote BatchedMesh's frustum
-    // path (reversedDepth planes, shared frustum) and it wrongly culls live
-    // instances at certain view angles — altar pedestals, the bonfire sword,
-    // entry rocks vanished from stable viewpoints (2026-07-05 phone reports;
-    // repro'd on depth-18 ritual circle: pedestal present with ?batchworld=0,
-    // gone with batching on). The room culler already gates instances per
-    // rect, so intra-rect frustum culling buys ~nothing at our scale — the
-    // upstream bug costs us more than the culling saves.
-    batch.perObjectFrustumCulled = false;
+    // Per-INSTANCE frustum culling — OFF by default, `?batchfrustum=1` to try it.
+    //
+    // NOTE ON SCOPE, because this is easy to misread: ordinary meshes are
+    // frustum culled and always have been. That is Object3D.frustumCulled,
+    // tested by the renderer against its own frustum, and nothing here touches
+    // it. What this flag controls is a DIFFERENT code path — BatchedMesh's
+    // PER-INSTANCE culling, which builds its own frustum inside
+    // BatchedMesh.onBeforeRender.
+    //
+    // A 2026-07-05 session turned it off, reporting that r185's rewritten
+    // frustum path wrongly culled live instances at stable view angles (altar
+    // pedestals, the bonfire sword, entry rocks — present with ?batchworld=0,
+    // gone with batching on). Josh's recollection is that frustum culling was
+    // working fine, which is true of the ordinary path and may well be true of
+    // this one too. Reading three 0.185.1: the wiring now looks CORRECT — the
+    // WebGPU renderer sets camera._reversedDepth when reversedDepthBuffer is on
+    // (three.webgpu.js _updateCamera) and BatchedMesh passes camera.reversedDepth
+    // into setFromProjectionMatrix. So either the original report predates a
+    // fix, or it was misattributed.
+    //
+    // It cannot be settled from here: the bug is WebGPU-only and this project's
+    // headless harness has no WebGPU. Hence the flag — flip it on a phone, walk
+    // a ritual circle, and see whether anything blinks out. If nothing does,
+    // make it the default: every batched instance gets its frustum culling back,
+    // which is the one thing batching currently costs us.
+    batch.perObjectFrustumCulled =
+      typeof location !== 'undefined'
+      && new URLSearchParams(location.search).get('batchfrustum') === '1';
     batch.sortObjects = false;           // opaque only — skip the per-frame sort
     batch.matrixAutoUpdate = false;
     batch.matrixWorldAutoUpdate = false;
