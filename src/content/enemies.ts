@@ -302,6 +302,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // a lighter brown does not.
         skin: { color: 0x2e2226, roughness: 0.25, metalness: 0.1, flatShading: 'auto' },
         eyes: { color: 0xff2a0a, emissive: 0xff2a0a, emissiveIntensity: 2.0 },
+        // Bright enough that the torch cannot mix it into the floor, small enough
+        // that it never competes with the eyes.
+        tooth: { color: 0xc9bfa4, roughness: 0.55, flatShading: 'auto' },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
       flash: { material: 'fur' },
@@ -309,14 +312,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Lean body: a slim tube down the spine with a rounded rump at the hips
         // tapering to narrower shoulders — a rat's silhouette, not a fat barrel.
         { kind: 'capsule', joint: 'spine', radius: 0.092, height: 0.2, rot: [1.5708, 0, 0], jitter: 0.015, mat: 'fur' },
-        { kind: 'sphere', joint: 'hips', radius: 0.112, jitter: 0.015, mat: 'fur' },   // haunches
-        { kind: 'sphere', joint: 'chest', radius: 0.086, jitter: 0.015, mat: 'fur' },  // shoulders
+        { kind: 'sphere', joint: 'hips', radius: 0.112, segments: [6, 4], jitter: 0.008, mat: 'fur' },   // haunches
+        { kind: 'sphere', joint: 'chest', radius: 0.086, segments: [6, 4], jitter: 0.008, mat: 'fur' },  // shoulders
         // Hunched neck bridging shoulders → skull (tapers toward the head).
         { kind: 'bone', from: 'chest', to: 'neck', radius: 0.07, radiusTop: 0.055, mat: 'fur' },
         { kind: 'bone', from: 'neck', to: 'head', radius: 0.055, radiusTop: 0.05, mat: 'fur' },
         // Small wedge skull + a long pointed snout forward (−Z). Skull kept
         // small so the snout — not a round face — defines the head.
-        { kind: 'sphere', joint: 'head', radius: 0.068, jitter: 0.01, mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.068, segments: [5, 4], jitter: 0.006, mat: 'fur' },
         // aim:'forward' = cone apex toward the nose (the intent form of
         // rot −π/2 — this cone shipped pointing INTO the skull once;
         // with aim, that mistake is unwritable).
@@ -334,6 +337,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Beady red eyes on the snout sides.
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [-0.05, 0.012, -0.082], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [0.05, 0.012, -0.082], mat: 'eyes' },
+        // INCISORS — the rat's far-field mark. Past the lamp every mundane body
+        // goes to black and all that survives is its pattern of bright points,
+        // so each mob needs a pattern of its OWN: the ghoul is red eyes over a
+        // bone jaw and ribs, the skirmisher is amber eyes with pale wraps out to
+        // the sides, and this is two red points with one small pale chip
+        // directly below them. Tiny, but it is the only light down there.
+        { kind: 'box', joint: 'head', size: [0.026, 0.030, 0.020], pos: [0, -0.040, -0.165], rot: [0.18, 0, 0], mat: 'tooth' },
         // Four thin legs (bones span hip→foot; the trot gait swings them) +
         // tiny bald paws. Shoulder caps bridge the FRONT leg bones into
         // the chest mass — the bench's floating-island linter caught
@@ -429,7 +439,15 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'skirmisher',
       archetype: 'biped',
-      proportions: { height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16 },
+      // Deliberately the OPPOSITE silhouette to the ghoul. The ghoul stoops with
+      // arms dangling past its knees; this one stands nearly upright, feet
+      // planted wide, arms held close and carried forward — a fighter's guard,
+      // not a shamble. Two mobs that share a rig should not share an outline,
+      // and at six metres the outline is the only thing that distinguishes them.
+      proportions: {
+        height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16,
+        hunch: 0.10, armSplay: 0.17, armReach: 0.20, stance: 1.4, lopsided: 0.28,
+      },
       materials: {
         flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto', chroma: 0.3 },   // Absorbed — no rim (mundane beast)
         // COOL cloth under a warm room. The sash was 0x2a201a — warm brown lit
@@ -443,16 +461,36 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // the ghoul's ribs: a little genuinely-pale albedo the torch cannot mix
         // down into the wall.
         wrap: { color: 0xa89c86, roughness: 0.95, flatShading: 'auto' },
+        // Scavenged plate on one shoulder. Low roughness + metalness so it
+        // answers the room with a HIGHLIGHT — the one thing on a mundane body
+        // that a flat warm torch cannot wash into the wall behind it.
+        plate: { color: 0x2b2f36, roughness: 0.28, metalness: 0.55, flatShading: 'auto' },
         blade: { color: 0x3a3e44, roughness: 0.4, metalness: 0.5, flatShading: 'auto' },
         eyes: { color: 0xffb060, emissive: 0xffb060, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
       flash: { material: 'flesh' },
       skin: [
-        ...humanoidBipedSkin({ body: 'flesh', eye: 'eyes', limbRadius: 0.055, headRadius: 0.15, jitter: 0.01 }),
+        // bodyRadius down from the 0.17 default: splay only buys clearance if the
+        // torso is narrow enough to have a gap beside it. At 0.17 the arms still
+        // intersected the chest and the read was one mass again.
+        ...humanoidBipedSkin({ body: 'flesh', eye: 'eyes', limbRadius: 0.05, bodyRadius: 0.125, bodyHeight: 0.42, headRadius: 0.14, jitter: 0.008, facets: [5, 4] }),
+        // A rag bound over the lower face. Gives the head an edge and a value
+        // break instead of one smooth ball with two lights on it, and it is the
+        // same wrap material as the arms — one idea stated twice reads as
+        // costume; the same idea stated once reads as an accident.
+        { kind: 'box', joint: 'head', size: [0.19, 0.075, 0.16], pos: [0, -0.055, -0.025], rot: [0.10, 0, 0.05], jitter: 0.008, mat: 'wrap' },
+        // Brow shelf over the eyes, so the sockets sit in shadow.
+        { kind: 'box', joint: 'head', size: [0.19, 0.04, 0.09], pos: [0, 0.055, -0.085], rot: [-0.24, 0, 0], jitter: 0.006, mat: 'flesh' },
         // Cloth wraps — a chest sash + a loincloth over the pelvis.
-        { kind: 'box', joint: 'spine', size: [0.42, 0.16, 0.4], pos: [0, -0.1, 0], rot: [0, 0, 0.4], mat: 'cloth' },
-        { kind: 'box', joint: 'pelvis', size: [0.38, 0.3, 0.3], pos: [0, -0.06, 0], mat: 'cloth' },
+        // The sash was 0.16 deep and crossed the whole chest — a broad pale band
+        // that was the loudest thing on the model and flattened everything under
+        // it. Narrow now, so it reads as a strap rather than a bib.
+        { kind: 'box', joint: 'spine', size: [0.44, 0.075, 0.40], pos: [0, -0.08, 0], rot: [0, 0, 0.44], mat: 'cloth' },
+        { kind: 'box', joint: 'pelvis', size: [0.36, 0.26, 0.28], pos: [0, -0.07, 0], mat: 'cloth' },
+        // A shoulder guard on the weapon side only — asymmetry you can name, and
+        // a hard angular plane up where the light is strongest.
+        { kind: 'box', joint: 'shoulderR', size: [0.15, 0.055, 0.15], pos: [0.02, 0.055, 0], rot: [0, 0, -0.30], jitter: 0.01, mat: 'plate' },
         // Bandages banding the shield arm — two pale rings, so the limb has an
         // internal light/dark rhythm instead of reading as one tapered tube.
         { kind: 'cylinder', joint: 'elbowL', radius: 0.062, height: 0.09, pos: [0, 0.06, 0], mat: 'wrap' },

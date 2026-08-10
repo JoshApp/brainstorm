@@ -21,6 +21,16 @@ export interface HumanoidSkinOpts {
   eyeSpread?: number;    // half the gap between eyes (default 0.07)
   eyeY?: number;         // eye height on the head (default 0)
   jitter?: number;       // gnarl amplitude on flesh/bone parts (default 0)
+  /**
+   * Sphere segment counts [width, height] for head + shoulders. Omit for the
+   * smooth default (12x10). Pass something small — [5,4] — for FACETS: a
+   * handful of big flat planes instead of a ball, so the lamp gives the form a
+   * lit side, a shadow side and a hard terminator between them. That is where
+   * the flat-shaded look actually comes from; a smooth sphere with jitter on it
+   * is just a wobbly ball, which is what most of this roster has been.
+   * Opt-in so existing creatures are untouched until they are reworked.
+   */
+  facets?: [number, number];
 }
 
 /** The standard biped body: torso + pelvis, head + two eyes, shoulder lumps,
@@ -34,14 +44,15 @@ export function humanoidBipedSkin(o: HumanoidSkinOpts): SkinPart[] {
   const eS = o.eyeSpread ?? 0.07;
   const eY = o.eyeY ?? 0;
   const eZ = -hr * 0.9;
+  const seg = o.facets;
   return [
     { kind: 'capsule', joint: 'spine', radius: o.bodyRadius ?? 0.17, height: o.bodyHeight ?? 0.4, jitter: jit, mat: o.body },
     { kind: 'box', joint: 'pelvis', size: [0.32, 0.28, 0.24], jitter: jit, mat: o.body },
-    { kind: 'sphere', joint: 'head', radius: hr, jitter: jit, mat: o.body },
+    { kind: 'sphere', joint: 'head', radius: hr, segments: seg, jitter: jit, mat: o.body },
     { kind: 'sphere', joint: 'head', radius: eR, pos: [-eS, eY, eZ], mat: o.eye },
     { kind: 'sphere', joint: 'head', radius: eR, pos: [eS, eY, eZ], mat: o.eye },
-    { kind: 'sphere', joint: 'shoulderL', radius: 0.09, jitter: jit, mat: o.body },
-    { kind: 'sphere', joint: 'shoulderR', radius: 0.09, jitter: jit, mat: o.body },
+    { kind: 'sphere', joint: 'shoulderL', radius: 0.09, segments: seg, jitter: jit, mat: o.body },
+    { kind: 'sphere', joint: 'shoulderR', radius: 0.09, segments: seg, jitter: jit, mat: o.body },
     { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: lr, mat: limb },
     { kind: 'bone', from: 'elbowL', to: 'handL', radius: lr * 0.85, mat: limb },
     { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: lr, mat: limb },
