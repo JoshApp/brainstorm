@@ -127,6 +127,58 @@ keeps the budget closed as content grows (dev/CI gate).
       three 0.184 makes compileAsync non-blocking, so the load screen stays responsive.
 - [ ] **E — wire `compileHitches===0` as a dev/CI invariant.**
 
+## The other half of the same structure: uploads, every frame (measured 2026-08-10)
+
+This document has always been about COMPILE cost — one pipeline per material
+instance, paid once, at a bad moment. Seven phone recordings say the same
+structure also has a **per-frame** cost, and that one is the reason the game
+runs at 47 fps rather than the reason it hitches.
+
+`delve rec` pools recordings and regresses frame cost against draws, triangles
+and the `ub` column (`device.queue.writeBuffer`/`writeTexture` CALLS per frame —
+see debug/upload-counter.ts; it is a call count, not a buffer count):
+
+| predictor | slope | r |
+| --- | --- | --- |
+| draws | 20–49 µs/draw | +0.27 … +0.58 |
+| triangles | 44–143 ns/tri | +0.22 … +0.54 |
+| **upload calls** | **16.1 / 16.6 µs per call** | **+0.92 / +0.97** |
+
+Two independent sets of captures, different scenes, essentially the same slope.
+The upload census (debug/upload-census.ts, rides along in every recording)
+then attributed the calls, and it is not spread around:
+
+```
+356–720 calls/frame   Bindings.updateBinding → backend.updateBinding → writeBuffer
+                      against 267–534 DISTINCT buffers, ~200 bytes each
+  5–9   calls/frame   updateAttribute
+  1–2   calls/frame   updateTexture
+```
+
+**98–99% of every upload the game makes is one call site.** ~500 separate
+uniform buffers, each written once per frame, ~200 bytes at a time. At 16.6 µs
+a call that is ~8ms, which is the whole of `render·scene`.
+
+What this means for the rules above:
+
+- **Material-instance count is not only a compile budget, it is a per-frame
+  budget.** Every independently-bound render object carries a uniform buffer
+  that is rewritten each frame, and on mobile each `writeBuffer` crosses a
+  process boundary — 16 µs for a 200-byte write is IPC overhead, not bandwidth
+  (103–210 KB/frame total is nothing).
+- **The buffer count runs ~1.5× the mesh count** (498 buffers / 354 meshes;
+  534 / 343), so it tracks bound render objects *and* their materials, not
+  materials alone. Reducing either reduces the frame.
+- **Resolution and geometry are already free.** The render target is 422×196 —
+  82k pixels — and the scene runs 264–321 triangles per draw. Anything that
+  reaches for `renderScale` or polycount here is optimising the one thing that
+  was never the cost.
+
+The GPU side is separate and still unexplained: across 2756 pooled frames it
+correlates with NOTHING (draws −0.05, triangles −0.38, uploads −0.05), sitting
+flat at ~7.4ms. That is a fixed per-frame cost and only the pass structure can
+move it. Not yet investigated.
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
 [UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook
