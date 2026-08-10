@@ -160,6 +160,7 @@ switch (cmd) {
   case 'inventory': delegate('inventory'); break;
   case 'audit': delegate('audit'); break;
   case 'stats': delegate('stats'); break;
+  case 'rec': delegate('frame-rec'); break;
   case 'reports': delegate('reports'); break;
   case 'repro': delegate('repro'); break;
   case 'check': check(Number(rest[0]), Number(rest[1] ?? 1)); break;

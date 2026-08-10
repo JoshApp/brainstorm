@@ -475,18 +475,43 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // torso is narrow enough to have a gap beside it. At 0.17 the arms still
         // intersected the chest and the read was one mass again.
         ...humanoidBipedSkin({ body: 'flesh', eye: 'eyes', limbRadius: 0.05, bodyRadius: 0.125, bodyHeight: 0.42, headRadius: 0.14, jitter: 0.008, facets: [5, 4] }),
-        // A rag bound over the lower face. Gives the head an edge and a value
-        // break instead of one smooth ball with two lights on it, and it is the
-        // same wrap material as the arms — one idea stated twice reads as
-        // costume; the same idea stated once reads as an accident.
-        { kind: 'box', joint: 'head', size: [0.19, 0.075, 0.16], pos: [0, -0.055, -0.025], rot: [0.10, 0, 0.05], jitter: 0.008, mat: 'wrap' },
-        // Brow shelf over the eyes, so the sockets sit in shadow.
-        { kind: 'box', joint: 'head', size: [0.19, 0.04, 0.09], pos: [0, 0.055, -0.085], rot: [-0.24, 0, 0], jitter: 0.006, mat: 'flesh' },
+        // ── NOT A MAN IN A MASK ──────────────────────────────────────────
+        // Josh: the skirmisher reads too human, the ghoul works because it is an
+        // abomination. It did read human, and the reason is that every part of
+        // it was a part a PERSON has, in the place a person has it: two eyes, a
+        // jaw, a sash, a sword. Nothing was wrong, and that was the problem —
+        // correct anatomy IS the human read. So the changes below are all
+        // anatomical WRONGNESS rather than more grime: a jaw that opens too far,
+        // an arm too many, growth where growth should not be.
+        //
+        // The head is long and sagging, and the jaw hangs open past where a jaw
+        // stops. Bone teeth in the gap, so the open mouth is a fact rather than
+        // a shadow.
+        { kind: 'box', joint: 'head', size: [0.15, 0.085, 0.15], pos: [0, -0.115, -0.045], rot: [0.42, 0, 0.04], jitter: 0.010, mat: 'flesh' },
+        { kind: 'box', joint: 'head', size: [0.105, 0.030, 0.030], pos: [0, -0.068, -0.115], rot: [0.16, 0, 0.03], jitter: 0.006, mat: 'wrap' },
+        { kind: 'box', joint: 'head', size: [0.095, 0.026, 0.026], pos: [0, -0.135, -0.100], rot: [0.42, 0, 0.02], jitter: 0.006, mat: 'wrap' },
+        // Brow shelf, heavy and asymmetric — one side lower, so the two eyes are
+        // not a matched pair.
+        { kind: 'box', joint: 'head', size: [0.20, 0.045, 0.10], pos: [0, 0.055, -0.085], rot: [-0.24, 0, 0.12], jitter: 0.008, mat: 'flesh' },
+        // A THIRD EYE, small, off-centre and high. One extra of something you
+        // count without meaning to is worth more than any amount of texture.
+        { kind: 'sphere', joint: 'head', radius: 0.019, segments: [5, 4], pos: [-0.030, 0.115, -0.072], mat: 'eyes' },
+        // ── AN ARM TOO MANY ──────────────────────────────────────────────
+        // A vestigial second arm off the left ribs: shoulder lump, upper limb,
+        // and a small closed fist, all under-sized. It hangs; it does nothing.
+        { kind: 'sphere', joint: 'spine', radius: 0.055, segments: [5, 3], pos: [-0.135, -0.02, 0.01], jitter: 0.010, mat: 'flesh' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.030, radiusTop: 0.024, height: 0.26, pos: [-0.175, -0.155, -0.01], rot: [0.10, 0, 0.22], mat: 'flesh' },
+        { kind: 'box', joint: 'spine', size: [0.055, 0.060, 0.050], pos: [-0.205, -0.290, -0.015], rot: [0, 0, 0.22], jitter: 0.008, mat: 'flesh' },
+        // Growths up the good shoulder and the neck — lumps that follow no bone.
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.042, segments: [5, 3], pos: [0.02, 0.075, 0.030], jitter: 0.014, mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.038, segments: [5, 3], pos: [0.10, -0.085, 0.075], jitter: 0.014, mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.026, segments: [5, 3], pos: [0.125, -0.145, 0.055], jitter: 0.012, mat: 'flesh' },
         // Cloth wraps — a chest sash + a loincloth over the pelvis.
-        // The sash was 0.16 deep and crossed the whole chest — a broad pale band
-        // that was the loudest thing on the model and flattened everything under
-        // it. Narrow now, so it reads as a strap rather than a bib.
-        { kind: 'box', joint: 'spine', size: [0.44, 0.075, 0.40], pos: [0, -0.08, 0], rot: [0, 0, 0.44], mat: 'cloth' },
+        // Not a bandolier — a binding. Two cords crossing at an angle no belt
+        // would sit at, cinched into the flesh rather than worn over it. A sash
+        // is costume and costume implies a person who chose it.
+        { kind: 'box', joint: 'spine', size: [0.44, 0.052, 0.40], pos: [0, -0.06, 0], rot: [0, 0, 0.44], mat: 'cloth' },
+        { kind: 'box', joint: 'spine', size: [0.42, 0.040, 0.38], pos: [0, -0.14, 0], rot: [0, 0, -0.30], mat: 'cloth' },
         { kind: 'box', joint: 'pelvis', size: [0.36, 0.26, 0.28], pos: [0, -0.07, 0], mat: 'cloth' },
         // A shoulder guard on the weapon side only — asymmetry you can name, and
         // a hard angular plane up where the light is strongest.
@@ -596,11 +621,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Bare hands of cold light at the ends of the sleeves. The ghost rig
         // sets the hands wide (±girth·1.4), so these are the outermost points of
         // the whole silhouette — which is exactly where a reaper's read lives.
-        bone: { color: 0xbfe8d4, emissive: 0x66ffaa, emissiveIntensity: 0.7, flatShading: 'auto' },
+        bone: { color: 0xbfe8d4, emissive: 0x66ffaa, emissiveIntensity: 1.0, flatShading: 'auto' },
         // Small, dimmer siblings of the orb: the charm at the collar and the
         // votives at the hem. Same hue, a third the intensity, a fraction of the
         // area — glowing PARTS on a dark body, not a glowing body.
-        sigil: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 0.9 },
+        sigil: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 1.15 },
+        // Dimmer than the sigils and far dimmer than the eyes — a seam is meant
+        // to be READ as a line, not looked at.
+        seam: { color: 0x3fbf8a, emissive: 0x55e8a0, emissiveIntensity: 0.75 },
         eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.5 },
       },
       eyes: { material: 'eyes', emissive: 2.5 },
@@ -675,8 +703,22 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'sphere', joint: 'spine', radius: 0.026, pos: [0, 0.27, -0.075], mat: 'sigil' },
         // Two votives low on the flare — they light the robe's own fabric from
         // below, so the mass reads as folds instead of a cone.
-        { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [-0.20, -0.42, -0.20], mat: 'sigil' },
-        { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [0.21, -0.46, -0.16], mat: 'sigil' },
+        { kind: 'sphere', joint: 'spine', radius: 0.024, pos: [-0.20, -0.42, -0.20], mat: 'sigil' },
+        { kind: 'sphere', joint: 'spine', radius: 0.024, pos: [0.21, -0.46, -0.16], mat: 'sigil' },
+        { kind: 'sphere', joint: 'spine', radius: 0.020, pos: [-0.02, -0.50, 0.235], mat: 'sigil' },
+        // SEAMS — thin glowing lines running down the robe, following the folds.
+        // More light than before, but still LINES on a dark body: area is what
+        // turns a lit creature into a lantern, and a 0.012-radius seam has
+        // almost none. This is the same lesson the rim taught, applied forward
+        // rather than learned again — the rim washed because a fresnel covers a
+        // whole silhouette; these cannot, because they are geometry.
+        { kind: 'cylinder', joint: 'spine', radius: 0.011, height: 0.42, pos: [-0.145, -0.10, -0.185], rot: [0.16, 0, 0.30], mat: 'seam' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.011, height: 0.38, pos: [0.155, -0.13, -0.170], rot: [0.14, 0, -0.28], mat: 'seam' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.009, height: 0.30, pos: [0.02, -0.16, -0.255], rot: [0.10, 0, 0.04], mat: 'seam' },
+        // A ring of light where the veil takes over from the cloth — it marks the
+        // exact height the body stops being solid, which is the whole idea of
+        // this creature stated once, in light.
+        { kind: 'torus', joint: 'spine', radius: 0.30, tube: 0.010, pos: [0, -0.42, 0], rot: [1.5708, 0, 0], mat: 'seam' },
         // Cold green eyes set deep in the cowl shadow, and a MAW below them — a
         // narrow vertical slot, not a smile: three lights in a face read as a
         // face, and a tall thin mouth reads as something mid-word. Both sit
