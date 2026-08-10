@@ -327,6 +327,34 @@ was carried forward as fact, and cost the project its per-instance culling for a
 month. When a workaround's justification cannot be re-tested cheaply, put it
 behind a flag rather than a constant.
 
+#### Confirmed on device
+
+Two flat recordings on a cool phone, before and after the whole sequence
+(bounds resolution + surface-scalar bake + per-instance frustum culling):
+
+| | `69851ad` | `a750a67` |
+| --- | --- | --- |
+| draws | 196 | **109** (−44%) |
+| uniform buffers | 567 | 362 (−36%) |
+| CPU | 10.5 ms | 9.9 ms |
+| GPU | 7.2 ms | 6.0 ms |
+| frame time | 16.6 ms | 16.5 ms |
+
+Frame time is unchanged because **16.5 ms is the 60 fps cap** — there is nowhere
+for it to go. The gain is headroom, which is the number that matters here: the
+same phone throttles to roughly half CPU throughput after ~20 minutes of play
+(measured: identical draws/triangles/GPU, CPU 13.0 → 24.5 ms), so the budget to
+design against is not 16.7 ms on a cool device but about half that.
+
+The cleanest signal is **draws: min 109, median 109, max 111 across 897 frames.**
+Before, that count moved with wherever the player looked. Ten batches is ten
+batches regardless of view, so per-frame cost is now nearly flat — which is what
+removes the walk-into-a-busy-room spike, independent of any average.
+
+Caveat kept deliberately: this room held 43k triangles against the earlier 52k,
+so part of the GPU drop is scene rather than change. The draw count is the
+trustworthy comparison — down 44% while triangles fell only 17%.
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
 [UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook
