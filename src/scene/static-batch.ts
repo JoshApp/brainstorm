@@ -203,8 +203,20 @@ interface Item { mesh: THREE.Mesh; rectId: string; geo: THREE.BufferGeometry; ow
 // identical output (base = color × vertexColor), one batch instead of ~13.
 const bakedMats = new Map<string, THREE.MeshStandardMaterial>();
 
+// ROUGHNESS + METALNESS RIDE THE VERTICES TOO, so they are absent here.
+//
+// Measured on a depth-3 floor: 22 batches, split by material=15, attrLayout=3,
+// shadowFlags=3 — material was the dominant splitter, and it was splitting on
+// NOTHING BUT SURFACE SCALARS. Four separate batches existed for `bake|f` at
+// roughness 1.00, 0.95, 0.90 and 0.85: the same shading, four render objects,
+// four indirect textures, because of a value that fits in one float per vertex.
+//
+// Colour and emissive already ride attributes for exactly this reason. Surface
+// scalars are the same shape of problem and get the same answer, which leaves
+// the family as what genuinely needs a distinct SHADER: flat vs smooth normals,
+// and fog on/off.
 function bakeFamilyKey(m: THREE.MeshStandardMaterial): string {
-  return `${m.flatShading ? 'f' : 's'}|${(m.roughness ?? 1).toFixed(2)}|${(m.metalness ?? 0).toFixed(2)}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`;
+  return `${m.flatShading ? 'f' : 's'}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`;
 }
 
 function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
@@ -233,8 +245,11 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
     m = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       vertexColors: true,
-      roughness: src.roughness,
-      metalness: src.metalness,
+      // Scalars come from the geometry (see aSurface below). These stay at
+      // three's defaults purely so the classic material is well-formed before
+      // the node conversion overrides them.
+      roughness: 1,
+      metalness: 0,
       flatShading: src.flatShading,
       fog: (src as THREE.Material & { fog?: boolean }).fog,
     });
@@ -250,6 +265,13 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
     // which is why this works on a plain MeshStandardMaterial.
     (m as unknown as { emissiveNode?: unknown }).emissiveNode =
       (tslAttribute as (n: string, t: string) => unknown)('aRevealEmissive', 'vec3');
+    // …and so do ROUGHNESS + METALNESS, packed into one vec2. Same mechanism,
+    // same reason: a surface scalar is per-SURFACE data, not a reason to compile
+    // and bind a second shader. This is what collapses `bake|f|1.00|0.00` and
+    // `bake|f|0.95|0.00` — identical shading, one float apart — into one batch.
+    const surf = (tslAttribute as (n: string, t: string) => { x: unknown; y: unknown })('aSurface', 'vec2');
+    (m as unknown as { roughnessNode?: unknown }).roughnessNode = surf.x;
+    (m as unknown as { metalnessNode?: unknown }).metalnessNode = surf.y;
     m.name = `static-batch-baked:${key}`;
     bakedMats.set(key, m);   // module-lifetime — pins the batch pipeline across floors
   }
@@ -271,19 +293,27 @@ function coloredVariant(
   const ei = src.emissiveIntensity ?? 1;
   const em = src.emissive ?? BLACK;
   const er = em.r * ei, eg = em.g * ei, eb = em.b * ei;
-  const key = `${geo.uuid}|${color.getHexString()}|${em.getHexString()}|${ei.toFixed(3)}`;
+  // Roughness + metalness are part of the variant now, so they belong in the
+  // key — without them two props sharing a geometry and a colour but finished
+  // differently (polished bronze, dull stone) would collide on the first one.
+  const rough = src.roughness ?? 1, metal = src.metalness ?? 0;
+  const key = `${geo.uuid}|${color.getHexString()}|${em.getHexString()}|${ei.toFixed(3)}`
+    + `|${rough.toFixed(3)}|${metal.toFixed(3)}`;
   let v = cache.get(key);
   if (v) return v;
   v = geo.clone();
   const n = v.attributes.position.count;
   const arr = new Float32Array(n * 3);
   const eArr = new Float32Array(n * 3);
+  const sArr = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
     arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b;
     eArr[i * 3] = er; eArr[i * 3 + 1] = eg; eArr[i * 3 + 2] = eb;
+    sArr[i * 2] = rough; sArr[i * 2 + 1] = metal;
   }
   v.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   v.setAttribute('aRevealEmissive', new THREE.BufferAttribute(eArr, 3));
+  v.setAttribute('aSurface', new THREE.BufferAttribute(sArr, 2));
   cache.set(key, v);
   return v;
 }
