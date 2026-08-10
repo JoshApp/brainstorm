@@ -355,6 +355,56 @@ Caveat kept deliberately: this room held 43k triangles against the earlier 52k,
 so part of the GPU drop is scene rather than change. The draw count is the
 trustworthy comparison — down 44% while triangles fell only 17%.
 
+### The 80 in-play compiles, decoded
+
+Two combat recordings on `a750a679` carried 80 post-warm pipeline compiles. The
+recordings had been able to say *that* something compiled since the WebGPU
+capture landed; they could not say what, because the key was an anonymous list of
+comma-separated values.
+
+It isn't anonymous. three composes it in exactly two functions —
+`Pipelines._getRenderCacheKey` (`stageVertex.id, stageFragment.id, …`) and
+`WebGPUBackend.getRenderCacheKey` (the material/render-state array) — so the
+field order is readable off the source. Decoded, the 80 group like this:
+
+| count | material | what varies |
+| --- | --- | --- |
+| 31 | `modeldef:dis:d` | **nothing but the shader program ids** |
+| 8 | `modeldef:dis:rd+t` | same |
+| 7 | `modeldef:dis:d+t` | same |
+| 4 | `modeldef:dis:dc` | same |
+| ~18 | unnamed | mixed; some are compute pipelines, whose key has a different layout |
+| 1 | `ShadowMaterial` | the only `rgba8unorm` target — a separate pass |
+
+The dominant finding is the first row. Thirty-one compiles of one material whose
+render state is **byte-identical** across all of them: same blending, same depth
+state, same `side`, same target format, same topology, same geometry layout. The
+only field that differs is the pair of `ProgrammableStage` ids — and three mints
+a new stage id only for byte-new WGSL (`Pipelines.programs.vertex` is a `Map`
+keyed by the shader source). So these are 31 distinct *programs* for one
+material, not 31 distinct render states.
+
+That reframes the whole problem. **No amount of additional warm coverage can fix
+a program that is re-minted after the warm.** The warm compiles subject A's WGSL;
+play produces subject B whose WGSL differs, so the warmed pipeline is never the
+one that gets used. Which is why the warm "never quite caught all" — it was never
+a coverage problem in the first place, for the majority of these.
+
+Two candidate causes remain open and are distinguishable by measurement, not by
+reading: non-deterministic codegen (the same graph emitting different variable
+numbering per instance), or **eviction** — three releases a pipeline *and its
+programs* when `usedTimes` drops to 0, so a material that gets disposed takes the
+warm's work with it and the next use pays a full recompile with a fresh id. The
+census reports `evicted` for exactly this reason; a non-zero count on a phone
+recording settles it.
+
+Worth recording as a correction: the first hypothesis here was that the missing
+pipelines were the **shadow pass**, on the strength of two `shared:std` entries
+differing in one field. Decoding the field showed it was `side`, not a pass, and
+the shadow material accounts for one compile out of eighty. The hypothesis was
+cheap to form and would have been expensive to act on — which is the argument for
+building the decoder before building the fix.
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
 [UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook
