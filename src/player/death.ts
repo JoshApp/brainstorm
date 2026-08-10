@@ -5,6 +5,7 @@ import { setPersistentVignette } from '../ui/vignette';
 import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
+import { returnToTitle } from '../app-restart';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 import { reportDeath } from '../net/delve-net';
 import { recordDeath } from '../ai/player-profile';
@@ -184,7 +185,10 @@ export function triggerDeath() {
         },
         damageRecap: getDamageRecap(),
       },
-      () => window.location.reload(),
+      // The run is over and clearSave() already ran, so this is a plain trip
+      // back to the title — no reason to reboot the whole app for it, and
+      // rebooting is what made the next run pay a full warm (app-restart.ts).
+      () => returnToTitle(),
     );
   }, CONFIG.DEATH_SEQUENCE_DURATION * 1000);
 }

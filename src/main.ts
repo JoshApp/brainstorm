@@ -100,6 +100,7 @@ import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
 import { suppressNextDescentTitle, setDescentProgress, holdCover } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
+import { setReturnToTitle, returnToTitle } from './app-restart';
 import { applyState } from './state/save-hydration';
 import { initCharacterTracking, resetCharacter } from './state/character';
 import { initWeaponUsage, resetWeaponUsage } from './player/weapon-usage';
@@ -1059,15 +1060,17 @@ createWeaponSwapChip(() => {
 createSettingsMenu();
 configureSettingsMenu({
   abandonRun() {
-    // Wipe the save then reload — the boot flow will show the title
-    // screen with no CONTINUE pill, ready for a fresh DESCEND.
+    // Wipe the save, then rebuild the title IN PLACE — the title screen reads
+    // the (now absent) save and shows no CONTINUE pill, ready for a fresh
+    // DESCEND. This used to reload, which threw away the warm pipeline cache
+    // and made the next run pay a full boot (see app-restart.ts).
     clearSave();
-    location.reload();
+    returnToTitle();
   },
   quitToMenu() {
-    // Save is preserved; reload kicks the boot flow which sees the
-    // save and offers CONTINUE on the title screen.
-    location.reload();
+    // Save is preserved; the title reads it and offers CONTINUE. Same context,
+    // so the pipelines this run compiled are still compiled.
+    returnToTitle();
   },
   exitGame() {
     // window.close only works on tabs opened by script (or PWAs on
@@ -1877,6 +1880,11 @@ if (handleDebugScreenFlags()) {
     setCameraPitch(-0.35);
     camera.rotation.x = -0.35;
   }
+  // Everything that ends a run routes here instead of reloading the page
+  // (settings quit/abandon, the death screen). Rebuilding the title vignette is
+  // the same in-place level swap every descent already performs; openTitle then
+  // re-reads the save, so CONTINUE appears or doesn't on its own.
+  setReturnToTitle(() => { void mountTitleScene().then(() => { openTitle(); }); });
   // Wait until pipeline compiling has SETTLED (the scene rendered everything it's going to)
   // or maxMs elapses. DEV uses the compile guard's total (precise); prod has no counter, so
   // a fixed ~1.5s budget gives the title time to render. requestAnimationFrame-paced.
