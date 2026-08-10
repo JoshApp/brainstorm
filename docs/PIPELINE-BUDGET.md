@@ -236,27 +236,54 @@ children holding 351 meshes** — an unnamed 88-box masonry construct, an unname
 static objects in the dungeon, each paying a render object every frame.
 
 Resolving those by **bounds** (`containedRectId`) took the floor from
-**282 → 520 candidates, 280 → 517 batched, in the SAME 22 batches**: loose meshes
-**503 → 266**, ~237 render objects × ~16.6 µs ≈ **3.9 ms/frame** of upload gone.
-Holds across depths (depth 8: 645/651; depth 15: 545/547).
+**282 → 362 candidates, 280 → 360 batched, in the same 22 batches**. The rule is
+pinned in `tests/static-batch-rect.test.ts`: **a rect id is not a label, it is
+what the room culler toggles.** File stone under the wrong room and it blinks out
+while the player looks straight at it (the doorframe bug). So overhang into the
+VOID is accepted — masonry leans out of its room by design, and rejecting it
+threw away the biggest groups on the floor — while overlap into ANOTHER rect is
+refused.
 
-Two rules make it safe, and both are pinned in `tests/static-batch-rect.test.ts`:
+#### The part that was wrong, and how the phone caught it
 
-- **A rect id is not a label — it is what the room culler toggles.** File stone
-  under the wrong room and it blinks out while the player looks straight at it
-  (the doorframe bug). So overhang into the VOID is accepted (masonry leans out
-  of its room by design; rejecting it threw away the biggest groups on the
-  floor), while overlap into ANOTHER rect is refused.
-- **A group that genuinely spans rects batches UNCULLED** (`NO_RECT`) rather than
-  staying loose: it joins a batch, but never enters the rect index, so nothing
-  toggles it. That is bit-for-bit the visibility it already had — the culler
-  skips unlabelled children too — at one render object instead of eighty.
+The first version went further: a group that genuinely spans two rects was
+batched under a `NO_RECT` sentinel, entering no rect index, on the reasoning that
+"an instance nothing ever toggles has bit-for-bit the visibility it already had,
+since the room culler skips unlabelled children too." That took the floor to
+517 batched and looked like the bigger win — ~237 render objects × ~16.6 µs ≈
+3.9 ms/frame on paper.
 
-The cost of that second rule: ~85–110 groups a floor are now always-submitted
-triangles rather than always-submitted draw calls. We are draw-call bound, not
-triangle bound, so this is the right side of the trade — but if a floor ever goes
-triangle-heavy, giving those groups a real rect (or a multi-rect membership like
-the one `room-culling.ts` already gives framed openings) is the way out.
+**A loose mesh is still FRUSTUM culled.** A batch instance is not: this codebase
+turns `perObjectFrustumCulled` off deliberately (r185's per-instance frustum path
+wrongly culls live instances — altar pedestals vanished). So the sentinel did not
+preserve those groups' visibility, it deleted their frustum culling, and the
+batch began submitting the half of the floor behind the player every frame.
+
+Phone recordings, one clean before and one clean after (two others had unrelated
+CPU storms and were discarded):
+
+| | before | after |
+| --- | --- | --- |
+| uniform buffers | 567 | 369 (−35%) |
+| draws | 196 | **307 (+57%)** |
+| CPU | 10.5 ms | **13.6 ms** |
+| frame time | 16.6 ms | 16.8 ms |
+
+The metric the change targeted moved exactly as predicted. Draws went the wrong
+way, which is the tell: batching converts render objects into cheap
+`drawIndexed` calls roughly one-for-one, so the draw count should have stayed
+flat. It rose because geometry that used to be frustum-culled no longer was.
+
+**Room culling and frustum culling are not interchangeable, and an object that
+can have neither is better off loose, where it still gets one.** The sentinel is
+gone; spanning groups keep their own draws. If they are ever worth batching, the
+way in is multi-rect membership — the answer `room-culling.ts` already gives
+framed openings, which render while EITHER adjoining room is visible.
+
+The general lesson, for the next optimisation: **a headless object count is not a
+frame time.** The µs-per-object constant was measured on a build where every
+object still had frustum culling, and it silently stopped applying to objects
+that lost it.
 
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem

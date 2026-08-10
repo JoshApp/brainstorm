@@ -151,12 +151,23 @@ function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
 // looking straight at it. That is the doorframe bug Josh reported, and
 // room-culling.ts answers it for framed openings by assigning them to BOTH
 // sides; a batch instance lives in exactly one rect and has no such answer.
-// A group that straddles two rects is instead batched UNCULLED (rect id
-// NO_RECT): it joins a batch — killing the per-object cost, which is the whole
-// point — but never enters the rect index, so nothing ever toggles it. That is
-// bit-for-bit the visibility it already had, since the room culler skips
-// unlabelled children too. Cheaper, and it cannot make anything disappear.
-export const NO_RECT = '*';
+// A group that straddles two rects KEEPS ITS OWN DRAWS.
+//
+// It briefly did the other thing — batched under a NO_RECT sentinel, on the
+// reasoning that an instance nothing ever toggles has "bit-for-bit the
+// visibility it already had", since the room culler skips unlabelled children
+// too. THAT REASONING WAS WRONG, and a phone recording caught it within the
+// hour. A loose mesh is still FRUSTUM culled by three every frame — geometry
+// behind you is skipped. A batch instance is not: this file turns
+// `perObjectFrustumCulled` off on purpose (r185's per-instance frustum path
+// wrongly culls live instances). So folding ~240 straddling instances into
+// batches did not preserve their visibility, it deleted their frustum culling.
+// Measured on the phone: draws 196 → 307 while the object count went DOWN, and
+// CPU rose ~3ms — the batch was submitting the half of the floor behind the
+// player, every frame.
+//
+// Room culling and frustum culling are not interchangeable, and an object that
+// can have neither is better off loose, where it still gets one.
 const fitBox = new THREE.Box3();
 
 export function containedRectId(level: LiveLevel, obj: THREE.Object3D): string | null {
@@ -314,7 +325,7 @@ export function batchStaticWorld(level: LiveLevel): void {
   const byKey = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; items: Item[] }>();
   const variantCache = new Map<string, THREE.BufferGeometry>();   // per-floor colour-variant cache
   let candidates = 0;
-  let straddled = 0;      // unlabelled groups that span two rects — no safe rect
+  let straddled = 0;      // unlabelled groups spanning two rects — left loose on purpose
   for (const child of level.root.children.slice()) {
     if (excluded.has(child)) continue;
     let rectId: string | null = null;
@@ -332,7 +343,7 @@ export function batchStaticWorld(level: LiveLevel): void {
     // by the time this runs.
     if (!rectId && child.userData?.dbgKind !== 'door') {
       rectId = containedRectId(level, child);
-      if (!rectId) { rectId = NO_RECT; straddled++; }
+      if (!rectId && child.children.length) straddled++;
     }
     if (!rectId) continue;
     child.traverse((o) => {
@@ -429,13 +440,9 @@ export function batchStaticWorld(level: LiveLevel): void {
       it.mesh.updateWorldMatrix(true, false);
       batch.setMatrixAt(id, it.mesh.matrixWorld);
       const inst: BatchInstance = { batch, id, retired: false };
-      // NO_RECT instances stay out of the index on purpose — nothing toggles
-      // them, so they draw always, exactly as they did unbatched.
-      if (it.rectId !== NO_RECT) {
-        let list = rectIndex.get(it.rectId);
-        if (!list) { list = []; rectIndex.set(it.rectId, list); }
-        list.push(inst);
-      }
+      let list = rectIndex.get(it.rectId);
+      if (!list) { list = []; rectIndex.set(it.rectId, list); }
+      list.push(inst);
       if (it.owner) {
         let owned = groupIndex.get(it.owner);
         if (!owned) { owned = []; groupIndex.set(it.owner, owned); }
@@ -457,7 +464,7 @@ export function batchStaticWorld(level: LiveLevel): void {
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
     console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches `
-      + `(${bakedMats.size} baked families, ${straddled} groups batched uncullable: no single containing rect)`);
+      + `(${bakedMats.size} baked families, ${straddled} groups left loose: span two rects, so they keep their frustum culling)`);
   }
 }
 
