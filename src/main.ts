@@ -1,3 +1,4 @@
+import { setCensusRenderer } from './debug/perf-recorder';
 import * as THREE from 'three';
 import { createRenderer } from './scene/create-renderer';
 import { initEmbersGPU } from './effects/embers-gpu';
@@ -251,6 +252,9 @@ installRenderPassCpu(renderer);
 // ub/ubKB columns — distinguishes an upload-burst "encode storm" from a GC
 // pause landing mid-encode. Same prod-shipping policy as the pass buckets.
 installUploadCounter(renderer);
+// The census needs the same device queue the counter wraps, but it only arms
+// while a recording runs — hand the recorder the renderer so it can.
+setCensusRenderer(renderer);
 // On the WebGL2 FALLBACK backend most mobiles have no GPU timestamps
 // (EXT_disjoint_timer_query_webgl2), which would leave adaptive resolution
 // with no signal at all — arm its wall-clock fallback there (valid because

@@ -50,6 +50,10 @@ interface Rec {
     viewport: [number, number]; pixelRatio: number; renderScale: number;
     graphics: Record<string, unknown>;
     sceneAudit?: { total: Record<string, number>; byKind: Record<string, { meshes: number; instances: number }> };
+    uploadCensus?: {
+      frames: number; totalCalls: number; totalKB: number; censusFrames: [number, number];
+      sites: Array<{ site: string; calls: number; kb: number; buffers: number }>;
+    };
   };
   systemNames: string[];
   gpuPhaseNames: string[];
@@ -209,6 +213,24 @@ function main(): void {
   console.log(`  programs ${Math.max(...F.map((f) => f.prog))}   geometries ${Math.max(...F.map((f) => f.geo))}   textures ${Math.max(...F.map((f) => f.tex))}`);
   console.log(`  ${Math.round(mean(F.map((f) => f.tris / Math.max(1, f.draws))))} triangles per draw is the number to look at: if it is small, the frame is`);
   console.log('  paying SUBMISSION cost, not geometry cost, and batching beats every other lever.');
+
+  // ── Who is making all those upload calls? ──
+  const census = recs.map((r) => r.meta.uploadCensus).find(Boolean);
+  if (census) {
+    const perFrame = census.totalCalls / Math.max(1, census.frames);
+    console.log(`\n── upload census ── ${Math.round(perFrame)} calls/frame, ${(census.totalKB / Math.max(1, census.frames)).toFixed(1)} KB/frame`);
+    console.log(`  captured over frames ${census.censusFrames[0]}–${census.censusFrames[1]} of the recording (those frames cost a few ms extra — exclude them)`);
+    console.log(`  ${'calls/f'.padStart(8)} ${'KB/f'.padStart(7)} ${'bufs'.padStart(5)}  call site`);
+    for (const st of census.sites.slice(0, 12)) {
+      const cpf = st.calls / Math.max(1, census.frames);
+      // Many calls against few buffers = the SAME buffer rewritten repeatedly,
+      // which is a different bug from many buffers each written once.
+      const note = st.buffers > 0 && cpf / st.buffers > 2.5 ? '  ⟵ rewrites the same buffers' : '';
+      console.log(`  ${cpf.toFixed(0).padStart(8)} ${(st.kb / Math.max(1, census.frames)).toFixed(1).padStart(7)} ${String(st.buffers).padStart(5)}  ${st.site}${note}`);
+    }
+  } else {
+    console.log('\n── upload census ── not present (WebGL2 backend, or recorded before the census shipped)');
+  }
 
   if (m.sceneAudit) {
     const a = m.sceneAudit;
