@@ -130,7 +130,13 @@ export interface PipelineCensus {
    *  A non-zero count means the warm's work is being thrown away, which no
    *  amount of extra warm coverage can fix. */
   evicted: number;
-  /** Post-warm compiles, grouped and classified, worst first. */
+  /** Post-warm compiles SEEN since the warm, whether or not they are still
+   *  resident. `gaps` can only classify what survived; the difference between
+   *  this and the gap total is churn — compiled, used, released, recompiled. */
+  inPlaySeen: number;
+  /** Which materials those seen-compiles belonged to, worst first. */
+  inPlayByName: Array<{ name: string; count: number }>;
+  /** Post-warm compiles still RESIDENT, grouped and classified, worst first. */
   gaps: CensusEntry[];
 }
 
@@ -213,6 +219,29 @@ export function censusForRecording(): PipelineCensus | null {
 /** How many distinct pipelines the warm has produced so far. */
 export function warmedPipelineCount(): number { return warmKeys.size; }
 
+/** Was this pipeline key produced by a warm pass? Lets the per-frame compile
+ *  capture (frame-timing) record only the compiles that AREN'T the warm doing
+ *  its job — its 80-key buffer used to saturate on warm keys, so every
+ *  recording ever taken reported exactly 80 and it read like a count. */
+export function isWarmPipelineKey(key: string): boolean { return warmKeys.has(key); }
+
+// Cumulative count of post-warm compiles SEEN, as opposed to still resident.
+// takePipelineCensus can only classify pipelines that are still in the cache —
+// but three RELEASES a pipeline at usedTimes 0, so a compile that happened and
+// was then dropped leaves no trace there. A phone recording showed exactly that:
+// eleven in-play compile tags in the frame stream and zero resident gaps. That
+// gap between "compiled" and "still here" IS the churn signal, so count both.
+let inPlaySeen = 0;
+const inPlaySeenNames = new Map<string, number>();
+
+/** Record a pipeline compile observed during play. No-op for warm keys and
+ *  before any warm has been absorbed. */
+export function notePipelineCompile(key: string, name: string): void {
+  if (!sealed || warmKeys.has(key)) return;
+  inPlaySeen++;
+  inPlaySeenNames.set(name, (inPlaySeenNames.get(name) ?? 0) + 1);
+}
+
 /** Diff the live pipeline cache against the warm set and classify every gap.
  *  Returns null before any warm has been absorbed (nothing to diff against). */
 export function takePipelineCensus(r: DelveRenderer): PipelineCensus | null {
@@ -242,6 +271,10 @@ export function takePipelineCensus(r: DelveRenderer): PipelineCensus | null {
   return {
     keySpace: stateful ? 'webgpu-full' : 'stateless',
     warmed: warmKeys.size,
+    inPlaySeen,
+    inPlayByName: [...inPlaySeenNames.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count).slice(0, 12),
     resident,
     evicted,
     gaps: [...grouped.values()].sort((a, b) => b.count - a.count),

@@ -16,6 +16,7 @@ import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { readAndResetUploads } from './upload-counter';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { setProfSpans } from './prof-span';
+import { isWarmPipelineKey, notePipelineCompile } from './pipeline-census';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -141,6 +142,14 @@ function diffNewPipelines(r: DelveRenderer): string[] {
     _seenPipe.add(k);
     const name = p?.vertexProgram?.name || p?.fragmentProgram?.name || p?.computeProgram?.name || '?';
     out.push(name);
+    // WARM COMPILES ARE NOT GAPS — and recording them here made this buffer
+    // useless. It seeds at the first profiled frame, the dashcam rolls from
+    // early boot, so the warm's ~250 pipelines filled all 80 slots: EVERY
+    // recording ever taken reported exactly 80, across a dozen builds, and it
+    // read like a count of in-play compiles. It never was one. Skip the warm's
+    // own keys so what lands here is only what compiled DURING PLAY.
+    if (isWarmPipelineKey(k)) continue;
+    notePipelineCompile(k, name);
     if (_compiledKeys.length < 80) _compiledKeys.push(`${name} :: ${String(k).slice(0, 200)}`);
   }
   return out;

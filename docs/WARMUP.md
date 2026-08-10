@@ -69,11 +69,11 @@ deleted 2026-07-05 — one drain path, nothing compiles in live frames.)
 `renderer.info` has no `.programs` on WebGPU, so the WebGL warmup guard was blind. We patch
 the device's `createRenderPipeline` (transparent pass-through) to count compiles and **warn
 on any that happen after warmup** — the WebGPU-native "record what compiles" instrument.
-`window.__compileStats()` → `{ total, postWarmup, gaps }`. postWarmup 0 is the GOAL, not
-an established fact — as of 2026-08-10 phone recordings show ~80 in-play compiles in a combat
-session. What that guard can't tell you is whether more warm coverage could have prevented
-them; see the coverage census below, which classifies each one. It is also DEV-only, so it
-never reaches the device where the behaviour happens.
+`window.__compileStats()` → `{ total, postWarmup, gaps }`. It is DEV-only, so it never
+reaches the device where the behaviour happens — use the coverage census below for that.
+(Careful with the OTHER compile counter: a recording's `compiledKeys` is capped at 80 and
+used to seed before the warm, so every recording ever taken reported exactly 80 and it
+read like a count of in-play compiles. It never was one. It now skips warm keys.)
 
 ## The compile / lagspike watch (your radar)
 
@@ -113,8 +113,9 @@ that's the one thing the per-content seams above don't auto-cover for a genuinel
 
 Everything above is **constructive**: the warm builds subjects and hopes they cover
 the key space. Nothing asserted that they did — so "postWarmup must be 0" was a
-CLAIM, and phone recordings kept showing ~80 in-play compiles against it. The
-census closes that loop.
+CLAIM. The census closes that loop, and measured on a phone (2026-08-10,
+`1070e555`) the warm turns out to be close to comprehensive: **248 pipelines
+warmed, 4 evicted, 0-5 resident gaps** per session.
 
 It snapshots the set of pipeline cache keys the covered passes produced
 (`absorbWarmPipelines`, called at the same point as `noteCoveredWarmPoint`), then

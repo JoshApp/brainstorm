@@ -120,7 +120,15 @@ if (ck && ck.length) {
 // See src/debug/pipeline-census.ts for what each verdict means and its fix.
 const pc = r.meta?.pipelineCensus;
 if (pc) {
-  console.log(`  WARM COVERAGE: warmed ${pc.warmed} pipelines · ${pc.resident} resident · ${pc.evicted} EVICTED`);
+  console.log(`  WARM COVERAGE: warmed ${pc.warmed} pipelines · ${pc.resident} resident · ${pc.evicted} EVICTED · ${pc.inPlaySeen ?? '?'} compiled in play`);
+  // inPlaySeen counts compiles that HAPPENED; gaps counts the ones still resident.
+  // A big gap between them is churn: compiled, used, released, recompiled.
+  if (pc.inPlaySeen != null) {
+    const resident = (pc.gaps || []).reduce((n, g) => n + g.count, 0);
+    if (pc.inPlaySeen > resident)
+      console.log(`    ⚠ ${pc.inPlaySeen - resident} in-play compiles are NOT resident any more — compiled then released (churn), not a coverage gap.`);
+    for (const e of (pc.inPlayByName || []).slice(0, 8)) console.log(`      compiled in play: ×${e.count} ${e.name}`);
+  }
   if (pc.keySpace === 'stateless')
     console.log('    (WebGL2 backend — its cache key carries no render state, so every verdict below is program-identity only, not a state diff.)');
   if (pc.evicted > 0)

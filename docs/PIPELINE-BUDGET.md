@@ -355,55 +355,67 @@ Caveat kept deliberately: this room held 43k triangles against the earlier 52k,
 so part of the GPU drop is scene rather than change. The draw count is the
 trustworthy comparison — down 44% while triangles fell only 17%.
 
-### The 80 in-play compiles, decoded
+### "80 in-play compiles" was never a number — it was a full buffer
 
-Two combat recordings on `a750a679` carried 80 post-warm pipeline compiles. The
-recordings had been able to say *that* something compiled since the WebGPU
-capture landed; they could not say what, because the key was an anonymous list of
-comma-separated values.
+Two combat recordings carried `compiledKeys` of length 80, and that was read as
+80 post-warm compiles. It wasn't. `_compiledKeys` is capped at 80
+(`if (_compiledKeys.length < 80)`) and it seeds at the **first profiled frame** —
+which, with the dashcam rolling from early boot, is *before* the warm. So the
+buffer filled with the warm's own ~250 pipelines and stopped.
 
-It isn't anonymous. three composes it in exactly two functions —
-`Pipelines._getRenderCacheKey` (`stageVertex.id, stageFragment.id, …`) and
-`WebGPUBackend.getRenderCacheKey` (the material/render-state array) — so the
-field order is readable off the source. Decoded, the 80 group like this:
+The tell was there to be checked and wasn't: **every recording in the folder
+reports exactly 80**, across a dozen different builds, including ones taken
+before and after unrelated changes. A metric that returns the same number for
+every input is a saturated counter, not a measurement.
 
-| count | material | what varies |
-| --- | --- | --- |
-| 31 | `modeldef:dis:d` | **nothing but the shader program ids** |
-| 8 | `modeldef:dis:rd+t` | same |
-| 7 | `modeldef:dis:d+t` | same |
-| 4 | `modeldef:dis:dc` | same |
-| ~18 | unnamed | mixed; some are compute pipelines, whose key has a different layout |
-| 1 | `ShadowMaterial` | the only `rgba8unorm` target — a separate pass |
+Which means the analysis built on it was wrong too. The 31 `modeldef:dis:d`
+entries with sequential shader-stage ids were **the warm compiling its dissolve
+roster, exactly as designed** — not per-death program churn in combat. The
+`PROGRAM-CHURN` diagnosis drawn from them does not hold.
 
-The dominant finding is the first row. Thirty-one compiles of one material whose
-render state is **byte-identical** across all of them: same blending, same depth
-state, same `side`, same target format, same topology, same geometry layout. The
-only field that differs is the pair of `ProgrammableStage` ids — and three mints
-a new stage id only for byte-new WGSL (`Pipelines.programs.vertex` is a `Map`
-keyed by the shader source). So these are 31 distinct *programs* for one
-material, not 31 distinct render states.
+### What the census actually measured
 
-That reframes the whole problem. **No amount of additional warm coverage can fix
-a program that is re-minted after the warm.** The warm compiles subject A's WGSL;
-play produces subject B whose WGSL differs, so the warmed pipeline is never the
-one that gets used. Which is why the warm "never quite caught all" — it was never
-a coverage problem in the first place, for the majority of these.
+`1070e555`, three phone recordings, `keySpace: webgpu-full` (so the field
+verdicts are trustworthy):
 
-Two candidate causes remain open and are distinguishable by measurement, not by
-reading: non-deterministic codegen (the same graph emitting different variable
-numbering per instance), or **eviction** — three releases a pipeline *and its
-programs* when `usedTimes` drops to 0, so a material that gets disposed takes the
-warm's work with it and the next use pays a full recompile with a fresh id. The
-census reports `evicted` for exactly this reason; a non-zero count on a phone
-recording settles it.
+| | 54bbfb27 | 82919df0 | ce281cb9 |
+| --- | --- | --- | --- |
+| warmed | 248 | 248 | 248 |
+| resident | 249 | 248 | 244 |
+| **evicted** | 4 | 4 | 4 |
+| resident gaps | 5 | 4 | 0 |
 
-Worth recording as a correction: the first hypothesis here was that the missing
-pipelines were the **shadow pass**, on the strength of two `shared:std` entries
-differing in one field. Decoding the field showed it was `side`, not a pass, and
-the shadow material accounts for one compile out of eighty. The hypothesis was
-cheap to form and would have been expensive to act on — which is the argument for
-building the decoder before building the fix.
+The warm is close to comprehensive: ~248 pipelines, a handful ever missing, and
+the surviving gaps are one `STATE-MISMATCH` (`depthTest true→false`) and a couple
+of `PROGRAM-CHURN` on `shared:std`. Eviction is a stable 4 — small, not the story.
+
+**But `prog` is flat across hundreds of frames including deaths.** In 54bbfb27 it
+sits at 249 through three deaths, a sever and a crumble. Dissolve materials do
+not compile per death. The compiles that do happen cluster in a *burst at a
+transition*: in ce281cb9 frames 4 and 9 carry six `C:shared:std` plus two
+`C:modeldef:opa:plain`, `prog` climbs 240→244 and then never moves again for 780
+frames. One load-time burst, ~500 ms, then silence.
+
+And ce281cb9 shows the case `gaps` structurally cannot: **eleven in-play compile
+tags, zero resident gaps.** Those pipelines compiled and were released before the
+census ran. That is why the census now counts `inPlaySeen` cumulatively as well
+as classifying what survived — the difference between the two IS the churn.
+
+### The remaining hitches are not compiles
+
+With compiles accounted for, the spikes that are left have no compile and no GC:
+
+| frame | dt | cpu | prog | gc | ev |
+| --- | --- | --- | --- | --- | --- |
+| 54bbfb27 490-491 | 109 / 115 ms | 84 / 79 ms | flat 249 | false | none |
+| 54bbfb27 80-81 | 62 / 66 ms | 58 / 56 ms | flat 248 | false | none |
+| ce281cb9 583 | 121 ms | **5.5 ms** | flat 244 | false | none |
+
+The first two are real CPU work — 55-85 ms of it — that the per-system buckets
+don't attribute. The last one is the opposite: 121 ms of wall clock with almost
+no CPU and normal GPU, i.e. a stall outside anything we measure (compositor,
+paging, or the OS). Neither is a warm problem, and no amount of pipeline work
+will move them.
 
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
