@@ -234,12 +234,14 @@ export function isWarmPipelineKey(key: string): boolean { return warmKeys.has(ke
 let inPlaySeen = 0;
 const inPlaySeenNames = new Map<string, number>();
 
-/** Record a pipeline compile observed during play. No-op for warm keys and
- *  before any warm has been absorbed. */
-export function notePipelineCompile(key: string, name: string): void {
-  if (!sealed || warmKeys.has(key)) return;
+/** Record a pipeline compile observed during play. Returns false — and counts
+ *  nothing — for warm keys and for anything before the first warm was absorbed,
+ *  so callers can use it as the "is this actually an in-play compile?" test. */
+export function notePipelineCompile(key: string, name: string): boolean {
+  if (!sealed || warmKeys.has(key)) return false;
   inPlaySeen++;
   inPlaySeenNames.set(name, (inPlaySeenNames.get(name) ?? 0) + 1);
+  return true;
 }
 
 /** Diff the live pipeline cache against the warm set and classify every gap.

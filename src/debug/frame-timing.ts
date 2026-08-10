@@ -16,7 +16,7 @@ import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { readAndResetUploads } from './upload-counter';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { setProfSpans } from './prof-span';
-import { isWarmPipelineKey, notePipelineCompile } from './pipeline-census';
+import { notePipelineCompile } from './pipeline-census';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -148,8 +148,11 @@ function diffNewPipelines(r: DelveRenderer): string[] {
     // recording ever taken reported exactly 80, across a dozen builds, and it
     // read like a count of in-play compiles. It never was one. Skip the warm's
     // own keys so what lands here is only what compiled DURING PLAY.
-    if (isWarmPipelineKey(k)) continue;
-    notePipelineCompile(k, name);
+    // notePipelineCompile is the gate: false means the warm produced this key, or
+    // no warm has been absorbed yet (boot compiles, before the first descent).
+    // Both used to land in the 80-slot buffer and fill it, which is why sessions
+    // with ZERO in-play compiles still reported 80 keys.
+    if (!notePipelineCompile(k, name)) continue;
     if (_compiledKeys.length < 80) _compiledKeys.push(`${name} :: ${String(k).slice(0, 200)}`);
   }
   return out;

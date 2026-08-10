@@ -401,6 +401,48 @@ tags, zero resident gaps.** Those pipelines compiled and were released before th
 census ran. That is why the census now counts `inPlaySeen` cumulatively as well
 as classifying what survived — the difference between the two IS the churn.
 
+### The roster skip is the bimodality (measured 2026-08-10, `3b2e9e41`)
+
+Four recordings, same build, same phone, minutes apart — and they fall into two
+completely different states:
+
+| | 22:12 pair | 22:14 pair |
+| --- | --- | --- |
+| warmed | 262 | 250 |
+| evicted | 0 | 10 |
+| **compiled in play** | **0** | **215** |
+
+Zero versus two hundred and fifteen. Same build, same device, same settings.
+That is the "sometimes it caches, sometimes it doesn't" feeling, measured.
+
+The mechanism is `content/warm-cache.ts`. After a full warm it writes a marker
+keyed on build SHA + backend + variant settings; the next open with a matching
+key **skips the roster warm entirely** (`canSkipRosterWarm`) and leans on
+Chrome/Dawn's persistent pipeline cache to make first-use creation fast. When
+that cache delivers, the skip is free. When it doesn't, nothing is warmed and
+the roster compiles during play — which is the 215.
+
+The ordering confirms it: the healthy session came FIRST (it paid the full warm
+and called `markRosterWarmed`), and the session two minutes later hit the marker,
+skipped, and paid 215 in-play compiles. The self-heal then fires — 215 is far
+past `HEAL_THRESHOLD = 4`, so the marker is cleared at the descent boundary and
+the next open warms fully again.
+
+So the design is **one bad session per cache eviction**, and it costs the whole
+roster. That is fine in theory and expensive in this loop: every new build SHA
+mints a new variant key, so the cycle is full-warm → skip → (maybe) 215 compiles
+→ heal → full warm, repeatedly, all evening.
+
+The lever is that the skip is **optimistic**: it assumes the browser cache is
+warm rather than checking. Making it evidence-based — probe one known pipeline
+and time its creation, skip only if that probe is cache-fast — would turn a
+guaranteed bad session into a cheap measurement. Not built yet; recorded here
+because the census finally makes the cost visible.
+
+Note the counting subtlety this exposed: `gaps` can only classify pipelines still
+RESIDENT, and of the 215 only 4 survived to capture. Without the cumulative
+`inPlaySeen` counter the same session reads as "4 gaps, basically fine."
+
 ### The remaining hitches are not compiles
 
 With compiles accounted for, the spikes that are left have no compile and no GC:
