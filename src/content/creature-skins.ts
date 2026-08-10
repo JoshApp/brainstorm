@@ -63,5 +63,16 @@ export function humanoidBipedSkin(o: HumanoidSkinOpts): SkinPart[] {
     { kind: 'bone', from: 'kneeR', to: 'footR', radius: lr, mat: limb },
     { kind: 'box', joint: 'footL', size: [0.11, 0.07, 0.22], pos: [0, 0.04, -0.04], jitter: jit, mat: limb },
     { kind: 'box', joint: 'footR', size: [0.11, 0.07, 0.22], pos: [0, 0.04, -0.04], jitter: jit, mat: limb },
+    // HANDS. There were none — the arm bones ran to the handL/handR joints and
+    // simply stopped, so every humanoid ended in a tapered stick and anything
+    // it "held" floated at the tip with nothing around it. Reported from the
+    // phone as the skirmisher gripping its sword weirdly; the sword was fine,
+    // there was just no hand. Feet were built from the start, which is probably
+    // why nobody noticed the other end.
+    //
+    // A blocky fist rather than a sphere: it wants to read as a CLOSED grip at
+    // this size, and a small sphere on a tapered limb reads as a knob.
+    { kind: 'box', joint: 'handL', size: [lr * 1.9, lr * 2.1, lr * 1.7], pos: [0, -lr * 0.5, 0], jitter: jit, mat: limb },
+    { kind: 'box', joint: 'handR', size: [lr * 1.9, lr * 2.1, lr * 1.7], pos: [0, -lr * 0.5, 0], jitter: jit, mat: limb },
   ];
 }

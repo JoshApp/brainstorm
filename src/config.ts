@@ -781,6 +781,15 @@ export const CONFIG = {
       MOOD_HURT_DROP: 0.35,   // aggression lost when it takes a hit (recoils, re-sizes-up)
       MOOD_STAGGER_DROP: 0.6, // …and more when poise-broken
       MOOD_COMMIT_DROP: 0.24, // aggression spent committing an attack — forces a lull before the next burst
+      // STARVATION — the liveness guarantee. None of the utility scores above
+      // grow with time, so a cautious personality could sit in WATCH forever
+      // (measured: boldness .25 / patience .75 scores watch .641 vs press .488,
+      // and committing lowers press further). These ramp pressure into
+      // press/close and out of watch as a mob goes un-committed, so patience
+      // buys a longer wait rather than an infinite one.
+      STARVE_FULL: 6.0,       // s of not attacking for the pressure to reach full
+      STARVE_PRESS: 0.55,     // added to press/close at full starvation
+      STARVE_WATCH: 0.70,     // removed from watch at full starvation
       // FEINT (telegraph-the-wait) — a mob HOLDING the ring (watch intent, no
       // attack-token) periodically fakes a lunge — darts in, snaps back — so it
       // reads as a coiled predator circling for an opening, not a frozen satellite

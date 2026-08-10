@@ -19,7 +19,12 @@ const noJitter = () => 0.5;
 function input(over: Partial<IntentInput>): IntentInput {
   return {
     distance: 2, reach: 1.5, commitDistance: 2, aggression: 0.5,
-    personality: NEUTRAL, canAttack: true, hpFrac: 1, rng: noJitter, ...over,
+    personality: NEUTRAL, canAttack: true, hpFrac: 1,
+    // Freshly committed: these cases pin the personality/mood scoring, so they
+    // are read with the starvation pressure at zero. Its own liveness guarantee
+    // lives in intent-liveness.test.ts.
+    sinceCommit: 0,
+    rng: noJitter, ...over,
   };
 }
 

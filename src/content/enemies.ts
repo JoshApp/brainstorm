@@ -499,8 +499,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // straight down the arm). rot.x tilts the blade off the forearm line so
         // it reads as a WEAPON in the hand, not an extension of the limb; the
         // grip sits at the fist, blade angled out front + slightly down.
-        { kind: 'box', joint: 'handR', size: [0.05, 0.6, 0.015], pos: [0.04, -0.04, -0.28], rot: [1.25, 0, 0], bevel: 0.01, mat: 'blade' },
-        { kind: 'box', joint: 'handR', size: [0.14, 0.04, 0.05], pos: [0.04, 0.0, -0.04], rot: [1.25, 0, 0], mat: 'blade' },
+        { kind: 'box', joint: 'handR', size: [0.045, 0.60, 0.014], pos: [0.01, -0.075, -0.26], rot: [1.25, 0, 0], bevel: 0.01, mat: 'blade' },
+        // Crossguard sits just PAST the fist, and a stub of grip runs back through
+        // it, so the blade visibly passes through the hand instead of starting
+        // at its surface.
+        { kind: 'box', joint: 'handR', size: [0.13, 0.035, 0.045], pos: [0.01, -0.038, -0.075], rot: [1.25, 0, 0], mat: 'blade' },
+        { kind: 'box', joint: 'handR', size: [0.028, 0.13, 0.028], pos: [0.01, -0.058, 0.005], rot: [1.25, 0, 0], mat: 'blade' },
       ],
     },
     baseEyeEmissive: 2.0,
@@ -573,9 +577,26 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // another mid-value surface.
         hem: { color: 0x1d2028, roughness: 0.35, metalness: 0.35, flatShading: 'auto' },
         // Near-black shadow under the hood — the face we never quite see.
-        flesh: { color: 0x0a0a09, roughness: 1, flatShading: 'auto' },
+        // THE HOLLOW — near-black and OPAQUE, so the lights inside the hood read
+        // against a true void rather than against more robe. The hood is the
+        // frame; this is what the frame is empty of.
+        flesh: { color: 0x07070a, roughness: 1, flatShading: 'auto' },
+        // THE VEIL — the lower body, translucent. Josh: "ethereal ghost visible
+        // on the bottom". A robe that reaches the floor as solid geometry is a
+        // person in a dress; one that thins out on the way down is a thing that
+        // is only partly here. Same colour as the robe so it reads as the SAME
+        // cloth losing its grip, not as a second garment.
+        veil: { color: 0x15151c, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.34 },
         staff: { color: 0x2a2018, roughness: 0.9, flatShading: 'auto' },
         orb: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.2 },
+        // THE MAW — dimmer than the eyes on purpose. A mouth as bright as the
+        // eyes gives a face three equal lights and the read collapses into a
+        // triangle of dots; at half intensity it stays a mouth UNDER eyes.
+        maw: { color: 0x2fbf88, emissive: 0x4fe0a0, emissiveIntensity: 1.2 },
+        // Bare hands of cold light at the ends of the sleeves. The ghost rig
+        // sets the hands wide (±girth·1.4), so these are the outermost points of
+        // the whole silhouette — which is exactly where a reaper's read lives.
+        bone: { color: 0xbfe8d4, emissive: 0x66ffaa, emissiveIntensity: 0.7, flatShading: 'auto' },
         // Small, dimmer siblings of the orb: the charm at the collar and the
         // votives at the hem. Same hue, a third the intensity, a fraction of the
         // area — glowing PARTS on a dark body, not a glowing body.
@@ -585,28 +606,67 @@ export const ENEMIES: Record<string, EnemySpec> = {
       eyes: { material: 'eyes', emissive: 2.5 },
       flash: { material: 'robe' },
       skin: [
-        // The robe: one revolved profile from collar → flared body → wisp tip
-        // hovering just above the floor. A flowing shroud, no hard cone seams.
+        // ── THE UPPER BODY: solid ────────────────────────────────────────
+        // Split in two where the old model was one lathe. Above the waist it is
+        // cloth you could grab; below, it stops being there. One profile could
+        // not do that — a single mesh takes one material.
         { kind: 'lathe', joint: 'spine', profile: [
             [0.075, 0.34],   // collar (under the neck)
-            [0.19, 0.16],    // shoulders
-            [0.24, -0.06],   // chest
-            [0.30, -0.34],   // flare
-            [0.31, -0.5],    // fullest
-            [0.22, -0.66],   // gather
-            [0.10, -0.80],   // wisp
-            [0.02, -0.93],   // wisp tip (≈0.09 off the floor → it floats)
+            [0.20, 0.16],    // shoulders
+            [0.26, -0.06],   // chest
+            [0.31, -0.30],   // flare
+            [0.32, -0.42],   // fullest — the handover to the veil
           ], jitter: 0.012, mat: 'robe' },
+        // ── THE LOWER BODY: dissolving ───────────────────────────────────
+        // Picks up exactly where the solid robe ends and thins to a wisp that
+        // never touches the floor. Translucent, so the room shows through it and
+        // it reads as trailing off rather than as being cut short.
+        { kind: 'lathe', joint: 'spine', profile: [
+            [0.32, -0.42],
+            [0.29, -0.58],
+            [0.21, -0.72],
+            [0.12, -0.85],
+            [0.03, -0.97],   // tip, ≈0.05 off the floor
+          ], jitter: 0.02, mat: 'veil' },
+        // Three tatters trailing off the veil, so the bottom edge is ragged
+        // rather than a clean revolved hem — a clean hem reads as a skirt.
+        { kind: 'cone', joint: 'spine', radius: 0.05, height: 0.34, pos: [-0.16, -0.72, 0.05], rot: [Math.PI, 0, 0.16], jitter: 0.03, mat: 'veil' },
+        { kind: 'cone', joint: 'spine', radius: 0.045, height: 0.42, pos: [0.14, -0.78, -0.07], rot: [Math.PI, 0, -0.12], jitter: 0.03, mat: 'veil' },
+        { kind: 'cone', joint: 'spine', radius: 0.038, height: 0.28, pos: [0.03, -0.70, 0.16], rot: [Math.PI, 0, 0.05], jitter: 0.03, mat: 'veil' },
         // Shoulders — soft robe lumps the sleeves hang from.
-        { kind: 'sphere', joint: 'shoulderL', radius: 0.1, jitter: 0.015, mat: 'robe' },
-        { kind: 'sphere', joint: 'shoulderR', radius: 0.1, jitter: 0.015, mat: 'robe' },
-        // Sleeved arms drifting down to the hands (ghost rig: no elbow).
-        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.06, radiusTop: 0.045, mat: 'robe' },
-        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.06, radiusTop: 0.045, mat: 'robe' },
-        // Shadowed face + a deep cowl drawn over it (rounded, not a peak).
-        { kind: 'sphere', joint: 'head', radius: 0.11, mat: 'flesh' },
-        { kind: 'sphere', joint: 'head', radius: 0.145, scale: [1.0, 1.05, 1.0], pos: [0, 0.04, 0.05], mat: 'cowl' },
-        { kind: 'cone', joint: 'head', radius: 0.165, height: 0.22, pos: [0, 0.12, 0.04], rot: [0.18, 0, 0], jitter: 0.02, mat: 'cowl' },
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.1, segments: [5, 4], jitter: 0.012, mat: 'robe' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.1, segments: [5, 4], jitter: 0.012, mat: 'robe' },
+        // Sleeved arms drifting down to the hands (ghost rig: no elbow). The
+        // sleeve WIDENS toward the wrist so it reads as a hanging cuff the hand
+        // emerges from, rather than a tapering stick.
+        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.055, radiusTop: 0.075, mat: 'robe' },
+        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.055, radiusTop: 0.075, mat: 'robe' },
+        // HANDS OF LIGHT — three thin fingers per hand, spread. Small enough
+        // that they never rival the eyes, far enough out that they are the first
+        // thing to enter the frame when it reaches for you.
+        { kind: 'sphere', joint: 'handL', radius: 0.036, segments: [5, 4], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.013, height: 0.085, pos: [-0.028, -0.05, -0.012], rot: [2.85, 0, 0.22], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.013, height: 0.095, pos: [0, -0.055, -0.018], rot: [2.95, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.012, height: 0.078, pos: [0.026, -0.05, -0.010], rot: [2.85, 0, -0.20], mat: 'bone' },
+        { kind: 'sphere', joint: 'handR', radius: 0.036, segments: [5, 4], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.013, height: 0.085, pos: [-0.026, -0.05, -0.010], rot: [2.85, 0, 0.20], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.013, height: 0.095, pos: [0, -0.055, -0.018], rot: [2.95, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.012, height: 0.078, pos: [0.028, -0.05, -0.012], rot: [2.85, 0, -0.22], mat: 'bone' },
+        // ── THE HOOD ─────────────────────────────────────────────────────
+        // A deep PEAK, not a rounded cap. The old cowl was a sphere with a short
+        // cone on it and read as a bald head in a scarf; a hood is a pointed
+        // shell that overhangs the face and puts the whole face in shadow. That
+        // overhang is the entire trick — the lights inside only read as being
+        // INSIDE something if something is in front of them.
+        { kind: 'sphere', joint: 'head', radius: 0.105, segments: [5, 4], mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.15, segments: [6, 5], scale: [1.02, 1.08, 1.05], pos: [0, 0.035, 0.055], mat: 'cowl' },
+        { kind: 'cone', joint: 'head', radius: 0.205, height: 0.25, segments: 7, pos: [0, 0.135, 0.050], rot: [0.34, 0, 0], jitter: 0.022, mat: 'cowl' },
+        // The brow of the hood, drawn forward OVER the face — the overhang.
+        { kind: 'cone', joint: 'head', radius: 0.165, height: 0.20, segments: 7, pos: [0, 0.075, -0.055], rot: [-1.15, 0, 0], jitter: 0.015, mat: 'cowl' },
+        // Cloth falling from the hood down past the jaw on both sides, so the
+        // face is a slot of light in a dark frame rather than an open circle.
+        { kind: 'box', joint: 'head', size: [0.05, 0.20, 0.11], pos: [-0.115, -0.075, -0.03], rot: [0, 0, 0.16], jitter: 0.012, mat: 'cowl' },
+        { kind: 'box', joint: 'head', size: [0.05, 0.20, 0.11], pos: [0.115, -0.075, -0.03], rot: [0, 0, -0.16], jitter: 0.012, mat: 'cowl' },
         // A smooth collar ring where cowl meets robe — the one place on this
         // body with a specular response, so the shoulders have a lit edge that
         // is not the same wash as the torso.
@@ -617,9 +677,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // below, so the mass reads as folds instead of a cone.
         { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [-0.20, -0.42, -0.20], mat: 'sigil' },
         { kind: 'sphere', joint: 'spine', radius: 0.022, pos: [0.21, -0.46, -0.16], mat: 'sigil' },
-        // Cold green eyes set deep in the cowl shadow.
-        { kind: 'sphere', joint: 'head', radius: 0.032, pos: [-0.05, -0.01, -0.092], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.032, pos: [0.05, -0.01, -0.092], mat: 'eyes' },
+        // Cold green eyes set deep in the cowl shadow, and a MAW below them — a
+        // narrow vertical slot, not a smile: three lights in a face read as a
+        // face, and a tall thin mouth reads as something mid-word. Both sit
+        // further back in the hood than the old eyes did, so the overhang above
+        // actually shades them.
+        { kind: 'sphere', joint: 'head', radius: 0.030, segments: [5, 4], pos: [-0.050, 0.005, -0.080], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.030, segments: [5, 4], pos: [0.050, 0.005, -0.080], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.030, segments: [5, 4], scale: [0.52, 1.5, 0.55], pos: [0, -0.075, -0.072], mat: 'maw' },
         // Staff in the right hand — shaft standing up, glowing orb near the top
         // (≈1.66m world, matching the ranged muzzle).
         { kind: 'cylinder', joint: 'handR', radius: 0.022, height: 1.15, pos: [0.04, 0.34, -0.05], mat: 'staff' },

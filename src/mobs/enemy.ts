@@ -836,6 +836,9 @@ export function createEnemy(
   let aggression = CONFIG.ENEMY_AI.INTENT.MOOD_TARGET_BASE + personality.boldness * 0.2;
   let decisionTimer = gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN;   // desync the first decision
   let currentIntent: IntentChoice = { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false };
+  /** Seconds since this mob last committed an attack — drives the intent
+   *  starvation pressure (see selectIntent). Only ticks while engaged. */
+  let sinceCommit = 0;
   const useIntent = !spec.isBoss && !spec.miniboss;   // set-piece foes keep tuned pressure
   // Feint (telegraph-the-wait): while HOLDING the ring, fake a lunge now and then
   // so a waiting mob reads as coiled, not frozen. `feintCd` counts down between
@@ -2836,6 +2839,11 @@ export function createEnemy(
           const I = CONFIG.ENEMY_AI.INTENT;
           const warmTarget = I.MOOD_TARGET_BASE + personality.boldness * I.MOOD_TARGET_BOLD;
           aggression += (warmTarget - aggression) * Math.min(1, I.MOOD_WARM_RATE * dt);
+          // Time since this mob last COMMITTED an attack. Reset at the commit
+          // below (not when `press` is merely chosen — a press that never gets
+          // an ability or a pack token has not fed the mob, and resetting there
+          // would let it starve-loop while still doing nothing).
+          sinceCommit += dt;
           decisionTimer -= dt;
           if (decisionTimer <= 0) {
             decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
@@ -2845,7 +2853,7 @@ export function createEnemy(
               distance, reach: spec.strikeRange, commitDistance,
               aggression, personality,
               canAttack: selectAbility(distance) !== null,
-              hpFrac, rng: gameRng,
+              hpFrac, sinceCommit, rng: gameRng,
             });
           }
         }
@@ -2867,6 +2875,7 @@ export function createEnemy(
           setupAbilityTelegraph(ability, playerPos);
           // Committing spends aggression → a lull before the next burst.
           if (useIntent) aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
+          sinceCommit = 0;   // fed — the starvation pressure resets
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;

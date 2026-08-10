@@ -35,6 +35,10 @@ export interface IntentInput {
   personality: Personality;
   canAttack: boolean;       // an ability is ready AND the player is in its band
   hpFrac: number;           // 0..1 current HP
+  /** Seconds since this mob last COMMITTED an attack (reset on commit; starts
+   *  at 0 on spawn). Drives the starvation pressure that guarantees a mob
+   *  eventually engages instead of watching forever — see selectIntent. */
+  sinceCommit: number;
   rng: () => number;        // seeded [0,1) — deterministic tie-break jitter
 }
 
@@ -64,6 +68,33 @@ export function selectIntent(input: IntentInput): IntentChoice {
   const { distance, reach, commitDistance, aggression, personality, canAttack, hpFrac, rng } = input;
   const P = CONFIG.ENEMY_AI.INTENT;
 
+  // ── STARVATION: the thing that guarantees the fight actually happens ──────
+  //
+  // Every score below is a function of personality and mood, and NOTHING in it
+  // grows with time. That is a liveness bug, not a tuning one. Worked example,
+  // boldness 0.25 / patience 0.75 at its steady-state mood of 0.5625:
+  //   watch 0.641  circle 0.573  press 0.488
+  // WATCH wins nearly every roll, and on the rare roll where press wins,
+  // MOOD_COMMIT_DROP knocks aggression down 0.24 — which RAISES watch (it is
+  // scored on 1 - aggression) and lowers press. The mob settles back into
+  // staring. Worse at the outer edge of the band, where a timid mob holds
+  // instead of closing, never reaches attack range, and so never gets to
+  // attack at all. Reported from the phone as rooms full of mobs that track
+  // you and never come — and "some rooms, not all" is the personality roll:
+  // rollPersonality jitters ±0.25, so a cautious draw locks up and a bold one
+  // plays fine.
+  //
+  // `sinceCommit` is seconds since this mob last committed an attack. It ramps
+  // a pressure term into press/close and out of watch, so patience buys a
+  // LONGER wait, never an infinite one. A timid mob is still timid — it just
+  // eventually comes.
+  // Defensive: a missing/NaN sinceCommit would make every score below NaN, and
+  // NaN loses every comparison silently — the selector would still return an
+  // intent, just always the fallback, with nothing to show anything was wrong.
+  // A caller that forgets the field gets the neutral value instead.
+  const since = Number.isFinite(input.sinceCommit) ? Math.max(0, input.sinceCommit) : 0;
+  const starve = Math.min(1, since / P.STARVE_FULL);
+
   // Well out of range: close the gap. (Past the commit band + a margin.)
   if (distance > commitDistance + reach * 0.6) return CHOICE.close;
 
@@ -72,13 +103,15 @@ export function selectIntent(input: IntentInput): IntentChoice {
   // PRESS — commit to a swing. Only meaningful if it can actually attack. Warmth
   // (mood) + boldness push it; patience pulls it back (waits for a better moment).
   const scorePress = canAttack
-    ? 0.30 + aggression * 0.60 + personality.boldness * 0.30 - personality.patience * 0.30 + jitter()
+    ? 0.30 + aggression * 0.60 + personality.boldness * 0.30 - personality.patience * 0.30
+      + starve * P.STARVE_PRESS + jitter()
     : -1;
 
   // CLOSE — still a bit far within the band: drift toward strike range. Scales
   // with how far past reach we are, so a mob at arm's length won't keep shoving in.
   const bandFrac = Math.min(1, Math.max(0, (distance - reach) / Math.max(0.001, commitDistance - reach)));
-  const scoreClose = bandFrac * (0.40 + personality.boldness * 0.30) + jitter();
+  const scoreClose = bandFrac * (0.40 + personality.boldness * 0.30)
+    + starve * P.STARVE_PRESS + jitter();
 
   // CIRCLE — orbit the ring, sizing you up. The default "intelligent opponent"
   // read: aggressive presence, but it grants breathing room.
@@ -87,7 +120,8 @@ export function selectIntent(input: IntentInput): IntentChoice {
   // WATCH — the lull: hold still and stare. Cautious/patient mobs, and a hurt one
   // (low HP) that wants a beat before re-committing.
   const scoreWatch = personality.patience * 0.45 + (1 - aggression) * 0.35
-    + (1 - personality.boldness) * 0.20 + (1 - hpFrac) * 0.15 + jitter();
+    + (1 - personality.boldness) * 0.20 + (1 - hpFrac) * 0.15
+    - starve * P.STARVE_WATCH + jitter();
 
   let best: Intent = 'circle';
   let bestScore = scoreCircle;
