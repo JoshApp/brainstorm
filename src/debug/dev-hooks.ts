@@ -20,6 +20,7 @@ import { tryActivateRite } from '../combat/rites';
 import { requestLux, showLuxCard, luxTour, LUX_BANDS } from './lux';
 import { installPerfProbe } from './perf-probe';
 import { installInspector } from './inspector';
+import type { RoomCuller } from '../level/room-culling';
 
 // DEV-only console hooks + URL overrides — every window.__* inspection handle
 // and DEV URL flag that used to live inline in main.ts. Called ONLY inside an
@@ -34,6 +35,10 @@ export interface DevHookDeps {
   systems: GameSystem[];
   getLevel: () => (LiveLevel & { checkRoomClear?: () => void }) | null;
   getRunSeed: () => number;
+  /** The live room culler, when the setting has one built. Owned by main.ts;
+   *  passed as a thunk so the cull AUDIT (window.__cullAudit) can ask the real
+   *  culler what it hid rather than a reconstruction of it. */
+  getRoomCuller: () => RoomCuller | null;
   /** Puts the studio lighting rig on the whole loaded level. Owned by main.ts
    *  (it holds the renderer + ambient); the inspector calls it via this thunk. */
   enterLit: () => void;
@@ -240,6 +245,77 @@ export function installDevHooks(deps: DevHookDeps): void {
     // interpRestore snaps the camera straight back (same trap as
     // inspect-mode framing / the OOB-on-descent fix).
     interpSync([camera]);
+  };
+  // ── CULL AUDIT ────────────────────────────────────────────────────────────
+  // __cullAudit() — one measurement from where you stand: which rects the rays
+  // can actually reach vs which the culler drew. `holes` non-empty means the
+  // player is looking at a black gap right now.
+  w.__cullAudit = (cols?: number, rows?: number) =>
+    deps.getRoomCuller()?.audit(camera, { cols, rows }) ?? { error: 'culler off' };
+  // __cullSweep() — the same measurement from EVERY doorway on the floor, at 12
+  // yaws each, which is where the failures live (Josh's shots are all in a
+  // corridor mouth or just short of one). Stands 1.2m back from each opening on
+  // both sides, since a hole is directional. Returns the worst offenders.
+  // __cullWhere(x, z, yaw) — teleport there and dump every crossing decision.
+  w.__cullWhere = (x: number, z: number, yaw: number) => {
+    const culler = deps.getRoomCuller();
+    if (!culler) return { error: 'culler off' };
+    (w.__teleport as (a: number, b: number, c: number) => void)(x, z, yaw);
+    const audit = culler.audit(camera, { cols: 12, rows: 7 });
+    return { audit: { holes: audit.holes, hits: audit.hits }, explain: culler.explain(camera) };
+  };
+  w.__cullDiag = () => {
+    const level = getLevel();
+    if (!level) return { error: 'no level' };
+    const rects = [...level.spec.rooms.filter((r) => !r.logicalOnly), ...level.spec.corridors];
+    return {
+      rooms: level.spec.rooms.length, corridors: level.spec.corridors.length, rects: rects.length,
+      centreOk: rects.map((r) => level.walkable.contains(r.rect.x, r.rect.z, 0.3)),
+      camOk: level.walkable.contains(camera.position.x, camera.position.z, 0.3),
+      cam: [+camera.position.x.toFixed(1), +camera.position.z.toFixed(1)],
+      first: rects.slice(0, 4).map((r) => [r.id, +r.rect.x.toFixed(1), +r.rect.z.toFixed(1)]),
+    };
+  };
+  w.__cullSweep = (yaws = 12, standoff = 1.2) => {
+    const culler = deps.getRoomCuller();
+    const level = getLevel();
+    if (!culler || !level) return { error: culler ? 'no level' : 'culler off' };
+    const spots: Array<{ x: number; z: number }> = [];
+    const rects = [...level.spec.rooms.filter((r) => !r.logicalOnly), ...level.spec.corridors];
+    for (const r of rects) spots.push({ x: r.rect.x, z: r.rect.z });   // centres too
+    // Every rect boundary midpoint the walkable grid says you can stand near —
+    // a cheap stand-in for "doorway", and a superset of it.
+    for (const r of rects) {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const ex = r.rect.x + dx * (r.rect.w / 2 + standoff);
+        const ez = r.rect.z + dz * (r.rect.d / 2 + standoff);
+        if (level.walkable.contains(ex, ez, 0.3)) spots.push({ x: ex, z: ez });
+      }
+    }
+    const worst: Array<Record<string, unknown>> = [];
+    let samples = 0, withHoles = 0, sumDrawn = 0, sumRects = 0;
+    const px = camera.position.x, pz = camera.position.z, pyaw = camera.rotation.y;
+    for (const s of spots) {
+      if (!level.walkable.contains(s.x, s.z, 0.3)) continue;
+      for (let i = 0; i < yaws; i++) {
+        const yaw = (i / yaws) * Math.PI * 2;
+        (w.__teleport as (x: number, z: number, y: number) => void)(s.x, s.z, yaw);
+        const a = culler.audit(camera, { cols: 12, rows: 7 });
+        samples++; sumDrawn += a.drawn.length; sumRects += rects.length;
+        if (a.holes.length === 0) continue;
+        withHoles++;
+        const top = a.holes[0];
+        worst.push({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), yaw: +yaw.toFixed(2),
+                     id: top.id, rays: top.rays, of: a.hits, nearest: +top.nearest.toFixed(1),
+                     why: top.why, drawn: a.drawn.length });
+      }
+    }
+    (w.__teleport as (x: number, z: number, y: number) => void)(px, pz, pyaw);
+    worst.sort((a, b) => (b.rays as number) - (a.rays as number));
+    return { samples, withHoles, pct: +(100 * withHoles / Math.max(1, samples)).toFixed(1),
+             meanDrawn: +(sumDrawn / Math.max(1, samples)).toFixed(2),
+             meanOf: +(sumRects / Math.max(1, samples)).toFixed(1),
+             worst: worst.slice(0, 20) };
   };
   // __dropItem(id, dist?): spawn a real floor pickup ahead of the camera —
   // loot-flow repro (auto-pickup, carry caps, flask pours) without a chest.

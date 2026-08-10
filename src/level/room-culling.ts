@@ -33,7 +33,22 @@ interface RectNode {
    *  corridor's rect reaches inside it — see rectAt. */
   poly?: Poly;
   objects: THREE.Object3D[];                          // toggleable static content
-  neighbors: Array<{ id: string; ox: number; oz: number }>;  // opening midpoints
+  neighbors: Neighbour[];
+}
+
+/** One doorway, from this rect to `id`. `ox/oz` is the hole's midpoint; `hx/hz`
+ *  is half its span along the wall line, so the tests can ask about a HOLE and
+ *  not about a point. `guessed` marks a midpoint inferred from rect overlap
+ *  rather than read off the frame that was actually built there. */
+interface Neighbour {
+  id: string;
+  ox: number; oz: number;
+  hx: number; hz: number;
+  /** Unit vector pointing THROUGH the hole, from this rect into `id`. The
+   *  sample points are pushed along it so they land in the far room's open
+   *  floor instead of on the wall plane — see canSeeThrough. */
+  nx: number; nz: number;
+  guessed: boolean;
 }
 
 // Doorway-reveal margin (metres): a neighbour room renders when its connecting
@@ -60,6 +75,9 @@ export interface RoomCuller {
   dispose(): void;
   /** Count of currently-visible rects (debug readout). */
   visibleCount(): number;
+  /** DEV: the full crossing decision from where the camera stands — every
+   *  doorway out of the current rect, with the three gates evaluated. */
+  explain(camera: THREE.Camera): unknown;
   /** Force a set of rooms to always render this frame onward — used by ARENAS
    *  while their encounter is active so a portcullis (which blocks LOS for
    *  walkable but is visually see-through bars) doesn't make the arena pop
@@ -67,6 +85,25 @@ export interface RoomCuller {
   addForceVisible(roomIds: readonly string[]): void;
   /** Drop a previously-forced set. */
   removeForceVisible(roomIds: readonly string[]): void;
+  /** DEV: what the camera can ACTUALLY see vs what we drew. See auditCull. */
+  audit(camera: THREE.Camera, opts?: { cols?: number; rows?: number }): CullAudit;
+}
+
+/** The result of one cull audit from one camera pose. `holes` is the finding:
+ *  a rect whose geometry is the nearest surface along a ray through the view,
+ *  which the culler nevertheless hid — i.e. a black gap the player can see. */
+export interface CullAudit {
+  /** Rect ids the rays actually hit (nearest surface, culling suspended). */
+  seen: string[];
+  /** Rect ids the culler decided to draw this frame. */
+  drawn: string[];
+  /** seen \ drawn — the visible holes. Empty is the only good answer.
+   *  `why` names the gate that refused the crossing from an adjacent rect that
+   *  WAS drawn, so a finding points at a line of code rather than a symptom. */
+  holes: Array<{ id: string; rays: number; nearest: number; why: string }>;
+  /** Total rays cast, and how many hit anything (for a sanity read). */
+  rays: number;
+  hits: number;
 }
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
@@ -124,14 +161,40 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   // 2) Adjacency: two rects are connected if a wall edge coincides and overlaps
   //    along the run axis — the doorway. Opening midpoint = centre of the
   //    overlap on the shared edge. O(n²), n small.
+  /** rect id → rects whose floor it shares (see the note in the loop below). */
+  const spill = new Map<string, string[]>();
   const arr = [...nodes.values()];
   for (let i = 0; i < arr.length; i++) {
     for (let j = i + 1; j < arr.length; j++) {
       const a = arr[i], b = arr[j];
+      // ── GEOMETRY THAT STANDS IN SOMEONE ELSE'S ROOM ──────────────────────
+      //
+      // The flood asks "can I see THROUGH the doorway into that rect." For most
+      // pairs that is the whole story. It is not the whole story when one rect's
+      // geometry is INSIDE the other's floor — and on a polygon floor that is by
+      // construction: a corridor's rect reaches into the room it meets, because
+      // that is the only way to touch a wall that sits back from its bounding
+      // box (see rectAt). Its plate and wall stubs therefore stand in the room
+      // WITH you, on your side of the doorway.
+      //
+      // Measured: at seed 4 depth 7 the rays hit cor-4-2 at 3.08m while its own
+      // doorway was 3.65m away — the visible stone was NEARER than the hole it
+      // was supposed to be seen through. A sightline test cannot reach that, at
+      // any margin, because the question it asks is the wrong question.
+      //
+      // So: rects that share floor area are drawn together. Not transitive (only
+      // partners of flood-visible rects), so it cannot cascade across a floor.
+      if (rectsOverlap(a, b)) {
+        (spill.get(a.id) ?? spill.set(a.id, []).get(a.id)!).push(b.id);
+        (spill.get(b.id) ?? spill.set(b.id, []).get(b.id)!).push(a.id);
+      }
       const opening = sharedOpening(a, b);
       if (opening) {
-        a.neighbors.push({ id: b.id, ox: opening.x, oz: opening.z });
-        b.neighbors.push({ id: a.id, ox: opening.x, oz: opening.z });
+        // No frame to read a direction off, so aim at the other rect's centre.
+        const toB = unit(b.cx - opening.x, b.cz - opening.z);
+        const toA = unit(a.cx - opening.x, a.cz - opening.z);
+        a.neighbors.push({ id: b.id, ox: opening.x, oz: opening.z, hx: 0, hz: 0, ...toB, guessed: true });
+        b.neighbors.push({ id: a.id, ox: opening.x, oz: opening.z, hx: 0, hz: 0, ...toA, guessed: true });
       }
     }
   }
@@ -140,6 +203,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   // assignment below. Held apart from `node.objects` because its visibility is
   // an OR of two rooms, and the per-node loop can only write one answer.
   const boundary: Array<{ o: THREE.Object3D; a: string | null; b: string | null }> = [];
+  /** Every framed opening that joins two tracked rects — the floor's REAL
+   *  doorway list, harvested from what was actually built. */
+  const frameDoorways: Array<{
+    a: string; b: string; x: number; z: number; rotY: number; o: THREE.Object3D;
+  }> = [];
   /** How far through a gate to step when asking which rooms it joins. Past the
    *  wall (0.25m) and past the frame's own reveal, into open floor on each side. */
   const FRAME_PROBE = 1.0;
@@ -185,13 +253,88 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // The frame's local +Z runs through the gate; rotY is how it was placed.
       const s = Math.sin(child.rotation.y), c = Math.cos(child.rotation.y);
       const px = child.position.x, pz = child.position.z;
-      boundary.push({
+      const entry = {
         o: child,
         a: rectAt(nodes, px + s * FRAME_PROBE, pz + c * FRAME_PROBE)?.id ?? null,
         b: rectAt(nodes, px - s * FRAME_PROBE, pz - c * FRAME_PROBE)?.id ?? null,
-      });
+      };
+      boundary.push(entry);
+      // …AND it is the doorway itself. See publishFrameDoorways below.
+      if (entry.a && entry.b && entry.a !== entry.b) {
+        frameDoorways.push({ a: entry.a, b: entry.b, x: px, z: pz, rotY: child.rotation.y, o: child });
+      }
     }
   }
+
+  // ── THE DOORWAY IS NOT A GUESS ───────────────────────────────────────────
+  //
+  // portals.ts opens with the lesson: a doorway is a hole in a wall, and for a
+  // long time TWO systems each decided where that hole was from two different
+  // inputs, and they disagreed. This module was the THIRD, and nobody noticed
+  // because it never draws a wall — it only decides what to draw, so being
+  // wrong reads as "the renderer is popping" rather than as "the geometry
+  // disagrees."
+  //
+  // `sharedOpening` infers an opening from where two BOUNDING BOXES meet. On a
+  // rect floor that is the doorway. On a polygon floor it is not: the real wall
+  // sits back from the box, corridors reach INSIDE it, and the centre of the
+  // overlap can land metres away from the hole and INSIDE SOLID STONE. Then the
+  // line-of-sight test — asked "can you see that point" about a point in a wall
+  // — correctly answers no, and the corridor you are standing in front of is
+  // not drawn until you walk into it and rectAt puts you there. Measured before
+  // this: 8.9% of standing poses on real floors showed a hole, worst case 60 of
+  // 74 rays (four fifths of the screen) landing on a corridor 1.2m away that
+  // was hidden, and line-of-sight was the refusing gate in 28 of the 40 worst.
+  //
+  // The frames are the answer, and this file already had them in hand. Every
+  // framed opening was BUILT at the hole planPortals computed, and the loop
+  // above already resolves the two rooms it joins in order to keep the stone
+  // visible from both sides. So publish that as the graph: a doorway named by
+  // the thing standing in it beats a doorway inferred from two rectangles.
+  //
+  // The inferred edges stay as the fallback — hand-authored rect floors and
+  // fitting openings have no frame — and a published doorway overwrites the
+  // guess for that pair rather than adding a second edge beside it.
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  /** Widest a doorway is allowed to claim, so a freak bounding box can't turn
+   *  one opening into a licence to render half the floor. */
+  const MAX_HALF_SPAN = 3;
+  /** Half a doorway when the frame can't be measured. By the time the culler is
+   *  built, a frame's meshes may already have been absorbed into the static
+   *  world batch, and `setFromObject` on the emptied group returns a degenerate
+   *  box — which silently made every opening a POINT again (measured: `half: 0`
+   *  on a published doorway). A stated default is honest; a zero is a lie. */
+  const DEFAULT_HALF_SPAN = 0.9;
+  function publishFrameDoorways(): void {
+    for (const d of frameDoorways) {
+      const a = nodes.get(d.a), b = nodes.get(d.b);
+      if (!a || !b) continue;
+      // Half the opening's span, along the wall line (the frame's local X).
+      box.makeEmpty();
+      box.setFromObject(d.o);
+      box.getSize(size);
+      const measured = Math.max(size.x, size.z) / 2;
+      const half = Math.min(MAX_HALF_SPAN, measured > 0.2 ? measured : DEFAULT_HALF_SPAN);
+      const wx = Math.cos(d.rotY) * half, wz = -Math.sin(d.rotY) * half;
+      // Through-gate axis. `a` was probed at +(sin, cos), so a→b runs the other
+      // way; b→a runs along it.
+      const s = Math.sin(d.rotY), c = Math.cos(d.rotY);
+      link(a, b, d.x, d.z, wx, wz, -s, -c);
+      link(b, a, d.x, d.z, wx, wz, s, c);
+    }
+  }
+  function link(
+    from: RectNode, to: RectNode,
+    x: number, z: number, hx: number, hz: number, nx: number, nz: number,
+  ): void {
+    const existing = from.neighbors.find((n) => n.id === to.id);
+    if (existing && !existing.guessed) return;   // two frames on one pair: keep the first
+    const edge: Neighbour = { id: to.id, ox: x, oz: z, hx, hz, nx, nz, guessed: false };
+    if (existing) Object.assign(existing, edge);
+    else from.neighbors.push(edge);
+  }
+  publishFrameDoorways();
   //    Torches by position (their group is a direct root child not tagged above).
   for (const torch of level.torches) {
     const node = rectAt(nodes, torch.group.position.x, torch.group.position.z);
@@ -218,6 +361,43 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   const flatTarget = new THREE.Vector3();
   const flatWorld = new THREE.Matrix4();
   const UP = new THREE.Vector3(0, 1, 0);
+
+  /**
+   * Can the camera see THROUGH this doorway — is any part of the hole both in
+   * the view cone and unoccluded?
+   *
+   * A doorway is not a point. Testing only its centre fails two ways that both
+   * showed up in the audit: standing beside a wide opening puts its centre
+   * outside the yaw frustum while most of the hole is plainly in view, and a
+   * centre sample that happens to graze a jamb answers "occluded" for an
+   * opening you are looking straight through. So sample the centre and both
+   * shoulders, and pass if ANY of the three does — which is also the honest
+   * reading of "part of it is visible."
+   *
+   * Shoulders are pulled in to 70% of the half-span so they sit inside the
+   * clear gap rather than on the jamb itself.
+   *
+   * And every sample is pushed THROUGH the hole first. A doorway's midpoint sits
+   * on the wall plane, and a 2D segment test asked about a point lying exactly
+   * on the wall line answers "blocked" for an opening you are staring straight
+   * down — the jambs on either side of the gap are collinear with the target, so
+   * grazing one counts as a hit. Aiming a step INTO the far room asks the
+   * question we actually mean ("can I see that space") and puts the endpoint in
+   * open floor where the arithmetic is not ambiguous.
+   */
+  const THROUGH_STEP = 0;   // measured: stepping off the wall plane made it worse
+  function canSeeThrough(nb: Neighbour, cx: number, cz: number, eyeY: number): boolean {
+    const sx = nb.hx * 0.7, sz = nb.hz * 0.7;
+    const wide = sx !== 0 || sz !== 0;
+    const samples: Array<readonly [number, number]> = wide
+      ? [[nb.ox, nb.oz], [nb.ox + sx, nb.oz + sz], [nb.ox - sx, nb.oz - sz]]
+      : [[nb.ox, nb.oz]];
+    for (const [px, pz] of samples) {
+      sphere.center.set(px, eyeY, pz);
+      if (frustum.intersectsSphere(sphere) && los(cx, cz, px, pz)) return true;
+    }
+    return false;
+  }
 
   function showAll() {
     for (const node of nodes.values()) {
@@ -275,6 +455,21 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // looking through two doorways). The current rect is always visible.
       visible.add(start.id);
       const queue = [start.id];
+      // EVERY rect the camera stands in, not just the best one. rectAt has to
+      // answer "which room am I in" with a single id — the flood has to start
+      // from it, the nav graph needs one answer. But a corridor's rect reaches
+      // INTO the room it meets (the only way to touch a wall that sits back from
+      // its bounding box), and standing on that overlap you are honestly in
+      // both. Seeding only the winner is why a corridor you are standing at the
+      // mouth of could go dark until one more step forward flipped rectAt over
+      // to it — Josh, twice: *"it's very tight"*.
+      for (const node of nodes.values()) {
+        if (visible.has(node.id)) continue;
+        if (Math.abs(node.cx - cx) <= node.hw + EPS && Math.abs(node.cz - cz) <= node.hd + EPS) {
+          visible.add(node.id);
+          queue.push(node.id);
+        }
+      }
       while (queue.length) {
         const node = nodes.get(queue.pop()!)!;
         for (const nb of node.neighbors) {
@@ -290,8 +485,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           // height, not a fixed world-1.2 — so a sunken/raised room (the stair-
           // corridor Y-levels) is tested at the height you're actually at, not a
           // plane that may sit above/below its real opening.
-          sphere.center.set(nb.ox, camera.position.y, nb.oz);
-          if (frustum.intersectsSphere(sphere) && los(cx, cz, nb.ox, nb.oz)) {
+          if (canSeeThrough(nb, cx, cz, camera.position.y)) {
             visible.add(nb.id);
             queue.push(nb.id);
           }
@@ -301,6 +495,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // Player not resolvable to any rect — fail safe (render everything).
       showAll();
       return;
+    }
+
+    // Anything standing inside a drawn rect's floor is drawn with it.
+    for (const id of [...visible]) {
+      for (const other of spill.get(id) ?? []) visible.add(other);
     }
 
     for (const node of nodes.values()) {
@@ -356,8 +555,139 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     }
   }
 
+  // ── THE AUDIT ────────────────────────────────────────────────────────────
+  //
+  // Three separate bug reports now (#152, #159, #160, and Josh's phone shots of
+  // a corridor blinking out ahead of him) have been "the culler hid something I
+  // was looking at." Every one was diagnosed by reading the code and guessing at
+  // which of the three gates — fog distance, yaw frustum, line-of-sight — had
+  // said no. That is the wrong instrument: the gates are a MODEL of visibility,
+  // and asking the model whether the model is right cannot fail.
+  //
+  // So ask the SCENE instead. Suspend culling, fire a grid of rays through the
+  // view, and record which rect owns the nearest surface each ray lands on. That
+  // set is what the player can see, measured, with no theory in it. Anything in
+  // it that the culler hid is a black hole in the frame — exactly what the
+  // photographs show. The verdict is a count, not an opinion.
+  //
+  // DEV-only (it costs hundreds of raycasts and transiently unhides the world).
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+
+  function audit(camera: THREE.Camera, opts?: { cols?: number; rows?: number }): CullAudit {
+    const cols = opts?.cols ?? 16, rows = opts?.rows ?? 9;
+    if (!import.meta.env.DEV) return { seen: [], drawn: [], holes: [], rays: 0, hits: 0 };
+
+    // Ground truth needs the whole world present; restored by the tick below.
+    showAll();
+    camera.updateMatrixWorld();
+    raycaster.far = CONFIG.FOG_FAR;
+
+    const seenRays = new Map<string, { rays: number; nearest: number }>();
+    let hits = 0;
+    for (let iy = 0; iy < rows; iy++) {
+      for (let ix = 0; ix < cols; ix++) {
+        // Cell CENTRES, so no ray rides the frustum edge where a half-pixel of
+        // camera jitter would flip the answer.
+        ndc.set((ix + 0.5) / cols * 2 - 1, 1 - (iy + 0.5) / rows * 2);
+        raycaster.setFromCamera(ndc, camera as THREE.PerspectiveCamera);
+        const hit = raycaster.intersectObject(level.root, true)[0];
+        if (!hit) continue;
+        hits++;
+        const id = ownerRectId(hit.object) ?? rectAt(nodes, hit.point.x, hit.point.z)?.id;
+        if (!id) continue;
+        const prev = seenRays.get(id);
+        if (!prev) seenRays.set(id, { rays: 1, nearest: hit.distance });
+        else { prev.rays++; prev.nearest = Math.min(prev.nearest, hit.distance); }
+      }
+    }
+
+    tick(camera);   // recompute + reapply the real visibility we just trampled
+
+    const holes: CullAudit['holes'] = [];
+    for (const [id, s] of seenRays) {
+      if (!visible.has(id)) holes.push({ id, rays: s.rays, nearest: s.nearest, why: whyHidden(id, camera) });
+    }
+    holes.sort((a, b) => b.rays - a.rays);
+    return { seen: [...seenRays.keys()], drawn: [...visible], holes, rays: cols * rows, hits };
+  }
+
+  /**
+   * Re-run the three gates for the crossing INTO a hidden rect from whichever
+   * drawn rect neighbours it, and name the one that said no. If nothing drawn
+   * neighbours it at all, the flood could never have reached it and the graph
+   * itself is the answer — a different bug with a different fix, so it gets a
+   * different word.
+   */
+  function whyHidden(id: string, camera: THREE.Camera): string {
+    const node = nodes.get(id);
+    if (!node) return 'untracked-rect';
+    const cx = camera.position.x, cz = camera.position.z;
+    let sawDrawnNeighbour = false;
+    const reasons: string[] = [];
+    for (const nb of node.neighbors) {
+      if (!visible.has(nb.id)) continue;
+      sawDrawnNeighbour = true;
+      const ddx = nb.ox - cx, ddz = nb.oz - cz;
+      if (ddx * ddx + ddz * ddz > CULL_DIST2) { reasons.push('fog-distance'); continue; }
+      const tag = nb.guessed ? '(guessed-door)' : '';
+      const px = nb.ox + nb.nx * THROUGH_STEP, pz = nb.oz + nb.nz * THROUGH_STEP;
+      sphere.center.set(px, camera.position.y, pz);
+      if (!frustum.intersectsSphere(sphere)) { reasons.push(`yaw-frustum${tag}`); continue; }
+      if (!canSeeThrough(nb, cx, cz, camera.position.y)) { reasons.push(`line-of-sight${tag}`); continue; }
+      reasons.push('none-should-be-visible');
+    }
+    if (!sawDrawnNeighbour) return 'no-drawn-neighbour';
+    // The crossing that came CLOSEST to succeeding is the one worth naming.
+    for (const r of ['none-should-be-visible', 'line-of-sight', 'line-of-sight(guessed-door)',
+                     'yaw-frustum', 'yaw-frustum(guessed-door)', 'fog-distance']) {
+      if (reasons.includes(r)) return r;
+    }
+    return reasons[0] ?? 'unknown';
+  }
+
+  /** Which rect's geometry is this — walking up to whoever carries the tag. */
+  function ownerRectId(o: THREE.Object3D | null): string | null {
+    for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+      const src = n.userData?.dbgSource;
+      if (typeof src === 'string') {
+        const id = parseRectId(src);
+        if (id && nodes.has(id)) return id;
+      }
+    }
+    return null;
+  }
+
+  /** DEV: every doorway out of every DRAWN rect, with each gate's verdict. The
+   *  readout that turns "the culler hid it" into "this edge, this test, no." */
+  function explain(camera: THREE.Camera): unknown {
+    tick(camera);
+    const cx = camera.position.x, cz = camera.position.z;
+    const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
+    const edges: unknown[] = [];
+    for (const id of visible) {
+      const node = nodes.get(id);
+      if (!node) continue;
+      for (const nb of node.neighbors) {
+        sphere.center.set(nb.ox, camera.position.y, nb.oz);
+        edges.push({
+          from: id, to: nb.id, drawn: visible.has(nb.id), guessed: nb.guessed,
+          at: [+nb.ox.toFixed(2), +nb.oz.toFixed(2)],
+          half: +Math.hypot(nb.hx, nb.hz).toFixed(2),
+          dist: +Math.hypot(nb.ox - cx, nb.oz - cz).toFixed(2),
+          frustum: frustum.intersectsSphere(sphere),
+          los: los(cx, cz, nb.ox, nb.oz),
+          seeThrough: canSeeThrough(nb, cx, cz, camera.position.y),
+        });
+      }
+    }
+    return { start: start?.id, drawn: [...visible], edges };
+  }
+
   const culler: RoomCuller = {
     tick,
+    audit,
+    explain,
     setEnabled(on: boolean) {
       if (on === enabled) return;
       enabled = on;
@@ -423,6 +753,19 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
  * Inert on vault floors by construction — measured across 240 of them, no rect
  * ever runs through another's interior, so the overlap branch cannot fire there.
  */
+/** Do these two rects share real floor AREA (not merely touch at an edge)? */
+function rectsOverlap(a: RectNode, b: RectNode): boolean {
+  const ox = Math.min(a.cx + a.hw, b.cx + b.hw) - Math.max(a.cx - a.hw, b.cx - b.hw);
+  const oz = Math.min(a.cz + a.hd, b.cz + b.hd) - Math.max(a.cz - a.hd, b.cz - b.hd);
+  return ox > EPS && oz > EPS;
+}
+
+/** Unit vector, or a stated fallback when the two points coincide. */
+function unit(dx: number, dz: number): { nx: number; nz: number } {
+  const len = Math.hypot(dx, dz);
+  return len < 1e-6 ? { nx: 0, nz: 0 } : { nx: dx / len, nz: dz / len };
+}
+
 function sharedOpening(a: RectNode, b: RectNode): { x: number; z: number } | null {
   // Vertical shared edge (a's E == b's W, or vice versa) → overlap in Z.
   const ax0 = a.cx - a.hw, ax1 = a.cx + a.hw, az0 = a.cz - a.hd, az1 = a.cz + a.hd;
