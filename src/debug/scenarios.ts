@@ -568,6 +568,68 @@ export const SCENARIOS: Record<string, Scenario> = {
   //
   // Frozen and posed from a standing eye at a slight down-pitch: the shot is
   // the shot the player actually gets, not a beauty angle no one will ever see.
+  // Sister to look-lab, with a real ENCOUNTER standing in it. The reveal-ratio
+  // experiment needs many creatures at once, and it needs them to be the
+  // ACTUAL mobs — the lab's capsule stand-ins cannot answer whether a ghoul
+  // reads as absorbed when a ghoul is the shape doing the reading.
+  // THE READABLE BAND IS 1.5–7 METRES, and the first version of this scenario
+  // ignored it. A 16×18 room with the camera at the south wall put every one of
+  // ten creatures 8.4–15.7 m out; FOG_FAR is 9 and CAMERA_FAR is 10, so the
+  // roster was inside the fog wall or clipped by the far plane outright. The
+  // contact sheet came back as four identical empty rooms, which reads as "these
+  // styles are indistinguishable" rather than "nothing was in frame" — the most
+  // expensive kind of wrong. `window.__mobs()` exists now to catch exactly that
+  // (it reports NDC + distance per creature); check it before believing a sheet.
+  //
+  // Restaged: a 9×10 room, camera 0.6 m off the south wall, three ranks at
+  // ~2.6 / ~4.4 / ~6.2 m — near, mid, and just-before-the-fog. That spread IS
+  // the experiment: a reveal mode has to survive falloff, not just look good at
+  // arm's length.
+  'look-mob': {
+    level: {
+      id: 'look-mob', depth: 3, displayName: 'MOB LAB', fogColor: 0x0a0a0c,
+      startPos: { x: 0, z: 4.4, yaw: 0 },
+      rooms: [{ id: 'lab', rect: { x: 0, z: 0, w: 9, d: 10 }, height: 4.0 }],
+      corridors: [], props: [],
+      // Close to the ranks on purpose — at the old 8 m standoff the torches lit
+      // nothing but their own wall.
+      torches: [
+        { x: -4.4, z: 1.5, wall: 'W', height: 2.6, colorTint: 0xff9a40, intensityMul: 1.2 },
+        { x: 4.4, z: -1.5, wall: 'E', height: 2.6, colorTint: 0x6690c0, intensityMul: 0.8 },
+      ],
+      // Order matters: the reveal ratio assigns modes BY INDEX (see dev-hooks),
+      // and a ratio like 6:2:1:1 hands the last indices to the ACCENTS. So the
+      // array is ordered by mode-group, not by position: indices 0–5 (the
+      // absorbed majority) flank, and the accents at 6–9 land centre-near,
+      // centre-far and mid — spread across depth instead of bunched on one side.
+      // `dormant` on every spawn: no perception, no movement, no idle scan. The
+      // sheet forces ?freeze=false, so without this the whole rank charges the
+      // camera during the 1.6 s settle and the staging is gone.
+      spawns: [
+        { enemyId: 'ghoul', x: -1.4, z: 1.8, dormant: true },      // 0 near-left
+        { enemyId: 'skirmisher', x: -2.5, z: 0.0, dormant: true }, // 1 mid-left
+        { enemyId: 'spider', x: -2.0, z: -1.8, dormant: true },    // 2 far-left
+        { enemyId: 'ghoul', x: 2.5, z: 0.0, dormant: true },       // 3 mid-right
+        { enemyId: 'maggot', x: 2.0, z: -1.8, dormant: true },     // 4 far-right
+        { enemyId: 'rat', x: 1.4, z: 1.8, dormant: true },         // 5 near-right
+        // The two bone accents are deliberately a NEAR/FAR PAIR of the same
+        // creature: whatever a reflected mob does at 3 m it has to still do at
+        // 6.4 m, and one cell showing both is the only way to see that.
+        { enemyId: 'skeleton', x: 0.0, z: 1.8, dormant: true },    // 6 near-centre
+        { enemyId: 'skeleton', x: 0.0, z: -1.8, dormant: true },   // 7 far-centre
+        { enemyId: 'acolyte', x: -0.9, z: 0.0, dormant: true },    // 8 mid-centre-L
+        { enemyId: 'rat', x: 0.9, z: 0.0, dormant: true },         // 9 mid-centre-R
+      ],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4.4, yaw: 0, pitch: -0.10 },
+    // The sword is identical in all four cells and covers the lower third. It
+    // is not the art direction under test, so it goes; the LANTERN stays,
+    // because the lamp is the baseline every reveal mode is judged against.
+    hideSword: true,
+    freeze: true, godMode: true, enemiesInvincible: true,
+  },
+
   'look-lab': {
     level: {
       id: 'look-lab', depth: 3, displayName: 'LOOK LAB', fogColor: 0x0a0a0c,

@@ -92,14 +92,146 @@ export function installDevHooks(deps: DevHookDeps): void {
   // the running game, so the contact sheet (npm run delve look) is just this
   // hook plus a screenshot. Applied AFTER the level builds, since the level
   // sets scene.fog from its own spec and would otherwise win.
-  w.__look = (id: string) => applyLook(id, scene);
+  // ── REVEAL RATIO ON REAL MOBS ─────────────────────────────────────────────
+  //
+  // The lab settled the reveal modes with capsules. This runs the same question
+  // against the ACTUAL roster in the ACTUAL renderer, which is the only version
+  // that counts — a ghoul reads differently from a capsule because a ghoul is
+  // the shape doing the reading.
+  //
+  // MUTATES the existing materials rather than replacing them. The game's
+  // materials are NODE materials; swapping in a plain MeshStandardMaterial
+  // would either break or quietly render through a different path, and a
+  // comparison shot through a different path is not a comparison.
+  //
+  // Consequence, stated: EDGED is not reproducible this way. A rim is authored
+  // into the material at build time and cannot be added by mutation, so these
+  // ratios cover absorbed / reflected / self-lit only. The lab still owns the
+  // edged question.
+  //
+  // EMISSIVE DOES NOT LIVE ON THE MATERIAL. build-model's installRevealWebGPU
+  // bakes each part's emissive into a per-vertex attribute (`aRevealEmissive`)
+  // so every creature colour shares one pipeline — so `m.emissive = …` is a
+  // silent no-op on any mob with a rim or a dissolve, which is most of them.
+  // The first run of this experiment shipped a sheet whose SELF-LIT leg had
+  // simply never applied, and the cells looked plausible enough to believe.
+  // Writing the attribute drives the REAL path instead of a parallel fake one —
+  // and it has to be written for every mode, not just self-lit: an "absorbed"
+  // mob that keeps its baked glow is not absorbed.
+  // The attribute is per-VERTEX because a merged creature carries body and
+  // accent in one geometry — which is also why a blanket fill is wrong: it
+  // would blank the EYES, the one cue that makes an absorbed creature findable
+  // at all. Bright vertices are left alone, the same guard the material path
+  // uses, applied at the level the data actually lives at.
+  const EYE_LUMA = 0.8;
+  const setBakedEmissive = (mesh: THREE.Mesh, r: number, g: number, b: number): boolean => {
+    const attr = mesh.geometry?.getAttribute?.('aRevealEmissive') as THREE.BufferAttribute | undefined;
+    if (!attr) return false;
+    for (let v = 0; v < attr.count; v++) {
+      const mag = Math.max(attr.getX(v), attr.getY(v), attr.getZ(v));
+      if (mag >= EYE_LUMA) continue;
+      attr.setXYZ(v, r, g, b);
+    }
+    attr.needsUpdate = true;
+    return true;
+  };
+
+  const applyReveal = (modes: ReadonlyArray<string>): number => {
+    const level = getLevel();
+    if (!level) return 0;
+    let n = 0;
+    level.enemies.forEach((e, i) => {
+      const mode = modes[i % modes.length];
+      e.group.traverse((o: THREE.Object3D) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        if (mode === 'selflit') setBakedEmissive(mesh, 0.37, 0.77, 1.0);
+        else setBakedEmissive(mesh, 0, 0, 0);
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const raw of mats) {
+          const m = raw as THREE.MeshStandardMaterial;
+          if (!m || !m.color) continue;
+          // Leave EYES alone — they are the identity cue that makes an absorbed
+          // creature findable at all, and blanking them would test a rule
+          // nobody proposed.
+          if (m.emissiveIntensity && m.emissiveIntensity >= 1.8) continue;
+          if (mode === 'absorbed') {
+            m.color.setHex(0x121013);
+            if (m.emissive) { m.emissive.setHex(0x000000); m.emissiveIntensity = 0; }
+          } else if (mode === 'reflected') {
+            m.color.setHex(0xeee8dc);
+            if (m.emissive) { m.emissive.setHex(0x000000); m.emissiveIntensity = 0; }
+          } else if (mode === 'selflit') {
+            m.color.setHex(0x14161c);
+            if (m.emissive) { m.emissive.setHex(0x5fc4ff); m.emissiveIntensity = 1.1; }
+          }
+          m.needsUpdate = true;
+        }
+      });
+      n++;
+    });
+    return n;
+  };
+  w.__reveal = (modes: string[]) => applyReveal(modes);
+
+  // STAGING PROBE. A scenario that spawns ten creatures the camera cannot see
+  // produces a contact sheet of ten identical empty rooms — which reads as "the
+  // styles are indistinguishable" rather than "nothing was in frame." That
+  // happened; this is the instrument that would have caught it in one call.
+  // Reports each enemy's world position, its normalised device coords (|x|,|y|
+  // < 1 and z < 1 = on screen) and its distance, so posing a lab scenario is a
+  // measurement instead of a guess.
+  // Hide/show the whole roster. Pairs with __mobs for the POP SCORE probe:
+  // shoot the frame, hide the mobs, shoot it again, and the pixels that changed
+  // are exactly the creature pixels — which turns "does it read against the
+  // room" from an argument about a thumbnail into a per-pixel measurement.
+  w.__mobsVisible = (on: boolean) => {
+    const level = getLevel();
+    if (!level) return 0;
+    level.enemies.forEach((e) => { e.group.visible = on; });
+    return level.enemies.length;
+  };
+
+  w.__mobs = () => {
+    const level = getLevel();
+    if (!level) return { n: -1, onScreen: 0, mobs: [] as unknown[] };
+    const p = new THREE.Vector3();
+    camera.updateMatrixWorld();
+    const mobs = level.enemies.map((e, i) => {
+      e.group.getWorldPosition(p);
+      const ndc = p.clone().project(camera);
+      const on = Math.abs(ndc.x) < 1 && Math.abs(ndc.y) < 1 && ndc.z < 1;
+      return {
+        i, id: e.kind, alive: e.alive, vis: e.group.visible,
+        pos: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)],
+        ndc: [+ndc.x.toFixed(2), +ndc.y.toFixed(2), +ndc.z.toFixed(2)],
+        dist: +camera.position.distanceTo(p).toFixed(2),
+        onScreen: on,
+      };
+    });
+    return { n: mobs.length, onScreen: mobs.filter((m) => m.onScreen).length, mobs };
+  };
+
+  w.__look = (id: string) => {
+    const ok = applyLook(id, scene);
+    const preset = LOOKS[id];
+    if (preset?.reveal) applyReveal(preset.reveal);
+    return ok;
+  };
   w.__looks = () => LOOK_ORDER.map((id) => ({ id, name: LOOKS[id].name, note: LOOKS[id].note }));
   {
     const wanted = new URLSearchParams(window.location.search).get('look');
     if (wanted && LOOKS[wanted]) {
       // One frame after boot: the level build assigns fog from the level spec,
       // so a look applied during module init is overwritten before it renders.
-      setTimeout(() => applyLook(wanted, scene), 0);
+      // Two frames out, not one: the level build assigns fog, and the ENEMIES
+      // are spawned after it — a reveal applied at frame 0 would re-skin an
+      // empty roster and silently do nothing.
+      setTimeout(() => {
+        applyLook(wanted, scene);
+        const preset = LOOKS[wanted];
+        if (preset?.reveal) applyReveal(preset.reveal);
+      }, 400);
     }
   }
 

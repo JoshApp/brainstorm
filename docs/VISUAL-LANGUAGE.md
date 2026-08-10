@@ -52,6 +52,55 @@ Guard rails:
 - The player's own hands are PAINTED (chroma 1.8) — a constant,
   diegetic readout of the room's intent.
 
+### What the table above is, and what it is not (measured 2026-08-10)
+
+The rows are a taxonomy someone concluded halfway and nobody ever
+checked. Below is the part that has actually been MEASURED, on the real
+roster in the real renderer, so it can be argued with.
+
+`scenario=look-mob` stands ten shipping creatures at 2.6 / 4.4 / 6.2 m —
+the whole readable band, since `FOG_FAR` is 9 and `CAMERA_FAR` is 10.
+Shoot the frame, hide the roster with `__mobsVisible(false)`, shoot it
+again: the pixels that changed are exactly the creature pixels. Their
+mean |Δluma| against the room behind them is figure-ground separation;
+the MID-BAND share is the share of creature pixels sitting at the same
+middle value as the dungeon itself.
+
+| roster configuration | mean Δluma | mid-band % |
+| --- | --- | --- |
+| **as it ships today** | 0.075 | **20.9** |
+| 6 absorbed : 2 reflected : 1 self-lit | 0.092 | 14.3 |
+| 5 absorbed : 5 reflected | 0.085 | 12.6 |
+| all absorbed | 0.066 | 14.3 |
+| all reflected (bone) | 0.111 | 13.9 |
+| all self-lit | 0.087 | 9.4 |
+
+Two things fall out, and only these two are claimed:
+
+1. **The roster's defect is real and it is mid-value, not brown.** As it
+   ships, one creature pixel in five sits at room value — the worst
+   figure of anything tested, and roughly double an all-self-lit roster.
+   "A lot of creatures are brown" is the symptom; being the same VALUE as
+   the floor is the cause, and a brown creature that commits to dark
+   reads fine (all-absorbed scores 14.3%).
+2. **Figure-ground is not the whole test, so do not rank on the first
+   column.** All-bone wins mean Δluma outright and is visibly the worst
+   cell on the sheet: ten pale figures separate from the room and not
+   from each other. The metric cannot see figure-FIGURE separation.
+
+So the rule the numbers support is two-part — *no creature sits at room
+value*, AND *the poles stay unevenly distributed* — and 6:2:1 is simply
+the only configuration tested that satisfies both. It is not sacred; a
+different uneven split may well beat it. Re-run the probe before
+believing any successor.
+
+Known limits of the measurement, stated so nobody over-reads it: the
+darker/brighter split conflates "this material is darker" with "this
+body occludes a lit floor", and the EDGED/rim question is invisible to
+it entirely — a rim is authored at build time and the probe mutates a
+live scene, so rims cannot be added or removed this way. The style lab
+still owns that one.
+
 ## Brightness is budgeted meaning
 
 Value hierarchy in any frame, darkest → brightest:

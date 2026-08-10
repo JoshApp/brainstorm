@@ -82,6 +82,13 @@ export interface LookPreset {
    *  the line keeps its weight across resolutions; `depth` and `normal` are how
    *  hard a silhouette step / a crease has to be before it inks. */
   ink?: { strength: number; width?: number; depth?: number; normal?: number };
+
+  /** DEV experiment: re-skin the LIVE level's enemies into a reveal-mode
+   *  distribution, assigned by spawn index. Data only here; the re-skin itself
+   *  lives in debug/dev-hooks (it needs the level, which style/ must not know
+   *  about). See the reveal-mode work in lab/style-lab.ts for what the modes
+   *  mean and why the ratio is the question rather than the taxonomy. */
+  reveal?: ReadonlyArray<'absorbed' | 'reflected' | 'selflit'>;
 }
 
 /**
@@ -90,6 +97,28 @@ export interface LookPreset {
  * no anchor tells you which you prefer today, not which is better.
  */
 export const LOOKS: Record<string, LookPreset> = {
+  // ── REVEAL RATIO, ON REAL MOBS ────────────────────────────────────────────
+  // The lab answered this with capsules. These answer it with ghouls, in the
+  // real renderer, which is the only version that counts.
+  revAsIs: {
+    id: 'revAsIs', name: 'ROSTER AS-IS', note: 'The mobs exactly as they ship. The control for every ratio below.',
+  },
+  rev6211: {
+    id: 'rev6211', name: 'RATIO 6:2:1:1', note: 'Six absorbed, two reflected, one self-lit — the distribution the lab argued for.',
+    reveal: ['absorbed', 'absorbed', 'absorbed', 'absorbed', 'absorbed', 'absorbed',
+             'reflected', 'reflected', 'selflit', 'absorbed'],
+  },
+  revAllAbsorbed: {
+    id: 'revAllAbsorbed', name: 'ALL ABSORBED', note: 'Every mob swallowed by the dark. How far is too far?',
+    reveal: ['absorbed', 'absorbed', 'absorbed', 'absorbed', 'absorbed',
+             'absorbed', 'absorbed', 'absorbed', 'absorbed', 'absorbed'],
+  },
+  revHalfBone: {
+    id: 'revHalfBone', name: 'HALF BONE', note: 'Five absorbed, five reflected — does the accent stop meaning anything at 50%?',
+    reveal: ['absorbed', 'reflected', 'absorbed', 'reflected', 'absorbed',
+             'reflected', 'absorbed', 'reflected', 'absorbed', 'reflected'],
+  },
+
   // ── CONTROLS ──────────────────────────────────────────────────────────────
   current: {
     id: 'current', name: 'CURRENT', note: 'What ships today. The anchor — judge everything against this.',
@@ -162,6 +191,7 @@ export const LOOKS: Record<string, LookPreset> = {
 
 /** Ids in the order the contact sheet should read — controls first. */
 export const LOOK_ORDER: readonly string[] = [
+  'revAsIs', 'rev6211', 'revHalfBone', 'revAllAbsorbed',
   'current', 'ink', 'drawn', 'inkheavy',
   'flatfill', 'colouredair', 'boneink', 'voidedge',
   'deepcold', 'emberwarm', 'chunky', 'washed',
