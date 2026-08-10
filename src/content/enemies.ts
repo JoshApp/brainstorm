@@ -802,8 +802,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
       proportions: { height: 0.16, girth: 0.13 },
       materials: {
         // Sickly larval cream, faintly translucent + wet-rimmed.
-        flesh: { color: 0xc9c5bd, roughness: 0.5, flatShading: 'auto', transparent: true, opacity: 0.93,
-          },
+        // RIM KEPT. Josh, on the pass that stripped it: "I think the maggots
+        // were reading well ... I am not sure if rim should be the
+        // differentiator between arcane and not." He is right, and the doc's
+        // "rim = arcane only" is a half-conclusion it says itself is not
+        // settled. A rim is LIGHT EMERGING FROM SHADOW on a creature's edge —
+        // the effect this game is actually built around. What has to be
+        // rationed is how MANY things carry it, not which fiction they belong
+        // to. Reverted; the frequency question is being tested in the lab.
+        flesh: { color: 0xcabd92, roughness: 0.5, flatShading: 'auto', transparent: true, opacity: 0.93,
+          rim: { color: 0xe8dcae, power: 2.2, intensity: 0.55, darkReactive: 0.7 } },
         dark:  { color: 0x241c12, roughness: 0.85 },   // the maw
         eyes:  { color: 0x14100a, emissive: 0x000000, emissiveIntensity: 0 },  // lightless specks
       },

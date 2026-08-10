@@ -53,6 +53,9 @@ export interface LabScene {
     emissive: THREE.Mesh[];   // the light source itself
   };
   lights: THREE.Light[];
+  /** The creatures, kept apart so one recipe can give each a different reveal
+   *  mode — the only way to ask whether the modes coexist. */
+  creatureGroups: THREE.Mesh[][];
 }
 
 function mesh(
@@ -106,12 +109,20 @@ export function buildLabScene(): LabScene {
   // A creature: capsule body, sphere head, two thin arms. Not good — it only
   // has to have a SILHOUETTE, because that is the thing a style either
   // preserves or destroys.
-  const body = mesh(new THREE.CapsuleGeometry(0.38, 0.9, 4, 10), -1.1, 1.0, -3.2);
-  const head = mesh(new THREE.SphereGeometry(0.3, 12, 10), -1.1, 1.8, -3.2);
-  const armL = mesh(new THREE.CapsuleGeometry(0.09, 0.7, 3, 6), -1.6, 1.1, -3.1);
-  const armR = mesh(new THREE.CapsuleGeometry(0.09, 0.7, 3, 6), -0.6, 1.1, -3.1);
-  armL.rotation.z = 0.4; armR.rotation.z = -0.3;
-  roles.creature.push(body, head, armL, armR);
+  // THREE of them, at different distances and different sides. One creature
+  // cannot answer "do these reveal modes live together" — that question is
+  // about a ROOM, so the room needs more than one thing in it.
+  const creatureGroups: THREE.Mesh[][] = [];
+  for (const [cx, cz] of [[-2.2, -2.4], [1.4, -4.6], [3.4, -1.4]] as const) {
+    const body = mesh(new THREE.CapsuleGeometry(0.38, 0.9, 4, 10), cx, 1.0, cz);
+    const head = mesh(new THREE.SphereGeometry(0.3, 12, 10), cx, 1.8, cz);
+    const armL = mesh(new THREE.CapsuleGeometry(0.09, 0.7, 3, 6), cx - 0.5, 1.1, cz + 0.1);
+    const armR = mesh(new THREE.CapsuleGeometry(0.09, 0.7, 3, 6), cx + 0.5, 1.1, cz + 0.1);
+    armL.rotation.z = 0.4; armR.rotation.z = -0.3;
+    const g = [body, head, armL, armR];
+    creatureGroups.push(g);
+    roles.creature.push(...g);
+  }
 
   // The light source, visible as an object — a style has to decide what a
   // FLAME looks like, and it cannot if there is nothing there.
@@ -126,7 +137,7 @@ export function buildLabScene(): LabScene {
   for (const list of Object.values(roles)) for (const m of list) scene.add(m);
   for (const l of lights) scene.add(l);
 
-  return { scene, camera, roles, lights };
+  return { scene, camera, roles, lights, creatureGroups };
 }
 
 // ── Style recipes ───────────────────────────────────────────────────────────
@@ -261,6 +272,84 @@ function patternTexture(kind: 'bayer' | 'hatch', repeat: number): THREE.DataText
  *  only difference between those two cells is surface chroma. Two SATURATED
  *  sources of opposing hue, so a single pale surface is sampled by both and the
  *  colour shift is visible across one object rather than across the room. */
+
+// ── THE THREE WAYS THE DARK GIVES A THING UP ────────────────────────────────
+//
+// Josh, rejecting the doc's taxonomy: *"I am not sure if rim should be the
+// differentiator between arcane and not, a lot of the rules in the docs are
+// arbitrarily things we concluded halfways."* He is right — and the doc says of
+// itself that overthrowing a rule deliberately beats following it accidentally.
+//
+// So drop the fiction-based split (mundane vs arcane) and classify by LIGHT
+// BEHAVIOUR instead, which is physical and readable without being told:
+//
+//   REFLECTED  high albedo, no chroma — it takes the room's colour. (skeleton)
+//   EDGED      dark body, lit rim — its outline comes out of the black. (maggot)
+//   SELF-LIT   it makes light nothing else made.
+//
+// The discipline is then about FREQUENCY, not lore: one mode per creature, and
+// the rarer a mode is, the more it means. "15 of 23 are self-lit" is damning
+// under any theory; "an ooze may not have a rim because it is not magic" is
+// not, and that is the part that was arbitrary.
+//
+// Rim here is a scaled back-face hull in a bright colour — no shader, and good
+// enough to judge. The real one is a fresnel term the game already has.
+type Reveal = 'reflected' | 'edged' | 'selflit';
+
+function applyReveal(lab: LabScene, meshes: THREE.Mesh[], mode: Reveal, tint: number): void {
+  if (mode === 'reflected') {
+    for (const m of meshes) m.material = new THREE.MeshLambertMaterial({ color: 0xf0ece2 });
+    return;
+  }
+  if (mode === 'selflit') {
+    for (const m of meshes) {
+      m.material = new THREE.MeshLambertMaterial({ color: 0x14151a, emissive: tint, emissiveIntensity: 1.0 });
+    }
+    return;
+  }
+  // EDGED — near-black body, bright hull behind it. The body vanishes; the
+  // outline is the only thing the dark gives up.
+  const rimMat = new THREE.MeshBasicMaterial({ color: tint, side: THREE.BackSide });
+  for (const m of meshes) {
+    m.material = new THREE.MeshLambertMaterial({ color: 0x0d0d10 });
+    const o = new THREE.Mesh(m.geometry, rimMat);
+    o.position.copy(m.position); o.rotation.copy(m.rotation);
+    o.scale.setScalar(1.07);
+    lab.scene.add(o);
+  }
+}
+
+/** The room every reveal-mode cell is judged in: dark, neutral, two saturated
+ *  sources. Identical across the four so the MODE is the only variable. */
+function revealRoom(lab: LabScene): void {
+  lab.scene.background = new THREE.Color(0x040405);
+  lab.scene.fog = new THREE.Fog(0x040405, 5, 20);
+  for (const key of ['shell', 'frame', 'clutter'] as const) {
+    for (const m of lab.roles[key]) {
+      m.material = new THREE.MeshLambertMaterial({
+        color: key === 'shell' ? 0x232327 : key === 'frame' ? 0x35353a : 0x2b2b2f,
+      });
+    }
+  }
+  for (const m of lab.roles.emissive) m.material = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+  for (const l of lab.lights) l.visible = false;
+  const warm = new THREE.PointLight(0xff5a1e, 34, 16, 2);
+  warm.position.set(-4.4, 2.5, -1.0);
+  const cold = new THREE.PointLight(0x2e6cff, 22, 17, 2);
+  cold.position.set(3.6, 2.6, -8.0);
+  lab.scene.add(warm, cold, new THREE.AmbientLight(0x0a0c12, 0.32));
+}
+
+function revealRecipe(id: string, name: string, note: string, mode: Reveal): StyleRecipe {
+  return {
+    id, name, note,
+    apply(lab) {
+      revealRoom(lab);
+      for (const g of lab.creatureGroups) applyReveal(lab, g, mode, 0xffb066);
+    },
+  };
+}
+
 function applyImportanceLights(lab: LabScene): void {
   for (const l of lab.lights) l.visible = false;
   const warm = new THREE.PointLight(0xff4a12, 38, 16, 2);
@@ -447,6 +536,21 @@ export const STYLES: Record<string, StyleRecipe> = {
   },
 
 
+
+
+  // ── REVEAL-MODE EXPERIMENT ────────────────────────────────────────────────
+  revReflected: revealRecipe('revReflected', 'REFLECTED', 'All three creatures take the room\'s colour. Albedo only, no rim, no glow.', 'reflected'),
+  revEdged: revealRecipe('revEdged', 'EDGED', 'All three are black with a lit outline. The rim IS the light-out-of-shadow effect.', 'edged'),
+  revSelflit: revealRecipe('revSelflit', 'SELF-LIT', 'All three make their own light. What the roster currently does to 15 of 23.', 'selflit'),
+  revMixed: {
+    id: 'revMixed', name: 'MIXED', note: 'One of each in one room — the only cell that answers whether the modes are one style or three.',
+    apply(lab) {
+      revealRoom(lab);
+      const modes: Reveal[] = ['reflected', 'edged', 'selflit'];
+      const tints = [0xffffff, 0xffb066, 0x7fd4ff];
+      lab.creatureGroups.forEach((g, i) => applyReveal(lab, g, modes[i % 3], tints[i % 3]));
+    },
+  },
 
   // ── THE IMPORTANCE RULE ───────────────────────────────────────────────────
   //
@@ -703,6 +807,7 @@ export const STYLES: Record<string, StyleRecipe> = {
 };
 
 export const STYLE_ORDER: readonly string[] = [
+  'revReflected', 'revEdged', 'revSelflit', 'revMixed',
   'importance', 'importancehue', 'bonelight', 'riso3', 'mignola', 'hatch', 'obradinn',
   'riso1', 'riso2', 'riso4',
   'baseline', 'bleached', 'summoned',
