@@ -275,15 +275,57 @@ way, which is the tell: batching converts render objects into cheap
 flat. It rose because geometry that used to be frustum-culled no longer was.
 
 **Room culling and frustum culling are not interchangeable, and an object that
-can have neither is better off loose, where it still gets one.** The sentinel is
-gone; spanning groups keep their own draws. If they are ever worth batching, the
-way in is multi-rect membership — the answer `room-culling.ts` already gives
-framed openings, which render while EITHER adjoining room is visible.
+can have neither is better off loose, where it still gets one.**
 
 The general lesson, for the next optimisation: **a headless object count is not a
 frame time.** The µs-per-object constant was measured on a build where every
 object still had frustum culling, and it silently stopped applying to objects
 that lost it.
+
+#### …and then the premise turned out to be false
+
+The whole trade above rests on batch instances not being frustum culled, which
+rested on a 2026-07-05 comment: `perObjectFrustumCulled` was off because r185's
+per-instance frustum path supposedly culled live instances (altar pedestals, the
+bonfire sword). Josh doubted it — his recollection was that frustum culling
+worked. Both readings were compatible, because they are different code paths:
+ordinary meshes use `Object3D.frustumCulled` against the renderer's frustum,
+which was never in question, while BatchedMesh builds its own frustum inside
+`onBeforeRender`.
+
+Reading three 0.185.1, that path now looks correct — the WebGPU renderer sets
+`camera._reversedDepth` (`three.webgpu.js _updateCamera`) and BatchedMesh passes
+`camera.reversedDepth` into `setFromProjectionMatrix`. It could not be settled
+locally (WebGPU-only, and the headless harness has none), so it shipped as
+`?batchfrustum=1` and was **verified on device: nothing blinks out.** Either the
+original report predated a fix or it was misattributed.
+
+That inverts the conclusion. With per-instance culling on, a batched instance is
+culled exactly as the loose mesh was and costs no render object on top — so
+batching is free rather than a trade, and the `NO_RECT` sentinel is sound after
+all. Both are now the default, gated on the flag: `?batchfrustum=0` disables
+per-instance culling AND the sentinel together, because the second is only safe
+while the first is on.
+
+Result on a depth-3 floor, against the 280/282 → 19 batches this section opened
+with:
+
+```
+[static-batch] 520/520 static meshes → 10 batches
+```
+
+**Every static mesh on the floor, in ten render objects, all frustum culled.**
+The batch-count halving came from the surface-scalar bake (roughness/metalness
+moved to an `aSurface` vertex attribute, so `bake|f|1.00|0.00` and
+`bake|f|0.95|0.00` stopped being separate batches); the coverage came from the
+bounds resolution plus the sentinel. Verified against `?batchworld=0` on
+procgen-3: identical geometry, identical shading.
+
+The moral is not "trust the phone over the code" — it is that **a comment
+asserting a bug is a claim with an expiry date.** This one had been true once,
+was carried forward as fact, and cost the project its per-instance culling for a
+month. When a workaround's justification cannot be re-tested cheaply, put it
+behind a flag rather than a constant.
 
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem

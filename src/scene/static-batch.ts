@@ -151,24 +151,37 @@ function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
 // looking straight at it. That is the doorframe bug Josh reported, and
 // room-culling.ts answers it for framed openings by assigning them to BOTH
 // sides; a batch instance lives in exactly one rect and has no such answer.
-// A group that straddles two rects KEEPS ITS OWN DRAWS.
+// A group that straddles two rects is batched under NO_RECT: it joins a batch
+// but never enters the rect index, so the room culler never toggles it.
 //
-// It briefly did the other thing — batched under a NO_RECT sentinel, on the
-// reasoning that an instance nothing ever toggles has "bit-for-bit the
-// visibility it already had", since the room culler skips unlabelled children
-// too. THAT REASONING WAS WRONG, and a phone recording caught it within the
-// hour. A loose mesh is still FRUSTUM culled by three every frame — geometry
-// behind you is skipped. A batch instance is not: this file turns
-// `perObjectFrustumCulled` off on purpose (r185's per-instance frustum path
-// wrongly culls live instances). So folding ~240 straddling instances into
-// batches did not preserve their visibility, it deleted their frustum culling.
-// Measured on the phone: draws 196 → 307 while the object count went DOWN, and
-// CPU rose ~3ms — the batch was submitting the half of the floor behind the
-// player, every frame.
+// THIS DEPENDS ENTIRELY ON PER-INSTANCE FRUSTUM CULLING BEING ON, and the
+// history is worth keeping because the first attempt got it exactly wrong. It
+// shipped once while `perObjectFrustumCulled` was false, justified as "an
+// instance nothing toggles has bit-for-bit the visibility it already had, since
+// the room culler skips unlabelled children too". It did not. A loose mesh is
+// still FRUSTUM culled every frame; a batch instance without per-instance
+// culling is not. So ~240 instances did not keep their visibility, they lost
+// their culling, and the phone showed the bill within the hour: draws 196 → 307
+// while the object count FELL — the batch submitting the half of the floor
+// behind the player, every frame.
 //
-// Room culling and frustum culling are not interchangeable, and an object that
-// can have neither is better off loose, where it still gets one.
+// With per-instance culling on (verified on device 2026-08-10) the objection is
+// gone: a NO_RECT instance is frustum culled exactly as the loose mesh was, and
+// costs no render object on top. It gets one form of culling instead of the
+// other, which is what it always had.
+//
+// If `?batchfrustum=0` is ever used to disable per-instance culling, this path
+// becomes a regression again — which is why the sentinel is gated on it below
+// rather than being unconditional.
+const NO_RECT = '*';
 const fitBox = new THREE.Box3();
+
+/** Per-instance frustum culling inside a BatchedMesh. ON; `?batchfrustum=0`
+ *  disables it (and, with it, the NO_RECT path above — see there for why). */
+function perInstanceFrustumEnabled(): boolean {
+  if (typeof location === 'undefined') return true;
+  return new URLSearchParams(location.search).get('batchfrustum') !== '0';
+}
 
 export function containedRectId(level: LiveLevel, obj: THREE.Object3D): string | null {
   fitBox.setFromObject(obj);
@@ -355,7 +368,8 @@ export function batchStaticWorld(level: LiveLevel): void {
   const byKey = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; items: Item[] }>();
   const variantCache = new Map<string, THREE.BufferGeometry>();   // per-floor colour-variant cache
   let candidates = 0;
-  let straddled = 0;      // unlabelled groups spanning two rects — left loose on purpose
+  let straddled = 0;      // unlabelled groups spanning two rects — batched, no room rect
+  const perInstanceFrustum = perInstanceFrustumEnabled();
   for (const child of level.root.children.slice()) {
     if (excluded.has(child)) continue;
     let rectId: string | null = null;
@@ -373,7 +387,8 @@ export function batchStaticWorld(level: LiveLevel): void {
     // by the time this runs.
     if (!rectId && child.userData?.dbgKind !== 'door') {
       rectId = containedRectId(level, child);
-      if (!rectId && child.children.length) straddled++;
+      // Only batch a straddler when its instances will still be frustum culled.
+      if (!rectId && perInstanceFrustum) { rectId = NO_RECT; straddled++; }
     }
     if (!rectId) continue;
     child.traverse((o) => {
@@ -448,34 +463,30 @@ export function batchStaticWorld(level: LiveLevel): void {
     batch.castShadow = cast;
     batch.receiveShadow = receive;
     batch.frustumCulled = false;         // instances span the floor
-    // Per-INSTANCE frustum culling — OFF by default, `?batchfrustum=1` to try it.
+    // Per-INSTANCE frustum culling — ON. `?batchfrustum=0` is the kill switch.
     //
     // NOTE ON SCOPE, because this is easy to misread: ordinary meshes are
-    // frustum culled and always have been. That is Object3D.frustumCulled,
-    // tested by the renderer against its own frustum, and nothing here touches
-    // it. What this flag controls is a DIFFERENT code path — BatchedMesh's
-    // PER-INSTANCE culling, which builds its own frustum inside
-    // BatchedMesh.onBeforeRender.
+    // frustum culled and always have been, via Object3D.frustumCulled tested by
+    // the renderer against its own frustum. Nothing here ever touched that. This
+    // is a DIFFERENT code path — BatchedMesh's PER-INSTANCE culling, which
+    // builds its own frustum inside BatchedMesh.onBeforeRender.
     //
-    // A 2026-07-05 session turned it off, reporting that r185's rewritten
-    // frustum path wrongly culled live instances at stable view angles (altar
-    // pedestals, the bonfire sword, entry rocks — present with ?batchworld=0,
-    // gone with batching on). Josh's recollection is that frustum culling was
-    // working fine, which is true of the ordinary path and may well be true of
-    // this one too. Reading three 0.185.1: the wiring now looks CORRECT — the
-    // WebGPU renderer sets camera._reversedDepth when reversedDepthBuffer is on
+    // It was off from 2026-07-05, on a report that r185's rewritten frustum path
+    // wrongly culled live instances (altar pedestals, the bonfire sword). That
+    // no longer reproduces: verified on device 2026-08-10, a floor walked with
+    // it on and nothing blinked out. Reading three 0.185.1 agrees — the WebGPU
+    // renderer sets camera._reversedDepth when reversedDepthBuffer is on
     // (three.webgpu.js _updateCamera) and BatchedMesh passes camera.reversedDepth
-    // into setFromProjectionMatrix. So either the original report predates a
-    // fix, or it was misattributed.
+    // into setFromProjectionMatrix. Either the original report predated a fix or
+    // it was misattributed.
     //
-    // It cannot be settled from here: the bug is WebGPU-only and this project's
-    // headless harness has no WebGPU. Hence the flag — flip it on a phone, walk
-    // a ritual circle, and see whether anything blinks out. If nothing does,
-    // make it the default: every batched instance gets its frustum culling back,
-    // which is the one thing batching currently costs us.
-    batch.perObjectFrustumCulled =
-      typeof location !== 'undefined'
-      && new URLSearchParams(location.search).get('batchfrustum') === '1';
+    // This is what makes batching FREE rather than a trade. Without it, folding
+    // a mesh into a batch deleted its frustum culling, and the phone showed the
+    // bill: draws 196 → 307 while the object count fell. With it, a batched
+    // instance is culled exactly as a loose mesh was, and the per-object
+    // frontend cost is gone on top. Turning it on is the precondition for
+    // everything else this file does.
+    batch.perObjectFrustumCulled = perInstanceFrustum;
     batch.sortObjects = false;           // opaque only — skip the per-frame sort
     batch.matrixAutoUpdate = false;
     batch.matrixWorldAutoUpdate = false;
@@ -489,9 +500,13 @@ export function batchStaticWorld(level: LiveLevel): void {
       it.mesh.updateWorldMatrix(true, false);
       batch.setMatrixAt(id, it.mesh.matrixWorld);
       const inst: BatchInstance = { batch, id, retired: false };
-      let list = rectIndex.get(it.rectId);
-      if (!list) { list = []; rectIndex.set(it.rectId, list); }
-      list.push(inst);
+      // NO_RECT instances stay out of the index deliberately — nothing toggles
+      // them by room; the per-instance frustum test is their culling.
+      if (it.rectId !== NO_RECT) {
+        let list = rectIndex.get(it.rectId);
+        if (!list) { list = []; rectIndex.set(it.rectId, list); }
+        list.push(inst);
+      }
       if (it.owner) {
         let owned = groupIndex.get(it.owner);
         if (!owned) { owned = []; groupIndex.set(it.owner, owned); }
@@ -513,7 +528,7 @@ export function batchStaticWorld(level: LiveLevel): void {
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
     console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches `
-      + `(${bakedMats.size} baked families, ${straddled} groups left loose: span two rects, so they keep their frustum culling)`);
+      + `(${bakedMats.size} baked families, ${straddled} groups span two rects → batched, frustum-culled only)`);
   }
 }
 
