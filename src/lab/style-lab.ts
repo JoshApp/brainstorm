@@ -256,6 +256,21 @@ function patternTexture(kind: 'bayer' | 'hatch', repeat: number): THREE.DataText
   return tex;
 }
 
+
+/** The lighting both IMPORTANCE recipes share — identical on purpose, so the
+ *  only difference between those two cells is surface chroma. Two SATURATED
+ *  sources of opposing hue, so a single pale surface is sampled by both and the
+ *  colour shift is visible across one object rather than across the room. */
+function applyImportanceLights(lab: LabScene): void {
+  for (const l of lab.lights) l.visible = false;
+  const warm = new THREE.PointLight(0xff4a12, 38, 16, 2);
+  warm.position.set(-4.4, 2.5, -1.0);
+  const cold = new THREE.PointLight(0x2a5cff, 26, 17, 2);
+  cold.position.set(3.6, 2.6, -8.0);
+  // Barely anything: the point is that unlit means UNSEEN.
+  lab.scene.add(warm, cold, new THREE.AmbientLight(0x08080c, 0.3));
+}
+
 function risoRecipe(
   id: string, name: string, note: string,
   paper: number, inkA: number, inkB: number,
@@ -431,6 +446,73 @@ export const STYLES: Record<string, StyleRecipe> = {
     },
   },
 
+
+
+  // ── THE IMPORTANCE RULE ───────────────────────────────────────────────────
+  //
+  // Josh, after trying ink: *"it looked like any other game ... the light
+  // emerging from shadows is way cooler I don't see the generalization rule of
+  // that effect."* And separately: *"things that matter to pop out of the
+  // dungeon, currently it's all like same. shaded even a lot of creatures are
+  // brown thats a mess."*
+  //
+  // The reason ink disappointed is that an outline is a UNIFORM treatment — it
+  // applies equally to the wall, the vase and the creature, so it improves
+  // legibility and creates no HIERARCHY. It was solving the wrong problem.
+  //
+  // The rule the skeleton is the beginning of:
+  //
+  //     ALBEDO IS THE IMPORTANCE CHANNEL.
+  //
+  // What you see in a dark game is albedo x light. If every surface is
+  // mid-brown, everything lands in the same value band however it is lit —
+  // which IS the mush. The skeleton pops because it is the only high-albedo
+  // thing in a low-albedo world; not because it is white, because it is the
+  // EXCEPTION. So albedo gets assigned by importance rather than by realism.
+  //
+  // And the second half, which is the "light out of shadow" he likes:
+  // SURFACES HAVE NO COLOUR, LIGHT HAS ALL OF IT. Then a creature in a
+  // blood-lit hall IS red and the same creature under the lamp is bone — which
+  // is what docs/VISUAL-LANGUAGE.md already prescribes (lamp is truth, torches
+  // are rhetoric) and what the brown creatures are currently breaking.
+  //
+  // TWO CLAIMS, TWO RECIPES. `importance` runs the full rule; `importancehue`
+  // keeps the sepia chroma and changes only the albedo. Sheeting both is the
+  // only way to learn WHICH half is doing the work — the whole rule looking
+  // good proves nothing about either of its halves.
+  importance: {
+    id: 'importance', name: 'IMPORTANCE', note: 'Albedo = how much this matters. Zero chroma anywhere. Light does all the colouring.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0x030304);
+      lab.scene.fog = new THREE.Fog(0x030304, 5, 22);
+      // Pure greys, stepped by IMPORTANCE and nothing else.
+      setAll(lab, (role) => {
+        if (role === 'emissive') return new THREE.MeshBasicMaterial({ color: 0xfff2d8 });
+        const albedo = role === 'creature' ? 0xf4f4f4    // matters most
+                     : role === 'frame' ? 0xb4b4b4       // a threshold matters
+                     : role === 'clutter' ? 0x343436     // present, not competing
+                     : 0x121214;                          // shell: describes space, nothing more
+        return new THREE.MeshLambertMaterial({ color: albedo });
+      });
+      applyImportanceLights(lab);
+    },
+  },
+  importancehue: {
+    id: 'importancehue', name: 'IMPORTANCE + HUE', note: 'Same albedo hierarchy, but surfaces KEEP their sepia. Isolates which half of the rule works.',
+    apply(lab) {
+      lab.scene.background = new THREE.Color(0x050403);
+      lab.scene.fog = new THREE.Fog(0x050403, 5, 22);
+      setAll(lab, (role) => {
+        if (role === 'emissive') return new THREE.MeshBasicMaterial({ color: 0xfff2d8 });
+        const albedo = role === 'creature' ? 0xd8c4a0
+                     : role === 'frame' ? 0x9c8158
+                     : role === 'clutter' ? 0x3a3026
+                     : 0x16120d;
+        return new THREE.MeshLambertMaterial({ color: albedo });
+      });
+      applyImportanceLights(lab);
+    },
+  },
 
   // ── THE FOUR BORROWED DIRECTIONS ──────────────────────────────────────────
 
@@ -621,7 +703,7 @@ export const STYLES: Record<string, StyleRecipe> = {
 };
 
 export const STYLE_ORDER: readonly string[] = [
-  'riso3', 'bonelight', 'mignola', 'hatch', 'obradinn',
+  'importance', 'importancehue', 'bonelight', 'riso3', 'mignola', 'hatch', 'obradinn',
   'riso1', 'riso2', 'riso4',
   'baseline', 'bleached', 'summoned',
   'toonink', 'toon', 'silhouette',
