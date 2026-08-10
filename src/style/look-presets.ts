@@ -4,7 +4,7 @@ import { setActiveGrade, setGradeOverrides } from './grade-presets';
 import {
   setWebGPUBrightness, setWebGPUDarkAdapt, setWebGPULegibility,
   setWebGPUBloomEnabled, setWebGPULeanBloom, setWebGPUInscatterEnabled,
-  setWebGPUDepthCrushEnabled, setSSAO,
+  setWebGPUDepthCrushEnabled, setSSAO, setWebGPUInk,
 } from './render-webgpu';
 import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './banded-lighting-webgpu';
 import { setPS1Scale } from './render-frame';
@@ -31,11 +31,12 @@ import { setPS1Scale } from './render-frame';
 // states what it is TRYING, in one line, in `note`. A variant you cannot
 // summarise is a variant you cannot judge, and it dies on the sheet.
 //
-// LIMIT, STATED HONESTLY: a preset can only reach knobs that exist. The single
-// highest-value lever discussed — an INK pass, a contour on depth/normal
-// discontinuity, which is what would make composed primitives read as DRAWN
-// rather than as untextured boxes — is NOT here, because it is not built. That
-// is the one new capability worth adding; everything below is free.
+// A preset can only reach knobs that EXIST. When this file was written that
+// excluded the highest-value lever — an INK contour on depth/normal
+// discontinuity, the thing that makes composed primitives read as DRAWN rather
+// than as untextured boxes. It is built now (render-webgpu.ts setWebGPUInk) and
+// is a preset field like any other, which is the point of the whole exercise:
+// the expensive part was deciding to try it, not wiring it in.
 
 export interface LookPreset {
   id: string;
@@ -75,6 +76,12 @@ export interface LookPreset {
   darkAdapt?: number;
   /** The daylight legibility curve (0 = darkest, 1 = full sun preset). */
   legibility?: number;
+
+  /** CONTOUR. `strength` 0 = off (and the depth+normal G-buffer is not even
+   *  rendered, so a look without ink pays nothing). `width` is in UV units, so
+   *  the line keeps its weight across resolutions; `depth` and `normal` are how
+   *  hard a silhouette step / a crease has to be before it inks. */
+  ink?: { strength: number; width?: number; depth?: number; normal?: number };
 }
 
 /**
@@ -111,10 +118,23 @@ export const LOOKS: Record<string, LookPreset> = {
     fog: { color: 0x0a0a0c, near: 2, far: 11 }, banded: true,
   },
   drawn: {
-    id: 'drawn', name: 'DRAWN', note: 'The bundle: banded fills + coloured air + crushed blacks. Closest to the pitch.',
+    id: 'drawn', name: 'DRAWN', note: 'The full pitch: ink contour + banded fills + coloured air + crushed blacks.',
     grade: 'morkborg', gradeOv: { blacks: 0.10, sat: 0.7, vig: 0.34 },
     fog: { color: 0x241f2b, near: 2.5, far: 15 },
     banded: true, lean: true, ssao: false, leanBloom: true,
+    ink: { strength: 0.85, width: 0.0016, depth: 2.2, normal: 1.0 },
+  },
+
+  // ── INK, ISOLATED ─────────────────────────────────────────────────────────
+  // On its own against the CURRENT look, so the sheet can answer the actual
+  // question — is the contour doing the work, or is it the banding and the fog?
+  ink: {
+    id: 'ink', name: 'INK ONLY', note: 'Contour alone, everything else as it ships. Is the LINE doing the work?',
+    ink: { strength: 0.85, width: 0.0016, depth: 2.2, normal: 1.0 },
+  },
+  inkheavy: {
+    id: 'inkheavy', name: 'INK HEAVY', note: 'A fatter, more willing line — where does it stop reading as drawn and start as noise?',
+    ink: { strength: 1.0, width: 0.0028, depth: 1.4, normal: 0.7 },
   },
 
   // ── SIGNATURE SWINGS ──────────────────────────────────────────────────────
@@ -142,8 +162,9 @@ export const LOOKS: Record<string, LookPreset> = {
 
 /** Ids in the order the contact sheet should read — controls first. */
 export const LOOK_ORDER: readonly string[] = [
-  'current', 'drawn', 'flatfill', 'colouredair',
-  'boneink', 'voidedge', 'deepcold', 'emberwarm', 'chunky', 'washed',
+  'current', 'ink', 'drawn', 'inkheavy',
+  'flatfill', 'colouredair', 'boneink', 'voidedge',
+  'deepcold', 'emberwarm', 'chunky', 'washed',
 ];
 
 /**
@@ -180,6 +201,7 @@ export function applyLook(id: string, scene: THREE.Scene): boolean {
   setWebGPUBrightness(look.brightness ?? 1);
   setWebGPUDarkAdapt(look.darkAdapt ?? 1);
   if (look.legibility !== undefined) setWebGPULegibility(look.legibility);
+  setWebGPUInk(look.ink?.strength ?? 0, look.ink);
 
   return true;
 }

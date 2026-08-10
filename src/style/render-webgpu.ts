@@ -13,8 +13,8 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
-  luminance, texture, uniform, mrt, output, normalView,
+import { pass, vec2, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
+  luminance, texture, uniform, mrt, output, normalView, max as tslMax,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
@@ -37,6 +37,63 @@ const AO_RES_SCALE = 0.4;    // AO buffer res relative to the (0.4x) scene pass
 const AO_RADIUS = 0.45;      // metres — visible but tighter than 0.7 (big radius = cache-incoherent, costly)
 const AO_STRENGTH = (_ssaoNum > 0 && _ssaoNum !== 1) ? _ssaoNum : 1.6;   // darkening boost
 let aoPassRef: any = null;   // live handle for the runtime setter / window.__ssao
+
+// ── INK — the contour that makes composed primitives read as DRAWN ──────────
+//
+// The problem this exists to solve: DELVE's geometry is boxes, cylinders and
+// lathes composed in code, with no textures. Untextured primitives read as
+// UNFINISHED 3D — the eye has nothing to grab but shading, and shading alone
+// says "untextured", not "stylised". Every game that gets away with primitive
+// geometry (Hollow Knight in 2D, Sable, Okami, Borderlands in 3D) declares the
+// forms DRAWN, and the cheapest, oldest way to declare that is a line around
+// them.
+//
+// So: a contour on DISCONTINUITY, sampled from the same depth+normal G-buffer
+// SSAO already renders. Two edge sources, because one is not enough —
+//
+//   DEPTH edge   catches silhouettes: where a form ends and something further
+//                away begins. This is the outline proper. Compared RELATIVE to
+//                the centre depth, because a fixed threshold on nonlinear depth
+//                inks everything near the camera and nothing past 3 metres.
+//   NORMAL edge  catches CREASES: where two faces of the same solid meet. This
+//                is what separates a box's front from its side when both are
+//                lit the same, and it is what makes a composed model read as
+//                one object with structure rather than as a flat blob.
+//
+// Applied pre-exposure, in the same place SSAO multiplies in, so the line lives
+// in the world and gets exposed and graded with everything else. (Applying it
+// after the grade gives a crisper, more graphic line — worth trying as a second
+// preset knob if the in-world version reads too soft.)
+//
+// It is DARKENING ONLY, like the AO: grimdark never brightens. A white contour
+// on black would read as sci-fi.
+let inkStrength = 0;          // 0 = off. The pipeline rebuilds when this crosses 0.
+const inkStrengthNode: any = (uniform as any)(0);
+const inkWidthNode: any = (uniform as any)(0.0016);    // UV units, so it is resolution-independent
+const inkDepthNode: any = (uniform as any)(2.2);       // how hard a depth step must be to ink
+const inkNormalNode: any = (uniform as any)(1.0);      // how hard a crease must be to ink
+/** True when the pipeline must render the depth+normal G-buffer for ink. */
+function inkNeedsMRT(): boolean { return inkStrength > 0; }
+
+/**
+ * Turn the ink on/off and tune it. `strength` 0 disables it (and drops the MRT
+ * again, so a look without ink pays nothing for the feature existing).
+ *
+ * Rebuilds the pipeline ONLY when the G-buffer requirement flips — the width
+ * and threshold knobs are live uniforms, so dialling the line on a phone is
+ * free, and only switching ink on or off costs a rebuild.
+ */
+export function setWebGPUInk(
+  strength: number, opts?: { width?: number; depth?: number; normal?: number },
+): void {
+  const wasOn = inkNeedsMRT();
+  inkStrength = Math.max(0, strength);
+  inkStrengthNode.value = inkStrength;
+  if (opts?.width !== undefined) inkWidthNode.value = opts.width;
+  if (opts?.depth !== undefined) inkDepthNode.value = opts.depth;
+  if (opts?.normal !== undefined) inkNormalNode.value = opts.normal;
+  if (wasOn !== inkNeedsMRT()) rebuildWebGPUPipeline();
+}
 
 /** Live SSAO tuning (DEV). strength = darkening, radius = spread in metres. */
 export function setSSAO(strength?: number, radius?: number): void {
@@ -445,8 +502,11 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   disposables.push(scenePass as any);
   scenePass.setResolutionScale(resScale);
 
-  // SSAO: render normals into a second MRT target so GTAO can read depth+normal.
-  if (SSAO) (scenePass as any).setMRT((mrt as any)({ output, normal: normalView }));
+  // SSAO and INK both read a depth+normal G-buffer, so the MRT is rendered when
+  // EITHER wants it — and not at all when neither does, which is the common
+  // case and must stay free.
+  const GBUF = SSAO || inkNeedsMRT();
+  if (GBUF) (scenePass as any).setMRT((mrt as any)({ output, normal: normalView }));
 
   // CHUNKY PS1 UPSCALE — the low-res pass target defaults to LinearFilter, so the
   // upscale to screen is SMOOTH: soft walls, soft edges, washed-out PS1 pixels.
@@ -465,7 +525,7 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // WebGL blit: red sampled outward, blue inward, by CA_AMOUNT × distance-from-
   // centre. 2 extra taps of the (low-res) scene texture; all downstream is ALU.
   // Done on the raw scene (pre-expose/bloom) exactly as the WebGL path did it.
-  const tex: any = SSAO ? (scenePass as any).getTextureNode('output') : (scenePass as any).getTextureNode();
+  const tex: any = GBUF ? (scenePass as any).getTextureNode('output') : (scenePass as any).getTextureNode();
   const suv: any = screenUV as any;
   const caOff: any = suv.sub(0.5).mul(CA_AMOUNT);
   let sceneCA: any = (vec3 as any)(
@@ -492,6 +552,47 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
     aoPassRef = aoPass;
     ssaoAoR = aoPass.getTextureNode().r;
     sceneCA = sceneCA.mul(ssaoAoR);
+  }
+
+  // ── INK ──────────────────────────────────────────────────────────────────
+  // See the note at setWebGPUInk. Four taps of depth + four of normal, in a
+  // cross; everything after that is ALU.
+  if (inkNeedsMRT()) {
+    const depthTex: any = (scenePass as any).getTextureNode('depth');
+    const normTex: any = (scenePass as any).getTextureNode('normal');
+    const w: any = inkWidthNode;
+    const offs: any[] = [
+      (vec2 as any)(w, float(0)), (vec2 as any)(w.negate(), float(0)),
+      (vec2 as any)(float(0), w), (vec2 as any)(float(0), w.negate()),
+    ];
+
+    // DEPTH: relative difference, not absolute. Depth is nonlinear, so an
+    // absolute threshold inks every crack within arm's reach and nothing at all
+    // past a few metres — the line would thin out exactly where silhouettes
+    // matter most, which is the far side of a room.
+    const dC: any = depthTex.sample(suv).r;
+    let depthEdge: any = float(0);
+    for (const o of offs) {
+      const dN: any = depthTex.sample(suv.add(o)).r;
+      const rel: any = dN.sub(dC).abs().div(dC.max(float(0.0001)));
+      depthEdge = (tslMax as any)(depthEdge, rel);
+    }
+
+    // NORMAL: 1 - dot, so a face turning away from its neighbour inks. This is
+    // the crease detector — it is what makes a box read as a box when both of
+    // its visible faces happen to catch the same amount of light.
+    const nC: any = normTex.sample(suv).xyz.mul(float(2)).sub(vec3(1)).normalize();
+    let normEdge: any = float(0);
+    for (const o of offs) {
+      const nN: any = normTex.sample(suv.add(o)).xyz.mul(float(2)).sub(vec3(1)).normalize();
+      normEdge = (tslMax as any)(normEdge, float(1).sub((dot as any)(nC, nN)).max(float(0)));
+    }
+
+    const raw: any = depthEdge.mul(inkDepthNode).add(normEdge.mul(inkNormalNode));
+    // Soft shoulder rather than a hard cut: a binary edge test crawls with
+    // sub-pixel camera motion and reads as shimmer on a phone.
+    const edge: any = (smoothstep as any)(float(0.35), float(1.0), raw).mul(inkStrengthNode);
+    sceneCA = sceneCA.mul(float(1).sub(edge).max(float(0)));
   }
 
   // EXPOSE FIRST. r184's brighter lighting must be brought into range BEFORE
