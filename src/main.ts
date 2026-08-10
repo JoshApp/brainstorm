@@ -545,7 +545,28 @@ initLevelLoader({
       // compileAsync below. Pipelines compile lazily — first-use stutter is
       // EXPECTED here; the only point is to A/B whether warming is behind the
       // 'output' texture hazard. prewarm stays undefined.
-    } else if (!isTitleVignette) {
+    } else if (isTitleVignette) {
+      // THE TITLE COMPILES ITSELF, and used to do it in live frames. Every warm
+      // below was gated off the title because the ROSTER warm renders its
+      // subjects into the live scene and combat effects must never flash there —
+      // but that gate also took away `warmSceneCompile`, which renders nothing at
+      // all (it's a compileAsync). So the title vignette's own materials — the
+      // bonfire, the props, the vignette's lighting context, which has no lamp
+      // and is therefore a DIFFERENT context from any floor — compiled on first
+      // live frame, forever.
+      //
+      // At boot that was invisible: the veil holds while `settleCompiles(2000)`
+      // waits for exactly those late compiles to go quiet (see bootWarm below).
+      // Returning to the menu MID-RUN gets no such budget, which is why the menu
+      // visibly loads things that "should" be cached — they were never warmed,
+      // only hidden. compileAsync cannot flash anything, so it is safe here.
+      prewarm = (async () => {
+        await yieldToCover();
+        try { await warmSceneCompile(renderer, scene, camera); } catch { /* best-effort */ }
+        absorbWarmPipelines(renderer as unknown as DelveRenderer);
+        installPipelineCensusHook(renderer as unknown as DelveRenderer);
+      })();
+    } else {
       // WebGPU real floor — warm behind the descent cover, GATED on the reveal so the floor
       // compiles before the player sees it. Two parts:
       //   1. First real floor only: the spawn-time ROSTER (enemies/effects) via the warm pass.
