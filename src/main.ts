@@ -29,6 +29,7 @@ import { ITEMS } from './content/items';
 import { runWarmupPassWebGPU } from './content/warmup-pass';
 import { warmRealRoster } from './content/warm-real-roster';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
+import { absorbWarmPipelines, installPipelineCensusHook } from './debug/pipeline-census';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
 import { installUploadCounter } from './debug/upload-counter';
 import type { DelveRenderer } from './scene/create-renderer';
@@ -621,6 +622,13 @@ initLevelLoader({
         // Covered-compile baseline for the warm cache's self-heal check — pipeline
         // growth from here until the next descent is in-play compiling.
         noteCoveredWarmPoint(renderer as unknown as DelveRenderer);
+        // ...and the same moment is where the warm's OUTPUT is known: fold every
+        // pipeline key the covered passes produced into the warm set, so a later
+        // census can say which in-play compiles the warm should have covered and
+        // which it structurally cannot (debug/pipeline-census.ts). Additive —
+        // each descent's warm widens the set.
+        absorbWarmPipelines(renderer as unknown as DelveRenderer);
+        installPipelineCensusHook(renderer as unknown as DelveRenderer);
       })();
     }
     setCameraYaw(level.playerSpawn.yaw);

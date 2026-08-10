@@ -26,6 +26,7 @@ import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, getComp
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
+import { censusForRecording, type PipelineCensus } from './pipeline-census';
 
 // Scene-audit provider — main.ts registers a closure over the live scene so a
 // saved recording can snapshot WHAT is in the scene graph (leak hunting). Kept
@@ -112,6 +113,11 @@ export interface Recording {
      *  Present only on the WebGPU backend — see debug/upload-census.ts for why
      *  it rides along with a recording rather than being a console command. */
     uploadCensus?: CensusResult;
+    /** Warm-vs-live pipeline coverage: how many pipelines the warm produced, how
+     *  many of those it has since LOST, and every post-warm compile classified by
+     *  why the warm missed it. `compiledKeys` above says THAT something compiled;
+     *  this says whether more warm coverage could ever have prevented it. */
+    pipelineCensus?: PipelineCensus;
     label?: string;
   };
   systemNames: string[];
@@ -377,6 +383,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       sceneAudit: sceneAuditProvider ? sceneAuditProvider() : undefined,
       uploadCensus: takeCensus() ?? undefined,
       compiledKeys: getCompiledProgramKeys().slice(),   // full cacheKeys of in-session compiles
+      pipelineCensus: censusForRecording() ?? undefined,
       label,
     },
     systemNames: sysNames.slice(),

@@ -69,9 +69,11 @@ deleted 2026-07-05 — one drain path, nothing compiles in live frames.)
 `renderer.info` has no `.programs` on WebGPU, so the WebGL warmup guard was blind. We patch
 the device's `createRenderPipeline` (transparent pass-through) to count compiles and **warn
 on any that happen after warmup** — the WebGPU-native "record what compiles" instrument.
-`window.__compileStats()` → `{ total, postWarmup, gaps }`. **postWarmup must be 0**: it's the
-proof the warm is comprehensive, and it lights up immediately if a new material type isn't
-warmed.
+`window.__compileStats()` → `{ total, postWarmup, gaps }`. postWarmup 0 is the GOAL, not
+an established fact — as of 2026-08-10 phone recordings show ~80 in-play compiles in a combat
+session. What that guard can't tell you is whether more warm coverage could have prevented
+them; see the coverage census below, which classifies each one. It is also DEV-only, so it
+never reaches the device where the behaviour happens.
 
 ## The compile / lagspike watch (your radar)
 
@@ -106,6 +108,45 @@ stays ~0 while exercising new content.
 NOTE: the cheap warm covers `MeshStandard` materials directly; **sprites / points / basic are
 separate pipelines** (keyed on blending + fog) handled by the `primitive:sprites+basic` hook —
 that's the one thing the per-content seams above don't auto-cover for a genuinely new variant.
+
+## The coverage census — warm gaps, classified (`debug/pipeline-census.ts`)
+
+Everything above is **constructive**: the warm builds subjects and hopes they cover
+the key space. Nothing asserted that they did — so "postWarmup must be 0" was a
+CLAIM, and phone recordings kept showing ~80 in-play compiles against it. The
+census closes that loop.
+
+It snapshots the set of pipeline cache keys the covered passes produced
+(`absorbWarmPipelines`, called at the same point as `noteCoveredWarmPoint`), then
+diffs three's live pipeline cache against it. Every post-warm compile gets a
+**verdict**, and the verdict decides the fix:
+
+| Verdict | What it means | The fix |
+| --- | --- | --- |
+| `NOT-WARMED` | The warm never produced this render state | A genuine coverage gap — add the seam (the four rows above) |
+| `STATE-MISMATCH` | Warmed the material, missed the state; the detail NAMES the field (`side 0→1`) | Warm at that state |
+| `PROGRAM-CHURN` | Identical render state AND geometry layout, a freshly minted shader program | **Warm coverage cannot fix this.** The WGSL is being re-minted — share/retain the material instance |
+| `RECOMPILE` | Byte-identical to a warmed key, compiled anyway | Whatever held the warmed pipeline stopped holding it |
+
+Plus `evicted`: warmed pipelines **no longer resident**. three releases a pipeline
+(and its programs) when `usedTimes` hits 0, so a warm whose materials get disposed
+is throwing its own work away — again, not fixable by warming harder.
+
+The census is PROD-SAFE and rides along in a recording's `meta.pipelineCensus`
+(`npm run perf-analyze` prints it under WARM COVERAGE), because the behaviour is
+WebGPU-only: it can only be measured on a real device, and a number that never
+reaches the phone is not a measurement. `window.__pipelineCensus()` gives the same
+thing live.
+
+**Read the `keySpace` field first.** On the WebGL2 fallback
+`WebGLBackend.getRenderCacheKey()` returns `''`, so the key carries no render state
+and every gap would read as `PROGRAM-CHURN`. The census reports `stateless` in that
+case rather than handing you a verdict the key can't support.
+
+The field decoding mirrors two three.js functions (`Pipelines._getRenderCacheKey`
+and `WebGPUBackend.getRenderCacheKey`). If a three upgrade reorders that array the
+labels silently start lying — `tests/pipeline-census.test.ts` decodes a key captured
+verbatim from a phone recording and is what catches it.
 
 ## Known limits / future options
 

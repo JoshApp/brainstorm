@@ -115,6 +115,23 @@ if (ck && ck.length) {
   console.log(`  FULL KEYS (${ck.length}) — diff vs warmed to find the variant:`);
   ck.slice(0, 12).forEach((kk, i) => console.log(`    [${i}] ${kk}`));
 }
+// WARM COVERAGE — the verdict, not just the count. `compiledKeys` says THAT
+// something compiled; this says whether the warm could ever have prevented it.
+// See src/debug/pipeline-census.ts for what each verdict means and its fix.
+const pc = r.meta?.pipelineCensus;
+if (pc) {
+  console.log(`  WARM COVERAGE: warmed ${pc.warmed} pipelines · ${pc.resident} resident · ${pc.evicted} EVICTED`);
+  if (pc.keySpace === 'stateless')
+    console.log('    (WebGL2 backend — its cache key carries no render state, so every verdict below is program-identity only, not a state diff.)');
+  if (pc.evicted > 0)
+    console.log(`    ⚠ ${pc.evicted} warmed pipelines were RELEASED (three drops a pipeline at usedTimes 0). Warm coverage cannot fix this — whatever held them stopped holding them.`);
+  for (const g of pc.gaps.slice(0, 10)) console.log(`    ×${String(g.count).padStart(3)} ${g.name.padEnd(22)} ${g.verdict}  ${g.detail}`);
+  const churn = pc.gaps.filter((g) => g.verdict === 'PROGRAM-CHURN').reduce((n, g) => n + g.count, 0);
+  const notWarmed = pc.gaps.filter((g) => g.verdict === 'NOT-WARMED').reduce((n, g) => n + g.count, 0);
+  if (churn) console.log(`    → ${churn} PROGRAM-CHURN: same render state, freshly minted WGSL. Adding warm subjects cannot help; share/retain the material instance instead.`);
+  if (notWarmed) console.log(`    → ${notWarmed} NOT-WARMED: a genuine coverage gap — warm a subject that renders in that state (docs/WARMUP.md "the four seams").`);
+  if (!pc.gaps.length) console.log('    → no post-warm compiles. The warm covered everything this session touched.');
+}
 if (downs >= 2 && Math.abs(ups - downs) <= Math.max(2, ups * 0.3))
   console.log(`  ⚠ CHURN: ${downs} deletions ≈ ${ups} compiles → a per-beat effect mints+disposes a material/program. Pin it: shared geometry + a cloned-template material (clones share the program), or retain the material.`);
 else if (netUp > 2)
