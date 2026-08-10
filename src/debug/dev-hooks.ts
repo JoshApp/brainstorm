@@ -256,6 +256,21 @@ export function installDevHooks(deps: DevHookDeps): void {
   // yaws each, which is where the failures live (Josh's shots are all in a
   // corridor mouth or just short of one). Stands 1.2m back from each opening on
   // both sides, since a hole is directional. Returns the worst offenders.
+  // __leaks() — does the world CLOSE from everywhere the player can stand?
+  // Suspends culling first (an invisible room is not a hole in the sky) and
+  // restores it after. See debug/leak-scan.ts.
+  w.__leaks = async () => {
+    const level = getLevel();
+    if (!level) return { error: 'no level' };
+    const { scanForLeaks, leakSamplePoints } = await import('./leak-scan');
+    const culler = deps.getRoomCuller();
+    culler?.setEnabled(false);
+    try {
+      return scanForLeaks(level, leakSamplePoints(level), CONFIG.PLAYER_HEIGHT);
+    } finally {
+      culler?.setEnabled(true);
+    }
+  };
   // __cullWhere(x, z, yaw) — teleport there and dump every crossing decision.
   w.__cullWhere = (x: number, z: number, yaw: number) => {
     const culler = deps.getRoomCuller();

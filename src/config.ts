@@ -723,6 +723,17 @@ export const CONFIG = {
       // long. Without it, break→panic→backstab→break is a permalock: the mob
       // never gets a turn and the fight stops being a fight.
       IMMUNE_AFTER: 8.0,    // s of fear immunity once a fear expires
+      // What terror does to a body. Multiplied into the mob's move speed for
+      // the whole fear (via the 'dread' buff → move-speed-mult → aggregateSpeed
+      // → every movement state), so it composes with the rout's own
+      // MORALE.FLEE_SPEED_MUL rather than fighting it: 0.55 × 1.3 = 0.72, a
+      // panicked creature that stumbles away SLOWER than it chases.
+      //
+      // Before this the two multiplied the wrong way and fear made a mob 1.3×
+      // FASTER — the payoff for the hardest opener in the game was that your
+      // target left quicker. Movement only, on purpose: fear is control, and
+      // slowing its actions as well would quietly make it a damage stat.
+      SLOW_MUL: 0.55,
     },
     FACE_MOVE_MIN: 0.5,              // m/s — below this SMOOTHED speed a chaser faces the PLAYER (standing / blocked / arrived); above it, it faces its ACTUAL travel so it never crab-walks or moonwalks. Smoothed heading kills the per-frame facing jitter that aiming at a noisy pack target caused.
     HEAD_TRACK_MAX: 1.15,           // rad (~66°) — DOOM-style focus tracking: max yaw the head/neck twists to keep the player in view while the BODY faces its movement. So a strafing/circling mob watches you (attention decoupled from locomotion) instead of looking where its feet go. Beyond this it looks over its shoulder; the body turns the rest as it slows + faces you.

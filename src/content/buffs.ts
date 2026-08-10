@@ -183,6 +183,36 @@ export const BUFFS: Record<string, BuffSpec> = {
     vfx: { color: 0x9fd8ff, style: 'rise' },   // frost vapour
   },
 
+  // DREAD — the stat half of FEAR. The AI half (rout, cower, the skull, the
+  // open back) lives in mobs/enemy.ts; this is what terror does to a body.
+  //
+  // Josh: *"we should slow the feared enemy because currently it runs at full
+  // speed."* He was right and it was worse than neutral — the morale rout
+  // multiplies move speed by FLEE_SPEED_MUL 1.3, so breaking a creature's nerve
+  // made it FASTER, and the reward for the hardest opener in the game was that
+  // your target left quicker.
+  //
+  // Movement only, deliberately. Fear is the CONTROL archetype's keystone and
+  // its payoff should be tempo and position — you broke it, now it cannot get
+  // away from you, and its back is turned (see CONFIG.BACKSTAB). Slowing its
+  // actions too would quietly turn fear into a damage-uptime stat, which is a
+  // different (and much harder to balance) promise.
+  //
+  // Multiplicative, because it is a penalty (docs/DESIGN-METHOD.md). It rides
+  // the fear timer, so FEAR.IMMUNE_AFTER already stops a permalock. Named as a
+  // buff rather than hard-coded into the flee state so the fear archetype — an
+  // AoE rite, trinkets that deepen or spread it — has one id to key on.
+  dread: {
+    harmful: true,
+    id: 'dread',
+    displayName: 'DREAD',
+    color: 0xcec7b6,   // bone, matching the fear skull + the UNNERVED cue
+    modifiers: [
+      { kind: 'move-speed-mult', amount: CONFIG.ENEMY_AI.FEAR.SLOW_MUL },
+    ],
+    vfx: { color: 0xcec7b6, style: 'rise' },
+  },
+
   // SUNDER — armour cracked: the target takes MORE damage (×1.35). The
   // combo amplifier — sunder, then bleed/poison hit harder; or sunder a
   // tank so your swings land for real. Works on enemies (a heavy weapon)
