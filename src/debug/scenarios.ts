@@ -2978,7 +2978,7 @@ export function applyScenario(
   }
 
   if (scenario.spendFire) {
-    void import('../level/fate-fire').then((m) => m.debugSpendFlames(ctx.level.root));
+    void import('../level/flame-spend').then((m) => m.debugSpendFlames(ctx.level.root));
   }
 
   if (scenario.inscription) {

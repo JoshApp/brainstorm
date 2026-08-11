@@ -57,7 +57,13 @@ export function spawnBossBonfire(
   opts: { minor?: boolean } = {},
 ): void {
   const minor = opts.minor === true;
-  const built = buildModel(BONFIRE);
+  // batchSprites: BONFIRE is 11 additive sprite parts — the single densest
+  // sprite stack in the game, and every one was its own render object (≈40µs of
+  // CPU per frame each; see docs/profiling.md "THE FRAME MODEL"). They fold into
+  // the instanced per-texture batch instead. Safe here because nothing in this
+  // file touches the flame materials, and the one thing that DOES spend them —
+  // fate-fire's spendFlame — now goes through the batch handle.
+  const built = buildModel(BONFIRE, { batchSprites: true });
   const group = built.group;
   group.scale.setScalar(minor ? MINI_FIRE_SCALE : BOSS_FIRE_SCALE);
   group.position.set(pos.x, pos.y - RISE_DIST, pos.z);   // start buried

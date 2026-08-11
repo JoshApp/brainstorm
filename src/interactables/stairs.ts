@@ -277,7 +277,10 @@ export function spawnStairs(
   // THE FIRE BEYOND — the real threshold bonfire (sword and all), the
   // same model the player wakes beside upstairs. Its sprite stack
   // self-animates (build-model flicker), so it burns with no wiring.
-  const bonfireBuilt = buildModel(BONFIRE);
+  // batchSprites: 11 additive sprites down to instances in the shared batch.
+  // This fire is decoration (never spent, never mood-tinted) and the stack
+  // self-animates through the batch's own flicker, so nothing here changes.
+  const bonfireBuilt = buildModel(BONFIRE, { batchSprites: true });
   bonfireBuilt.group.position.set(0, landY, fireZ);
   bonfireBuilt.group.scale.setScalar(0.9);
   bonfireBuilt.group.rotation.y = 0.7;

@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-08-11",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The glow around a thing you can touch is built once now, not every time you walk back. The stairs wear one outline instead of two per step.",
+        "area": [
+          "interactables",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tech",
         "text": "The stairway's glow costs less to burn. It looks exactly as it did, which is the point.",
         "area": [
@@ -402,21 +410,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Some passages come back around now. You will still walk them twice, but at least it was your idea.",
         "area": [
           "level"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 14",
-    "date": "2026-08-07",
-    "entries": [
-      {
-        "tag": "content",
-        "text": "Something came through these passages before you, and it left marks on the walls.",
-        "area": [
-          "level",
-          "atmosphere",
-          "content"
         ]
       }
     ]
