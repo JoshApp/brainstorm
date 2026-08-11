@@ -130,7 +130,20 @@ files.sort((a, b) => Number(SLOW.test(b)) - Number(SLOW.test(a)));
 //
 // `FORCE_TESTS=1` or `--force` re-runs regardless. The cached line says so
 // explicitly, because a cache that looks like a fresh pass is worse than none.
-const STAMP = join(root, '.git', 'delve-test-pass');
+// IN A WORKTREE, `.git` IS A FILE, not a directory — it holds a `gitdir:`
+// pointer to the real per-worktree git dir under the main checkout. So joining
+// a filename onto it throws ENOTDIR, which crashed the runner AFTER a clean
+// full-suite pass: every test green, then a stack trace and a non-zero exit.
+// CLAUDE.md makes worktrees the DEFAULT for this repo, so that was every agent
+// session's `npm test`. Ask git where the git dir actually is instead of
+// assuming, and fall back to the literal path if git isn't available.
+const STAMP = join(gitDir(), 'delve-test-pass');
+
+function gitDir(): string {
+  const r = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: root, encoding: 'utf8' });
+  const p = r.status === 0 ? r.stdout.trim() : '';
+  return p || join(root, '.git');
+}
 
 function treeHash(): string | null {
   const git = (args: string[]) => spawnSync('git', args, { cwd: root, maxBuffer: 1 << 28 });
