@@ -67,6 +67,74 @@ export function basicMat(params: THREE.MeshBasicMaterialParameters): THREE.MeshB
   return shared(basicCache, () => new THREE.MeshBasicMaterial(params), params);
 }
 
+// ── CANONICAL SURFACE KINDS ──────────────────────────────────────────────────
+//
+// A pipeline's identity is its FLAGS — transparent, blending, depthWrite, side,
+// target format, topology, attribute layout (+ fog and flatShading, which the
+// node builder bakes into the WGSL). `color`, `opacity` and `map` are UNIFORMS:
+// they are NOT in the key. Two materials that differ only in colour are already
+// one pipeline.
+//
+// That is why the 2026-08-10 audit found 42 material configurations but only a
+// handful of genuinely distinct looks — and why collapsing materials by colour
+// would have bought nothing. stairs.ts alone had five additive glow materials
+// (fire ×2, floor ring, light shaft ×2) that were already sharing one pipeline
+// and just LOOKED like sprawl.
+//
+// The real cost is flag combinations that drifted apart for no reason: the same
+// glow authored `side: DoubleSide` here and `BackSide` there, `fog: false` in one
+// place and defaulted-true in the next. Each accidental difference is a pipeline
+// to compile at load.
+//
+// So these helpers fix the FLAGS and leave the look free. They return a fresh
+// instance rather than a pooled one, because these surfaces are typically tweened
+// per object (the stair glow fades between passive and active) — pooling them
+// would make one object's tween drive another's. Sharing the pipeline is the win;
+// sharing the instance is not required for it.
+
+export interface GlowOptions {
+  map?: THREE.Texture;
+  color?: THREE.ColorRepresentation;
+  opacity?: number;
+  /** DoubleSide by default — a glow quad read from behind should still glow. */
+  side?: THREE.Side;
+}
+
+/** ADDITIVE GLOW — light that isn't a light. Fire wisps, light shafts, floor
+ *  pools, telegraph rings: anything that ADDS brightness and must never occlude
+ *  what's behind it. Fixed: transparent, additive, no depth write, no fog. */
+export function glowSurface(o: GlowOptions = {}): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    map: o.map,
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    // Fog would darken an emissive surface with distance, which reads as the
+    // glow dimming rather than the air thickening. Glows opt out.
+    fog: false,
+    side: o.side ?? THREE.DoubleSide,
+  });
+}
+
+/** INVERSE-HULL OUTLINE — a back-faced shell scaled slightly larger than the
+ *  mesh it wraps, so only its silhouette shows. Fixed: BackSide, no depth write,
+ *  no fog, transparent. `additive` picks the blend, and that is the ONE flag
+ *  worth varying here: an additive outline glows, a normal-blended one reads as
+ *  a hard ink line. */
+export function outlineSurface(o: GlowOptions & { additive?: boolean } = {}): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: o.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    depthWrite: false,
+    fog: false,
+    side: THREE.BackSide,
+  });
+}
+
 /** Every distinct shared material created so far — the closed set the warm compiles. */
 export function registeredFloorMaterials(): THREE.Material[] {
   return [...stdCache.values(), ...basicCache.values()];

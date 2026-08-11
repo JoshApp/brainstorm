@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { stdMat, basicMat } from '../style/material-registry';
+import { stdMat, basicMat, glowSurface, outlineSurface } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
@@ -283,10 +283,7 @@ export function spawnStairs(
 
   // Gap shimmer — additive planes in the door slit. Faint at rest (the
   // shimmer through the crack); blooming as the player nears.
-  const fireMatA = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'), color: 0x6e1c06, transparent: true, opacity: 0.30,
-    blending: THREE.AdditiveBlending, fog: false, depthWrite: false, side: THREE.DoubleSide,
-  });
+  const fireMatA = glowSurface({ map: getTexture('fire-wisp'), color: 0x6e1c06, opacity: 0.30 });
   const fireMatB = fireMatA.clone();
   fireMatB.color.set(0x3c1004); fireMatB.opacity = 0.22;
   const fireA = new THREE.Mesh(pooledPlane(0.42, 1.3), fireMatA);
@@ -338,19 +335,9 @@ export function spawnStairs(
   // there's no peek across the rim edge.
   const ringInner = Math.max(STEP_WIDTH / 2 + 0.18, STAIRWELL_TOTAL_DEPTH / 2 + 0.20);
   const ringOuter = ringInner + 2.0;
-  const floorRingMat = new THREE.MeshBasicMaterial({
-    // Neutral 'moonbeam' texture so the floor pool stays pure
-    // blue in passive, pure gold in active — no red tint from
-    // the fire-wisp gradient bleeding through.
-    map: getTexture('moonbeam'),
-    color: 0x4a78c8,
-    transparent: true,
-    opacity: 0.45,
-    fog: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-  });
+  // Neutral 'moonbeam' texture so the floor pool stays pure blue in passive,
+  // pure gold in active — no red tint from the fire-wisp gradient bleeding through.
+  const floorRingMat = glowSurface({ map: getTexture('moonbeam'), color: 0x4a78c8, opacity: 0.45 });
   const floorRing = new THREE.Mesh(
     pooledRing(ringInner, ringOuter, 24),
     floorRingMat,
@@ -367,23 +354,8 @@ export function spawnStairs(
   // close. Together they make the stair "definitely recognizable
   // in the dark" without flooding the room with light.
   const outlineColor = 0xc8ddff;
-  const outlineOuterMat = new THREE.MeshBasicMaterial({
-    color: outlineColor,
-    side: THREE.BackSide,
-    fog: false,
-    depthWrite: false,
-    transparent: true,
-    opacity: 0.55,
-    blending: THREE.AdditiveBlending,
-  });
-  const outlineMat = new THREE.MeshBasicMaterial({
-    color: 0xe0eaff,
-    side: THREE.BackSide,
-    fog: false,
-    depthWrite: false,
-    transparent: true,
-    opacity: 1.0,
-  });
+  const outlineOuterMat = outlineSurface({ color: outlineColor, opacity: 0.55, additive: true });
+  const outlineMat = outlineSurface({ color: 0xe0eaff, opacity: 1.0 });
   /** Add TWO inverse-hull duplicates of a mesh: a wide soft
    *  outer halo + a tight bright inner edge. Both parented to
    *  the original's parent so they follow it. */
@@ -433,15 +405,10 @@ export function spawnStairs(
   // Earlier passes used 'fire-wisp' which has red/orange in its
   // gradient — that bled through additive blending and made the
   // shaft read as reddish even when tinted blue.
-  const shaftOuterMat = new THREE.MeshBasicMaterial({
+  const shaftOuterMat = glowSurface({
     map: getTexture('moonbeam'),
     color: 0xa8c4ff,         // passive blue (overwritten by tween below)
-    transparent: true,
     opacity: 0.22,           // very subtle by default
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
   });
   const shaftOuter = new THREE.Mesh(
     pooledPlane(0.95, shaftLen),       // narrower default
@@ -452,16 +419,7 @@ export function spawnStairs(
   group.add(shaftOuter);
 
   // Bright core — much thinner default. Scales up when highlighted.
-  const shaftCoreMat = new THREE.MeshBasicMaterial({
-    map: getTexture('moonbeam'),
-    color: 0xd8e0ff,
-    transparent: true,
-    opacity: 0.38,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
+  const shaftCoreMat = glowSurface({ map: getTexture('moonbeam'), color: 0xd8e0ff, opacity: 0.38 });
   const shaftCoreMesh = new THREE.Mesh(
     pooledPlane(0.30, shaftLen),
     shaftCoreMat,
