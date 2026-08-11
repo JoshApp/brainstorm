@@ -15,6 +15,7 @@ import { installBandedLightingWebGPU, setLeanLightingWebGPU } from '../style/ban
 import { setPS1Scale } from '../style/render-frame';
 import { setShadowMode } from '../scene/light-pool';
 import { setOutlinesDisabled } from '../interactables/outline';
+import { returnToTitle } from '../app-restart';
 import { setGodMode } from '../player/health';
 import { tryActivateRite } from '../combat/rites';
 import { requestLux, showLuxCard, luxTour, LUX_BANDS } from './lux';
@@ -218,6 +219,13 @@ export function installDevHooks(deps: DevHookDeps): void {
     level.enemies.forEach((e) => { e.group.visible = on; });
     return level.enemies.length;
   };
+
+  // Leave the run for the title, the way abandon / quit / death-continue do.
+  // Exists because that path had a bug nobody could reproduce without a phone
+  // in hand: the swap dressed itself as a descent ("descending" + a progress
+  // bar over the menu), so quitting read as the app restarting. Headless can
+  // drive it now and assert on what actually appears.
+  w.__toTitle = () => { returnToTitle(); return 'returning'; };
 
   // Interactable population census — window.__interactables() for the table,
   // .json for the rows. The counterpart to __mobs for the OTHER big population;

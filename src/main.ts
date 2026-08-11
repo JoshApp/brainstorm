@@ -98,7 +98,7 @@ import { initLevelLoader, loadInitialLevel, getCurrentDepth } from './level/load
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
-import { suppressNextDescentTitle, setDescentProgress, holdCover } from './ui/descent-fade';
+import { suppressNextDescentTitle, suppressNextLoadingMark, setDescentProgress, holdCover } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { setReturnToTitle, returnToTitle } from './app-restart';
 import { applyState } from './state/save-hydration';
@@ -1871,6 +1871,13 @@ if (handleDebugScreenFlags()) {
     LEVELS['title-vignette'] = TITLE_VIGNETTE;
     suppressArrivalCeremony();
     suppressNextDescentTitle();
+    // You are LEAVING, not descending. This same swap serves abandon / quit /
+    // death-continue, and dressing it as a descent — "descending" + a filling
+    // progress bar over the menu — is why abandoning a run reads as the app
+    // restarting when nothing reloads. Plain black instead; the cover itself
+    // stays, because the level build is synchronous and would otherwise freeze
+    // the run's last frame on screen.
+    suppressNextLoadingMark();
     await startRun('title-vignette');
     // Look DOWN — the fire sits low on the floor close ahead, so a level gaze
     // clips it at the bottom. A stronger downward tilt lifts the bonfire UP into

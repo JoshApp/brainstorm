@@ -267,6 +267,11 @@ export function holdCover(): void {
 }
 
 export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () => void): void {
+  // Consume the one-shot here, not in finish(): a reveal that returns early
+  // (no promise) still has to clear it, or the flag survives to dress-down the
+  // NEXT transition — which would be a real descent.
+  const plain = suppressNextMark;
+  suppressNextMark = false;
   const finish = (): void => {
     window.clearTimeout(pulseTimer);
     window.clearTimeout(safetyTimer);
@@ -285,7 +290,9 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
   const cover = ensureOverlay();
   cover.style.transition = 'opacity 0ms';
   cover.style.opacity = '1';
-  pulseTimer = window.setTimeout(showLoadingMark, 320);   // only show the mark for noticeable waits
+  // Only show the mark for noticeable waits — and never when this transition
+  // isn't a descent (see suppressNextLoadingMark).
+  if (!plain) pulseTimer = window.setTimeout(showLoadingMark, 320);
   // Strand-guard WATCHDOG (see descentWorkHeartbeat): reveal only after 15s of
   // NO warm activity — heartbeats and the live warmingUp flag both count as
   // alive. A legit long first-descent warm holds the black to completion; a
@@ -310,6 +317,27 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
 // vault-inspector snaps so the "Depth N" card never covers the geometry.
 let suppressNext = false;
 export function suppressNextDescentTitle() { suppressNext = true; }
+
+// ── LEAVING IS NOT DESCENDING ───────────────────────────────────────────────
+//
+// Abandoning a run, quitting to the menu and the death screen's continue all
+// route through the same in-place level swap a descent uses (app-restart.ts) —
+// they rebuild the title vignette rather than reloading the page, which is the
+// whole reason the pipeline cache survives.
+//
+// But the swap presented itself as a DESCENT: the black cover, then a mark that
+// literally reads "descending" and an amber progress bar filling underneath it,
+// on top of the menu. Which is exactly what it looks like — the app restarting
+// — and it is why abandoning a run reads as a full reload when nothing reloads
+// at all. Reported from the phone in those words.
+//
+// The COVER stays: the level build is synchronous and would otherwise freeze the
+// run's last frame on screen. Only the descent DRESSING goes. One-shot, so it
+// can't leak into the next real descent.
+let suppressNextMark = false;
+/** Cover the next transition in plain black — no "descending", no progress bar.
+ *  For transitions that are not a descent. Consumed by the next reveal. */
+export function suppressNextLoadingMark(): void { suppressNextMark = true; }
 
 /** Show a title card (e.g. "Depth 3 / The Old Refectory") centered
  *  on the black overlay. Call AFTER fadeOut completes so the text is
