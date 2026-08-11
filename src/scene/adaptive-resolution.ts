@@ -32,6 +32,15 @@ let scale = maxScale;
 const frames: number[] = [];
 let lastStep = 0;
 
+/** Test seam: current scale + the scale that proved too expensive. */
+export function __adaptiveState(): { scale: number; failedScale: number } {
+  return { scale, failedScale };
+}
+/** Test seam: put the controller in a known state. */
+export function __resetAdaptive(startScale: number, ceiling: number): void {
+  maxScale = ceiling; scale = startScale; failedScale = Infinity; lastStep = -1e9;
+}
+
 /** Enable/disable. Disabling restores the ceiling (render-scale) resolution. */
 export function setAdaptiveResolution(on: boolean): void {
   if (on === enabled) return;
@@ -51,19 +60,51 @@ export function setAdaptiveCeiling(v: number): void {
   maxScale = v;
   if (scale > maxScale) {
     scale = maxScale;
+    failedScale = Infinity;   // new ceiling = new regime; forget what failed under the old one
     if (enabled) setPS1Scale(scale);
   }
 }
 
-/** Shared drop/raise step from a "how slow is the frame" ms signal. */
-function applyStep(avgMs: number, nowMs: number): void {
+// The scale we most recently had to DROP away from, and must not blindly climb
+// back to. Without this the controller OSCILLATES FOREVER at the frame cap, and
+// each oscillation is a visible hitch:
+//
+//   RAISE_MS is 17ms and the cap pins dt at ~16.7ms, so `avgMs < RAISE_MS` is
+//   true WHENEVER THE GAME IS HITTING ITS CAP. The controller reads "we have
+//   headroom" from the one state that proves nothing — a capped frame is not a
+//   fast frame, it is a frame that finished early and waited. So it steps up,
+//   the higher scale costs >DROP_MS, it steps back down, sits at cap, and reads
+//   headroom again. Two states, one hitch per transition, forever.
+//
+// Josh, standing still, watching the CPU line jump every few seconds: the gaps
+// measured 1.2-5.0s against a 1500ms cooldown, which is the cooldown gating an
+// oscillator, not a workload. Each step calls setPS1Scale, which resizes the
+// scene render targets — reallocating textures and forcing three to rebuild
+// per-object bind groups. That is the render·scene CPU spike, and the frame the
+// resize lands on submits nothing (ub 0) while the next pays double.
+let failedScale = Infinity;
+
+/** Shared drop/raise step from a "how slow is the frame" ms signal.
+ *  Exported for tests/adaptive-oscillation.test.ts — the oscillation this
+ *  guards against is invisible in a screenshot and only shows as a hitch. */
+export function applyStep(avgMs: number, nowMs: number): void {
   if (nowMs - lastStep < COOLDOWN_MS) return;
   if (avgMs > DROP_MS && scale > MIN_SCALE) {
+    // Remember what didn't work, so the raise branch can't hand it back.
+    failedScale = scale;
     scale = Math.round((scale - STEP) * 100) / 100;
     setPS1Scale(scale);
     lastStep = nowMs;
-  } else if (avgMs < RAISE_MS && scale < maxScale) {
-    scale = Math.min(maxScale, Math.round((scale + STEP) * 100) / 100);
+    return;
+  }
+  const next = Math.min(maxScale, Math.round((scale + STEP) * 100) / 100);
+  // Only climb into a scale that hasn't already proven too expensive. The ratchet
+  // is deliberately one-way within a session: a device that could not hold a
+  // scale a minute ago is not going to hold it now, and RETRYING costs a hitch
+  // every time. A genuinely cooled-down device gets its resolution back on the
+  // next load, which is free, instead of by paying for the discovery repeatedly.
+  if (avgMs < RAISE_MS && scale < maxScale && next < failedScale) {
+    scale = next;
     setPS1Scale(scale);
     lastStep = nowMs;
   }
