@@ -719,6 +719,12 @@ export function spawnStairs(
   // MATERIAL colour/opacity on the transparent glow, outline and shaft meshes,
   // which the merge skips, and the boss ward lives in its own group, which the
   // merge never crosses.
-  reportMerge('stairs', mergeStaticSubtree(group, { label: 'stairs-merged' }));
+  // mergeAdditive: the staircase's remaining mass is its GLOW, not its stone —
+  // 34 transparent meshes it could not touch, 17 of them additive (the outer
+  // outline hulls, the shaft, the fire planes, the floor ring). Additive blending
+  // is commutative, so fusing those cannot change the picture; the inner outline
+  // is normal-blended and stays loose. This is the "light the stairs up more
+  // efficiently" half of the same object.
+  reportMerge('stairs', mergeStaticSubtree(group, { label: 'stairs-merged', mergeAdditive: true }));
   registerInteractable(interactable);
 }

@@ -234,5 +234,37 @@ test('a merge of one is not performed', () => {
   assert.ok(res.skipped['lone mesh for its material (a merge of one saves nothing)'] === 1);
 });
 
+test('additive glow merges only when opted in, and only with additive', () => {
+  // Additive blending is commutative (dst += src), so draw order cannot change
+  // the result — the one transparency that is safe to fuse. Normal-blended
+  // meshes must stay loose even in the same call.
+  const add1 = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+  const root = new THREE.Group();
+  const a = box(add1, 0, 0, 0), b = box(add1, 1, 0, 0);
+  const normalMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  const c = box(normalMat, 2, 0, 0), d = box(normalMat, 3, 0, 0);
+  root.add(a, b, c, d);
+
+  assert.equal(mergeStaticSubtree(root).after, 4, 'off by default: nothing transparent merges');
+
+  const root2 = new THREE.Group();
+  const a2 = box(add1, 0, 0, 0), b2 = box(add1, 1, 0, 0);
+  const c2 = box(normalMat, 2, 0, 0), d2 = box(normalMat, 3, 0, 0);
+  root2.add(a2, b2, c2, d2);
+  mergeStaticSubtree(root2, { mergeAdditive: true });
+  assert.ok(root2.children.includes(c2) && root2.children.includes(d2),
+    'normal-blended transparency must stay loose even with the opt-in');
+  assert.equal(meshCount(root2), 3, 'the two additive meshes become one; the two normal ones stay');
+});
+
+test('additive that WRITES depth is not merged', () => {
+  // depthWrite on means it occludes, so its order against other geometry is a
+  // real effect, not just a blend.
+  const m = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: true });
+  const root = new THREE.Group();
+  root.add(box(m, 0, 0, 0), box(m, 1, 0, 0));
+  assert.equal(mergeStaticSubtree(root, { mergeAdditive: true }).after, 2);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

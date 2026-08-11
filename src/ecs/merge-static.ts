@@ -70,7 +70,7 @@ function bucketKey(m: THREE.Mesh, owner: THREE.Object3D): string {
 }
 
 /** Why this mesh can't be folded in, or null if it can. */
-function skipReason(o: THREE.Object3D): Skip {
+function skipReason(o: THREE.Object3D, allowAdditive: boolean): Skip {
   const m = o as THREE.Mesh;
   if ((m as THREE.InstancedMesh).isInstancedMesh) return 'already instanced';
   if ((m as THREE.BatchedMesh).isBatchedMesh) return 'already batched';
@@ -87,7 +87,22 @@ function skipReason(o: THREE.Object3D): Skip {
   // IS order-independent and could be merged — but only against other additive
   // meshes, and the win here is in the opaque mass, so it isn't worth the
   // special case yet.
-  if (mat.transparent) return 'transparent (back-to-front ordering)';
+  if (mat.transparent) {
+    // ADDITIVE IS THE EXCEPTION, and only when it also skips depth write.
+    // Merging transparent meshes fuses two draws into one sort position, which
+    // destroys whatever ordering the author arranged. Additive blending is
+    // COMMUTATIVE — dst += src, so the result is identical in any order — and
+    // with depthWrite off there is no depth-order side effect either. So these
+    // specific meshes can merge with each other safely, and only with each
+    // other (the bucket key includes the material instance, so an additive
+    // mesh can never land in a normal-blended bucket).
+    //
+    // Worth doing because glow is where the remaining mass is: the staircase
+    // measured 34 transparent meshes it could not touch, 17 of them additive —
+    // its outer outline hulls and shaft/fire glows, all one material each.
+    const additiveSafe = mat.blending === THREE.AdditiveBlending && !mat.depthWrite;
+    if (!(allowAdditive && additiveSafe)) return 'transparent (back-to-front ordering)';
+  }
   // TEXTURED stays loose: the merge normalizes the attribute set, and a uv that
   // means something is not safe to rewrite. (Same rule as viewmodel-merge.)
   if (mat.map) return 'textured (uv would not survive)';
@@ -116,6 +131,13 @@ export interface MergeStaticOptions {
   boundaries?: Iterable<THREE.Object3D | undefined>;
   /** Name stamped on merged meshes, for debug overlays. */
   label?: string;
+  /**
+   * Also merge ADDITIVE, non-depth-writing transparent meshes with each other.
+   * Off by default. Safe because additive blending is commutative, so their
+   * draw order cannot matter; every other transparency stays loose regardless.
+   * Turn on for objects whose glow is a real share of their draws.
+   */
+  mergeAdditive?: boolean;
   /**
    * Fold AUTHORED-named parts in too. Off by default, because a name is
    * normally a reference.
@@ -190,7 +212,7 @@ export function mergeStaticSubtree(root: THREE.Object3D, opts: MergeStaticOption
     if (!(o as THREE.Mesh).isMesh) return;
     before++;
     if (protectedNodes.has(o)) { note('named part (something looks it up)'); return; }
-    const reason = skipReason(o);
+    const reason = skipReason(o, !!opts.mergeAdditive);
     if (reason) { note(reason); return; }
     const m = o as THREE.Mesh;
     const owner = m.parent;
