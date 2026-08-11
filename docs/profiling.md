@@ -418,6 +418,106 @@ the draw report above.
 
 ---
 
+## THE FRAME MODEL — what a drawn object actually costs (2026-08-11)
+
+Measured from Josh's own phone recordings, not headless. **Read this before
+optimising anything**; it settles "are we CPU or GPU bound" and, more usefully,
+turns the answer into a number you can multiply.
+
+### 1. It is CPU, and the CPU is the renderer — not the game
+
+Per-system CPU across 902 frames (Android, Chrome 151, WebGPU, depth 3):
+
+| | ms/frame | share of CPU |
+| --- | --- | --- |
+| **render** (total) | **8.51** | **88.6%** |
+| · render·scene | 6.36 | 66.2% |
+| · render·canvas | 1.25 | 13.0% |
+| · render·shadow | 0.78 | 8.1% |
+| room-culling | 0.19 | 2.0% |
+| light-pool | 0.14 | 1.5% |
+| everything else, all systems | ~0.6 | ~6% |
+
+Frame: dt 16.5ms · CPU 9.4 · GPU 6.3. It holds 60fps with no headroom.
+
+**All game logic together is about 1.1ms.** Mob AI, buffs, interactables,
+culling, audio — the entire simulation is noise next to submitting the frame.
+So "what should be a unique object" is a RENDERING question. Do not go looking
+for a hot game system; there isn't one.
+
+(`render·scene` CPU and the GPU number happen to be close — 6.36 vs 6.29 — and
+that is a coincidence, not double-counting. They are independent series in the
+recording; check before assuming one is the other.)
+
+### 2. The cost is one uniform upload per render object per frame
+
+`meta.uploadCensus` in the recording attributes every `device.queue.writeBuffer`
+call. On that frame: **403 uploads/frame, 101 KB**, and the top owner is
+
+    object [object]   322 calls / 2 frames · 161 buffers · 149.5 KB
+
+which is three's OWN per-render-object uniform group (model / modelView /
+normal matrices). One buffer per render object, rewritten every frame because
+modelViewMatrix changes whenever the camera moves.
+
+Dividing through, on this device:
+
+> **render·scene ms ≈ 0.0158 × uploads.**
+> ~15.8 µs per `writeBuffer`, and a drawn object carries ~2.5 of them, so
+> **every render object costs ~40 µs of CPU per frame, forever, whether or not
+> it is doing anything.**
+
+That constant is not a guess and not fitted to one sample: an earlier recording
+of a different scene measured 567 uploads → ~9 ms (15.9 µs), this one 403 →
+6.36 ms (15.8 µs). Renderer CPU correlates with upload count at r=+0.92, against
++0.27 for draw calls and +0.22 for triangles. **Count uploads, not triangles.**
+
+**Josh's instinct was right and this is the number behind it:** uniqueness is
+charged per frame, not per spawn.
+
+### 3. Where the objects actually are (phone, `meta.sceneAudit`)
+
+267 meshes in the scene · 474 instances · 126 draws.
+
+| population | meshes | batched? |
+| --- | --- | --- |
+| ↑interactable | 59 | no — excluded by design |
+| ↑level-poly | 48 | no — mostly transparent |
+| batched (static world) | 10 | **yes — holds 449 meshes** |
+| instanced:creature | 11 | yes — 218 instances |
+| everything else | ~140 | mixed |
+
+**The static batcher is already doing its job**: on a depth-6 floor it took
+449 of 452 static meshes into 11 batches. Its whole skip tally is:
+
+    69  interactable (excluded set)
+    59  transparent (back-to-front ordering)
+     3  lone item (a batch of one saves nothing)
+
+So "an empty room shouldn't be hundreds of objects" is largely already true for
+opaque static geometry. The two things left loose are **interactables** (settled
+— see the census section above, 40-57 meshes for a whole floor) and
+**transparency**.
+
+### 4. Transparency is the remaining unbatched population — and check `visible` first
+
+Scene-wide on a depth-6 floor: 297 transparent drawables, 174 of them ADDITIVE
+with `depthWrite: false`. Additive is order-independent (`dst += src`), so that
+whole class is safe to fuse — the same argument that let the stairs' glow merge.
+
+**But 97 of the 157 sprites were pooled and HIDDEN; only 60 were visible.** A
+traverse that doesn't test `visible` up the parent chain will report a dormant
+effect pool as a live population, which is exactly the mistake that sent one
+session chasing a 1109-child group that turned out to be a headless artifact.
+Always filter by the whole ancestor chain's visibility, then compare against
+`__drawData().sprites` before believing the number.
+
+`scene/sprite-batch.ts` already instances additive sprites per texture, but it
+is **opt-in** (`buildModel(spec, { batchSprites: true })`) and today only level
+props and torchlight pass it.
+
+---
+
 ## The optimization playbook (what to do once you've found it)
 
 1. **CPU-bound or GPU-bound?** Compare CPU ms vs GPU ms in the HUD/recording.
