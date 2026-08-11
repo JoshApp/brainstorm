@@ -1,4 +1,5 @@
 import type { DelveRenderer } from '../scene/create-renderer';
+import { isWarmingUp } from '../style/render-webgpu';
 
 // ── PIPELINE CENSUS — warm coverage, measured ────────────────────────────────
 //
@@ -239,6 +240,14 @@ const inPlaySeenNames = new Map<string, number>();
  *  so callers can use it as the "is this actually an in-play compile?" test. */
 export function notePipelineCompile(key: string, name: string): boolean {
   if (!sealed || warmKeys.has(key)) return false;
+  // A LATER warm is not in-play. Descents run warmSceneCompile + the prepare
+  // pass, which compile keys the previous absorb never saw — so without this
+  // guard those land in inPlaySeen and the number reads as churn. That is the
+  // exact mistake the old 80-key buffer made (it seeded before the warm and
+  // filled with the warm's own pipelines); one instrument repeating another's
+  // bug is how a measurement becomes folklore. The next absorb folds these into
+  // the warm set anyway.
+  if (isWarmingUp()) return false;
   inPlaySeen++;
   inPlaySeenNames.set(name, (inPlaySeenNames.get(name) ?? 0) + 1);
   return true;
