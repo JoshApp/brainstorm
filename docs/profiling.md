@@ -316,6 +316,56 @@ one line, not 64. Output is a text report shared via the OS share sheet — so y
 can send it off the phone (to yourself, or to review). This is the practical
 "what's eating the draws" tool on mobile.
 
+### Where the loose meshes actually are (the batcher's skip tally)
+
+`scene/static-batch.ts` collapses the static world into a handful of
+`BatchedMesh`es and logs `batched/candidates`. That ratio only describes what
+it CONSIDERED, and it read 520/520 on a depth-3 floor while a scene audit still
+found 247 loose meshes — both numbers true, and together they explain nothing.
+
+So the batcher also logs WHY each mesh stayed loose. Read that second line
+first; it is the number that says whether more batching is even available:
+
+```
+[static-batch] 247 meshes stayed loose:
+     173  interactable (excluded set)
+      60  transparent (back-to-front ordering)
+       8  flame (animated flicker)
+       6  already instanced/batched
+```
+
+**Interactables are 70% of it, and they are excluded on purpose** — they need
+individual identity for tap-targeting, state and removal. Widening the batcher
+to swallow them would take that away. The available win is INSIDE each object:
+`ecs/merge-static.ts` merges an interactable's own sibling meshes per material,
+so it stays exactly one tappable thing with a fraction of the draws (staircase
+88 → 48, merchant 20 → 7, chest 13 → 7; floor total 173 → 114).
+
+Per-object detail with `?mergereport=1`:
+
+```
+[merge-static] stairs: 88 → 48 meshes (−40)
+[merge-static] stairs skips:
+      34  transparent (back-to-front ordering)
+      16  sprite (billboard)
+```
+
+Which names the next target honestly: what remains in the staircase is its
+GLOW, not its stone. 17 of those 34 transparent meshes are additive with
+`depthWrite: false` — additive blending is order-independent, so they could
+merge with each other safely. The sprites are a separate question.
+
+Two traps this measurement walked into, both worth knowing:
+
+- **A guess about the batch key cost three wrong hypotheses.** The key is
+  `material § attributeLayout § shadowFlags` — it contains no room rect, so
+  "the rect fragments the groups" was never possible. Read the key.
+- **A screenshot is not verification here.** The `chest` debug scenario does
+  not reliably frame the chest, so a before/after snap pair compared two
+  different views and would have passed any regression. `merge-static` instead
+  self-checks world bounds + triangle count per object in DEV, and says
+  `MOVED` / `LOST GEOMETRY` when either changes.
+
 ### spector.js (`window.__spector()`) — DESKTOP only
 
 The deep option: captures the next frame's entire GL command stream (every draw,
