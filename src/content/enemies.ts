@@ -1,4 +1,5 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
+import { jelly, JELLY_HUES } from './jelly';
 import type { ContentStatus } from './content-status';
 import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
@@ -1011,11 +1012,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'ooze',
       archetype: 'blob',
       proportions: { height: 0.72, girth: 0.36 },
-      materials: {
-        body: { color: 0x18220f, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
-          dissolvable: true, },
-        core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
-      },
+      // The jelly recipe (content/jelly.ts) — saturated body + inner glow + rim
+      // + hot core. This blob used to carry a near-black body and no rim at all,
+      // which is why it read as glass with a bulb in it.
+      materials: jelly(JELLY_HUES.green, { coreEmissive: 1.8 }),
       eyes: { material: 'core', emissive: 1.8 },   // the core IS the windup tell
       flash: { material: 'body' },
       skin: [
@@ -1063,11 +1063,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'ooze-small',
       archetype: 'blob',
       proportions: { height: 0.4, girth: 0.2 },
-      materials: {
-        body: { color: 0x18220f, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
-          dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
-        core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
-      },
+      // Same jelly as the parent — a split child is the same substance, smaller.
+      materials: jelly(JELLY_HUES.green, { coreEmissive: 1.8 }),
       eyes: { material: 'core', emissive: 1.8 },
       flash: { material: 'body' },
       skin: [
@@ -1201,11 +1198,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'acid-spitter',
       archetype: 'blob',
       proportions: { height: 0.72, girth: 0.36 },
-      materials: {
-        body: { color: 0x141a26, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
-          dissolvable: true, rim: { color: 0x66ccff, power: 2, intensity: 0.55, darkReactive: 0.5 } },
-        core: { color: 0x66ccff, emissive: 0x66ccff, emissiveIntensity: 2.6 },
-      },
+      // Blue chemistry, same substance. A hotter core than the green ooze: the
+      // spit windup is a RANGED tell and has to read from across a room.
+      materials: jelly(JELLY_HUES.blue, { coreEmissive: 2.6, rim: 0.75 }),
       eyes: { material: 'core', emissive: 2.6 },
       flash: { material: 'body' },
       skin: [
