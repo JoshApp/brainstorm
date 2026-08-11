@@ -370,8 +370,18 @@ export function batchStaticWorld(level: LiveLevel): void {
   let candidates = 0;
   let straddled = 0;      // unlabelled groups spanning two rects — batched, no room rect
   const perInstanceFrustum = perInstanceFrustumEnabled();
+  // WHY a mesh stayed loose. The batcher reported 520/520 and a scene audit
+  // still found 247 loose meshes under the level root — both true, because the
+  // 520 counts what it CONSIDERED. Without this tally the gap is unattributable
+  // and the next person guesses (the first guess was that the rect fragmented
+  // the groups; the key doesn't contain the rect at all).
+  const skipped: Record<string, number> = {};
+  const skip = (reason: string): void => { skipped[reason] = (skipped[reason] ?? 0) + 1; };
+  const countMeshes = (root: THREE.Object3D, reason: string): void => {
+    root.traverse((o) => { if ((o as THREE.Mesh).isMesh) skip(reason); });
+  };
   for (const child of level.root.children.slice()) {
-    if (excluded.has(child)) continue;
+    if (excluded.has(child)) { countMeshes(child, 'interactable (excluded set)'); continue; }
     let rectId: string | null = null;
     const isDestructible = destructibleGroups.has(child);
     // A destructible group carries no dbgKind/dbgSource (it is spawned straight
@@ -390,18 +400,22 @@ export function batchStaticWorld(level: LiveLevel): void {
       // Only batch a straddler when its instances will still be frustum culled.
       if (!rectId && perInstanceFrustum) { rectId = NO_RECT; straddled++; }
     }
-    if (!rectId) continue;
+    if (!rectId) {
+      countMeshes(child, child.userData?.dbgKind === 'door' ? 'door' : 'no rect (straddles / outside every room)');
+      continue;
+    }
     child.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.BatchedMesh).isBatchedMesh) return;
-      if (Array.isArray(m.material)) return;              // multi-material groups stay loose
+      if (!m.isMesh) return;
+      if ((m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.BatchedMesh).isBatchedMesh) return skip('already instanced/batched');
+      if (Array.isArray(m.material)) return skip('multi-material group');
       const mat = m.material as THREE.Material;
-      if (mat.transparent) return;                        // blend/sort semantics — stay loose
-      if (m.name === 'flame') return;                     // animated flicker mesh
-      if (m.userData?.dynamicPart) return;                // opt-out: animated transform/material
-      if (m.userData?.batchedSprite) return;              // sprite-batch placeholder (not a Mesh anyway)
+      if (mat.transparent) return skip('transparent (back-to-front ordering)');
+      if (m.name === 'flame') return skip('flame (animated flicker)');
+      if (m.userData?.dynamicPart) return skip('dynamicPart (opted out)');
+      if (m.userData?.batchedSprite) return skip('sprite-batch placeholder');
       let geo = m.geometry as THREE.BufferGeometry;
-      if (!geo?.attributes?.position) return;
+      if (!geo?.attributes?.position) return skip('no position attribute');
       candidates++;
       let batchMat = mat;
       let keyMat: string;
@@ -425,7 +439,7 @@ export function batchStaticWorld(level: LiveLevel): void {
   let batched = 0;
   let batchCount = 0;
   for (const [batchKey, { mat, cast, receive, items }] of byKey.entries()) {
-    if (items.length < 2) continue;   // a batch of one saves nothing — keep the mesh
+    if (items.length < 2) { skip('lone item (a batch of one saves nothing)'); continue; }
     // MIXED INDEXED-NESS → de-index the group. BatchedMesh needs one or the
     // other across its geometries, and the layout key no longer splits on it
     // (see attrSig). De-indexing is the cheap, lossless direction — building an
@@ -529,6 +543,14 @@ export function batchStaticWorld(level: LiveLevel): void {
     // eslint-disable-next-line no-console
     console.log(`[static-batch] ${batched}/${candidates} static meshes → ${batchCount} batches `
       + `(${bakedMats.size} baked families, ${straddled} groups span two rects → batched, frustum-culled only)`);
+    // The batched/candidates ratio only describes what was CONSIDERED. This says
+    // what wasn't, and why — the number that decides whether more batching is
+    // even available, or whether the rest is loose for a real reason.
+    const rows = Object.entries(skipped).sort((a, b) => b[1] - a[1]);
+    const total = rows.reduce((n, [, v]) => n + v, 0);
+    // eslint-disable-next-line no-console
+    if (total) console.log(`[static-batch] ${total} meshes stayed loose:\n`
+      + rows.map(([r, n]) => `    ${String(n).padStart(4)}  ${r}`).join('\n'));
   }
 }
 
