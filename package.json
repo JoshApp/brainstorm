@@ -30,6 +30,7 @@
     "perf:ab": "tsx scripts/perf-ab.ts",
     "alloc-profile": "tsx scripts/alloc-profile.ts",
     "mob-check": "tsx scripts/mob-check.ts",
+    "aggro": "tsx scripts/aggro-check.ts",
     "draw-dissect": "tsx scripts/draw-dissect.ts",
     "harness-smoke": "tsx scripts/harness-smoke.ts",
     "harness-continue": "tsx scripts/harness-continue.ts",

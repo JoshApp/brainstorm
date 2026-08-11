@@ -614,6 +614,10 @@ export function installDevHooks(deps: DevHookDeps): void {
   // Pack/AI observation: per-enemy distance + bearing to the player + AI state.
   // Lets a headless probe confirm a crowd RINGS (bearings spread, dist ≈ strike
   // range) vs PILES (dist ≈ 0, bearings clustered). Drives pack tuning.
+  // The live level, for probes that need its rooms + enemy list directly
+  // (stuck-mob sweeps walk every room by rect centre). Read-only in practice.
+  w.__level = () => getLevel();
+
   w.__mobPack = () => {
     const lvl = getLevel(); if (!lvl) return null;
     const px = camera.position.x, pz = camera.position.z;
