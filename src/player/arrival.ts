@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { resetThreshold, armThreshold, endThreshold, tickThreshold, inThreshold } from './arrival-threshold';
 
 // ── FLOOR ARRIVAL — wake at the bonfire ──────────────────────────────
 //
@@ -118,6 +119,7 @@ let suppressed = false;
  *  every headless snap into a black rectangle. */
 export function suppressArrivalCeremony(): void {
   suppressed = true;
+  resetThreshold();
   t = -1;
   offset = 0;
   setLids(1);
@@ -125,6 +127,8 @@ export function suppressArrivalCeremony(): void {
 }
 
 export function beginArrival(opts?: { full?: boolean }): void {
+  // A new floor is a new threshold — and forgets what was done on the last one.
+  resetThreshold();
   if (suppressed) { t = -1; offset = 0; setLids(1); setFocus(1); return; }
   const full = opts?.full ?? false;
   duration = full ? DUR_FULL : DUR_QUICK;
@@ -153,47 +157,15 @@ export function tickArrival(_camera: THREE.Camera, dt: number): void {
   setFocus(open);
   if (k >= 1) {
     t = -1; offset = 0; setLids(1); setFocus(1);
-    // The ceremony ends, the THRESHOLD begins — see below.
-    threshold = true;
-    thresholdAge = 0;
+    // The ceremony ends, the THRESHOLD begins — unless the player already acted
+    // during the wake, which armThreshold honours (see arrival-threshold.ts).
+    armThreshold();
   }
 }
 
-// ── THE THRESHOLD — you have arrived, but you have not started ───────
-//
-// The wake ceremony ends on a timer, and for that second or two the player is
-// untouchable. Then it hands over to a room the player has never seen, on a
-// phone, with their thumbs not yet on the sticks. Anything that hits them there
-// hit someone who wasn't playing yet, and a pack that aggros there is already
-// mid-charge by the time they can answer. That's not indifference, it's a cheap
-// shot, and the first thing it teaches a new floor is that arriving is dangerous
-// in a way you cannot act on.
-//
-// So the safety doesn't end with the ceremony. It ends when the player DOES
-// something — a step, a look, a swing, a use. Not on a clock: someone who needs
-// six seconds to get their bearings on a bus gets six seconds. Nothing notices
-// them and nothing can hurt them until they move first.
-
-/** Backstop only. If nothing ends the threshold by now, an end-call went
- *  missing somewhere and we would rather the player be mortal than immortal for
- *  a whole floor. Long enough never to fire during honest orientation. */
-const THRESHOLD_CEILING_S = 45;
-
-let threshold = false;
-let thresholdAge = 0;
-
-/** The player acted. Ends the threshold; idempotent and cheap, so input
- *  handlers can call it unconditionally. */
-export function endArrivalThreshold(): void {
-  threshold = false;
-}
-
-/** Age the backstop. Driven from the same tick as the ceremony. */
-export function tickArrivalThreshold(dt: number): void {
-  if (!threshold) return;
-  thresholdAge += dt;
-  if (thresholdAge >= THRESHOLD_CEILING_S) threshold = false;
-}
+// The THRESHOLD rule (when the dungeon is allowed to notice you) lives in its
+// own file — it is a rule, not a transition effect, and it needed to be testable
+// without a document. This file keeps the eyelids.
 
 /**
  * Is the player still standing in the doorway — either mid-wake or arrived but
@@ -201,8 +173,15 @@ export function tickArrivalThreshold(dt: number): void {
  * player/health (damage refused) and by mob sight (nothing notices them).
  */
 export function isArrivalGrace(): boolean {
-  return t >= 0 || threshold;
+  return t >= 0 || inThreshold();
 }
+
+/** The player acted. Ends the threshold; idempotent and cheap, so input
+ *  handlers can call it unconditionally. */
+export function endArrivalThreshold(): void { endThreshold(); }
+
+/** Age the backstop. Driven from the same tick as the ceremony. */
+export function tickArrivalThreshold(dt: number): void { tickThreshold(dt); }
 
 /** Negative while rising from the bonfire seat; 0 once standing. */
 export function getArrivalHeightOffset(): number {

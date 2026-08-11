@@ -44,6 +44,10 @@ const get = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv[i +
 const port = Number(get('--port') ?? 5600 + Math.floor(Math.random() * 200));
 const seeds = (get('--seeds') ?? '7').split(',');
 const depth = get('--depth') ?? '3';
+// --reverse: same floor, enemies tested last-first. THE control for
+// "is this enemy broken, or is it just the FIRST one tested?" — a probe
+// that only ever fails on index 0 is measuring its own warm-up.
+const reverse = argv.includes('--reverse');
 
 async function main() {
   const repoRoot = dirname(new URL(import.meta.url).pathname).replace(/\/scripts$/, '');
@@ -87,12 +91,30 @@ async function main() {
       console.log(`\n── seed ${seed} · depth ${depth} · ${rooms.length} rooms ──`);
       void rooms;
       const res = await page.evaluate(`(async () => {
+        const REVERSE = ${reverse};
         const lvl = window.__level();
         const W = lvl.walkable;
         const out = [];
         // Maggots never hunt (hostileToPlayer false) and dormant bosses wait for
         // their gate — neither is the reported behaviour, so neither is tested.
         const hostiles = lvl.enemies.filter((e) => e.alive && e.kind !== 'maggot' && e.aiState !== 'dormant');
+        if (REVERSE) hostiles.reverse();
+        // WARM-UP, DISCARDED. The first enemy measured is unreliable: the wake
+        // ceremony (player/arrival.ts) can still be running, and while it is,
+        // NOTHING is allowed to see the player. Measured: whichever hostile came
+        // first failed, and --reverse moved the failure to a different enemy —
+        // the sweep was reading its own start-up as a broken mob. So burn one
+        // pass on the first hostile and throw the result away.
+        if (hostiles.length) {
+          const w = hostiles[0];
+          for (let k = 0; k < 8; k++) {
+            const a = (k / 8) * Math.PI * 2;
+            const px = w.position.x + Math.cos(a) * 3, pz = w.position.z + Math.sin(a) * 3;
+            if (W.hasLineOfSight(w.position.x, w.position.z, px, pz)) { window.__teleport(px, pz, 0); break; }
+          }
+          await window.harness.act({ kind: 'move', dir: 'N', seconds: 0.12 });
+          await window.harness.act({ kind: 'wait', seconds: 3 });
+        }
         for (const e of hostiles) {
           const ex = e.position.x, ez = e.position.z;
           // STAND WHERE IT CAN SEE YOU. A fixed offset put the player through a
