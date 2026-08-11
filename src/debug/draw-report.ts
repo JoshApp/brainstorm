@@ -19,6 +19,7 @@ import { getCurrentDepth } from '../level/loader';
 import { getViewmodelRoots } from '../style/render-frame';
 import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
 import { perFrameDraws } from './frame-timing';
+import { originOf, untaggedDrawables } from '../scene/provenance';
 
 let scene: THREE.Scene | null = null;
 let renderer: DelveRenderer | null = null;
@@ -53,6 +54,12 @@ export interface DrawReportData {
    *  nearest ancestor's userData.dbgSource — surface-clutter / geometry-warp /
    *  doorframe / authored / …). Answers "what ARE the unmerged props". */
   looseBySource: Record<string, number>;
+  /** Drawables NO system claims — the ratchet for the provenance work. While
+   *  this is non-zero the population accounting is incomplete by exactly this
+   *  much, and every merge/bake decision above it is partly guesswork. */
+  untagged: number;
+  /** The biggest anonymous populations, so they can be found in the code. */
+  untaggedKinds: Record<string, number>;
 }
 
 export function drawReportData(): DrawReportData | null {
@@ -138,6 +145,10 @@ export function drawReportData(): DrawReportData | null {
   };
   walk(scene);
   const info = renderer?.info;
+  // Everything no system claims. Computed over the whole scene, not the culled
+  // walk above: an object hidden this frame is still an object we cannot
+  // account for.
+  const untag = untaggedDrawables(scene);
   return {
     draws: perFrameDraws(info),
     rtris: info ? info.render.triangles : 0,
@@ -148,6 +159,7 @@ export function drawReportData(): DrawReportData | null {
     textures: info ? info.memory.textures : 0,
     lightsActive, lightsShadow, bySource,
     mergedDraws, mergeableNow, dynamicDraws, looseBySource,
+    untagged: untag.count, untaggedKinds: untag.kinds,
   };
 }
 
@@ -196,9 +208,17 @@ function matKey(m: THREE.Material): string {
 }
 
 function looseCat(m: THREE.Object3D): Cat {
-  const k = m.userData?.dbgKind as string | undefined;
-  if (k === 'wall' || k === 'floor' || k === 'ceiling' || k === 'fixtures') return 'shell';
-  if (k === 'prop') return 'prop';
+  // ASK THE ANCESTORS, not just this mesh. This read the mesh's OWN userData and
+  // nothing else, so anything generated as a tagged GROUP of untagged meshes —
+  // which is most of the world — reported as 'decor'. That is how a floor with a
+  // shell, props and fixtures came back as `shell: 0, prop: 0, fixture: 0` with
+  // 953 drawables filed under 'decor': the tags existed, one level up, and the
+  // categoriser never looked. Tagging is a group-level fact (scene/provenance.ts),
+  // so the reader has to be too.
+  const k = originOf(m)?.system;
+  if (k === 'wall' || k === 'floor' || k === 'ceiling' || k === 'trim' || k === 'fixtures') return 'shell';
+  if (k === 'batched') return 'shell';       // already collapsed — not outstanding work
+  if (k === 'prop' || k === 'clutter') return 'prop';
   if (k === 'fx') return 'fx';
   // Creature-instancing batches hang off the level root (not any one enemy's
   // group), so the owner map can't tag them — they self-identify instead.

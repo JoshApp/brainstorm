@@ -3,6 +3,7 @@ import { attribute as tslAttribute } from 'three/tsl';
 import type { LiveLevel } from '../level/builder';
 import { getAllInteractables } from '../interactables/system';
 import { deferGpuDispose } from '../style/render-webgpu';
+import { rectOf, tagOrigin } from './provenance';
 
 // ── STATIC-WORLD BATCHING (BatchedMesh) ──────────────────────────────────────
 //
@@ -105,13 +106,12 @@ function attrSig(geo: THREE.BufferGeometry): string {
   return names.map((n) => `${n}:${geo.attributes[n].itemSize}`).join(',');
 }
 
-function shellRectId(src: string): string | null {
-  const dot = src.indexOf('·');
-  if (dot < 0) return null;
-  const rest = src.slice(dot + 1).trim();
-  const sp = rest.search(/\s/);
-  return (sp < 0 ? rest : rest.slice(0, sp)) || null;
-}
+// The rect parser lives beside the WRITER now (scene/provenance.ts), so the
+// format cannot drift between the two. It was reproduced by hand here and at
+// ~20 tagging call sites, and a mismatch does not show up as a missing label —
+// it files stone under a rect that does not exist and the room culler never
+// shows it again.
+const shellRectId = rectOf;
 
 function rectIdAt(level: LiveLevel, x: number, z: number): string | null {
   let bestId: string | null = null;
@@ -467,6 +467,9 @@ export function batchStaticWorld(level: LiveLevel): void {
     }
     const batch = new THREE.BatchedMesh(items.length, maxVerts, maxIndices, mat);
     batch.name = `static-batch-world`;
+    // A batch is its own population: already collapsed, and counting it beside
+    // the loose stone it replaced would make the remaining work look larger.
+    tagOrigin(batch, 'batched', { detail: 'static-world' });
     // THE KEY THAT PUT THESE TOGETHER, kept on the object. A BatchedMesh earns
     // its keep by collapsing many objects into ONE render object, so the number
     // of batches is the number that matters — and when it is higher than it

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { tagOrigin } from '../scene/provenance';
 import type { RoomSpec } from './types';
 import type { WallSegment } from './walkable';
 import type { StyleMaterials } from '../style/materials';
@@ -160,8 +161,7 @@ export function buildPolyRoomShell(
   // Opt into the wall-contact and prop-contact AO post-passes, which find their
   // subjects by userData.aoRect and read vertices in this un-rotated shape space.
   floor.userData.aoRect = { x: rect.x, z: rect.z, w: rect.w, d: rect.d };
-  floor.userData.dbgKind = 'floor';
-  floor.userData.dbgSource = `polyfloor · ${room.id}`;
+  tagOrigin(floor, 'floor', { rect: room.id });
   root.add(floor);
 
   // ── CEILING ────────────────────────────────────────────────────────
@@ -203,8 +203,7 @@ export function buildPolyRoomShell(
   }
   ceiling.receiveShadow = true;
   ceiling.name = `polyceil:${room.id}`;
-  ceiling.userData.dbgKind = 'ceiling';
-  ceiling.userData.dbgSource = `polyceil · ${room.id}`;
+  tagOrigin(ceiling, 'ceiling', { rect: room.id });
   root.add(ceiling);
 
   // ── WALLS ──────────────────────────────────────────────────────────
@@ -255,8 +254,7 @@ export function buildPolyRoomShell(
       walls.castShadow = true;
       walls.receiveShadow = true;
       walls.name = `polywalls:${room.id}`;
-      walls.userData.dbgKind = 'wall';
-      walls.userData.dbgSource = `polywalls · ${room.id}`;
+      tagOrigin(walls, 'wall', { rect: room.id });
       // WHICH span came down, as a fact on the mesh rather than a thing an
       // audit has to re-derive. A report that recomputes "did this room
       // collapse" from wear constants is measuring its own copy of the rule
@@ -281,8 +279,7 @@ export function buildPolyRoomShell(
     trim.receiveShadow = true;
     trim.castShadow = false;
     trim.name = `polytrim:${room.id}`;
-    trim.userData.dbgKind = 'wall';
-    trim.userData.dbgSource = `polytrim · ${room.id}`;
+    tagOrigin(trim, 'trim', { rect: room.id });
     root.add(trim);
   }
 }
