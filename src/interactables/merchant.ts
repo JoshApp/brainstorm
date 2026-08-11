@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { ModelSpec } from '../ecs/model-types';
 import { buildModel } from '../ecs/build-model';
+import { mergeInteractableStatics, reportMerge } from '../ecs/merge-static';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { showInWorldMessage } from '../ui/pickup-notification';
@@ -102,6 +103,12 @@ export function spawnMerchant(
   built.group.rotation.y = rotY;
   parent.add(built.group);
   registerVendorLight(MERCHANT_MODEL, pos);
+  // One shopkeeper, ~20 meshes across 7 materials. Merging his own siblings
+  // per material leaves him exactly one tappable thing with a fraction of the
+  // draws; parts + slots stay protected, so anything posed by name still is.
+  // ignoreNames: verified — nothing in this file reads built.parts or
+  // built.slots, so the ModelSpec's part names are description, not reference.
+  reportMerge('merchant', mergeInteractableStatics(built, { label: 'merchant-merged', ignoreNames: true }));
 
   // NO MENU. The stock stands on the counter in front of him (level/centrepieces
   // planMerchant → priced offerings), so the goods ARE the shop: you walk up to
@@ -200,6 +207,7 @@ export function spawnTrinketMerchant(
   built.group.rotation.y = rotY;
   parent.add(built.group);
   registerVendorLight(RELIC_KEEPER_MODEL, pos);
+  reportMerge('relic-keeper', mergeInteractableStatics(built, { label: 'keeper-merged', ignoreNames: true }));
 
   const stock = rollShopStock(depth, 3, undefined, 'reliquary');
 

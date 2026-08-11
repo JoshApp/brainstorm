@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
+import { mergeInteractableStatics, reportMerge } from '../ecs/merge-static';
 import { generateEntityId } from '../ecs/world';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import { KEY_ID, type DropResult } from '../content/drop-tables';
@@ -114,6 +115,11 @@ export function spawnChest(
   // Track the lid's authored Y so the mimic breathing can offset from
   // it without drifting.
   const lidPart = built.parts.get('lid');
+  // Collapse the chest's own static meshes now that the parts it animates are
+  // in hand. 'lid', 'hinge' and 'loot_spawn' are protected (they are in
+  // parts/slots), and the merge never crosses a group, so the lid still swings
+  // — carrying one merged mesh instead of several.
+  reportMerge('chest', mergeInteractableStatics(built, { label: 'chest-merged' }));
   const lidBaseY = lidPart?.position.y ?? 0;
 
   let state: 'closed' | 'opening' | 'open' = 'closed';

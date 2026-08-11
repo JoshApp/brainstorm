@@ -13,6 +13,7 @@ import { getTexture } from '../style/procedural-textures';
 import { getEquipped } from '../player/equipment';
 import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { buildModel } from '../ecs/build-model';
+import { mergeStaticSubtree, reportMerge } from '../ecs/merge-static';
 import { BONFIRE } from '../content/bonfire';
 import { isBossEncounterComplete, onBossEncounterComplete } from '../mobs/boss-encounter';
 import { isFateGateClear } from '../state/fate-gate';
@@ -708,5 +709,16 @@ export function spawnStairs(
     destroyed: false,
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
   };
+  // A staircase is ONE thing the player taps, built from ~90 meshes — the
+  // single largest object the floor batcher can't touch (it excludes
+  // interactables by design, since they need identity for tap-targeting and
+  // state). Merging its own siblings per material keeps that identity exactly
+  // and still collapses the draws. Runs last, after every piece is parented.
+  //
+  // Everything that animates here is safe by construction: the tweens drive
+  // MATERIAL colour/opacity on the transparent glow, outline and shaft meshes,
+  // which the merge skips, and the boss ward lives in its own group, which the
+  // merge never crosses.
+  reportMerge('stairs', mergeStaticSubtree(group, { label: 'stairs-merged' }));
   registerInteractable(interactable);
 }
