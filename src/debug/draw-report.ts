@@ -54,9 +54,26 @@ export interface DrawReportData {
    *  nearest ancestor's userData.dbgSource — surface-clutter / geometry-warp /
    *  doorframe / authored / …). Answers "what ARE the unmerged props". */
   looseBySource: Record<string, number>;
+  /**
+   * Drawables in the scene IGNORING visibility, against `drawables` which counts
+   * only what is currently visible.
+   *
+   * READ THESE TWO TOGETHER OR YOU WILL CHASE A GHOST. Every number in
+   * `bySource` comes from the visible walk, so when room-culling has hidden the
+   * rooms — which is the normal state headless, where the descent cover never
+   * lifts and the player never lands in a room — the report honestly says
+   * `shell: 0, prop: 0, fixture: 0`. That is not a categorisation failure and it
+   * cost a full investigation to establish: un-hiding the level subtree turns
+   * the same build into `shell: 13, prop: 2, enemy: 24`.
+   *
+   * So a large gap here means "most of the scene is hidden right now", and any
+   * bySource zero should be read against it before it is read as a bug.
+   */
+  sceneDrawables: number;
   /** Drawables NO system claims — the ratchet for the provenance work. While
    *  this is non-zero the population accounting is incomplete by exactly this
-   *  much, and every merge/bake decision above it is partly guesswork. */
+   *  much, and every merge/bake decision above it is partly guesswork.
+   *  Counted over the WHOLE scene (see sceneDrawables), not the visible walk. */
   untagged: number;
   /** The biggest anonymous populations, so they can be found in the code. */
   untaggedKinds: Record<string, number>;
@@ -149,6 +166,11 @@ export function drawReportData(): DrawReportData | null {
   // walk above: an object hidden this frame is still an object we cannot
   // account for.
   const untag = untaggedDrawables(scene);
+  let sceneDrawables = 0;
+  scene.traverse((o) => {
+    const d = o as THREE.Mesh & { isSprite?: boolean; isPoints?: boolean };
+    if (d.isMesh || d.isSprite || d.isPoints) sceneDrawables++;
+  });
   return {
     draws: perFrameDraws(info),
     rtris: info ? info.render.triangles : 0,
@@ -159,7 +181,7 @@ export function drawReportData(): DrawReportData | null {
     textures: info ? info.memory.textures : 0,
     lightsActive, lightsShadow, bySource,
     mergedDraws, mergeableNow, dynamicDraws, looseBySource,
-    untagged: untag.count, untaggedKinds: untag.kinds,
+    sceneDrawables, untagged: untag.count, untaggedKinds: untag.kinds,
   };
 }
 

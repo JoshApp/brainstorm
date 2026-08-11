@@ -355,7 +355,16 @@ GLOW, not its stone. 17 of those 34 transparent meshes are additive with
 `depthWrite: false` — additive blending is order-independent, so they could
 merge with each other safely. The sprites are a separate question.
 
-Two traps this measurement walked into, both worth knowing:
+**A `bySource` zero is usually a hidden scene, not a broken categoriser.**
+Every `bySource` number comes from the VISIBLE walk. Headless the descent cover
+never lifts, the player never lands in a room, and room-culling has hidden every
+room — so the report says `shell: 0, prop: 0, fixture: 0` and it is telling the
+truth. Un-hiding the level subtree turns the same build into `shell: 13,
+prop: 2, enemy: 24`. Read `drawables` against `sceneDrawables` (total, ignoring
+visibility) before reading any zero as a bug; a large gap means most of the
+scene is hidden right now. This cost a full investigation, twice.
+
+Three traps this measurement walked into, all worth knowing:
 
 - **A guess about the batch key cost three wrong hypotheses.** The key is
   `material § attributeLayout § shadowFlags` — it contains no room rect, so
