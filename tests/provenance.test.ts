@@ -59,10 +59,12 @@ test('a detail after the rect never swallows the rect', () => {
 });
 
 test('a detail without a rect does not masquerade as one', () => {
+  // `interactable · OPEN` would read back with rect 'OPEN' — a rect matching no
+  // room. Nothing parses interactable rects today, which is precisely why such
+  // a value would sit there unnoticed until something did.
   const g = new THREE.Group();
   tagOrigin(g, 'prop', { detail: 'authored' });
-  assert.equal(originOf(g)?.rect, 'authored',
-    'documents current behaviour: with no rect, the first token after · IS read as the rect');
+  assert.equal(originOf(g)?.rect, null, 'a detail must never be readable as a rect');
 });
 
 test('tagOrigin matches the format existing shells already emit', () => {

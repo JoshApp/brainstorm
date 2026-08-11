@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { disposeOwnedMaterials } from '../style/material-registry';
 import type { Interactable } from './types';
+import { tagOrigin } from '../scene/provenance';
 
 // Interactable runtime. Holds the live list of interactables; each frame, the
 // main loop calls tick() with the player position + forward direction. The
@@ -14,6 +15,24 @@ const interactables: Interactable[] = [];
 let currentInRange: Interactable | null = null;
 
 export function registerInteractable(i: Interactable) {
+  // TAG HERE, ONCE, FOR ALL OF THEM. Every interactable parents its model to
+  // the SCENE, not to level.root (chest.ts, pickup.ts, reliquary, blood-altar,
+  // tithe-basin, offerings, boss-mist…), so none of them carried a provenance
+  // tag and none could: the level-side taggers never see them. Measured, that
+  // was the bulk of the anonymous scene population — hundreds of drawables
+  // hanging off unnamed Groups directly under the Scene.
+  //
+  // Registration is the one seam every interactable passes through, and it
+  // already holds the model, so one line here claims all of them instead of
+  // ~20 spawn sites each remembering to. `promptLabel` rides along as the
+  // detail so the census can tell a chest from a fountain.
+  //
+  // It NEVER overwrites a tag a spawn site already set. door.ts stamps
+  // dbgKind:'door', and both static-batch and room-culling branch on it — a
+  // blanket 'interactable' here would silently change how doors are batched and
+  // culled. This is a floor under the untagged, not a replacement for intent.
+  const g = i.built?.group;
+  if (g && !g.userData?.dbgKind) tagOrigin(g, 'interactable', { detail: i.promptLabel || 'unnamed' });
   interactables.push(i);
 }
 

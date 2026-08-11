@@ -84,7 +84,11 @@ export function tagOrigin(obj: THREE.Object3D, system: OriginSystem, opts: Origi
   // it would truncate and file the object under a different room.
   let s = system;
   if (opts.rect) s += ` · ${opts.rect}`;
-  if (opts.detail) s += `${opts.rect ? '' : ' ·'} ${opts.detail}`;
+  // A detail NEVER gets a `·`. The dot is the rect delimiter, so
+  // `interactable · OPEN` would read back with rect 'OPEN' — a rect id that
+  // matches no room. Nothing parses interactable rects today, which is exactly
+  // why it would sit there until something did.
+  if (opts.detail) s += ` [${opts.detail}]`;
   ud.dbgSource = s;
 }
 
