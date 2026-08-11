@@ -375,6 +375,38 @@ Three traps this measurement walked into, all worth knowing:
   self-checks world bounds + triangle count per object in DEV, and says
   `MOVED` / `LOST GEOMETRY` when either changes.
 
+### Interactable census (`window.__interactables()`) — settled, don't re-derive
+
+A phone recording once put `↑interactable` at 59 meshes, above the level shell,
+and that read as "interactables are the biggest population, go batch them."
+`window.__interactables()` (DEV) splits that total by KIND, which is what the
+total could never tell you. Measured in real play on three floors, phone
+viewport, via `scripts/pilot.ts`-style boot:
+
+| floor | interactables | their meshes | frame draws |
+| --- | --- | --- | --- |
+| seed 7 · d3 | 18 | 53 | 69 |
+| seed 31 · d6 | 13 | 40 | 58 |
+| seed 99 · d9 | 19 | 57 | 84 |
+
+**The whole population is 40-57 meshes for an entire FLOOR, against a frame of
+58-84 draws** — and only a fraction is ever on screen at once. One object (the
+staircase, 20 meshes open / 31 sealed) is a third to a half of it. So:
+
+- There is no draw-call win left in "batch the interactables". The remaining
+  per-type merges are single digits on objects that are rarely co-visible.
+- A total is not a distribution. `59 meshes` was true and useless; `39 of them
+  are one staircase` is what decides the work.
+- If the frame is CPU-bound at ~70 draws, the draws are not the reason. Look at
+  `decor` (197 visible drawables on the same floor) and `fx` (136), not here.
+
+What DID cost, and is fixed: the outline highlight rebuilt its hull geometry —
+clone, un-index, bake, merge, `mergeVertices`, recompute normals — every time an
+interactable crossed the nearby radius. **~1.7 ms of main-thread work per hull
+build** (measured: 3 builds, 5.0 ms), re-paid on every re-approach. Hulls are
+cached now; `outlineStats()` reports `rebuilds` (must stay 0), `cacheHits`, and
+`buildMs`, so the regression is visible rather than merely slow.
+
 ### spector.js (`window.__spector()`) — DESKTOP only
 
 The deep option: captures the next frame's entire GL command stream (every draw,

@@ -108,6 +108,13 @@ const NEARBY_RADIUS = 4.0;         // m — interactables within this glow faint
 const NEARBY_MAX_OPACITY = 0.32;   // faint cap (additive → only reads in dark)
 const ARMED_BASE_OPACITY = 0.78;
 const SEALED_BASE_OPACITY = 0.45;
+/** Below this the additive rim is under one 8-bit level on any surface it lands
+ *  on — a draw call for a pixel that cannot change. Hulls fainter than this are
+ *  not drawn at all. */
+const MIN_VISIBLE_OPACITY = 0.02;
+/** New (uncached) hulls built per frame, beyond the armed one. See the build
+ *  loop for why this is budgeted at all. */
+const NEW_BUILDS_PER_FRAME = 2;
 
 interface OutlineRef {
   clone: THREE.Mesh;
@@ -116,9 +123,55 @@ interface OutlineRef {
   col: THREE.Color;
 }
 
-// One entry per interactable currently showing an outline.
+// ── WHY HULLS ARE CACHED, NOT REBUILT ───────────────────────────────────────
+//
+// buildOutlinesFor is not a cheap function. Per hull it clones every source
+// geometry, drops the index, bakes a matrix into the positions, merges them,
+// then runs mergeVertices — a spatial hash over every vertex — and recomputes
+// normals. That is fine ONCE. It was running every time an interactable crossed
+// NEARBY_RADIUS, in the frame it crossed, for every interactable that crossed:
+// walk into a room with a chest, two doors and four pickups and seven of those
+// builds land on one frame; walk back out and in and all seven run again.
+//
+// The geometry cannot change (the sources are static, and anything that moves
+// keeps its own hull under its own parent), so the second build is pure waste.
+// Hulls are now built once per interactable and kept — shown and hidden instead
+// of created and destroyed. `outlineStats()` reports rebuilds so a regression
+// here is visible rather than merely slow: on the walk-in/walk-out loop that
+// motivated this, `rebuilds` must stay 0.
+//
+// Freeing is still tied to the interactable: removeOutline drops the entry when
+// the object is destroyed or the level tears down, which is when the memory
+// actually should go.
 const outlines = new Map<Interactable, OutlineRef[]>();
+/** Hulls built but currently hidden — the cache. Same objects, still parented
+ *  to their source node, just `visible = false`. */
+const parked = new Set<Interactable>();
 let pulseT = 0;
+
+// Instrumentation. `rebuilds` is the one that matters: it counts a build for an
+// interactable we had already built once, which is the bug this cache exists to
+// make impossible.
+const stats = { builds: 0, rebuilds: 0, cacheHits: 0, buildMs: 0 };
+const everBuilt = new WeakSet<object>();
+
+export function outlineStats(): {
+  targets: number; hulls: number;
+  builds: number; rebuilds: number; cacheHits: number;
+  /** Total ms spent building hull geometry this session. Read together with
+   *  `cacheHits`: every hit is a build the pre-cache version would have paid
+   *  again, so `cacheHits × (buildMs / builds)` is what caching bought. */
+  buildMs: number;
+} {
+  let hulls = 0;
+  for (const refs of outlines.values()) for (const r of refs) if (r.clone.visible) hulls++;
+  return { targets: outlines.size, hulls, ...stats, buildMs: +stats.buildMs.toFixed(2) };
+}
+
+/** Test/DEV seam: forget the counters (not the hulls). */
+export function resetOutlineStats(): void {
+  stats.builds = 0; stats.rebuilds = 0; stats.cacheHits = 0; stats.buildMs = 0;
+}
 
 const tmpColor = new THREE.Color();
 
@@ -206,8 +259,27 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
   return refs;
 }
 
+/** Hide this target's hulls but KEEP them — the cheap half of the cycle. They
+ *  stay parented to their source node, so nothing has to be re-found later. */
+function parkOutline(target: Interactable): void {
+  const refs = outlines.get(target);
+  if (!refs) return;
+  for (const r of refs) r.clone.visible = false;
+  parked.add(target);
+}
+
+/** Show a parked target's hulls again. No geometry work — that's the point. */
+function unparkOutline(target: Interactable): void {
+  const refs = outlines.get(target);
+  if (!refs) return;
+  for (const r of refs) r.clone.visible = true;
+  parked.delete(target);
+  stats.cacheHits++;
+}
+
 function removeOutline(target: Interactable) {
   const refs = outlines.get(target);
+  parked.delete(target);
   if (!refs) return;
   for (const r of refs) {
     r.clone.parent?.remove(r.clone);
@@ -238,26 +310,63 @@ export function updateOutline(
   const pulse = 0.5 + 0.5 * Math.sin(pulseT * Math.PI * 2 / 1.1);
 
   // Desired set: in-range + every interactable within radius that has a model.
+  //
+  // The nearby tier fades to nothing AT the radius, so the outermost band was
+  // paying a full additive draw per hull to add ~0.005 to a pixel. Cut at
+  // MIN_VISIBLE_OPACITY instead: same picture (additive, below the quantisation
+  // of an 8-bit channel), a shorter effective radius in draws.
   const desired = new Set<Interactable>();
-  if (inRange) desired.add(inRange);
+  if (inRange && !inRange.destroyed) desired.add(inRange);
   const r2 = NEARBY_RADIUS * NEARBY_RADIUS;
+  const fadeCut = NEARBY_RADIUS * (1 - MIN_VISIBLE_OPACITY / NEARBY_MAX_OPACITY);
+  const cut2 = fadeCut * fadeCut;
   for (const it of getAllInteractables()) {
-    if (!it.built?.group) continue;
+    // A destroyed interactable is never desired, so the free path below always
+    // reaches it. In the live loop tickInteractables has usually dropped it
+    // from the list already — but "usually" is how a cache turns into a leak,
+    // and the cache is the reason this now matters.
+    if (it.destroyed || !it.built?.group) continue;
     const dx = it.position.x - playerPos.x;
     const dz = it.position.z - playerPos.z;
-    if (dx * dx + dz * dz <= r2) desired.add(it);
+    const d2 = dx * dx + dz * dz;
+    if (d2 <= cut2 && d2 <= r2) desired.add(it);
   }
 
-  // Drop outlines that are no longer wanted; build the new ones.
+  // Park what's no longer wanted (keep the geometry), free what's actually gone.
   for (const target of [...outlines.keys()]) {
-    if (!desired.has(target)) removeOutline(target);
+    if (desired.has(target)) continue;
+    // GONE, not merely far: the interactable was destroyed or its model left
+    // the scene. That is when the hull's memory should go too — otherwise the
+    // cache would hold a chest's hulls for the rest of the floor after the
+    // chest itself was removed.
+    if (target.destroyed || !target.built?.group.parent) removeOutline(target);
+    else if (!parked.has(target)) parkOutline(target);
   }
+
+  // Build what's newly wanted. The ARMED target is always built this frame —
+  // it is the "press USE" signal and a frame of delay on it would read as lag.
+  // Everything else is budgeted: walking into a dressed room can newly-desire
+  // eight interactables at once, and eight mergeVertices calls on one frame is
+  // a visible hitch. Spread over frames it is invisible, because the nearby
+  // tier is a faint rim that fades IN anyway.
+  let budget = NEW_BUILDS_PER_FRAME;
   for (const target of desired) {
-    if (!outlines.has(target)) outlines.set(target, buildOutlinesFor(target));
+    if (outlines.has(target)) {
+      if (parked.has(target)) unparkOutline(target);
+      continue;
+    }
+    if (target !== inRange && budget-- <= 0) continue;
+    stats.builds++;
+    if (everBuilt.has(target)) stats.rebuilds++;
+    everBuilt.add(target);
+    const t0 = performance.now();
+    outlines.set(target, buildOutlinesFor(target));
+    stats.buildMs += performance.now() - t0;
   }
 
   // Per-target color + opacity + transform sync.
   for (const [target, refs] of outlines) {
+    if (parked.has(target)) continue;   // hidden — its opacity can't be seen
     const sealed = target.promptLabel === 'SEALED';
     const armed = target === inRange;
 

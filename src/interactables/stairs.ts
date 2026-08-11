@@ -14,6 +14,7 @@ import { getEquipped } from '../player/equipment';
 import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { buildModel } from '../ecs/build-model';
 import { mergeStaticSubtree, reportMerge } from '../ecs/merge-static';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BONFIRE } from '../content/bonfire';
 import { isBossEncounterComplete, onBossEncounterComplete } from '../mobs/boss-encounter';
 import { isFateGateClear } from '../state/fate-gate';
@@ -357,24 +358,49 @@ export function spawnStairs(
   const outlineColor = 0xc8ddff;
   const outlineOuterMat = outlineSurface({ color: outlineColor, opacity: 0.55, additive: true });
   const outlineMat = outlineSurface({ color: 0xe0eaff, opacity: 1.0 });
-  /** Add TWO inverse-hull duplicates of a mesh: a wide soft
-   *  outer halo + a tight bright inner edge. Both parented to
-   *  the original's parent so they follow it. */
-  const addOutline = (mesh: THREE.Mesh) => {
-    const outer = new THREE.Mesh(mesh.geometry, outlineOuterMat);
-    outer.position.copy(mesh.position);
-    outer.rotation.copy(mesh.rotation);
-    outer.scale.copy(mesh.scale).multiplyScalar(1.22);
-    outer.renderOrder = -2;
-    mesh.parent?.add(outer);
-    const inner = new THREE.Mesh(mesh.geometry, outlineMat);
-    inner.position.copy(mesh.position);
-    inner.rotation.copy(mesh.rotation);
-    inner.scale.copy(mesh.scale).multiplyScalar(1.10);
-    inner.renderOrder = -1;
-    mesh.parent?.add(inner);
+  /**
+   * ONE hull mesh per LAYER, not one per outlined step.
+   *
+   * This used to emit two meshes for every outline target — 9 targets, 18
+   * hulls, and with the outer layer that was 36 of the staircase's 88 meshes
+   * spent on decoration nobody can tap. outline.ts learned this exact lesson
+   * for the runtime highlight (it merges a parent's solids into a single hull);
+   * the stairs kept the per-mesh version it was written before.
+   *
+   * The result is IDENTICAL, not merely similar. Each hull was
+   * `T·R·(S·k)` around its source, which is `m.matrix · scale(k)` because a
+   * uniform scale commutes — so baking that matrix into a clone of the source
+   * geometry and merging the clones produces exactly the triangles the separate
+   * meshes drew. Draw ORDER among them changes, and cannot matter: one material
+   * instance drives every hull in a layer, so every fragment carries the same
+   * colour and alpha, and over-blending identical fragments commutes.
+   */
+  const addOutlineLayer = (
+    targets: readonly THREE.Mesh[], mat: THREE.Material, k: number, renderOrder: number,
+  ) => {
+    const scale = new THREE.Matrix4().makeScale(k, k, k);
+    const geos: THREE.BufferGeometry[] = [];
+    for (const m of targets) {
+      m.updateMatrix();
+      const g = m.geometry.clone().applyMatrix4(m.matrix.clone().multiply(scale));
+      // mergeGeometries returns null (silently) on any attribute or
+      // indexedness mismatch. Normalising to non-indexed is the cheap way to
+      // guarantee the merge actually happens — 9 boxes is nothing, and a
+      // silent null here would delete the outline with no error.
+      geos.push(g.index ? (() => { const n = g.toNonIndexed(); g.dispose(); return n; })() : g);
+    }
+    const merged = mergeGeometries(geos, false);
+    for (const g of geos) g.dispose();
+    if (!merged) return;
+    const hull = new THREE.Mesh(merged, mat);
+    hull.renderOrder = renderOrder;
+    hull.name = 'stair-outline';
+    group.add(hull);
   };
-  for (const m of outlineTargets) addOutline(m);
+  // Every outline target is a direct child of `group` (parapet lips, the first
+  // three treads + risers), so one layer per scale is the whole set.
+  addOutlineLayer(outlineTargets, outlineOuterMat, 1.22, -2);
+  addOutlineLayer(outlineTargets, outlineMat, 1.10, -1);
 
   // Two-state god ray.
   //

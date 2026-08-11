@@ -4,311 +4,198 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 12",
-    "date": "2026-08-05",
+    "version": "Build 18",
+    "date": "2026-08-11",
     "entries": [
       {
-        "tag": "add",
-        "text": "Break a thing's guard from behind and its nerve goes with it. It runs, it wears a skull, and its back is yours.",
+        "tag": "tech",
+        "text": "The stairway's glow costs less to burn. It looks exactly as it did, which is the point.",
         "area": [
-          "combat",
-          "mobs",
-          "atmosphere"
+          "atmosphere",
+          "level"
         ]
       },
       {
-        "tag": "fix",
-        "text": "The merchant no longer stands in his own cobwebs, and the dungeon's dressers ask before they crowd a thing you have to touch.",
+        "tag": "tech",
+        "text": "The stairs, the merchant and the chest each draw as a fraction of what they were. They have not moved, and they still notice you.",
         "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "fix",
-        "text": "Chasms stopped opening under the furniture, and the dungeon's dressers learned to ask before they put a pillar somewhere.",
+        "text": "The dungeon stops second-guessing how sharp it should be. It had been changing its mind every few seconds, and you felt every one.",
         "area": [
-          "level"
+          "atmosphere",
+          "tech"
         ]
       }
     ]
   },
   {
-    "version": "Build 11",
-    "date": "2026-08-04",
+    "version": "Build 17",
+    "date": "2026-08-10",
     "entries": [
       {
         "tag": "fix",
-        "text": "Taking a thing no longer makes the dungeon pause to think about it, and silver chests remember they are not gold.",
+        "text": "Leaving a run no longer wakes the whole dungeon from scratch. It was never asleep.",
         "area": [
           "ui",
-          "content"
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dungeon asks the browser to stop forgetting what it built. It does not always listen.",
+        "area": [
+          "tech"
         ]
       },
       {
         "tag": "fix",
-        "text": "The lamp that reads the room is called AUTO BRIGHTNESS now, and it tells you whether your phone will talk to it.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Shouting no longer travels through stone, and the shopkeeper's room is his own again.",
-        "area": [
-          "combat",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "You step over the fallen columns now instead of standing against them, which is what the last patch claimed.",
-        "area": [
-          "controls",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The harbour burns properly again, the peddler laid out his wares, and shopkeepers stopped greeting you with the back of the head.",
-        "area": [
-          "level",
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dungeon stopped rebuilding the same five rooms, and silver chests remembered they are not a trinket dispenser.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Two new rites: one steps you through the dark, one stops the room and forgets to stop you.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The smith will scar your blade now, not just sharpen it. What it takes in exchange is written on the offer.",
-        "area": [
-          "combat",
-          "content",
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Ember hearts can be picked up again. The dungeon regrets the interruption of service.",
+        "text": "The menu no longer stops to build itself when you crawl back up to it.",
         "area": [
           "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "You step over the fallen columns now, which you were always meant to. No chamber holds both a fire and a bargain any more. And the fire gives four hearts of borrowed life, which is most of what you can carry.",
-        "area": [
-          "controls",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The shot no longer draws you a line first. Watch the thing that means to hit you instead.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The trove keeps its floor swept and nothing grows out of a chest any more. Chasms lie across your path with one crossing, and you step over what you used to walk into. The fire in the refuge makes you whole; the ones below only lend.",
-        "area": [
-          "level",
-          "controls",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Things that shoot you now plant their feet and heave, and you can see it coming. The fire stopped healing and started lending you life instead. Holes in the floor happen where something meant them.",
-        "area": [
-          "combat",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The floor cracks along a line now instead of sprouting holes at random, and anything about to shoot you shows you the shot first. You may still decline to move.",
-        "area": [
-          "level",
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The perfect strike stopped multiplying itself into absurdity, the altar stopped asking for nearly all your blood, and rooms you walk into now have something in them. The deep was getting lazy.",
-        "area": [
-          "combat",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The deep has stopped offering you a second of something it already gave you. It has plenty else to be cruel with.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The dark now knows what room you are sitting in. Step into the sun and it loosens its grip a little; step back out and it takes it again.",
-        "area": [
-          "atmosphere",
-          "ui"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The ember is its own thing now: split bone with a fire still in it. And what lies on the floor is finally the size it ought to be, so a ring no longer looms like a shield.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Everything that promised you faster attacks has started keeping the promise. The blade was never listening before.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stairs no longer wait for you beside the door you came in by. You get to cross the room before it offers you the next one.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The trove no longer builds itself on top of a basin, and the shopkeeper has stopped standing inside his own stock. The dungeon has learned that two things cannot occupy one stone.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Rooms wear their colours now — gold means a gift, violet means a merchant, red means a fight. You will learn to read the corridors, or you will walk into the wrong one.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The fire mends in order now — flask, then flesh, then what spills over becomes ember. Rest at full health and the whole gift becomes borrowed life.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The peddler stopped handing you a ledger. His goods are on the stone in front of him, and he will speak to you, briefly, about coin.",
-        "area": [
-          "level",
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The keeper stands behind his counter now, and his wares face the door. Three stones spread left to right as you enter, so the choice is a choice and not a queue.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The early floors have teeth again. Gold light pools on three stones on your very first descent — the deep can afford to be generous exactly once.",
-        "area": [
-          "combat",
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your keys show again. The fire is the only water worth drinking now, and the three stones are close enough to weigh against each other — though they will not be waiting on every floor.",
-        "area": [
-          "ui",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Floors are built around what they mean to hold now. Side passages exist because something is down them. And a fire is a place the dark has opinions about — sometimes you will have to earn it.",
-        "area": [
-          "level",
           "atmosphere"
         ]
       },
       {
         "tag": "tech",
-        "text": "The dungeon decides what it owes you before it decides what it looks like. Shops and hoards hide down side passages; traps wait where you have to walk.",
+        "text": "The dungeon only builds what you are looking at now. It resents the economy.",
         "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
-        "tag": "tune",
-        "text": "The fire takes you for a moment and gives back what it owes, out loud. The gold box might hold your fortune or just more coin. Nothing worth finding is on the way to anywhere.",
+        "tag": "tech",
+        "text": "The stonework agrees to be lit as one thing. It was always one thing.",
         "area": [
-          "level",
-          "content",
-          "ui"
+          "atmosphere"
         ]
       },
       {
-        "tag": "tune",
-        "text": "You are thinner now, and the fire is the only thing that mends you. The gold box still wants a key, and the key still might buy you something you didn't need.",
+        "tag": "fix",
+        "text": "The dungeon stops drawing the rooms behind your back. It was never doing that for your benefit.",
         "area": [
-          "combat",
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The small things stop handing out treasure. A smashed pot gives coin, a wooden box gives a key, and the gold chest wants that key back. Borrowed life now lies on the floor where something died badly.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Early floors have room to breathe now. The first descent is no longer one hallway with a prize at the end of it.",
-        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "add",
-        "text": "Some rooms have opinions now. One goes dark, one has a floor worth watching, one shuts behind you, and one waits politely until you reach for the prize.",
+        "text": "Settings will now let you change which graphics API the dark is drawn with. Try both; the phone has opinions.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dungeon's stonework stops announcing itself to the graphics card one block at a time.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The skirmishers have stopped pretending to be men. The acolytes burn along their seams now, and something down there is keeping count of your frames.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The ones that stood and stared have remembered what they are for. The acolytes have put their faces back on, and there is less of them below the waist than you would like.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The skirmishers have bound their faces and taken a stance. The rats show their teeth, which is the only part of them the dark gives back.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The things that shamble at you have stopped standing to attention. They stoop now, and their arms hang lower than you would like.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead have stopped taking the colour of the room they die in. Something in the deep keeps its own light, and now you can see how much of it there is.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The acolyte stops glowing like a lantern and starts carrying one. The rats have gone dark, and something wet catches your light where their eyes are not.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The dark gets its creatures back. Most of them had been quietly glowing, and a thing that glows cannot be hidden — nor properly seen.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Terror makes a thing clumsy now. Break its nerve and it stumbles away slower than it came, back turned, and the dark is patient.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Corridors stop blinking out of existence a stride before you reach them. The dark was hiding stone it had no business hiding.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 16",
+    "date": "2026-08-09",
+    "entries": [
+      {
+        "tag": "add",
+        "text": "Break a guard, charge a heavy, and the kill now takes its time — the world thickens, the frame closes in red, and something below counts it.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The gate you stand under warms to you now, instead of some other door remembering you fondly from across the floor.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The eyes keep watch on every way you have not walked, and lose interest in the long way round.",
         "area": [
           "level",
           "atmosphere"
@@ -316,104 +203,187 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "add",
-        "text": "Rooms set aside now hold what they promised — three offerings and one choice, a vendor, a trial you start yourself. The stones you refuse keep standing, empty.",
+        "text": "The dark now knows what room you are in. Play in the sun if you must; the dungeon will meet you there, and resent it.",
         "area": [
-          "level",
-          "content"
+          "ui",
+          "atmosphere"
         ]
       },
       {
-        "tag": "add",
-        "text": "The floors keep a room aside for you now — something offered, sometimes something sold. The rest is just dark to walk through, which is the point.",
+        "tag": "fix",
+        "text": "The eyes above the doors have opinions again. Follow the open one; the shut ones have nothing left for you.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The bone shrines are back. Someone had been arranging the dead for weeks and no one could see it.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 15",
+    "date": "2026-08-08",
+    "entries": [
+      {
+        "tag": "tech",
+        "text": "The stairs arrive twice as fast. The dungeon was spending most of its time proving that a corridor was not inside a room on the far side of the floor.",
         "area": [
           "level"
         ]
       },
       {
         "tag": "tune",
-        "text": "Borrowed life sits in the same row as your own now, amber against red. Watch which end of it the dark takes first.",
+        "text": "Bleed and poison stop killing faster than the thing that inflicted them. A rat's bite is a wound now, not a sentence.",
         "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The deep will lend you life now, and it burns first. Spend it on doors and bargains — it was never yours, and it does not heal.",
-        "area": [
-          "combat",
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The stones offer three things now, and you may carry off one. The other two go dark. Choose slowly — they are patient, and they are watching.",
-        "area": [
-          "content",
-          "level",
-          "ui"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 10",
-    "date": "2026-08-03",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "One blade now. No spare on the hip, no garments, no free hand — just you and the thing you carry down.",
-        "area": [
-          "ui",
           "combat"
         ]
       },
       {
-        "tag": "content",
-        "text": "The fires stopped dealing cards. Sit, take your one swallow of the flask, and move on — the deep has nothing to bargain with tonight.",
-        "area": [
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The locks are gone and the weapon-litter with them. Chests open on their own now and hand you the things that make a build, not another blade to step over.",
-        "area": [
-          "content",
-          "level",
-          "ui"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 9",
-    "date": "2026-08-02",
-    "entries": [
-      {
         "tag": "tune",
-        "text": "Your kit lays itself out plainly now — blades in hand, garments to the side. Look at what you've become.",
+        "text": "Bleed no longer empties you in a single second, and poison remembers it was meant to be attrition. Your flask, in exchange, is honest about being a sip.",
         "area": [
-          "ui"
+          "combat"
         ]
       },
       {
-        "tag": "content",
-        "text": "The vials that moved on their own behind the glass are gone from the stone. The dungeon is reconsidering what it lets you drink.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The little fires give back one swallow of the flask now, not the whole night's rest. Ration it.",
+        "tag": "add",
+        "text": "The dungeon stops being built from boxes. Rooms have shape now, and the stair is always somewhere you can reach — which was not previously guaranteed.",
         "area": [
           "level"
         ]
       },
       {
         "tag": "fix",
-        "text": "The trap's teeth come down where you can see them now. Small mercy. You still can't leave.",
+        "text": "Polygon floors were quietly fielding half a dungeon's worth of enemies. They are all present now, and some of them are waiting in the dark.",
+        "area": [
+          "level",
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The things that wait at the bottom of an act have moved into the new halls. They seem content with the arrangement.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The rubble has started collecting where rubble collects. Rooms that are falling apart now look like it.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The door at your back is the same stone as the rest now, and the boards across it are new. Someone did not want you going home.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The stairs down are clear again. Whatever kept setting pillars across them has been persuaded otherwise.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The doors that opened onto nothing are walls again, and the stonework finally agrees with the stone.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The small doors are stone now, turned in a full round arch. Someone down here still remembers how it was done.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The gaps beside the doorframes are stone again. Whatever was watching through them will have to find another way.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The halls no longer run in straight lines from the same seam. Something down here got tired of the grid.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The threshold is a threshold now — stone underfoot where the passage meets the room, instead of two floors arguing over the same ground.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The doorframes stop arguing with the passage they stand in.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Things in a passage face the passage now, not the room they are merely standing near.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "A doorway is the size of the passage behind it. No more grand gates with a tunnel threaded through the middle.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "A side passage stays a side passage. The dungeon stops quietly opening the back of its own dead ends.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Doorways stop wrapping around corners. The masonry finally gets a say in where it is broken.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Passages no longer turn their corner in the middle of somebody's room.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The iron bars have found a wall to be set into. They were embarrassed about it.",
         "area": [
           "level",
           "atmosphere"
@@ -421,10 +391,32 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
-        "text": "The chests stopped coughing up rusted junk by the armful. What they keep now is worth the walk over.",
+        "text": "The big rooms have archers in them now. That distance you were enjoying was never free.",
         "area": [
-          "content",
+          "combat",
           "level"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Some passages come back around now. You will still walk them twice, but at least it was your idea.",
+        "area": [
+          "level"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 14",
+    "date": "2026-08-07",
+    "entries": [
+      {
+        "tag": "content",
+        "text": "Something came through these passages before you, and it left marks on the walls.",
+        "area": [
+          "level",
+          "atmosphere",
+          "content"
         ]
       }
     ]

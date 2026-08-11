@@ -219,6 +219,17 @@ export function installDevHooks(deps: DevHookDeps): void {
     return level.enemies.length;
   };
 
+  // Interactable population census — window.__interactables() for the table,
+  // .json for the rows. The counterpart to __mobs for the OTHER big population;
+  // a phone recording put interactables above the level shell in mesh count,
+  // and this splits that total by kind so the fix targets the mass.
+  w.__interactables = async () => {
+    const m = await import('../interactables/census');
+    // eslint-disable-next-line no-console
+    console.log(m.interactableCensusText());
+    return m.interactableCensus();
+  };
+
   w.__mobs = () => {
     const level = getLevel();
     if (!level) return { n: -1, onScreen: 0, mobs: [] as unknown[] };
