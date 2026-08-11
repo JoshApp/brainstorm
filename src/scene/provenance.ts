@@ -116,6 +116,17 @@ export function rectOf(dbgSource: string): string | null {
   return (sp < 0 ? rest : rest.slice(0, sp)) || null;
 }
 
+/** Ancestor path to the scene root — names where they exist, else the class,
+ *  so an anonymous population still reports the subtree it lives in. */
+function chainOf(o: THREE.Object3D): string {
+  const parts: string[] = [];
+  let n: THREE.Object3D | null = o.parent;
+  for (let hop = 0; n && hop < 5; hop++, n = n.parent) {
+    parts.push(n.name || (n.userData?.dbgKind as string) || n.type);
+  }
+  return parts.join(' < ') || 'root';
+}
+
 export interface UntaggedReport {
   /** Drawables with no origin anywhere up their chain. */
   count: number;
@@ -140,8 +151,12 @@ export function untaggedDrawables(root: THREE.Object3D): UntaggedReport {
     const verts = d.geometry?.attributes?.position?.count ?? 0;
     const mat = d.material as THREE.MeshStandardMaterial | undefined;
     const hint = d.name || mat?.color?.getHexString?.() || d.type;
-    const key = `${hint}·${verts}v`;
-    kinds[key] = (kinds[key] ?? 0) + 1;
+    // THE ANCESTOR CHAIN IS THE WHOLE POINT of this key. A colour-and-vertex
+    // hint says `000000·36v ×175` and sends you grepping hex literals across the
+    // codebase — which finds the palette, not the producer (0x1a1512 turned up
+    // in loot-models, ember and six other files). The chain says WHERE the thing
+    // hangs, which is what you actually need to go tag it.
+    kinds[`${hint}·${verts}v @ ${chainOf(o)}`] = (kinds[`${hint}·${verts}v @ ${chainOf(o)}`] ?? 0) + 1;
   });
   return { count, kinds };
 }
