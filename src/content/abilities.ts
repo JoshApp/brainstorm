@@ -85,8 +85,12 @@ export interface DamageSource {
 // it — an instant leap splash and a lingering field carry their own
 // numbers; there is no single ability-wide damage.
 export type AbilityAction =
-  // Contact swing at trigger time if the player is within reach.
-  | { kind: 'melee'; reach: number; damage: number; element?: Element }
+  // Contact swing at trigger time if the player is within reach AND inside the
+  // caster's forward arc. `arc` is the half-angle in radians (default
+  // CONFIG.ENEMY_AI.MELEE_ARC_HALF) — widen it for a lateral sweep that really
+  // does cover the flanks, narrow it for a committed lunging thrust. Set it to
+  // Math.PI for a genuinely omnidirectional swing (a spin attack).
+  | { kind: 'melee'; reach: number; damage: number; arc?: number; element?: Element }
   // Fire a bolt from a muzzle toward an anchor (default: player).
   // `count` (default 1) fires that many projectiles in one beat. With
   // `spreadDeg` they spread in a horizontal FAN around the toward-

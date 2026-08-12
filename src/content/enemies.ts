@@ -1518,12 +1518,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 1.7, damage: 2, element: 'arcane' } }],
       },
       // SLASH — point-blank deterrent so hugging it isn't a free safe spot.
+      // Animated as the SWEEP verb (a wide lateral swing), so it gets a WIDER
+      // arc than the default: the wedge should match what the limb visibly
+      // covers. A sweep that whiffed at 60° while the arm carried through 100°
+      // would be the same lie as the old no-arc test, pointing the other way.
       {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.55, strike: 0.16, recover: 0.6,
         pose: 'swing', creep: true,
-        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'arcane' } }],
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, arc: 1.45, element: 'arcane' } }],
       },
     ],
     // Own silhouette via the parametric builder: tall, gaunt, stooped,

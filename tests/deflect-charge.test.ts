@@ -40,25 +40,43 @@ test('a dash threatens over its COMMIT range, not its contact reach', () => {
   assert.ok(threatReach(charge)! > dash.contactReach);
 });
 
-test('meeting a charge leaves a human enough time to answer', () => {
-  // THE load-bearing number. The white flash opens FLASH_LEAD_S before the
-  // strike; the charge then has to physically cross from wherever it committed
-  // down to contactReach. The WORST case is committing at its minimum range,
-  // where there is almost no travel — so the flash lead is nearly all the
-  // warning there is. Human reaction to a visual cue is ~250ms.
+test('a charge is told by time-to-contact, so warning is the same from any range', () => {
+  // THE load-bearing number, and the reason the tell is time-based rather than
+  // phase-based. A dash closes at its own speed from anywhere in its commit
+  // band, so a fixed phase/distance tell gives wildly different warning
+  // depending on where it committed from. Prove the spread is big enough to
+  // matter — that's the justification for the time-to-contact branch in
+  // enemy.ts's flash block.
   const charge = abilityOf('skirmisher', 'charge');
   const dash = charge.steps[0].action;
   if (dash.kind !== 'dash') { assert.fail('charge must open on a dash'); return; }
 
-  const closest = charge.minRange ?? 0;
-  const travel = Math.max(0, closest - dash.contactReach) / dash.speed;
-  const warning = CONFIG.DEFLECT.FLASH_LEAD_S + travel;
+  const travelFrom = (d: number) => Math.max(0, d - dash.contactReach) / dash.speed;
+  const nearest = travelFrom(charge.minRange ?? 0);
+  const furthest = travelFrom(charge.maxRange);
 
-  assert.ok(warning >= 0.25,
-    `only ${(warning * 1000).toFixed(0)}ms of warning — under human reaction time`);
-  // And the window must still be open when it lands.
-  assert.ok(CONFIG.DEFLECT.PARRY_WINDOW_S >= warning,
-    'the parry window must still be live when the charge arrives');
+  assert.ok(furthest - nearest > 0.3,
+    `travel time varies by only ${((furthest - nearest) * 1000).toFixed(0)}ms — ` +
+    'if this ever gets small, the time-to-contact tell stops earning its complexity');
+
+  // Time-to-contact flashing means the warning IS the lead, whatever the range.
+  assert.ok(CONFIG.DEFLECT.FLASH_LEAD_S >= 0.25,
+    'the lead must clear human visual reaction time (~250ms)');
+});
+
+test('reacting FAST must never expire your own window before the blow lands', () => {
+  // A player who taps the instant the flash appears opens their window at
+  // exactly `lead` before contact. If the window is shorter than the lead, that
+  // window closes BEFORE the hit — so the quickest players get punished for
+  // being quick, which is the worst possible failure mode for a timing mechanic.
+  // (This is a real regression that happened: raising the lead 0.30 -> 0.40 left
+  // a 20ms margin against a 0.42 window.)
+  const { FLASH_LEAD_S, PARRY_WINDOW_S } = CONFIG.DEFLECT;
+  assert.ok(PARRY_WINDOW_S > FLASH_LEAD_S,
+    `window ${PARRY_WINDOW_S}s must exceed lead ${FLASH_LEAD_S}s`);
+  assert.ok(PARRY_WINDOW_S - FLASH_LEAD_S >= 0.10,
+    `only ${((PARRY_WINDOW_S - FLASH_LEAD_S) * 1000).toFixed(0)}ms of slack — ` +
+    'the comment on PARRY_WINDOW_S says "comfortably exceed", so hold it to that');
 });
 
 test('meeting a charge pays better than dodging it', () => {

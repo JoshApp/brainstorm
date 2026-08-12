@@ -6,6 +6,7 @@ import { setPlayerInAura } from '../player/inside-aura';
 import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
 import { radialBlast } from '../combat/radial-blast';
+import { withinForwardArc } from '../combat/attack-arc';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
@@ -1597,6 +1598,35 @@ export function createEnemy(
     }
   }
 
+  /** Is `target` inside this mob's forward attack wedge?
+   *
+   *  THE FAIRNESS GATE. Enemy melee used to be a pure distance test, so a mob
+   *  could hit you while you stood behind it — and because facing is LOCKED
+   *  through strike + recover, that's exactly the moment you'd have dodged
+   *  around it. The aim-lock has always promised "circle out of the arc to whiff
+   *  it" (see faceTarget); this is that arc.
+   *
+   *  Three callers must agree on it or the game lies: the melee action (does it
+   *  hit), the threat flash (does it warn), and the immediate parry (can you
+   *  turn it). If the flash used a wider test than the damage, we'd warn about
+   *  attacks that can't land; if it used a narrower one, we'd hit you without
+   *  warning. Same function, all three. */
+  function withinArc(target: THREE.Vector3, halfAngle?: number): boolean {
+    return withinForwardArc(
+      container.position.x, container.position.z, container.rotation.y,
+      target.x, target.z,
+      halfAngle ?? CONFIG.ENEMY_AI.MELEE_ARC_HALF,
+    );
+  }
+
+  /** The arc of the ability's opening melee, for the flash + parry gates. null
+   *  when the ability doesn't open on a melee (a dash body-checks you from any
+   *  angle; an aoe/blast is radial by nature — neither gets an arc). */
+  function meleeArcOf(ability: Ability): number | null {
+    const a = ability.steps[0]?.action;
+    return a && a.kind === 'melee' ? (a.arc ?? CONFIG.ENEMY_AI.MELEE_ARC_HALF) : null;
+  }
+
   function distToXZ(target: THREE.Vector3): number {
     const dx = container.position.x - target.x;
     const dz = container.position.z - target.z;
@@ -1856,7 +1886,7 @@ export function createEnemy(
   ): boolean {
     switch (action.kind) {
       case 'melee': {
-        if (distance <= action.reach) {
+        if (distance <= action.reach && withinArc(playerPos, action.arc)) {
           // Parry SAFETY NET — the airtight guarantee. The pre-switch block in
           // update catches the crisp strike-onset case using an approximate
           // reach band; THIS check runs at the exact instant a specific step
@@ -2646,7 +2676,13 @@ export function createEnemy(
     if (currentAbility && state === 'striking' && !meleeHitLanded
         && isParryActive() && isDeflectable(currentAbility) && playerFacingThis(playerPos)) {
       const pReach = firstMeleeReach(currentAbility);
-      if (pReach !== null && distance <= pReach + 1.2) resolveParry(playerPos);
+      const pArc = meleeArcOf(currentAbility);
+      // Same arc as the damage and the flash. Without it you could turn aside —
+      // and collect the riposte for — a swing that was never going to reach you.
+      if (pReach !== null && distance <= pReach + 1.2
+          && (pArc === null || withinArc(playerPos, pArc))) {
+        resolveParry(playerPos);
+      }
     }
 
     // A clean parry's riposte (resolveParry → takeDamage above) can FINISH the
@@ -3174,10 +3210,35 @@ export function createEnemy(
       // aliveLocal guard: a mob killed by its own riposte mid-update (the
       // runAction safety-net parry path reaches here with currentAbility still
       // set) must NEVER re-arm the flash — that's the deflect-count leak.
-      const wantFlash = aliveLocal && !!currentAbility && mReach !== null && !meleeHitLanded
-        && distance <= mReach + 1.2
-        && (state === 'striking'
-            || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
+      // The flash must respect the same arc the damage does — and this is a
+      // TEACHING signal, not just correctness: once the aim locks at commit, a
+      // player who circles out of the wedge watches the flash go dark. That's
+      // the game saying "you're clear now", and it's how the arc gets learned
+      // without a tutorial.
+      const mArc = currentAbility ? meleeArcOf(currentAbility) : null;
+      const opener = currentAbility?.steps[0]?.action;
+      let wantFlash = false;
+      if (aliveLocal && currentAbility && !meleeHitLanded) {
+        if (opener?.kind === 'dash' && state === 'striking') {
+          // A CHARGE is told by TIME-TO-CONTACT, not by phase or distance band.
+          // A dash closes at its own speed from anywhere in its commit range, so
+          // a phase-based tell gives wildly different warning depending on where
+          // it started: the skirmisher committing at 6.5m needs ~0.69s to arrive,
+          // committing at 1.8m needs ~0.06s. A fixed band would flash a full
+          // second early in one case and far too late in the other. Flashing at a
+          // fixed time BEFORE ARRIVAL gives the same honest reaction budget every
+          // time, which is the whole point of the number.
+          const ttc = opener.speed > 0
+            ? Math.max(0, (distance - opener.contactReach) / opener.speed)
+            : 0;
+          wantFlash = ttc <= lead;
+        } else if (mReach !== null) {
+          wantFlash = distance <= mReach + 1.2
+            && (mArc === null || withinArc(playerPos, mArc))
+            && (state === 'striking'
+                || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
+        }
+      }
       reconcileThreat(wantFlash, wantFlash && isDeflectable(currentAbility!));
     }
 

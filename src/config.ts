@@ -301,14 +301,42 @@ export const CONFIG = {
   // deflects → poise breaks → full stagger → execute. Pure parrying can
   // break poise on its own (slowly); the empowered hits break it much faster.
   DEFLECT: {
-    FLASH_LEAD_S: 0.30,        // how long before the strike the white flash + window open
+    // How long before the strike the white flash + parry window open — i.e. the
+    // player's REACTION BUDGET, and the number that decides whether the counter
+    // is takeable at all.
+    //
+    // Raised 0.30 → 0.40 (2026-08-12) on arithmetic, not feel. The standard
+    // formula is `anticipation = reaction + trigger + buffer` on a ~0.25s human
+    // visual-reaction baseline — and that baseline is a PC figure. On a phone
+    // you also pay touch-input latency (~50–100ms on many Android devices) and
+    // display latency, and a FIRST-PERSON player may not even be looking at the
+    // mob. At 0.30 that left roughly zero margin, so the deflect read as twitchy
+    // for reasons that were arithmetic rather than skill.
+    //
+    // Note this is a separate knob from PARRY_WINDOW_S below, and the two were
+    // conflated once already: our ACTIVE window (420ms) is at the generous end
+    // of Sekiro's verified 200–500ms and was never the problem. The WARNING was.
+    FLASH_LEAD_S: 0.40,
     // Must comfortably exceed FLASH_LEAD_S so even an instant tap-on-flash
     // stays active THROUGH the strike (and a ~250ms human reaction lands
-    // dead-centre). Forgiving for a first feel; tune down on the phone.
-    PARRY_WINDOW_S: 0.42,      // a tap opens this active window; a strike landing in it deflects
+    // dead-centre). That sentence has been the spec since this shipped, but the
+    // number drifted under it: at 0.42 against a 0.40 lead the margin was 20ms,
+    // so reacting FAST could expire your own window before the blow landed —
+    // being quick must never be punished. 0.55 restores the "comfortably".
+    // Still inside Sekiro's verified 200–500ms band at the generous end, and the
+    // anti-mash below is what stops a wide window becoming a held guard.
+    PARRY_WINDOW_S: 0.55,      // a tap opens this active window; a strike landing in it deflects
     COMMIT_S: 0.28,            // the player-action FSM holds 'parrying' this long — a committed
                                //   beat that locks out attack/dodge (parry is a real action, not free)
-    LOCKOUT_S: 0.40,           // cooldown after a parry attempt — anti-mash (can't hold a guard)
+    // ANTI-MASH — narrow the window, never refuse the input (Sekiro's model).
+    // A hard lockout has the worst property a defensive mechanic can have: at
+    // the moment you most need the parry the game silently does nothing, and a
+    // refused input is indistinguishable from a mistimed one. Shrinking instead
+    // keeps every failure legibly YOUR timing.
+    MASH_SHRINK: 0.55,         // window multiplier per recent press (0.55 → 0.30 → 0.17…)
+    PARRY_WINDOW_MIN_S: 0.10,  // floor — a panicking player still has SOMETHING to hit
+    MASH_DECAY_S: 0.9,         // no press for this long and the penalty lapses entirely
+                               // (replaced LOCKOUT_S, which refused the input outright)
     POISE_DAMAGE: 2,           // poise CHIPPED per deflect — a single parry FLINCHES (shows the
                                //   body-snap recoil), it does NOT break on its own. Basic mobs
                                //   (poise 4) take ~2 parries; the EMPOWERED counter-swing
@@ -693,6 +721,21 @@ export const CONFIG = {
                                       //   in faceTarget) — circle out of the arc to whiff it and
                                       //   punish the locked recovery. This is the commit/positioning
                                       //   read; tune the start rate down for heavier, slower aimers.
+    // MELEE ARC — the half-angle (radians) of the forward wedge a melee strike
+    // can actually reach. THE FAIRNESS FIX: until 2026-08-12 an enemy melee was a
+    // flat distance test with NO facing check, so a mob could hit you while you
+    // stood behind it. The aim-lock comment in faceTarget has always promised
+    // "circle out of the arc to whiff it" — this is the arc it was promising.
+    //
+    // Why it matters more than it sounds: without it, dodging AWAY was the only
+    // answer that worked and dodging AROUND did nothing, which is half the dodge
+    // vocabulary of every soulslike deleted by an if-statement.
+    //
+    // 1.0 rad ≈ 57° each side (a ~115° front wedge). Deliberately generous — the
+    // point is that a COMMITTED sidestep beats a swing, not that near-misses feel
+    // random. Per-action `arc` on a melee overrides it: widen for a lateral
+    // sweep, narrow for a lunging thrust.
+    MELEE_ARC_HALF: 1.0,
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
     // Idle gaze: a mob at post should mostly STAND and watch, with the odd small
     // reorientation — NOT pivot its whole body left-right on a timer (that reads

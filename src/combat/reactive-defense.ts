@@ -45,18 +45,56 @@ export function popDeflectOpportunity(): void {
 export function deflectOpportunityActive(): boolean { return openOpportunities > 0; }
 
 // ── 2. Parry window ──────────────────────────────────────────────────
+// ANTI-MASH BY NARROWING, NOT BY DENYING (Sekiro's model, 2026-08-12).
+//
+// We used to answer mashing with a hard lockout: tap again too soon and the
+// input was simply refused. That is the crude version, and it has the worst
+// property a defensive mechanic can have — at the moment you most need the
+// parry, the game silently does nothing, and the player cannot tell a refused
+// input from a mistimed one.
+//
+// Sekiro instead SHRINKS the window with each recent press (down to a floor),
+// and a SUCCESSFUL deflect clears the penalty instantly. Panic still costs you
+// — each extra tap makes the next one less forgiving — but the input is never
+// refused, so every failure is legibly your timing. And one good read buys back
+// full generosity immediately, which rewards recovering your composure rather
+// than punishing you for having lost it.
 let parryActiveUntil = -Infinity;   // seconds — window during which a strike is deflected
-let lockoutUntil = -Infinity;       // seconds — earliest the next parry may open
+let mashPresses = 0;                // recent presses, each narrowing the next window
+let mashDecayAt = -Infinity;        // when the accumulated penalty lapses
 
-/** The tap arbiter calls this when a tap lands during an opportunity. Opens
- *  the active window unless we're still locked out from a recent attempt.
- *  Returns whether a window actually opened (for feedback). */
+/** The window a press would open right now, after the mash penalty. Exported so
+ *  the HUD/debug can show the player what their panic has cost them. */
+export function currentParryWindow(): number {
+  const K = CONFIG.DEFLECT;
+  const decay = now() >= mashDecayAt ? 0 : mashPresses;
+  const shrunk = K.PARRY_WINDOW_S * Math.pow(K.MASH_SHRINK, decay);
+  return Math.max(K.PARRY_WINDOW_MIN_S, shrunk);
+}
+
+/** The tap arbiter calls this when a tap lands during an opportunity. ALWAYS
+ *  opens a window — a narrower one if you've been mashing. Returns true so
+ *  callers keep their existing "a parry started" feedback. */
 export function triggerParry(): boolean {
   const t = now();
-  if (t < lockoutUntil) return false;
-  parryActiveUntil = t + CONFIG.DEFLECT.PARRY_WINDOW_S;
-  lockoutUntil = t + CONFIG.DEFLECT.PARRY_WINDOW_S + CONFIG.DEFLECT.LOCKOUT_S;
+  const K = CONFIG.DEFLECT;
+  // Count this press against the mash penalty BEFORE computing the window, so
+  // the first tap is full-width and the second is already narrower.
+  if (t >= mashDecayAt) mashPresses = 0;
+  const window = currentParryWindow();
+  mashPresses++;
+  mashDecayAt = t + K.MASH_DECAY_S;
+  // Never SHORTEN a window already open (two taps around one incoming strike
+  // shouldn't leave you less protected than the first tap alone did).
+  parryActiveUntil = Math.max(parryActiveUntil, t + window);
   return true;
+}
+
+/** A clean deflect forgives the panic entirely — the next parry is full-width
+ *  again. Called from notePlayerDeflected. */
+export function clearParryMashPenalty(): void {
+  mashPresses = 0;
+  mashDecayAt = -Infinity;
 }
 
 /** enemy.ts checks this at the instant a deflectable strike would damage the
@@ -75,6 +113,11 @@ let empowerUntil = -Infinity;
 let ripostePending = false;
 
 export function notePlayerDeflected(): void {
+  // A clean read forgives the panic that preceded it — the next parry is
+  // full-width again. This is the half of the anti-mash model that matters:
+  // recovering your composure is rewarded immediately, so a scrappy exchange
+  // can be pulled back rather than spiralling.
+  clearParryMashPenalty();
   empowerUntil = now() + CONFIG.DEFLECT.EMPOWER_WINDOW_S;
   ripostePending = true;
   setPlayerInvulnerable(CONFIG.DEFLECT.IFRAME_S);
@@ -148,7 +191,7 @@ export function tickBulletTime(realDt: number): void {
 export function resetReactiveDefense(): void {
   openOpportunities = 0;
   parryActiveUntil = -Infinity;
-  lockoutUntil = -Infinity;
+  clearParryMashPenalty();
   dipElapsed = Infinity;
   empowerUntil = -Infinity;
   ripostePending = false;
