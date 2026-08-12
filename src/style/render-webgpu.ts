@@ -232,6 +232,11 @@ const BLOOM_RES_SCALE = 0.5;   // bloom mip-chain res vs the full buffer — sce
 // SUBTLE glow (strength 0.08), which doesn't need 5 mip levels. Off by default until
 // eyeballed on a phone; the look should be ~identical at this strength.
 let LEANBLOOM = typeof location !== 'undefined' && new URLSearchParams(location.search).get('leanbloom') === '1';
+// ?nobrightscale=1 — A/B the bright-extract resolution fix (see the note where
+// it is applied). Restores the full-canvas RTT so the cost can be re-measured
+// against the fix on the same machine and scene.
+const AB_NO_BRIGHT_SCALE = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('nobrightscale') === '1';
 /** Toggle lean bloom (wired to the LEAN BLOOM setting). Rebuilds the pipeline. */
 export function setWebGPULeanBloom(on: boolean): void {
   if (on === LEANBLOOM) return;
@@ -613,6 +618,18 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
     const bright: any = (exposed as any).sub((float as any)(G.bloomThreshold)).max(0);
     const gb: any = (gaussianBlur as any)(bright, null, 6);
     gb.resolutionScale = 0.35;   // soft glow hides the low res (PS1-appropriate)
+    // …and the BRIGHT-EXTRACT's own target, which is the expensive half.
+    // `gaussianBlur(node)` wraps a non-texture input in convertToTexture() ->
+    // an RTTNode, and RTTNode defaults _resolutionScale to 1 with autoResize on,
+    // so it sizes itself to the FULL drawing buffer (RTTNode.updateBefore). The
+    // line above only scales the blur's own two targets. So the "pure ALU, no
+    // pass" bright extract was in fact a full-canvas HalfFloat pass that
+    // re-evaluated the whole exposed chain — CA's three scene taps included —
+    // once per canvas pixel, while the scene it samples is rendered at 0.4.
+    // Measured on desktop (real GPU, gpu-attribution): bloom was 56% of the
+    // frame, more than lighting, shadows and PBR combined, for a glow at
+    // strength 0.08. Match the blur it feeds; the glow is soft either way.
+    if (!AB_NO_BRIGHT_SCALE) (gb.textureNode as any)?.setResolutionScale?.(0.35);
     disposables.push(gb);
     bloomPass = (gb as any).mul((float as any)(BLOOM_STRENGTH));
   } else if (bloomEnabled) {
