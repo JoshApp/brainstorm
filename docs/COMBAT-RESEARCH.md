@@ -66,6 +66,77 @@ Sekiro's posture loop, near-identical.
 
 ---
 
+## 1b. How WWM does all that ON MOBILE — and why we can't copy it
+
+Josh's follow-up, and the most useful question in the pass: the PC scheme has
+**12 combat inputs**. What happens on a phone?
+
+**Answer: they don't collapse it. They ship the buttons.**
+
+- **Left thumb** — movement joystick.
+- **Right thumb** — camera drag *plus* the action buttons, laid over it.
+- Combat gets **dedicated on-screen buttons**, roughly: light attack, block,
+  deflect, dodge, martial-arts skill, up to 4 mystic skills, weapon swap,
+  execute/interact.
+- **Deflect stays its own button.** It is a separate input from block on PC and
+  controller, and mobile keeps that split — it did *not* get merged into a
+  timed block, which would have been the obvious simplification.
+- Buttons are **resizable and re-transparency-able**, and the layout is
+  *partially* rearrangeable — full customisation was still "coming in a future
+  update" at launch.
+- **Assist Deflection is ON by default** for new mobile characters.
+
+The recommended priority hierarchy from every mobile guide is consistent, and
+it's a useful ranking in its own right:
+
+> **1. Dodge** — biggest, closest to the thumb. **2. Deflect.** **3. Main skill.**
+> **4. Secondary skills.** **5. Menus.**
+
+Dodge first, unanimously. "On touch, dodge is the most important button to make
+reliable — missing dodge inputs makes everything else feel worse."
+
+### The two reasons this doesn't transfer to us
+
+**① They're third-person; we're first-person.** In WWM the right thumb drags a
+camera *around a character you can see*. Camera precision is comfortable — you're
+framing a fight, not aiming. In DELVE the right thumb **is the aim**: it's the
+look-drag, the tap-to-attack, and the hold-to-charge. Every button we put in the
+right thumb arc costs us aiming surface in a way it doesn't cost them. This is
+the real asymmetry, and it's why "just add more buttons" is a worse trade for us
+than for them.
+
+**② The honest read of their solution is "more buttons + customisation +
+assists."** That's a legitimate answer when you have a live-service UI team and
+can ship layout customisation as a follow-up patch. It is not elegance we can
+borrow; it's headcount. And notably, the reviews say the **default layout
+doesn't fit most hands** and you have to fix it yourself before combat feels
+right — which is a real cost, not a solved problem.
+
+### What DOES transfer
+
+1. **Dodge is the button that must be reliable.** Universal across every mobile
+   guide. Ours is bottom-right at 74px and doubles as sprint on hold — the same
+   shape Genshin uses. This is corroboration that we got it right, and an
+   argument for **not** crowding that corner with anything else.
+2. **Assist Deflection, default-on.** Their answer to "parry is harder on
+   touch." See §4①.
+3. **Button size/transparency as a real setting.** Cheap, and reviewers treat it
+   as the difference between the game feeling bad and feeling fine. We have a
+   controls settings tab already.
+4. **The priority ranking itself** — dodge > deflect > main > secondary — is a
+   good sanity check on any HUD we build.
+
+### Honest limits of this section
+
+No source I found publishes a definitive default-layout diagram or an exact
+on-screen button count. The list above is assembled from several mobile guides
+that agree with each other on structure and priority but none of which enumerate
+the layout precisely. Treat the button list as "approximately this," not gospel.
+The *hierarchy* claim (dodge first) is well-corroborated; the exact inventory is
+not.
+
+---
+
 ## 2. The comparison that actually matters
 
 Every one of these games is deep. They buy their depth in completely different
@@ -265,3 +336,6 @@ anticipations. **Our constraint is pointing us at the good answer.**
 - [Game Anim — The 12 Principles of Animation (in Video Games)](https://www.gameanim.com/2019/05/15/the-12-principles-of-animation-in-video-games/)
 - [The Level Design Book — Enemy design](https://book.leveldesignbook.com/process/combat/enemy)
 - [Sekiro Wiki — Posture](https://sekiroshadowsdietwice.wiki.fextralife.com/Posture)
+- [BoostRoom — Mobile Settings & UI Guide](https://boostroom.com/blog/mobile-launch-guide-best-settings-ui)
+- [Lotkeys — Mobile Launch: Cross-Progression & Control Differences](https://www.lotkeys.com/en/blog/detail/where-winds-meet-mobile-launch-must-know-cross-progression-controls)
+- [AllThings.how — How Deflection Works in Where Winds Meet](https://allthings.how/how-deflection-works-in-where-winds-meet/)
