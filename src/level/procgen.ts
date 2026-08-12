@@ -68,6 +68,12 @@ function rollTableForRaw(depth: number): EnemyRoll[] {
       { enemyId: 'acolyte',       weight: 2 },
       { enemyId: 'ooze',          weight: 2 },
       { enemyId: 'acid-spitter',  weight: 1 },
+      // Bloat — the ooze that detonates. Enters here, after the green ooze has
+      // read for a few floors, so the red one is legible as "that, but wrong."
+      // Weight kept LOW: its blast hits its own packmates, so a room with
+      // several is chaos rather than a puzzle, and the whole point is that one
+      // of them changes how you move.
+      { enemyId: 'bomb-ooze',     weight: 1 },
       { enemyId: 'defiler',       weight: 1 },
       { enemyId: 'skeleton',      weight: 2 },
       { enemyId: 'spider',        weight: 1 },
@@ -101,6 +107,7 @@ function rollTableForRaw(depth: number): EnemyRoll[] {
     { enemyId: 'acolyte',       weight: 2 },
     { enemyId: 'ooze',          weight: 2 },
     { enemyId: 'acid-spitter',  weight: 2 },
+    { enemyId: 'bomb-ooze',     weight: 2 },
     { enemyId: 'defiler',       weight: 2 },
     { enemyId: 'skeleton',      weight: 2 },
     { enemyId: 'spider',        weight: 1 },

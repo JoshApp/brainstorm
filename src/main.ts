@@ -41,6 +41,7 @@ import { initRunSync } from './net/run-sync';
 import { initTelemetry, track, setCrashContext } from './telemetry/telemetry';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { initRites } from './combat/rites';
+import { setBlastTargetProvider } from './combat/radial-blast';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
@@ -872,6 +873,11 @@ const combat = createCombatSystem(
   () => currentLevel.destructibles ?? [],
   () => currentLevel?.walkable,
 );
+
+// Explosions need to see the whole room, not just the player. Set once here,
+// same as the projectile providers above, so a blast fired from deep inside a
+// mob's ability timeline can still catch that mob's neighbours.
+setBlastTargetProvider(() => currentLevel?.enemies ?? []);
 
 // Rite system (the active lane) — banks Hunger from combat, erupts the equipped
 // rite around the player. Center = the camera (player) position; enemies live.

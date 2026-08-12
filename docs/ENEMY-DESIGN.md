@@ -24,9 +24,16 @@ recover. On top of that, a spec can opt into:
 - **perception** (sight cone / hearing / lose-sight) — stealth-ish
   avoidance, weak as a combat verb.
 
-Not yet expressible (each would unlock a new verb): **charge / leap
-gap-close**, **AoE / zone denial (puddles, ground slam)**, **summon /
-buff allies**, **directional block**.
+- **blast** — a detonation that damages the player AND other mobs, with
+  distance falloff, optionally killing the caster. The first action that
+  isn't aimed only at the player, which is what lets an enemy be a
+  *tool* rather than only a threat. `src/combat/radial-blast.ts`.
+
+Not yet expressible (each would unlock a new verb): **summon / buff
+allies**, **directional block**, and — the big one — **root motion on an
+attack** (ROADMAP #141): only `dash` and `leap` move a mob's root today,
+so every `melee` swing is thrown from a standstill and one backstep beats
+it.
 
 ## Roster verb map
 
@@ -36,6 +43,7 @@ buff allies**, **directional block**.
 | stoneguard | time the dodge, grind through armor | ✅ distinct |
 | wraith | can't juke around pillars; bring magic-armor | ✅ distinct (phasing + magic) |
 | ooze | AoE / positioning so the split is contained | ✅ distinct |
+| bloat | **give it room, or kill it early** — and the blast is a TOOL | ✅ *new — the detonator* |
 | acolyte | **run it down** — kite-breaker | ✅ *fixed this pass* |
 | acid-spitter | **commit & burst** — push the holder | ✅ *fixed this pass* |
 | rat | clear chaff, don't get surrounded | ⚠️ weak verb; fine as cheap chaff |

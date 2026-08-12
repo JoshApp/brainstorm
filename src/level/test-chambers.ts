@@ -146,6 +146,31 @@ function buildBloodAltar(): LevelSpec {
   }));
 }
 
+// ── Bloat — the detonating ooze, posed with something to blow up.
+// Two questions in one room: can you read the fuse, and did you notice the
+// blast hurts the ghouls too? The bloat starts across the room from you with
+// the pack between — walk in and it arms; back off and let it commit, and it
+// walks into them instead. Being able to LOSE this room by mashing is the
+// point, so the ghouls are real ones.
+function buildBloat(): LevelSpec {
+  return smallChamber('bloat', 'bloat', 13, 13, () => ({
+    spawns: [
+      { enemyId: 'bomb-ooze', x: 0,    z: -4.5, roomId: 'test-bloat-room' },
+      { enemyId: 'ghoul',     x: -1.4, z: -2.6, roomId: 'test-bloat-room' },
+      { enemyId: 'ghoul',     x: 1.4,  z: -2.6, roomId: 'test-bloat-room' },
+    ],
+    props: [
+      {
+        kind: 'hint',
+        x: 0, z: 3.0,
+        text: 'the red one is holding its breath. it does not hold it for you.',
+        triggerRadius: 3.0,
+        lingerMs: 4500,
+      },
+    ],
+  }));
+}
+
 // ── Ooze — single parent ooze. Kill it, see the split.
 function buildOoze(): LevelSpec {
   return smallChamber('ooze', 'ooze split', 10, 10, () => ({
@@ -392,6 +417,13 @@ export const TEST_CHAMBERS: TestChamber[] = [
     name: 'Ooze Split',
     description: 'Kill the parent. It becomes two smaller oozes you also have to kill.',
     build: buildOoze,
+    loadout: { weapon: 'rusted-sword', offhand: 'oil-lamp' },
+  },
+  {
+    id: 'bloat',
+    name: 'Bloat',
+    description: 'It arms when you get close and goes off whether you kill it or not. The blast hits the ghouls too.',
+    build: buildBloat,
     loadout: { weapon: 'rusted-sword', offhand: 'oil-lamp' },
   },
   {

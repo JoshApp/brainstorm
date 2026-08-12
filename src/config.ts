@@ -854,6 +854,16 @@ export const CONFIG = {
     // (was ~81%) and effectively free three-quarters through.
     RECOVER_FALLOFF: 2.4,
   },
+  // === FUSE — the "this thing is about to go off" tell ===
+  // Diegetic only: no meter, no icon. The body inflates, the beat quickens, the
+  // core runs hot, a ring burns on the floor and a whine climbs. A player who
+  // has seen it once knows how long they have without being told.
+  FUSE: {
+    SWELL: 0.55,          // peak extra size at detonation (t^2, so it blooms late)
+    BEAT: 0.10,           // pulse depth, scaled by fuse progress
+    BEAT_HZ_START: 6,     // rad/s at ignition
+    BEAT_HZ_RAMP: 20,     // + this by the end — the ACCELERATION is the countdown
+  },
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
   // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The
   // freeze is kept SHORT + hard-capped: a whole-screen first-person freeze

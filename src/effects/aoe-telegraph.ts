@@ -15,6 +15,12 @@ import { registerWarmup } from '../content/warmup-registry';
 
 export interface AoeTelegraph {
   setProgress(t: number): void;   // t: 0..1 over the windup
+  /** Re-anchor the ring mid-windup. Needed for a SELF-origin telegraph on a
+   *  caster that is still moving — a bomb that walks toward you while its
+   *  blast radius stays painted where it armed is a telegraph that lies, and
+   *  the whole contract of this system (abilities.ts header) is that the tell
+   *  and the thing it predicts can't drift apart. Static targets never call it. */
+  moveTo(x: number, z: number): void;
   dispose(): void;
 }
 
@@ -90,6 +96,10 @@ export function spawnAoeTelegraph(
   let disposed = false;
 
   return {
+    moveTo(nx: number, nz: number) {
+      if (disposed) return;
+      group.position.set(nx, groundYAt(nx, nz) + 0.03, nz);
+    },
     setProgress(t: number) {
       if (disposed) return;
       const c = Math.max(0, Math.min(1, t));

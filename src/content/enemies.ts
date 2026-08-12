@@ -69,6 +69,7 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   rat: 'squeak',
   ooze: 'gurgle',
   'ooze-small': 'gurgle',
+  'bomb-ooze': 'gurgle',       // same wet throat — the FUSE is its distinct voice
   stoneguard: 'grind',
   'acid-spitter': 'hiss',
   acolyte: 'hiss',
@@ -1039,6 +1040,105 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 5,
     xp: 4,
     splitsInto: { enemyId: 'ooze-small', count: 2, radius: 0.5 },
+  },
+
+  // ── BLOAT — the ooze that is a decision, not a fight. ──────────────────
+  // Verb (docs/ENEMY-DESIGN.md): **give it room, or kill it early.** It has no
+  // strike; its whole body is the attack. Inside 2.4m it ARMS and is then
+  // committed — it comes at you at full speed, swelling, beating faster,
+  // dragging its own blast radius across the floor, and it goes off whether you
+  // kill it or not. That last clause is what makes it a decision: if killing a
+  // primed bloat defused it, the answer would just be "hit it", and there would
+  // be nothing to learn.
+  //
+  // The blast hurts EVERYTHING (the `blast` action, unlike `aoe`), so the
+  // interesting play is spatial — back off, let it commit, and put a pack
+  // between you and it. It is the first enemy that is more useful as a tool
+  // than as a kill.
+  //
+  // Tuned to be FAIR: 3 HP (killable in the window with almost anything), a
+  // 1.25s fuse, and rim damage at 40% so a late scramble is survivable and
+  // eating the centre is not. Low XP — the reward is the tactic, not the kill.
+  'bomb-ooze': {
+    id: 'bomb-ooze',
+    name: 'bloat',
+    bloodColor: 0x6a1414,
+    hp: 3,
+    moveSpeed: 1.5,
+    // Legacy flat fields still feed perception + the audio size. The ability
+    // below fully replaces the default melee — a bloat has no swing at all.
+    attackDamage: 4,
+    attackRange: 2.4,
+    strikeRange: 2.4,
+    windupTime: 1.25,
+    strikeTime: 0.10,
+    recoverTime: 0.10,
+    damageType: 'physical',
+    abilities: [{
+      id: 'detonate',
+      minRange: 0,
+      maxRange: 2.4,          // ARMING distance — "when coming close to you"
+      windup: 1.25,           // THE FUSE. Long enough to read, short enough to fear.
+      strike: 0.10,
+      recover: 0.10,
+      // Dodge-only. There is nothing to parry — no weapon, no swing, and a
+      // deflect that ate an explosion would make the whole enemy a non-event.
+      deflectable: false,
+      steps: [{
+        trigger: { at: 0 },
+        action: {
+          kind: 'blast',
+          origin: 'self',
+          radius: 2.6,
+          // 3 = the stoneguard's hit, the roster's hardest, and deliberately
+          // NOT more: PLAYER_HP_MAX is 5, so this hurts badly from full and
+          // kills from half, but never one-shots someone who was topped up.
+          // It was 4 for one playtest, which deleted a full-health player in a
+          // single beat — a fully-telegraphed attack is allowed to be the
+          // biggest hit in the game, not an instant loss.
+          damage: 3,           // centre; 40% of it at the rim → 1 on a graze
+          mobDamage: 5,        // hits its neighbours HARDER — that's the tactic
+          rimDamageFrac: 0.40,
+          knockbackSpeed: 7,
+          shake: 0.6,
+          color: 0x7a1c1c,     // its own body, coming apart
+          selfDestruct: true,
+        },
+      }],
+    }],
+    // The red jelly. JELLY_HUES.red has been sitting unused since the jelly
+    // pass specifically so that adding one of these was an enemy spec and not
+    // another round of colour archaeology — this is that enemy.
+    creature: {
+      id: 'bomb-ooze',
+      archetype: 'blob',
+      proportions: { height: 0.78, girth: 0.40 },
+      materials: jelly(JELLY_HUES.red, { coreEmissive: 3.2, rim: 0.9, opacity: 0.62 }),
+      eyes: { material: 'core', emissive: 2.6 },
+      flash: { material: 'body' },
+      skin: [
+        // Rounder and tauter than the green ooze — it reads as PRESSURISED
+        // rather than slumped, which is the silhouette doing the warning.
+        { kind: 'sphere', joint: 'core', radius: 0.40, scale: [1.05, 0.92, 1.05], jitter: 0.03, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.19, pos: [0.18, 0.04, 0.11], jitter: 0.03, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.17, pos: [-0.17, 0.06, -0.13], jitter: 0.03, mat: 'body' },
+        // An oversized nucleus — the charge it's carrying, visible through the
+        // body and the thing that brightens as the fuse burns.
+        { kind: 'sphere', joint: 'core', radius: 0.19, pos: [0, 0, 0], mat: 'core' },
+      ],
+    },
+    baseEyeEmissive: 2.6,
+    collisionRadius: 0.34,
+    tiltPartName: 'core',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    presence: 'gelatinous',
+    sightRange: 6,
+    sightConeHalfAngle: 1.4,
+    hearingRange: 3.5,
+    loseSightTime: 5,
+    xp: 3,
+    // No splitsInto — it leaves nothing behind. It IS the payload.
   },
 
   // Small ooze — the offspring. Less HP, less damage, no further

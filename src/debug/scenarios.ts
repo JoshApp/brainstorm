@@ -1179,6 +1179,40 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
   },
 
+  // BLOAT LAB — the detonating ooze, posed for a look and for a fight.
+  // FROZEN it's a silhouette/material check: the red jelly should read as
+  // PRESSURISED next to the two green oozes (same substance, wrong) rather than
+  // as "an ooze with a different tint". UNFROZEN (?scenario=bloat-lab&freeze=false,
+  // or on the phone) it's the actual test: walk in, watch it arm, and see
+  // whether the fuse is readable and whether the blast catches the ghouls.
+  'bloat-lab': {
+    freeze: true,
+    level: {
+      id: 'bloat-lab', depth: 5, startPos: { x: 0, z: 5.0, yaw: Math.PI },
+      rooms: [{ id: 'bl', rect: { x: 0, z: 0, w: 13, d: 13 }, height: 3.4 }],
+      corridors: [],
+      props: [],
+      // Warm side-light only — the bloat's own core is meant to be the
+      // brightest thing about it, so the room mustn't out-glow it.
+      torches: [
+        { x: -6.4, z: -2.0, height: 2.1, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.75 },
+        { x: 6.4, z: -2.0, height: 2.1, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.75 },
+      ],
+      spawns: [
+        { enemyId: 'bomb-ooze', x: 0, z: -1.6, roomId: 'bl' },
+        // Its green cousins flanking it — the comparison IS the test.
+        { enemyId: 'ooze', x: -2.4, z: -2.2, roomId: 'bl' },
+        { enemyId: 'ooze', x: 2.4, z: -2.2, roomId: 'bl' },
+        // Fodder for the "it hurts them too" half.
+        { enemyId: 'ghoul', x: -1.3, z: -4.4, roomId: 'bl' },
+        { enemyId: 'ghoul', x: 1.3, z: -4.4, roomId: 'bl' },
+      ],
+      doors: [],
+      stairs: [],
+    },
+    playerPos: { x: 0, z: 2.2, lookAt: { x: 0, z: -2.0, y: 0.55 } },
+  },
+
   // ELEVATION LAB — the verticality probe (two flat rooms 1.4m apart, a
   // sloped corridor between). Frozen view from the high room looking down
   // the ramp into the low room: floor grade, wall coverage, torch heights,

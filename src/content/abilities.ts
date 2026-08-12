@@ -100,6 +100,26 @@ export type AbilityAction =
   // Instantaneous ground zone resolved at `origin`. 'self' = radial slam,
   // 'lockedTarget' = stomp-where-you-were.
   | { kind: 'aoe'; origin: Anchor; radius: number; damage: number; element?: Element }
+  // DETONATION. Unlike `aoe` — which only ever threatens the player — a blast
+  // hurts EVERYTHING in radius, the caster's own allies included. That is the
+  // whole point: a thing that goes off is a tactical object you can drag into a
+  // pack, not just a hazard aimed at you. Damage falls off toward the rim
+  // (`rimDamageFrac`), so a graze is survivable and the centre is not.
+  // `selfDestruct` kills the caster as it fires — the bomb IS the enemy.
+  | { kind: 'blast';
+      origin: Anchor; radius: number; damage: number;
+      /** Centre damage to OTHER mobs. Defaults to `damage`. Split them when a
+       *  blast should threaten the player without trivially clearing a room. */
+      mobDamage?: number;
+      /** Damage retained at the rim, 0..1. 1 = flat. Default 0.45. */
+      rimDamageFrac?: number;
+      knockbackSpeed?: number;
+      shake?: number;
+      /** Debris tint — match the creature so the pop reads as its body. */
+      color?: number;
+      /** The caster dies delivering this. */
+      selfDestruct?: boolean;
+      element?: Element }
   // Committed airborne jump onto `toward` (a snapshot anchor). Arcs there
   // over the strike, splashes `damage` on landing, shakes + shoves — and
   // WRITES the `landing` anchor on touchdown so a later step can build on
@@ -213,9 +233,31 @@ export function firstMeleeReach(ability: Ability): number | null {
 }
 
 /** Whether the ability wants windup creep (explicit, else true iff it
- *  opens on a melee). */
+ *  opens on a melee or a blast — both are "get close and go off"). */
 export function wantsCreep(ability: Ability): boolean {
-  return ability.creep ?? (ability.steps[0]?.action.kind === 'melee');
+  const k = ability.steps[0]?.action.kind;
+  return ability.creep ?? (k === 'melee' || k === 'blast');
+}
+
+/** How close the caster wants to be before it stops creeping — a melee's reach,
+ *  or, for a blast, deep enough inside its own radius that the player is taking
+ *  the CENTRE of the falloff rather than grazing the rim. null = doesn't creep.
+ *  Separate from firstMeleeReach because that one answers a different question
+ *  (which melee step is about to connect) and has other callers. */
+export function creepReach(ability: Ability): number | null {
+  const a = ability.steps[0]?.action;
+  if (!a) return null;
+  if (a.kind === 'melee') return a.reach;
+  if (a.kind === 'blast') return a.radius * 0.4;
+  return null;
+}
+
+/** Windup move-speed multiplier. A melee creep is a half-speed shuffle so a
+ *  backpedalling player still escapes it. A primed blast does NOT get that
+ *  mercy — it has already spent its life on this, so it comes at full speed and
+ *  the answer is distance or damage, not one step back. */
+export function creepSpeedMul(ability: Ability): number {
+  return ability.steps[0]?.action.kind === 'blast' ? 1.0 : 0.45;
 }
 
 /** Synthesize the default ability from an enemy's legacy flat fields, as

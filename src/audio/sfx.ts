@@ -1084,6 +1084,122 @@ export function playWallHit(pos?: Vec3Sound) {
   playSurfaceHit('stone', pos);
 }
 
+/** FUSE — something wet has decided to become an event. A slow rising whine
+ *  under a hiss, held for `duration` so it lines up with the arming window; the
+ *  pitch climb IS the countdown, so a player who has heard it once knows how
+ *  long they have without a meter. Deliberately narrow-band and quiet: it has to
+ *  survive a noisy fight without becoming the mix. */
+export function playFuse(pos: Vec3Sound, duration = 1.2) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.30, VOCAL_FALLOFF) : masterGain;
+
+  // The whine: a lone sawtooth climbing most of an octave. Linear in pitch so
+  // it reads as "accelerating" against the ear's log response — the last third
+  // sounds much more urgent than the first, which is the point.
+  const whine = c.createOscillator();
+  whine.type = 'sawtooth';
+  whine.frequency.setValueAtTime(180, now);
+  whine.frequency.linearRampToValueAtTime(560, now + duration);
+  const whineLP = c.createBiquadFilter();
+  whineLP.type = 'lowpass';
+  whineLP.frequency.setValueAtTime(700, now);
+  whineLP.frequency.linearRampToValueAtTime(2200, now + duration);
+  whineLP.Q.value = 6;
+  const whineGain = c.createGain();
+  whineGain.gain.setValueAtTime(0.0001, now);
+  whineGain.gain.exponentialRampToValueAtTime(0.09, now + 0.12);
+  whineGain.gain.exponentialRampToValueAtTime(0.22, now + duration * 0.92);
+  whineGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  whine.connect(whineLP).connect(whineGain).connect(out);
+  whine.start(now);
+  whine.stop(now + duration);
+
+  // The hiss: bandpassed noise swelling underneath, so the tell has a body and
+  // isn't a pure test tone.
+  const hissBuf = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * duration)), c.sampleRate);
+  const hissData = hissBuf.getChannelData(0);
+  for (let i = 0; i < hissData.length; i++) hissData[i] = Math.random() * 2 - 1;
+  const hiss = c.createBufferSource();
+  hiss.buffer = hissBuf;
+  const hissBP = c.createBiquadFilter();
+  hissBP.type = 'bandpass';
+  hissBP.frequency.setValueAtTime(900, now);
+  hissBP.frequency.linearRampToValueAtTime(2600, now + duration);
+  hissBP.Q.value = 1.2;
+  const hissGain = c.createGain();
+  hissGain.gain.setValueAtTime(0.0001, now);
+  hissGain.gain.exponentialRampToValueAtTime(0.14, now + duration * 0.9);
+  hissGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  hiss.connect(hissBP).connect(hissGain).connect(out);
+  hiss.start(now);
+  hiss.stop(now + duration);
+}
+
+/** BLAST — the detonation. Wetter and lower than playImpact (which is a strike,
+ *  not a rupture): a sub thump for the pressure, a mid noise body for the
+ *  spray, and a short slap on top so it cuts through at distance. Routed on the
+ *  carrying falloff — a blast three rooms away is information. */
+export function playBlast(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.55) : masterGain;
+
+  // Sub: the pressure wave. Deeper and longer than playImpact's 140→45.
+  const sub = c.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(110, now);
+  sub.frequency.exponentialRampToValueAtTime(28, now + 0.34);
+  const subGain = c.createGain();
+  subGain.gain.setValueAtTime(0.0001, now);
+  subGain.gain.exponentialRampToValueAtTime(0.95, now + 0.008);
+  subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+  sub.connect(subGain).connect(out);
+  sub.start(now);
+  sub.stop(now + 0.42);
+
+  // Body: lowpassed noise opening then closing — the wet spray of the rupture.
+  const bodyDur = 0.38;
+  const bodyBuf = c.createBuffer(1, Math.floor(c.sampleRate * bodyDur), c.sampleRate);
+  const bodyData = bodyBuf.getChannelData(0);
+  for (let i = 0; i < bodyData.length; i++) {
+    bodyData[i] = (Math.random() * 2 - 1) * (1 - i / bodyData.length) ** 1.6;
+  }
+  const body = c.createBufferSource();
+  body.buffer = bodyBuf;
+  const bodyLP = c.createBiquadFilter();
+  bodyLP.type = 'lowpass';
+  bodyLP.frequency.setValueAtTime(2600, now);
+  bodyLP.frequency.exponentialRampToValueAtTime(320, now + bodyDur);
+  const bodyGain = c.createGain();
+  bodyGain.gain.value = 0.55;
+  body.connect(bodyLP).connect(bodyGain).connect(out);
+  body.start(now);
+  body.stop(now + bodyDur);
+
+  // Slap: a very short high crack so the onset is legible over a busy mix.
+  const slapDur = 0.05;
+  const slapBuf = c.createBuffer(1, Math.floor(c.sampleRate * slapDur), c.sampleRate);
+  const slapData = slapBuf.getChannelData(0);
+  for (let i = 0; i < slapData.length; i++) {
+    slapData[i] = (Math.random() * 2 - 1) * (1 - i / slapData.length);
+  }
+  const slap = c.createBufferSource();
+  slap.buffer = slapBuf;
+  const slapHP = c.createBiquadFilter();
+  slapHP.type = 'highpass';
+  slapHP.frequency.value = 1200;
+  const slapGain = c.createGain();
+  slapGain.gain.value = 0.42;
+  slap.connect(slapHP).connect(slapGain).connect(out);
+  slap.start(now);
+  slap.stop(now + slapDur);
+}
+
 /** A surface DESTROYED (not just struck) — the fuller break/shatter. Routed by
  *  material like playSurfaceHit; falls back to the single-hit voice for
  *  materials without a dedicated shatter. Used when a vase/crate is smashed. */

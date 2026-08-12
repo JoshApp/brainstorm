@@ -5,6 +5,7 @@ import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInAura } from '../player/inside-aura';
 import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
+import { radialBlast } from '../combat/radial-blast';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
@@ -15,7 +16,7 @@ import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import { DEFAULT_FACTION, threatensPlayer, type FactionId } from '../content/factions';
 import {
-  resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS, isDeflectable,
+  resolveAbilities, firstMeleeReach, wantsCreep, creepReach, creepSpeedMul, ELEMENTS, isDeflectable,
   type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
 } from '../content/abilities';
 import {
@@ -59,7 +60,7 @@ import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { fireDeathPayoffs } from '../combat/death-payoffs';
 import { aggregateSpeed } from '../combat/modifiers';
-import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, playSurfaceHit, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
+import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, playSurfaceHit, playFuse, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { LEVELS_ENABLED } from '../state/leveling';
@@ -731,6 +732,7 @@ export function createEnemy(
    *  discrete, committed act you can punish. */
   let plantTimer = 0;
   let gelTime = 0;   // clock for the gelatinous (ooze) squash jiggle
+  let fuseBeatPhase = 0;   // accelerating pulse clock for an armed blast
 
   let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
@@ -810,8 +812,13 @@ export function createEnemy(
   // The lash tentacle — spawned for a 'lash' telegraph, reaches out over
   // the windup, snaps on strike, retracts + disposes on recover.
   let lashTendril: LashTendril | null = null;
+  // True when the live telegraph is anchored to THIS mob rather than to a
+  // ground spot — it must be dragged along each windup frame (see the winding
+  // state), otherwise a creeping caster leaves its own danger ring behind.
+  let aoeTelegraphFollowsSelf = false;
   function clearAoeTelegraph() {
     if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
+    aoeTelegraphFollowsSelf = false;
   }
   function clearLashTendril() {
     if (lashTendril) { lashTendril.dispose(); lashTendril = null; }
@@ -1238,6 +1245,14 @@ export function createEnemy(
         enterNextPhase(true);
         return result.applied;
       }
+      // Killed while ARMED — the bomb still goes off. Fired BEFORE aliveLocal
+      // flips so fireBlast's self-destruct is a no-op (this death is already
+      // in flight) and the blast is credited normally. Without this, correctly
+      // killing a primed bomb would be the one safe answer to it, which is
+      // exactly backwards: the tension is "back off, or kill it early", and
+      // both halves of that only exist if a late kill still detonates.
+      const armed = armedBlastAction();
+      if (armed) fireBlast(armed, container.position, lastPlayerXZ);
       // Killed mid-windup — drop any pending AoE marker / lash tentacle so
       // it doesn't linger after the caster is gone.
       clearAoeTelegraph();
@@ -1769,6 +1784,60 @@ export function createEnemy(
    *  keeps trying until it lands or the strike ends; dash/leap run their
    *  whole motion. Each action owns its own resolution — nothing is shared
    *  between steps (that sharing is what broke the old leap). */
+  // ── Detonation ────────────────────────────────────────────────────
+  // A blast can be delivered two ways — the timeline firing it on schedule, or
+  // the caster being killed while ARMED (see armedBlastAction). Both funnel
+  // here so they can't drift apart, and `blastSpent` guarantees a bomb goes off
+  // exactly once: without it, selfDestruct → takeDamage → the death hook → a
+  // second blast → selfDestruct again is an obvious infinite recursion.
+  let blastSpent = false;
+
+  function fireBlast(
+    action: Extract<AbilityAction, { kind: 'blast' }>,
+    at: { x: number; z: number },
+    playerPos: THREE.Vector3,
+  ): void {
+    if (blastSpent) return;
+    blastSpent = true;
+    clearAoeTelegraph();
+    radialBlast(scene, {
+      x: at.x, y: groundYAt(at.x, at.z), z: at.z,
+      radius: action.radius,
+      playerPos,
+      damage: action.damage,
+      mobDamage: action.mobDamage,
+      rimDamageFrac: action.rimDamageFrac,
+      knockbackSpeed: action.knockbackSpeed,
+      shake: action.shake,
+      color: action.color,
+      type: dmgTypeOf(action.element),
+      source: entityId,
+      // Never let the bomb damage itself — it re-enters its own takeDamage
+      // mid-death, and the self-destruct below already kills it.
+      exclude: entityId,
+    });
+    // The bomb IS the enemy: it dies delivering the payload. source:null makes
+    // this an ENVIRONMENTAL death, so a mob that blew itself up doesn't hand
+    // the player kill credit for a fight they didn't win. It still runs the
+    // full death path (drops, room-clear count, dissolve).
+    if (action.selfDestruct && aliveLocal) {
+      takeDamage({ source: null, target: entityId, base: 9999, type: 'physical' });
+    }
+  }
+
+  /** The blast this mob is ARMED with right now, if any — i.e. it has committed
+   *  to a blast ability and hasn't delivered it yet. Killing an armed bomb must
+   *  still set it off: that is what makes "back off, or kill it early" a real
+   *  decision instead of a gotcha for correctly killing the thing. */
+  function armedBlastAction(): Extract<AbilityAction, { kind: 'blast' }> | null {
+    if (blastSpent || !currentAbility) return null;
+    if (state !== 'winding' && state !== 'striking') return null;
+    for (const step of currentAbility.steps) {
+      if (step.action.kind === 'blast') return step.action;
+    }
+    return null;
+  }
+
   function runAction(
     action: AbilityAction,
     ability: Ability,
@@ -1895,6 +1964,10 @@ export function createEnemy(
         clearAoeTelegraph();
         return true;
       }
+      case 'blast': {
+        fireBlast(action, resolveAnchor(action.origin, playerPos), playerPos);
+        return true;
+      }
       case 'leap': {
         // Committed airborne jump: deterministic interpolation from takeoff
         // (leapStart) to the LOCKED landing zone, synced to a parabolic arc,
@@ -2001,11 +2074,14 @@ export function createEnemy(
     clearAoeTelegraph();
     for (const step of ability.steps) {
       const a = step.action;
-      if (a.kind === 'aoe') {
+      if (a.kind === 'aoe' || a.kind === 'blast') {
         const o = a.origin === 'self'
           ? { x: container.position.x, z: container.position.z }
           : { x: aoeTarget.x, z: aoeTarget.z };
         aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
+        // A self-anchored ring on a mob that CREEPS during its windup has to
+        // follow it, or the painted radius and the real one part company.
+        aoeTelegraphFollowsSelf = a.origin === 'self';
         return;
       }
       // Only a COMMITTED leap (onto the locked target) telegraphs a
@@ -2868,7 +2944,13 @@ export function createEnemy(
           state = 'winding';
           phaseTimer = 0;
           rollWindupTime();
-          playEnemyWindup(audioSizeFor(spec), container.position);
+          // A bomb arming gets the FUSE instead of the generic windup bark: a
+          // rising whine held for the exact length of this mob's windup, so the
+          // pitch climb tells you how long you have. Josh's ask was that the
+          // thing about to blow says so diegetically — no meter, no icon; the
+          // sound, the swelling body, and the ring on the floor are the UI.
+          if (armedBlastAction()) playFuse(container.position, currentWindupTime);
+          else playEnemyWindup(audioSizeFor(spec), container.position);
           // Snapshot the committed target (the 'lockedTarget' anchor) +
           // raise the spatial telegraph the instant the windup begins, so
           // the player has the full windup to step off the marker.
@@ -2952,10 +3034,20 @@ export function createEnemy(
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
-        const reach = firstMeleeReach(currentAbility);
+        // A primed BLAST creeps too, and at full speed: once it's armed it is
+        // committed, and a bomb that stops walking the moment it lights is a
+        // bomb you beat by taking one step back.
+        const reach = creepReach(currentAbility);
         if (wantsCreep(currentAbility) && reach !== null && distance > reach) {
-          moveTowards(playerPos.x, playerPos.z, moveSpeed * 0.45, dt, walkable, nav);
+          moveTowards(playerPos.x, playerPos.z, moveSpeed * creepSpeedMul(currentAbility), dt, walkable, nav);
         }
+        // Drag a self-anchored danger ring along with the body.
+        if (aoeTelegraph && aoeTelegraphFollowsSelf) {
+          aoeTelegraph.moveTo(container.position.x, container.position.z);
+        }
+        // The core runs hot as the fuse burns (the body's swell is the other
+        // half of the tell — it lives in tickLashDeform, which owns scale).
+        if (armedBlastAction()) setEyeFlare(Math.min(1, 0.35 + 0.65 * t));
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
@@ -3194,9 +3286,24 @@ export function createEnemy(
       const w = Math.sin(gelTime * 3.2) * 0.1;
       gy = 1 - w; gx = 1 + w * 0.5; gz = 1 + w * 0.5;
     }
+    // THE FUSE, made visible. An armed blast inflates as it primes, with a
+    // beat that ACCELERATES (6 → 26 rad/s across the windup) — the swell says
+    // "this one is a bomb", the quickening says "and it is nearly done." Both
+    // read from across a dark room, where a subtle tell would not. Rides this
+    // writer rather than easing through castSwell, because the whole point is
+    // a hard pulse that smoothing would flatten.
+    let fuse = 1;
+    if (state === 'winding' && armedBlastAction()) {
+      const ft = Math.min(1, currentWindupTime > 0 ? phaseTimer / currentWindupTime : 1);
+      fuseBeatPhase += dt * (CONFIG.FUSE.BEAT_HZ_START + CONFIG.FUSE.BEAT_HZ_RAMP * ft);
+      fuse = (1 + CONFIG.FUSE.SWELL * ft * ft)                    // slow start, late bloom
+           * (1 + CONFIG.FUSE.BEAT * ft * Math.sin(fuseBeatPhase));
+    } else {
+      fuseBeatPhase = 0;
+    }
     // Elongate along local Z (forward/back, the player axis since the
     // container faces the player); squash X/Y a touch.
-    const sw = 1 + castSwell;
+    const sw = (1 + castSwell) * fuse;
     built.group.scale.set(
       groupBaseScale.x * gx * sw * (1 - 0.12 * lashStretch),
       groupBaseScale.y * gy * sw * (1 - 0.16 * lashStretch),
