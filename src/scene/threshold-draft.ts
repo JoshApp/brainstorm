@@ -80,6 +80,16 @@ let moteTex: THREE.Texture | null = null;
 // glow now sits at a much more restrained register.
 const GLOW_MAX_EMISSIVE = 0.16;
 
+// ── HOW WIDE THE GAZE CARRIES ───────────────────────────────────────────────
+// A warm eye is never fully shut: it holds at EYE_OPEN_FLOOR from anywhere in
+// its room, so the cue can be READ before you commit to a door, then blooms to
+// full between FAR and NEAR. The floor is deliberately below half — from across
+// a hall it is a lidded gleam, not a lamp, so it still obeys the "uncommon
+// light means something is there" rule rather than becoming room lighting.
+const EYE_OPEN_FLOOR = 0.42;
+const EYE_BLOOM_FAR = 14.0;        // m — beyond this the eye sits at the floor
+const EYE_BLOOM_NEAR = 3.0;        // m — fully open
+
 interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
 const frameGlows: FrameGlow[] = [];
 
@@ -295,7 +305,18 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
   // whole floor); the eye owns the easing + flicker + blink + player-tracking.
   for (const lure of lures) {
     const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
-    const want = (lure.near && !lure.cold) ? smoothstep(8.0, 2.0, dist) : 0;
+    // OPEN FIRST, BLOOM SECOND. The kindle used to be a pure proximity ramp
+    // (8m → 2m), which meant a qualifying eye was SHUT until you were almost
+    // under it. In a wide poly room every doorway is further than 8m from the
+    // middle, so the player stands there, looks around, sees nothing lit, and
+    // concludes the nav cue is dead — which is exactly how it was reported.
+    //
+    // A cue you can only read once you have already chosen the door is not a
+    // cue. So a warm eye is OPEN across the room and brightens as you approach:
+    // the gaze finds you from the far wall, then kindles.
+    const want = (lure.near && !lure.cold)
+      ? EYE_OPEN_FLOOR + (1 - EYE_OPEN_FLOOR) * smoothstep(EYE_BLOOM_FAR, EYE_BLOOM_NEAR, dist)
+      : 0;
     lure.eye.update(dt, want, playerPos);
   }
   for (const d of drafts) {

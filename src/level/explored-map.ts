@@ -212,6 +212,21 @@ function unseenRooms(graph: RoomGraph, s: ExploredState): string[] {
 export interface NavField {
   /** Steps from each discovered node to the nearest goal. Absent = no route. */
   readonly toGoal: ReadonlyMap<string, number>;
+  /**
+   * Steps to the WAY DOWN specifically, as its own field.
+   *
+   * `toGoal` is multi-source over unexplored rooms AND the stairs, so "closer to
+   * the nearest goal" is not "closer to the exit": standing in a hub with an
+   * unexplored room one hop east and the stairs five hops west, every westward
+   * door reads FURTHER and shuts. The way out of the floor then has no lit path
+   * for as long as anything else is unexplored — which is precisely when a lost
+   * player goes looking for one.
+   *
+   * Keeping the exit its own field lets the two rules be independent, which is
+   * what they always were in intent: a door is warm if it leads somewhere new,
+   * OR if it is a step toward the stairs. Never one at the cost of the other.
+   */
+  readonly toExit: ReadonlyMap<string, number>;
 }
 
 /** Multi-source BFS over DISCOVERED nodes. Undiscovered (secret) nodes are not
@@ -251,7 +266,11 @@ export function navField(graph: RoomGraph, s: ExploredState): NavField {
   // stairs. An unentered room can never be the current one (entering marks it),
   // so in practice this only ever drops the objective.
   const goals = [...unseenRooms(graph, s), ...s.objective].filter((id) => id !== s.curId);
-  return { toGoal: distancesTo(graph, goals, s) };
+  // The exit field drops the room underfoot for the same reason: standing ON
+  // the stairs makes every neighbour "further", which would shut every eye in
+  // the room you are standing in. A goal underfoot is a goal achieved.
+  const exits = [...s.objective].filter((id) => id !== s.curId);
+  return { toGoal: distancesTo(graph, goals, s), toExit: distancesTo(graph, exits, s) };
 }
 
 /**
@@ -305,8 +324,16 @@ export function archwayCold(
   for (const room of destinationRooms(graph, cur, far, s)) {
     if (!s.visited.has(room)) return false;
   }
-  // TIER B — everything through here is already seen, so rank by distance.
   const f = field ?? navField(graph, s);
+  // TIER B — THE WAY DOWN IS ALWAYS LIT. A step toward the stairs is warm even
+  // while unexplored ground remains elsewhere. This used to be folded into the
+  // multi-source `toGoal`, where a nearer unexplored room outvoted the exit and
+  // shut the door you actually wanted; see NavField.toExit.
+  const exitHere = f.toExit.get(cur);
+  const exitThere = f.toExit.get(far);
+  if (exitHere !== undefined && exitThere !== undefined && exitThere < exitHere) return false;
+  // TIER C — nothing new that way and it is not the way down, so rank what is
+  // left by distance to the nearest thing worth walking to.
   const here = f.toGoal.get(cur);
   const there = f.toGoal.get(far);
   if (here === undefined || there === undefined) return true;   // no route to anything left

@@ -143,6 +143,48 @@ test('a door onto an unexplored room stays open even when a nearer goal is elsew
   assert.equal(archwayCold(g, 'H', 'y1', s), false, 'the far one is no less unexplored');
 });
 
+test('THE WAY DOWN STAYS LIT WHILE UNEXPLORED GROUND REMAINS ELSEWHERE', () => {
+  // THE BUG. Hub H: an unexplored room X one hop EAST, the down-stairs five hops
+  // WEST through rooms you have already walked. `toGoal` was one multi-source
+  // field over BOTH, so from H the nearest goal was X — every westward door read
+  // "further from the nearest goal" and shut. The way out of the floor had no
+  // lit path for as long as anything else was unexplored, which is exactly when
+  // a lost player goes looking for one.
+  //
+  // Josh, from the phone: "make the shortest path to the exit always open and
+  // also any eye that leads to unexplored." They are two rules, not one ranking.
+  // Rects are CENTRE-based and must ABUT to become graph edges:
+  //   EXIT(-14) ─w2(-11)─ W1(-8) ─w1(-5)─ H(0, 8 wide) ─cX(z 3)─ X(z 6)
+  const g = buildRoomGraph({
+    rooms: [room('H', 0, 0, 8, 4), room('X', 0, 6), room('W1', -8, 0), room('EXIT', -14, 0)],
+    corridors: [corr('cX', 0, 3, 2, 2), corr('w1', -5, 0, 2, 2), corr('w2', -11, 0, 2, 2)],
+  });
+  assert.deepEqual(g.neighbors('EXIT'), ['w2'], 'fixture: the west leg reaches the stairs room');
+  assert.ok(g.neighbors('H').includes('w1') && g.neighbors('H').includes('cX'),
+    'fixture: the hub has both doors');
+  const all = new Set(['H', 'X', 'W1', 'EXIT', 'cX', 'w1', 'w2']);
+  const s: ExploredState = {
+    curId: 'H',
+    visited: new Set(['H', 'W1', 'EXIT']),     // the west leg is walked
+    objective: new Set(['EXIT']),              // …but it holds the down-stairs
+    discovered: all,
+  };
+  assert.equal(archwayCold(g, 'H', 'cX', s), false, 'the unexplored room stays open');
+  assert.equal(archwayCold(g, 'H', 'w1', s), false,
+    'the way DOWN must stay open too — a nearer unexplored room must not outvote it');
+});
+
+test('a step AWAY from the exit is still cold — the rule is direction, not a free pass', () => {
+  // The exit tier opens a door because it is CLOSER to the stairs, not because
+  // an exit exists somewhere. Otherwise every door on the floor lights and the
+  // cue says nothing.
+  const g = linearFloor();
+  // Everything walked; C holds the stairs. From B, cor2 goes toward C, cor1 away.
+  const s = st({ curId: 'B', visited: new Set(['A', 'B', 'C']), objective: new Set(['C']) });
+  assert.equal(archwayCold(g, 'B', 'cor2', s), false, 'toward the stairs → open');
+  assert.equal(archwayCold(g, 'B', 'cor1', s), true, 'away from the stairs → shut');
+});
+
 test('an OBJECTIVE room (the down-stairs) keeps its path WARM even when entered', () => {
   const g = linearFloor();
   // All entered, but C holds the down-stairs (an objective) → A's exit stays WARM
