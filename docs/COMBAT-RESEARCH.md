@@ -235,6 +235,63 @@ session was protecting. **Recommendation: don't take it.** But it's worth knowin
 that the option exists and what it would buy, because if combat ever feels too
 punishing this is the lever that would change its character most.
 
+### How deflect and the finisher are actually INPUT (and what it costs on a phone)
+
+Josh: *are they buttons, and how does that work on mobile?* Two different answers,
+and the second is the more useful one.
+
+**DEFLECT — a dedicated button, plus a second slower route with a safety net.**
+
+The primary input is its own button (`E` / `R1`; its own on-screen button on
+mobile, ranked second only to dodge in every layout guide). Timed press, not a
+held stance — and the guidance is *"parry at the moment it feels almost too
+late"*, i.e. anchored to impact, not to the wind-up.
+
+But there is a **second way in**, and it's the interesting part: **press ATTACK
+while blocking** and you also parry. It's slower than the dedicated button, and
+in exchange it's safe — miss the timing and you simply *block* instead of eating
+the hit. So the same mechanic has a fast/all-or-nothing route and a
+slow/insured one, and which you use is a real skill expression.
+
+We cannot copy that directly (we have no block, by decision — see the charter).
+But the underlying idea is portable and worth taking: **a failed deflect
+currently costs us full damage.** In WWM a failed parry attempt, done the safe
+way, is merely a worse outcome rather than a punishment. A mistimed deflect
+granting partial mitigation would soften touch-input imprecision without adding
+a button, a stance, or a resource — and it fits "fair but challenging" better
+than all-or-nothing does on a device with 50–100ms of input latency.
+
+**FINISHER — a contextual TIMED PROMPT, which is why it costs no button.**
+
+Execute shares the interact input (`F` / `Circle`) and surfaces as an on-screen
+prompt when an enemy hits Exhausted. That's the trick: **the finisher is free in
+button budget because it's contextual** — it only exists when it's legal.
+
+And it carries a decision. The prompt runs on a timer, and correct play is *not*
+to press it immediately: you keep attacking the exhausted enemy and fire the
+Execute in the last moment before the window closes, banking both the free
+damage and the finisher. Guides call pressing it instantly "a common mistake."
+
+**Both of these land on `#134 finisher ceremony`, already in the ledger.** Ours
+is currently a charged heavy on a staggered foe — no prompt, no timer, no greed.
+We already have a tap-target raycast and an interact system, so a contextual
+prompt costs us no new button either. The greed window is what turns a stagger
+from a button-prompt into a small risk curve.
+
+### A second suspect for "the parry feels late" on mobile
+
+Worth recording next to §3's arithmetic. The mobile guides are consistent that
+when players report parry timing feeling late, **it is often frame pacing (micro
+stutters, dropped frames) and touch friction rather than the window itself** —
+the standing advice is to cap FPS to whatever the phone holds *consistently*,
+preferring stability over peak.
+
+That matters here because we have both levers already: vsync-count frame pacing
+and a deliberate `frameCap='60'`. So if the deflect still feels twitchy after the
+`FLASH_LEAD_S` raise, **frame pacing is the second thing to measure, not more
+window**. Two independent causes with the same symptom; don't tune one while the
+other is responsible.
+
 ### Honest gap — no trustworthy WWM frame data exists
 
 Searched hard for this, in English and Chinese, including PvP and datamining
