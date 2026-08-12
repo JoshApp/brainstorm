@@ -17,6 +17,14 @@ import type { SwingPhase } from './swing-state';
 // back. The STRIKE is the one hard-committed instant: agency bottoms out AND
 // dash is locked (you eat the active frames).
 //
+// The recover release is a DECAY, not a linear ramp (RECOVER_FALLOFF). Linear
+// meant a hammer — whose recover is ~2x a sword's — spent that entire long tail
+// measurably slowed, which reads as one continuous slow rather than as weight.
+// The felt weight lives in the BITE at the moment the strike ends; past that,
+// dragging it out just costs the player agency without saying anything. With the
+// decay you still eat the full bite, then get most of your footing back in the
+// first third of the recover and the rest is nearly free.
+//
 // Two axes, decoupled on purpose:
 //   - MOVE is throttled hard — planting your feet is what sells WEIGHT.
 //   - TURN is throttled GENTLY — on a phone your look-drag IS your aim, and
@@ -54,7 +62,10 @@ function atDepth(moveFloor: number, turnFloor: number, depth: number, dashLocked
  *    - windup  eases commitment IN  (depth 0 → c) — you can still adjust early,
  *      you're locked in by the time it releases into the strike.
  *    - strike  holds full commitment (depth c) — the moment of truth.
- *    - recover eases commitment OUT (depth c → 0) — follow-through, then free.
+ *    - recover DECAYS commitment out (depth c → 0, front-loaded by
+ *      RECOVER_FALLOFF) — you eat the bite as the strike ends, then get your
+ *      footing back fast instead of wading through the whole tail. An exponent
+ *      of 1 restores the old linear ramp.
  *  Idle = full freedom. */
 export function swingAgency(phase: SwingPhase, commitment: number, progress = 0): SwingAgency {
   const c = Math.max(0, Math.min(1, commitment));
@@ -66,7 +77,7 @@ export function swingAgency(phase: SwingPhase, commitment: number, progress = 0)
     case 'strike':
       return atDepth(K.STRIKE_MOVE, K.STRIKE_TURN, c, true);
     case 'recover':
-      return atDepth(K.RECOVER_MOVE, K.RECOVER_TURN, c * (1 - t), false);
+      return atDepth(K.RECOVER_MOVE, K.RECOVER_TURN, c * Math.pow(1 - t, K.RECOVER_FALLOFF), false);
     default:
       return FREE;
   }

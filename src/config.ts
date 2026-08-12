@@ -845,6 +845,14 @@ export const CONFIG = {
     WINDUP_MOVE: 0.70, WINDUP_TURN: 0.85,
     STRIKE_MOVE: 0.25, STRIKE_TURN: 0.50,
     RECOVER_MOVE: 0.55, RECOVER_TURN: 0.80,
+    // How fast the recover's commitment DECAYS (exponent on the remaining
+    // fraction). 1 = the old linear ramp, which made a hammer's long recover
+    // read as one continuous slow rather than as weight — the tail was the
+    // complaint, not the bite. Higher = the bite still lands at the moment the
+    // strike ends, then agency comes back quickly and the tail is nearly free.
+    // At 2.4 a full-commitment weapon is back to ~93% move speed by mid-recover
+    // (was ~81%) and effectively free three-quarters through.
+    RECOVER_FALLOFF: 2.4,
   },
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
   // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The

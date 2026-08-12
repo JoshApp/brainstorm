@@ -219,9 +219,34 @@ failed. Part II: the spine).
   a pit death on a phone is rage. Better: you fall to the *next* floor, hurt, away
   from the stairs, no bonfire. Not a skip — a fast dangerous descent, and a choice
   a bold player can take on purpose.
+- **THE GOAL (Josh, 2026-08-12): simple enough for a thumb, deep enough to get
+  better at.** Every item in the combat-depth block below is judged against that
+  one sentence. Depth comes from *what the player must read and answer*, not from
+  more buttons or more numbers.
+- **Attacks must TRAVEL — a standing swing is a safe swing** (2026-08-12). The
+  danger in a soulslike is reach and commitment, not the damage number. Today only
+  `dash` and `leap` move a mob's root; `melee` never does, so a mob plants and
+  swings and one backstep beats it. The fix is a MOTION TRACK on the attack, authored
+  as data next to the verb, so the content layer writes "this swing carries 0.8m of
+  step-in" without touching AI code. See #141.
+- **One dangerous verb per enemy.** A roster where every mob has three tricks reads
+  as noise; one legible trick each reads as a language. `docs/ENEMY-DESIGN.md` already
+  holds this rule and audits the roster against it — motion patterns get assigned
+  the same way, not sprinkled evenly.
+- **A committed attack should have a committed ANSWER.** If a charge can only be
+  sidestepped, the player has one tool; if it can also be met, they have a choice
+  with a risk attached. Deflect already exists and is per-ability
+  (`Ability.deflectable`), so this is a data + tell question, not a new system. See #142.
 
 ### Shipped
 
+- **Heavy-weapon recover decays instead of dragging** (2026-08-12). Josh: the
+  hammer's post-swing slow "feels too punishing". Diagnosis: the commitment arc
+  released movement LINEARLY across the recover, and a hammer's recover is ~2x a
+  sword's, so the whole tail was measurably slowed and read as one continuous slow
+  rather than as weight. `CONFIG.COMMITMENT.RECOVER_FALLOFF` makes it a decay — the
+  bite at the moment the strike ends is untouched, then agency returns fast. Set it
+  to 1 to get the old linear ramp back.
 - **FEAR** (2026-08-05). Inflictable morale state, a bone skull tell, and the
   loop: break poise from behind → it panics → its back is yours → backstab.
   Backstab rides the additive-surplus lane (DESIGN-METHOD §1) so it's decisive
@@ -231,6 +256,11 @@ failed. Part II: the spine).
 
 | | What | Notes |
 |---|---|---|
+| **#140** | **Bomb ooze** — red ooze that arms and detonates | Josh 2026-08-12. `JELLY_HUES.red` is already defined and unused, so this is an enemy spec, not a materials pass. ARMS on proximity, burns a fuse, blows. Killing an armed one still detonates → the read is "back off or kill it early", a choice rather than a gotcha. Tells must be diegetic (swell, core pulse accelerating, its own red floor light, rising hiss) — no UI. Blast hits **mobs too**, which makes it a tactical object you can kite into a pack. Needs #143. |
+| **#141** | **Attack motion tracks** — enemies stop standing still | Josh 2026-08-12, the big one in this block. A `motion` track on the ability/verb, resolved by the same step-trigger clock that already drives `melee`/`aoe`. Vocabulary to build against: **step-in** (~0.8m on the strike frame — should become the DEFAULT on baseline melee, it's the cheapest cure), **coil-dash** (readable crouch → 3-4m dash → long punishable recovery; `skirmisher` already does this via the `dash` action and is the proof), **advancing combo** (each swing steps, so backpedalling doesn't escape), **hit-and-run** (strike then immediate backstep out of counter range), **orbit** (refuses to commit while a packmate does — `intent.ts` already has `circle`). **Trap:** root motion must go through `walkable.clampMoveInto`/nav like `dash` does, or mobs will phase through geometry. |
+| **#142** | **Deflect a charge** — the skirmisher's dash gets an answer | Josh 2026-08-12. `Ability.deflectable` already exists per-ability and the white/red threat flash is already reconciled per frame (`enemy.ts:3041`). So the work is: mark charges deflectable, make the deflect land against a *moving* attacker (the parry check sits in the `melee` action; `dash` contact damage is a separate path at `enemy.ts:1868-1885` and does **not** consult it — that's the actual gap), and pay it off with a hard stop + big stagger so meeting a charge feels better than dodging it. **Design rule:** the reward must beat the sidestep or nobody will take the risk. |
+| **#143** | **Shared radial blast** — one explosion primitive | Prereq for #140. There is no generic explosion today: the `aoe` ability action hits the **player only** (`enemy.ts:1886`), rite nova hits **mobs only** (`rites.ts:133`), and the bleed chain is a third copy of the same loop. One helper — radius, damage, knockback, VFX, shake — that damages both sides. Also unblocks barrels/traps later. |
+| **#144** | **Dedicated dodge button layout** | Josh 2026-08-12, currently playing the no-side-buttons layout. Add a layout variant with a dedicated dodge on the RIGHT. Layouts are already a chooser, so this is a new entry + thumb-zone placement per `docs/UI-CHARTER.md`, not a controls rewrite. **Trap:** the right thumb also aims — the button must not eat look-drag, so it needs to be a discrete tap zone that doesn't swallow the drag gesture. |
 | **#134** | Finisher ceremony | Risk: an animation lock in a swarm is how you die unfairly. Fast **and** i-framed. |
 | **#135** | Chasm shove, mobs die in the void | Closer than it looks: `applyKnockback` exists on the Enemy interface and is never called by the player's swing. `tickKnockback` clamps to walkable — that's the gate. **Trap:** a mob lost to the void must count as a kill for room-clear. |
 | **#136** | Player falls → next floor, hurt | Depends on #135's rim-crossing work. |

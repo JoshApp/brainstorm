@@ -57,6 +57,25 @@ test('the swing arc eases commitment IN on windup and OUT on recover', () => {
     'recover releases as it progresses');
 });
 
+test('the recover DECAYS — you get your footing back well ahead of linear', () => {
+  // Josh, 2026-08-12: the hammer's post-swing slow "feels too punishing". The
+  // cause was a LINEAR release across a recover that is ~2x a sword's, so the
+  // whole tail sat slowed. The bite at the strike's end is the part that sells
+  // weight; the tail was just tax. Lock the decay in so it can't drift back.
+  const c = 1;
+  const linearAt = (t: number) => 1 + (K.RECOVER_MOVE - 1) * (c * (1 - t));
+
+  assert.ok(K.RECOVER_FALLOFF > 1, 'falloff must be front-loaded, not linear');
+  for (const t of [0.25, 0.5, 0.75]) {
+    assert.ok(swingAgency('recover', c, t).moveMul > linearAt(t),
+      `recover@${t} must be freer than the old linear ramp`);
+  }
+  // Most of the footing is back by the halfway point...
+  assert.ok(swingAgency('recover', c, 0.5).moveMul > 0.9, 'half-way through recover is nearly free');
+  // ...but the BITE as the strike ends is deliberately untouched.
+  assert.equal(swingAgency('recover', c, 0).moveMul, K.RECOVER_MOVE, 'the bite is preserved');
+});
+
 test('TURN is throttled more gently than MOVE (mobile aim is the lifeline)', () => {
   // At every committed instant, you keep more of your aim than your footing.
   assert.ok(swingAgency('strike', 1).turnMul > swingAgency('strike', 1).moveMul, 'strike');
