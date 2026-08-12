@@ -439,7 +439,16 @@ export function setWebGPUBloomEnabled(on: boolean): void {
 let disposables: Array<{ dispose?: () => void }> = [];
 let retired: Array<{ dispose?: () => void }> = [];
 function drainRetired(): void {
-  if (inFlight > 0 || retired.length === 0) return;
+  // The SAME three-way guard applyPendingResScale uses, and for the same
+  // reason. Both destroy GPU resources a queued submit may still reference, but
+  // this one only checked inFlight — which counts LIVE submits and nothing
+  // else. Warm renders (warmRenderWebGPU) and the lux capture submit outside
+  // that counter, so `inFlight === 0` does not mean the queue is empty, and
+  // freeing here while a warm frame was still in flight is exactly the
+  // "[Buffer ...] used in submit while destroyed" validation storm this defer
+  // exists to prevent. Observed 2026-08-12 on desktop with retired=3 pending
+  // across a burst of pipeline rebuilds.
+  if (inFlight > 0 || warmSinceFlush > 0 || warmingUp || retired.length === 0) return;
   for (const d of retired) { try { d.dispose?.(); } catch { /* best-effort */ } }
   retired = [];
 }
@@ -631,6 +640,15 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
     // strength 0.08. Match the blur it feeds; the glow is soft either way.
     if (!AB_NO_BRIGHT_SCALE) (gb.textureNode as any)?.setResolutionScale?.(0.35);
     disposables.push(gb);
+    // …and the RTT's OWN render target, which nothing else frees.
+    // GaussianBlurNode.dispose() releases its two blur targets and its material
+    // — not the convertToTexture() wrapper feeding it — and RTTNode does not
+    // override Node.dispose(), which only dispatches an event. So retiring `gb`
+    // alone left a HalfFloat colour target allocated per rebuild, and rebuilds
+    // are not rare: window resize, PHONE ROTATION, DPR/settings apply, and every
+    // grade/probe toggle all land here. Dispose the target itself.
+    const brightRT: any = (gb.textureNode as any)?.renderTarget;
+    if (brightRT?.dispose) disposables.push({ dispose: () => brightRT.dispose() });
     bloomPass = (gb as any).mul((float as any)(BLOOM_STRENGTH));
   } else if (bloomEnabled) {
     bloomPass = bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, G.bloomThreshold);
