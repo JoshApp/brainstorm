@@ -1,6 +1,8 @@
 import { isDesktopLike } from './platform';
 import { isGameControlMode } from './input-mode';
 import { deflectOpportunityActive } from '../combat/reactive-defense';
+import { applyThumbRect, thumbRect } from './hud-layout';
+import { isHudEditActive } from '../debug/hud-edit';
 
 // THE PARRY BUTTON.
 //
@@ -24,11 +26,12 @@ import { deflectOpportunityActive } from '../combat/reactive-defense';
 //   press, because the game doesn't yet know which action it is. A dedicated
 //   press can raise a guard immediately — see viewmodel.parryGuard.
 //
-// PLACEMENT. Right thumb arc, above the dodge pad — matching the priority every
-// mobile action game converges on (dodge biggest and closest, parry second).
-// Deliberately SMALLER than dodge (58 vs 74px) and spaced clear of it: two
-// same-sized circles under one thumb is a mis-tap at the exact moment a mis-tap
-// is fatal. Size encodes priority as well as reach.
+// PLACEMENT lives in controls/hud-layout.ts, not here — that table owns the
+// whole right rail so a new button can be checked against its neighbours. Parry
+// sits up-and-LEFT of the dodge pad (the thumb pivots from the corner in an ARC,
+// and the vertical column is already the weapon-swap chip's), and is
+// deliberately SMALLER than dodge — size encodes priority, and two same-sized
+// circles under one thumb is a mis-tap at the moment a mis-tap is fatal.
 //
 // ALWAYS VISIBLE, brightening when a deflect is live. A button that only
 // appeared when parryable would make this a QTE prompt — you'd react to the
@@ -53,21 +56,10 @@ export function createParryButton(): void {
   btn.id = 'parry-button';
   Object.assign(btn.style, {
     position: 'fixed',
-    // UP-AND-LEFT of the dodge pad, not directly above it. The right thumb
-    // pivots from the corner in an ARC, so this sits on the natural sweep — and
-    // stacking straight up would have collided with the weapon-swap chip, which
-    // owns the vertical column at bottom 150px (58 tall → 150-208).
-    //
-    // The right rail, in full, so the next person adding a button can see it:
-    //   dodge  right  20-94,  bottom  28-102  (74px, the biggest — most used)
-    //   PARRY  right 108-164, bottom  46-102  (56px, second priority)
-    //   swap   right  22-80,  bottom 150-208  (hidden until you carry a sidearm)
-    //   rite   right  20-86,  bottom 110-176  (not created today)
-    // 14px of clear air between dodge and parry at zero inset, widening on a
-    // notched device since dodge tracks the inset and this adds to it.
-    right: 'calc(108px + env(safe-area-inset-right, 0px))',
-    bottom: 'calc(46px + env(safe-area-inset-bottom, 0px))',
-    width: '56px', height: '56px', borderRadius: '50%',
+    // Geometry comes from controls/hud-layout.ts — the one table that owns the
+    // right rail, so a new button can be checked against its neighbours and the
+    // player's size scale applies without touching this file.
+    borderRadius: '50%',
     border: '2px solid #4a4038',
     background: 'radial-gradient(circle at 50% 38%, rgba(60,52,44,0.5), rgba(18,15,12,0.6))',
     color: '#cbb89c', fontFamily: 'serif', fontSize: '9px', fontWeight: '700',
@@ -81,11 +73,13 @@ export function createParryButton(): void {
     pointerEvents: 'auto',
   } as Partial<CSSStyleDeclaration>);
   btn.textContent = 'PARRY';
+  applyThumbRect(btn, thumbRect('parry'));
 
   const down = (ev: Event) => {
     ev.preventDefault();
     ev.stopPropagation();
     if (!isGameControlMode()) return;
+    if (isHudEditActive()) return;   // DEV drag mode owns the press
     // Fires on DOWN, not up. A parry is a timing input measured against an
     // incoming blade; charging the player for their own release latency would
     // hand a chunk of the window to the hardware.
@@ -102,6 +96,10 @@ export function tickParryButton(): void {
   const on = !isDesktopLike();
   btn.style.display = on ? 'flex' : 'none';
   if (!on) return;
+  // Re-apply geometry each frame so the size slider (and the DEV drag mode)
+  // take effect live — cheap, and it means the settings screen shows its own
+  // result rather than needing a reload to be believed.
+  applyThumbRect(btn, thumbRect('parry'));
   const live = deflectOpportunityActive();
   if (live === flashing) return;          // only touch the DOM on a change
   flashing = live;

@@ -206,6 +206,11 @@ export interface Settings {
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
   hudStyle: 'classic' | 'minimal' | 'diegetic';
+  /** Size multiplier for the touch thumb buttons (dodge, parry), 0.8–1.4.
+   *  The single most-cited comfort setting in mobile action games: a default
+   *  layout cannot know the size of the hand holding the phone. Position scales
+   *  with it so a bigger button doesn't crawl into its neighbour. */
+  hudButtonScale: number;
   /** Internal one-time-migration marker (not a user toggle). Set once portal
    *  culling flipped to default-on, so existing saves that carried the old
    *  explicit `false` get force-enabled exactly once — see load(). */
@@ -351,6 +356,7 @@ const DEFAULTS: Settings = {
   torchStrengthMul: 1.0,
   torchRangeMul: 1.0,
   hudStyle: 'minimal',
+  hudButtonScale: 1,
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
   migratedShadowRebaseline: true,   // fresh installs start at 'hero' (no migration needed)
   migratedDodgeButton: true,        // fresh installs already default to the button

@@ -156,6 +156,7 @@ import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-l
 import { createConsumableBar } from './controls/consumable-bar';
 import { createDodgeButton } from './controls/dodge-button';
 import { createParryButton, setParryHandler } from './controls/parry-button';
+import { initHudEdit } from './debug/hud-edit';
 import { LEVELS_ENABLED } from './state/leveling';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
@@ -1055,6 +1056,10 @@ setParryHandler(() => {
   weapon.parryGuard(CONFIG.DEFLECT.COMMIT_S);
 });
 createParryButton();
+// DEV-only HUD drag mode (?hudedit=1). The thumb buttons are invisible to
+// `snap` (they gate on touch capability, not viewport), so placement can only
+// be judged on a real device — this makes that a drag instead of arithmetic.
+initHudEdit();
 // Rite button hidden until rites are properly built (Josh) — the seam stays,
 // but the HUD affordance is off so it doesn't imply a finished feature.
 // (createRiteButton() intentionally not called; re-enable when rites land — #98.)

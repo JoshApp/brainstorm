@@ -2,6 +2,8 @@ import { triggerDash } from './dash-input';
 import { getSettings } from '../settings/settings';
 import { isDesktopLike } from './platform';
 import { isGameControlMode } from './input-mode';
+import { applyThumbRect, thumbRect } from './hud-layout';
+import { isHudEditActive } from '../debug/hud-edit';
 
 // THE DODGE BUTTON — and the sprint that shares it.
 //
@@ -65,9 +67,9 @@ export function createDodgeButton(): void {
   btn.id = 'dodge-button';
   Object.assign(btn.style, {
     position: 'fixed',
-    right: 'max(20px, env(safe-area-inset-right, 0px))',
-    bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
-    width: '74px', height: '74px', borderRadius: '50%',
+    // Geometry from controls/hud-layout.ts — the one table that owns the right
+    // rail, so the player's size scale applies without touching this file.
+    borderRadius: '50%',
     border: '2px solid #4a4038',
     background: 'radial-gradient(circle at 50% 38%, rgba(60,52,44,0.55), rgba(18,15,12,0.62))',
     color: '#cbb89c', fontFamily: 'serif', fontSize: '10px', fontWeight: '700',
@@ -80,10 +82,12 @@ export function createDodgeButton(): void {
     pointerEvents: 'auto',
   } as Partial<CSSStyleDeclaration>);
   btn.textContent = 'DODGE';
+  applyThumbRect(btn, thumbRect('dodge'));
 
   const down = (ev: Event) => {
     ev.preventDefault();
     ev.stopPropagation();
+    if (isHudEditActive()) return;   // DEV drag mode owns the press
     pressedAt = performance.now();
     holding = true;
     btn!.style.borderColor = '#7d6a52';
@@ -114,6 +118,9 @@ export function tickDodgeButton(): void {
   const on = !isDesktopLike() && getSettings().dashGesture === 'button';
   btn.style.display = on ? 'flex' : 'none';
   if (!on) { holding = false; sprinting = false; return; }
+  // Live geometry so the size slider (and the DEV drag mode) apply without a
+  // reload — the settings screen shows its own result.
+  applyThumbRect(btn, thumbRect('dodge'));
   sprinting = holding && performance.now() - pressedAt >= HOLD_TO_RUN_MS;
   btn.style.color = sprinting ? '#e8d8b8' : '#cbb89c';
 }

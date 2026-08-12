@@ -696,6 +696,14 @@ function buildControlsTab(): HTMLElement[] {
       get: () => getSettings().hybridLook,
       set: (v) => updateSettings({ hybridLook: v }),
     }));
+    out.push(makeSlider({
+      label: 'BUTTON SIZE',
+      description: 'Size of the dodge and parry pads. A default layout cannot know the size of the hand holding the phone — this is the one comfort setting every mobile action game ships.',
+      min: 0.8, max: 1.4, step: 0.05,
+      get: () => getSettings().hudButtonScale,
+      set: (v) => updateSettings({ hudButtonScale: v }),
+      format: (v) => `${Math.round(v * 100)}%`,
+    }));
     out.push(makeSelect({
       label: 'DODGE INPUT',
       // The button variant was missing from this text entirely, which is half of
