@@ -312,6 +312,82 @@ touching anything else.
 
 ---
 
+## 1d. Targeting / lock-on — researched, and the answer is "not the way they do it"
+
+Josh: *should we have a targeting system, so you can switch from free to focused
+combat?* The need is real. The obvious implementation is the one to avoid.
+
+### What WWM does
+
+A configurable lock-on: a toggle key (TAB / middle-mouse / right stick), with
+settings for `lock enemy target` (nearest), `auto lock switch`, `prioritize the
+target at the centre of the screen`, and `camera direction correction`. Locked
+targets are marked with a white dot and the character auto-rotates.
+
+### What their players say about it — this is the useful part
+
+The complaints are consistent and they are all the *same* complaint:
+
+- **Unwanted automatic target switching** mid-fight. "Clunky at best."
+- **It re-locks to the wrong enemy even with the settings disabled.**
+- **The camera stops being yours** — players report invisible rotation limits,
+  and being unable to track enemies that move behind or above them.
+- Players' recommended fix is a stack of settings to turn the automation *off*,
+  and even then "these adjustments don't fully resolve" it.
+
+**Every top complaint is a variant of "it took my camera."** That is the design
+lesson, and it is much more valuable than the feature list.
+
+### Why this is worse for us than for them
+
+Three DELVE-specific multipliers, and together they're decisive:
+
+1. **We're first-person. The camera IS the aim IS your situational awareness.**
+   In third-person a lock-on orbits a character you can see; in first-person it
+   turns your head. There is no "look at the fight while facing elsewhere."
+2. **We just decided stalkers may be mean.** We are deliberately building enemies
+   that flank to your blind side and lurk at the light's edge. A system that pins
+   your view to one enemy is *actively hostile* to the enemies we're about to
+   author — it would take away the exact input the counterplay depends on.
+3. **Forced first-person camera rotation is a nausea risk** in a way that
+   third-person orbiting is not.
+
+**Recommendation: no hard lock-on.** Not a rejection of Josh's need — a rejection
+of that particular mechanism.
+
+### What to build instead — a ladder, none of which takes the camera
+
+We already own more of this than it looks. `pickTarget` (`attack.ts`) does
+cone + LOS + point-blank-grace target selection for ranged; melee resolves as a
+swept capsule in the aim frame; `tap-target.ts` already raycasts a tap onto a
+specific object.
+
+| # | layer | what it does | status |
+|---|---|---|---|
+| **1** | **Soft-lock aim assist** | the attack resolves toward the best target in the cone | ✓ ranged has it |
+| **2** | **Camera FRICTION** | look-drag *slows* as it crosses an enemy — helps you stop on target, never moves the view itself. Push harder and you sail past | ✗ **highest value for touch** |
+| **3** | **Target designation** | tap an enemy to mark it: attacks prefer it, HUD shows its poise, **camera never moves**. Clears on death or on tapping elsewhere | ✗ this is the "focus" Josh wants |
+| **4** | **Idle re-centre assist** | a gentle drift toward the current threat **only while the right thumb isn't touching** — instantly and totally yours the moment you touch | ✗ uncertain, prototype |
+
+**Layer 2 is the one I'd build first.** Touch drag has no precision — there's no
+analogue stick resistance and no mouse-hand fine motor control — so "friction"
+(the console-shooter sticky-aim trick) buys the most accuracy per unit of
+complexity, and it cannot take agency because it only ever *resists*, never
+*acts*.
+
+**Layer 3 is the real answer to "free vs focused."** It gives the commitment and
+the readout of a lock-on with none of the camera cost. Note the presentation
+constraint: **the marker must not be a rim glow** — rim glow means ARCANE in our
+monster reveal taxonomy, and spending it here would break the colour legend.
+Something carved, or a desaturation of everything else, instead.
+
+**Layer 4 is the interesting-but-risky one.** "The camera helps while you're busy
+and vanishes the moment you care" is elegant in principle, and because it only
+acts when the player has expressed *no* aim intent it dodges the agency problem
+in theory. In practice, drift can feel like a fight. Prototype before believing.
+
+---
+
 ## 2. The comparison that actually matters
 
 Every one of these games is deep. They buy their depth in completely different

@@ -383,6 +383,26 @@ input and no waiting state.
 If the "wall of shield" fantasy is wanted later, put it on a RELIC or a specific
 weapon, so it's a build choice rather than a tempo tax on every fight.
 
+### No hard lock-on — RECOMMENDED (open until Josh calls it)
+
+The need ("switch from free to focused combat") is real; the usual mechanism is
+the one to avoid. Every top complaint about WWM's lock-on is a variant of *"it
+took my camera"* — unwanted auto-switching, re-locking with the setting off,
+being unable to track enemies that move behind you.
+
+That's worse for us than for them on three counts: we're **first-person** (the
+camera IS the aim IS your awareness), we just decided **stalkers may be mean** —
+so we're deliberately building enemies whose counterplay *is* looking around, and
+a lock-on would remove the exact input they demand — and forced first-person
+rotation carries a nausea risk third-person orbiting doesn't.
+
+Build a ladder instead, none of which takes the camera: soft-lock aim assist
+(✓ ranged already), **camera friction** (drag slows over a target — highest value
+for touch, and it can only resist, never act), **target designation** (tap to
+mark; attacks prefer it, HUD shows its poise, camera never moves — this is the
+"focused" mode), and possibly an idle re-centre that yields instantly on touch.
+Full reasoning in `COMBAT-RESEARCH.md` §1d.
+
 ### Still open
 
 - **Do we want frame data surfaced to the player anywhere?** Souls hides it;
