@@ -207,6 +207,26 @@ export interface Ability {
   /** Ability-scoped telegraphs (intent register + any spatial tell that
    *  should span multiple steps). */
   telegraphs?: Telegraph[];
+  /** ROOT MOTION — the step-in that makes a swing TRAVEL.
+   *
+   *  The danger in a soulslike is reach and commitment, not the damage number.
+   *  Until this existed, only `dash` and `leap` moved a mob's root, so every
+   *  ordinary swing was thrown from a standstill and one backstep beat it —
+   *  which is why fights collapsed into backpedal-poke.
+   *
+   *  `from`/`to` are fractions of the WHOLE window (windup+strike+recover), so
+   *  a step can start late in the telegraph and carry through contact.
+   *  `distance` is metres travelled over that span.
+   *
+   *  It moves along the caster's COMMITTED FACING, never homing toward you.
+   *  That's the whole read: facing locks at commit, so the attack travels down
+   *  the line it aimed, and you beat it by not being on that line. A homing
+   *  step would just be a small dash and would delete the positional answer.
+   *  Pairs with the melee arc — the two together are "go around it".
+   *
+   *  Melee-opening abilities get a default step-in applied by resolveAbilities;
+   *  set `motion: null` to opt a specific attack out (a planted, rooted swing). */
+  motion?: { distance: number; from: number; to: number } | null;
   /** Body pose flavour for the intent telegraph. */
   pose?: 'swing' | 'smash' | 'cast' | 'charge' | 'lash';
   /** Creep toward the player during windup so a stationary player still
@@ -311,12 +331,53 @@ export function defaultAbility(spec: EnemySpec): Ability {
   };
 }
 
+/** Where a time-based contact falls in an ability's window, 0..1. Mirrors the
+ *  runtime's own gate (`windup + strike * MOB_STRIKE_CONTACT_FRAC`), which is
+ *  why the fraction is passed in rather than imported — this module stays free
+ *  of the config so it can be reasoned about (and tested) on its own. */
+function contactFracOf(a: Ability, strikeContactFrac: number): number | null {
+  const total = a.windup + a.strike + a.recover;
+  if (!(total > 0)) return null;
+  return (a.windup + a.strike * strikeContactFrac) / total;
+}
+
+/** Give a melee-opening ability its default STEP-IN, anchored to that ability's
+ *  own contact frame so it adapts to any phase ratios rather than assuming a
+ *  shape. Explicit `motion` (including `null` to opt out) always wins.
+ *
+ *  Applied here, in ONE place, so it reaches both the synthesized legacy
+ *  abilities and hand-authored ones — most of the roster is still on the legacy
+ *  flat fields, so a default applied only to explicit `abilities` arrays would
+ *  have missed exactly the mobs that stand still. */
+export function withDefaultStepIn(
+  a: Ability,
+  cfg: { DISTANCE: number; LEAD: number; TRAIL: number },
+  strikeContactFrac: number,
+): Ability {
+  if (a.motion !== undefined) return a;                       // authored, or opted out
+  if (a.steps[0]?.action.kind !== 'melee') return a;          // dashes/leaps move themselves
+  const c = contactFracOf(a, strikeContactFrac);
+  if (c === null) return a;
+  const from = Math.max(0, c - cfg.LEAD);
+  const to = Math.min(1, c + cfg.TRAIL);
+  if (to <= from) return a;
+  return { ...a, motion: { distance: cfg.DISTANCE, from, to } };
+}
+
 /** The enemy's abilities, highest-priority first. Explicit `spec.abilities`
- *  win; otherwise the legacy fields synthesize a single default. */
-export function resolveAbilities(spec: EnemySpec, override?: Ability[]): Ability[] {
+ *  win; otherwise the legacy fields synthesize a single default. Every
+ *  melee-opening ability then picks up the default step-in. */
+export function resolveAbilities(
+  spec: EnemySpec,
+  override?: Ability[],
+  stepIn?: { DISTANCE: number; LEAD: number; TRAIL: number },
+  strikeContactFrac = 0.6,
+): Ability[] {
   // Phase-aware: callers (mobs/enemy.ts during phase transitions) pass
   // an explicit ability list to override the spec's default.
-  if (override && override.length > 0) return override;
-  if (spec.abilities && spec.abilities.length > 0) return spec.abilities;
-  return [defaultAbility(spec)];
+  const base = override && override.length > 0 ? override
+    : spec.abilities && spec.abilities.length > 0 ? spec.abilities
+    : [defaultAbility(spec)];
+  if (!stepIn) return base;
+  return base.map((a) => withDefaultStepIn(a, stepIn, strikeContactFrac));
 }

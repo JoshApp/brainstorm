@@ -736,6 +736,25 @@ export const CONFIG = {
     // random. Per-action `arc` on a melee overrides it: widen for a lateral
     // sweep, narrow for a lunging thrust.
     MELEE_ARC_HALF: 1.0,
+    // STEP-IN — every melee swing carries the body forward a little.
+    //
+    // Josh, 2026-08-12: "most of them stand still when attacking, they don't
+    // really have range in their moves." He was right, and it was structural:
+    // only `dash` and `leap` moved a mob's root, so an ordinary swing was thrown
+    // from a standstill and one backstep beat it. Combined with the missing melee
+    // arc, retreat was the ONLY answer that worked, and fights collapsed into
+    // backpedal-poke.
+    //
+    // The span is anchored to each ability's own CONTACT frame rather than fixed
+    // fractions, so it adapts to any phase ratios — a stoneguard's 1.4s heave and
+    // a skirmisher's 0.4s jab both start stepping the same beat before they land.
+    // The step travels along COMMITTED FACING, so it extends reach without
+    // homing: you still beat it by not being on the line.
+    STEP_IN: {
+      DISTANCE: 0.55,   // metres carried forward (a lean into the blow, not a lunge)
+      LEAD: 0.20,       // starts this fraction of the window BEFORE contact
+      TRAIL: 0.06,      // and carries this far past it (follow-through)
+    },
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
     // Idle gaze: a mob at post should mostly STAND and watch, with the odd small
     // reorientation — NOT pivot its whole body left-right on a timer (that reads

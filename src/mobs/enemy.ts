@@ -643,7 +643,7 @@ export function createEnemy(
     phaseIndex++;
     currentMaxHp = next.hp;
     currentAbilities = next.abilities;
-    abilities = resolveAbilities(spec, currentAbilities);
+    abilities = resolveAbilities(spec, currentAbilities, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
     const ent = getEntity(entityId);
     if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
     // Per-phase poise: a phase can become UNSTUNNABLE (high poise) or flimsier.
@@ -781,12 +781,18 @@ export function createEnemy(
   const stepEvents = new Set<string>();
 
   // ── Abilities ──────────────────────────────────────────────────────
+  // A ROOTED mob never steps in. Not a special case for the lasher — it's the
+  // general rule: if a thing cannot walk, its swing cannot carry it forward.
+  // Without this, giving every melee attack a default step-in would have quietly
+  // taught the floor-anchored plant to stroll toward you.
+  const stepInCfg = spec.moveSpeed > 0 ? CONFIG.ENEMY_AI.STEP_IN : undefined;
+
   // The attack runner is fully ability-driven. Enemies without an
   // explicit `abilities` list get one default ability synthesized from
   // their legacy fields (see resolveAbilities). `currentAbility` is the
   // one being executed across winding/striking/recovering; `cooldowns`
   // tracks per-ability lockout so a charge can't fire every second.
-  let abilities = resolveAbilities(spec, phases ? currentAbilities : undefined);
+  let abilities = resolveAbilities(spec, phases ? currentAbilities : undefined, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
   // Commit distance — the farthest range at which ANY ability triggers.
   // Beyond this the enemy just chases to close. Equals attackRange for a
   // pure melee mob, the cast range for a shooter.
@@ -960,6 +966,53 @@ export function createEnemy(
    * pathfinder is bypassed — they just steer directly and pass through
    * props (walls still block them through clampMove's ignoreObstacles).
    */
+  /** ROOT MOTION for the current ability — the step-in that makes a swing
+   *  TRAVEL. Runs during winding / striking / recovering, so a step can be
+   *  authored anywhere in the window.
+   *
+   *  Moves along the caster's COMMITTED FACING, never toward the player. That
+   *  is the entire read: facing locks at commit, so the attack carries down the
+   *  line it aimed and you beat it by not being on that line. A homing step
+   *  would be a small dash and would delete the positional answer — the same
+   *  mistake, in movement, that the missing melee arc was in space.
+   *
+   *  Goes through walkable.clampMoveInto like every other root writer, or mobs
+   *  would step through walls. */
+  function tickAbilityMotion(dt: number, walkable: WalkableRegion): void {
+    const m = currentAbility?.motion;
+    if (!m || !currentAbility) return;
+    const total = currentWindupTime + currentAbility.strike + currentAbility.recover;
+    if (total <= 0) return;
+
+    // Elapsed across the WHOLE window, so from/to read as one timeline rather
+    // than per-phase fractions the author would have to convert by hand.
+    const elapsed =
+      state === 'winding'    ? phaseTimer
+      : state === 'striking' ? currentWindupTime + phaseTimer
+      : state === 'recovering' ? currentWindupTime + currentAbility.strike + phaseTimer
+      : -1;
+    if (elapsed < 0) return;
+
+    const p = elapsed / total;
+    if (p < m.from || p > m.to) return;
+
+    const span = Math.max(1e-4, m.to - m.from);
+    const speed = m.distance / (span * total);       // metres per second
+    const step = speed * dt;
+    if (step <= 0) return;
+
+    const fx = -Math.sin(container.rotation.y);      // committed facing (-Z local)
+    const fz = -Math.cos(container.rotation.y);
+    const cx = container.position.x, cz = container.position.z;
+    const resolved = walkable.clampMoveInto(
+      tmpClampFwd, cx, cz, cx + fx * step, cz + fz * step,
+      spec.collisionRadius,
+      spec.phasing ? { ignoreObstacles: true } : undefined,
+    );
+    container.position.x = resolved.x;
+    container.position.z = resolved.z;
+  }
+
   function moveTowards(
     targetX: number, targetZ: number, speed: number, dt: number,
     walkable: WalkableRegion, nav?: NavGrid,
@@ -3095,6 +3148,7 @@ export function createEnemy(
       case 'winding': {
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
+        tickAbilityMotion(dt, walkable);
         const t = Math.min(1, phaseTimer / currentWindupTime);
         applyTelegraph(currentAbility.pose, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
@@ -3133,6 +3187,7 @@ export function createEnemy(
       case 'striking': {
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
+        tickAbilityMotion(dt, walkable);
         // Run the timeline: fire each step once its trigger is met, then
         // keep ticking it until its action latches done. Per-step state,
         // so steps never interfere with each other.
@@ -3176,6 +3231,7 @@ export function createEnemy(
       case 'recovering': {
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
+        tickAbilityMotion(dt, walkable);
         const t = Math.min(1, phaseTimer / currentAbility.recover);
         applyTelegraph(currentAbility.pose, 'recover', t);
         if (lashTendril) lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
