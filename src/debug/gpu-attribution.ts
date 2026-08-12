@@ -12,6 +12,7 @@ import { setMotesHidden } from '../effects/drifting-motes';
 import { setSurfaceDetailEnabled, getSurfaceDetailEnabled } from '../style/surface-detail';
 import { setAdaptiveResolution, isAdaptiveResolutionEnabled } from '../scene/adaptive-resolution';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { deferGpuDispose } from '../style/render-webgpu';
 
 // GPU COST ATTRIBUTION — an A/B auto-profiler.
 //
@@ -39,8 +40,17 @@ import type { DelveRenderer } from '../scene/create-renderer';
 // arms the readPixels probe itself for the duration — one tap, no setup.
 // Stand still during the sweep — a moving camera changes the baseline.
 
-const SETTLE_FRAMES = 9;     // skip after a toggle — covers the timer's 1-3 frame lag
-const SETTLE_RECOMPILE = 40; // toggles that change light count / override materials recompile every program
+const SETTLE_FRAMES = 9;      // skip after a toggle — covers the timer's 1-3 frame lag
+// Toggles that change light count / override materials recompile EVERY program.
+// This was 40 frames (~0.67s at 60fps), which is not long enough: the recompile
+// storm is visible as a multi-second hiccup on screen, so the measurement
+// window opened while pipelines were still being built and charged their cost
+// to the feature AND to the baseline that follows it. The tell is in the
+// report's own footer — a run measured at 40 showed `baseline drift … span
+// 5.06` against a 7.63 baseline, i.e. the baselines disagreed by two thirds of
+// the thing being measured. 150 frames is ~2.5s, past the observed hiccup.
+// Costs ~20s of extra sweep time; a sweep that has to be re-run is worse.
+const SETTLE_RECOMPILE = 150;
 const SAMPLE_FRAMES = 30;    // average the GPU timer over this many frames per stage
 
 let scene: THREE.Scene | null = null;
@@ -269,7 +279,21 @@ export async function runGpuAttribution(): Promise<void> {
   if (root.overrideMaterial === lambertMat || root.overrideMaterial === basicMat) root.overrideMaterial = null;
   setPS1Scale(prevScale);
   if (rend.getPixelRatio() !== prevDpr) applyDpr(prevDpr);
-  lambertMat.dispose(); basicMat.dispose();
+  // DEFERRED, not immediate. These two were bound as scene.overrideMaterial for
+  // whole stages, so on WebGPU they own a pipeline and bind groups that queued
+  // frames may still reference. Disposing them synchronously here destroyed
+  // those resources mid-flight and the renderer went BLACK at the end of the
+  // sweep — and stayed black, so a second sweep measured a dead image and
+  // reported numbers for it. deferGpuDispose is this codebase's seam for
+  // exactly that (it frees once the GPU queue is provably empty); this call
+  // site predated it. On WebGL the drain never runs, so dispose directly there.
+  const isWebGPU = !!(rend as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend?.isWebGPUBackend;
+  if (isWebGPU) {
+    deferGpuDispose(() => lambertMat.dispose());
+    deferGpuDispose(() => basicMat.dispose());
+  } else {
+    lambertMat.dispose(); basicMat.dispose();
+  }
   if (adaptiveWasOn) setAdaptiveResolution(true);
 
   const baseline = measured.get(baselineKeys[0]);
