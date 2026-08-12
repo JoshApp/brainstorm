@@ -235,17 +235,80 @@ session was protecting. **Recommendation: don't take it.** But it's worth knowin
 that the option exists and what it would buy, because if combat ever feels too
 punishing this is the lever that would change its character most.
 
-### Honest gap — no public frame data
+### Honest gap — no trustworthy WWM frame data exists
 
-Despite one guide being titled "Timings & Frame Data," **no source publishes
-actual frame counts or millisecond windows** for parry, dodge i-frames, Exhausted
-duration, or the Execute window. The only quantitative anchors found:
+Searched hard for this, in English and Chinese, including PvP and datamining
+angles. **Conclusion: no reliable third-party frame data for WWM exists, and the
+numbers that ARE published should not be used.**
 
-- the parry window is *"more generous than Sekiro or Elden Ring"* (comparative)
-- Execute is best fired at ~1 second remaining on its prompt
+The evidence trail matters more than the conclusion:
 
-So the numbers in §3 remain our best basis for tuning — not WWM's, which aren't
-public.
+1. **The one source claiming frame data contradicts itself.** It states the parry
+   window is *"1–3 frames before impact"* AND *"more forgiving than Sekiro or
+   Elden Ring"* — on the same site. **Sekiro's deflect window is 12–30 frames
+   (200–500ms).** A 1–3 frame window (16–50ms at 60fps) would be roughly *ten
+   times harder* than Sekiro, not more forgiving. Both claims cannot be true.
+2. **The sites publishing numbers have AI-generated-SEO hallmarks** — confident
+   figures, no stated methodology, no capture or frame-stepping evidence, and
+   claims that conflict across their own pages.
+3. **Chinese practical guides say the opposite of the English ones.** GamerSky's
+   combat guide describes 卸势 (deflect) as having *"very strict timing
+   requirements"*, with the author unable to consistently deflect full boss
+   combos after hours of practice. That directly contradicts "more forgiving
+   than Sekiro."
+4. **No datamine, no frame-data project.** Sekiro has a full community
+   frame-data video series for every attack in the game. WWM has nothing
+   equivalent — it's newer, it's live-service (numbers move every patch), and
+   the fighting-game/speedrun culture that produces frame data hasn't formed
+   around it.
+
+**So: treat every WWM timing number you find online as unsourced.** Including the
+ones in the earlier sections of this doc — the "generous window" claim is
+comparative marketing language, not a measurement.
+
+### What we CAN use: Sekiro's numbers, which are real
+
+Sekiro's deflect frame data is genuinely community-verified, and it gives us a
+calibrated reference point plus one mechanic worth stealing outright:
+
+| Sekiro | value |
+|---|---|
+| deflect window (base) | **12–30 frames (200–500ms)**, sources vary by measurement method |
+| **window shrinks when you mash** | down to as little as **4 frames** per recent press |
+| penalty clears after | **30 frames**, or **immediately on a successful deflect** |
+
+**The anti-mash design is the steal.** Sekiro doesn't lock you out for mashing —
+it *narrows the window*, and a clean deflect instantly forgives the penalty. That
+is much more elegant than a hard cooldown: it punishes panic without ever telling
+you "no", and it rewards the player who lands one good read by immediately
+restoring full generosity.
+
+We currently use a hard lockout (`DEFLECT.LOCKOUT_S` 0.40). A shrinking window
+would be strictly better feel for the same anti-mash purpose, and it's a small
+change to the parry-window computation.
+
+### Correction to §3 — our window is generous; our LEAD is the tight part
+
+Re-checking our own numbers against Sekiro's real ones sharpens the earlier
+claim, and partly walks it back:
+
+| | DELVE | Sekiro |
+|---|---|---|
+| active parry window | **420ms** (`PARRY_WINDOW_S`) | 200–500ms |
+| tell lead before the strike | **300ms** (`FLASH_LEAD_S`) | — |
+
+**Our active window (420ms) is already at the generous end of Sekiro's range.**
+That is not the problem. The tight number is `FLASH_LEAD_S` at **300ms** — that's
+the *reaction budget*, the time between the white flash appearing and the strike
+landing. Against a ~250ms human baseline plus 50–100ms of touch and display
+latency, 300ms leaves roughly zero margin for a player who wasn't already
+looking.
+
+So the refined hypothesis is narrower and more testable than what §3 originally
+said: **the window is fine; the warning is short.** Raising `FLASH_LEAD_S` toward
+0.40 would cost nothing mechanically (the flash simply appears earlier) and buys
+the margin the arithmetic says we're missing. Worth trying on the phone before
+touching anything else.
 
 ---
 

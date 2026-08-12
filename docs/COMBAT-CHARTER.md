@@ -294,13 +294,21 @@ Short, and each line should be mechanically checkable rather than a sentiment.
    different attacks look identical during the only window that matters.
    (From the combat-design literature — see `COMBAT-RESEARCH.md` §3.)
 
-**Open, and probably a real problem: our tell may be arithmetically too short.**
-The standard formula is `anticipation = reaction + trigger + buffer`, on a ~0.25s
-human reaction baseline. `FLASH_LEAD_S` is 0.30s, and that 0.25s is a *PC*
-figure — on a phone, touch and display latency plus a first-person player who may
-be looking elsewhere push the real budget to ~0.35–0.40s. If so the deflect reads
-as twitchy for reasons that are arithmetic, not skill. Test on the phone before
-tuning. `COMBAT-RESEARCH.md` §3.
+**Open, and probably a real problem: our WARNING is short (the window is fine).**
+Checked against Sekiro's community-verified frame data: our active parry window
+(`PARRY_WINDOW_S` 420ms) is already at the generous end of Sekiro's 200–500ms —
+not the issue. The tight number is `FLASH_LEAD_S` at **300ms**, the reaction
+budget between the white flash and the strike. Against a ~250ms human baseline
+plus 50–100ms of touch/display latency, that leaves ~zero margin for a player who
+wasn't already looking. Raising it toward 0.40 costs nothing mechanically (the
+flash just appears earlier). Test on the phone. `COMBAT-RESEARCH.md` §1c.
+
+**Worth stealing from Sekiro: anti-mash by SHRINKING the window, not locking it
+out.** Sekiro narrows the deflect window per recent press (to as little as 4
+frames) and restores it instantly on a successful deflect, rather than denying
+input outright. We use a hard `DEFLECT.LOCKOUT_S` 0.40. The shrinking model
+punishes panic without ever saying "no", and rewards one good read by
+immediately forgiving the penalty.
 
 ---
 
