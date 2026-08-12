@@ -289,6 +289,18 @@ Short, and each line should be mechanically checkable rather than a sentiment.
    the flag existed and two downstream systems ignored it.)
 7. **The player's death should be explicable in one sentence.** If we can't write
    it, the enemy is unfair.
+8. **No two attacks in one enemy's moveset share an anticipation.** Reusing a
+   verb ACROSS mobs is good economy; reusing it WITHIN a moveset means two
+   different attacks look identical during the only window that matters.
+   (From the combat-design literature — see `COMBAT-RESEARCH.md` §3.)
+
+**Open, and probably a real problem: our tell may be arithmetically too short.**
+The standard formula is `anticipation = reaction + trigger + buffer`, on a ~0.25s
+human reaction baseline. `FLASH_LEAD_S` is 0.30s, and that 0.25s is a *PC*
+figure — on a phone, touch and display latency plus a first-person player who may
+be looking elsewhere push the real budget to ~0.35–0.40s. If so the deflect reads
+as twitchy for reasons that are arithmetic, not skill. Test on the phone before
+tuning. `COMBAT-RESEARCH.md` §3.
 
 ---
 
