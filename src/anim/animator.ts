@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Clip, Pose, JointPose } from './types';
 import type { Vec3 } from '../ecs/model-types';
 import { ease } from './easing';
+import { clipContactAt, warpToContact } from './contact-warp';
 
 // Per-mob keyframe animator with TWO LAYERS:
 //
@@ -44,6 +45,11 @@ interface ActiveBase {
 interface ActiveOverride extends ActiveBase {
   fadeIn: number;
   fadeOut: number;
+  /** Clip-time of the hit, and where the real damage falls in the window. When
+   *  both are set, clip time is warped so they coincide — see contact-warp.ts.
+   *  null on either = play the clip unwarped (the old behaviour). */
+  clipContact: number | null;
+  mechContact: number | null;
 }
 
 export class Animator {
@@ -70,11 +76,21 @@ export class Animator {
   }
 
   /** Fire a one-shot ability pose. `durationSec` stretches the normalized
-   *  keyframes to fit the ability's real window. */
-  playOverride(clip: Clip, durationSec: number): void {
+   *  keyframes to fit the ability's real window.
+   *
+   *  `mechContact` (0..1) is where in that window the attack actually DEALS
+   *  DAMAGE. Pass it and clip time is warped so the clip's contact frame lands
+   *  on that instant — the visual hit and the real hit stop drifting apart.
+   *  Omit it for anything whose contact isn't a fixed time (a dash connects
+   *  when it reaches you) and the clip plays unwarped, exactly as before. */
+  playOverride(clip: Clip, durationSec: number, mechContact?: number | null): void {
     const fadeIn = Math.min(0.08, durationSec * 0.06);
     const fadeOut = Math.min(0.15, durationSec * 0.12);
-    this.override = { clip, duration: durationSec, t: 0, fadeIn, fadeOut };
+    this.override = {
+      clip, duration: durationSec, t: 0, fadeIn, fadeOut,
+      clipContact: mechContact == null ? null : clipContactAt(clip),
+      mechContact: mechContact ?? null,
+    };
   }
 
   /** Drop any active override immediately (e.g. interrupted by stagger). */
@@ -104,13 +120,21 @@ export class Animator {
 
     // Sample each layer once.
     const basePose = this.base ? sample(this.base.clip, this.base.t / this.base.duration) : null;
-    const overPose = this.override ? sample(this.override.clip, this.override.t / this.override.duration) : null;
+    const overPose = this.override ? sample(this.override.clip, this.overrideClipTime(this.override)) : null;
 
     // Write to every joint we own, even if neither layer touches it — so a
     // joint a previous override moved snaps back to rest when the clip ends.
     for (const [name, j] of this.joints) {
       writeJoint(j, basePose?.[name], overPose?.[name], overWeight);
     }
+  }
+
+  /** Clip time to sample for the override — warped onto the mechanical contact
+   *  when we were told where it is, raw progress otherwise. */
+  private overrideClipTime(o: ActiveOverride): number {
+    const p = o.t / o.duration;
+    if (o.clipContact == null || o.mechContact == null) return p;
+    return warpToContact(p, o.clipContact, o.mechContact);
   }
 }
 

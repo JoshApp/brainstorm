@@ -48,5 +48,13 @@ export interface Clip {
   /** Smoothstep between keyframes vs. raw linear. Default true — almost
    *  always what you want; raw linear reads as snappy/robotic. */
   smooth?: boolean;
+  /** Normalized time at which this clip reads as CONNECTING — the frame the eye
+   *  calls the hit. When the animator is told where the mechanical damage falls,
+   *  clip time is warped so these two coincide, which is what stops the visual
+   *  and the damage drifting apart on mobs with different phase ratios (see
+   *  anim/contact-warp.ts). Omit and it's inferred from the `easeInCubic` SNAP
+   *  keyframe, per the authoring convention in clips-mobs.ts — so existing clips
+   *  need no edit. Set it explicitly when a clip's hit isn't its snap. */
+  contactAt?: number;
   keyframes: Keyframe[];
 }

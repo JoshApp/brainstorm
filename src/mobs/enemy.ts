@@ -51,6 +51,7 @@ import { tryJustDodge } from '../combat/just-dodge';
 import { arenaEnemiesInvincible } from '../debug/arena-mode';
 import { tagPerfEvent } from '../debug/perf-recorder';
 import { Animator } from '../anim/animator';
+import { mechanicalContactFrac } from '../anim/contact-warp';
 import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
 import type { Creature } from '../content/creature-types';
@@ -3330,7 +3331,23 @@ export function createEnemy(
       const clip = bundle.abilities[abId];
       if (clip && currentAbility) {
         const total = currentWindupTime + currentAbility.strike + currentAbility.recover;
-        clipAnimator.playOverride(clip, total);
+        // ONE CLOCK: tell the animator where the damage actually lands so it can
+        // warp clip time onto it. Uses the LIVE (jittered) windup, so a telegraph
+        // rolled 22% long still lands its visual hit on its real one.
+        //
+        // Only for abilities whose contact is a fixed INSTANT. A dash connects
+        // when it physically reaches you — there's no time to align to, and
+        // warping toward a made-up one would move the animation away from the
+        // truth rather than toward it. Those play unwarped.
+        const opener = currentAbility.steps[0]?.action;
+        const timedContact = opener?.kind === 'melee';
+        const mech = timedContact
+          ? mechanicalContactFrac(
+              currentWindupTime, currentAbility.strike, currentAbility.recover,
+              CONFIG.MOB_STRIKE_CONTACT_FRAC,
+            )
+          : null;
+        clipAnimator.playOverride(clip, total, mech);
       }
     }
     // Stagger drops any in-flight override so the reel reads.

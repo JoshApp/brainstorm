@@ -240,6 +240,30 @@ failed. Part II: the spine).
 
 ### Shipped
 
+- **What you see is when it hits** (2026-08-12). Fairness rule 3, closed. A mob's
+  animation clip was stretched across `windup+strike+recover` while its damage
+  fired inside the STRIKE window — two clocks pinned to different things, so the
+  alignment was an accident of each mob's phase ratios. Measured drift ran +34ms
+  (ghoul) to +197ms (stoneguard), always the same direction: **the damage landed
+  before the limb arrived.** Clip time is now warped so the clip's contact frame
+  lands on the mechanical one (`anim/contact-warp.ts`). No clip was re-authored —
+  contact is inferred from the `easeInCubic` SNAP the verb library already used.
+  Dash-opening abilities stay unwarped on purpose: they connect positionally, so
+  there's no fixed instant to align to. Tests assert <1ms residual per clip AND
+  drive a real `Animator` to prove the wiring, not just the arithmetic.
+- **Attacks respect a forward arc** (2026-08-12). Fairness rule 2, mostly closed.
+  Enemy melee had no facing check at all — a flat distance test — so a mob could
+  hit you from behind itself, and since facing LOCKS through strike and recover
+  that was exactly when you'd have dodged around it. Damage, threat flash and
+  parry now share one arc function, which makes the flash going dark as you
+  circle out a teaching signal in its own right. (Not fully closed until strikes
+  resolve against a swept volume on the striking limb.)
+- **The tell clears the mobile reaction budget** (2026-08-12). `FLASH_LEAD_S`
+  0.30 → 0.40 on arithmetic, and anti-mash switched from a hard lockout to
+  Sekiro's shrinking window — a refused input is indistinguishable from a
+  mistimed one, so we narrow instead of deny and a clean deflect forgives it
+  instantly. Charge tells are now TIME-TO-CONTACT, so a dash gives the same
+  warning whether it committed from 6.5m or 1.8m.
 - **A charge can be MET, not only dodged** (2026-08-12). The skirmisher's dash is
   deflectable now. Three things had to be true and only one of them was: the
   parry check lived in the `melee` action, so a dash's contact damage — a

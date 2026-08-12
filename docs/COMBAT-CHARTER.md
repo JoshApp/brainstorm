@@ -320,7 +320,7 @@ built twice.
 | # | What | Why here |
 |---|---|---|
 | **1** | **Enemy limb hitboxes + angular gate** (Finding B) | The biggest fairness win in the doc, and it does NOT need the timeline rewrite. Standalone, immediately felt: dodging around an attack starts working |
-| **2** | **Mob move timeline** (Idea 1) | The keystone. Everything below needs an addressable contact frame. Kills the drift table |
+| ~~2~~ | ~~Mob move timeline~~ — **the DRIFT half shipped 2026-08-12** (`anim/contact-warp.ts`) | Clip time is now warped so a clip's contact frame lands exactly on the mechanical damage instant. Kills the drift table (+34…+197ms → <1ms, asserted per-clip in tests) with **zero re-authoring** — contact is inferred from the existing `easeInCubic` SNAP convention. Dash-opening abilities are left unwarped on purpose: they connect positionally, so there is no fixed instant to align to. **Still outstanding from this step:** an addressable timeline that ROOT MOTION and step-triggers can hang off (below) |
 | **3** | **Root motion track + step-in as the melee default** (Idea 4, #141) | The fix for "they all stand still." Needs 2 |
 | **4** | **Additive hit-reaction layer** | Cheap once 2 exists; buys most of the "alive" read |
 | **5** | **The signal layer** (Idea 5) — eyeshine, sound leads, disturbed props — **then ONE stalker, end to end** | Promoted by the 2026-08-12 decision that stalkers may be mean: the permission and the signal ship together, or meanness is a damage tax. Prototype one enemy before any roster pass — this reads completely differently in the hand than on paper. Also unblocks ENEMY-AI-V2 Stage 3 |
