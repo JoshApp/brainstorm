@@ -468,6 +468,27 @@ export function deferGpuDispose(dispose: () => void): void {
 /** Drop the pipeline so the next renderWebGPU rebuilds it (old one disposed once
  *  the GPU queue drains). */
 export function rebuildWebGPUPipeline(): void {
+  // DEFERRED to the top of the next frame. Callers fire this from anywhere —
+  // settings handlers, a resize event, the attribution sweep's per-frame stage
+  // toggles — and tearing the graph down at an arbitrary point produced a pass
+  // where the scene-pass DEPTH texture was both sampled and attached:
+  //   [Texture "depth"] usage (TextureBinding|RenderAttachment) includes
+  //   writable usage and another usage in the same synchronization scope.
+  // That fails validation, so the encoder never finishes, so the submit never
+  // completes, so inFlight never decrements and the backpressure gate skips
+  // EVERY later frame — a permanently black canvas with a live DOM HUD. (The
+  // same conflict on the 'output' texture is recorded in warmSceneCompile's
+  // comment; this is the depth twin of it.)
+  //
+  // Rebuilding at frame start instead means the graph is only ever swapped when
+  // no pass is bound, which is the same discipline drainRetired and
+  // applyPendingResScale already follow.
+  rebuildPending = true;
+}
+let rebuildPending = false;
+function applyPendingRebuild(): void {
+  if (!rebuildPending) return;
+  rebuildPending = false;
   retired.push(...disposables);
   disposables = [];
   pipeline = null; scenePass = null; aoPassRef = null;
@@ -507,6 +528,10 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  // Honour a deferred rebuild here too, so the warm / lux / compile paths that
+  // call ensurePipeline directly can't keep using a graph that has already been
+  // invalidated. Safe at any of those call sites: none is mid-pass.
+  applyPendingRebuild();
   if (pipeline) return;
   // Active colour-grade (preset + live URL/console overrides). Read once per
   // build; the DEV __grade/__gradeSet hooks rebuild the pipeline on change.
@@ -834,10 +859,56 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
 const MAX_IN_FLIGHT = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('inflight1') === '1' ? 1 : 2;
 let inFlight = 0;
+let inFlightSince = 0;   // when the queue last went from empty to non-empty
+
+// ── In-flight watchdog ──────────────────────────────────────────────────────
+// inFlight is decremented by onSubmittedWorkDone. If a submit never completes —
+// a render pass that fails validation never finishes its encoder, and the
+// promise for it can simply never settle — the counter stays pinned, the gate
+// below skips every subsequent frame, and the canvas is black FOREVER while the
+// DOM HUD keeps painting. Observed exactly that (skip log: 'inFlight' ~85/s
+// sustained, still going minutes later, never recovering on its own).
+//
+// A frame gate whose failure mode is "permanently stop drawing" needs a way
+// back. Past the cutoff we assume the submit is never landing and reopen the
+// gate: at worst we run briefly unbounded, which is a jitter problem, versus a
+// dead screen, which is the game being over. Deliberately far longer than any
+// legitimate GPU frame so healthy backpressure is untouched.
+const IN_FLIGHT_STUCK_MS = 2000;
+// Bumped whenever the watchdog abandons a set of submits. A completion callback
+// carries the generation it was issued under and only decrements if it still
+// matches — otherwise a late completion from an abandoned batch would drive the
+// counter NEGATIVE, and every "is the queue empty?" guard in this file tests
+// `inFlight > 0`, which a negative value passes. That let drainRetired and
+// applyPendingResScale free and resize textures while frames really were in
+// flight — the destroyed-texture path, i.e. the very failure the watchdog
+// exists to recover from, caused by the watchdog. (Caught immediately on
+// device: "it now goes black almost immediately.")
+let inFlightGen = 0;
+function releaseStuckInFlight(): void {
+  if (inFlight <= 0) return;
+  // Not during a warm. Warm renders submit outside this counter and can occupy
+  // the GPU for seconds, so a live submit issued just before one starts is
+  // legitimately outstanding — that is backpressure working, not a stall.
+  // (Observed firing once per load before this guard.)
+  if (warmingUp) { inFlightSince = performance.now(); return; }
+  if (performance.now() - inFlightSince < IN_FLIGHT_STUCK_MS) return;
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.error(`[psx] in-flight watchdog: ${inFlight} submit(s) never completed in `
+      + `${IN_FLIGHT_STUCK_MS}ms — reopening the gate. A render pass probably failed `
+      + `validation; check window.__gpuErrors.`);
+  }
+  inFlightGen++;   // disown the outstanding submits; their completions are ignored
+  inFlight = 0;
+  inFlightSince = performance.now();
+}
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
 export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  applyPendingRebuild();   // swap the graph only at frame start, never mid-pass
   drainRetired();   // free any rebuilt-away pass/bloom/AO targets once the queue is empty
+  releaseStuckInFlight();
   ensurePipeline(renderer, scene, camera);
   applyPendingResScale();   // resize pass targets only while the GPU queue is empty
   // Render bundles are gated to THIS camera's pass — shadow/depth-array passes
@@ -870,6 +941,8 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   // below only trusts submit→completion wall-clock as a GPU-cost proxy then
   // (with another frame queued ahead, the wall-clock includes its wait too).
   const soloSubmit = inFlight === 0;
+  if (inFlight === 0) inFlightSince = performance.now();   // start the watchdog clock
+  const submitGen = inFlightGen;   // completions from an abandoned batch must not count
   inFlight++;
   presentedFrames++;   // a real submit is happening (the skip paths returned above)
   // A SYNCHRONOUS throw (a bad node graph faults during encode) must not strand
@@ -879,14 +952,17 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   try {
     (pipeline as unknown as { render: () => void }).render();
   } catch (err) {
-    inFlight--;
+    if (submitGen === inFlightGen) inFlight = Math.max(0, inFlight - 1);
     if (dev) dev.popErrorScope().catch(() => {});
     throw err;
   }
   const backend: any = (renderer as any).backend;
   const t0 = performance.now();
   const done = (): void => {
-    inFlight--;
+    // Only count this completion if the watchdog has not disowned its batch,
+    // and never below zero — a negative count reads as "queue empty" to every
+    // guard in this file.
+    if (submitGen === inFlightGen) inFlight = Math.max(0, inFlight - 1);
     // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps.
     // Wall-clock at submit would read CPU encode time, not the GPU cost — only
     // the timestamp is the true bottleneck signal. The shared adaptive scaler

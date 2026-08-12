@@ -41,16 +41,30 @@ import { deferGpuDispose } from '../style/render-webgpu';
 // Stand still during the sweep — a moving camera changes the baseline.
 
 const SETTLE_FRAMES = 9;      // skip after a toggle — covers the timer's 1-3 frame lag
-// Toggles that change light count / override materials recompile EVERY program.
-// This was 40 frames (~0.67s at 60fps), which is not long enough: the recompile
-// storm is visible as a multi-second hiccup on screen, so the measurement
-// window opened while pipelines were still being built and charged their cost
-// to the feature AND to the baseline that follows it. The tell is in the
-// report's own footer — a run measured at 40 showed `baseline drift … span
-// 5.06` against a 7.63 baseline, i.e. the baselines disagreed by two thirds of
-// the thing being measured. 150 frames is ~2.5s, past the observed hiccup.
-// Costs ~20s of extra sweep time; a sweep that has to be re-run is worse.
-const SETTLE_RECOMPILE = 150;
+// A stage ends when COMPILING GOES QUIET, not after a fixed count — toggles
+// that change light count or swap override materials rebuild every program, and
+// how long that takes is a property of the device, not a number we can guess.
+// Measuring mid-storm charged the compile cost to the feature AND to the
+// baseline after it; the tell was in the report's own footer, `baseline drift …
+// span 5.06` against a 7.63 baseline.
+//
+// Wall-clock ceilings. Frames were the wrong unit: during a recompile storm the
+// frame rate collapses, so a frame ceiling stretches without bound (measured:
+// 2 fps, which turned a 300-frame cap into 150s per stage and a sweep that
+// never finished). Time bounds the sweep regardless of how bad it gets.
+const SETTLE_MS = 400;             // ordinary toggle — a shade over the timer's frame lag
+const SETTLE_RECOMPILE_MS = 3000;  // light-count / override-material changes
+// Consecutive frames the compile counter must not move before a stage is
+// considered settled — same constant boot's settleCompiles uses. The counter is
+// DEV-only (the guard isn't installed in prod), and if it is unavailable this
+// returns a frozen 0, which reads as "instantly quiet" and falls back to the
+// SETTLE_FRAMES floor plus the per-stage ceiling. That is the old behaviour, so
+// losing the counter degrades rather than breaks.
+const COMPILE_STABLE_FRAMES = 12;
+function compileTotal(): number {
+  const f = (window as unknown as { __compileStats?: () => { total: number } }).__compileStats;
+  try { return f ? f().total : 0; } catch { return 0; }
+}
 const SAMPLE_FRAMES = 30;    // average the GPU timer over this many frames per stage
 
 let scene: THREE.Scene | null = null;
@@ -65,8 +79,10 @@ export function initGpuAttribution(s: THREE.Scene, r: DelveRenderer): void {
 interface Probe {
   name: string;
   note?: string;
-  /** Extra settle frames (shader recompiles need more than timer lag). */
-  settle?: number;
+  /** This toggle rebuilds every program — give it the long settle ceiling
+   *  (SETTLE_RECOMPILE_MS) instead of the ordinary one. The stage still ends as
+   *  soon as compiling actually goes quiet; this only raises the cap. */
+  recompiles?: boolean;
   /** Return a reason string to skip this probe (e.g. DPR already 1). */
   skip?: () => string | null;
   off(): void;
@@ -103,10 +119,38 @@ function overrideProbe(root: THREE.Scene, name: string, mat: THREE.Material, not
   return {
     name,
     note,
-    settle: SETTLE_RECOMPILE,
+    recompiles: true,
+    // DISABLED ON WEBGPU — scene.overrideMaterial corrupts the renderer.
+    //
+    // Bisected 2026-08-12 after Josh reported the screen going black at the end
+    // of every sweep. Toggling each stage individually, these are the only two
+    // that produce errors, and they produce them in bulk:
+    //
+    //   classic Lambert  +11 errors   classic Basic  +20   NODE Basic  +170
+    //   [Buffer "bindingBuffer…_object_(vertex,fragment,compute)"]
+    //     used in submit while destroyed
+    //
+    // Swapping every render object's material churns the per-object bind
+    // groups, and their buffers get destroyed while queued frames still
+    // reference them. Using the "correct" MeshBasicNodeMaterial is WORSE than
+    // the classic one, so this is not a material-class mistake — the override
+    // path itself is unsound here. Once enough submits fail, inFlight never
+    // drains and the backpressure gate skips every later frame: black canvas,
+    // live DOM HUD, no recovery.
+    //
+    // These two stages were always labelled upper bounds (the override also
+    // drops emissive + detail), so the sweep loses its least trustworthy
+    // numbers and keeps working. Restore them only with a mechanism that does
+    // not swap materials per object — e.g. a shading-model define.
+    skip: () => (isWebGPU() ? 'overrideMaterial corrupts WebGPU bind groups' : null),
     off() { prev = root.overrideMaterial; root.overrideMaterial = mat; },
     restore() { root.overrideMaterial = prev; },
   };
+}
+
+/** True when the live renderer is the WebGPU backend. */
+function isWebGPU(): boolean {
+  return !!(renderer as unknown as { backend?: { isWebGPUBackend?: boolean } } | null)?.backend?.isWebGPUBackend;
 }
 
 interface StageStats { gpu: number | null; cpu: number; draws: number; dt: number; }
@@ -153,7 +197,7 @@ export async function runGpuAttribution(): Promise<void> {
     {
       name: `light budget ${getLightSlotTotals().full}→${getLightSlotTotals().trimmed}`,
       note: 'parked pool slots still cost per-fragment on every lit material',
-      settle: SETTLE_RECOMPILE,
+      recompiles: true,
       off: () => setLightBudgetTrim(true),
       restore: () => setLightBudgetTrim(false),
     },
@@ -164,6 +208,23 @@ export async function runGpuAttribution(): Promise<void> {
     {
       name: 'shadows',
       note: 'lamp cube-map render + extra scene draws',
+      // DISABLED ON WEBGPU — re-enabling castShadow throws inside three.
+      //
+      // Found via the stage trail: the sweep dies on this stage's RESTORE
+      // (stage 4 `shadows` → stage 5 `baseline#2`), with
+      //   TypeError: Cannot read properties of null (reading 'depthTexture')
+      //     at ShadowNode.updateShadow / updateBefore
+      // ShadowNode._reset() nulls its `shadowMap`, and updateBefore calls
+      // updateShadow() without re-checking it, so once a light's castShadow has
+      // gone false→true the node throws every frame. renderWithStyle swallows
+      // it ("first only"), so the canvas simply stops updating: black screen,
+      // live HUD.
+      //
+      // NOTE: this is NOT only a profiler problem. main.ts applies
+      // setShadowMode(s.shadows) on every live settings change, so the SHADOWS
+      // menu option walks the same false→true path. Skipping the probe stops
+      // the tool corrupting itself; it does not fix the setting.
+      skip: () => (isWebGPU() ? 'castShadow off→on throws in three ShadowNode' : null),
       off: () => setShadowMode('off'),
       restore: () => setShadowMode(prevShadow),
     },
@@ -206,28 +267,30 @@ export async function runGpuAttribution(): Promise<void> {
   // thermally throttling mid-run: drift moves the local baselines along with
   // the probe stages, so the deltas stay honest. (A real phone run drifted
   // +4.6ms over one sweep and poisoned every late stage — never again.)
-  interface Stage { key: string; settle: number; apply: () => void; cleanup?: () => void; }
+  // settleMs is a wall-clock CEILING (see the settle phase): the adaptive
+  // compile-quiet test normally ends a stage far sooner.
+  interface Stage { key: string; settleMs: number; apply: () => void; cleanup?: () => void; }
   const skipped: { name: string; reason: string }[] = [];
   const stages: Stage[] = [];
   const baselineKeys: string[] = [];
   // Probe name → the baseline keys measured immediately before/after it.
   const localBaselines = new Map<string, [string, string]>();
   let bi = 0;
-  const pushBaseline = (settle: number): string => {
+  const pushBaseline = (settleMs: number): string => {
     const key = `baseline#${bi++}`;
     baselineKeys.push(key);
-    stages.push({ key, settle, apply: () => {} });
+    stages.push({ key, settleMs, apply: () => {} });
     return key;
   };
-  let prevBaselineKey = pushBaseline(SETTLE_FRAMES);
+  let prevBaselineKey = pushBaseline(SETTLE_MS);
   for (const p of probes) {
     const reason = p.skip?.();
     if (reason) { skipped.push({ name: p.name, reason }); continue; }
-    const settle = p.settle ?? SETTLE_FRAMES;
-    stages.push({ key: p.name, settle, apply: () => p.off(), cleanup: () => p.restore() });
+    const settleMs = p.recompiles ? SETTLE_RECOMPILE_MS : SETTLE_MS;
+    stages.push({ key: p.name, settleMs, apply: () => p.off(), cleanup: () => p.restore() });
     // Restoring a recompile-heavy probe recompiles again — give the
-    // following baseline the same long settle.
-    const afterKey = pushBaseline(settle);
+    // following baseline the same long ceiling.
+    const afterKey = pushBaseline(settleMs);
     localBaselines.set(p.name, [prevBaselineKey, afterKey]);
     prevBaselineKey = afterKey;
   }
@@ -238,18 +301,54 @@ export async function runGpuAttribution(): Promise<void> {
     let si = 0;
     let phase: 'apply' | 'settle' | 'measure' = 'apply';
     let frame = 0;
+    let lastCompileTotal = -1, compileStable = 0, settleStartMs = performance.now();
     let gAcc = 0, gN = 0, cAcc = 0, dAcc = 0, dtAcc = 0, n = 0;
 
     const onFrame = (s: FrameSample): void => {
       if (phase === 'apply') {
+        // Announce every stage BEFORE applying it. When a stage breaks
+        // rendering the screen goes black and the report never arrives, so the
+        // console trail is the only thing that says which one did it — and
+        // bisecting stages by hand from outside the frame loop does not
+        // reproduce what the sweep does from inside it.
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log(`[attr] stage ${si + 1}/${stages.length}: ${stages[si].key}`);
+        }
         stages[si].apply();
         phase = 'settle';
         frame = 0;
+        settleStartMs = performance.now();   // the wall-clock ceiling runs from here
+        compileStable = 0;
         return;
       }
       frame++;
       if (phase === 'settle') {
-        if (frame >= stages[si].settle) { phase = 'measure'; frame = 0; gAcc = 0; gN = 0; cAcc = 0; dAcc = 0; dtAcc = 0; n = 0; }
+        // ADAPTIVE settle. A fixed frame count is a guess about how long the
+        // recompile storm lasts, and the guess was wrong in both directions —
+        // 40 frames measured mid-storm, 150 wastes 2.5s on toggles that don't
+        // recompile at all. So: wait until the compile counter STOPS MOVING,
+        // which is the same test boot uses (main.ts settleCompiles — stable for
+        // 12 frames), bounded by the stage's own budget as a cap.
+        //
+        // stages[si].settle is now a CEILING rather than a duration. The floor
+        // is SETTLE_FRAMES, which still has to be paid because the GPU timer
+        // itself lags 1-3 frames behind the work it reports.
+        const t = compileTotal();
+        if (t === lastCompileTotal) compileStable++;
+        else { compileStable = 0; lastCompileTotal = t; }
+        const quiet = compileStable >= COMPILE_STABLE_FRAMES;
+        // The CEILING is wall-clock, not frames. A frame-count ceiling is
+        // unbounded in time exactly when it is needed: during a compile storm
+        // the frame rate collapses (measured: 2 fps while the counter climbed
+        // ~4/s and never went quiet), so a 300-frame cap became 150 SECONDS per
+        // stage and the sweep effectively never finished. Time-capping bounds
+        // the sweep no matter how badly the frame rate degrades.
+        const overBudget = performance.now() - settleStartMs >= stages[si].settleMs;
+        if ((quiet && frame >= SETTLE_FRAMES) || overBudget) {
+          phase = 'measure'; frame = 0; gAcc = 0; gN = 0; cAcc = 0; dAcc = 0; dtAcc = 0; n = 0;
+          compileStable = 0;
+        }
         return;
       }
       // measure
@@ -287,8 +386,8 @@ export async function runGpuAttribution(): Promise<void> {
   // reported numbers for it. deferGpuDispose is this codebase's seam for
   // exactly that (it frees once the GPU queue is provably empty); this call
   // site predated it. On WebGL the drain never runs, so dispose directly there.
-  const isWebGPU = !!(rend as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend?.isWebGPUBackend;
-  if (isWebGPU) {
+  const webgpuBackend = !!(rend as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend?.isWebGPUBackend;
+  if (webgpuBackend) {
     deferGpuDispose(() => lambertMat.dispose());
     deferGpuDispose(() => basicMat.dispose());
   } else {
