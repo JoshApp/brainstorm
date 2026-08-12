@@ -697,8 +697,11 @@ function buildControlsTab(): HTMLElement[] {
       set: (v) => updateSettings({ hybridLook: v }),
     }));
     out.push(makeSelect({
-      label: 'DASH GESTURE',
-      description: 'Flick: swipe the move side to dodge that way. Double-tap: double-tap to dodge, hold & steer the second tap. No direction = backstep.',
+      label: 'DODGE INPUT',
+      // The button variant was missing from this text entirely, which is half of
+      // why it went unnoticed after it became the default. Button first — it is
+      // the default and the recommended one.
+      description: 'Button: a dedicated pad in the right thumb arc — tap to dodge, hold to sprint. Flick: swipe the move side to dodge that way. Double-tap: double-tap to dodge, hold & steer the second tap. No direction = backstep.',
       options: DASH_GESTURES,
       get: () => getSettings().dashGesture,
       set: (v) => updateSettings({ dashGesture: v }),

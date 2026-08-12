@@ -213,6 +213,11 @@ export interface Settings {
   /** One-time marker: saved 'single'/'all' shadows rebaselined to 'hero' when
    *  env-torch shadows became real (they were silently dead before). */
   migratedShadowRebaseline?: boolean;
+  /** One-time marker: the dodge BUTTON became the default dash input, but any
+   *  save predating it carries an explicit 'flick'/'doubleTap' that shadows the
+   *  new default forever — so the button shipped and existing players never saw
+   *  it. Rebaseline those saves once. See load(). */
+  migratedDodgeButton?: boolean;
   /** Internal one-shot flag (not a user toggle): set true once the player
    *  has been shown the first-run "calibrate the dark" nudge, so it never
    *  fires twice. See src/ui/calibrate-hint.ts. */
@@ -348,6 +353,7 @@ const DEFAULTS: Settings = {
   hudStyle: 'minimal',
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
   migratedShadowRebaseline: true,   // fresh installs start at 'hero' (no migration needed)
+  migratedDodgeButton: true,        // fresh installs already default to the button
 };
 
 let current: Settings = load();
@@ -380,6 +386,20 @@ function load(): Settings {
     if (parsed.migratedShadowRebaseline !== true) {
       if (merged.shadows === 'single' || merged.shadows === 'all') merged.shadows = 'hero';
       merged.migratedShadowRebaseline = true;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    // One-time migration: the dodge BUTTON (right thumb arc, hold to sprint)
+    // became the default dash input, replacing the two gestures that both asked
+    // the LEFT thumb to stop steering mid-fight. But a save written before it
+    // existed carries an explicit 'flick' / 'doubleTap', and an explicit value
+    // beats a changed default forever — so the button shipped and every existing
+    // player kept a buttonless layout without knowing the option was there.
+    // That stored value never reflected a choice between these three, because
+    // the third didn't exist when it was made. Rebaseline once; a deliberate
+    // re-pick afterwards still sticks (the marker persists with it).
+    if (parsed.migratedDodgeButton !== true) {
+      merged.dashGesture = 'button';
+      merged.migratedDodgeButton = true;
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
     }
     return merged;
