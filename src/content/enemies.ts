@@ -424,6 +424,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
         minRange: 1.8, maxRange: 6.5,
         windup: 0.55, strike: 0.42, recover: 0.75, cooldown: 2.6,
         pose: 'charge', creep: false,
+        // DEFLECTABLE — the coil is a long, honest tell, so a charge should have
+        // a committed answer and not only a sidestep. Meeting it doubles the
+        // poise chunk (CONFIG.DEFLECT.CHARGE_POISE_MUL), which BREAKS a 3-poise
+        // skirmisher outright and opens the execute — deliberately better than
+        // dodging, because otherwise nobody would take the risk.
+        deflectable: true,
         steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 7.5, contactReach: 1.35, damage: 1, element: 'physical' } }],
       },
       // SLASH — point-blank fallback when the player is already in melee

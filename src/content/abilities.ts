@@ -232,6 +232,25 @@ export function firstMeleeReach(ability: Ability): number | null {
   return a && a.kind === 'melee' ? a.reach : null;
 }
 
+/** The distance band inside which this attack should raise the reactive-defense
+ *  THREAT FLASH (white = deflectable, red = dodge-only). Null = never flashes;
+ *  ranged / aoe / leap are avoided, not parried.
+ *
+ *  For a melee this is simply its reach. For a DASH it is the ability's whole
+ *  commit range, NOT its contactReach — because a dash closes the gap itself.
+ *  Gating on contactReach (1.35m) against a 7.5 m/s charge lights the flash
+ *  ~0.16s before impact, well under human reaction time, so the counter would
+ *  exist on paper and be untakeable in practice. Using the commit range instead
+ *  means the flash rides the COIL — which is the honest tell, and the thing the
+ *  player is actually being asked to read. */
+export function threatReach(ability: Ability): number | null {
+  const a = ability.steps[0]?.action;
+  if (!a) return null;
+  if (a.kind === 'melee') return a.reach;
+  if (a.kind === 'dash') return ability.maxRange;
+  return null;
+}
+
 /** Whether the ability wants windup creep (explicit, else true iff it
  *  opens on a melee or a blast — both are "get close and go off"). */
 export function wantsCreep(ability: Ability): boolean {

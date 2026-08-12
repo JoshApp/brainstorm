@@ -240,6 +240,18 @@ failed. Part II: the spine).
 
 ### Shipped
 
+- **A charge can be MET, not only dodged** (2026-08-12). The skirmisher's dash is
+  deflectable now. Three things had to be true and only one of them was: the
+  parry check lived in the `melee` action, so a dash's contact damage — a
+  separate code path — went through the guard untouched; and the threat flash
+  keyed on `firstMeleeReach`, which is null for a dash, so a charge never flashed
+  white at all. Now `threatReach` gives a dash its whole COMMIT range as the
+  flash band (flashing at contactReach against a 7.5 m/s charge lights the tell
+  ~0.16s before impact — under human reaction, an option on paper only), while
+  the immediate-parry resolve deliberately stays on melee reach so you can't turn
+  a charge aside from six metres before it has moved. Payoff is doubled poise +
+  shove: meeting it has to beat sidestepping it, which is free, or nobody picks
+  it. Tests assert the reaction window and that a clean read BREAKS outright.
 - **The bloat + the blast primitive** (2026-08-12). A red ooze that arms inside
   2.4m and is then committed — it comes at you at full speed, swelling, beating
   faster, dragging its own danger ring, and it detonates whether you kill it or
@@ -268,7 +280,7 @@ failed. Part II: the spine).
 |---|---|---|
 | ~~#140~~ | ~~Bomb ooze~~ **SHIPPED 2026-08-12** — see the Shipped block above | Josh 2026-08-12. `JELLY_HUES.red` is already defined and unused, so this is an enemy spec, not a materials pass. ARMS on proximity, burns a fuse, blows. Killing an armed one still detonates → the read is "back off or kill it early", a choice rather than a gotcha. Tells must be diegetic (swell, core pulse accelerating, its own red floor light, rising hiss) — no UI. Blast hits **mobs too**, which makes it a tactical object you can kite into a pack. Needs #143. |
 | **#141** | **Attack motion tracks** — enemies stop standing still | Josh 2026-08-12, the big one in this block. A `motion` track on the ability/verb, resolved by the same step-trigger clock that already drives `melee`/`aoe`. Vocabulary to build against: **step-in** (~0.8m on the strike frame — should become the DEFAULT on baseline melee, it's the cheapest cure), **coil-dash** (readable crouch → 3-4m dash → long punishable recovery; `skirmisher` already does this via the `dash` action and is the proof), **advancing combo** (each swing steps, so backpedalling doesn't escape), **hit-and-run** (strike then immediate backstep out of counter range), **orbit** (refuses to commit while a packmate does — `intent.ts` already has `circle`). **Trap:** root motion must go through `walkable.clampMoveInto`/nav like `dash` does, or mobs will phase through geometry. |
-| **#142** | **Deflect a charge** — the skirmisher's dash gets an answer | Josh 2026-08-12. `Ability.deflectable` already exists per-ability and the white/red threat flash is already reconciled per frame (`enemy.ts:3041`). So the work is: mark charges deflectable, make the deflect land against a *moving* attacker (the parry check sits in the `melee` action; `dash` contact damage is a separate path at `enemy.ts:1868-1885` and does **not** consult it — that's the actual gap), and pay it off with a hard stop + big stagger so meeting a charge feels better than dodging it. **Design rule:** the reward must beat the sidestep or nobody will take the risk. |
+| ~~#142~~ | ~~Deflect a charge~~ **SHIPPED 2026-08-12** — see the Shipped block above | Josh 2026-08-12. `Ability.deflectable` already exists per-ability and the white/red threat flash is already reconciled per frame (`enemy.ts:3041`). So the work is: mark charges deflectable, make the deflect land against a *moving* attacker (the parry check sits in the `melee` action; `dash` contact damage is a separate path at `enemy.ts:1868-1885` and does **not** consult it — that's the actual gap), and pay it off with a hard stop + big stagger so meeting a charge feels better than dodging it. **Design rule:** the reward must beat the sidestep or nobody will take the risk. |
 | ~~#143~~ | ~~Shared radial blast~~ **SHIPPED 2026-08-12** (`src/combat/radial-blast.ts`, falloff split into `blast-falloff.ts` so it's testable headless) | Prereq for #140. There is no generic explosion today: the `aoe` ability action hits the **player only** (`enemy.ts:1886`), rite nova hits **mobs only** (`rites.ts:133`), and the bleed chain is a third copy of the same loop. One helper — radius, damage, knockback, VFX, shake — that damages both sides. Also unblocks barrels/traps later. |
 | ~~#144~~ | ~~Dedicated dodge button layout~~ **SHIPPED 2026-08-12 — as a migration, not a feature** | Josh asked for a layout with a dedicated right-side dodge. It already existed: `cbc13e74` (Aug 6) built exactly that and made it the default. But that commit changed `DEFAULTS.dashGesture` from `'flick'` to `'button'` **without a migration marker**, and an explicit stored value beats a changed default forever — so the button shipped and every existing player, Josh included, kept the buttonless gesture and never knew the option was there. Fixed with a one-time rebaseline (`migratedDodgeButton`, mirroring `migratedPortalCulling`) plus the settings copy, which never mentioned the button variant at all. **The rule this is the third instance of: changing a DEFAULT is a no-op for everyone who already has a save. If the new default matters, it needs a marker in `load()`.** |
 | **#134** | Finisher ceremony | Risk: an animation lock in a swarm is how you die unfairly. Fast **and** i-framed. |

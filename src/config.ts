@@ -313,6 +313,16 @@ export const CONFIG = {
                                //   body-snap recoil), it does NOT break on its own. Basic mobs
                                //   (poise 4) take ~2 parries; the EMPOWERED counter-swing
                                //   (EMPOWER_STAGGER_MUL) is the fast way to the break + execute.
+    // MEETING A CHARGE. Deflecting a committed high-speed dash pays more than
+    // deflecting a standing swing, for one reason: it has to beat SIDESTEPPING
+    // the charge, which is free and already works. If the counter only means
+    // "you didn't get hit", nobody takes the risk and the option is decoration.
+    // So the charger's own momentum turns on it — double poise damage (a basic
+    // 4-poise mob BREAKS on a single clean read → execute window) and a much
+    // harder shove. Fiction and mechanics agree: the faster it came in, the
+    // worse it goes for it.
+    CHARGE_POISE_MUL: 2.0,
+    CHARGE_KNOCKBACK_MUL: 2.2,
     FLINCH_LOCK_S: 0.45,       // the flinched enemy can't start a new attack this long
     FLINCH_KNOCKBACK: 3.2,     // backward shove on the flinch (off-balance recoil)
     FLINCH_PITCH: 0.62,        // peak backward body LEAN (rad) on the flinch — the visible recoil snap

@@ -16,7 +16,7 @@ import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import { DEFAULT_FACTION, threatensPlayer, type FactionId } from '../content/factions';
 import {
-  resolveAbilities, firstMeleeReach, wantsCreep, creepReach, creepSpeedMul, ELEMENTS, isDeflectable,
+  resolveAbilities, firstMeleeReach, threatReach, wantsCreep, creepReach, creepSpeedMul, ELEMENTS, isDeflectable,
   type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
 } from '../content/abilities';
 import {
@@ -1539,7 +1539,11 @@ export function createEnemy(
   // tap off the white flash flinches the enemy immediately, crisp, rather than
   // waiting out the rest of the wind-up. Caller guarantees the ability is
   // deflectable + reachable + isParryActive().
-  function resolveParry(toward: THREE.Vector3): void {
+  /** `poiseMul` / `knockMul` scale the counter's bite. 1 = a standing swing
+   *  turned aside. A CHARGE passes more (CONFIG.DEFLECT.CHARGE_*): meeting one
+   *  has to be worth more than sidestepping it, which is free and already
+   *  works — otherwise the option is decoration nobody picks. */
+  function resolveParry(toward: THREE.Vector3, poiseMul = 1, knockMul = 1): void {
     notePlayerDeflected();   // player side: i-frame + clash freeze + parry ting + EMPOWER next swing + riposte beat
     kickShake(0.22, 0.16);   // clash punch
     // Steel-on-steel spark AT the clash: a touch in FRONT of the mob toward the
@@ -1571,7 +1575,9 @@ export function createEnemy(
     // inside). Else a soft FLINCH: cancel the attack, recoil off-balance, brief
     // no-act. Stacking deflects break it on their own; the empowered follow-up
     // swing breaks it much faster.
-    const broke = applyStaggerDamage(getCurrentWeapon().parryPoise ?? CONFIG.DEFLECT.POISE_DAMAGE);
+    const broke = applyStaggerDamage(
+      (getCurrentWeapon().parryPoise ?? CONFIG.DEFLECT.POISE_DAMAGE) * poiseMul,
+    );
     if (!broke) {
       // A clean parry that didn't break poise — "TURNED". (A parry that DID
       // break shows the bigger "BROKEN" from triggerStagger instead.)
@@ -1583,7 +1589,7 @@ export function createEnemy(
       const dx = container.position.x - toward.x;
       const dz = container.position.z - toward.z;
       const len = Math.hypot(dx, dz) || 1;
-      bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
+      bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK * knockMul);
       bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
       actionFsm.enterFlinchLock(CONFIG.DEFLECT.FLINCH_LOCK_S);
       state = 'chasing';
@@ -1941,8 +1947,25 @@ export function createEnemy(
         const tgt = resolveAnchor(action.toward, playerPos);
         moveTowards(tgt.x, tgt.z, action.speed, dt, walkable, nav);
         if (distance <= action.contactReach) {
+          // MEET THE CHARGE. This ladder mirrors the melee case, and its absence
+          // was the whole reason a charge could only ever be dodged: the parry
+          // check lived in the `melee` action, and a dash's contact damage is a
+          // different code path that never consulted it. So an ability tagged
+          // deflectable would flash white — promising a counter — and then hit
+          // you through the parry anyway. Now the promise is kept.
+          if (currentAbility && isDeflectable(currentAbility) && isParryActive()
+              && playerFacingThis(playerPos)) {
+            resolveParry(playerPos,
+              CONFIG.DEFLECT.CHARGE_POISE_MUL, CONFIG.DEFLECT.CHARGE_KNOCKBACK_MUL);
+            return true;          // charge broken on your guard — NO damage, and it stops
+          }
+          if (tryJustDodge()) {
+            fireCombatVerb(getCurrentWeapon().onPerfectDodge, entityId, 'self');
+            return true;          // read the charge and rolled through it
+          }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
+          meleeHitLanded = true;  // connected — no late parry can still turn it
           bodyAnim.applyKnockback(
             container.position.x - playerPos.x,
             container.position.z - playerPos.z,
@@ -2611,7 +2634,15 @@ export function createEnemy(
     // the deflect only RESOLVES once the mob is actually STRIKING. It resolves
     // on the first striking frame — BEFORE the switch runs the strike step
     // that deals damage — so the catch is crisp + immediate, never a windup
-    // freebie. Reachability matches wantFlash's `mReach + 1.2` band below.
+    // freebie.
+    //
+    // MELEE ONLY, deliberately — this uses firstMeleeReach, NOT the wider
+    // threatReach that the flash band below uses. The two are allowed to differ
+    // here: a dash's threat band is its whole commit range (so the white flash
+    // rides the coil and you get time to answer), but resolving a parry on that
+    // band would let you turn a charge aside from six metres away, on its first
+    // striking frame, before it had gone anywhere. A charge is parried WHEN IT
+    // ARRIVES — the dash action's own contact check does it, at contactReach.
     if (currentAbility && state === 'striking' && !meleeHitLanded
         && isParryActive() && isDeflectable(currentAbility) && playerFacingThis(playerPos)) {
       const pReach = firstMeleeReach(currentAbility);
@@ -3129,13 +3160,16 @@ export function createEnemy(
     }
 
     // ── Reactive-defense threat flash ────────────────────────────────
-    // Flash during the lead-up to a reachable MELEE strike: the last
+    // Flash during the lead-up to a reachable CONTACT strike: the last
     // FLASH_LEAD_S of windup through the whole strike window. Deflectable
     // abilities flash white (and open a parry opportunity); unblockable
-    // melee flashes red (dodge only). Everything else (ranged/aoe/leap)
+    // ones flash red (dodge only). Everything else (ranged/aoe/leap/blast)
     // never flashes — those are avoided, not parried.
+    // threatReach (not firstMeleeReach) so a CHARGE flashes too: its band is
+    // the commit range, because a dash brings itself to you and flashing at
+    // contact distance would leave no time to answer.
     {
-      const mReach = currentAbility ? firstMeleeReach(currentAbility) : null;
+      const mReach = currentAbility ? threatReach(currentAbility) : null;
       const lead = CONFIG.DEFLECT.FLASH_LEAD_S;
       // aliveLocal guard: a mob killed by its own riposte mid-update (the
       // runAction safety-net parry path reaches here with currentAbility still
