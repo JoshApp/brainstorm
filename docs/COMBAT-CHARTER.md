@@ -303,11 +303,12 @@ built twice.
 | **2** | **Mob move timeline** (Idea 1) | The keystone. Everything below needs an addressable contact frame. Kills the drift table |
 | **3** | **Root motion track + step-in as the melee default** (Idea 4, #141) | The fix for "they all stand still." Needs 2 |
 | **4** | **Additive hit-reaction layer** | Cheap once 2 exists; buys most of the "alive" read |
-| **5** | **The signal layer** (Idea 5) — eyeshine, sound leads, disturbed props | Unlocks stalkers/flankers *fairly*. Also unblocks ENEMY-AI-V2 Stage 3 |
+| **5** | **The signal layer** (Idea 5) — eyeshine, sound leads, disturbed props — **then ONE stalker, end to end** | Promoted by the 2026-08-12 decision that stalkers may be mean: the permission and the signal ship together, or meanness is a damage tax. Prototype one enemy before any roster pass — this reads completely differently in the hand than on paper. Also unblocks ENEMY-AI-V2 Stage 3 |
 | **6** | **Role pass over the roster** | Re-tag existing mobs to bands/tempos; fix packs that are all one band. Content, not code |
 
 Steps 1 and 2 are the ones that change how the game feels. 3–6 are what make it
-deep.
+deep. Step 5 is the one most likely to need a second pass on feel, which is why
+it's one enemy first and a roster later.
 
 **Not now, deliberately:** a blend-tree animation system, per-enemy bespoke
 movesets, a parry-everything Sekiro model (our deflect is one option among
@@ -315,12 +316,54 @@ several and should stay that way), and any difficulty knob that scales health.
 
 ---
 
-## 8. Open questions for Josh
+## 8. Decisions
 
-- **How mean may a stalker be?** Idea 5 makes flanking-in-the-dark *fair*, but
-  fair and pleasant are different. Worth a prototype before a roster pass.
-- **Does the player get a directional block?** Everything above assumes the
-  current vocabulary (dodge / deflect / space). A block changes the maths of
-  every commitment number in here.
+### A stalker MAY be mean — DECIDED (Josh, 2026-08-12)
+
+Flanking to your blind side, lurking at the light's edge, waiting out your
+attention: all allowed, and allowed to be genuinely nasty. This is the edge a
+torchlit first-person game has over Souls, and we should take it.
+
+**This makes the signal layer (Idea 5) load-bearing rather than a nicety, and
+promotes it in the build order.** The permission and the contract are one
+decision, not two: mean is licensed *by* the signal, so "mean enemies" and "no
+damage without a prior perceptible signal" ship together or the first one is a
+damage tax. A stalker whose ambush is unsignalled isn't difficult, it's a dice
+roll the player can't learn from — and the tell for a stalker is exactly where
+the craft is (eyeshine caught at the lamp's edge, a scrape behind you with real
+directional lead, a rat bolting out of a corner).
+
+Practical consequence: **prototype ONE stalker end-to-end before any roster
+pass.** Meanness is the kind of thing that reads completely differently in the
+hand than on paper, and it's cheaper to find the line with one enemy than with
+four.
+
+### No directional block — RECOMMENDED (open until Josh calls it)
+
+Two things go by this name: a *facing-cone* block (Souls shield: hold, absorb
+anything frontal) and a *stance-matched* block (For Honor / Mount & Blade: the
+attack has a direction and you must match it). The second is an entire second
+combat language, not a button.
+
+The lean is **neither**, because a block is a SUSTAINED state and everything else
+in our vocabulary is an INSTANT. Dodge and deflect both ask you to commit at a
+moment and live with it; a block lets you sit in safety and wait, which is
+directly opposed to the tempo Idea 3 is built on. Souls only makes it work by
+bolting on stamina drain and guard-breaks — a lot of machinery bought to solve a
+problem we don't currently have.
+
+And on a phone there is no free sustained input: the right thumb already owns
+look, tap-attack, and hold-to-charge.
+
+**We already have the good half of directionality for free** — a deflect requires
+`playerFacingThis`. You have to be looking at the thing to turn its blade. That
+is the skill and the fairness content of a directional guard, with no extra
+input and no waiting state.
+
+If the "wall of shield" fantasy is wanted later, put it on a RELIC or a specific
+weapon, so it's a build choice rather than a tempo tax on every fight.
+
+### Still open
+
 - **Do we want frame data surfaced to the player anywhere?** Souls hides it;
   fighting games expose it. Our codex could quietly teach it.
