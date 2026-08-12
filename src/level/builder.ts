@@ -948,7 +948,12 @@ export function buildLevel(
     }
     // ORIGIN ARCH — independent of WHO placed the bonfire (foyer vaults
     // author their own, which used to silently skip the doors too).
-    if (spec.startPos) {
+    // Idempotent like the bonfire above: buildLevel MUTATES the spec, and a
+    // cached spec can be built more than once (re-entering a floor), which
+    // without this pushes a second set of doors onto the first.
+    const hasOriginArch = spec.props.some(
+      (pr) => (pr as { _dbg?: string })._dbg === 'origin-arch');
+    if (spec.startPos && !hasOriginArch) {
       const yaw = spec.startPos.yaw ?? 0;
       const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
       // ORIGIN ARCH — the closed pair of doors on the wall BEHIND the

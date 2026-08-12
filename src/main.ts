@@ -95,7 +95,7 @@ import type { ModelSpec } from './ecs/model-types';
 import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
-import { initLevelLoader, loadInitialLevel, getCurrentDepth } from './level/loader';
+import { initLevelLoader, loadInitialLevel, getCurrentDepth, resetGeneratedLevels } from './level/loader';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
@@ -1379,6 +1379,10 @@ async function startRun(floorId: string, startDepth: number = 1): Promise<void> 
   const seed = resolveRunSeed();
   seedRng(seed);
   resetGameClock(); // each run starts at gameNow()=0 so its timers replay
+  // Drop the previous run's generated floors. Without this the fresh seed above
+  // is inert from the second run onward — the cached spec wins. See
+  // resetGeneratedLevels.
+  resetGeneratedLevels();
   // Record the run for replay/validation — but ONLY in the deterministic
   // (fixed-step) loop, since a variable-dt tape can't be reproduced. Captured
   // allocation-free; finished + held on death for the leaderboard to submit.

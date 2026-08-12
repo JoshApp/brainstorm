@@ -93,6 +93,11 @@ export interface LoaderConfig {
 let generate: LoaderConfig['generate'] = undefined;
 
 /** One-time setup. After this, the loader owns the active level handle. */
+// The keys the registry was BORN with (hand-authored specs — tutorial, and any
+// authored room added later). Everything else in `levels` got there by being
+// generated and cached, so this set is what tells the two apart at reset.
+let authoredIds: ReadonlySet<string> = new Set();
+
 export function initLevelLoader(cfg: LoaderConfig) {
   scene = cfg.scene;
   materials = cfg.materials;
@@ -100,6 +105,23 @@ export function initLevelLoader(cfg: LoaderConfig) {
   levels = cfg.levels;
   onLoaded = cfg.onLoaded;
   generate = cfg.generate;
+  authoredIds = new Set(Object.keys(cfg.levels));
+}
+
+/** Drop every GENERATED floor, keeping the hand-authored ones. Call at run
+ *  start.
+ *
+ *  The cache at loadLevel exists so a stairs.targetLevel pointing back at the
+ *  current floor resolves to the same spec within one run. Across runs it is
+ *  wrong: `levels` is the module-level LEVELS object, nothing ever deleted from
+ *  it, and ending a run stopped reloading the page — so the second run in a tab
+ *  asked for 'depth-1', hit the previous run's entry, and replayed that floor
+ *  despite having rolled a fresh seed. The seed silently stopped choosing the
+ *  layout after run one. Reload used to hide this by destroying the context. */
+export function resetGeneratedLevels(): void {
+  for (const id of Object.keys(levels)) {
+    if (!authoredIds.has(id)) delete levels[id];
+  }
 }
 
 export function getCurrentDepth(): number {
