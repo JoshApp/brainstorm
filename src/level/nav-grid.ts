@@ -103,6 +103,99 @@ export class NavGrid {
   private readonly region: WalkableRegion;
   private readonly ignoreObstacles: boolean;
   private builtVersion = -1;
+
+  // ── A* scratch — allocated once per grid, reused by every query ──────────
+  //
+  // findPath was the single most expensive function in the game: a live
+  // horde-fight CPU profile put it at 47.95 ms/s self time, 69% of the whole
+  // `enemies` system and the largest non-idle JS function in the profile.
+  //
+  // Two things cost that, and neither was the per-neighbour allocation an
+  // earlier audit flagged (octileHeuristic measured 0.04 ms/s — nothing):
+  //
+  //  1. the open set was a plain array scanned LINEARLY for min-f on every
+  //     pop, with a Map.get per element inside that scan. O(n²) pops with a
+  //     hash lookup in the inner loop. The old comment justified it with
+  //     "always <500 in practice" — at 500 that is a quarter of a million Map
+  //     lookups per query, and floors have grown since it was written.
+  //  2. gScore / fScore / cameFrom / closed / inOpen were Map and Set keyed by
+  //     an INTEGER cell index on a fixed cols×rows grid, so every access paid
+  //     hashing for something a flat array indexes directly.
+  //
+  // Now: a binary min-heap for the open set, and typed arrays indexed by cell.
+  // Nothing is cleared between queries — a monotonically increasing query id
+  // is stamped per cell, so a stale stamp reads as "unvisited" and clearing
+  // costs nothing on a big grid.
+  private _g: Float32Array | null = null;         // best-known cost to a cell
+  private _cameFrom: Int32Array | null = null;
+  private _stampG: Int32Array | null = null;      // query id that wrote _g[i]
+  private _stampClosed: Int32Array | null = null; // query id that closed cell i
+  private _heapIdx: Int32Array | null = null;     // heap payload: cell index
+  private _heapF: Float32Array | null = null;     // heap key: f score
+  private _heapN = 0;
+  private _query = 0;
+
+  /** (Re)allocate the A* scratch when the grid size changes. */
+  private ensureAStarScratch(): void {
+    const cells = this.cols * this.rows;
+    if (this._g && this._g.length === cells) return;
+    this._g = new Float32Array(cells);
+    this._cameFrom = new Int32Array(cells);
+    this._stampG = new Int32Array(cells);
+    this._stampClosed = new Int32Array(cells);
+    // Lazy deletion means a cell can sit in the heap more than once (we push a
+    // better entry rather than decrease-key), so the heap needs slack beyond
+    // one slot per cell. It grows on demand if a pathological query exceeds it.
+    this._heapIdx = new Int32Array(cells + 64);
+    this._heapF = new Float32Array(cells + 64);
+    this._heapN = 0;
+    this._query = 0;
+  }
+
+  private heapPush(idx: number, f: number): void {
+    let n = this._heapN;
+    if (n >= this._heapIdx!.length) {
+      const bigIdx = new Int32Array(this._heapIdx!.length * 2);
+      const bigF = new Float32Array(this._heapF!.length * 2);
+      bigIdx.set(this._heapIdx!); bigF.set(this._heapF!);
+      this._heapIdx = bigIdx; this._heapF = bigF;
+    }
+    const hi = this._heapIdx!, hf = this._heapF!;
+    hi[n] = idx; hf[n] = f;
+    while (n > 0) {
+      const parent = (n - 1) >> 1;
+      if (hf[parent] <= hf[n]) break;
+      const ti = hi[parent], tf = hf[parent];
+      hi[parent] = hi[n]; hf[parent] = hf[n];
+      hi[n] = ti; hf[n] = tf;
+      n = parent;
+    }
+    this._heapN++;
+  }
+
+  /** Pop the lowest-f cell index, or -1 when empty. */
+  private heapPop(): number {
+    if (this._heapN === 0) return -1;
+    const hi = this._heapIdx!, hf = this._heapF!;
+    const top = hi[0];
+    this._heapN--;
+    if (this._heapN > 0) {
+      hi[0] = hi[this._heapN]; hf[0] = hf[this._heapN];
+      let n = 0;
+      for (;;) {
+        const l = 2 * n + 1, r = l + 1;
+        let small = n;
+        if (l < this._heapN && hf[l] < hf[small]) small = l;
+        if (r < this._heapN && hf[r] < hf[small]) small = r;
+        if (small === n) break;
+        const ti = hi[small], tf = hf[small];
+        hi[small] = hi[n]; hf[small] = hf[n];
+        hi[n] = ti; hf[n] = tf;
+        n = small;
+      }
+    }
+    return top;
+  }
   /** Framed-opening funnel points (see NavGate in level/types.ts). */
   private readonly gates: NavGate[];
   /** Cell index → the gate whose centre lies in that cell. */
@@ -268,30 +361,26 @@ export class NavGrid {
     const startIdx = startCell.r * this.cols + startCell.c;
     const endIdx = endCell.r * this.cols + endCell.c;
 
-    // Open set as a tiny heap — full priority-queue is overkill for
-    // <1000-cell grids, a sorted-on-insert array is fine.
-    const open: number[] = [startIdx];
-    const inOpen = new Set<number>([startIdx]);
-    const closed = new Set<number>();
-    const cameFrom = new Map<number, number>();
-    const gScore = new Map<number, number>();
-    const fScore = new Map<number, number>();
-    gScore.set(startIdx, 0);
-    fScore.set(startIdx, octileHeuristic(startCell, endCell));
+    // Binary min-heap + typed arrays (see the ensureAStarScratch note).
+    this.ensureAStarScratch();
+    const g = this._g!, cameFromArr = this._cameFrom!;
+    const stampG = this._stampG!, stampClosed = this._stampClosed!;
+    const q = ++this._query;
+    this._heapN = 0;
+    const endC = endCell.c, endR = endCell.r;
 
-    while (open.length > 0) {
-      // Linear scan for min f — for small open sets (always <500 in
-      // practice) this is faster than maintaining a heap.
-      let bestI = 0;
-      let bestF = fScore.get(open[0])!;
-      for (let i = 1; i < open.length; i++) {
-        const f = fScore.get(open[i])!;
-        if (f < bestF) {
-          bestF = f;
-          bestI = i;
-        }
-      }
-      const current = open[bestI];
+    g[startIdx] = 0;
+    stampG[startIdx] = q;
+    this.heapPush(startIdx, octileHeuristic(startCell, endCell));
+
+    for (;;) {
+      const current = this.heapPop();
+      if (current < 0) break;
+      // Lazy deletion: a cell can appear more than once (a better route pushed
+      // a second entry rather than decrease-keying the first). The first pop is
+      // the best one; later duplicates are stale.
+      if (stampClosed[current] === q) continue;
+      stampClosed[current] = q;
       if (current === endIdx) {
         // Reconstruct path.
         const path: Waypoint[] = [];
@@ -300,7 +389,7 @@ export class NavGrid {
           const cc = n % this.cols;
           const cr = Math.floor(n / this.cols);
           path.push(this.cellToWorld(cc, cr));
-          n = cameFrom.get(n)!;
+          n = cameFromArr[n];
         }
         path.reverse();
         // STRING-PULL first (taut the blocky cell path — clearance-aware, so it can
@@ -309,12 +398,6 @@ export class NavGrid {
         const pulled = this.stringPull(path, startX, startZ, radius);
         return this.funnel(pulled, startX, startZ);
       }
-      // Pop
-      open[bestI] = open[open.length - 1];
-      open.pop();
-      inOpen.delete(current);
-      closed.add(current);
-
       const cc = current % this.cols;
       const cr = Math.floor(current / this.cols);
 
@@ -338,7 +421,7 @@ export class NavGrid {
           }
         }
         const ni = nr * this.cols + nc;
-        if (closed.has(ni)) continue;
+        if (stampClosed[ni] === q) continue;
         // FULL cells (clearance 0.42 > half the 0.5m pitch) can never sit
         // on opposite sides of a wall, so full→full steps need no check.
         // TIGHT cells CAN straddle one — 0.24m clearance fits two cells
@@ -356,16 +439,19 @@ export class NavGrid {
         // Threading a choke costs extra — paths prefer open ground and
         // only squeeze a doorway when it genuinely pays off.
         const stepCost = nTier === TIGHT ? cost * TIGHT_COST_MUL : cost;
-        const tentativeG = gScore.get(current)! + stepCost;
-        const existingG = gScore.get(ni);
-        if (existingG !== undefined && tentativeG >= existingG) continue;
-        cameFrom.set(ni, current);
-        gScore.set(ni, tentativeG);
-        fScore.set(ni, tentativeG + octileHeuristic({ c: nc, r: nr }, endCell));
-        if (!inOpen.has(ni)) {
-          open.push(ni);
-          inOpen.add(ni);
-        }
+        const tentativeG = g[current] + stepCost;
+        // A stale stamp means "no g value this query" — no clearing needed.
+        if (stampG[ni] === q && tentativeG >= g[ni]) continue;
+        cameFromArr[ni] = current;
+        g[ni] = tentativeG;
+        stampG[ni] = q;
+        // Heuristic inline on scalars — the object-literal form allocated per
+        // neighbour expansion. (Measured at 0.04 ms/s, so this is tidiness,
+        // not the win; the heap and the typed arrays are the win.)
+        const dx = nc > endC ? nc - endC : endC - nc;
+        const dy = nr > endR ? nr - endR : endR - nr;
+        const h = (dx > dy ? dx : dy) + (SQRT2 - 1) * (dx > dy ? dy : dx);
+        this.heapPush(ni, tentativeG + h);
       }
     }
     return [];
