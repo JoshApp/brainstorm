@@ -89,5 +89,28 @@ test('desktop click on a mob still attacks (combat unaffected by interactEligibl
   );
 });
 
+test('a tap is ALWAYS a swing — parry has its own button and never steals it', () => {
+  // Parry used to pre-empt this whole ladder: while any enemy flashed a
+  // deflectable strike, a combat-zone tap parried instead of swinging. Two
+  // things were wrong with that. The player could never choose to TRADE — take
+  // the hit and swing anyway, which is a legitimate read they had no input for.
+  // And a LEAKED opportunity (a mob killed mid-flash left the count stuck true)
+  // dead-routed every tap to a no-op parry while the player mashed a button
+  // that no longer swung.
+  //
+  // Neither can recur: this function no longer knows what a deflect is. Locked
+  // in here because the failure mode is silent — combat simply stops responding.
+  assert.deepEqual(resolveTap(inputs({ aimed: enemyAim })), { kind: 'attack' });
+  assert.deepEqual(resolveTap(inputs({ mobInRange: true })), { kind: 'attack' });
+  assert.ok(!('deflectAvailable' in inputs({})), 'the deflect input is gone from the arbiter');
+  // And no input combination can produce a deflect any more.
+  for (const over of [
+    { aimed: enemyAim }, { mobInRange: true }, { bestInRange: pickup },
+    { aimed: chestAim, aimedReachable: true }, { canAttack: false },
+  ]) {
+    assert.notEqual(resolveTap(inputs(over)).kind, 'deflect');
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

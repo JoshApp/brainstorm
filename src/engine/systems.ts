@@ -48,6 +48,7 @@ import { isBusInstalled } from '../harness/intent';
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { setDodgeButtonAim, tickDodgeButton } from '../controls/dodge-button';
+import { tickParryButton } from '../controls/parry-button';
 import { captureStep } from '../harness/run-recorder';
 import { tryDash, setDashOver, noteDashOverFired } from '../combat/dash';
 import { consumeRiposte } from '../combat/reactive-defense';
@@ -211,6 +212,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // they belong to.
       setDodgeButtonAim(input.moveX, input.moveY);
       tickDodgeButton();
+      // Brightens while a deflectable strike is live — the timing cue rides the
+      // button, so the thumb already knows where to be.
+      tickParryButton();
       if (isDying() || isFogWalkthroughActive() || isDescendTransition()) return;
       // The action FSM arbitrates: no roll out of a swing's committed frames
       // or during a parry beat. Checked BEFORE consuming, so the input stays

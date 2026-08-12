@@ -162,6 +162,12 @@ export interface WeaponViewmodel {
    *  and settles back over ~0.2s. A transient layered over whatever pose
    *  is active (idle or mid-swing), so it never fights the swing sim. */
   parryRaise(): void;
+  /** Raise and HOLD the guard for `durationS` — the visible commitment of a
+   *  parry ATTEMPT, fired the moment the button is pressed rather than when a
+   *  strike lands. The catch above spikes out of this on a success; a miss is
+   *  left reading as a guard that caught nothing, which is what makes a
+   *  mistimed parry legible instead of invisible. */
+  parryGuard(durationS: number): void;
   /** Pop a single forward stab, called once per flurry sub-hit so a multi-rip
    *  combo step visibly stabs N times in sync with the damage. Transient. */
   flurryJab(): void;
@@ -607,6 +613,23 @@ export function createWeaponViewmodel(
   let parryRaiseAmt = 0;
   function parryRaise() { parryRaiseAmt = 1; }
 
+  // The GUARD — held while a parry attempt is live, distinct from the catch.
+  //
+  // Until parry got its own button it shared the attack tap, so pressing it
+  // could not have its own animation: the same input had to look like a swing
+  // until the game knew which it was. Now that it's deliberate, the press gets
+  // its own read — the blade comes up ACROSS the body and STAYS there for the
+  // commit window, so you can see that you guarded even when nothing arrives.
+  //
+  // Two separate reads on purpose:
+  //   GUARD (this)      — sustained, canted across, "I have committed to this"
+  //   CATCH (parryRaise) — a sharp spike on a SUCCESSFUL deflect, layered on top
+  // A miss now looks like a guard that caught nothing, which is honest feedback;
+  // before, a mistimed parry was visually identical to having done nothing.
+  let guardAmt = 0;      // 0..1 eased
+  let guardLeft = 0;     // seconds of commit remaining
+  function parryGuard(durationS: number) { guardLeft = Math.max(guardLeft, durationS); }
+
   // Flurry JAB transient — snaps to 1 on flurryJab(), called once per flurry
   // sub-hit from attack.ts's flurry timer, so the visible stab cadence IS the
   // damage cadence (no guessing). Decays fast so back-to-back rips (~0.05s
@@ -627,6 +650,23 @@ export function createWeaponViewmodel(
     // Layer the deflect catch: weapon lifts + tilts up into a guard, then
     // settles. Added AFTER repose (which fully sets the pose) and BEFORE the
     // arm IK below, so the hand follows the raised blade.
+    // The GUARD, first — a sustained pose the CATCH then spikes out of. Snaps up
+    // fast (the guard has to beat the strike it's answering) and releases
+    // slower, so the recovery reads as lowering a blade rather than a rewind.
+    guardLeft = Math.max(0, guardLeft - dt);
+    {
+      const target = guardLeft > 0 ? 1 : 0;
+      const rate = target > guardAmt ? 22 : 8;
+      guardAmt += (target - guardAmt) * Math.min(1, dt * rate);
+      if (guardAmt <= 0.0005) guardAmt = 0;
+    }
+    if (guardAmt > 0.001) {
+      const k = guardAmt * guardAmt * (3 - 2 * guardAmt);
+      group.position.y += 0.10 * k;
+      group.position.z += 0.045 * k;
+      group.rotation.x -= 0.34 * k;     // brought up
+      group.rotation.z += 0.52 * k;     // and ACROSS — the held guard angle
+    }
     if (parryRaiseAmt > 0.001) {
       const k = parryRaiseAmt * parryRaiseAmt * (3 - 2 * parryRaiseAmt);   // smooth
       group.position.y += 0.15 * k;
@@ -838,6 +878,7 @@ export function createWeaponViewmodel(
     },
     update,
     parryRaise,
+    parryGuard,
     flurryJab,
     equip,
     breakCombo: swing.breakCombo,

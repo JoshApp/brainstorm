@@ -20,6 +20,7 @@ import { resetSlowmoPresentation } from '../effects/slowmo-presentation';
 import { resetMomentum } from '../player/momentum';
 import { resetFovOffsets } from '../effects/camera-fov';
 import { resetDodgeButton } from '../controls/dodge-button';
+import { resetParryButton } from '../controls/parry-button';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
 import { resetViewSway } from '../player/viewmodel-sway';
@@ -243,6 +244,7 @@ export function tickPendingLoad() {
   resetMomentum();
   resetFovOffsets(camera ?? undefined);
   resetDodgeButton();
+  resetParryButton();
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level

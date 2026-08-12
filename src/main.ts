@@ -45,7 +45,7 @@ import { setBlastTargetProvider } from './combat/radial-blast';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
-  triggerParry, deflectOpportunityActive,
+  triggerParry,
 } from './combat/reactive-defense';
 import {
   bindPlayerActionSources, canStartAction, enterParry, } from './combat/player-action';
@@ -155,6 +155,7 @@ import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createDodgeButton } from './controls/dodge-button';
+import { createParryButton, setParryHandler } from './controls/parry-button';
 import { LEVELS_ENABLED } from './state/leveling';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
@@ -990,22 +991,8 @@ const input = createTouchInput(canvas, {
       bestInRange: getInRangeInteractable(),
       canAttack,
       interactEligible,
-      deflectAvailable: deflectOpportunityActive(),
     });
-    if (action.kind === 'deflect') {
-      // The tap is parry's entry point: resolveTap routes here while a
-      // deflectable strike is flashing. PARRY from a FREE stance (canStartAction
-      // gates out your own windup/strike/recovery) and off the anti-mash
-      // lockout (triggerParry); OTHERWISE fall back to a normal SWING — "a
-      // failed parry is just a normal attack." The fallback is load-bearing: it
-      // guarantees a tap is never wasted and that a stuck/leaked deflect
-      // opportunity (e.g. a mob killed mid-flash) can NEVER deadlock light
-      // attacks. Parry-spam stays gated (no parry mid-swing + the lockout), so
-      // the fallback only ever yields ordinary attacks, never free parries.
-      if (canStartAction('parry') && triggerParry()) enterParry(CONFIG.DEFLECT.COMMIT_S);
-      else triggerAttack();
-    }
-    else if (action.kind === 'attack') triggerAttack();
+    if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') { triggerInteract('tap'); resolveUsable(action.interactable, camera.position).onUse(); }
     // 'none' → deliberately do nothing (e.g. tapped a chest you're too far from).
   },
@@ -1050,6 +1037,24 @@ createConsumableBar();
 // press. Hidden on desktop and whenever a gesture scheme is selected instead;
 // tickDodgeButton (in the dash system) owns that.
 createDodgeButton();
+// The PARRY BUTTON — parry's own input, no longer sharing the attack tap.
+// Firing on DOWN (not up) because a parry is timed against an incoming blade and
+// charging the player for their own release latency would hand a slice of the
+// window to the hardware. The guard pose fires immediately on press, so a
+// mistimed parry now LOOKS like a guard that caught nothing rather than like
+// nothing at all.
+setParryHandler(() => {
+  if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+  // canStartAction gates out your own windup/strike/recovery — a parry is a
+  // free-stance action, not a swing cancel. triggerParry always opens SOME
+  // window now (the anti-mash narrows it rather than refusing), so the gate
+  // below is the only thing that can decline the press.
+  if (!canStartAction('parry')) return;
+  triggerParry();
+  enterParry(CONFIG.DEFLECT.COMMIT_S);
+  weapon.parryGuard(CONFIG.DEFLECT.COMMIT_S);
+});
+createParryButton();
 // Rite button hidden until rites are properly built (Josh) — the seam stays,
 // but the HUD affordance is off so it doesn't imply a finished feature.
 // (createRiteButton() intentionally not called; re-enable when rites land — #98.)
