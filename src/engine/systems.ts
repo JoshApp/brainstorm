@@ -263,13 +263,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickThresholdDrafts(ctx.realDt, camera.position);
     } },
 
-    // Instanced sprite batch — folds every batched flame/wisp (torch wisps,
-    // candle stacks, prop glows) into per-texture instance buffers. AFTER
-    // torchlight (which writes the wisp handles' colour/scale this frame);
-    // phase 'always' so flames keep rendering (and wobbling — Date.now
-    // flicker, like the old onBeforeRender) across pauses.
-    { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },
-
     // Effective torchlight at the player — torches within earshot AND with a
     // clear line of sight (one behind a wall neither lights nor sounds here).
     // Drives both the ambient crackle volume and the eye dark-adaptation signal.
@@ -544,6 +537,18 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'status-vfx', phase: 'unpaused', tick(ctx) {
       tickStatusVfx(scene, getLevel().enemies, camera.position, ctx.scaledDt);
     } },
+
+    // Instanced sprite batch — folds every batched flame/wisp/glow (torch
+    // wisps, candle stacks, prop glows, status motes + auras) into per-texture
+    // instance buffers. Must run AFTER every system that writes a batched
+    // handle this frame — torchlight (wisp colour/scale), threshold drafts,
+    // and status-vfx (mote/aura position + opacity) — because the fold reads
+    // their state rather than being read by them. Ticking it earlier costs a
+    // frame of positional lag on anything attached to a moving mob.
+    // phase 'always' so flames keep rendering (and wobbling — Date.now
+    // flicker, like the old onBeforeRender) across pauses; the status pool
+    // simply holds its last positions while status-vfx is gated off.
+    { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },
 
     // ── always-on (run through pause/death so the screen stays live) ──
 

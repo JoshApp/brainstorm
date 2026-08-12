@@ -33,11 +33,28 @@ import { registerWarmup } from '../content/warmup-registry';
 //  - setTexture() moves the entry between per-texture batches (the mood-tint
 //    pass swaps flames to the neutral 'moonbeam' ramp).
 //
-// SCOPE: additive, fog-on world sprites authored as model `sprite` parts on
-// STATIC PROPS (torches/candles/braziers/props). Creature eye-halos stay real
-// Sprites — enemy-presentation.ts mutates their materials directly (eye flash)
-// and mobs are few. Viewmodel overlay sprites (depth-off) are a different
-// pipeline variant and stay as-is.
+// SCOPE: additive world sprites, in TWO fog families (see FOG below) — model
+// `sprite` parts on STATIC PROPS (torches/candles/braziers/props), and
+// permanently-pooled combat glows (status-vfx motes + auras). Creature
+// eye-halos stay real Sprites — enemy-presentation.ts mutates their materials
+// directly (eye flash) and mobs are few. Viewmodel overlay sprites (depth-off)
+// and depthTest-off overlay cues (stun-stars) are different pipeline variants
+// and stay as-is. NormalBlending effects (dust-puff) are a third family nobody
+// has needed yet.
+//
+// LIFETIME: entries live until resetSpriteBatch() (level teardown). There is no
+// per-entry release, so a consumer must either live for the floor (props) or be
+// a FIXED POOL that hides its placeholders rather than dropping them
+// (status-vfx). A spawn-per-event consumer would grow `entries` unboundedly
+// within a floor — it needs a release path built first, deliberately not
+// speculated on here.
+//
+// FOG: the two families exist because additive fog is not a cosmetic toggle.
+// World flames want fog:true — they are IN the air and must haze out with the
+// corridor. Combat glows want fog:false: three blends an additive fragment
+// toward the fog COLOUR with distance, which on additive blending ADDS light as
+// something recedes, so a distant mote brightens instead of fading. Both are
+// correct for their population, and they cannot share a pipeline.
 //
 // Batching is opt-in per buildModel call (opts.batchSprites) and additionally
 // gated on setSpriteBatchScene() having been called — the bench/viewer tools
@@ -66,8 +83,16 @@ export interface BatchedSprite {
 
 interface Entry extends BatchedSprite {
   textureName: string;
+  fog: boolean;
+  persistent: boolean;
   flicker: Flicker | null;
   baseY: number;   // placeholder's authored local Y (bob is applied around it)
+}
+
+/** A batch serves one (texture, fog) pair — both are baked into the pipeline,
+ *  so they are the key. */
+function batchKey(textureName: string, fog: boolean): string {
+  return `${textureName}|${fog ? 'fog' : 'nofog'}`;
 }
 
 class Batch {
@@ -76,7 +101,7 @@ class Batch {
   scale: THREE.InstancedBufferAttribute;
   col: THREE.InstancedBufferAttribute;
   geo: THREE.InstancedBufferGeometry;
-  constructor(textureName: string) {
+  constructor(textureName: string, fog: boolean) {
     const plane = new THREE.PlaneGeometry(1, 1);
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = plane.index;
@@ -98,19 +123,20 @@ class Batch {
     mat.transparent = true;
     mat.blending = THREE.AdditiveBlending;
     mat.depthWrite = false;
-    mat.fog = true;   // world flames sit in the fog like their Sprite ancestors
+    mat.fog = fog;   // see the FOG note in the header — two families, both correct
     /* eslint-disable @typescript-eslint/no-explicit-any */
     (mat as any).positionNode = instancedBufferAttribute(this.pos);
     (mat as any).scaleNode = instancedBufferAttribute(this.scale);
     (mat as any).colorNode = (textureNode(getTexture(textureName)) as any)
       .mul((vec4 as any)(instancedBufferAttribute(this.col), 1));
     /* eslint-enable @typescript-eslint/no-explicit-any */
-    mat.name = `sprite-batch:${textureName}`;
+    const key = batchKey(textureName, fog);
+    mat.name = `sprite-batch:${key}`;
 
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;      // instances span the floor; cull per-entry via visibility
     this.mesh.matrixAutoUpdate = false;   // identity — instance positions are world-space
-    this.mesh.name = `sprite-batch:${textureName}`;
+    this.mesh.name = `sprite-batch:${key}`;
   }
 }
 
@@ -119,12 +145,14 @@ const batches = new Map<string, Batch>();
 const entries: Entry[] = [];
 const _world = new THREE.Vector3();
 const _scale = new THREE.Vector3();
+const _counts = new Map<string, number>();   // per-frame fill counts, reused (see tickSpriteBatch)
 
-function batchFor(textureName: string): Batch {
-  let b = batches.get(textureName);
+function batchFor(textureName: string, fog: boolean): Batch {
+  const key = batchKey(textureName, fog);
+  let b = batches.get(key);
   if (!b) {
-    b = new Batch(textureName);
-    batches.set(textureName, b);
+    b = new Batch(textureName, fog);
+    batches.set(key, b);
     batchScene?.add(b.mesh);
   }
   return b;
@@ -145,6 +173,13 @@ export function createBatchedSprite(opts: {
   size: [number, number];
   color: number;
   opacity: number;
+  /** Fog family — see the FOG note in the header. Defaults true (world flames,
+   *  the original consumer); combat glows pass false. */
+  fog?: boolean;
+  /** APP-scoped rather than level-scoped: survives resetSpriteBatch(). For
+   *  fixed pools built once at boot (status-vfx) whose owner outlives the
+   *  floor. Level-scoped props leave this false so teardown still drops them. */
+  persistent?: boolean;
   flicker?: { speed: number; phase?: number; scale?: number; bob?: number };
 }): BatchedSprite {
   const obj = new THREE.Object3D();
@@ -155,6 +190,8 @@ export function createBatchedSprite(opts: {
     scaleMul: new THREE.Vector2(1, 1),
     baseSize: new THREE.Vector2(opts.size[0], opts.size[1]),
     textureName: opts.texture,
+    fog: opts.fog ?? true,
+    persistent: opts.persistent ?? false,
     baseY: 0,
     flicker: opts.flicker ? {
       omega: Math.PI * 2 * opts.flicker.speed,
@@ -166,7 +203,7 @@ export function createBatchedSprite(opts: {
   };
   obj.userData.batchedSprite = entry;
   entries.push(entry);
-  batchFor(entry.textureName);   // ensure the batch exists (and warms) up front
+  batchFor(entry.textureName, entry.fog);   // ensure the batch exists (and warms) up front
   return entry;
 }
 
@@ -186,14 +223,17 @@ function worldVisible(o: THREE.Object3D): boolean {
  *  ~60 per-object draw submissions. */
 export function tickSpriteBatch(): void {
   if (!batchScene) return;
-  const counts = new Map<string, number>();
+  // Reused across frames — this runs every frame, and a fresh Map per frame is
+  // exactly the kind of steady allocation the effects pools were built to avoid.
+  _counts.clear();
   const now = Date.now();
   for (const e of entries) {
     if (!worldVisible(e.obj)) continue;
-    const b = batchFor(e.textureName);
-    const i = counts.get(e.textureName) ?? 0;
+    const key = batchKey(e.textureName, e.fog);
+    const b = batchFor(e.textureName, e.fog);
+    const i = _counts.get(key) ?? 0;
     if (i >= MAX_PER_BATCH) continue;
-    counts.set(e.textureName, i + 1);
+    _counts.set(key, i + 1);
 
     let s = 1;
     let bob = 0;
@@ -225,8 +265,8 @@ export function tickSpriteBatch(): void {
     // the tint and the shader's alpha stays the texture's own.
     b.col.setXYZ(i, e.color.r * e.opacity, e.color.g * e.opacity, e.color.b * e.opacity);
   }
-  for (const [name, b] of batches) {
-    const n = counts.get(name) ?? 0;
+  for (const [key, b] of batches) {
+    const n = _counts.get(key) ?? 0;
     // Hide idle batches entirely — a visible mesh with instanceCount 0 still
     // submits a degenerate draw (Dawn warns "index count of 0 is unusual").
     b.mesh.visible = n > 0;
@@ -238,27 +278,39 @@ export function tickSpriteBatch(): void {
   }
 }
 
-/** Drop every entry (level teardown/load — the placeholders die with the level
- *  root; the batch meshes + pipelines stay resident for the next floor). */
+/** Drop every LEVEL-scoped entry (teardown/load — those placeholders die with
+ *  the level root; the batch meshes + pipelines stay resident for the next
+ *  floor). Entries marked `persistent` are kept: their owners are app-scoped
+ *  pools built once at boot, so dropping them here would silently stop them
+ *  rendering from the second floor onward. */
 export function resetSpriteBatch(): void {
+  const kept = entries.filter((e) => e.persistent);
   entries.length = 0;
+  for (const e of kept) entries.push(e);
   for (const b of batches.values()) b.geo.instanceCount = 0;
 }
 
 // Warm the batch pipelines at boot: one visible dummy instance per common
 // texture, rendered through the real PSX pipeline by the warm pass. The batch
 // meshes live in the scene permanently, so the compiled pipelines stay pinned.
+// BOTH fog families are warmed. fog is baked into the pipeline, so warming only
+// the fog:true flames would leave the fog:false combat-glow pipeline to compile
+// on the first affliction of the run — a hitch mid-fight, which is precisely
+// what this warm exists to prevent.
 registerWarmup({
   label: 'sprite-batch', live: true,
   spawn: () => {
     if (!batchScene) return;
     for (const name of ['fire-wisp', 'moonbeam']) {
-      const b = batchFor(name);
-      b.pos.setXYZ(0, 0, 0.5, 0);
-      b.scale.setXY(0, 0.05, 0.05);
-      b.col.setXYZ(0, 1, 1, 1);
-      b.geo.instanceCount = 1;
-      b.pos.needsUpdate = true; b.scale.needsUpdate = true; b.col.needsUpdate = true;
+      for (const fog of [true, false]) {
+        const b = batchFor(name, fog);
+        b.pos.setXYZ(0, 0, 0.5, 0);
+        b.scale.setXY(0, 0.05, 0.05);
+        b.col.setXYZ(0, 1, 1, 1);
+        b.geo.instanceCount = 1;
+        b.mesh.visible = true;
+        b.pos.needsUpdate = true; b.scale.needsUpdate = true; b.col.needsUpdate = true;
+      }
     }
   },
   clear: () => { for (const b of batches.values()) b.geo.instanceCount = 0; },
