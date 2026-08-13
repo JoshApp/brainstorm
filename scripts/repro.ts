@@ -35,7 +35,11 @@ interface Report {
     yaw?: number | null; pitch?: number | null;
   };
   device?: { viewport?: { w: number; h: number }; userAgent?: string };
-  looking?: { hits?: LookHit[] } | null;
+  looking?: {
+    hits?: LookHit[];
+    aim?: { x: number; y: number; z: number };
+    nearby?: Array<{ owner?: string; count?: number; nearest?: number; example?: string }>;
+  } | null;
 }
 
 function has(name: string) { return process.argv.includes(name); }
@@ -94,6 +98,22 @@ async function main() {
       const p = h.point ? `(${h.point.x}, ${h.point.y}, ${h.point.z})` : '?';
       console.log(`  ${String(h.distance ?? '?').padStart(6)}m  ${h.name ?? '?'}  ${p}`);
       if (h.owner) console.log(`          owner: ${h.owner}`);
+    }
+    console.log('');
+  }
+
+  // THE VICINITY. Precise aim is the wrong thing to ask of a thumb, and these
+  // bugs are usually BESIDE the thing you can point at — or are a hole, with no
+  // geometry to hit. So this lists what lives around the aim point, grouped by
+  // producer, which is normally where the answer actually is.
+  const near = r.looking?.nearby ?? [];
+  if (near.length) {
+    const a = r.looking?.aim;
+    console.log(`Around the aim point${a ? ` (${a.x}, ${a.y}, ${a.z})` : ''}:`);
+    for (const n of near) {
+      const tag = (n.count ?? 1) > 1 ? ` ×${n.count}` : '';
+      console.log(`  ${String(n.nearest ?? '?').padStart(6)}m  ${n.example ?? '?'}${tag}`);
+      if (n.owner) console.log(`          ${n.owner}`);
     }
     console.log('');
   }
