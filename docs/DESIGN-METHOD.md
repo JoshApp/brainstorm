@@ -17,15 +17,34 @@ numeric answers with your thumbs.
 
 ## 1. The overpowered/boring diagonal
 
-Every bad item this project has produced has been bad in one of exactly two
-ways, and the two have a shape you can check before writing the numbers.
+> **MULTIPLICATIVE IS NOT THE ENEMY. Read this before you use anything below as
+> a reason to say no.**
+>
+> Josh, 2026-08-13: *"multiplicative isn't bad per se, please soften that — it
+> ruins the fun otherwise."* He is right, and this section used to read as a
+> prohibition, which is how a Claude session came to argue against a hammer's
+> third-hit earthshatter on the grounds that force must never multiply. That is
+> the wrong lesson drawn from a real bug.
+>
+> Compounding payoffs are where build-crafting lives. A run that ends with your
+> weapon doing something absurd because five choices lined up is the GOOD
+> outcome — it is most of the reason to play a roguelike twice. The failure
+> recorded below was never "two numbers multiplied". It was **an unbounded chain
+> on the one number every hit passes through, that nobody had measured.**
+>
+> So the rule of thumb is narrow: be careful stacking open-ended multipliers
+> onto the CORE PER-HIT DAMAGE PIPELINE, because everything in the game routes
+> through it and the ceiling compounds invisibly. A named ability with its own
+> authored numbers — an earthshatter finisher, a rite, a build's signature
+> payoff — is a different animal. It has ONE number to tune, its ceiling is
+> readable, and it should be allowed to hit hard.
+>
+> When in doubt the answer is **measure it, not forbid it** (§ "Write the
+> ceiling", and the combination simulator, task #132). A design that can't be
+> measured is the actual problem; multiplication is just where it shows up first.
 
-> **An effect is broken when its condition is under the player's control and
-> its payoff is multiplicative. It's inert when its condition is outside the
-> player's control and its payoff is additive.**
-
-The good zone is the diagonal: conditions you control with additive payoffs, or
-conditions you don't control with large ones.
+With that said, here is the failure the rule came from, because the diagnosis is
+still worth having.
 
 The canonical case was the one-damage dagger hitting for eleven. Five bonuses —
 full charge (×1.8), head zone (×1.2), overcharged release (×1.35), execute on a
@@ -36,18 +55,29 @@ by the player*. Charge, aim high, release on the beat, wait for the stagger. So
 they aren't situational bonuses at all; they're a checklist a competent player
 completes every time, and "situational" was a fiction the design told itself.
 
-The fix generalises past that one chain: **bonuses add, penalties multiply, crit
-multiplies once** (`combat/damage-math.ts`). Each bonus now contributes a legible
-slice of BASE — a head shot is always "+20% of base", not "+20% of whatever the
-other four already compounded to" — and a sixth good idea costs a slice instead
-of doubling the ceiling.
+Note what the actual sin was: not that they multiplied, but that they were five
+*generic per-hit* bonuses on a pipeline with no stated ceiling, so nobody could
+see ×14.6 coming without doing the arithmetic by hand.
+
+The fix for THAT PIPELINE: **bonuses add, penalties multiply, crit multiplies
+once** (`combat/damage-math.ts`). Each generic bonus contributes a legible slice
+of BASE — a head shot is always "+20% of base", not "+20% of whatever the other
+four already compounded to" — so a sixth good idea costs a slice instead of
+doubling the ceiling. This is the default for the *generic bonus* lane and it
+still stands. It is **not** a ban on multiplicative design elsewhere, and a
+mechanic that wants to break it can — with a stated ceiling and an audit.
+
+The inert half of the old diagonal is the one nobody argues with and it is still
+true: **a condition outside the player's control with an additive payoff is
+nothing.** Most boring items die here.
 
 ### Two questions to ask before liking a mechanic
 
 1. **What does a second copy do?** If the answer is "nothing", it's unique by
    construction — say so in the data (`ItemSpec.unique`) rather than letting the
-   drop table hand out a dud. If the answer is "twice as much, compounding", it's
-   the ×14.6 bug waiting to happen.
+   drop table hand out a dud. If the answer is "twice as much, compounding",
+   that's fine *if it is bounded and measured* — and it's the ×14.6 bug if it
+   rides the generic per-hit lane with no ceiling.
 2. **What does this let the player stop doing?** Most bad items die here. An item
    that removes a decision reads as powerful in a design document and feels like
    nothing in a run.
@@ -234,8 +264,12 @@ that request lets the work check itself.
 
 ## The short version
 
-- Bonuses add, penalties multiply, crit multiplies once.
-- Player-controlled condition + multiplicative payoff = broken. Always.
+- Multiplicative is not the enemy — measure it, don't forbid it. Compounding
+  payoffs are where build-crafting lives.
+- Bonuses add, penalties multiply, crit multiplies once — in the GENERIC per-hit
+  lane. A named ability with its own authored numbers may hit hard.
+- A player-controlled condition feeding an UNBOUNDED, UNMEASURED chain on the
+  core damage pipeline is the thing to watch. State a ceiling and audit it.
 - Every audit tool calls the real function; every unit test feeds the caller's real values.
 - Check final-state rules against the final state.
 - Costs in another system's units are fractions.

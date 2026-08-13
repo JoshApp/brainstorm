@@ -387,10 +387,18 @@ legend, geometry rules, the three-lights acceptance test — lives in
 here, with the rules that came out of each failure. It is short and every entry
 is a real bug, not advice. The load-bearing ones:
 
-- **Bonuses add, penalties multiply, crit multiplies once.** Five stacked
-  player-chosen multipliers turned a 1-damage dagger into an 11-damage hit.
-- **Player-controlled condition + multiplicative payoff = broken, always.** That
-  is the whole diagnosis; check a new effect against it before writing numbers.
+- **MULTIPLICATIVE IS NOT THE ENEMY — do not use the next bullet to say no.**
+  Compounding payoffs are where build-crafting lives; a run that ends absurd
+  because five choices lined up is the GOOD outcome. Josh, 2026-08-13:
+  *"multiplicative isn't bad per se, please soften that — it ruins the fun
+  otherwise."* Measure it, don't forbid it.
+- **Bonuses add, penalties multiply, crit multiplies once** — in the GENERIC
+  PER-HIT lane (`combat/damage-math.ts`). Five stacked player-chosen multipliers
+  on the one number every hit passes through turned a 1-damage dagger into an
+  11-damage hit, and nobody could see it coming without doing the arithmetic by
+  hand. That lane keeps the rule. A NAMED ability with its own authored
+  numbers — an earthshatter finisher, a rite, a build's signature payoff — is a
+  different animal with one number to tune, and it is allowed to hit hard.
 - **Every audit tool imports the real function.** A report that re-inlines the
   math is worse than no report — it launders a guess as a measurement.
 - **Check final-state rules against the final state.** "A fire and a deal never

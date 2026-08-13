@@ -361,8 +361,10 @@ Short list; the full versions live in `docs/DESIGN-METHOD.md` and
 `docs/LEVEL-OWNERSHIP.md` §4. These are here because they have each cost us a
 bug more than once.
 
-1. **Bonuses add, penalties multiply, crit multiplies once.**
-2. **Player-controlled condition + multiplicative payoff = broken, always.**
+1. **Multiplicative is not the enemy — measure it, don't forbid it.** Compounding
+   payoffs are where build-crafting lives.
+2. **Bonuses add, penalties multiply, crit multiplies once** — in the GENERIC
+   per-hit lane. A named ability with its own authored numbers may hit hard.
 3. **Every audit tool imports the real function; every test feeds the caller's
    real values.** A test that invents its own inputs agrees with the bug.
 4. **A final-state check VERIFIES a rule; it does not IMPLEMENT one.** A sweep can
