@@ -14,6 +14,15 @@ import type { AttributeKind } from '../state/character';
 import type { DomainId } from './domains';
 
 export type ItemKind = 'weapon' | 'offhand' | 'vestment' | 'relic'
+                     // A RITE, as a thing lying on the floor. The mechanical
+                     // half lives in content/rites.ts; this is the object you
+                     // find, so the whole loot pipeline — drop tables, the
+                     // pickup, the preview card, the acquisition beat — carries
+                     // it for free. Taking one never bags it: it goes into the
+                     // run's carried rites (state/run-state.ts grantRite), which
+                     // is why player/inventory.ts refuses it like gear.
+                     // See `riteId` below for the link back.
+                     | 'rite'
                      | 'consumable' | 'key'
                      // A RESOURCE picked up off the floor and consumed on touch —
                      // never a bag entry, never a decision. Isaac's soul heart.
@@ -276,6 +285,11 @@ export interface ItemSpec {
   status?: ContentStatus;
   /** Rarity tier — drives UI tint + (future) drop weighting. Default mundane. */
   rarity?: Rarity;
+  /** RITES ONLY (`kind: 'rite'`) — which rite in content/rites.ts this object
+   *  grants when taken. Kept as a link rather than duplicating the rite's data
+   *  onto the item, so a rite's numbers have exactly one home and the thing on
+   *  the floor stays a wrapper. */
+  riteId?: string;
   /** Short flavor line shown in the details panel under the name. */
   flavor?: string;
   /** Model used when the item is on the floor as a pickup. */

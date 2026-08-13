@@ -26,6 +26,7 @@ import { MERCHANT_MODEL, RELIC_KEEPER_MODEL } from '../interactables/merchant';
 import { BLACKSMITH_MODEL } from '../interactables/blacksmith';
 import { archway } from '../content/archway';
 import { doorframe } from '../content/doorframe';
+import { riteSigilModel } from '../content/rite-sigil';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -90,6 +91,11 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'hand-left-lantern': { label: 'Left hand, ring-carry pose', spec: HAND_LEFT_LANTERN },
   'lurker':      { label: 'Lurker — hunched silhouette with dim eyes', spec: LURKER },
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
+  // A found RITE on the floor. Two domains side by side on the bench so the
+  // domain tint is checkable — it is the only thing that differs between them,
+  // and it has to read at a glance or the sigils are nine identical slabs.
+  'rite-sigil':      { label: 'Rite sigil — forbidden (the tablet you find)', spec: riteSigilModel('forbidden') },
+  'rite-sigil-valor': { label: 'Rite sigil — valor', spec: riteSigilModel('valor') },
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
   'skeleton-key': { label: 'Skeleton key — skull bow with glowing eye sockets', spec: SKELETON_KEY },
   'ossuary-niche': { label: 'Ossuary niche — double-bay bone cabinet (PALE family)', spec: OSSUARY_NICHE },

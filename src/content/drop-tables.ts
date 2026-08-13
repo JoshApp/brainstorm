@@ -63,6 +63,13 @@ export const GROUPS: Record<string, ItemGroup> = {
   // that hand out "gear" resolve to relics until vestments have a home again.
   gear:        { kinds: RELIC_KINDS },
   relics:      { kinds: RELIC_KINDS },
+  // RITES — the ACTIVE lane's collectible, and its own pool for the same reason
+  // relics are: a rite must never leak into a roll that meant to hand you a
+  // passive. Strict, so a source that asks for a rite and finds none eligible
+  // MISSES rather than substituting a relic — an active and a passive are not
+  // interchangeable rewards, and quietly swapping one for the other is how the
+  // player learns to distrust a reward's promise.
+  rites:       { kinds: ['rite'] as const, strict: true },
   'boss-loot': { tag: 'boss', bias: 4 },
   cursed:      { tag: 'cursed', bias: 4 },
 };
@@ -215,8 +222,18 @@ export const TABLES: Record<string, LootTable> = {
   'spark': T({ emptyGold: 8, entries: [{ from: 'relics', bias: 2, minRarity: 'uncommon' }] }),
 
   // ── BOSSES — a relic reward. ──
-  'miniboss': T({ emptyGold: 12, entries: [{ from: 'relics', bias: 3, minRarity: 'uncommon' }] }),
-  'boss':     T({ emptyGold: 25, entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
+  // A MINIBOSS OFTEN CARRIES A RITE, and the act's boss usually does. This is
+  // the deliberate acquisition route: a rite is an ACTIVE — a whole new verb —
+  // so it comes from the fights you chose to take, not from a vase. Weighted so
+  // a run reliably meets one or two without every kill handing out a button.
+  'miniboss': T({ emptyGold: 12, entries: [
+    { from: 'relics', bias: 3, weight: 70, minRarity: 'uncommon' },
+    { from: 'rites',  bias: 3, weight: 30 },
+  ] }),
+  'boss':     T({ emptyGold: 25, entries: [
+    { from: 'relics', bias: 4, weight: 45, minRarity: 'rare' },
+    { from: 'rites',  bias: 4, weight: 55 },
+  ] }),
 
   // ── EVENTS / DEALS — single-item sources. ──
   // THE STAGED FIND — the director's chest, one per floor, always silver.
@@ -246,14 +263,21 @@ export const TABLES: Record<string, LootTable> = {
     { gold: [10, 22],  weight: 28 },
   ] }),
   'merchant':      T({ entries: [{ from: 'gear', bias: 2, minRarity: rampFloor(1, 6) }] }),
-  'reliquary':     T({ entries: [{ from: 'relics', bias: 4, minRarity: 'rare' }] }),
+  // The reliquary keeps something sealed. Sometimes it's an instruction.
+  'reliquary':     T({ entries: [
+    { from: 'relics', bias: 4, weight: 74, minRarity: 'rare' },
+    { from: 'rites',  bias: 4, weight: 26 },
+  ] }),
   // TROVE — the floor's guaranteed choice, rolled three times onto three stones.
   // Deliberately relic-heavy: a trove's job is to move your BUILD forward, and
   // three relics side by side is a real decision (which direction do I commit
   // to?), where three weapons would just be "which number is bigger".
   'trove': T({ entries: [
-    { from: 'relics', bias: 3, weight: 72, minRarity: rampFloor(2, 7) },
-    { from: 'gear',   bias: 3, weight: 28, minRarity: rampFloor(2, 7) },
+    { from: 'relics', bias: 3, weight: 60, minRarity: rampFloor(2, 7) },
+    { from: 'gear',   bias: 3, weight: 24, minRarity: rampFloor(2, 7) },
+    // One stone in the trove may hold a rite — which is the decision the trove
+    // wants to be: commit further down a passive line, or take a new verb.
+    { from: 'rites',  bias: 3, weight: 16 },
   ] }),
   'challenge':     T({ entries: [{ from: 'gear', bias: 4, minRarity: rampFloor(2, 7) }] }),
   // A fallen delver is now a RARE find (loot-director drops the per-floor odds),

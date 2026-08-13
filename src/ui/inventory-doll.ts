@@ -1,6 +1,6 @@
 import { getEquipment, getSidearm, swapWeapons, type EquipSlot } from '../player/equipment';
 import { getReliquary } from '../player/reliquary';
-import { getEquippedRite, equipRite } from '../state/run-state';
+import { getEquippedRite, equipRite, getCarriedRites } from '../state/run-state';
 import { RITES } from '../content/rites';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
@@ -183,7 +183,21 @@ export function buildRiteSlot(ctx: InventoryCtx): HTMLDivElement {
   if (riteExpanded) {
     const chips = document.createElement('div');
     Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '4px' } as Partial<CSSStyleDeclaration>);
-    for (const s of Object.values(RITES)) {
+    // ONLY WHAT YOU HAVE FOUND. This used to walk the whole registry, which
+    // made the rite slot a menu of every rite in the game — the exact thing
+    // Josh asked to end ("let's make rites not equippable from inventory ...
+    // rites need to be items that you can kinda find / pick up"). Carrying many
+    // and arming one is the model; the satchel is state/run-state.ts's.
+    const carried = getCarriedRites().map((id) => RITES[id]).filter(Boolean);
+    if (!carried.length) {
+      const empty = document.createElement('div');
+      empty.textContent = 'you carry no rites — the deep keeps them';
+      Object.assign(empty.style, {
+        fontSize: '10px', fontFamily: 'serif', fontStyle: 'italic', color: TEXT_DIM,
+      } as Partial<CSSStyleDeclaration>);
+      chips.appendChild(empty);
+    }
+    for (const s of carried) {
       const isOn = s.id === equipped;
       const chip = document.createElement('button');
       chip.textContent = `${s.name} · ${s.hungerCost}`;

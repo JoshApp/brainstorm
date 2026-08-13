@@ -258,6 +258,12 @@ export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boo
       return autoFillSingle('vestment', item, affixes) || autoFillSingle('vestment2', item, affixes);
     // Relics COLLECT into the reliquary — never a slot, always applies.
     case 'relic':    addRelic(item, affixes); return true;
+    // A RITE is not equipment. Taking one adds it to the run's carried rites
+    // (player/inventory.ts intercepts the pickup and calls grantRite); the
+    // ACTIVE slot is chosen in the rite panel, not filled by whatever you
+    // happened to walk over last. Auto-equipping it here would quietly re-arm
+    // your loadout every time you found one.
+    case 'rite':
     case 'consumable':
     case 'key':
     // An ember is consumed on touch (pickup.ts) and never reaches the bag or a
@@ -281,7 +287,9 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
     case 'weapon':     return ['weapon'];
     case 'offhand':    return ['offhand'];
     case 'vestment':   return ['vestment', 'vestment2'];
-    // relics don't occupy a slot — they collect into the reliquary.
+    // Neither relics nor rites occupy an equipment slot: relics collect into
+    // the reliquary, rites into the run's carried set with one armed.
+    case 'rite':
     case 'relic':
     case 'consumable':
     case 'key':

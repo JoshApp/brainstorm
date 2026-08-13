@@ -1,5 +1,6 @@
 import { emit } from '../broadcast/event-bus';
 import { ITEMS } from '../content/items';
+import { grantRite } from '../state/run-state';
 
 // Player inventory bag — multiset of item ids the player CURRENTLY holds
 // but doesn't have equipped. Equipped items live in src/player/equipment.ts
@@ -43,8 +44,20 @@ export function addItem(itemId: string, displayName?: string): boolean {
   // and never sit in a bag to be juggled. This is the hard backstop: if a stray
   // caller tries to bag a piece of gear, refuse it here rather than let a phantom
   // weapon accumulate somewhere the player can't wear it.
-  const kind = ITEMS[itemId]?.kind;
+  const spec = ITEMS[itemId];
+  const kind = spec?.kind;
   if (kind === 'weapon' || kind === 'offhand' || kind === 'vestment') return false;
+  // A RITE is not a bag entry either. The object on the floor is a wrapper
+  // (content/items.ts, kind 'rite'); what it actually grants is an entry in the
+  // run's carried rites, and the first one you find arms itself. Intercepted
+  // HERE rather than at each pickup site so every route into the game — floor
+  // drop, chest, altar, merchant — grants it the same way.
+  if (kind === 'rite') {
+    if (!spec?.riteId) return false;
+    const took = grantRite(spec.riteId);
+    if (took) emit({ type: 'item:picked-up', itemId, displayName });
+    return took;   // false when already carried, so the pickup stays on the floor
+  }
   if (isAtCarryLimit(itemId)) return false;
   counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
   emit({ type: 'item:picked-up', itemId, displayName });

@@ -1,6 +1,8 @@
 import type { ModelSpec } from '../ecs/model-types';
 import type { ContentStatus } from './content-status';
 import { CONFIG } from '../config';
+import { RITES } from './rites';
+import { riteSigilModel } from './rite-sigil';
 import type { StatModifier } from '../combat/modifiers';
 import type { MoveStep } from '../combat/move-timeline';
 import { HARROW_MOVES } from './weapon-moves';
@@ -1861,3 +1863,47 @@ for (const item of Object.values(ITEMS)) {
     : 1.5;   // no model anchors → a sane default (author a blade_tip to fix)
 }
 
+
+// ── RITES, AS THINGS YOU FIND ────────────────────────────────────────────────
+//
+// Josh: *"rites need to be items that you can kinda find / pick up. similar to
+// relics with 2.5d etc. very similar but distinct to it."*
+//
+// So every rite in content/rites.ts gets an ITEM that grants it, and the item is
+// GENERATED from the rite rather than hand-written beside it. That is the whole
+// design of this block: a hand-maintained parallel list is a drift bug waiting —
+// add a rite, forget the item, and the rite is unfindable with nothing to say
+// so. Here, authoring a rite IS authoring its drop.
+//
+// The wrapper carries no mechanics. `riteId` links back, and taking one calls
+// grantRite (player/inventory.ts refuses to bag it, exactly as it refuses gear).
+//
+// DISTINCT FROM A RELIC, deliberately. A relic is a thing you WEAR and it sits
+// in a slot forever; a rite is a thing you PERFORM, and the object is closer to
+// a tablet or a sigil-stone than to jewellery. They share the 2.5D billboard
+// treatment (effects/relic-billboard.ts) because that is how DELVE draws a found
+// object, but a rite names itself as a rite everywhere it appears.
+//
+// Rarity rides the rite's own COST, which is already its power curve: a cheap
+// rite you lean on is a common find, and the ones that cost most of the meter
+// are the ones worth descending for.
+for (const rite of Object.values(RITES)) {
+  const id = `rite-${rite.id}`;
+  if (ITEMS[id]) continue;   // an authored override wins — never clobber content
+  ITEMS[id] = {
+    id,
+    kind: 'rite',
+    riteId: rite.id,
+    // Named as the OBJECT, not the effect: you find a sigil, and what is cut
+    // into it is the rite. The rite's own name carries in the preview card.
+    name: rite.name,
+    rarity: rite.hungerCost >= 80 ? 'fabled'
+      : rite.hungerCost >= 44 ? 'rare'
+      : 'uncommon',
+    // The rite's fate line IS its flavour — one voice, written once.
+    flavor: rite.fate,
+    domain: rite.domain,
+    dropModel: riteSigilModel(rite.domain),
+    status: rite.status,
+  };
+}

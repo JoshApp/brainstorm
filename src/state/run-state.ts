@@ -82,6 +82,10 @@ export interface SaveData {
   hunger?: number;
   /** The equipped RITE (id into content/rites.ts) — the active-ability slot. */
   riteId?: string;
+  /** Every rite FOUND this run. You carry many; exactly one is ever armed
+   *  (`riteId`). Absent on older saves — treated as "carry only what's armed",
+   *  which keeps an in-flight run's button working across the change. */
+  rites?: string[];
   /** Healing-flask (Estus) state — charges/capacity/heal, per-run. Refilled at
    *  the bonfire. Optional for older saves (restored to a full base flask). */
   flask?: FlaskState;
@@ -127,10 +131,12 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
     actEntryGold: 0,
     cards: [],
     hunger: 0,
-    // v1: start with Hemorrhage equipped so the rite loop is immediately
-    // playable. TODO: rites become FOUND in the deep (pried from altars/
-    // corpses/bosses) once the rite-drop system lands.
-    riteId: 'hemorrhage',
+    // NO RITE. A delver starts with nothing in the active slot, because a rite
+    // is now a thing you FIND (content/items.ts, kind 'rite'). The old free
+    // Hemorrhage was scaffolding from when nothing dropped one, and while it
+    // stood the whole lane read as a menu you opened rather than a reward.
+    // The button stays hidden until the deep hands you one.
+    rites: [],
   };
   // Fresh run = no inherited mutations. Any prior run's tainted brands
   // die with their delver.
@@ -152,7 +158,10 @@ export function adoptSave(save: SaveData) {
     xp: save.xp ?? 0,
     gold: save.gold ?? 0,
     hunger: save.hunger ?? 0,
-    riteId: save.riteId ?? 'hemorrhage',   // v1 default; becomes a found drop later
+    // A save from before rites were carried knows only what was ARMED. Treat
+    // that as the whole satchel so a run in flight keeps its button rather than
+    // finding its rite suddenly un-equippable.
+    rites: save.rites ?? (save.riteId ? [save.riteId] : []),
   };
   hydrateMutations(save.mutations);
   hydrateTemper(save.temper);
@@ -225,9 +234,52 @@ export function getEquippedRite(): string | null {
   return inMemory?.riteId ?? null;
 }
 
-/** Equip a rite into the single rite slot (the loadout — swap freely). */
+/** Every rite this run has FOUND. Carry many; only one is ever active. */
+export function getCarriedRites(): readonly string[] {
+  return inMemory?.rites ?? [];
+}
+
+/** Is this rite in the run's satchel? */
+export function hasRite(id: string): boolean {
+  return (inMemory?.rites ?? []).includes(id);
+}
+
+/**
+ * TAKE a rite found in the deep. Returns false if it's already carried, so the
+ * caller can say "you have this" rather than silently eating the pickup.
+ *
+ * The first rite you find ARMS ITSELF. A rite you are carrying and have not
+ * equipped is a button that isn't there, and a player who has just picked up
+ * their first active shouldn't have to go looking through a menu to discover
+ * that. Every rite after that is a choice, and choices go through the slot.
+ */
+export function grantRite(id: string): boolean {
+  if (!inMemory) return false;
+  const carried = (inMemory.rites ??= []);
+  if (carried.includes(id)) return false;
+  carried.push(id);
+  if (!inMemory.riteId) inMemory.riteId = id;
+  return true;
+}
+
+/**
+ * Equip one of the rites you CARRY into the single active slot.
+ *
+ * Refuses anything not carried — that refusal is the whole point of the change.
+ * Josh: *"let's make rites not equippable from inventory ... rites need to be
+ * items that you can kinda find / pick up."* Until now `equipRite` took any id
+ * in the registry and ui/inventory-doll.ts offered all nine as chips, so the
+ * entire active lane was a menu you opened rather than a thing you found.
+ *
+ * CARRY MANY, ARM ONE. Josh: *"maybe yes we make it so you can carry multiple
+ * rites but only have one active, because we are not sure how that will work."*
+ * Carrying many costs nothing to allow and can be tightened later; making the
+ * ACTIVE slot singular is the decision that actually shapes play, and that one
+ * is made here.
+ */
 export function equipRite(id: string | null): void {
   if (!inMemory) return;
+  if (id !== null && !hasRite(id)) return;   // you cannot arm what you never found
   inMemory.riteId = id ?? undefined;
 }
 
