@@ -1554,7 +1554,23 @@ export function createEnemy(
   }
 
   // Nerve BREAKS — the creature routs. Drop whatever it was doing and flee.
-  function breakMorale(): void {
+  //
+  // A ROUT IS A FEAR. There used to be two ways into this state and they were
+  // not the same state: an IMPOSED fear (a poise break from behind) set
+  // `fearTimer` and then routed, while a SPONTANEOUS morale break just set
+  // `state = 'fleeing'` and left the timer at zero. The two then behaved
+  // differently in every place that reads the timer — the cower refreshed for
+  // one and lapsed for the other, the post-fear immunity engaged for one and
+  // not the other — and the `dread` debuff (content/buffs.ts) applied to
+  // NEITHER, despite config.ts documenting it as how fear slows a body. The
+  // buff existed, fully authored, and nothing in the game ever applied it.
+  //
+  // Josh: *"when an enemy flees we should make it have the fear debuff instead
+  // of just running away, that unifies things."* So there is now one door.
+  // Whatever broke the creature — its own nerve or a blow it never saw — it
+  // comes out feared: same timer, same skull, same DREAD stack in the debuff
+  // read, same slow, and one buff id for the fear archetype to key on.
+  function breakMorale(durationS = CONFIG.ENEMY_AI.FEAR.BREAK_DURATION): void {
     brokenOnce = true;
     currentAbility = null;
     clearAoeTelegraph();
@@ -1564,6 +1580,11 @@ export function createEnemy(
     cowerTimer = 0;
     state = 'fleeing';
     phaseTimer = 0;
+    fearTimer = Math.max(fearTimer, durationS);
+    // The visible, inspectable half of the state. Rides the same duration as the
+    // timer so the icon and the behaviour can't disagree.
+    const ent = getEntity(entityId);
+    if (ent) applyBuff(ent, 'dread', durationS, entityId);
   }
 
   // IMPOSE fear. The public route into the rout above, for anything that can
@@ -1580,10 +1601,17 @@ export function createEnemy(
     if (!aliveLocal || seconds <= 0) return false;
     if (spec.isBoss || spec.miniboss) return false;
     if (fearCd > 0) return false;
-    fearTimer = Math.max(fearTimer, seconds);
-    // A creature already reeling from the break can't start running yet — it
-    // routs the moment the stagger lets go (see the 'staggered' exit).
-    if (state !== 'staggered' && state !== 'fleeing') breakMorale();
+    // A creature already reeling from the break can't start RUNNING yet — it
+    // routs the moment the stagger lets go (see the 'staggered' exit) — but the
+    // fear itself lands now, timer and debuff both, so the handoff out of the
+    // stagger has something to read.
+    if (state !== 'staggered' && state !== 'fleeing') {
+      breakMorale(seconds);
+    } else {
+      fearTimer = Math.max(fearTimer, seconds);
+      const ent = getEntity(entityId);
+      if (ent) applyBuff(ent, 'dread', seconds, entityId);
+    }
     return true;
   }
 
