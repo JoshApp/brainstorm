@@ -41,6 +41,7 @@ import { resetFlameMeshBatch } from '../scene/flame-mesh-batch';
 import { resetStaticBatches } from '../scene/static-batch';
 import { clearArenaLightArc } from '../feedback/arena-light-arc';
 import { getActiveLevel, setActiveLevel } from './active-level';
+import { markGenerated, dropGeneratedLevels } from './generated-registry';
 import { tagPerfEvent } from '../debug/perf-recorder';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
@@ -94,11 +95,6 @@ export interface LoaderConfig {
 let generate: LoaderConfig['generate'] = undefined;
 
 /** One-time setup. After this, the loader owns the active level handle. */
-// The keys the registry was BORN with (hand-authored specs — tutorial, and any
-// authored room added later). Everything else in `levels` got there by being
-// generated and cached, so this set is what tells the two apart at reset.
-let authoredIds: ReadonlySet<string> = new Set();
-
 export function initLevelLoader(cfg: LoaderConfig) {
   scene = cfg.scene;
   materials = cfg.materials;
@@ -106,23 +102,13 @@ export function initLevelLoader(cfg: LoaderConfig) {
   levels = cfg.levels;
   onLoaded = cfg.onLoaded;
   generate = cfg.generate;
-  authoredIds = new Set(Object.keys(cfg.levels));
 }
 
-/** Drop every GENERATED floor, keeping the hand-authored ones. Call at run
- *  start.
- *
- *  The cache at loadLevel exists so a stairs.targetLevel pointing back at the
- *  current floor resolves to the same spec within one run. Across runs it is
- *  wrong: `levels` is the module-level LEVELS object, nothing ever deleted from
- *  it, and ending a run stopped reloading the page — so the second run in a tab
- *  asked for 'depth-1', hit the previous run's entry, and replayed that floor
- *  despite having rolled a fresh seed. The seed silently stopped choosing the
- *  layout after run one. Reload used to hide this by destroying the context. */
+/** Drop every GENERATED floor at run start, keeping the hand-authored ones —
+ *  including per-run authored levels registered after init (the starter
+ *  chamber). The rule and the bug it came from live in generated-registry.ts. */
 export function resetGeneratedLevels(): void {
-  for (const id of Object.keys(levels)) {
-    if (!authoredIds.has(id)) delete levels[id];
-  }
+  dropGeneratedLevels(levels);
 }
 
 export function getCurrentDepth(): number {
@@ -172,6 +158,7 @@ export function tickPendingLoad() {
       // that references THIS floor (e.g. for hypothetical future
       // back-tracking) finds it. Also makes repeated descents idempotent.
       levels[id] = generated;
+      markGenerated(id);
     }
   }
   if (!spec) {
@@ -344,8 +331,15 @@ export function tickPendingLoad() {
   // warmup subjects flashing through. Hold the black until `prewarm` resolves —
   // with a quiet "descending" mark if the wait runs long — then raise the Depth-N
   // title and fade in. WebGL / already-warm floors resolve instantly.
+  // An AUTHORED level names itself; only procgen floors borrow the act's name.
+  // `spec.displayName` exists for exactly this and was being ignored, so the
+  // weapon-select chamber announced itself as whatever the act namer produced
+  // for depth 0 ("The Old Refectory (revisited)") instead of "choose the thing
+  // you will die with". Generated specs set displayName: undefined, so they are
+  // unaffected.
+  const floorName = spec.displayName ?? actForDepth(currentDepth).name;
   revealWhenReady(prewarm, isSafeRoom ? undefined : () => {
-    showDescentTitle(`Depth ${currentDepth}`, actForDepth(currentDepth).name);
+    showDescentTitle(`Depth ${currentDepth}`, floorName);
   });
 }
 
