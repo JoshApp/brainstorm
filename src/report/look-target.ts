@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { locateInLevel, type Placement } from '../level/locate';
+import { getActiveLevel } from '../level/active-level';
 
 // WHAT WAS THE PLAYER LOOKING AT?
 //
@@ -72,6 +74,11 @@ export interface LookTarget {
    * batched meshes reads as one line.
    */
   nearby: NearbyGroup[];
+  /** The floor plan's OWN name for where the player stood and where they aimed —
+   *  room / corridor ids, the corridor's type, and the connection a dogleg's leg
+   *  belongs to. See level/locate.ts: this is what turns a world coordinate into
+   *  something a reader can open a file about. */
+  place: { at: Placement; aim: Placement } | null;
 }
 
 const raycaster = new THREE.Raycaster();
@@ -203,11 +210,25 @@ export function captureLookTarget(scene: THREE.Object3D, camera: THREE.Camera): 
     .sort((a, b) => a.nearest - b.nearest)
     .slice(0, MAX_NEARBY);
 
+  // Name the place in the floor plan's own vocabulary. Wrapped because a report
+  // filed before a level exists (title screen, mid-load) must still be filed.
+  let place: LookTarget['place'] = null;
+  try {
+    const spec = getActiveLevel()?.spec;
+    if (spec) {
+      place = {
+        at: locateInLevel(spec, _from.x, _from.z),
+        aim: locateInLevel(spec, aim.x, aim.z),
+      };
+    }
+  } catch { /* no level, no placement */ }
+
   return {
     from: { x: +_from.x.toFixed(2), y: +_from.y.toFixed(2), z: +_from.z.toFixed(2) },
     forward: { x: +_dir.x.toFixed(3), y: +_dir.y.toFixed(3), z: +_dir.z.toFixed(3) },
     hits,
     aim: { x: +aim.x.toFixed(2), y: +aim.y.toFixed(2), z: +aim.z.toFixed(2) },
     nearby,
+    place,
   };
 }

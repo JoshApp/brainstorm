@@ -25,6 +25,8 @@ interface LookHit {
   point?: { x: number; y: number; z: number };
   geometry?: string | null; material?: string | null;
 }
+interface PlaceRef { id?: string; kind?: string; corridorType?: string; linkId?: string }
+interface Placement { inside?: PlaceRef[]; nearest?: (PlaceRef & { distance?: number }) | null }
 interface Report {
   build?: string;
   at?: number;
@@ -39,6 +41,7 @@ interface Report {
     hits?: LookHit[];
     aim?: { x: number; y: number; z: number };
     nearby?: Array<{ owner?: string; count?: number; nearest?: number; example?: string }>;
+    place?: { at?: Placement; aim?: Placement } | null;
   } | null;
 }
 
@@ -99,6 +102,27 @@ async function main() {
       console.log(`  ${String(h.distance ?? '?').padStart(6)}m  ${h.name ?? '?'}  ${p}`);
       if (h.owner) console.log(`          owner: ${h.owner}`);
     }
+    console.log('');
+  }
+
+  // WHERE, IN THE FLOOR PLAN'S OWN WORDS. Room and corridor ids are the thing a
+  // reader can go and open a file about; a coordinate is not.
+  const fmtPlace = (pl?: Placement | null): string => {
+    if (!pl) return '';
+    const parts = (pl.inside ?? []).map((r) => {
+      const extra = [r.corridorType, r.linkId].filter(Boolean).join(', ');
+      return `${r.id}${extra ? ` (${extra})` : ''}`;
+    });
+    if (parts.length) return parts.join(' + ');
+    const n = pl.nearest;
+    return n ? `outside everything — nearest ${n.id} at ${n.distance}m` : '';
+  };
+  const at = fmtPlace(r.looking?.place?.at);
+  const aimAt = fmtPlace(r.looking?.place?.aim);
+  if (at || aimAt) {
+    console.log('Where:');
+    if (at) console.log(`  standing in: ${at}`);
+    if (aimAt && aimAt !== at) console.log(`  aimed at:    ${aimAt}`);
     console.log('');
   }
 
