@@ -135,6 +135,26 @@ export function buildArchwayEye(scene: THREE.Object3D, pos: THREE.Vector3, quat:
   lidBot.rotation.z = Math.PI;        // flip to cover the bottom
   group.add(lidTop, lidBot);
 
+  // THE EYE IS ANIMATED — KEEP IT OUT OF THE STATIC BATCH.
+  //
+  // The eye is mounted on the archway keystone, so it lives inside the level
+  // root, and the static batcher sweeps that root for "opaque, non-animated"
+  // meshes. Nothing here matched an exclusion: it isn't an interactable, a
+  // torch, an enemy, a door, transparent, or named 'flame'. So every part of it
+  // was baked into `static-batch-world` and the source meshes stopped existing
+  // as drawables — measured, on real floors: ZERO lid meshes left in the scene.
+  //
+  // Which means `update()` has been writing `lidTop.position.y` to something
+  // nobody draws. The lids never move, so the eyes are permanently shut and the
+  // whole navigation-eye feature is invisible. (Reported from the phone: "the
+  // navigation eyes are always closed ... maybe after batching." It was.)
+  //
+  // `dynamicPart` is the existing opt-out both batchers honour (static-batch.ts
+  // and merge-static.ts each check it per MESH, not per group — hence the
+  // traverse). The cost is a handful of loose meshes per eye; the alternative is
+  // a feature that cannot render.
+  group.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.userData.dynamicPart = true; });
+
   scene.add(group);
 
   let lit = 0;   // eased open amount
