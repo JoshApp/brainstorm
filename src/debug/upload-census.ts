@@ -12,12 +12,14 @@
 // report says WHICH code is doing 567 writes rather than that someone is.
 //
 // WHY IT RIDES ALONG WITH A RECORDING, rather than being a console command:
-// the measurement only exists on the WebGPU backend, and the headless harness
-// has no working WebGPU (every snap in this project forces `webgpu=0`) — so
-// this cannot be run from CI or from a script here. It has to run on a real
-// device. Josh already makes recordings on his phone and sends them, so the
-// census attaches itself to the front of a recording and arrives in the same
-// file. No new thing to learn, no console on a phone.
+// Josh already makes recordings on his phone and sends them, so the census
+// attaches itself to the front of a recording and arrives in the same file.
+// No new thing to learn, no console on a phone.
+// (This used to say the census could ONLY run on a real device, because the
+// headless harness had no WebGPU. That stopped being true on 2026-08-13 — see
+// scripts/headless-browser.ts. A headless run is a real WebGPU backend now, so
+// the census CAN be driven from a script; the phone is still where the numbers
+// mean something, since swiftshader's upload costs are not a phone's.)
 //
 // IT RUNS ON A TIMER, NOT AT RECORD-START. First version armed in
 // startRecording() and produced nothing, because the recordings people

@@ -8,8 +8,9 @@ import type { ModelSpec, PartSpec, Vec3 } from '../ecs/model-types';
 //
 // `ecs/build-model.ts` imports TSL and `three/webgpu`; its materials are NODE
 // materials. A plain-WebGL sandbox cannot use them, and moving the lab to
-// WebGPU would break the headless contact sheet outright — swiftshader has no
-// working WebGPU, which is why every snap in this project forces `webgpu=0`.
+// WebGPU used to break the headless contact sheet outright. (That reason has
+// since expired — headless WebGPU works as of 2026-08-13, see
+// scripts/headless-browser.ts — but the conclusion below stands on its own.)
 //
 // That blocker points straight at the right answer. The sandbox RE-SKINS
 // everything anyway: every recipe throws away the materials and assigns its

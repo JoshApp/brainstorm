@@ -58,6 +58,23 @@ always already a `delve` command.
 | drive + inspect the live world | `delve pilot --vault <id> --do "…"` |
 | autonomous playtest episode | `delve play` |
 
+**Snaps run on WEBGPU now** (since 2026-08-13). That is the backend the game
+ships on, so it is the one the tool verifies; `delve snap … --webgl` forces the
+WebGL2 backend as a control. This was believed impossible for months — headless
+Chromium *can* run WebGPU, it just cannot present to a canvas, and the failed
+present used to take the whole device down. `scripts/headless-browser.ts` is the
+single source of truth for how it works (secure origin, one flag, a swap-chain
+shim, and the frame read back offscreen and painted under the HUD). Two things
+follow:
+
+- **Dawn's validation layer is live in a snap.** Validation is device-independent,
+  so a usage/synchronization-scope error from Josh's phone reproduces headlessly.
+  `delve snap` prints anything the run collected on `window.__gpuErrors`.
+- **Known headless-only noise:** `[psx] in-flight watchdog: N submit(s) never
+  completed` fires a few times per run with `__gpuErrors` EMPTY. That watchdog
+  guesses "probably failed validation"; here it is just software rasterisation
+  being slow to land completions. Not a game bug — don't chase it from a snap.
+
 **Naming is convention, not a lookup.** Every subject in `ITEMS`/`ENEMIES` gets
 a preview for free, named `viewmodel-<id>` (held weapon), `mob-<id>`, or
 `item-<id>` (drop model) — derived in `src/debug/authorables.ts`, auto-filled in

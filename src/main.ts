@@ -1,6 +1,6 @@
 import { setCensusRenderer } from './debug/perf-recorder';
 import * as THREE from 'three';
-import { createRenderer } from './scene/create-renderer';
+import { createRenderer, activeGraphicsBackend } from './scene/create-renderer';
 import { initEmbersGPU } from './effects/embers-gpu';
 import { initLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
@@ -398,7 +398,7 @@ registerFrameCapture(async () => {
   // canvas.toDataURL reads BLACK). 960px wide keeps the report attachment small.
   try {
     const cap = await captureDisplayFrame(renderer, scene, camera, 960);
-    if (cap) png = pixelsToPngDataURL(cap.data, cap.width, cap.height);
+    if (cap) png = pixelsToPngDataURL(cap.data, cap.width, cap.height, activeGraphicsBackend() !== 'webgpu');
   } catch { /* read blocked */ }
   return {
     png,
@@ -406,6 +406,22 @@ registerFrameCapture(async () => {
     yaw: camera.rotation.y,
   };
 });
+// HEADLESS PRESENT (DEV): headless Chromium can run WebGPU, but it CANNOT
+// allocate the canvas swap chain — Dawn and the software compositor share no
+// SharedImage backing factory, so the first present kills the device outright
+// (see scripts/headless-browser.ts for the full diagnosis). The harness shims
+// getCurrentTexture() to a plain offscreen texture, which keeps the device
+// alive; nothing then reaches the canvas, so it asks for the frame HERE — the
+// same offscreen render + async readback the bug report already uses. Returns a
+// PNG data URL at the requested width; the harness paints it under the DOM HUD
+// so a page screenshot composites world + UI exactly as it would on a phone.
+if (import.meta.env.DEV) {
+  (window as unknown as { __captureFrame?: (w?: number) => Promise<string | null> }).__captureFrame =
+    async (w = 1280) => {
+      const cap = await captureDisplayFrame(renderer, scene, camera, w);
+      return cap ? pixelsToPngDataURL(cap.data, cap.width, cap.height, activeGraphicsBackend() !== 'webgpu') : null;
+    };
+}
 if (import.meta.env.DEV) initAiGizmos(scene);   // DEV facing gizmos (?aigizmos=1 / ai-lab)
 // LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
 // frame. Wired early so the render system's flushLux has its refs.

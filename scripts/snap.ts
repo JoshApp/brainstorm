@@ -24,22 +24,18 @@
  * a 600-tall laptop window.
  */
 
-import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { CHROMIUM_CANDIDATES, chromiumPath, launchHeadless, installWebGPUShims, paintHeadlessFrame, reportGpuErrors } from './headless-browser';
 
-// Pre-installed by the sandbox; Playwright's normal browser download is blocked.
-// Probe the known install locations (sandbox + Playwright's own cache) and
-// take the first that exists, rather than hard-coding one version path.
-const CHROMIUM_CANDIDATES = [
-  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  process.env.HOME + '/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome',
-  process.env.HOME + '/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
-  process.env.HOME + '/.cache/ms-playwright/chromium-1161/chrome-linux/chrome',
-  process.env.HOME + '/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
-];
-const CHROMIUM_PATH = CHROMIUM_CANDIDATES.find((p) => existsSync(p)) ?? CHROMIUM_CANDIDATES[0];
+const CHROMIUM_PATH = chromiumPath() ?? CHROMIUM_CANDIDATES[0];
+
+// WEBGPU vs WEBGL2. The game SHIPS on WebGPU, so `--webgl` is the escape hatch,
+// not the default — a snap that verifies a backend players never touch is a
+// snap that can't see the bugs Josh reports. Both work headlessly; see
+// scripts/headless-browser.ts for why we believed otherwise for months.
+const wantWebGL = process.argv.includes('--webgl');
 
 // Viewport presets. Realistic mobile/tablet sizes so the snap previews
 // match what Josh actually sees on his phone.
@@ -163,12 +159,10 @@ async function main() {
   // 2. Launch headless Chromium with the pre-installed binary
   let browser;
   try {
-    browser = await chromium.launch({
-      executablePath: CHROMIUM_PATH,
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader'],
-    });
+    browser = await launchHeadless();
 
     const context = await browser.newContext({ viewport });
+    await installWebGPUShims(context);
     const page = await context.newPage();
 
     // Special pseudo-scenarios that need a bare URL (no ?scenario=…) so
@@ -310,13 +304,15 @@ async function main() {
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}${crtFilm}${inspQ}${extraQ}`;
-    // Headless swiftshader has no working WebGPU: Chrome exposes navigator.gpu but
-    // the context provider fails, and the failed 'webgpu' getContext attempt poisons
-    // the canvas so the WebGL2 fallback gets a null context (black frame). Force the
-    // WebGL2 backend up-front — it skips the webgpu context request entirely.
-    if (!url.includes('ui-bench.html')) url += (url.includes('?') ? '&' : '?') + 'webgpu=0';
-    // Skip the pipeline PREWARM by default: under the headless swiftshader WebGL2
-    // fallback, warming every pipeline takes far longer than the reveal timeout,
+    // Backend. WebGPU is the default because it's what ships; `--webgl` appends
+    // ?webgpu=0 to force the WebGL2 backend instead (useful for A/B-ing a
+    // rendering difference, or when a Dawn validation error is the thing under
+    // test and you want the other path as a control).
+    if (wantWebGL && !url.includes('ui-bench.html')) {
+      url += (url.includes('?') ? '&' : '?') + 'webgpu=0';
+    }
+    // Skip the pipeline PREWARM by default: under software rasterisation,
+    // warming every pipeline takes far longer than the reveal timeout,
     // so the descent cover never drops and the shot is just the loading bar. With
     // nowarm the cover drops immediately and pipelines compile lazily — the post-
     // reveal wait (waitMs) gives them time, and the frame renders. This is what
@@ -395,6 +391,7 @@ async function main() {
       const interval = frameCount > 1 ? durationMs / (frameCount - 1) : 0;
       for (let i = 0; i < frameCount; i++) {
         if (i > 0) await page.waitForTimeout(interval);
+        await paintHeadlessFrame(page);
         frames.push(await page.screenshot({ type: 'png' }));
         process.stdout.write(`  captured frame ${i + 1}/${frameCount}\r`);
       }
@@ -449,9 +446,14 @@ async function main() {
       await page.screenshot({ path: outPath, fullPage: true });
       console.log(`Saved ${outPath} (${cols}×${rows} grid, ${frameCount} frames over ${durationSec}s)`);
     } else {
+      // On WebGPU the canvas is blank by design (see headless-browser.ts) —
+      // pull the rendered frame back out of the GPU and lay it under the HUD
+      // before the shot. No-op on --webgl.
+      await paintHeadlessFrame(page);
       await page.screenshot({ path: outPath });
       console.log(`Saved ${outPath}`);
     }
+    await reportGpuErrors(page);
   } finally {
     if (browser) await browser.close().catch(() => {});
     // Kill the whole process group so vite + its esbuild child both die.
