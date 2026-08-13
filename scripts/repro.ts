@@ -9,16 +9,33 @@
 //
 // With --id it fetches from the collector (REPORT_ENDPOINT / REPORT_READ_KEY, same
 // env as `delve reports`). Closes the self-development loop: report → repro → fix.
+//
+// IT REPRODUCES THE VIEW, NOT JUST THE FLOOR. A report carries the camera POSE
+// and a crosshair raycast (report/look-target.ts), so this prints what the
+// player was aiming at — named, with the ancestor chain that says which system
+// built it — and replays the pose through `?at=&yaw=&pitch=`. Before that, a
+// repro rebuilt the right floor and dropped you at the spawn, which for "a
+// doorway three rooms away is wrong" is the easy half of the problem.
 
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
+interface LookHit {
+  name?: string; owner?: string; distance?: number;
+  point?: { x: number; y: number; z: number };
+  geometry?: string | null; material?: string | null;
+}
 interface Report {
   build?: string;
   at?: number;
   userText?: string;
-  run?: { seed?: number | null; depth?: number | null; floorId?: string | null };
+  run?: {
+    seed?: number | null; depth?: number | null; floorId?: string | null;
+    cameraPos?: { x: number; y: number; z: number } | null;
+    yaw?: number | null; pitch?: number | null;
+  };
   device?: { viewport?: { w: number; h: number }; userAgent?: string };
+  looking?: { hits?: LookHit[] } | null;
 }
 
 function has(name: string) { return process.argv.includes(name); }
@@ -67,15 +84,42 @@ async function main() {
     return;
   }
 
+  // WHAT THE REPORT IS ABOUT. The crosshair raycast, nearest hit first — the
+  // owner chain is the useful half, because this codebase names its groups after
+  // the system that built them, so it points at the file to open.
+  const hits = r.looking?.hits ?? [];
+  if (hits.length) {
+    console.log('Looking at:');
+    for (const h of hits) {
+      const p = h.point ? `(${h.point.x}, ${h.point.y}, ${h.point.z})` : '?';
+      console.log(`  ${String(h.distance ?? '?').padStart(6)}m  ${h.name ?? '?'}  ${p}`);
+      if (h.owner) console.log(`          owner: ${h.owner}`);
+    }
+    console.log('');
+  }
+
+  // STAND WHERE THEY STOOD. Seed + depth rebuild the floor; the pose is what
+  // puts a reader in front of the thing instead of at the stairs a room away.
+  const c = r.run?.cameraPos;
+  const pose = c
+    ? `&at=${c.x.toFixed(2)},${c.y.toFixed(2)},${c.z.toFixed(2)}`
+      + (r.run?.yaw != null ? `&yaw=${r.run.yaw.toFixed(4)}` : '')
+      + (r.run?.pitch != null ? `&pitch=${r.run.pitch.toFixed(4)}` : '')
+    : '';
+  if (!c) console.log('(no camera pose in this report — falls back to the spawn point)\n');
+
   const reproScenario = `run-${seed}-${depth}`;
+  const query = `autostart=1&seed=${seed}&depth=${depth}&dev=1${pose}`;
   console.log('Reproduce it:');
-  console.log(`  headless snap:  npm run delve snap ${reproScenario} phone`);
-  console.log(`  in a browser:   /brainstorm/?autostart=1&seed=${seed}&depth=${depth}&dev=1\n`);
+  console.log(`  headless snap:  npm run delve snap ${reproScenario} phone${pose ? ` --q="${pose.slice(1)}"` : ''}`);
+  console.log(`  in a browser:   /brainstorm/?${query}\n`);
 
   if (has('--snap')) {
     const viewport = argVal('--viewport') ?? 'phone';
-    console.log(`Snapping ${reproScenario} (${viewport})…`);
-    const res = spawnSync('npm', ['run', 'delve', 'snap', reproScenario, viewport], { stdio: 'inherit' });
+    console.log(`Snapping ${reproScenario} (${viewport})${pose ? ' from the reporter\u2019s exact pose' : ''}…`);
+    const args = ['run', 'delve', 'snap', reproScenario, viewport];
+    if (pose) args.push(`--q=${pose.slice(1)}`);
+    const res = spawnSync('npm', args, { stdio: 'inherit' });
     process.exit(res.status ?? 0);
   }
 }

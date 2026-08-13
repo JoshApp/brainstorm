@@ -11,12 +11,21 @@
 // is a GPU→CPU round-trip. The game scene is rendered WITHOUT the DOM
 // HUD/menus, so the shot is a clean view of the run.
 
+import type { LookTarget } from './look-target';
+
 export interface FrameContext {
   /** PNG data URL of the current frame, or null if the read failed. */
   png: string | null;
   /** Camera world position + yaw at capture time. */
   cameraPos: { x: number; y: number; z: number };
   yaw: number;
+  /** Camera PITCH. Needed with yaw to reproduce the view — a report that only
+   *  carries yaw puts a reader at the right spot facing the right compass
+   *  direction but looking at the wrong height, which for floor and ceiling
+   *  bugs is most of the problem. */
+  pitch: number;
+  /** What the crosshair was on, named. See report/look-target.ts. */
+  look: LookTarget | null;
 }
 
 let provider: (() => Promise<FrameContext>) | null = null;

@@ -26,7 +26,18 @@ export interface BugReport {
     seed: number | null;
     cameraPos: { x: number; y: number; z: number } | null;
     yaw: number | null;
+    /** With yaw, enough to restore the exact view. `delve repro` replays both. */
+    pitch: number | null;
   };
+  /**
+   * WHAT THE REPORT IS ABOUT — the crosshair raycast, named (report/look-target.ts).
+   *
+   * The seed + depth + pose already let a reader rebuild the floor and stand
+   * where the player stood. This is the missing half: which geometry, and which
+   * system produced it. It turns "some corridors and doors generate faulty"
+   * into an owner chain and a world position that name the file to open.
+   */
+  looking: import('./look-target').LookTarget | null;
   device: { userAgent: string; viewport: { w: number; h: number }; dpr: number; language: string };
   screenshot: string | null;   // PNG data URL
   telemetry: ReturnType<typeof buildTelemetryBundle>;
@@ -59,7 +70,9 @@ export async function buildBugReport(userText: string): Promise<BugReport> {
       seed: run?.startedAt ?? null,
       cameraPos: frame?.cameraPos ?? null,
       yaw: frame?.yaw ?? null,
+      pitch: frame?.pitch ?? null,
     },
+    looking: frame?.look ?? null,
     device: {
       userAgent: navigator.userAgent,
       viewport: { w: window.innerWidth, h: window.innerHeight },

@@ -57,6 +57,7 @@ always already a `delve` command.
 | screenshot any scenario / vault | `delve snap <target>` |
 | drive + inspect the live world | `delve pilot --vault <id> --do "…"` |
 | autonomous playtest episode | `delve play` |
+| **reproduce a player's bug report** | `delve repro <report.json> --snap` |
 
 **Snaps run on WEBGPU now** (since 2026-08-13). That is the backend the game
 ships on, so it is the one the tool verifies; `delve snap … --webgl` forces the

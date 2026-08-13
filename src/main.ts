@@ -72,6 +72,7 @@ import {
 } from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { registerFrameCapture, pixelsToPngDataURL } from './report/frame-capture';
+import { captureLookTarget } from './report/look-target';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { beginArrival, suppressArrivalCeremony } from './player/arrival';
@@ -404,6 +405,10 @@ registerFrameCapture(async () => {
     png,
     cameraPos: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
     yaw: camera.rotation.y,
+    pitch: camera.rotation.x,
+    // One ray down the view axis, so the report says WHAT it is about rather
+    // than leaving that to prose. Never allowed to cost the player a report.
+    look: (() => { try { return captureLookTarget(scene, camera); } catch { return null; } })(),
   };
 });
 // HEADLESS PRESENT (DEV): headless Chromium can run WebGPU, but it CANNOT
@@ -1428,6 +1433,24 @@ async function startRun(floorId: string, startDepth: number = 1): Promise<void> 
   camera.rotation.order = 'YXZ';
   camera.rotation.y = currentLevel.playerSpawn.yaw;
   camera.rotation.x = 0;
+  // STAND WHERE THE REPORTER STOOD (DEV). `?at=x,y,z&yaw=&pitch=` overrides the
+  // spawn with a pose out of a bug report, so `delve repro` can put a reader at
+  // the exact spot the player was looking from instead of at the stairs a room
+  // away. Seed + depth already rebuild the floor deterministically; this is what
+  // makes "see what I see" literal.
+  //
+  // NOT clamped to the walkable region on purpose: a report about geometry that
+  // shouldn't exist is often filed from somewhere the resolver would push you
+  // out of, and moving the camera would hide the very thing being reported.
+  if (import.meta.env.DEV) {
+    const q = new URLSearchParams(window.location.search);
+    const at = (q.get('at') ?? '').split(',').map(Number);
+    if (at.length === 3 && at.every(Number.isFinite)) camera.position.set(at[0], at[1], at[2]);
+    const yaw = Number(q.get('yaw'));
+    if (q.get('yaw') != null && Number.isFinite(yaw)) camera.rotation.y = yaw;
+    const pitch = Number(q.get('pitch'));
+    if (q.get('pitch') != null && Number.isFinite(pitch)) camera.rotation.x = pitch;
+  }
   // FP viewmodels (weapon / lamp / hand) are hidden for the title vignette — it's
   // a posed scene behind the menu, not the player standing in it. Any real floor
   // shows them again.
