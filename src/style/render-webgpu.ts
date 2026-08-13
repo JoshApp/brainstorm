@@ -417,7 +417,7 @@ function applyPendingResScale(): void {
   // submit outside that counter — warmSinceFlush > 0 means unawaited warm
   // frames may still reference the current pass textures (resizing then is
   // the exact destroyed-texture storm this defer exists to prevent).
-  if (pendingResScale === null || inFlight > 0 || warmSinceFlush > 0 || warmingUp || !scenePass) return;
+  if (pendingResScale === null || inFlight > 0 || warmSinceFlush > 0 || warmDepth > 0 || !scenePass) return;
   scenePass.setResolutionScale(pendingResScale);
   pendingResScale = null;
 }
@@ -448,7 +448,7 @@ function drainRetired(): void {
   // "[Buffer ...] used in submit while destroyed" validation storm this defer
   // exists to prevent. Observed 2026-08-12 on desktop with retired=3 pending
   // across a burst of pipeline rebuilds.
-  if (inFlight > 0 || warmSinceFlush > 0 || warmingUp || retired.length === 0) return;
+  if (inFlight > 0 || warmSinceFlush > 0 || warmDepth > 0 || retired.length === 0) return;
   for (const d of retired) { try { d.dispose?.(); } catch { /* best-effort */ } }
   retired = [];
 }
@@ -891,7 +891,7 @@ function releaseStuckInFlight(): void {
   // the GPU for seconds, so a live submit issued just before one starts is
   // legitimately outstanding — that is backpressure working, not a stall.
   // (Observed firing once per load before this guard.)
-  if (warmingUp) { inFlightSince = performance.now(); return; }
+  if (warmDepth > 0) { inFlightSince = performance.now(); return; }
   if (performance.now() - inFlightSince < IN_FLIGHT_STUCK_MS) return;
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
@@ -925,7 +925,7 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   // While the warm pass is driving its own renders (warmRenderWebGPU), the main loop
   // must NOT also submit — two concurrent renderAsync on one pipeline race. The warm
   // runs behind the load cover, so skipping here just holds the covered frame.
-  if (warmingUp) { if (import.meta.env.DEV) tallySkip('warmingUp'); return; }
+  if (warmDepth > 0) { if (import.meta.env.DEV) tallySkip('warmingUp'); return; }
   if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) { if (import.meta.env.DEV) tallySkip('inFlight'); return; }   // GPU behind — drop this submit
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.
@@ -994,7 +994,7 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
         // depth/output TextureBinding|RenderAttachment errors): what was in
         // flight when this submit was encoded. retired>0 = a pipeline rebuild
         // is awaiting drainRetired; presented = frame ordinal since boot.
-        const ctx = ` :: ctx{retired=${retired.length} warming=${warmingUp ? 1 : 0} presented=${presentedFrames} inFlight=${inFlight}}`;
+        const ctx = ` :: ctx{retired=${retired.length} warming=${warmDepth} presented=${presentedFrames} inFlight=${inFlight}}`;
         // eslint-disable-next-line no-console
         console.error('[psx gpu-error] frame draws=' + draws + ctx + ' :: ' + msg.slice(0, 280));
         const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg + ctx);
@@ -1032,7 +1032,7 @@ export async function captureDisplayFrame(
     luxRT.texture.colorSpace = THREE.SRGBColorSpace;
   }
   const prev = renderer.getRenderTarget();
-  warmingUp = true;
+  enterWarm();
   try {
     renderer.setRenderTarget(luxRT);
     (pipeline as unknown as { render: () => void }).render();
@@ -1044,7 +1044,7 @@ export async function captureDisplayFrame(
     return null;
   } finally {
     renderer.setRenderTarget(prev);
-    warmingUp = false;
+    leaveWarm();
   }
 }
 
@@ -1065,8 +1065,30 @@ export async function captureDisplayFrame(
 // through the byte-identical live path — which is why they only ever run
 // behind an opaque DOM cover, and why the cover must not drop until a CLEAN
 // frame has presented after the warm (see bootWarm / fadeIn).
-let warmingUp = false;
-export function isWarmingUp(): boolean { return warmingUp; }
+// ── WARM DEPTH, NOT A WARM FLAG ─────────────────────────────────────────────
+//
+// This gate is what holds the live frame loop still while a warm owns the
+// render graph: renderWebGPU returns early whenever it is set, so nothing draws
+// into a target the warm has bound or a scene the warm has forced visible.
+//
+// It used to be a plain boolean, and warms NEST — warmSceneCompile binds the
+// scene target, forces every object visible + unculled, and then calls
+// warmRenderWebGPU for the shadow-depth pass. That inner call's `finally` set
+// the boolean back to FALSE while the outer warm was still running, so for the
+// rest of warmSceneCompile the loop was free to render: a live frame with the
+// WHOLE FLOOR forced visible, encoded against a graph mid-warm, before
+// restoreCull() had run and while warm submits were still in flight.
+//
+// That is the same shape as the depth-texture conflict rebuildWebGPUPipeline
+// documents — the graph touched while a pass is live — and it is deterministic
+// at descent, because descent is where the nesting always happens.
+//
+// A COUNTER cannot be cleared by an inner scope. Every warm enters and leaves;
+// the gate opens only when the outermost one is done.
+let warmDepth = 0;
+export function isWarmingUp(): boolean { return warmDepth > 0; }
+function enterWarm(): void { warmDepth++; }
+function leaveWarm(): void { warmDepth = Math.max(0, warmDepth - 1); }
 
 // ── Warm-render pacing ──────────────────────────────────────────────────────
 // The 2026-07-03 descent-freeze triage found the first-descent warm spending
@@ -1125,7 +1147,7 @@ export async function warmRenderWebGPU(
       pendingResScale = null;
     }
   }
-  warmingUp = true;
+  enterWarm();
   try {
     // render() encodes + submits synchronously (pipeline compiles happen HERE,
     // on the CPU); completion is only awaited every WARM_FLUSH_EVERY renders to
@@ -1136,7 +1158,7 @@ export async function warmRenderWebGPU(
       if (++warmSinceFlush >= WARM_FLUSH_EVERY) await flushWarmRenders(renderer);
     }
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
-    warmingUp = false;
+    leaveWarm();
   }
 }
 
@@ -1178,7 +1200,7 @@ export async function warmSceneCompile(
     for (const o of forcedVis) o.visible = false;
     for (const o of forcedFrustum) (o as THREE.Mesh).frustumCulled = true;
   };
-  warmingUp = true;
+  enterWarm();
   try {
     // MAIN pass, ALL rooms + ALL directions — bind the PSX target so the format matches, then
     // compileAsync the whole (now-uncullable) scene. compileAsync only COMPILES (no draw calls /
@@ -1216,11 +1238,13 @@ export async function warmSceneCompile(
   } finally {
     restoreCull();
     renderer.setRenderTarget(prev);
-    warmingUp = false;
-    // The descent gate reveals right after this returns — drain any warm
-    // submits still in flight so the reveal's first real frame isn't queued
-    // behind warm work.
+    // DRAIN FIRST, THEN OPEN THE GATE. The descent gate reveals right after this
+    // returns, so warm submits still in flight have to land before the first
+    // real frame — but the drain AWAITS, and dropping the gate before it means
+    // the loop encodes live frames against a graph whose warm work has not
+    // retired yet. Leave the warm last.
     try { await flushWarmRenders(renderer); } catch { /* best-effort */ }
+    leaveWarm();
   }
 }
 
