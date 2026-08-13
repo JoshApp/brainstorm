@@ -606,6 +606,32 @@ export const CONFIG = {
                                   //   the 3rd 25% — a crowd is chipped, not deleted, so
                                   //   being outnumbered stays dangerous — the grimdark point)
   CLEAVE_DAMAGE_MIN: 0.25,        // floor — a cleaved target never drops below this ×
+  /**
+   * The FEWEST breakables one swing may take, whatever the weapon cleaves.
+   *
+   * Cleave limits exist so a wide arc cannot delete a PACK, and every reason
+   * behind that — damage economy, threat, the fairness of being outnumbered — is
+   * about enemies. Pottery has none of them: one hit point, a gated coin roll,
+   * and shattering a shelf of it in one blow is the most satisfying thing a
+   * heavy weapon does. Props used to share the enemy cap (min(maxTargets, 2)),
+   * which on a single-target weapon meant ONE — swing into four pots and three
+   * of them just stand there.
+   *
+   * A floor rather than a flat number, so a maul still clears more than a knife
+   * (the weapon's own cleave doubles on top; see combat/attack.ts destrMax).
+   */
+  DESTRUCTIBLE_MIN_CLEAVE: 4,
+  /**
+   * A DODGE THROUGH POTTERY BREAKS IT (combat/dodge-shatter.ts).
+   *
+   * The second thing in the game that says the roll has WEIGHT — the first
+   * being the leap over a body. Both make the same claim: a dodge is a moving
+   * mass, not a teleport with i-frames.
+   */
+  DODGE_SHATTERS_PROPS: true,
+  /** What the roll hits for. Enough to take a vase (1 hp) outright, nowhere
+   *  near enough to matter to a sturdier breakable — those still want a swing. */
+  DODGE_SHATTER_DAMAGE: 1,
   // Melee reach is DERIVED from the weapon's model, not authored free — so the
   // hit can't drift from the visible blade. reach = BASE + extent × PER_EXTENT,
   // where `extent` is the 3D distance from the model's grip anchor to its reach

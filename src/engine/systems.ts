@@ -196,7 +196,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         let ne = 0, ecx = 0, ecz = 0;
         for (const en of level.enemies) { if (en.alive) { ne++; ecx += en.position.x; ecz += en.position.z; } }
         captureStep(input, camera.position.x, camera.position.z, ne, ne ? ecx / ne : 0, ne ? ecz / ne : 0);
-        updateCamera(camera, input, ctx.playerDt, level.walkable, level.enemies);
+        updateCamera(camera, input, ctx.playerDt, level.walkable, level.enemies, level.destructibles ?? []);
       } else {
         input.lookDx = 0;
         input.lookDy = 0;

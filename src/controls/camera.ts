@@ -3,6 +3,9 @@ import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
 import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset, isLeapingOverBody, pendingLeapLanding, clearBodyLeap } from '../combat/dash';
 import { livingBodies, type BodyCircle } from '../player/body-path';
+import { isDodging } from '../combat/dash';
+import { shatterAlongDodge } from '../combat/dodge-shatter';
+import type { Destructible } from '../level/destructibles';
 import { isRunHeld } from './run-input';
 import { tickMomentum, momentumSpeedMul, momentumFovOffset } from '../player/momentum';
 import { setFovOffset, setBaseFov } from '../effects/camera-fov';
@@ -87,10 +90,18 @@ export function updateCamera(
   dt: number,
   walkable: WalkableRegion,
   enemies: readonly Enemy[],
+  /** Live breakables, so a ROLL through a shelf of pottery shatters it. Optional
+   *  so a caller with none to hand (tests, the title scene) is unchanged. */
+  destructibles: readonly Destructible[] = [],
 ) {
   // Stash for off-camera consumers (directional damage indicator).
   camGroundX = camera.position.x;
   camGroundZ = camera.position.z;
+  // Where this frame STARTED, for the dodge's shatter sweep at the end of it —
+  // captured before knockback, input, the vault and the leap have all had their
+  // turn, so the sweep covers whatever actually moved the player.
+  const frameStartX = camera.position.x;
+  const frameStartZ = camera.position.z;
   // --- Look ---
   // Turn rate is scaled by attack commitment — mid-swing you can't whip-aim
   // (weight-scaled; idle = 1.0). This clamps the camera AND, since the swing
@@ -336,6 +347,21 @@ export function updateCamera(
       }
       clearBodyLeap();
     }
+  }
+
+  // --- A roll through pottery breaks it ---
+  //
+  // Swept over the ground THIS FRAME covered, not sampled at the ends: a dodge
+  // crosses ~1.3m in a handful of frames and a point test would roll clean
+  // through anything in the middle. Reads the frame's real start and end, so it
+  // accounts for the knockback, the joystick and the leap completion alike —
+  // whatever actually moved the player is what the sweep sees.
+  //
+  // Only while dodging: walking past a vase must not break it, or a room of
+  // clay is gone before the first fight. See combat/dodge-shatter.ts for why
+  // this goes through takeDamage rather than a bespoke destroy.
+  if (isDodging() && destructibles.length) {
+    shatterAlongDodge(frameStartX, frameStartZ, camera.position.x, camera.position.z, destructibles);
   }
 
   // Eye height locked above the GROUND at our feet (plus the floor-arrival

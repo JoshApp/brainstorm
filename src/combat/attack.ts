@@ -666,10 +666,26 @@ export function createCombatSystem(
     const enemyHits = swingHitTargets(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
     // Destructibles run the SAME resolver AND the same swing capsule as enemies
     // — props now carry a real body sphere, so the old extra reach/radius
-    // forgiveness is redundant. Capped at 2; only tested when no enemy was hit
-    // (a vase shouldn't soak a swing meant for the mob behind it).
+    // forgiveness is redundant. Only tested when no enemy was hit (a vase
+    // shouldn't soak a swing meant for the mob behind it).
+    //
+    // CLAY IS NOT A CROWD. The cap used to be `min(maxTargets, 2)`, which on a
+    // single-target weapon means ONE — swing into a pile of four pots and three
+    // of them stand there. Josh: *"we made it so attacks can only ever kill like
+    // 1 vase, I think we should lift that again and make strikes break more."*
+    //
+    // He is right and the reasoning behind the old cap does not transfer:
+    // cleave limits exist so a wide swing can't delete a PACK, and every reason
+    // for that — damage economy, threat, the fairness of a fight — is about
+    // enemies. Pottery has none of them. It has one hit point, it drops
+    // occasional coins on a gated roll, and shattering a shelf of it in one blow
+    // is the single most satisfying thing a heavy weapon does.
+    //
+    // So props get their own generous cap, floored so even a dagger clears a
+    // small cluster, and the weapon's own cleave still makes a maul better at it
+    // than a knife.
     const destrShape = enemyShape;
-    const destrMax = Math.min(maxTargets, 2);
+    const destrMax = Math.max(CONFIG.DESTRUCTIBLE_MIN_CLEAVE, maxTargets * 2);
     const hitList: ZoneTargetHit[] = enemyHits.length > 0
       ? enemyHits
       : swingHitTargets(getDestructibles(), camera.position, forwardDir, destrShape, destrMax, losCheck);

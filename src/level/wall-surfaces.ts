@@ -266,6 +266,22 @@ export interface RunNeed {
   depth: number;
   /** Reject walls whose ends are doorways within this distance of the centre. */
   clearOfJambs?: boolean;
+  /**
+   * Prefer a wall FAR FROM HERE, in metres of bonus per metre of distance.
+   *
+   * "Widest-then-deepest" is the right rule for showing a feature off and the
+   * wrong one for placing an EXIT. In a boss hall it put the stair 3.7m from the
+   * fog gate in an 11m room: you cross the mist and the way out is immediately
+   * on your right, with the fight optional and off to one side. The arena stops
+   * being a room you have to get through.
+   *
+   * Passing the entrance here makes distance from it part of "best", so the way
+   * on lands across the hall and the boss stands between. Left unset, scoring is
+   * byte-identical to before.
+   */
+  awayFrom?: { x: number; z: number };
+  /** How hard `awayFrom` pulls, relative to the width/depth terms. Default 1.5. */
+  awayWeight?: number;
 }
 
 /**
@@ -288,7 +304,11 @@ export function findMountableRun(
     if (need.clearOfJambs && (s.jambA || s.jambB)) continue;
     const d = clearDepth(s, poly, need.depth + 2);
     if (d < need.depth) continue;
-    const score = d * 2 + s.length;
+    let score = d * 2 + s.length;
+    if (need.awayFrom) {
+      score += Math.hypot(s.mid[0] - need.awayFrom.x, s.mid[1] - need.awayFrom.z)
+        * (need.awayWeight ?? 1.5);
+    }
     if (score > bestScore) { bestScore = score; best = s; }
   }
   return best;

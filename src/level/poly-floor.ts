@@ -178,6 +178,27 @@ const TYPE_SIZE: Record<string, readonly [number, number, number, number]> = {
   quiet:    [7, 11, 6, 9],
 };
 
+/**
+ * THE BOSS HALL IS ITS OWN CHAMBER, not a finish room with a boss standing in it.
+ *
+ * Before the polygon rework the arena was a separate, deliberately large space —
+ * the one room on the floor that announces itself. The polygon generator dropped
+ * that: it shapes the last room as an ordinary `finish` (12–18 × 10–15, the same
+ * band as a trove) and puts the act's boss at its centre. Measured on real
+ * floors that lands an 11×11 hall for the Boiling King, which is barely two of
+ * his own body-lengths across — you cross the mist and you are already in melee,
+ * there is no room to circle, and nothing about the space says a set-piece is
+ * about to happen. Josh: *"the boss room was a separate chamber before we did
+ * poly room reworks, it needs to go back to that big boss chamber."*
+ *
+ * Bigger than an `arena` on purpose (that is the wave-fight room, and this has
+ * to outrank it), and with a shape pool of nothing but open symmetric forms: a
+ * boss you can be cornered by is a different, worse fight than a boss you have
+ * to read, and a corner is the cheapest way to lose the second one.
+ */
+const BOSS_HALL_SIZE: readonly [number, number, number, number] = [22, 28, 19, 25];
+const BOSS_HALL_SHAPES: readonly Archetype[] = ['rotunda', 'cross', 'chamber'];
+
 interface Placed {
   id: string;
   /** What this room IS, from the floor's contract. Drives shape, size, what may
@@ -488,7 +509,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     const type: RoomTypeId = i === 0 ? 'entrance'
       : i === n - 1 ? 'finish'
       : inlineAt.get(i) ?? (rand() < 0.3 ? 'quiet' : 'combat');
-    const room = shapeRoom(`poly-${i}`, type, depth, rand);
+    const room = shapeRoom(`poly-${i}`, type, depth, rand, type === 'finish' && isBossDepth(depth));
     if (i === 0) {
       place(room, 0, 0);
       cursor = room.rect; occupiedBoxes.push(cursor);
@@ -784,7 +805,24 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   // player hunting for the stair in the dark is doing a chore, not feeling
   // tension), and it cannot mark something that does not exist yet.
   const last = rooms.find((x) => x.type === 'finish') ?? rooms[rooms.length - 1];
-  const stairWall = findMountableRun(last.walls, last.poly, { length: 2.2, depth: 3.0, clearOfJambs: true });
+  // THE WAY OUT GOES ACROSS THE ROOM FROM THE WAY IN.
+  //
+  // findMountableRun's own rule is widest-then-deepest, which is right for
+  // showing a feature off and wrong for an EXIT: on a boss floor it put the
+  // stair 3.7m from the fog gate in an 11m hall, so you cross the mist and the
+  // way on is immediately beside you with the fight optional and off to one
+  // side. Josh read the result exactly as it plays — *"the stair is before the
+  // mist and the mist leads to nowhere"*.
+  //
+  // Biasing away from the mouth puts the descent on the far wall, so the arena
+  // is a room you cross rather than a doorway you glance into. Applied to every
+  // finish room, not just boss halls: an exit you have to walk to is the better
+  // shape everywhere.
+  const lastMouth = mouthOf(last, links);
+  const stairWall = findMountableRun(last.walls, last.poly, {
+    length: 2.2, depth: 3.0, clearOfJambs: true,
+    awayFrom: lastMouth ? { x: lastMouth.x, z: lastMouth.z } : undefined,
+  });
   const stairs = stairWall
     ? [{
         id: 'poly-stairs',
@@ -1308,10 +1346,16 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
 
 // ── shaping ──────────────────────────────────────────────────────────────────
 
-function shapeRoom(id: string, type: RoomTypeId, depth: number, rand: () => number): Placed {
-  const pool = TYPE_SHAPES[type] ?? TYPE_SHAPES.combat;
+function shapeRoom(
+  id: string, type: RoomTypeId, depth: number, rand: () => number,
+  /** Shape and size this room as the act's BOSS HALL — see BOSS_HALL_SIZE. Its
+   *  room TYPE stays 'finish', so every downstream rule about the last room
+   *  (the stair, the light tier, no pack in it) keeps applying unchanged. */
+  bossHall = false,
+): Placed {
+  const pool = bossHall ? BOSS_HALL_SHAPES : (TYPE_SHAPES[type] ?? TYPE_SHAPES.combat);
   const kind = pool[Math.floor(rand() * pool.length)];
-  const [wLo, wHi, dLo, dHi] = TYPE_SIZE[type] ?? TYPE_SIZE.combat;
+  const [wLo, wHi, dLo, dHi] = bossHall ? BOSS_HALL_SIZE : (TYPE_SIZE[type] ?? TYPE_SIZE.combat);
   const w = wLo + rand() * (wHi - wLo) + Math.min(3, depth * 0.15);
   const d = dLo + rand() * (dHi - dLo) + Math.min(3, depth * 0.15);
   const poly = generateRoomShape(kind, { w, d, rand });
@@ -2200,7 +2244,22 @@ function furnish(
     const c = roomCenter(r.poly);
     const vol = { kind: 'cylinder' as const, x: c.x, z: c.z, r: 1.6, y0: 0, y1: 2.6 };
     r.occupancy.reserve(vol, 'boss');
-    spawns.push({ enemyId: boss.enemyId, x: c.x, z: c.z, roomId: r.id });
+    // DORMANT UNTIL THE MIST IS CROSSED.
+    //
+    // Without this the boss is AWAKE from floor load — perceiving, hunting and
+    // swinging from behind its own fog wall while the player is still two rooms
+    // away. Josh, from the phone: *"the boss is active before I traverse the
+    // mist ... even when it's not spawned it attacks invisible?"* It was: the
+    // arena is culled at that distance, so the only evidence reaching the player
+    // was damage from nothing.
+    //
+    // Every other producer of a boss spawn sets this (see level/test-chambers.ts
+    // and the flag's own doc in level/types.ts, which states the rule outright:
+    // "used for boss-floor spawns so the boss doesn't aggro the moment the
+    // player enters the level; only when they cross into the arena"). The
+    // polygon generator was written after them and simply never carried it over,
+    // so the fog gate it emits three hundred lines below had nothing to wake.
+    spawns.push({ enemyId: boss.enemyId, x: c.x, z: c.z, roomId: r.id, dormant: true });
   }
   // WALK THE SPOTS, NOT THE BODIES.
   //
