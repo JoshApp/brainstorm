@@ -125,7 +125,11 @@ function installGpuErrorWatch(device: GpuDeviceLike): void {
     stormCountInWindow++;
     if (stormCountInWindow >= STORM_COUNT && !lost) {
       lost = true;   // idle the frame loop — every further frame just errors again
-      showVeil('something below has shifted');
+      // Carry the FIRST message onto the veil. The player is on a phone with no
+      // console; without this the only thing they can report is the in-character
+      // sentence, which names nothing — and the message that names the dead
+      // resource sits in localStorage that nothing ever reads back.
+      showVeil('something below has shifted', firstMessages[0]);
       showReload();
     }
   });
@@ -137,7 +141,7 @@ export function getStoredGpuErrorReport(): string | null {
   try { return localStorage.getItem(ERR_STORE_KEY); } catch { return null; }
 }
 
-function showVeil(line: string): void {
+function showVeil(line: string, detail?: string): void {
   if (veil) return;
   veil = document.createElement('div');
   Object.assign(veil.style, {
@@ -161,6 +165,18 @@ function showVeil(line: string): void {
   const msg = document.createElement('div');
   msg.textContent = line;
   veil.appendChild(msg);
+  if (detail) {
+    // Deliberately plain and small — this is a failure screen, and a player who
+    // can read the cause out loud is worth more here than the register.
+    const d = document.createElement('div');
+    d.textContent = detail.slice(0, 300);
+    Object.assign(d.style, {
+      fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+      fontStyle: 'normal', fontSize: '11px', lineHeight: '1.45',
+      opacity: '0.55', maxWidth: '46ch', wordBreak: 'break-word',
+    } as Partial<CSSStyleDeclaration>);
+    veil.appendChild(d);
+  }
   document.body.appendChild(veil);
 }
 

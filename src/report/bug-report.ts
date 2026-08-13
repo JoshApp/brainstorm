@@ -4,6 +4,7 @@ import { captureFrameContext } from './frame-capture';
 import { getCurrentDepth } from '../level/loader';
 import { getRunState } from '../state/run-state';
 import { buildTelemetryBundle } from '../debug/telemetry-export';
+import { getStoredGpuErrorReport } from '../scene/context-recovery';
 
 // IN-GAME BUG REPORT — file a report from inside a running game (when it hasn't
 // crashed). Bundles a SCREENSHOT of the current frame, the RUN CONTEXT (depth,
@@ -29,6 +30,17 @@ export interface BugReport {
   device: { userAgent: string; viewport: { w: number; h: number }; dpr: number; language: string };
   screenshot: string | null;   // PNG data URL
   telemetry: ReturnType<typeof buildTelemetryBundle>;
+  /**
+   * The last GPU uncaptured-error episode, verbatim (scene/context-recovery.ts).
+   *
+   * WebGPU names the resource that died on the device's 'uncapturederror'
+   * channel, and the recovery watch has been recording the first few messages to
+   * localStorage since it was written — but NOTHING read them back. So the one
+   * artifact that says WHAT broke lived on the phone and never left it, while
+   * the player could only report the sentence on the veil ("something below has
+   * shifted"), which names nothing. It rides along with every report now.
+   */
+  gpuErrors: string | null;
 }
 
 /** Gather everything for a report. Pure data-collection; the screenshot is
@@ -56,6 +68,7 @@ export async function buildBugReport(userText: string): Promise<BugReport> {
     },
     screenshot: frame?.png ?? null,
     telemetry: buildTelemetryBundle(),
+    gpuErrors: getStoredGpuErrorReport(),
   };
 }
 
