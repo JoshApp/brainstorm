@@ -157,6 +157,7 @@ import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-l
 import { createConsumableBar } from './controls/consumable-bar';
 import { createDodgeButton } from './controls/dodge-button';
 import { createParryButton, setParryHandler } from './controls/parry-button';
+import { createRiteButton } from './controls/rite-button';
 import { initHudEdit } from './debug/hud-edit';
 import { LEVELS_ENABLED } from './state/leveling';
 import { createHpBar } from './ui/hp-bar';
@@ -1076,14 +1077,31 @@ setParryHandler(() => {
   enterParry(CONFIG.DEFLECT.COMMIT_S);
   weapon.parryGuard(CONFIG.DEFLECT.COMMIT_S);
 });
-createParryButton();
+// THE THUMB SLOT GOES TO THE RITE, NOT THE PARRY.
+//
+// Josh: *"I think we hide the parry button for now and we replace it with the
+// rite button that's enabled should you have equipped one. I think rites can be
+// a lot of fun."*
+//
+// Both cannot have that corner — it is one thumb — and the rite has the better
+// claim. Parry is a TIMING read, and the tap already carries it: main.ts's
+// resolveTap routes a tap to a parry whenever an enemy is flashing a deflectable
+// strike, and to a swing otherwise (see combat/player-action.ts's header). So
+// the mechanic survives the button's removal completely — what goes is a second
+// way to ask for something the attack button already offers on the beat.
+//
+// The rite has no such fallback: it is a slotted active with a meter, and
+// without a button there is no way to fire it at all. That is why the affordance
+// was dark for so long and why the whole active lane read as unfinished.
+//
+// `createParryButton` stays exported and its handler stays wired (just above),
+// so bringing it back is one line if a dedicated guard button turns out to be
+// wanted after all.
+createRiteButton();
 // DEV-only HUD drag mode (?hudedit=1). The thumb buttons are invisible to
 // `snap` (they gate on touch capability, not viewport), so placement can only
 // be judged on a real device — this makes that a drag instead of arithmetic.
 initHudEdit();
-// Rite button hidden until rites are properly built (Josh) — the seam stays,
-// but the HUD affordance is off so it doesn't imply a finished feature.
-// (createRiteButton() intentionally not called; re-enable when rites land — #98.)
 // Weapon-swap chip — one-tap draw of the sheathed alternate (task #96). Created
 // alongside the flask (same HUD lifecycle) so it survives the screen-manager
 // setup. Gated on NOT mid-swing so a swap can't interrupt a committed attack; the

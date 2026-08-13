@@ -39,7 +39,18 @@ export type RiteEffect =
   // so a blink can never put you somewhere a dodge couldn't: no through-walls,
   // no landing inside a pillar. Falls short rather than failing when the full
   // distance is blocked — the rite always does SOMETHING for its Hunger.
-  | { kind: 'blink'; distance: number };
+  | { kind: 'blink'; distance: number }
+  // BREAK THEIR NERVE. Fear everything in radius — they rout, hang a skull, wear
+  // DREAD and turn their backs to you. No damage of its own: this is CONTROL,
+  // and it composes with the poise/backstab loop rather than duplicating it (a
+  // fleeing creature is an open creature). Refused by bosses, as all fear is.
+  | { kind: 'fear'; radius: number; seconds: number }
+  // SHOULDER THROUGH. Rush `distance` metres along your facing, damaging and
+  // SHOVING everything you pass through. The movement half reuses the blink's
+  // walkability probe, so a charge can never end somewhere a dodge couldn't; the
+  // contact half sweeps the path rather than testing the endpoints, so bodies in
+  // the middle are hit rather than run past.
+  | { kind: 'charge'; distance: number; damage: number; radius?: number; knockback?: number; buff?: string; buffDuration?: number };
 
 /** A morph tier (the active lane's RESONANCE): hold >= `atLeast` cards of the
  *  rite's domain and these escalations apply, cumulatively — reshaping the
@@ -172,6 +183,51 @@ export const RITES: Record<string, RiteSpec> = {
     morph: [
       { atLeast: 2, add: [{ kind: 'stillness', seconds: 3.6, deep: 0.10 }] },
       { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'berserk', duration: 4 }] },
+    ],
+  },
+
+  // ── THE TWO JOSH ASKED FOR ──────────────────────────────────────────────────
+  // "let's make rites a reality, I want an aoe fear rite and a charge rite."
+  // Both are CONTROL rather than erupt, which is what the catalog was thin on:
+  // of the seven above, five end a fight faster and only two change how it is
+  // played. These two are about where bodies ARE — theirs and yours.
+
+  // ROUT THE ROOM. Everything near breaks and runs, wearing DREAD, with its back
+  // to you — which is the whole poise→panic→backstab loop handed to you at once
+  // (mobs/enemy.ts applyFear). Cheap, because it kills nothing: what you get is
+  // ten seconds where nobody is swinging at you, and what you do with that is
+  // the skill. Bosses are immune, as they are to all fear, so it never trivialises
+  // the set-piece.
+  //
+  // 'forbidden' rather than 'bone': terror is a thing you do to a mind, and the
+  // vice pole is where reaching for that lives.
+  dread: {
+    id: 'dread', name: 'Dread', domain: 'forbidden', hungerCost: 30,
+    fate: 'They remember, all at once, what is down here with them.',
+    effects: [{ kind: 'fear', radius: 6.0, seconds: 5 }],
+    morph: [
+      // Wider, then longer, then the turn: a routed thing bleeds as it runs.
+      { atLeast: 2, add: [{ kind: 'fear', radius: 9.0, seconds: 6 }] },
+      { atLeast: 4, add: [{ kind: 'selfBuff', buff: 'berserk', duration: 5 }] },
+    ],
+  },
+
+  // GO THROUGH THEM. A shoulder-first rush that damages and SHOVES everything on
+  // the line and puts you out the far side. The one rite that closes distance
+  // rather than making it — Step-Through gets you out, this gets you IN.
+  //
+  // Damage is deliberately modest for the cost. What you are buying is the shove
+  // and the position: a shield charge that also out-damaged a nova would make
+  // every other rite a worse version of it.
+  onslaught: {
+    id: 'onslaught', name: 'Onslaught', domain: 'valor', hungerCost: 34,
+    fate: 'The shortest way through a crowd has always been through it.',
+    effects: [{ kind: 'charge', distance: 5.0, damage: 4, radius: 1.1, knockback: 9 }],
+    morph: [
+      { atLeast: 2, add: [{ kind: 'selfBuff', buff: 'ironhide', duration: 3 }] },
+      // At full commitment the impact breaks them open rather than just moving
+      // them — a charge you build toward instead of a bigger number.
+      { atLeast: 4, add: [{ kind: 'charge', distance: 3.0, damage: 5, radius: 1.4, knockback: 12, buff: 'sunder', buffDuration: 5 }] },
     ],
   },
 };

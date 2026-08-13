@@ -16,6 +16,7 @@ import { get } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { kickShake } from './screen-shake';
 import { enterStillness } from './rite-stillness';
+import { firstBodyOnPath, type BodyCircle } from '../player/body-path';
 
 interface RiteDeps {
   /** Player position source (the erupt centre). */
@@ -91,6 +92,8 @@ export function tryActivateRite(): boolean {
       case 'nova':     runNova(eff, center); break;
       case 'stillness': enterStillness(eff.seconds, eff.deep); break;
       case 'blink':    runBlink(eff); break;
+      case 'fear':     runFear(eff, center); break;
+      case 'charge':   runCharge(eff); break;
     }
   }
 
@@ -128,6 +131,76 @@ function blinkStep(distance: number, commit: boolean): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * FEAR handler — break the nerve of everything in radius.
+ *
+ * Routed through the creature's own `applyFear` rather than setting a state
+ * here, so a rite-cast terror and a poise-break-from-behind terror are the SAME
+ * thing: same rout, same skull, same DREAD debuff, same post-fear immunity, same
+ * refusal for bosses. That unification is what makes this rite compose with the
+ * backstab loop instead of sitting beside it (mobs/enemy.ts breakMorale).
+ *
+ * Deals no damage on purpose. What it buys is a room where nobody is swinging.
+ */
+function runFear(eff: Extract<RiteEffect, { kind: 'fear' }>, c: { x: number; z: number }): void {
+  if (!deps) return;
+  const r2 = eff.radius * eff.radius;
+  for (const enemy of deps.getEnemies()) {
+    if (!enemy.alive) continue;
+    const dx = enemy.position.x - c.x;
+    const dz = enemy.position.z - c.z;
+    if (dx * dx + dz * dz > r2) continue;
+    enemy.applyFear(eff.seconds);   // refuses bosses + anything inside its immunity
+  }
+}
+
+/**
+ * CHARGE handler — rush the line, hit everything on it, come out the far side.
+ *
+ * Two halves, and they are deliberately separate:
+ *
+ * MOVEMENT reuses `blinkStep`, which walks the distance back until a landing
+ * holds against the DODGE's own walkability probe. So a charge can never end
+ * inside a pillar or through a wall, and it falls short rather than failing —
+ * the rite always does something for its Hunger.
+ *
+ * CONTACT sweeps the PATH rather than testing the destination. A rush that only
+ * hit what was at the end would run straight past the crowd it charged into,
+ * which is the entire point of the move. Same swept-capsule maths the walk-vault
+ * and the leap use (player/body-path.ts), so "what is on this line" has one
+ * answer in the codebase rather than three.
+ */
+function runCharge(eff: Extract<RiteEffect, { kind: 'charge' }>): void {
+  if (!deps?.getFacing) return;
+  const from = deps.getCenter();
+  const f = deps.getFacing();
+  const len = Math.hypot(f.x, f.z) || 1;
+  const nx = f.x / len, nz = f.z / len;
+
+  // Move first, then resolve contact along where we ACTUALLY went — a charge
+  // stopped short by a wall must not still hit things past that wall.
+  blinkStep(eff.distance, true);
+  const to = deps.getCenter();
+  const travelled = Math.hypot(to.x - from.x, to.z - from.z);
+  // Even a fully blocked charge shoulders whatever is right in front of you.
+  const reach = Math.max(travelled, 1.0);
+
+  const bodies: BodyCircle[] = [];
+  const hitRadius = eff.radius ?? 1.1;
+  for (const enemy of deps.getEnemies()) {
+    if (!enemy.alive) continue;
+    bodies.length = 0;
+    bodies.push({ x: enemy.position.x, z: enemy.position.z, radius: enemy.collisionRadius });
+    if (!firstBodyOnPath(from.x, from.z, from.x + nx * reach, from.z + nz * reach, hitRadius, bodies)) continue;
+    enemy.takeDamage({ source: 'player', target: enemy.entityId, base: eff.damage, type: 'physical' });
+    if (eff.knockback) enemy.applyKnockback(nx, nz, eff.knockback);
+    if (eff.buff) {
+      const ent = get(enemy.entityId);
+      if (ent) applyBuff(ent, eff.buff, eff.buffDuration ?? 4, 'player');
+    }
+  }
 }
 
 /** NOVA handler — damage everyone in radius, brand them with a buff if the effect
