@@ -56,26 +56,48 @@ export interface WallSegment {
 // The footprint must MATCH the geometry that draws it (a round column = a
 // circle, not a square that eats shots grazing past it).
 /**
- * CAN A VAULT CLEAR THIS? Height first, flag second.
+ * CAN A VAULT CLEAR THIS? HEIGHT DECIDES. The flag is a note, not a gate.
  *
- * Josh, on a phone: *"you can vault through doorframes and pillars."* The old
- * rule was the `dashable` flag alone — a promise each prop author has to
- * remember to keep, and one that says nothing at all about a piece of
- * architecture that registers no flag either way. Height is a fact every
- * obstacle already carries: `yTop` is REQUIRED on all of them, and a
- * full-height thing carries Infinity.
+ * Josh, on a phone: *"you can vault through doorframes and pillars."* The
+ * original rule was the `dashable` flag alone — a promise each prop author has
+ * to remember to keep, and one that says nothing at all about a piece of
+ * architecture that registers no flag either way. So height was added: `yTop`
+ * is REQUIRED on every obstacle and a full-height thing carries Infinity.
  *
- * So the flag still says "this is the KIND of thing you step over" and the
- * height decides whether you actually can. A doorframe cannot become vaultable
- * by being mislabelled, because it is 3 metres tall.
+ * But the flag stayed as an AND, and that turned out to be the whole feature's
+ * real limit. Exactly ONE thing in the entire game ever set `dashable` — a
+ * fallen pillar segment in level/clutter.ts. Every vase, every low plinth,
+ * every knee-high offering was a solid wall to the vault, not because anyone
+ * decided that, but because nobody had gone back and tagged them. Josh, again:
+ * *"I want to be able to jump through a cluster of vases ... I think we can
+ * make it so it calculates that the objects would be jumpable on their own."*
+ *
+ * They already carry the fact that says so. So height is now the ONLY rule for
+ * a solid, and the tagging burden is gone: a thing under
+ * MAX_CLEAR_HEIGHT_M can be stepped over, a doorframe cannot, and neither
+ * depends on anyone remembering. What that opens up is exactly the low clutter
+ * you would expect — vases (0.6m), gate offerings (0.6m), ground offerings
+ * (0.2m). Everything structural is Infinity and unaffected.
+ *
+ * `leapable` is the second door, and it is for the opposite kind of thing: a
+ * GAP. A rift in the floor has no height to be under — it is registered as a
+ * full-height blocker precisely so you can't walk into the abyss — but a narrow
+ * one is something you should be able to ROLL across. See the builder, which
+ * sets it only on rifts up to CONFIG.VAULT.MAX_GAP_M, and canDashOver's
+ * `allowGaps`, which is what keeps a casual walk from strolling over a hole.
  */
 function vaultable(o: Obstacle): boolean {
-  return !!o.dashable && o.yTop <= CONFIG.VAULT.MAX_CLEAR_HEIGHT_M;
+  return o.leapable === true || o.yTop <= CONFIG.VAULT.MAX_CLEAR_HEIGHT_M;
+}
+
+/** True for obstacles that are a HOLE rather than a thing — see `leapable`. */
+function isGap(o: Obstacle): boolean {
+  return o.leapable === true;
 }
 
 export type Obstacle =
-  | { kind: 'circle'; x: number; z: number; r: number; yTop: number; dashable?: boolean }
-  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number; dashable?: boolean };
+  | { kind: 'circle'; x: number; z: number; r: number; yTop: number; dashable?: boolean; leapable?: boolean }
+  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number; dashable?: boolean; leapable?: boolean };
 
 // Scratch buffers for the spatial-hash queries — module-level so the hot
 // paths (clampMove per mob per frame, LOS per perception check) allocate
@@ -363,7 +385,10 @@ export class WalkableRegion {
    * safe on the far side. If it returns false, the caller runs a NORMAL dash so
    * you stop AT the obstacle's edge — never inside it, never teleported.
    */
-  canDashOver(fromX: number, fromZ: number, toX: number, toZ: number, radius: number): boolean {
+  canDashOver(
+    fromX: number, fromZ: number, toX: number, toZ: number, radius: number,
+    opts?: { allowGaps?: boolean },
+  ): boolean {
     // (1) The landing must be real floor — obstacles + walls both respected, so a
     // landing INSIDE a dashable obstacle (undershoot) fails and we don't vault.
     if (!this.contains(toX, toZ, radius)) return false;
@@ -378,6 +403,17 @@ export class WalkableRegion {
     const no = this.obstacleGrid.querySegment(fromX, fromZ, toX, toZ, OBS_SCRATCH);
     for (let i = 0; i < no; i++) {
       const o = OBS_SCRATCH[i];
+      // A GAP IS OPT-IN. A narrow rift is vaultable geometry, but only a move
+      // that MEANT to cross it may — see `leapable`. The ordinary walk-vault
+      // fires automatically off a blocked step, so if it honoured gaps, brushing
+      // a chasm lip while exploring would launch you over a hole you never chose
+      // to jump. The dodge asks with allowGaps; nothing else does.
+      if (isGap(o) && !opts?.allowGaps) {
+        if (o.kind === 'circle') {
+          if (distSqPointToSegment(o.x, o.z, fromX, fromZ, toX, toZ) < o.r * o.r) return false;
+        } else if (segmentHitsAabb(fromX, fromZ, toX, toZ, o.minX, o.maxX, o.minZ, o.maxZ)) return false;
+        continue;
+      }
       if (vaultable(o)) continue;
       if (o.kind === 'circle') {
         if (distSqPointToSegment(o.x, o.z, fromX, fromZ, toX, toZ) < o.r * o.r) return false;

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
-import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset } from '../combat/dash';
+import { getWindedMoveMul, isDashingOver, resolveDashOverLanding, dashHeightOffset, isLeapingOverBody, pendingLeapLanding, clearBodyLeap } from '../combat/dash';
+import { livingBodies, type BodyCircle } from '../player/body-path';
 import { isRunHeld } from './run-input';
 import { tickMomentum, momentumSpeedMul, momentumFovOffset } from '../player/momentum';
 import { setFovOffset, setBaseFov } from '../effects/camera-fov';
@@ -36,6 +37,10 @@ const STEP_DISTANCE = 1.05;
 // result. Separate because the slide reads the clamp's output.
 const CLAMP_SCRATCH = { x: 0, z: 0 };
 const SLIDE_SCRATCH = { x: 0, z: 0 };
+// The live mobs as blocker discs, for the walk-vault's "is a body in the way"
+// probe (player/body-path.ts). Refilled where it's used; ours alone, so the
+// dodge's own copy in engine/systems.ts can't overwrite it mid-answer.
+const VAULT_BODIES: BodyCircle[] = [];
 
 let yaw = 0;
 let pitch = 0;
@@ -168,11 +173,22 @@ export function updateCamera(
       // Second pass: dynamic collision against live enemies. Same axis-
       // decomposed slide so the player slides around an enemy instead of
       // sticking. Dead enemies have aliveLocal=false and are skipped.
-      const finalPos = slideAroundEnemies(
-        camera.position.x, camera.position.z,
-        resolved.x, resolved.z,
-        enemies,
-      );
+      //
+      // A validated LEAP is the one exception: that roll was checked against a
+      // body and a landing past it, so being inside the body is the intended
+      // mid-air state, and sliding off it would strand the player at the front of
+      // the thing they committed to clearing.
+      let finalPos: { x: number; z: number };
+      if (isLeapingOverBody()) {
+        SLIDE_SCRATCH.x = resolved.x; SLIDE_SCRATCH.z = resolved.z;
+        finalPos = SLIDE_SCRATCH;
+      } else {
+        finalPos = slideAroundEnemies(
+          camera.position.x, camera.position.z,
+          resolved.x, resolved.z,
+          enemies,
+        );
+      }
       const stepDx = finalPos.x - camera.position.x;
       const stepDz = finalPos.z - camera.position.z;
 
@@ -181,6 +197,11 @@ export function updateCamera(
       // no. If the thing in the way is one the DODGE could clear, and there's
       // floor beyond it, step over instead of standing there. Never in combat,
       // never mid-dodge — the dodge always wins.
+      //
+      // A living body blocks a walk exactly the way a fallen pillar does, which
+      // is why this trigger used to hand the player a free stroll over an enemy.
+      // The mobs go in as blockers so the probe can refuse; a dodge at the same
+      // mob leaps it instead, which is where that move belongs.
       const wantedDist = Math.hypot(moveX, moveZ);
       const gotDist = Math.hypot(stepDx, stepDz);
       // 0.65, not 0.4: colliding with an obstacle SLIDES you along it, so a
@@ -191,6 +212,7 @@ export function updateCamera(
         tryVaultStep(
           camera.position.x, camera.position.z,
           moveX, moveZ, PLAYER_RADIUS, walkable,
+          livingBodies(enemies, VAULT_BODIES),
         );
       }
 
@@ -228,7 +250,13 @@ export function updateCamera(
   // each frame until clear — the one thing the prevent-only model can't do.
   // Runs unconditionally (even with no input) so an enemy landing on a still
   // player still ejects us. Clamped against walls so we never push into stone.
-  {
+  //
+  // OFF DURING A VALIDATED LEAP. Its whole job is to shove the player out of a
+  // body along the shortest normal — which, halfway over a mob you deliberately
+  // dodged into, points back the way you came. That is precisely the "you land in
+  // them" outcome the leap exists to replace, so a leap suspends it and the
+  // completion below finishes the arc instead.
+  if (!isLeapingOverBody()) {
     let pushX = 0, pushZ = 0;
     for (const e of enemies) {
       if (!e.alive || e.noPlayerCollision) continue;
@@ -277,6 +305,37 @@ export function updateCamera(
   {
     const land = resolveDashOverLanding(camera.position.x, camera.position.z, PLAYER_RADIUS, walkable);
     if (land) { camera.position.x = land.x; camera.position.z = land.z; }
+  }
+
+  // --- Leap completion (over a BODY) ---
+  //
+  // The stone version above rescues a dash-over that died inside a fallen pillar.
+  // This is its twin for flesh, and it is not the edge case — it is the normal
+  // one. The lunge is ~1.3m of decaying knockback; a mob a metre away with a
+  // half-metre body needs closer to 1.8m, so a leap that isn't finished here
+  // simply doesn't clear. The landing was validated as real floor BEFORE the
+  // dodge fired, so this is a short correction to a known-good place, clamped
+  // against the level on the way — never a teleport, and never through stone.
+  //
+  // Only when we're actually still in someone: a leap the knockback already
+  // carried clean past is done, and dragging it to the nominal landing would
+  // undo a better outcome than the one we planned.
+  {
+    const land = pendingLeapLanding();
+    if (land) {
+      if (collidesWithEnemy(camera.position.x, camera.position.z, enemies)) {
+        const out = walkable.clampMoveInto(
+          CLAMP_SCRATCH,
+          camera.position.x, camera.position.z,
+          land.x, land.z,
+          PLAYER_RADIUS,
+          { ignoreDashable: true },
+        );
+        camera.position.x = out.x;
+        camera.position.z = out.z;
+      }
+      clearBodyLeap();
+    }
   }
 
   // Eye height locked above the GROUND at our feet (plus the floor-arrival

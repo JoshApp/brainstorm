@@ -5,6 +5,7 @@ import { isInCombat } from '../combat/combat-state';
 import { playWhoosh } from '../audio/sfx';
 import { momentumVaultBonus, momentum } from './momentum';
 import { setFovOffset } from '../effects/camera-fov';
+import { firstBodyOnPath, type BodyCircle } from './body-path';
 
 // THE VAULT STEP — walking over the knee-high stuff instead of stopping dead.
 //
@@ -26,6 +27,21 @@ import { setFovOffset } from '../effects/camera-fov';
 // whole defence. Out of combat this is traversal polish; in combat it does not
 // exist. That's a hard gate, not a heuristic, because the failure is a betrayal
 // rather than a bug.
+//
+// ── AND THE RULE THAT RULE WAS MISSING ───────────────────────────────────────
+// NEVER OVER A LIVING BODY. The paragraph above was written as if `isInCombat()`
+// covered it. It does not: combat-state.ts latches for three seconds after a
+// hit lands, so it measures RECENT BLOOD, not danger. Walking up to a mob that
+// has not touched you yet is not "in combat" by that definition — and walking
+// into it blocks the step exactly like a fallen pillar, which is the vault's
+// honest trigger. So the vault fired and you strolled over the enemy, free, at
+// walking pace. Reported from the phone twice before it was believed.
+//
+// The gate is geometric, not stateful, because that is the only kind that can't
+// be wrong about what is actually in front of you: the probe now asks whether a
+// body is on the path (player/body-path.ts), and refuses that carry if one is.
+// A dodge aimed at the same mob leaps it (combat/dash.ts) — the traversal move
+// over a living thing costs stamina and buys i-frames, as it should.
 
 // How high the eye arcs over the obstacle. Lives in config beside the dodge's
 // own rise, because the two are one visual language: height means "you got over
@@ -50,7 +66,16 @@ import { setFovOffset } from '../effects/camera-fov';
 // dashable obstacle, 1.5m landed clear ZERO times and 1.9m landed 82% of them,
 // with 2.3m covering most of the rest. 1.5 stays for a genuinely low kerb, but
 // the fallen-pillar case — the one this feature exists for — is 1.9.
-const CARRY_CANDIDATES_M = [1.5, 1.9, 2.3];
+//
+// 2.9 IS THE CLUSTER. Josh: *"make it so you can vault over clusters of things
+// ... I want to be able to jump through a cluster of vases."* A vase cluster is
+// 2-4 vases jittered inside a 0.7m box with 0.18m bodies, so its footprint runs
+// to ~1.1m across; add the player's own 0.3m radius at both ends and clearing
+// one takes ~1.7m from a standing block, more from an angle or off-centre. The
+// old ceiling of 2.3 cleared a single vase and stopped dead at a pile of three.
+// Tried in order, shortest first, so a lone kerb still gets a lone hop — the
+// long carry is a fallback that only fires when the short ones have no landing.
+const CARRY_CANDIDATES_M = [1.5, 1.9, 2.3, 2.9];
 
 let activeUntil = 0;
 let startedAt = 0;
@@ -104,7 +129,8 @@ export function vaultPosition(): { x: number; z: number } | null {
 export interface VaultProbe {
   /** True when a straight line from here to there crosses ONLY vaultable
    *  obstacles and lands on valid floor. The dodge's own test — reused so a
-   *  walk-vault can never clear something a dodge couldn't. */
+   *  walk-vault can never clear something a dodge couldn't. Knows about stone
+   *  and nothing else, which is why `bodies` is a separate argument. */
   canDashOver(fromX: number, fromZ: number, toX: number, toZ: number, radius: number): boolean;
 }
 
@@ -116,6 +142,11 @@ export interface VaultProbe {
  * `moveX`/`moveZ` are THE FRAME'S movement delta (speed × dt, ~0.05m at a
  * walk), read as a direction. Any non-zero magnitude is fine.
  *
+ * `bodies` are the LIVING THINGS in the way — enemies, as discs. A carry that
+ * crosses one is refused outright; see NEVER OVER A LIVING BODY in the header.
+ * Defaulted to empty so a caller with no mobs to hand (tests, the tutorial) is
+ * unchanged, but the game always passes them.
+ *
  * Returns true when a vault began (the caller should stop applying ordinary
  * movement this frame and read vaultPosition instead).
  */
@@ -124,6 +155,7 @@ export function tryVaultStep(
   moveX: number, moveZ: number,
   radius: number,
   walkable: VaultProbe,
+  bodies: readonly BodyCircle[] = [],
 ): boolean {
   if (!CONFIG.VAULT.ENABLED) return false;
   if (isVaulting()) return false;
@@ -161,8 +193,13 @@ export function tryVaultStep(
   const candidates = bonus.carryM > 0.02
     ? [...CARRY_CANDIDATES_M, CARRY_CANDIDATES_M[CARRY_CANDIDATES_M.length - 1] + bonus.carryM]
     : CARRY_CANDIDATES_M;
+  // Stone AND flesh, per candidate. Checked per-distance rather than once over
+  // the longest reach so a genuine kerb-hop is still allowed with a mob standing
+  // further down the room — what's banned is a carry that goes OVER a body, not
+  // the presence of one somewhere ahead.
   const carry = candidates.find(
-    (d) => walkable.canDashOver(x, z, x + nx * d, z + nz * d, radius),
+    (d) => walkable.canDashOver(x, z, x + nx * d, z + nz * d, radius)
+      && !firstBodyOnPath(x, z, x + nx * d, z + nz * d, radius, bodies),
   );
   if (carry === undefined) return false;
 

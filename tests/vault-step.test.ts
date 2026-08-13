@@ -109,6 +109,45 @@ test('cancelling drops it cleanly', () => {
   assert.equal(vaultHeightOffset(), 0);
 });
 
+// ── NEVER OVER A LIVING BODY ─────────────────────────────────────────────
+// The rule Josh reported twice before it was believed: "the walk vault never
+// ceases to work and works on enemies". It did, and `isInCombat()` was never
+// going to stop it — combat-state latches on a hit LANDING, so walking up to a
+// mob that hasn't touched you yet isn't "in combat" by that definition, and
+// walking into it blocks the step exactly like a fallen pillar. The gate has to
+// be geometric, so these test geometry.
+
+/** A mob two metres ahead, in a world where the floor is otherwise clear. */
+const MOB = [{ x: 0, z: 2, radius: 0.5 }];
+
+test('A WALK NEVER VAULTS AN ENEMY', () => {
+  assert.equal(tryVaultStep(0, 0, 0, 0.056, 0.3, CLEAR, MOB), false,
+    'the player strolled over a mob — free, at walking pace, with no cost');
+  assert.equal(isVaulting(), false);
+});
+
+test('but a kerb-hop that stops SHORT of the mob is still a vault', () => {
+  // The rule is "no carry that goes OVER a body", not "no vault while an enemy
+  // exists". A mob at 8m must not veto stepping over the rubble at your feet.
+  const FAR_MOB = [{ x: 0, z: 8, radius: 0.5 }];
+  // Only the SHORT hop is offered floor, so the vault can't reach the mob.
+  const SHORT = { canDashOver: (fx: number, fz: number, tx: number, tz: number) =>
+    Math.hypot(tx - fx, tz - fz) < 1.6 };
+  assert.equal(tryVaultStep(0, 0, 0, 0.056, 0.3, SHORT, FAR_MOB), true,
+    'a distant mob vetoed a step it is nowhere near');
+});
+
+test('a mob off to the SIDE does not block the line you are walking', () => {
+  const BESIDE = [{ x: 2.5, z: 0, radius: 0.5 }];
+  assert.equal(tryVaultStep(0, 0, 0, 0.056, 0.3, CLEAR, BESIDE), true);
+});
+
+test('a body you are ALREADY touching refuses the step', () => {
+  // Pressed against a mob is the exact moment the old vault was most eager to
+  // fire — the walk is fully blocked, so the trigger is loudest.
+  assert.equal(tryVaultStep(0, 1.6, 0, 0.056, 0.3, CLEAR, MOB), false);
+});
+
 // ── THE GATES ────────────────────────────────────────────────────────────
 // These two run LAST on purpose: both latch for a few seconds of GAME time and
 // a headless test never advances the clock, so once either is on it stays on.

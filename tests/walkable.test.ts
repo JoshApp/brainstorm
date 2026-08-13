@@ -81,10 +81,18 @@ test('canDashOver REFUSES when the landing itself is inside the obstacle (unders
   assert.equal(region.canDashOver(0, -1, 0, 0, R), false, 'never validate a dash that ends inside the obstacle');
 });
 
-test('canDashOver REFUSES to cross a NON-dashable obstacle (a chest still stops you)', () => {
-  const chest: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 0.7 };
-  const region = new WalkableRegion([ROOM], [chest]);
-  assert.equal(region.canDashOver(0, -1, 0, 1, R), false, 'a solid chest blocks the dash — not dashable');
+test('canDashOver REFUSES to cross a TALL obstacle (a statue still stops you)', () => {
+  // WAS: an untagged 0.7m chest, asserting that the missing `dashable` flag is
+  // what stopped the dash. That rule is gone — HEIGHT is now the only rule for a
+  // solid, because exactly one obstacle in the whole game ever set the flag and
+  // every low prop was accidentally a wall (see vault-rules.test.ts). A 0.7m
+  // chest is under the 0.75m ceiling and is now correctly vaultable.
+  //
+  // What must still refuse is something genuinely TOO TALL, so that is what the
+  // case tests now — the claim survives, its example moved.
+  const statue: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 1.6 };
+  const region = new WalkableRegion([ROOM], [statue]);
+  assert.equal(region.canDashOver(0, -1, 0, 1, R), false, 'a chest-high statue blocks the dash');
 });
 
 test('canDashOver REFUSES to cross a WALL even if the landing is floor', () => {
@@ -103,11 +111,15 @@ test('resolveDashUndershoot completes the vault forward when stuck inside a dash
   assert.equal(region.contains(land!.x, land!.z, R), true, 'landing is valid floor');
 });
 
-test('resolveDashUndershoot is a NO-OP on valid floor and when stuck on a non-dashable obstacle', () => {
-  const chest: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 0.7 };
-  const region = new WalkableRegion([ROOM], [chest]);
+test('resolveDashUndershoot is a NO-OP on valid floor and when stuck on a TALL obstacle', () => {
+  // Same move as the case above: the example was a 0.7m chest, which is now
+  // vaultable on height, so the rescue rightly digs the player out of one. What
+  // the rescue must still keep its hands off is a thing no vault could have
+  // cleared — being stuck in THAT is ordinary collision's business, not ours.
+  const statue: Obstacle = { kind: 'aabb', minX: -0.3, maxX: 0.3, minZ: -0.24, maxZ: 0.24, yTop: 1.6 };
+  const region = new WalkableRegion([ROOM], [statue]);
   assert.equal(region.resolveDashUndershoot(3, 3, 0, 1, R), null, 'on clear floor: nothing to fix');
-  assert.equal(region.resolveDashUndershoot(0, 0, 0, 1, R), null, 'stuck in a solid chest is NOT the dash-heal’s job');
+  assert.equal(region.resolveDashUndershoot(0, 0, 0, 1, R), null, 'stuck in a statue is NOT the dash-heal’s job');
 });
 
 test('A VAULT IS GATED ON HEIGHT, NOT ON A FLAG', () => {

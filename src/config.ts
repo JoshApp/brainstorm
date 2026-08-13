@@ -209,7 +209,13 @@ export const CONFIG = {
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
     DASH_COST: STAMINA_MAX / 3,       // 1 segment
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
-    DASH_OVER_REACH: 2.5,     // landing-check distance (m): a dash VAULTS a dashable obstacle/gap only if valid floor lies within this ahead
+    // Landing-check distance (m): a dash VAULTS a vaultable obstacle or a narrow
+    // rift only if valid floor lies within this ahead. 2.5 → 3.0 so the roll
+    // covers what the walk-vault now covers — a CLUSTER of low props (a pile of
+    // vases runs ~1.1m across, and you arrive off-centre more often than not)
+    // and the 1.8m rift, which needed 2.4m of clearance and was landing right on
+    // the far lip at 2.5.
+    DASH_OVER_REACH: 3.0,
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Dodge NEVER blocks — at empty it still fires as a desperate STUMBLE:
     // shorter i-frames + a much weaker, shorter lunge, a camera lurch (see
@@ -1099,6 +1105,61 @@ export const CONFIG = {
      * still reads as a step, and well under anything a person would call a wall.
      */
     MAX_CLEAR_HEIGHT_M: 0.75,
+
+    /**
+     * THE WIDEST RIFT A DODGE MAY CROSS, in metres across the narrow way.
+     *
+     * A hole in the floor has no height to be under — it is registered as a
+     * full-height blocker precisely so a walk cannot wander into the abyss — so
+     * it needs its own rule (`leapable`, level/walkable.ts). Josh: *"let's make
+     * it so dodging can jump over one-wide voids."*
+     *
+     * Rifts come in three widths (level/room-voids.ts: 1.3 / 1.8 / 2.4). 1.9
+     * takes the first two and refuses the last, which is the line worth drawing:
+     * a narrow rift is a movement OPPORTUNITY — a shortcut, an escape, a thing
+     * to learn — and a wide one is architecture you route around. If every
+     * chasm were crossable the geometry would stop meaning anything.
+     *
+     * The DODGE only. A walk-vault fires automatically off a blocked step, so
+     * letting it cross gaps would launch the player over a hole they never chose
+     * to jump (see canDashOver's `allowGaps`).
+     */
+    MAX_GAP_M: 1.9,
+
+    /**
+     * THE LEAP — a dodge aimed AT a living body goes over it.
+     *
+     * The walk-vault used to clear enemies (it asked the level, and the level
+     * only knows about stone), which made stepping over the thing trying to
+     * kill you a free walking-pace move. That's gone. But the move it was
+     * accidentally providing is a good one, so it moves to where it belongs:
+     * the dodge, which costs stamina, commits you, and pays i-frames.
+     *
+     * Rolling into something and stopping dead inside it is the worst outcome a
+     * defensive button can have. Aim a dodge at a mob and you now clear it and
+     * land behind — the escape and the backstab setup in one input.
+     */
+    LEAP: {
+      /** Gap past touching where the leap comes down, metres. Small: you land
+       *  BEHIND the body, close enough that the back of it is still in reach. */
+      CLEARANCE_M: 0.35,
+      /** How far ahead a body may be and still be leapt. Past this the dodge is
+       *  just a dodge — a leap at something three metres off isn't a read, it's
+       *  a lunge into a room you can't see. */
+      REACH_M: 2.2,
+      /** Eye arc over a body. Higher than DASH_OVER_RISE_M because a creature is
+       *  taller than a fallen column and the view is the only place that says so. */
+      RISE_M: 0.46,
+      /**
+       * How long after the roll the leap may still be COMPLETED, seconds.
+       *
+       * The lunge is ~1.3m of decaying knockback plus held input, and a body at
+       * a metre with a half-metre radius needs closer to 1.8m — so undershoot is
+       * the common case, not the edge one. Past the window the leap is forgotten
+       * and ordinary collision owns the player again.
+       */
+      SETTLE_S: 0.6,
+    },
   },
   PLAYER_HP_MAX,
   /**

@@ -106,6 +106,11 @@ export type Action =
   | { kind: 'turn'; angle: number }                       // relative radians
   | { kind: 'face'; target: Direction8 | { id: string } }
   | { kind: 'attack' }
+  /** Roll in a world direction and let the world run until it settles. The bot
+   *  dodges through the intent bus; a turn-based harness caller had no way to,
+   *  which left the whole dodge path (i-frames, dash-over, the leap over a body)
+   *  unverifiable headlessly. */
+  | { kind: 'dodge'; dir: Direction8; seconds?: number }
   | { kind: 'interact' }
   | { kind: 'use'; slot: number }
   | { kind: 'wait'; seconds: number }

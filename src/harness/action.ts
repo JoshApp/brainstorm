@@ -14,6 +14,7 @@ import { setCameraYaw, setCameraPitch, getCameraPitch } from '../controls/camera
 import { dismissTopScreen } from '../ui/screen-manager';
 import { autoPickFirstCard } from '../ui/card-reading';
 import { triggerAttack } from '../controls/attack-input';
+import { triggerDash } from '../controls/dash-input';
 import { useFirstConsumable } from '../controls/consumable-bar';
 import { getInRangeInteractable, getAllInteractables } from '../interactables/system';
 import { requestTickBudget } from './pause';
@@ -82,6 +83,7 @@ async function dispatch(
     case 'turn':   return turnAction(ctx, action.angle);
     case 'face':   return faceAction(ctx, action.target);
     case 'attack': return attackAction(ctx);
+    case 'dodge':  return dodgeAction(ctx, action.dir, action.seconds);
     case 'interact': return interactAction();
     case 'use':    return useAction(action.slot);
     case 'wait':   return waitAction(action.seconds);
@@ -187,6 +189,45 @@ async function steerAction(
     state.lookDy = 0;
   });
   const end = await requestTickBudget({ maxSeconds: seconds ?? MOVE_SECONDS_DEFAULT });
+  return { ok: true, budgetEnd: end.reason };
+}
+
+/** How long the world runs after a roll is fired. The i-frame window is ~0.3s
+ *  and the lunge's knockback settles inside 0.4s; a leap's landing completes on
+ *  the frame after the window closes. 0.9s covers all of it with room. */
+const DODGE_SETTLE_SECONDS = 0.9;
+
+/**
+ * Roll in a world-space compass direction and let it resolve.
+ *
+ * The dodge is the only player move with no harness verb, which meant every
+ * behaviour hanging off it — i-frames, the dash-over vault, and now the leap
+ * over a body — could only be checked by reading the source. That is exactly
+ * how the walk-vault came to be believed safe in combat for months while it
+ * was strolling over enemies on Josh's phone.
+ *
+ * Fired through the real input channel (`triggerDash`), not by poking the dash
+ * module, so the systems tick's arbitration — FSM lock, cooldown, stamina, and
+ * the dash-over / leap validation — all run exactly as they do for a player.
+ */
+async function dodgeAction(
+  ctx: HarnessContext,
+  dir: Direction8,
+  seconds?: number,
+): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
+  const target = DIRS[dir];
+  if (!target) return { ok: false, reason: 'unknown-direction' };
+  // The dash input is CAMERA-RELATIVE (dx strafe, dy forward-sign like the
+  // joystick) and engine/systems.ts rebuilds the world vector from this frame's
+  // facing. Project the requested world direction onto that basis so "dodge N"
+  // means north whatever the camera is doing.
+  const yaw = ctx.camera.rotation.y;
+  const fX = -Math.sin(yaw), fZ = -Math.cos(yaw);       // camera forward on the floor
+  const rX = -fZ, rZ = fX;                              // right = forward rotated −90°
+  const dx = target.wx * rX + target.wz * rZ;
+  const dy = -(target.wx * fX + target.wz * fZ);
+  triggerDash(dx, dy);
+  const end = await requestTickBudget({ maxSeconds: seconds ?? DODGE_SETTLE_SECONDS });
   return { ok: true, budgetEnd: end.reason };
 }
 

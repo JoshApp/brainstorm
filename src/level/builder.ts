@@ -1164,7 +1164,16 @@ export function buildLevel(
         [cMaxX - rx, -(cMaxZ - rz)],
         [cMinX - rx, -(cMaxZ - rz)],
       ]);
-      obstacles.push({ kind: 'aabb', minX: vMinX, maxX: vMaxX, minZ: vMinZ, maxZ: vMaxZ, yTop: Infinity });   // chasm void edge — full-height block
+      // Chasm void edge — full-height block, so no walk ever wanders into it.
+      // A NARROW rift is additionally `leapable`: a committed dodge may cross
+      // it (level/walkable.ts, CONFIG.VAULT.MAX_GAP_M), which turns the smallest
+      // rift from pure obstruction into a movement option — a shortcut across a
+      // room, an escape a chasing mob can't follow. A wide one stays absolute.
+      const gapAcross = Math.min(vMaxX - vMinX, vMaxZ - vMinZ);
+      obstacles.push({
+        kind: 'aabb', minX: vMinX, maxX: vMaxX, minZ: vMinZ, maxZ: vMaxZ, yTop: Infinity,
+        leapable: gapAcross <= CONFIG.VAULT.MAX_GAP_M,
+      });
     }
     // Logical-only sub-rooms (multi-room vault parsing) skip the shell
     // build — they exist only for mob-attribution and arena-door

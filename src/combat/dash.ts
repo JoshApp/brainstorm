@@ -52,7 +52,9 @@ export function isDodging(): boolean { return gameNow() < dodgeActiveUntil; }
 export function dashHeightOffset(): number {
   if (!isDodging() || dodgeDurationMs <= 0) return 0;
   const k = Math.max(0, Math.min(1, (gameNow() - dodgeStartedAt) / dodgeDurationMs));
-  const rise = isDashingOver() ? CONFIG.VAULT.DASH_OVER_RISE_M : CONFIG.VAULT.DASH_RISE_M;
+  const rise = isLeapingOverBody() ? CONFIG.VAULT.LEAP.RISE_M
+    : isDashingOver() ? CONFIG.VAULT.DASH_OVER_RISE_M
+      : CONFIG.VAULT.DASH_RISE_M;
   return Math.sin(k * Math.PI) * rise;
 }
 
@@ -72,6 +74,59 @@ export function isDashingOver(): boolean { return dashOverActive && isDodging();
 // (never a teleport — a bounded step to the far edge). See resolveDashUndershoot.
 let dashDirX = 0, dashDirZ = 0;
 let dashHealUntil = 0;
+
+// ── THE LEAP: A DODGE AIMED AT A BODY GOES OVER IT ──────────────────────────
+//
+// dashOverActive above is about STONE — the level's dashable obstacles. Enemies
+// live nowhere in that path (walkable.canDashOver never looks at a mob), which
+// is why the WALK-vault used to sail over them for free; that hole is closed in
+// player/vault-step.ts. The move itself is worth keeping though, so it moves to
+// the input that should have owned it all along.
+//
+// A leap is armed at dodge START, exactly like a dash-over: the caller has
+// already checked that a body is on the roll's line and that there is real floor
+// past it. While it holds, enemy collision and the depenetration push are OFF
+// for the player (controls/camera.ts) — being inside the body mid-leap is the
+// intended state, and the depenetration would otherwise shove you back out the
+// side you came from, which is the exact "landing in them" this exists to fix.
+//
+// Then the landing is COMPLETED rather than hoped for. The lunge is ~1.3m of
+// decaying knockback and a body at a metre needs closer to 1.8m, so undershoot
+// is the common case — the same lesson dash-over learned (see the undershoot
+// rescue above), applied to flesh. The landing point was validated before the
+// dodge fired, so finishing the move is a short bounded correction to a place we
+// already know is floor, never a teleport and never a guess.
+let leapActive = false;
+let leapLandX = 0, leapLandZ = 0;
+let leapUntil = 0;
+
+/** Arm a validated leap: this roll clears a body and comes down at (landX,landZ). */
+export function noteBodyLeap(landX: number, landZ: number): void {
+  leapActive = true;
+  leapLandX = landX; leapLandZ = landZ;
+  leapUntil = gameNow() + CONFIG.VAULT.LEAP.SETTLE_S * 1000;
+}
+
+/** Is THIS roll a validated leap over a body (ignore enemy collision)? */
+export function isLeapingOverBody(): boolean { return leapActive && isDodging(); }
+
+/**
+ * Where a leap should come down, once its roll has ended and if it hasn't
+ * already got there. Null when no leap is pending or the window has passed.
+ *
+ * The CALLER decides whether the correction is needed (it is the one that knows
+ * whether the player is still standing in the body) and clamps the move against
+ * the level — this module owns the intent, not the collision.
+ */
+export function pendingLeapLanding(): { x: number; z: number } | null {
+  if (!leapActive) return null;
+  if (isDodging()) return null;                 // still mid-leap; inside is fine
+  if (gameNow() > leapUntil) { leapActive = false; return null; }
+  return { x: leapLandX, z: leapLandZ };
+}
+
+/** The leap is resolved (landed, or the player was already clear). */
+export function clearBodyLeap(): void { leapActive = false; }
 
 /** Mark that a validated dash-over just FIRED in world direction (dirX,dirZ). */
 export function noteDashOverFired(dirX: number, dirZ: number): void {
@@ -155,6 +210,8 @@ export function resetDashCooldown(): void {
   windedUntil = 0;
   dodgeActiveUntil = 0;
   dodgeDurationMs = 0;
+  leapActive = false;
+  dashOverActive = false;
 }
 // sim-state: a fresh run starts dodge-ready (see sim-state.ts).
 registerSimReset(resetDashCooldown);

@@ -50,7 +50,8 @@ import { consumeDash } from '../controls/dash-input';
 import { setDodgeButtonAim, tickDodgeButton } from '../controls/dodge-button';
 import { tickParryButton } from '../controls/parry-button';
 import { captureStep } from '../harness/run-recorder';
-import { tryDash, setDashOver, noteDashOverFired } from '../combat/dash';
+import { tryDash, setDashOver, noteDashOverFired, noteBodyLeap } from '../combat/dash';
+import { firstBodyOnPath, landingBeyond, anyBodyOverlaps, livingBodies, type BodyCircle } from '../player/body-path';
 import { consumeRiposte } from '../combat/reactive-defense';
 import { updateSwingAgency } from '../combat/swing-agency';
 import { canStartAction, enterDodge } from '../combat/player-action';
@@ -134,6 +135,11 @@ export interface SystemDeps {
 // the next heart lost. Module-level so it survives across the per-frame system
 // rebuild-free tick; reset to 0 the moment you're in combat or the rule is off.
 let thirstBleedAccum = 0;
+
+// The dodge's own view of the live mobs, as blocker discs (player/body-path.ts).
+// Owned here rather than shared with the camera's copy so two per-frame readers
+// can never overwrite each other's list mid-answer.
+const DODGE_BODIES: BodyCircle[] = [];
 
 export function buildSystems(deps: SystemDeps): GameSystem[] {
   const {
@@ -239,12 +245,42 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // a wall (stop at the edge, never inside). Decided up-front, before the dash.
       const walkable = getLevel()?.walkable ?? null;
       const dlen = Math.hypot(wx, wz) || 1;
+      const ux = wx / dlen, uz = wz / dlen;
+      const px = camera.position.x, pz = camera.position.z;
       const reach = CONFIG.STAMINA.DASH_OVER_REACH;
       const over = !!walkable && walkable.canDashOver(
-        camera.position.x, camera.position.z,
-        camera.position.x + (wx / dlen) * reach, camera.position.z + (wz / dlen) * reach,
+        px, pz, px + ux * reach, pz + uz * reach,
         0.3,   // matches camera's PLAYER_RADIUS
+        // THE DODGE IS THE MOVE THAT MAY CROSS A HOLE. It is the only one that
+        // asks — a walk-vault fires off a blocked step with no intent behind it,
+        // and being launched over a chasm you merely brushed is not a mechanic.
+        { allowGaps: true },
       );
+
+      // THE LEAP: A DODGE AIMED AT A BODY GOES OVER IT.
+      //
+      // The stone check above is blind to mobs — walkable knows floors, walls and
+      // props and has never known an enemy. That blindness used to leak the wrong
+      // way (the WALK-vault sailed over enemies for free; see
+      // player/vault-step.ts). Here it leaks the RIGHT way, deliberately: a dodge
+      // into a creature should clear it and land behind, not stop dead inside it.
+      //
+      // Validated before the roll fires, exactly like dash-over: a body on the
+      // line, a landing derived from that body's own size, and real floor there.
+      // No validation, no leap — the dodge is then an ordinary dodge and normal
+      // collision holds, which is the safe direction to fail in.
+      const bodies = livingBodies(getLevel()?.enemies ?? [], DODGE_BODIES);
+      let leap: { x: number; z: number } | null = null;
+      const hit = firstBodyOnPath(px, pz, px + ux * CONFIG.VAULT.LEAP.REACH_M, pz + uz * CONFIG.VAULT.LEAP.REACH_M, 0.3, bodies);
+      if (hit && walkable) {
+        const land = landingBeyond(px, pz, ux, uz, hit.body, 0.3, CONFIG.VAULT.LEAP.CLEARANCE_M);
+        // Floor past it, and nothing ELSE standing where we'd come down — landing
+        // inside a second mob is the failure this move exists to remove.
+        if (walkable.canDashOver(px, pz, land.x, land.z, 0.3) && !anyBodyOverlaps(land.x, land.z, 0.3, bodies)) {
+          leap = land;
+        }
+      }
+
       // On a real dodge, commit the FSM 'dodging' beat (≈ the i-frame window)
       // so it locks out attack/parry for the roll's duration. Only arm the vault
       // when the dash actually fires — a cooldown-blocked tap shouldn't leave the
@@ -252,6 +288,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       if (tryDash(wx, wz)) {
         setDashOver(over);
         if (over) noteDashOverFired(wx, wz);
+        if (leap) noteBodyLeap(leap.x, leap.z);
         enterDodge(CONFIG.STAMINA.DASH_IFRAME_S);
       }
     } },
