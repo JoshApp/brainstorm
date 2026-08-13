@@ -67,14 +67,23 @@ export function canStartAction(kind: 'attack' | 'dodge' | 'parry'): boolean {
   if (dodgeLeft > 0) return false;  // the roll commits until it ends
   const swinging = sources?.isSwinging() ?? false;
   const phase = sources?.swingPhase() ?? 'idle';
-  const midStrike = swinging && (phase === 'windup' || phase === 'strike');
   switch (kind) {
     // A new swing during another swing is the COMBO chain — the swing sim
     // buffers/gates that itself.
     case 'attack': return true;
-    // Dodge is the escape lifeline: it can cancel a swing's RECOVERY (just not
-    // its committed windup/strike), so you're never locked out of bailing.
-    case 'dodge':  return !midStrike;
+    // DODGE CANCELS ALMOST EVERYTHING. It used to be refused through a swing's
+    // whole WINDUP as well as its strike, which on a heavy weapon is most of a
+    // second of "the button does nothing" — and the button in question is the
+    // one that keeps you alive. Josh, from the phone: *"not being able to dodge
+    // after attacking feels weird, I think we shouldn't block people from
+    // dodging out of most things."*
+    //
+    // The one frame that stays committed is the STRIKE — the ~0.1s the blade is
+    // actually live. Swinging still means something (you can't rewind a blow
+    // you're in the middle of landing), but every part of the animation AROUND
+    // it is now cancellable, which is the difference between a weapon that
+    // commits you and a weapon that traps you.
+    case 'dodge':  return !(swinging && phase === 'strike');
     // Parry needs a FREE stance — you cannot parry out of ANY part of your own
     // swing, recovery included. Committing to a swing (especially a heavy one)
     // means you can't also hold up a guard; wait the recovery out. This is what
