@@ -1,6 +1,6 @@
 import { setCensusRenderer } from './debug/perf-recorder';
 import * as THREE from 'three';
-import { createRenderer, activeGraphicsBackend } from './scene/create-renderer';
+import { createRenderer } from './scene/create-renderer';
 import { initEmbersGPU } from './effects/embers-gpu';
 import { initLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
@@ -398,7 +398,7 @@ registerFrameCapture(async () => {
   // canvas.toDataURL reads BLACK). 960px wide keeps the report attachment small.
   try {
     const cap = await captureDisplayFrame(renderer, scene, camera, 960);
-    if (cap) png = pixelsToPngDataURL(cap.data, cap.width, cap.height, activeGraphicsBackend() !== 'webgpu');
+    if (cap) png = pixelsToPngDataURL(cap.data, cap.width, cap.height);
   } catch { /* read blocked */ }
   return {
     png,
@@ -419,7 +419,7 @@ if (import.meta.env.DEV) {
   (window as unknown as { __captureFrame?: (w?: number) => Promise<string | null> }).__captureFrame =
     async (w = 1280) => {
       const cap = await captureDisplayFrame(renderer, scene, camera, w);
-      return cap ? pixelsToPngDataURL(cap.data, cap.width, cap.height, activeGraphicsBackend() !== 'webgpu') : null;
+      return cap ? pixelsToPngDataURL(cap.data, cap.width, cap.height) : null;
     };
 }
 if (import.meta.env.DEV) initAiGizmos(scene);   // DEV facing gizmos (?aigizmos=1 / ai-lab)

@@ -12,6 +12,7 @@
 // without the post look yet).
 
 import * as THREE from 'three';
+import { normalizeReadback } from './readback';
 import { RenderPipeline } from 'three/webgpu';
 import { pass, vec2, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
   luminance, texture, uniform, mrt, output, normalView, max as tslMax,
@@ -1038,7 +1039,12 @@ export async function captureDisplayFrame(
     (pipeline as unknown as { render: () => void }).render();
     renderer.setRenderTarget(prev);
     const px = await renderer.readRenderTargetPixelsAsync(luxRT as never, 0, 0, width, height) as unknown as Uint8Array;
-    return { data: px, width, height };
+    // Hand back ONE layout — tightly-packed, top-down RGBA — whichever backend
+    // produced it. The two disagree on row order AND row stride; readback.ts
+    // has the details and the bugs that came of not doing this here.
+    const isWebGPU = !!(renderer as unknown as { backend?: { isWebGPUBackend?: boolean } })
+      .backend?.isWebGPUBackend;
+    return { data: normalizeReadback(px, width, height, isWebGPU ? 'webgpu' : 'webgl2'), width, height };
   } catch (err) {
     if (import.meta.env.DEV) console.warn('[lux] capture failed:', err);
     return null;

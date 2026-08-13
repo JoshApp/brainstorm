@@ -37,40 +37,22 @@ export async function captureFrameContext(): Promise<FrameContext | null> {
 }
 
 /**
- * Convert a raw RGBA pixel buffer (as readRenderTargetPixelsAsync returns it)
- * into a top-down PNG data URL via a 2D canvas.
+ * Convert a tightly-packed, top-down RGBA buffer into a PNG data URL.
  *
- * ROW ORDER IS BACKEND-SPECIFIC and the two disagree — pass `bottomUp` from
- * `activeGraphicsBackend()`, don't guess:
- *
- *  - **WebGL2** — three reads back with `gl.readPixels`, whose row 0 is the
- *    BOTTOM of the image. Needs the flip.
- *  - **WebGPU** — three reads back with `copyTextureToBuffer`, whose row 0 is
- *    texture row 0, i.e. the TOP. Must NOT be flipped.
- *
- * This was an unconditional flip until 2026-08-13, which meant every bug-report
- * screenshot taken on the shipped (WebGPU) backend arrived UPSIDE DOWN. Caught
- * by A/B-ing a seeded floor across both backends once headless WebGPU worked —
- * exactly the class of bug that was invisible while all tooling forced WebGL2.
+ * The layout guarantee comes from `captureDisplayFrame`, which normalises the
+ * backend's raw readback before handing it over — the two backends disagree on
+ * both row ORDER and row STRIDE, and getting that wrong here shipped an
+ * upside-down bug-report screenshot for as long as the game has been on WebGPU.
+ * See style/readback.ts; don't re-derive the layout at this end.
  */
-export function pixelsToPngDataURL(
-  data: Uint8Array, width: number, height: number, bottomUp: boolean,
-): string | null {
+export function pixelsToPngDataURL(data: Uint8Array, width: number, height: number): string | null {
   if (!width || !height) return null;
   const c = document.createElement('canvas');
   c.width = width; c.height = height;
   const ctx = c.getContext('2d');
   if (!ctx) return null;
   const img = ctx.createImageData(width, height);
-  const rowBytes = width * 4;
-  if (bottomUp) {
-    for (let y = 0; y < height; y++) {
-      const src = (height - 1 - y) * rowBytes;
-      img.data.set(data.subarray(src, src + rowBytes), y * rowBytes);
-    }
-  } else {
-    img.data.set(data.subarray(0, rowBytes * height));
-  }
+  img.data.set(data.subarray(0, width * 4 * height));
   ctx.putImageData(img, 0, 0);
   return c.toDataURL('image/png');
 }
