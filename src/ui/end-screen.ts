@@ -232,6 +232,7 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   document.body.appendChild(root);
   openScreen({
     id: SCREEN_ID,
+    onForceClose: () => hideEndScreen(),
     root,
     policy: {
       pausesWorld: true,

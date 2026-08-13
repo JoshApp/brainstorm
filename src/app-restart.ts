@@ -24,6 +24,8 @@
 // window before boot has registered anything — better a slow correct path than a
 // dead button.
 
+import { closeAllScreens } from './ui/screen-manager';
+
 let handler: (() => void) | null = null;
 
 /** Register the real return-to-title (boot does this once the title scene and
@@ -33,6 +35,17 @@ export function setReturnToTitle(fn: () => void): void { handler = fn; }
 /** Tear the current run down and show the title, in this same JS context.
  *  Falls back to a page reload only if boot hasn't registered yet. */
 export function returnToTitle(): void {
+  // CLOSE EVERY SCREEN FIRST. The reload used to do this by destroying the
+  // document; without it, whatever was open when you left the run is still open
+  // on top of the title — the settings panel you quit FROM, the inventory behind
+  // it, the end screen you rose from. Reported from the phone: "these menus stay
+  // kinda open, going back to the main menu needs to close down menus".
+  //
+  // Here rather than at each call site because this is the one choke point all
+  // three exits (quit, abandon, rise-again) already pass through, so a fourth
+  // exit added later cannot forget. It runs before the reload fallback too —
+  // harmless there, and it keeps the two paths behaviourally identical.
+  closeAllScreens();
   if (handler) { handler(); return; }
   window.location.reload();
 }

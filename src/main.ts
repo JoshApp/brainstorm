@@ -125,7 +125,7 @@ import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { initAiGizmos } from './debug/ai-gizmos';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
-import { isAnyScreenOpen, msSinceLastScreenClose, onScreenStateChanged, isWorldPausedByScreen } from './ui/screen-manager';
+import { isAnyScreenOpen, msSinceLastScreenClose, onScreenStateChanged, isWorldPausedByScreen, closeAllScreens } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, awaitBootUpdate, setBeforeReloadHook } from './pwa-update';

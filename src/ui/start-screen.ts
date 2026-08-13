@@ -407,6 +407,7 @@ export function showStartScreen(opts: StartScreenOptions) {
   // dims the WebGL scene, brings its OWN background (no shared backdrop).
   openScreen({
     id: SCREEN_ID,
+    onForceClose: () => hide(),
     root,
     policy: {
       pausesWorld: true,

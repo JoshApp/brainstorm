@@ -123,6 +123,7 @@ export function showNote(text: string) {
   // tap-on-card uses the listener wired just above.
   openScreen({
     id: NOTE_SCREEN_ID,
+    onForceClose: () => dismiss(),
     root: card,
     // needsCursor:false → stay in mouse-look while reading; tap-anywhere /
     // any-key dismisses (handled below), so dismissing returns straight to

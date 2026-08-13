@@ -150,6 +150,7 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
 
   openScreen({
     id: SCREEN_ID,
+    onForceClose: () => hideSafeRoomTransition(),
     root,
     policy: {
       pausesWorld: true,

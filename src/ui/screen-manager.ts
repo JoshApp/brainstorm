@@ -53,6 +53,14 @@ export interface ScreenHandle {
    *  card, transition card). Prompts set this so they DON'T each bolt a global
    *  keydown listener on the window — the controller stays contained. */
   onConfirm?: () => void;
+  /** Tear this screen down NOW, no questions asked — used by closeAllScreens on
+   *  a run transition. Distinct from onDismissRequest, which is a REQUEST the
+   *  screen may decline; a force-close may not be declined. Supply it whenever
+   *  closing involves more than removing `root` (timers, listeners, a 3D
+   *  preview rig, an internal `closed` flag). Omit it and the manager removes
+   *  `root` from the DOM as a backstop, so a screen that never opted in still
+   *  cannot survive the transition. */
+  onForceClose?: () => void;
 }
 
 // ── Z-index buckets ───────────────────────────────────────────────────
@@ -73,6 +81,9 @@ const openScreens = new Map<string, ScreenHandle>();
 const stateListeners = new Set<() => void>();
 
 let backdrop: HTMLDivElement | null = null;
+
+// When a screen last closed (performance.now ms) — see msSinceLastScreenClose.
+let lastClosedAt = -Infinity;
 
 // Desktop pointer-lock coherence (paired with the exitPointerLock in
 // applyState): `cursorWasFree` tracks whether a cursor-needing screen was up
@@ -140,13 +151,48 @@ export function openScreen(handle: ScreenHandle): void {
 // — by then the screen is gone, so the tap would fall through to the
 // world and e.g. re-open the corpse note you just dismissed). Callers
 // gate world taps on msSinceLastScreenClose() to swallow that straggler.
-let lastClosedAt = -Infinity;
-
 export function closeScreen(id: string): void {
   if (openScreens.delete(id)) {
     lastClosedAt = performance.now();
     applyState();
   }
+}
+
+/**
+ * Force EVERY open screen shut. The teardown authority for a run transition.
+ *
+ * A page reload used to be the only thing that guaranteed a clean UI, because
+ * this manager could track what was open but had no way to shut it: `closeScreen`
+ * only forgets a screen, and each screen removes its own DOM in its own closer.
+ * So quitting a run, abandoning it, or rising after death all had to
+ * `location.reload()` — which is why they cost a full boot, and why anything that
+ * skipped the reload left the inventory or the settings panel hanging over the
+ * title screen.
+ *
+ * Order matters: reverse open-order, so a modal stacked on a panel comes down
+ * first and never briefly becomes the top screen. Every screen gets its
+ * `onForceClose`, or — failing that — has its root pulled from the DOM, so a
+ * screen whose author never opted in still cannot survive. `applyState` runs
+ * ONCE at the end rather than per close: the body classes, backdrop and pointer
+ * lock should settle to the final state, not flicker through N intermediate ones.
+ */
+export function closeAllScreens(): void {
+  if (openScreens.size === 0) return;
+  const stack = [...openScreens.values()].reverse();
+  openScreens.clear();
+  for (const s of stack) {
+    if (s.onForceClose) {
+      try { s.onForceClose(); } catch { /* a broken teardown must not strand the rest */ }
+    } else {
+      s.root.remove();
+    }
+  }
+  // A screen's own closer calls closeScreen(), which is a no-op now that the map
+  // is cleared — but it may also have re-opened something (a BACK handler). Clear
+  // once more so "close everything" means it.
+  openScreens.clear();
+  lastClosedAt = performance.now();
+  applyState();
 }
 
 /** Milliseconds since the most recent screen close (Infinity if none). */

@@ -158,6 +158,7 @@ export function showNameEntry(onConfirm: (name: string) => void): void {
 
   openScreen({
     id: SCREEN_ID,
+    onForceClose: () => dismiss(),
     root,
     policy: {
       pausesWorld: true,

@@ -198,6 +198,11 @@ export function createSheet(opts: SheetOptions): Sheet {
       root,
       policy: { layer: opts.layer ?? 'panel', ...opts.policy },
       onDismissRequest: close,
+      // A run transition may not be declined: same teardown, but the manager
+      // calls it rather than asking. Without this the manager would only pull
+      // `root`, leaving `closed` false and onClose unfired — so the next open()
+      // would re-append a shell that thinks it's still up.
+      onForceClose: close,
     });
   }
 

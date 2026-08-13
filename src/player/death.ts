@@ -4,6 +4,7 @@ import { track } from '../telemetry/telemetry';
 import { setPersistentVignette } from '../ui/vignette';
 import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
+import { registerSimReset } from '../engine/sim-state';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { returnToTitle } from '../app-restart';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
@@ -229,3 +230,20 @@ export function tickDeath(realDt: number) {
     }
   }
 }
+
+// THE LIFECYCLE RESET.
+//
+// `dying` and the game mode were cleared by exactly one thing: a page reload.
+// That was invisible while every exit from a run (quit / abandon / RISE AGAIN)
+// reloaded — and it became a hard freeze the moment they stopped, because
+// nothing else ever sets the mode back to 'playing'. A player who took the
+// no-reload route back to the title would arrive stuck in 'dead': no input, no
+// viewmodel, no way out but a manual refresh.
+//
+// So it registers with the sim-state authority, which loader.ts runs on every
+// level load — including the title vignette. No exit path has to remember.
+registerSimReset(() => {
+  dying = false;
+  elapsed = 0;
+  setGameMode('playing');
+});

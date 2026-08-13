@@ -50,6 +50,7 @@ export function showStash() {
   document.body.appendChild(root);
   openScreen({
     id: SCREEN_ID,
+    onForceClose: () => dismiss(),
     root,
     // 'title' layer so opening from the start screen renders ABOVE the
     // title — title is also 'title' layer; later-opened screens within
