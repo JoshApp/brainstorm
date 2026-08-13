@@ -2554,47 +2554,144 @@ export const ENEMIES: Record<string, EnemySpec> = {
     name: 'carrion hound',
     hp: 4,
     moveSpeed: 2.6,                 // fast chase
-    attackDamage: 2,
+    // BITE DOWN, MENACE UP.
+    //
+    // 2 damage against a 5-point pool is 40% of the bar per bite, and hounds
+    // come in packs — two bites and a bleed proc was most of a run, from a
+    // floor-3 trash mob. Josh, from the phone: *"they do too much damage, I
+    // think like 1.5 per hit or so ... they should be much more dangerous and
+    // ferocious and dangerous LOOKING."*
+    //
+    // Which is the right split, and worth stating plainly because it is the
+    // opposite of the usual lever: the hound's job is to be TERRIFYING, and the
+    // number was doing that work badly — a mob that halves you in two hits isn't
+    // scary, it's a coin flip. The fear moves into the silhouette (see the
+    // creature below: hackles, a gaping jaw, a starved ribcage) and into the
+    // bleed it already applies, and the raw bite comes down to 1.5 — still the
+    // heaviest bite in the early roster, now survivable enough to be FOUGHT.
+    attackDamage: 1.5,
     attackRange: 1.4,
     strikeRange: 1.20,
     windupTime: 0.40,               // shorter than the skirmisher — it bites quick
     strikeTime: 0.14,
     recoverTime: 0.40,
     damageType: 'physical',
-    // Bigger, leaner quadruped than the rat — long dog snout, back-swept ears,
-    // a whip tail, sickly yellow-green eyes. "Starving dog, not vermin."
+    // A STARVED THING THAT EATS THE DEAD.
+    //
+    // The old hound was a lean dog in one material: hide everywhere, a bare cone
+    // for a muzzle, no mouth, no bone. At six metres in fog that is a dark
+    // quadruped blob with two green dots — the documented "one-blob-of-leather"
+    // failure, and nothing about it said the word carrion.
+    //
+    // The rework follows the lesson the ghoul's ribcage learned the hard way
+    // (see its skin above): a bright part only reads when it IS the silhouette
+    // and there is dark BETWEEN. So the additions are all outline, never decal —
+    // a raised ridge of hackles breaking the backline, a jaw that hangs OPEN with
+    // teeth top and bottom, and starved ribs standing off a thin flank. Three
+    // materials instead of one, so the lamp has something to break on.
     creature: {
       id: 'carrion-hound',
       archetype: 'quadruped',
-      proportions: { height: 0.52, girth: 0.18, legLength: 0.36, headSize: 0.15, neckLength: 0.12 },
+      // Heavier through the shoulder than before (girth 0.18 → 0.21) and a touch
+      // taller, so it reads as a thing that could take you down rather than a
+      // large rat. Still dog-sized — the collision radius is unchanged.
+      proportions: { height: 0.56, girth: 0.21, legLength: 0.37, headSize: 0.16, neckLength: 0.12 },
       materials: {
         hide: { color: 0x18120c, roughness: 1, flatShading: 'auto' },   // Absorbed — no rim (mundane beast)
+        // BONE, and only where it makes a STRIPE or a JAW — never a bright pair
+        // near the face, which would imitate eyes (docs/VISUAL-LANGUAGE.md).
+        // This is the albedo the torchlight can't wash to brown, and it is what
+        // makes the hackles and the ribs legible across a dark room.
+        bone: { color: 0x9a8f76, roughness: 0.7, flatShading: 'auto' },
+        // Wet muzzle. It has been feeding. Dark enough to stay in the ABSORBED
+        // palette (no glow, no rim — this is a mundane beast) and just chromatic
+        // enough that the head reads warmer than the body.
+        gore: { color: 0x40160f, roughness: 0.55, flatShading: 'auto' },
         eyes: { color: 0xc8d030, emissive: 0xc8d030, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
       flash: { material: 'hide' },
       skin: [
-        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.44, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'hide' },
+        // A LEANER BARREL. Thinner than the old 0.16 capsule on purpose — the
+        // ribs below stand off it, and they can only stand off a body that has
+        // been eaten down to nothing.
+        { kind: 'capsule', joint: 'spine', radius: 0.135, height: 0.46, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'hide' },
+        // STARVED RIBS, hanging DOWN THE FLANK.
+        //
+        // First attempt laid them across the body (rot Z ≈ 1.5, the axis a biped
+        // ribcage uses) and the bench caught it immediately: a quadruped is seen
+        // from the SIDE, and a left-right bar seen from the side is a dot. Three
+        // pale specks on a dark flank, invisible at any real distance.
+        //
+        // So they run the other way — near-vertical, out at the body's surface
+        // (x ≈ ±0.12, past the 0.135 barrel radius), leaning back down the belly.
+        // Now they are BARS across the one outline the player actually sees, and
+        // their lower ends break the belly line, which is what makes them read as
+        // a cage rather than as paint (the ghoul's ribcage learned this the hard
+        // way — see its skin above). Alternating sides and uneven, because an
+        // even ladder reads as manufactured.
+        { kind: 'capsule', joint: 'chest', radius: 0.013, height: 0.20, pos: [-0.115, -0.02, 0.05], rot: [0, 0, 0.34], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'chest', radius: 0.012, height: 0.17, pos: [0.118, -0.03, 0.06], rot: [0, 0, -0.28], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.014, height: 0.21, pos: [-0.122, -0.02, -0.04], rot: [0, 0, 0.30], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.013, height: 0.19, pos: [0.120, -0.03, -0.02], rot: [0, 0, -0.33], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.012, height: 0.18, pos: [-0.118, -0.03, 0.08], rot: [0, 0, 0.38], jitter: 0.008, mat: 'bone' },
+        { kind: 'capsule', joint: 'spine', radius: 0.011, height: 0.16, pos: [0.115, -0.04, 0.09], rot: [0, 0, -0.36], jitter: 0.008, mat: 'bone' },
+        // HACKLES — a raised ridge down the spine, apexes swept up and BACK
+        // (+X rotation, the same convention the tail below had to learn). This is
+        // the single strongest "predator, and it is already angry" read a
+        // quadruped has, and it works at any distance because it changes the
+        // BACKLINE — the one edge you always see on a dog-shaped thing.
+        // Descending in size front→back so the ridge has a direction.
+        { kind: 'cone', joint: 'chest', radius: 0.022, height: 0.13, pos: [0, 0.12, 0.02], rot: [0.42, 0, 0], jitter: 0.01, mat: 'bone' },
+        { kind: 'cone', joint: 'spine', radius: 0.021, height: 0.12, pos: [0, 0.12, -0.05], rot: [0.46, 0, 0.05], jitter: 0.01, mat: 'bone' },
+        { kind: 'cone', joint: 'spine', radius: 0.019, height: 0.11, pos: [0, 0.12, 0.05], rot: [0.50, 0, -0.04], jitter: 0.01, mat: 'bone' },
+        { kind: 'cone', joint: 'hips', radius: 0.016, height: 0.09, pos: [0, 0.11, -0.02], rot: [0.56, 0, 0.03], jitter: 0.01, mat: 'bone' },
         // Neck — bones bridging shoulders → skull (the head FLOATED in space
-        // without these; every part must chain back to the spine).
-        { kind: 'bone', from: 'chest', to: 'neck', radius: 0.095, radiusTop: 0.08, mat: 'hide' },
-        { kind: 'bone', from: 'neck', to: 'head', radius: 0.08, radiusTop: 0.07, mat: 'hide' },
-        // Elongated skull + long snout, back-swept ears, glowing eyes.
-        { kind: 'sphere', joint: 'head', radius: 0.13, scale: [0.9, 1, 1.15], jitter: 0.02, mat: 'hide' },
-        // aim:'forward' = muzzle apex toward the nose (intent form; this
-        // cone also shipped backward once).
-        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], aim: 'forward', mat: 'hide' },
+        // without these; every part must chain back to the spine). Thicker than
+        // before: the mass belongs at the front on a thing that pulls meat.
+        { kind: 'bone', from: 'chest', to: 'neck', radius: 0.105, radiusTop: 0.088, mat: 'hide' },
+        { kind: 'bone', from: 'neck', to: 'head', radius: 0.088, radiusTop: 0.075, mat: 'hide' },
+        // Elongated skull, back-swept ears, glowing eyes.
+        { kind: 'sphere', joint: 'head', radius: 0.13, segments: [6, 5], scale: [0.9, 1, 1.15], jitter: 0.014, mat: 'hide' },
+        // A brow shelf over the sockets — the eyes stop being dots on a ball and
+        // become eyes set UNDER something. Straight from the ghoul's head.
+        { kind: 'box', joint: 'head', size: [0.16, 0.035, 0.08], pos: [0, 0.055, -0.075], rot: [-0.3, 0, 0], jitter: 0.006, mat: 'hide' },
+        // ── THE JAW, HELD OPEN ────────────────────────────────────────────
+        // The muzzle used to be ONE cone with no mouth in it. Now it is an upper
+        // jaw and a lower jaw with a gap between them, which is the difference
+        // between a snout and a bite. aim:'forward' = apex toward the nose
+        // (intent form; this cone shipped backward once).
+        // The gape is authored as INTENT, not as Euler decimals: each jaw aims
+        // forward and leans a little off it — up for the upper, down for the
+        // lower — which is what opens the mouth. (`aim` and `rot` are mutually
+        // exclusive by design, and the build throws if you set both; that is
+        // the guard catching exactly the guesswork it exists to prevent.)
+        { kind: 'cone', joint: 'head', radius: 0.065, height: 0.21, pos: [0, 0.005, -0.135], aim: 'forward', aimTilt: 'up', aimTiltAmount: 0.16, mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.048, height: 0.17, pos: [0, -0.075, -0.115], aim: 'forward', aimTilt: 'down', aimTiltAmount: 0.20, mat: 'gore' },
+        // TEETH. Four, uneven, top and bottom — an even set reads manufactured.
+        // Small on purpose: they are the bright note that says MOUTH, and past a
+        // certain size a row of pale cones stops being teeth and becomes a grille.
+        { kind: 'cone', joint: 'head', radius: 0.013, height: 0.045, pos: [-0.035, -0.032, -0.20], rot: [-2.85, 0, 0.1], mat: 'bone' },
+        { kind: 'cone', joint: 'head', radius: 0.011, height: 0.038, pos: [0.032, -0.030, -0.19], rot: [-2.90, 0, -0.08], mat: 'bone' },
+        { kind: 'cone', joint: 'head', radius: 0.012, height: 0.040, pos: [-0.028, -0.062, -0.185], rot: [-0.22, 0, -0.06], mat: 'bone' },
+        { kind: 'cone', joint: 'head', radius: 0.010, height: 0.034, pos: [0.030, -0.064, -0.175], rot: [-0.18, 0, 0.09], mat: 'bone' },
         // Ear cones: +X rotation sweeps the apex up-BACK (−0.5 pointed them
-        // up-forward, which read as horns). Slight outward yaw, asymmetric.
-        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [-0.08, 0.1, 0.05], rot: [0.6, -0.25, 0.08], mat: 'hide' },
-        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [0.08, 0.1, 0.05], rot: [0.5, 0.25, -0.06], mat: 'hide' },
+        // up-forward, which read as horns). Pinned FLATTER than before — ears
+        // laid back is the universal "about to bite" tell.
+        { kind: 'cone', joint: 'head', radius: 0.042, height: 0.115, pos: [-0.082, 0.095, 0.055], rot: [0.95, -0.3, 0.08], mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.042, height: 0.115, pos: [0.082, 0.095, 0.055], rot: [0.88, 0.3, -0.06], mat: 'hide' },
         { kind: 'sphere', joint: 'head', radius: 0.028, pos: [-0.08, 0.03, -0.08], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.028, pos: [0.08, 0.03, -0.08], mat: 'eyes' },
-        // Four lean legs (the trot gait swings them).
-        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.035, mat: 'hide' },
-        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.035, mat: 'hide' },
-        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.04, mat: 'hide' },
-        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.04, mat: 'hide' },
+        // Four lean legs (the trot gait swings them), front pair thickened —
+        // a hound that drags carrion is built at the shoulder.
+        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.042, mat: 'hide' },
+        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.042, mat: 'hide' },
+        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.038, mat: 'hide' },
+        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.038, mat: 'hide' },
+        // Dewclaws on the front feet — pale, forward, at floor level. Cheap, and
+        // it puts a bright point at the leading edge of the silhouette.
+        { kind: 'cone', joint: 'footFL', radius: 0.011, height: 0.05, pos: [0, 0.03, -0.045], rot: [-1.35, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'footFR', radius: 0.011, height: 0.05, pos: [0, 0.03, -0.045], rot: [-1.35, 0, 0], mat: 'bone' },
         // Whip tail, angled up/back. +1.3 about X points the apex (tip)
         // up-BACK with the fat base at the rump; −1.3 pointed the tip INTO
         // the body and left the base hanging in space.
