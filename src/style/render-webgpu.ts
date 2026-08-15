@@ -1180,6 +1180,55 @@ export function setWarmLowRes(on: boolean): void {
   }
 }
 
+/**
+ * Land a staged resolution change from inside a WARM, by draining the queue and
+ * then resizing the pass in place.
+ *
+ * ORDER IS THE WHOLE POINT. Resizing destroys the pass's output/depth textures,
+ * and draining first is not sufficient on its own — the submit that dies comes
+ * AFTER the destroy, not before it, because a render context stays primed
+ * against the old textures across the resize:
+ *
+ *   Destroyed texture [Texture "depth"] used in a submit.
+ *    - While calling [Queue].Submit([CommandBuffer from "renderContext_5"])
+ *
+ * and every later submit then fails validation (the console storm). Traced
+ * 2026-08-15: destroy at t=3892, offending encode just after. Not render
+ * bundles — it reproduces identically with ?bundles=0.
+ *
+ * So a warm REBUILDS the graph instead of resizing it: a fresh PassNode gets
+ * fresh textures that no context has ever seen, and the old pass is retired to
+ * drainRetired, which frees it only once the queue is provably empty. Ordering
+ * the resize before the bind is NOT sufficient on its own — measured: the storm
+ * came straight back (22 errors on a cold warm) with the in-place resize, even
+ * landed ahead of compileAsync.
+ *
+ * WHERE it lands still matters, which is why both warm entry points call this
+ * at their TOP. A rebuild throws away the whole post stack (pass + bloom + AO),
+ * so doing it inside `warmSceneCompile`'s nested shadow warm meant rebuilding
+ * immediately before the reveal and recompiling the post graph in the player's
+ * first live frames. Landing it up front lets the compileAsync that follows
+ * warm the graph it just built.
+ *
+ * The live/adaptive path keeps its in-place resize: it never binds the target
+ * behind the pipeline's back, and a rebuild per adaptive step would churn the
+ * post graph mid-play.
+ *
+ * The CALLER MUST ALREADY HOLD THE WARM GATE (warmDepth > 0). This awaits, and
+ * an ungated await lets the live loop submit a frame into the drain window that
+ * the resize then pulls the textures out from under.
+ */
+async function applyResScaleDrained(
+  renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera,
+): Promise<void> {
+  if (pendingResScale === null) return;
+  await flushWarmRenders(renderer);
+  if (pendingResScale === null) return;
+  pendingResScale = null;   // resScale already holds the value; build with it
+  rebuildWebGPUPipeline();
+  ensurePipeline(renderer, scene, camera);   // absorbs the rebuild → fresh pass, fresh textures
+}
+
 export async function warmRenderWebGPU(
   renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
 ): Promise<void> {
@@ -1211,38 +1260,7 @@ export async function warmRenderWebGPU(
   // this one read as unattributable. Now it lands in the same dossier.
   const closeScope = openGpuErrorScope(renderer, 'warm render', false);
   try {
-    if (pendingResScale !== null) {
-      // REBUILD, DON'T RESIZE IN PLACE.
-      //
-      // `setResolutionScale` resizes the pass target on the next render, which
-      // destroys the old output/depth textures — and draining first is NOT
-      // enough here, because the failing submit comes AFTER the destroy, not
-      // before it. Something upstream keeps a render context primed against the
-      // old textures across the resize, and the next submit through it dies:
-      //
-      //   Destroyed texture [Texture "depth"] used in a submit.
-      //    - While calling [Queue].Submit([CommandBuffer from "renderContext_5"])
-      //
-      // then every later submit fails validation and the console fills up.
-      // (Traced 2026-08-15: destroy at t=3892, offending encode at t=3889+.
-      // Not render bundles — it reproduces identically with ?bundles=0.)
-      //
-      // The warm is where this bites because warmSceneCompile binds the pass
-      // target directly for compileAsync, so a context for it is primed before
-      // the warm's 0.4 → 0.05 flip lands. A REBUILD sidesteps the whole class:
-      // a fresh PassNode gets fresh textures, and the old pass is retired to
-      // drainRetired, which frees it only once the queue is provably empty.
-      //
-      // The live/adaptive path keeps the in-place resize — it never binds the
-      // target behind the pipeline's back, and a rebuild per adaptive step
-      // would churn the post graph mid-play.
-      await flushWarmRenders(renderer);
-      if (pendingResScale !== null) {
-        pendingResScale = null;   // resScale already holds the value; build with it
-        rebuildWebGPUPipeline();
-        ensurePipeline(renderer, scene, camera);   // absorbs the rebuild → fresh pass, fresh textures
-      }
-    }
+    await applyResScaleDrained(renderer, scene, camera);
     // render() encodes + submits synchronously (pipeline compiles happen HERE,
     // on the CPU); completion is only awaited every WARM_FLUSH_EVERY renders to
     // keep the queue bounded without paying a GPU round-trip per batch.
@@ -1270,6 +1288,13 @@ export async function warmSceneCompile(
   renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera,
 ): Promise<void> {
   ensurePipeline(renderer, scene, camera);
+  // Land any staged resolution change FIRST — before the bind below primes a
+  // render context against this target, and before `rt` is read. Doing it here
+  // rather than in the nested shadow warm below keeps the graph rebuild off the
+  // frames right before the reveal, and lets the compileAsync that follows warm
+  // the pass it just built (see applyResScaleDrained). Gate across the drain.
+  enterWarm();
+  try { await applyResScaleDrained(renderer, scene, camera); } finally { leaveWarm(); }
   const rt = (scenePass as any)?.renderTarget;
   if (!rt) return;
   const prev = renderer.getRenderTarget();

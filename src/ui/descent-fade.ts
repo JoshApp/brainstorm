@@ -225,6 +225,18 @@ export function setDescentProgress(t: number): void {
 let lastWorkAlive = 0;
 export function descentWorkHeartbeat(): void { lastWorkAlive = performance.now(); }
 
+// Returning to the tab restarts the clock. Petting while hidden (safetyCheck)
+// is not enough by itself: background timers are throttled to roughly once a
+// minute, so the last pet can already be ~60s stale at the moment we come back
+// — and the first check after that would trip the 15s guard instantly, which is
+// the very reveal-over-a-half-warmed-scene this is meant to prevent. The warm
+// only resumes once rAF does, so give it a fresh window from that instant.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) descentWorkHeartbeat();
+  });
+}
+
 function showLoadingMark(): void {
   const el = ensureLoadingMark();
   // Reset the bar + label for this descent (the element is reused across loads).
@@ -305,6 +317,19 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
   const safetyCheck = (): void => {
     if (revealed) return;
     if (isWarmingUp()) descentWorkHeartbeat();
+    // A BACKGROUNDED TAB IS NOT A STRANDED PROMISE. The warm advances on rAF
+    // (yieldFrame between batches), and rAF stops while the tab is hidden — so
+    // the warm parks mid-sequence, stops reporting progress, and warmDepth sits
+    // at 0 because it parked BETWEEN renders. Every liveness signal this guard
+    // watches goes quiet at once, while setTimeout keeps running, so 15s of
+    // being tabbed out looked exactly like a stranded load: the cover dropped
+    // over a half-warmed scene. Tab back in and you were greeted by the warm's
+    // subjects strewn through the level — "a jumble of objects" — until the
+    // warm resumed and removed them, with the world still at the warm's tiny
+    // 0.05 render scale, which is the pixelation that then "sharpened" when the
+    // warm restored it. Pet the watchdog while hidden: the clock that matters
+    // is time spent stalled while the page can actually make progress.
+    if (document.hidden) descentWorkHeartbeat();
     const quiet = performance.now() - lastWorkAlive;
     if (quiet >= QUIET_MS) { once(); return; }
     safetyTimer = window.setTimeout(safetyCheck, Math.min(1000, QUIET_MS - quiet + 50));
