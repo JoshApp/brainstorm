@@ -249,6 +249,30 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // So resolve both rooms once, at build time, by stepping through the gate
     // and back. The frame renders while EITHER is rendered, which is stricter
     // than the door exemption — a doorway three rooms away still culls.
+    // THE ARCHWAY EYE IS PART OF THE DOORWAY, and has to be told so.
+    //
+    // It is mounted at the level root rather than inside the frame group (an
+    // opaque mesh inside a frame gets swept into the static batch, which once
+    // left every eye permanently shut — see archway-eye.ts). The cost of that
+    // is this loop had no rule matching a bare Group, so the eyes fell straight
+    // through and were never toggled: all fourteen on a floor drawn every
+    // frame, in every room, whether or not the room they serve was culled.
+    //
+    // Its own transform is no use for the both-sides probe — it carries the
+    // keystone slot's orientation plus a downward REST_PITCH, so stepping along
+    // its local +Z walks out of the plane of the arch. installFrameFittings
+    // stamps the FRAME's placement instead, and we resolve from that, so eye
+    // and stone can never disagree about which two rooms they join.
+    const bound = child.userData?.boundaryOf as { x: number; z: number; rotY: number } | undefined;
+    if (bound) {
+      const s = Math.sin(bound.rotY), c = Math.cos(bound.rotY);
+      boundary.push({
+        o: child,
+        a: rectAt(nodes, bound.x + s * FRAME_PROBE, bound.z + c * FRAME_PROBE)?.id ?? null,
+        b: rectAt(nodes, bound.x - s * FRAME_PROBE, bound.z - c * FRAME_PROBE)?.id ?? null,
+      });
+      continue;
+    }
     if (child.userData?.dbgKind === 'frame') {
       // The frame's local +Z runs through the gate; rotY is how it was placed.
       const s = Math.sin(child.rotation.y), c = Math.cos(child.rotation.y);

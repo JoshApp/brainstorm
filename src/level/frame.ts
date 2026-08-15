@@ -131,8 +131,10 @@ const FACE_SAMPLE = 1.2;
  *  GLOW ('glow' material) + the dungeon's nav EYE at each keystone slot the
  *  model declares (eye_front / eye_back). Call after the frame model is built
  *  AND positioned, with the opening's world centre `(x, z)` — that's the key the
- *  nav system matches eyes + glow to floor-graph edges. Independent scene
- *  objects, so the eye survives the static fixture merge.
+ *  nav system matches eyes + glow to floor-graph edges. The eye mounts INTO the
+ *  frame group, so it culls with the doorway it belongs to; what keeps it out
+ *  of the static merge is the per-mesh `dynamicPart` opt-out it sets on itself,
+ *  not where it is parented (see archway-eye.ts).
  *
  *  `looksIntoCorridor` (optional): given the world point a keystone face GAZES
  *  toward, returns true if that side is a corridor interior. The eye is a cue
@@ -140,7 +142,7 @@ const FACE_SAMPLE = 1.2;
  *  face aimed down a corridor gets NO eye. Omitted → mount both faces (used by
  *  the rare fitting openings, which aren't corridor mouths). */
 export function installFrameFittings(
-  built: BuiltModel, scene: THREE.Object3D, x: number, z: number,
+  built: BuiltModel, root: THREE.Object3D, x: number, z: number,
   looksIntoCorridor?: (px: number, pz: number) => boolean,
 ): void {
   const glow = built.materials.get('glow');
@@ -163,6 +165,14 @@ export function installFrameFittings(
       const gaze = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
       if (looksIntoCorridor(pos.x + gaze.x * FACE_SAMPLE, pos.z + gaze.z * FACE_SAMPLE)) continue;
     }
-    registerArchwayLure(buildArchwayEye(scene, pos, quat), x, z);
+    const eye = buildArchwayEye(root, pos, quat);
+    // THE EYE CULLS WITH ITS DOORWAY. It lives at the level root (see
+    // buildArchwayEye for why it must), so the culler cannot infer which rooms
+    // it serves. Stamp the FRAME's placement — not the eye's, whose rotation
+    // carries the keystone slot orientation plus REST_PITCH and would probe off
+    // axis — and room-culling.ts resolves the two rooms from it exactly as it
+    // does for the frame stone itself.
+    eye.group.userData.boundaryOf = { x: built.group.position.x, z: built.group.position.z, rotY: built.group.rotation.y };
+    registerArchwayLure(eye, x, z);
   }
 }

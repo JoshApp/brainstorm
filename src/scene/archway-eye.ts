@@ -61,7 +61,31 @@ export interface ArchwayEye {
   dispose(): void;
 }
 
-export function buildArchwayEye(scene: THREE.Object3D, pos: THREE.Vector3, quat: THREE.Quaternion): ArchwayEye {
+/**
+ * Build an eye and mount it in `root` — the LEVEL ROOT, deliberately, and not
+ * the frame group it visually belongs to.
+ *
+ * Parenting it into the frame is the obvious move and it is wrong. The eye's
+ * parts are opaque MeshStandardMaterial, and the static batcher walks each
+ * level-root child's whole subtree; inside the frame they land in the sweep,
+ * and although each carries the `dynamicPart` opt-out, this is precisely the
+ * arrangement that produced the original "the navigation eyes are always
+ * closed" bug — measured again 2026-08-15 when it was tried: the opaque parts
+ * (socket, ball, both lids) vanished from the eye and only the transparent
+ * halo/iris/pupil survived, because transparency is a second, independent
+ * reason to skip. An eye with no lids cannot open. Staying a root child keeps
+ * the feature out of that whole class of interaction.
+ *
+ * The cost of staying at the root is that the culler's assignment loop has no
+ * rule that matches a bare Group, so the eyes were never toggled at all — all
+ * fourteen drawn every frame in every room. `dbgKind: 'archway-eye'` plus the
+ * frame's own placement stamped below gives the culler what it needs to treat
+ * the eye as a BOUNDARY object, visible while either adjoining room is, which
+ * is the same exemption the doorway stone already gets and for the same reason:
+ * cull an archway by its own centre and it disappears while you are looking
+ * straight at it from the other side.
+ */
+export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: THREE.Quaternion): ArchwayEye {
   const group = new THREE.Group();
   // Placed at the frame model's eye slot (world transform). The eye is authored
   // facing +Z; the slot's orientation aims it out of the keystone, then we pitch
@@ -155,7 +179,15 @@ export function buildArchwayEye(scene: THREE.Object3D, pos: THREE.Vector3, quat:
   // a feature that cannot render.
   group.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.userData.dynamicPart = true; });
 
-  scene.add(group);
+  // Claim the population. These meshes were a large slice of the draw report's
+  // anonymous `untagged` count, which is the ratchet that tells us how much of
+  // the scene nothing accounts for — and an unnamed group is also unfindable
+  // from a debug console when you are trying to answer "what ARE these 98
+  // meshes".
+  group.name = 'archway-eye';
+  group.userData.dbgKind = 'archway-eye';
+
+  root.add(group);
 
   let lit = 0;   // eased open amount
   let t = 0;     // life clock (flicker + blink)
