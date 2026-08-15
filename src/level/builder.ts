@@ -631,6 +631,11 @@ function buildRoomShell(
         we, seg.start, seg.end, H + (elevHi - elevLo), elevLo,
         devWallProfileOverride() ?? room.wallProfile ?? DEFAULT_WALL_PROFILE,
         { wall: wallGeos, dressed: trimGeos },
+        // Is each end of this segment a room CORNER (the wall's own extent) or
+        // the edge of an OPENING? A recessed profile has to treat them
+        // opposite ways — see bakeWallSegmentGeometry.
+        Math.abs(seg.start - we.wallStart) < 1e-3,
+        Math.abs(seg.end - we.wallEnd) < 1e-3,
       );
       if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, seg.start, seg.end);
       // Record the segment as collision data. The XZ endpoints describe a
@@ -770,6 +775,11 @@ function bakeWallSegmentGeometry(
   baseY: number = 0,
   profile: WallProfileName = 'plain',
   out?: { wall: THREE.BufferGeometry[]; dressed: THREE.BufferGeometry[] },
+  /** True when this end of the segment is the wall's own end — a room CORNER —
+   *  rather than the edge of a doorway. A recessed profile treats them
+   *  oppositely: corners get an OVERLAP, openings get a RETURN face. */
+  cornerAtStart: boolean = false,
+  cornerAtEnd: boolean = false,
 ): THREE.BufferGeometry | null {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
@@ -798,6 +808,30 @@ function bakeWallSegmentGeometry(
     return out ? null : geo;
   }
 
+  // ── CORNER OVERLAP ───────────────────────────────────────────────────────
+  // Josh, on the last round of closures: *"there are still really small corner
+  // voids where the horizontal strips meet."*
+  //
+  // Closing each wall's own ends isn't enough, because the hole isn't in either
+  // wall — it's the NOTCH BETWEEN THEM. Two perpendicular walls both recessed
+  // by d leave a d×d column of empty space in the corner, and every horizontal
+  // step across it is another little window into that column. Capping each wall
+  // separately just puts two walls either side of the same gap.
+  //
+  // The fix is to let the neighbours overlap: at a room corner, run each band
+  // and each connector `EXT` past the wall's end. The overrun sits OUTSIDE the
+  // room, buried in the corner masonry where nothing can see it, and each wall
+  // ends up covering the face of the notch that the other one couldn't reach.
+  //
+  // Only at corners. At a doorway the same overrun would be a shelf of stone
+  // sticking into the opening, which is why the segment ends are classified
+  // rather than treated alike — openings keep their return faces.
+  const EXT = bands.reduce((m, b) => Math.max(m, Math.abs(b.depth)), 0) + 0.005;
+  const extS = cornerAtStart ? EXT : 0;
+  const extE = cornerAtEnd ? EXT : 0;
+  const spanW = segLen + extS + extE;      // widened extent
+  const spanX = (extE - extS) / 2;         // ...and its recentred midpoint
+
   // Emit the horizontal surface bridging two depths at height `yAt`.
   //
   // A band is a PLANE, so a depth change leaves an open slot you can see
@@ -810,11 +844,11 @@ function bakeWallSegmentGeometry(
     if (Math.abs(aboveDepth - belowDepth) < 1e-4) return;
     const dLo = Math.min(belowDepth, aboveDepth);
     const dHi = Math.max(belowDepth, aboveDepth);
-    const conn = new THREE.PlaneGeometry(segLen, dHi - dLo);
+    const conn = new THREE.PlaneGeometry(spanW, dHi - dLo);
     // A plane faces +Z; rotate it flat. If the LOWER side is the proud one
     // we're looking at its top (faces up); otherwise we're under an overhang.
     conn.rotateX(belowDepth > aboveDepth ? -Math.PI / 2 : Math.PI / 2);
-    conn.translate(0, yAt, (dLo + dHi) / 2);
+    conn.translate(spanX, yAt, (dLo + dHi) / 2);
     conn.applyMatrix4(toWorld);
     // Connectors carry no vertex colour of their own; give them the darker end
     // of the wall's AO so a step reads as a shadowed underside/ledge rather
@@ -844,6 +878,10 @@ function bakeWallSegmentGeometry(
     if (Math.abs(b.depth) < 1e-4) return;      // flush with the plane: nothing to close
     const bh = b.y1 - b.y0;
     for (const sx of [-1, 1] as const) {
+      // A CORNER end gets no return face — it gets the overlap below instead.
+      // A return here would be a slab standing in the corner at a right angle
+      // to the neighbour's, which is not what stone does.
+      if (sx < 0 ? cornerAtStart : cornerAtEnd) continue;
       const ret = new THREE.PlaneGeometry(Math.abs(b.depth), bh);
       // XY plane facing +Z → rotate about Y so it stands in the YZ plane. The
       // sign puts each face looking back into the recess rather than out of it.
@@ -868,13 +906,13 @@ function bakeWallSegmentGeometry(
   for (let i = 0; i < bands.length; i++) {
     const b = bands[i];
     const bh = b.y1 - b.y0;
-    const geo = makeJitteredPlane(segLen, bh, {
+    const geo = makeJitteredPlane(spanW, bh, {
       wavy: true,
       // Bake AO against the WHOLE wall, not this band — otherwise every band
       // grows its own floor-shadow at its own bottom edge and the wall stripes.
       span: { base: b.y0, total: height },
     });
-    geo.translate(0, b.y0 + bh / 2, b.depth);
+    geo.translate(spanX, b.y0 + bh / 2, b.depth);
     geo.applyMatrix4(toWorld);
     (b.mat === 'dressed' ? out.dressed : out.wall).push(geo);
 
