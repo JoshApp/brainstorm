@@ -128,6 +128,11 @@ let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.4;   // scene-render scale (the adaptive scaler nudges this via setWebGPUResolutionScale)
 let tsInFlight = false;   // throttle the async GPU-timestamp resolve
+// How often the GPU timestamp readback may run. See the long note at its call
+// site: each resolve is an extra command submit + mapAsync round-trip, and its
+// only consumer is the adaptive-resolution scaler.
+const TS_RESOLVE_INTERVAL_MS = 250;
+let lastTsResolveAt = 0;
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
 // (scene/adaptive-resolution.ts) reads this on WebGPU because its usual frame-time
 // signal is BLIND here: MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync
@@ -1018,8 +1023,28 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps.
     // Wall-clock at submit would read CPU encode time, not the GPU cost — only
     // the timestamp is the true bottleneck signal. The shared adaptive scaler
-    // reads it via lastWebGPUGpuMs(). Self-throttled.
-    if (!tsInFlight) {
+    // reads it via lastWebGPUGpuMs().
+    //
+    // THROTTLED, BECAUSE IT IS NOT FREE AND IT RAN EVERY FRAME. Three's
+    // resolveTimestampsAsync builds a command encoder, resolves the query set,
+    // copies it to a readback buffer, SUBMITS THAT AS ITS OWN COMMAND BUFFER,
+    // and awaits a mapAsync round-trip — a whole extra submit + GPU readback,
+    // per frame, to service a number nothing reads at frame rate.
+    //
+    // Measured on a real floor: the resolve and the allocations it makes were
+    // ~17% of all busy main-thread time, and 40% of allocation churn. That is
+    // instrumentation overhead, and it lands hardest exactly where it hurts —
+    // trackTimestamp is enabled for phones (create-renderer.ts gates it on
+    // !isDesktopLike), which is the CPU-bound platform.
+    //
+    // The consumer is the adaptive-resolution scaler, which nudges a render
+    // scale; four readings a second is far more than it can act on. The pool
+    // holds 2048 queries and a frame spends ~4-6, so a quarter-second gap is
+    // nowhere near the "Maximum number of queries exceeded" ceiling that
+    // draining exists to avoid.
+    const nowMs = performance.now();
+    if (!tsInFlight && nowMs - lastTsResolveAt >= TS_RESOLVE_INTERVAL_MS) {
+      lastTsResolveAt = nowMs;
       tsInFlight = true;
       const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
       r.resolveTimestampsAsync?.('render')
