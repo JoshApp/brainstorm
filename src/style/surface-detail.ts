@@ -1,6 +1,31 @@
 import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition } from 'three/tsl';
+
+import { DEV } from '../debug/dev';
+
+// ── POM TUNING ───────────────────────────────────────────────────────────────
+// Read ONCE at module load, not per material: the step count is unrolled into
+// the node graph, so it is part of the shader's STRUCTURE. Reading it per
+// install would fork a pipeline per value — the exact churn the tile/tint
+// uniforms below exist to avoid.
+//
+// ?pom=0 disables, ?pom=<n> sets the step count (DEV only; the flag is stripped
+// from production, the default is not).
+const POM_DEFAULT_STEPS = 8;
+const POM_DEPTH_M = 0.055;        // apparent depth of the height field, metres
+const POM_STEPS: number = (() => {
+  // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
+  // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
+  // so reading `.DEV` off it throws before any test body runs. That took out 34
+  // test files on the first attempt — the guard exists in dev.ts for exactly
+  // this and its comment says so.
+  if (!DEV || typeof window === 'undefined') return POM_DEFAULT_STEPS;
+  const v = new URLSearchParams(window.location.search).get('pom');
+  if (v == null) return POM_DEFAULT_STEPS;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? Math.max(0, Math.min(24, n)) : POM_DEFAULT_STEPS;
+})();
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
@@ -47,7 +72,72 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (bounded + warmable). See surface-ao.ts for the same lesson on base colour.
   const uTile: any = (tslUniform as any)(new THREE.Vector2(cfg.tile[0], cfg.tile[1]));
   const uv: any = (vec2 as any)(sU.div(uTile.x), sV.div(uTile.y));
-  const sampled: any = (tslTexture as any)(cfg.tex, uv);
+
+  // ── PARALLAX OCCLUSION MAPPING ─────────────────────────────────────────────
+  // Josh: *"arent there ways to have more texture in the shader ... there must
+  // be good shader written games out there we can borrow techniques."* This is
+  // the one worth borrowing. Everything above only ever perturbed the NORMAL
+  // from the height field — which fakes lighting but never moves anything, so a
+  // mortar line stays painted onto a flat plane and slides with the wall as you
+  // pass. POM marches the view ray through the height field and returns the UV
+  // where it first hits, so recesses actually displace: crevices you can look
+  // INTO, and blocks that shift against each other with parallax as you move.
+  //
+  // POM is normally the wrong call on mobile. It is the right call HERE for a
+  // measured reason: this game is CPU-encode / draw-call bound, and the GPU has
+  // headroom (see the 2026-07-03 perf triage). Per-pixel ALU is precisely the
+  // budget we have spare. It also needs a height map, and we have been baking
+  // one all along and spending it only on a normal perturbation.
+  //
+  // The usual expensive part — building a tangent basis — is FREE here, because
+  // these UVs are world-axis projected (see above): the U and V axes ARE world
+  // axes, so the view ray's tangent-space components are just its world
+  // components. No TBN, no per-vertex tangents.
+  //
+  // Linear search, no binary refinement. At this step count and depth the
+  // stepping artefacts land below the PS1 render scale, and the second pass
+  // would double the sample count for something the 0.4x buffer throws away.
+  let pomUV: any = uv;
+  if (POM_STEPS > 0 && cfg.relief > 0) {
+    const viewW: any = (cameraPosition as any).sub(pos).normalize();   // surface → eye
+    // Tangential components along the SAME world axes the UVs are projected on.
+    let tU: any, tV: any;
+    if (cfg.proj === 'wall') {
+      tU = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(viewW.z, viewW.x);
+      tV = viewW.y;
+    } else {
+      tU = viewW.x; tV = viewW.z;
+    }
+    // Component along the surface normal. Clamped away from zero: at grazing
+    // incidence the true offset tends to infinity and the march smears into
+    // long streaks, the classic POM failure. The clamp trades a little depth at
+    // glancing angles for never breaking — and glancing is exactly where these
+    // walls are seen most (see the surface-lab notes on raking light).
+    const tN: any = (tslClamp as any)(viewW.dot(nrm).abs(), 0.35, 1.0);
+    const uPer: any = tU.div(tN).mul(POM_DEPTH_M).div(uTile.x);
+    const vPer: any = tV.div(tN).mul(POM_DEPTH_M).div(uTile.y);
+    const stepUV: any = (vec2 as any)(uPer, vPer).mul(-1 / POM_STEPS);
+    const stepD: any = float(1 / POM_STEPS);
+
+    let curUV: any = uv;
+    let curD: any = float(0);
+    let hitUV: any = uv;
+    let done: any = float(0);
+    for (let i = 0; i < POM_STEPS; i++) {
+      // Height channel is 1 = face, lower = recessed, so depth below the face
+      // is (1 - h). We have hit the surface once the ray is deeper than it.
+      const surfD: any = float(1).sub((tslTexture as any)(cfg.tex, curUV).a);
+      const hit: any = (curD.greaterThanEqual(surfD) as any).select(float(1), float(0));
+      const fresh: any = hit.mul(float(1).sub(done));      // keep the FIRST hit only
+      hitUV = (tslMix as any)(hitUV, curUV, fresh);
+      done = (tslClamp as any)(done.add(hit), 0, 1);
+      curUV = curUV.add(stepUV);
+      curD = curD.add(stepD);
+    }
+    pomUV = hitUV;
+  }
+
+  const sampled: any = (tslTexture as any)(cfg.tex, pomUV);
   // UNIFORM-backed base colour (materialColor), NOT vec3(mat.color.*): a vec3(...)
   // literal bakes the wall/floor tint into the WGSL, forking a fresh shader per
   // distinct shell colour (per-floor pipeline churn). materialColor reads the
