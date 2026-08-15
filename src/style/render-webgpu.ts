@@ -133,6 +133,26 @@ let tsInFlight = false;   // throttle the async GPU-timestamp resolve
 // only consumer is the adaptive-resolution scaler.
 const TS_RESOLVE_INTERVAL_MS = 250;
 let lastTsResolveAt = 0;
+
+// ...AND WHETHER TO PAY FOR IT AT ALL.
+//
+// `trackTimestamp` is decided once, at renderer construction, from
+// `!isDesktopLike()` (create-renderer.ts). It never asks whether anything
+// actually READS a GPU time. Its only real consumer is the adaptive-resolution
+// scaler, which is a SETTING — so a player with adaptive resolution switched
+// off was still paying, every frame, on the one platform where the flag is
+// enabled and the CPU is the bottleneck. Reported by Josh, who had it off on
+// mobile for months.
+//
+// So it is demand-driven now: video-settings pushes what the current settings
+// actually need. When nothing does, we stop resolving AND clear the backend
+// flag so the queries are never written (WebGPUBackend.initTimestampQuery
+// checks it per pass, so this works at runtime). The existing submit-to-
+// completion wall-clock fallback below then supplies the coarse signal for
+// free, which is all an idle scaler would do with it anyway.
+let gpuTimingWanted = true;   // until the first applyVideoSettings says otherwise
+/** Tell the renderer whether any consumer needs real GPU frame times. */
+export function setWebGPUGpuTimingWanted(on: boolean): void { gpuTimingWanted = on; }
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
 // (scene/adaptive-resolution.ts) reads this on WebGPU because its usual frame-time
 // signal is BLIND here: MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync
@@ -1042,8 +1062,13 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     // holds 2048 queries and a frame spends ~4-6, so a quarter-second gap is
     // nowhere near the "Maximum number of queries exceeded" ceiling that
     // draining exists to avoid.
+    // Keep the backend flag in step with demand, so an unwanted timer costs
+    // nothing per PASS either, not just nothing per resolve.
+    if (backend?.isWebGPUBackend && backend.trackTimestamp === true && !gpuTimingWanted) {
+      backend.trackTimestamp = false;
+    }
     const nowMs = performance.now();
-    if (!tsInFlight && nowMs - lastTsResolveAt >= TS_RESOLVE_INTERVAL_MS) {
+    if (gpuTimingWanted && !tsInFlight && nowMs - lastTsResolveAt >= TS_RESOLVE_INTERVAL_MS) {
       lastTsResolveAt = nowMs;
       tsInFlight = true;
       const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
