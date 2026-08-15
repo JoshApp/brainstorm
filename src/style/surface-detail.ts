@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
 
 import { DEV } from '../debug/dev';
 
@@ -44,6 +44,13 @@ const MOSS_AMOUNT = urlNum('moss', 0.75, 0, 2);
 // flattened the height field anyway, so marching it only buys artefacts.
 const POM_FADE_NEAR = 3.5;
 const POM_FADE_FAR = 7.0;
+// Relief amplitude in METRES of apparent height per unit of the height channel.
+// A real quantity, unlike the RELIEF_BOOST=26 fudge it replaces — the gradient
+// below is now a true slope, so this scales something meaningful. First value
+// (0.06) came out visibly flatter than the old screen-space path: that path was
+// over-driving relief at close range, which was part of what read as harsh.
+// ?relief= to dial.
+const RELIEF_METRES = urlNum('relief', 0.16, 0, 0.6);
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -437,18 +444,56 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // the sampled-height gradient more under the node renderer). 8x was still only
   // "slight", so 20x. This drives BOTH the brick bevels AND the crevice/groove
   // light-catch (the groove walls tilt into/out of the torchlight). Tune to taste.
-  const RELIEF_BOOST = 26;
-  const h: any = sampled.a;
-  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul((tslUniform as any)(cfg.relief * RELIEF_BOOST));
-  const sp: any = positionView;
-  const sx: any = sp.dFdx().normalize();
-  const sy: any = sp.dFdy().normalize();
-  const N: any = normalView;
-  const R1: any = sy.cross(N);
-  const R2: any = N.cross(sx);
-  const fDet: any = sx.dot(R1).mul(faceDirection);
-  const vGrad: any = fDet.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)));
-  (mat as any).normalNode = fDet.abs().mul(N).sub(vGrad).normalize();
+  // ── NORMAL FROM HEIGHT, IN TEXTURE SPACE ───────────────────────────────────
+  // Josh: *"is there a way to make like heightmaps or whatever from this? so it
+  // can fake like depth in the texture that plays with the light without being
+  // a performance nightmare?"*
+  //
+  // That is exactly what this is, and it has been running all along — but the
+  // way it was derived is also part of why the wall *"pixelates quite hard"*.
+  //
+  // The old path took dFdx/dFdy of the sampled height: SCREEN-SPACE derivatives.
+  // Those measure "how much did height change between this pixel and the one
+  // next to it on screen", so the bump strength depends on how many screen
+  // pixels a texel happens to cover — it changes with distance, with viewing
+  // angle, and with the 0.4x PS1 buffer, and it is computed per 2x2 quad so it
+  // is blocky by construction. The `RELIEF_BOOST = 26` that used to sit here is
+  // the tell: the magnitude was arbitrary, so someone multiplied until it
+  // looked right at one distance.
+  //
+  // Sampling the height at ±1 TEXEL instead measures the actual slope of the
+  // stone, in metres per metre. It does not care how far away the wall is or
+  // how it is angled, it is stable while you move, and the strength becomes a
+  // real quantity instead of a fudge factor. Costs four texture reads on a
+  // surface already sampling that texture — which is the cheap half of "plays
+  // with light": this is what makes torchlight rake across the stone, while POM
+  // (the expensive half) is only what makes it displace.
+  const texW: number = Number((cfg.tex.image as { width?: number } | undefined)?.width) || 512;
+  const texel: number = 1 / texW;
+  const hAt = (du: number, dv: number): any =>
+    (tslTexture as any)(cfg.tex, pomUV.add((vec2 as any)(du * texel, dv * texel))).a;
+  // Central differences → slope of the height field along U and V, converted
+  // from texel-space to metres using the tile size.
+  const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
+  const dV: any = hAt(0, 1).sub(hAt(0, -1)).mul(0.5 * texW).div(uTile.y);
+  const amp: any = (tslUniform as any)(cfg.relief * RELIEF_METRES);
+  // The tangent frame is FREE again for the same reason POM's was: these UVs
+  // are projected on world axes, so U and V *are* world axes.
+  let uAxisW: any, vAxisW: any;
+  if (cfg.proj === 'wall') {
+    uAxisW = (nrm.x.abs().greaterThan(nrm.z.abs()) as any)
+      .select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0));
+    vAxisW = (vec3 as any)(0, 1, 0);
+  } else {
+    uAxisW = (vec3 as any)(1, 0, 0);
+    vAxisW = (vec3 as any)(0, 0, 1);
+  }
+  const nWorld: any = nrm
+    .sub(uAxisW.mul(dU.mul(amp)))
+    .sub(vAxisW.mul(dV.mul(amp)))
+    .normalize();
+  // normalNode wants a VIEW-space normal; the frame above is world.
+  (mat as any).normalNode = (cameraViewMatrix as any).transformDirection(nWorld);
   // (Banded cel lighting is applied GLOBALLY at boot — installBandedLightingWebGPU
   // patches the node material's lighting model — so props/creatures band too, not
   // just these surfaces.)
