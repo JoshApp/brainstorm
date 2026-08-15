@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { freezeTransform } from './animation-gate';
 
 // ARCHWAY EYE — the diegetic exit cue, as the dungeon's own eye set in the
 // keystone. A dark stone eyeball + a glowing iris + two stone lids, mounted at
@@ -189,6 +190,21 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
 
   root.add(group);
 
+  // NOTHING HERE RECOMPOSES A MATRIX IT DID NOT CHANGE.
+  //
+  // Exactly three parts of an eye ever move: the two lids retract and the gaze
+  // pivot turns. The other six objects are nailed to the keystone at build
+  // time — and yet Three's default would rebuild all nine local matrices every
+  // frame, for every eye on the floor, forever. Sixteen eyes is 144 pointless
+  // matrix composes a frame before the player has done anything.
+  //
+  // So the eye owns its matrices: they compose once here, and update()
+  // recomposes only what it just wrote (see freezeTransform's footgun note —
+  // moving a frozen object without recomposing it does nothing at all).
+  // Together with the visibility gate this makes an unseen eye free: it does
+  // not update, so it does not recompose, so it costs only being walked.
+  freezeTransform(group, socket, halo, gaze, ball, iris, pupil, lidTop, lidBot);
+
   let lit = 0;   // eased open amount
   let t = 0;     // life clock (flicker + blink)
 
@@ -207,6 +223,8 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     pupilMat.opacity = shown;
     lidTop.position.y = LID_PART * shown;
     lidBot.position.y = -LID_PART * shown;
+    lidTop.updateMatrix();   // frozen transforms — the writer recomposes
+    lidBot.updateMatrix();
 
     // Track the player — turn the gaze toward them while the eye is open enough
     // to see; otherwise ease back to centre. Clamped to a cone so it never turns
@@ -222,6 +240,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
       } else _targetQuat.identity();
     } else _targetQuat.identity();
     gaze.quaternion.slerp(_targetQuat, Math.min(1, dt * GAZE_RATE));
+    gaze.updateMatrix();
   };
   update(0, 0, eyeWorld);   // spawn closed, gaze centred
 

@@ -50,3 +50,28 @@ export function isDrawn(o: THREE.Object3D): boolean {
   }
   return true;
 }
+
+/**
+ * Compose these objects' local matrices once and stop Three recomposing them
+ * every frame. The transform half of the same rule: work that changes nothing
+ * should not be repeated per frame.
+ *
+ * `matrixAutoUpdate` defaults to true on every Object3D, so by default the
+ * renderer rebuilds a matrix from position/quaternion/scale for EVERY node in
+ * the scene on EVERY frame — including the overwhelming majority that were
+ * placed once at build time and never move again. Measured on a real floor:
+ * 703 of 811 level nodes doing that, and hardly any of them moving.
+ *
+ * THE FOOTGUN, stated plainly: once frozen, writing `position`/`quaternion`/
+ * `scale` does nothing until someone calls `updateMatrix()`. So freeze only
+ * what you own and know to be fixed, and if a frozen object does move later,
+ * the code that moves it must recompose it — which is the pattern the archway
+ * eye follows: everything freezes here, and its update() recomposes exactly the
+ * three parts it just wrote.
+ */
+export function freezeTransform(...objects: readonly THREE.Object3D[]): void {
+  for (const o of objects) {
+    o.updateMatrix();
+    o.matrixAutoUpdate = false;
+  }
+}
