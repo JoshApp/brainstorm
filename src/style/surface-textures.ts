@@ -64,8 +64,27 @@ function brickCPU(px: number, py: number, aa: number): [number, number] {
   const cpos = mixf(0.3, 0.7, dHash(idx, idy, 7.7));
   const crack = crackable * (1 - smooth(0, 0.012 + aa, Math.abs(inbx - cpos)));
   const recess = Math.max(mortar, crack * 0.85);
-  const tone = mixf(0.86, 1.0, dHash(idx, idy, 3.7));
-  return [mixf(tone, 0.5, recess), mixf(1.0, 0.4, recess)];
+  // PER-BRICK SET (v3). Every brick face used to sit flush at height 1.0 —
+  // only the mortar and cracks had any depth — so a wall was a flat plane with
+  // lines drawn on it and each block read as a painted rectangle rather than a
+  // stone. A course of masonry is not flush: blocks sit proud or sunk by a few
+  // millimetres and none of them is quite level.
+  //
+  // `set` is the block's own plateau; `tilt` leans that plateau in a per-block
+  // direction. The tilt is what matters for light — it gives every face its own
+  // normal, so a single flame picks out a different sheen on each block instead
+  // of washing the whole wall evenly. The step between neighbouring plateaus
+  // lands inside the mortar line, which is already recessed, so it reads as
+  // masonry and not as a seam artefact.
+  const set = mixf(-0.055, 0.04, dHash(idx, idy, 3.1));
+  const tAng = dHash(idx, idy, 6.4) * Math.PI * 2;
+  const tAmt = mixf(0.012, 0.055, dHash(idx, idy, 8.8));
+  const tilt = (Math.cos(tAng) * (inbx - 0.5) + Math.sin(tAng) * (inby - 0.5)) * 2 * tAmt;
+  // Tone widened 0.86..1.0 → 0.80..1.06: with light now varying per block, the
+  // albedo can carry more spread without the wall reading as noise.
+  const tone = mixf(0.80, 1.06, dHash(idx, idy, 3.7));
+  const h = clampf(1.0 + set + tilt, 0.55, 1.15);
+  return [mixf(tone, 0.5, recess), mixf(h, 0.4, recess)];
 }
 function cofferCPU(px: number, py: number, aa: number): [number, number] {
   const PAN = 1.6; const gx = px / PAN, gy = py / PAN;
@@ -121,8 +140,26 @@ function flagCPU(px: number, py: number, aa: number): [number, number] {
   const bt = dHash(gx, gy, 1.3), missing = stepf(0.93, dHash(gx, gy, 8.1));
   const seam = 1 - smooth(0.03 - aa, 0.03 + aa, edM);
   const recess = Math.max(seam, missing);
-  const tone = mixf(0.78, 1.0, bt);
-  return [mixf(tone, 0.5, recess) * mixf(1.0, 0.45, missing), mixf(1.0, 0.35, recess)];
+  // PER-FLAG SET + TILT (v3). Josh: *"the floor and wall mosaic is bland."*
+  // The reason was that every flagstone was perfectly flush — the Voronoi gave
+  // each stone a shape and a tone, but they all lay in one plane, so the floor
+  // was a pattern rather than laid stone.
+  //
+  // Flags get a bigger settle range than wall blocks (they're walked on, bedded
+  // in dirt, and sink unevenly) and a stronger tilt. With the floor now at
+  // roughness 0.72 that tilt is the whole point: each stone catches the grazing
+  // sheen at its own angle, so torchlight breaks across the floor stone by
+  // stone as the player moves instead of sliding over it as one sheet.
+  //
+  // (-mrx, -mry) is the offset from the cell centre to this pixel, so dotting
+  // it with a per-cell direction leans that stone's plane.
+  const set = mixf(-0.11, 0.05, dHash(gx, gy, 3.1));
+  const tAng = dHash(gx, gy, 5.3) * Math.PI * 2;
+  const tAmt = mixf(0.02, 0.085, dHash(gx, gy, 2.9));
+  const tilt = (Math.cos(tAng) * -mrx + Math.sin(tAng) * -mry) * 2 * tAmt;
+  const tone = mixf(0.70, 1.06, bt);
+  const h = clampf(1.0 + set + tilt, 0.5, 1.15);
+  return [mixf(tone, 0.5, recess) * mixf(1.0, 0.45, missing), mixf(h, 0.35, recess)];
 }
 function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   const tile = SURFACE_TILE[kind];
