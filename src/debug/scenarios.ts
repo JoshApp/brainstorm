@@ -1179,6 +1179,70 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
   },
 
+  // SURFACE LAB — the room for working on WALLS and FLOORS, and nothing else.
+  //
+  // Built 2026-08-15 at Josh's request ("can you make a scenario for you"),
+  // because the spawn scenario is a bad instrument for surface work: it frames
+  // walls head-on and lights them from the front, which is the one arrangement
+  // where relief is invisible. Three things this pose does deliberately:
+  //
+  //  1. GRAZING LIGHT. Both torches sit LOW (1.1m) and near their walls, so
+  //     light rakes ALONG the stone instead of hitting it square. A recessed
+  //     course only throws a shadow at a shallow angle — light it head-on and
+  //     even a 16cm step reads as flat. This is why the first wall-profile pass
+  //     looked identical to no profile at all.
+  //
+  //  2. FLOOR AND WALL IN ONE FRAME. Josh: *"the ground and walls have the same
+  //     color its a bit weird."* They are not the same value — WALL_COLOR
+  //     0x1a1714 vs FLOOR_COLOR 0x0f0d0b — but they ARE the same hue family,
+  //     both warm near-black, differing only in brightness. You can't judge
+  //     that unless you can see both surfaces meeting, so the camera is low and
+  //     the wall/floor junction runs across the middle of the frame.
+  //
+  //  3. A CONTROL FOR THE AMBER QUESTION. Josh: *"does something pull
+  //     everything into amber?"* The WEST torch is the game's normal warm
+  //     flame; the EAST torch is near-neutral white. Same stone, same grade,
+  //     two lights — so the frame separates "the stone is warm" from "the light
+  //     is warm" from "the grade is warm" by eye, in one shot. If the east half
+  //     still reads amber under a white flame, the bias is in the material or
+  //     the grade, not the lighting.
+  //
+  // Pair it with the URL knobs to isolate a layer:
+  //     ?scenario=surface-lab&wallprofile=coursed   geometry (DEV server only)
+  //     ?scenario=surface-lab&amber=0               kill the global warm multiply
+  //     ?scenario=surface-lab&split=0.55            cool the shadows
+  //     ?scenario=surface-lab&grade=coldfire        a preset with both
+  'surface-lab': {
+    freeze: true,
+    level: {
+      id: 'surface-lab', depth: 2, displayName: 'SURFACE LAB', fogColor: 0x000000,
+      startPos: { x: 0, z: 5.2, yaw: Math.PI },
+      // One long room: length gives the walls a shallow perspective run, which
+      // is what makes a horizontal course visible as a line rather than a band.
+      rooms: [
+        { id: 'lab', rect: { x: 0, z: -1, w: 9, d: 14 }, height: 3.2 },
+      ],
+      corridors: [],
+      // No props, no clutter, no loot. Anything in here that isn't stone is
+      // something to mistake for the thing being judged.
+      props: [],
+      torches: [
+        // WEST — the dungeon's real flame. Low and close so it rakes.
+        { x: -4.4, z: -1.0, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
+        { x: -4.4, z: -6.0, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
+        // EAST — the CONTROL. Near-neutral white, matched intensity, so the
+        // two halves differ only in the colour of the light falling on them.
+        { x:  4.4, z: -1.0, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
+        { x:  4.4, z: -6.0, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
+      ],
+      spawns: [],
+      doors: [], stairs: [],
+    },
+    // Low eye, looking down the room's length — both side walls run away in
+    // perspective and the floor fills the bottom third.
+    playerPos: { x: 0, z: 5.2, lookAt: { x: 0, z: -8, y: 0.9 } },
+  },
+
   // BLOAT LAB — the detonating ooze, posed for a look and for a fight.
   // FROZEN it's a silhouette/material check: the red jelly should read as
   // PRESSURISED next to the two green oozes (same substance, wrong) rather than
