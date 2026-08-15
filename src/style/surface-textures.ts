@@ -154,7 +154,11 @@ function vnoiseP(x: number, y: number, Px: number, Py: number): number {
 // of the pattern code changing.
 //
 // PERIODIC by construction: vnoiseP takes explicit periods, so the warp repeats
-// with the tile and the texture stays seamless. Two octaves — a slow bend and a
+// with the tile and the texture stays seamless.
+//
+// Wall halved to 0.011 — Josh: *"the warp is a bit too strong on walls."* A
+// floor can afford to move (it is bedded in earth); a wall that visibly bends
+// stops reading as something anyone LAID. Two octaves — a slow bend and a
 // finer wobble — because one frequency reads as "wavy" rather than "old".
 const WARP_PERIOD = 4;          // integer → tiles cleanly over u,v in [0,1)
 function warpUV(u: number, v: number, amp: number): [number, number] {
@@ -169,7 +173,7 @@ function warpUV(u: number, v: number, amp: number): [number, number] {
 // a floor is bedded in earth and moves more. Kept small — past ~0.05 the courses
 // stop reading as masonry and start reading as melted.
 const WARP_AMP: Record<SurfaceKind, number> = {
-  wall: 0.022, floor: 0.034, ceiling: 0.014, dressed: 0.008, grain: 0,
+  wall: 0.011, floor: 0.034, ceiling: 0.014, dressed: 0.008, grain: 0,
 };
 
 function grainCPU(u: number, v: number): Cell {
@@ -233,10 +237,82 @@ function flagCPU(px: number, py: number, aa: number): Cell {
     clampf(dHash(gx, gy, 9.6) + missing * 0.4, 0, 1),   // WEAR — bare earth is rough
   ];
 }
+
+// ── OPERATOR: DIRECTIONAL BLUR ───────────────────────────────────────────────
+// The second werkkzeug operator. Blurring a field ALONG A DIRECTION, rather
+// than evenly, is what turns isotropic noise into something that looks like it
+// was ACTED ON: water running, grit dragged, a face worn by whatever passes it.
+// Their plywood example is dots → directional blur → distort, and the blur is
+// the step that makes it grain rather than spots.
+//
+// Wraps at the edges, because everything here has to keep tiling.
+function dirBlurWrap(src: Float32Array, W: number, H: number,
+                     dx: number, dy: number, taps: number): Float32Array {
+  const out = new Float32Array(W * H);
+  const inv = 1 / taps;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let acc = 0;
+      for (let t = 0; t < taps; t++) {
+        const sx = (((Math.round(x + dx * t) % W) + W) % W);
+        const sy = (((Math.round(y + dy * t) % H) + H) % H);
+        acc += src[sy * W + sx];
+      }
+      out[y * W + x] = acc * inv;
+    }
+  }
+  return out;
+}
+
+// ── OPERATOR: COLOUR / TONE REMAP ────────────────────────────────────────────
+// The third werkkzeug operator, and the cheapest of the lot: push a monochrome
+// field through a curve. Generators produce values spread evenly across their
+// range because that is what the maths does; real stone does not — most of a
+// wall sits in a narrow band of mid-tone with a few bright faces and a few
+// genuinely dark holes.
+//
+// This remaps the shade so the mid-tones COMPRESS and the extremes SEPARATE:
+// the wall stops looking like a smooth ramp of greys and starts having a few
+// stones that catch the eye against a mass that does not. An S-curve around a
+// pivot, which is a levels adjustment by another name.
+function toneRemap(v: number, pivot: number, contrast: number): number {
+  const d = v - pivot;
+  const s = d >= 0 ? 1 : -1;
+  return clampf(pivot + s * Math.pow(Math.abs(d) / Math.max(1e-4, s > 0 ? 1 - pivot : pivot), contrast)
+    * (s > 0 ? 1 - pivot : pivot), 0, 1);
+}
+
+// Per-surface operator settings. Erosion runs ALONG a direction: down a wall
+// (water), and across a floor (traffic).
+const EROSION: Record<SurfaceKind, { dx: number; dy: number; taps: number; amt: number }> = {
+  wall:    { dx: 0.12, dy: 1, taps: 14, amt: 0.30 },   // runs DOWN the wall
+  floor:   { dx: 1, dy: 0.35, taps: 10, amt: 0.22 },   // dragged across
+  ceiling: { dx: 0, dy: 1, taps: 8, amt: 0.10 },
+  dressed: { dx: 0.1, dy: 1, taps: 8, amt: 0.10 },
+  grain:   { dx: 0, dy: 0, taps: 1, amt: 0 },
+};
+const TONE: Record<SurfaceKind, { pivot: number; contrast: number }> = {
+  wall:    { pivot: 0.62, contrast: 0.80 },
+  floor:   { pivot: 0.58, contrast: 0.78 },
+  ceiling: { pivot: 0.60, contrast: 0.92 },
+  dressed: { pivot: 0.66, contrast: 0.90 },
+  grain:   { pivot: 0.5, contrast: 1 },
+};
+
 function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   const tile = SURFACE_TILE[kind];
   const aa = (tile[0] / CPU_TEX) * 0.7;
-  const buf = new Uint8Array(CPU_TEX * CPU_TEX * 4);
+  const N = CPU_TEX * CPU_TEX;
+  const buf = new Uint8Array(N * 4);
+
+  // ── PASS 1 · GENERATE ──────────────────────────────────────────────────────
+  // The bake is now a CHAIN OF PASSES rather than one per-pixel loop, which is
+  // the werkkzeug architecture and not just a refactor: a blur cannot be done
+  // per-pixel-in-isolation, it needs the whole field, so every operator after
+  // "generate" was structurally impossible until this existed.
+  const shadeF = new Float32Array(N), heightF = new Float32Array(N);
+  const variantF = new Float32Array(N), wearF = new Float32Array(N);
+  const eroF = new Float32Array(N);
   for (let yi = 0; yi < CPU_TEX; yi++) {
     for (let xi = 0; xi < CPU_TEX; xi++) {
       const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
@@ -249,17 +325,45 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       else if (kind === 'ceiling') [shade, height, variant, wear] = cofferCPU(px, py, aa);
       else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa);
       else [shade, height, variant, wear] = grainCPU(u, v);
-      const o = (yi * CPU_TEX + xi) * 4;
-      // R = shade, G = variant, B = wear, A = height. G and B used to be copies
-      // of R — see the Cell note above. The shader must therefore read shade as
-      // `.r` broadcast, NOT `.rgb`, or it picks up the identity channels as a
-      // colour cast.
-      buf[o] = clampf(shade, 0, 1) * 255;
-      buf[o + 1] = clampf(variant, 0, 1) * 255;
-      buf[o + 2] = clampf(wear, 0, 1) * 255;
-      buf[o + 3] = clampf(height, 0, 1) * 255;
+      const i = yi * CPU_TEX + xi;
+      shadeF[i] = shade; heightF[i] = height; variantF[i] = variant; wearF[i] = wear;
+      // The field the erosion pass will smear. Periodic so it keeps tiling.
+      eroF[i] = vnoiseP(u0 * 12, v0 * 12, 12, 12) * 0.6
+              + vnoiseP(u0 * 27, v0 * 27, 27, 27) * 0.4;
     }
   }
+
+  // ── PASS 2 · ERODE (directional blur) ──────────────────────────────────────
+  // Smear the noise ALONG a direction, then use the smear to eat into the
+  // surface: darker and lower where the run passed. Down a wall, because that
+  // is where water goes; across a floor, because that is where feet go. This is
+  // the operator that makes a surface look ACTED ON rather than merely noisy.
+  const ero = EROSION[kind];
+  if (ero.amt > 0) {
+    const smear = dirBlurWrap(eroF, CPU_TEX, CPU_TEX, ero.dx, ero.dy, ero.taps);
+    for (let i = 0; i < N; i++) {
+      // Only the strong end of the smear cuts — otherwise it is a grey veil
+      // over everything instead of distinct runs.
+      const cut = smooth(0.52, 0.95, smear[i]) * ero.amt;
+      shadeF[i] *= mixf(1, 0.62, cut);
+      heightF[i] -= cut * 0.22;
+      wearF[i] = clampf(wearF[i] + cut * 0.5, 0, 1);   // eroded stone is rougher
+    }
+  }
+
+  // ── PASS 3 · REMAP + PACK ──────────────────────────────────────────────────
+  const tone = TONE[kind];
+  for (let i = 0; i < N; i++) {
+    const o = i * 4;
+    // R = shade, G = variant, B = wear, A = height. G and B are NOT copies of
+    // R — they carry per-stone identity (see the Cell note above), so the
+    // shader must read shade as `.r` broadcast, never `.rgb`.
+    buf[o] = clampf(toneRemap(clampf(shadeF[i], 0, 1), tone.pivot, tone.contrast), 0, 1) * 255;
+    buf[o + 1] = clampf(variantF[i], 0, 1) * 255;
+    buf[o + 2] = clampf(wearF[i], 0, 1) * 255;
+    buf[o + 3] = clampf(heightF[i], 0, 1) * 255;
+  }
+
   const tex = new THREE.DataTexture(buf, CPU_TEX, CPU_TEX, THREE.RGBAFormat);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.generateMipmaps = true;
