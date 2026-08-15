@@ -1216,11 +1216,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     level: {
       id: 'surface-lab', depth: 2, displayName: 'SURFACE LAB', fogColor: 0x000000,
-      startPos: { x: 0, z: 5.2, yaw: Math.PI },
-      // One long room: length gives the walls a shallow perspective run, which
-      // is what makes a horizontal course visible as a line rather than a band.
+      // yaw 0, NOT Math.PI, and it matters for a non-obvious reason: the
+      // builder casts the ORIGIN ARCH — the sealed doors "the way you came" —
+      // backward from startPos.yaw onto the containing room's wall. With
+      // yaw=Math.PI that put a big barred door dead centre on the far wall,
+      // i.e. exactly the flat stone this lab exists to look at. The camera is
+      // driven by playerPos.lookAt below, so flipping this only moves the arch
+      // behind the viewer, where a surface lab wants it.
+      startPos: { x: 0, z: -1.5, yaw: 0 },
+      // Shortened 14m → 10m deep. At 14 the far wall sat ~13m out, past the
+      // torches' reach, so it read as a black void and the frame lost the one
+      // surface you can see FLAT ON — side walls at a grazing angle show
+      // relief, but only a face-on wall shows what the stone's COLOUR is.
+      // 10m still gives the side walls their perspective run.
       rooms: [
-        { id: 'lab', rect: { x: 0, z: -1, w: 9, d: 14 }, height: 3.2 },
+        { id: 'lab', rect: { x: 0, z: -0.5, w: 9, d: 10 }, height: 3.2 },
       ],
       corridors: [],
       // No props, no clutter, no loot. Anything in here that isn't stone is
@@ -1228,19 +1238,43 @@ export const SCENARIOS: Record<string, Scenario> = {
       props: [],
       torches: [
         // WEST — the dungeon's real flame. Low and close so it rakes.
-        { x: -4.4, z: -1.0, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
-        { x: -4.4, z: -6.0, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
+        { x: -4.4, z:  0.5, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
+        { x: -4.4, z: -3.6, height: 1.1, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.15 },
         // EAST — the CONTROL. Near-neutral white, matched intensity, so the
         // two halves differ only in the colour of the light falling on them.
-        { x:  4.4, z: -1.0, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
-        { x:  4.4, z: -6.0, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
+        { x:  4.4, z:  0.5, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
+        { x:  4.4, z: -3.6, height: 1.1, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.15 },
+        // BACK PAIR — mounted on the SIDE walls near the far end, not on the
+        // back wall itself. A sconce barely lights its own wall (the light
+        // leaves at a grazing angle), which is physically right and is why the
+        // first attempt at fixing the dark far wall — torches ON it — left it
+        // just as black with two flames floating in front.
+        //
+        // From the sides they throw ACROSS, and the two pools meet on the far
+        // wall: warm from the left, cool from the right, on the one face-on
+        // surface in the room. Side walls answer "does relief read"; this seam
+        // answers "what colour is the stone", which is the other half of the
+        // job and can't be judged at a grazing angle.
+        { x: -4.4, z: -4.8, height: 1.6, wall: 'W', colorTint: 0xff9a44, intensityMul: 1.25 },
+        { x:  4.4, z: -4.8, height: 1.6, wall: 'E', colorTint: 0xf2f4ff, intensityMul: 1.25 },
       ],
       spawns: [],
       doors: [], stairs: [],
     },
-    // Low eye, looking down the room's length — both side walls run away in
-    // perspective and the floor fills the bottom third.
-    playerPos: { x: 0, z: 5.2, lookAt: { x: 0, z: -8, y: 0.9 } },
+    // Low eye, facing the far wall from 4m.
+    //
+    // Two earlier attempts left that wall black — from 13m, then from 8m — and
+    // moving the torches around didn't fix it either. The reason is that the
+    // thing which actually lights a surface in this game at close range is the
+    // PLAYER'S OWN LAMP, and CONFIG.LAMP_DISTANCE is 5.5m. Both earlier poses
+    // stood outside their own lamp's reach of the wall they were trying to
+    // judge, so no arrangement of sconces was going to rescue them.
+    //
+    // 4m is inside lamp range with room to spare. The side walls lose some of
+    // their perspective run at this distance, which is the trade: a raking
+    // side wall shows RELIEF, a lit far wall shows COLOUR, and the far wall
+    // was the half that wasn't working.
+    playerPos: { x: 0, z: -1.5, lookAt: { x: 0, z: -5.5, y: 0.9 } },
   },
 
   // BLOAT LAB — the detonating ooze, posed for a look and for a fight.

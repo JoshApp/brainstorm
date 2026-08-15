@@ -17,7 +17,17 @@ export const CONFIG = {
   // === PALETTE ===
   // Restrained, grimdark. No saturated colors.
   WALL_COLOR: 0x1a1714,        // near-black warm stone
-  FLOOR_COLOR: 0x0f0d0b,       // darker than walls
+  // Josh: *"the ground and walls have the same color its a bit weird."*
+  // They never were the same VALUE — the floor has always been darker — but
+  // they were the same HUE: 0x0f0d0b and WALL 0x1a1714 are both warm greys
+  // (R>G>B), so under one warm flame they collapse into "the wall, but dimmer"
+  // instead of reading as two materials. Value contrast alone can't separate
+  // two surfaces lit by the same light; hue can.
+  //
+  // Now cool-neutral (B>G>R). Flagstone against warm wall-stone: the torch
+  // still warms it, but it no longer agrees with the wall about what colour it
+  // is underneath, so the junction between them becomes a material boundary.
+  FLOOR_COLOR: 0x0c0e12,       // darker than walls, and COOL where they are warm
   CEILING_COLOR: 0x080706,     // darkest
   // Neutral cool-gray ambient (not warm). Torchlight then *adds* warmth where
   // torches are, leaving non-lit areas slightly cool — so the chamber feels

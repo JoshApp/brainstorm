@@ -160,7 +160,17 @@ interface GradeOverrides {
 
 function readUrl(): { name: string; ov: GradeOverrides } {
   const ov: GradeOverrides = {};
-  let name = 'baseline';
+  // THE SHIPPING GRADE. Was 'baseline', which still carries the global amber
+  // multiply (amberTint [1.025, 1.0, 0.96]) with split-toning OFF — i.e. the
+  // exact "brown soup" bias this file's header describes as the thing to get
+  // away from, and the anti-soup tooling built right below it left switched
+  // off. Josh, looking at the game: *"i think in the art style does something
+  // pull everything into amber?"* It did, and this was one of three sources.
+  //
+  // BASELINE is deliberately not edited — its own comment says it's the
+  // reference the others are measured against, so ?grade=baseline stays an
+  // honest A/B of what shipped before. The lever is which preset is DEFAULT.
+  let name = 'coldfire';
   if (typeof location === 'undefined') return { name, ov };
   const q = new URLSearchParams(location.search);
   const g = q.get('grade');

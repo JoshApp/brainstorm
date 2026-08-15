@@ -133,7 +133,7 @@ const PLAIN: WallBand[] = [
  */
 const PLINTH: WallBand[] = [
   { name: 'plinth', h: 0.42, depth: 0,     mat: 'dressed', fixed: true },
-  { name: 'field',  h: 1.0,  depth: -0.10, mat: 'wall' },
+  { name: 'field',  h: 1.0,  depth: -0.14, mat: 'wall' },
 ];
 
 /**
@@ -150,10 +150,10 @@ const PLINTH: WallBand[] = [
  */
 const COURSED: WallBand[] = [
   { name: 'plinth',  h: 0.38, depth: 0,     mat: 'dressed', fixed: true },
-  { name: 'lower',   h: 1.0,  depth: -0.16, mat: 'wall' },
-  { name: 'string',  h: 0.22, depth: -0.02, mat: 'dressed', fixed: true },
-  { name: 'upper',   h: 0.8,  depth: -0.16, mat: 'wall' },
-  { name: 'cap',     h: 0.20, depth: -0.06, mat: 'dressed', fixed: true },
+  { name: 'lower',   h: 1.0,  depth: -0.22, mat: 'wall' },
+  { name: 'string',  h: 0.22, depth: -0.03, mat: 'dressed', fixed: true },
+  { name: 'upper',   h: 0.8,  depth: -0.22, mat: 'wall' },
+  { name: 'cap',     h: 0.20, depth: -0.08, mat: 'dressed', fixed: true },
 ];
 
 const PROFILES: Record<WallProfileName, WallBand[]> = {
