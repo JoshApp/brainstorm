@@ -102,6 +102,35 @@ const FOV_RUN = CONFIG.FOV + CONFIG.MOMENTUM.FOV_MAX_DEG;   // full momentum
 console.log(`phone landscape ${ASPECT.toFixed(2)}:1 · FOV ${FOV_REST}° at rest → ${FOV_RUN}° at full momentum`);
 console.log('margin > 0 = clear of frame; margin < 0 = INTRUDING\n');
 
+// ── REACH UTILISATION ───────────────────────────────────────────────────────
+// The check this probe DIDN'T have, and should have.
+//
+// The first version reported only frame clearance, so when the lamp-elbow fix
+// dropped the LEFT shoulder 0.58 → 0.80 to get the elbow out of frame, the
+// probe happily confirmed the clearance win and said nothing about the arm now
+// being stretched past its own length. The game's own runtime warning caught it
+// instead: "IK target at 106% of max reach — the arm is nearly locked straight."
+//
+// Clearance and reach pull in OPPOSITE directions — moving the shoulder away
+// from the hand buys frame margin and spends reach — so a tool that measures
+// one and not the other will cheerfully walk you off the other cliff.
+console.log('── REACH UTILISATION (100% = arm locked straight) ──');
+for (const arm of [RIGHT, LEFT]) {
+  const max = arm.humerus + arm.forearm;
+  const d = Math.hypot(
+    arm.newHand[0] - arm.shoulder[0],
+    arm.newHand[1] - arm.shoulder[1],
+    arm.newHand[2] - arm.shoulder[2],
+  );
+  const pct = (d / max) * 100;
+  const flag = pct > 100 ? '  ◀ OVER-EXTENDED' : pct > 92 ? '  ◀ tight' : '';
+  console.log(
+    `  ${arm.name.padEnd(16)} shoulder→hand ${d.toFixed(3)}m of ${max.toFixed(3)}m` +
+    `  =  ${pct.toFixed(1)}%${flag}`,
+  );
+}
+console.log('');
+
 for (const arm of [RIGHT, LEFT]) {
   console.log(`── ${arm.name} ${'─'.repeat(46 - arm.name.length)}`);
   for (const [label, hand] of [['before v3', arm.oldHand], ['after  v3', arm.newHand]] as const) {

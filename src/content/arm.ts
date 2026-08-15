@@ -38,8 +38,23 @@ import type { ModelSpec } from '../ecs/model-types';
 // exceeds the camera-to-hand distance at SWORD_IDLE_POS (~0.69m),
 // otherwise the IK clamps and leaves a visible gap between the
 // forearm tip and the hand's wrist.
-const HUMERUS_LENGTH = 0.32;
-const FOREARM_LENGTH = 0.42;
+// LENGTHENED 0.32/0.42 → 0.35/0.50 (max reach 0.740m → 0.850m).
+//
+// The v3 lamp-elbow fix dropped the LEFT shoulder 0.58 → 0.80 to get the elbow
+// out of frame, which bought clearance and SPENT REACH: the lantern ended up
+// 0.756m from a shoulder with 0.740m of arm, i.e. 102% — locked straight, and
+// the game's own runtime warning was saying so ("IK target at 106% of max
+// reach ... LAMP_RAISED and the ARM_LEFT shoulder have probably drifted
+// apart"). Josh: *"thats not so bad we can change that as long as it looks
+// good and sound."*
+//
+// Clearance and reach pull in OPPOSITE directions — moving a shoulder away
+// from the hand buys frame margin and spends reach — so these two numbers have
+// to be re-checked together. scripts/elbow-probe.ts now prints both; it only
+// printed clearance when the regression went in, which is why nothing caught
+// it. After this: LEFT 89%, RIGHT 66%.
+const HUMERUS_LENGTH = 0.35;
+const FOREARM_LENGTH = 0.50;
 
 // Forearm bone GIRTH — shared by both arms so the pair can't drift apart.
 //

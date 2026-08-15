@@ -596,6 +596,11 @@ function buildRoomShell(
         t.y,
         alongX ? perpCoord + inward * (t.depth / 2 - 0.012) : segMid,
       );
+      // Carry a `color` attribute even with no tint — everything else in
+      // trimGeos has one, and mergeGeometries drops the WHOLE group over a
+      // single mismatched member. See the note on the soffit below.
+      const vc = new Float32Array(geo.attributes.position.count * 3).fill(1);
+      geo.setAttribute('color', new THREE.BufferAttribute(vc, 3));
       trimGeos.push(geo);
     }
   };
@@ -665,11 +670,37 @@ function buildRoomShell(
     for (const [fx, fz, fw, fd] of frames) {
       const geo = new THREE.BoxGeometry(fw, ST, fd);
       geo.translate(fx, elev + H - ST / 2, fz);
+      // ONE ATTRIBUTE SHAPE PER MERGE GROUP — the soffit must carry a `color`
+      // attribute even though it has no tint of its own, because everything
+      // ELSE in trimGeos does.
+      //
+      // This bit: the wall-profile bands ('dressed' plinth / string course /
+      // cap) also merge here, and they come from makeJitteredPlane, which
+      // always writes vertex colours. mergeGeometries REFUSES a batch whose
+      // members disagree about attributes, and it refuses by returning null —
+      // which the merge below quietly skipped, dropping the whole dressed
+      // group. Every profile band vanished, leaving open slots you could see
+      // through into the void. Josh: *"why are there now these big black void
+      // strips."* Exactly those.
+      //
+      // static-merge.ts already carries a long comment about this same failure
+      // mode biting the fixture merge. It is the same trap in a second file.
+      const vc = new Float32Array(geo.attributes.position.count * 3).fill(1);
+      geo.setAttribute('color', new THREE.BufferAttribute(vc, 3));
       trimGeos.push(geo);
     }
   }
   if (trimGeos.length > 0) {
     const mergedTrim = mergeGeometries(trimGeos, false);
+    // SAY SO WHEN IT REFUSES. This merge silently dropped its whole group for
+    // an attribute mismatch and the only symptom was missing geometry in the
+    // world — no error, no warning, nothing to grep for. A null here means
+    // every dressed surface in this room is about to not exist.
+    if (!mergedTrim && import.meta.env.DEV) {
+      console.warn(`[trim-merge] ${room.id}: ${trimGeos.length} geometries would not merge `
+        + `(${[...new Set(trimGeos.map((g) => Object.keys(g.attributes).sort().join('+')))].join(' vs ')})`
+        + ' — the room loses its soffit and every wall-profile band.');
+    }
     for (const g of trimGeos) g.dispose();
     if (mergedTrim) {
       const trim = new THREE.Mesh(mergedTrim, materials.dressed);
@@ -767,6 +798,41 @@ function bakeWallSegmentGeometry(
     return out ? null : geo;
   }
 
+  // Emit the horizontal surface bridging two depths at height `yAt`.
+  //
+  // A band is a PLANE, so a depth change leaves an open slot you can see
+  // straight through unless something closes it. `belowDepth`/`aboveDepth` are
+  // the depths of whatever sits under and over this seam — a neighbouring
+  // band, or the floor/ceiling, both of which live at the wall PLANE (depth 0).
+  const closeStep = (
+    yAt: number, belowDepth: number, aboveDepth: number, mat: 'wall' | 'dressed',
+  ): void => {
+    if (Math.abs(aboveDepth - belowDepth) < 1e-4) return;
+    const dLo = Math.min(belowDepth, aboveDepth);
+    const dHi = Math.max(belowDepth, aboveDepth);
+    const conn = new THREE.PlaneGeometry(segLen, dHi - dLo);
+    // A plane faces +Z; rotate it flat. If the LOWER side is the proud one
+    // we're looking at its top (faces up); otherwise we're under an overhang.
+    conn.rotateX(belowDepth > aboveDepth ? -Math.PI / 2 : Math.PI / 2);
+    conn.translate(0, yAt, (dLo + dHi) / 2);
+    conn.applyMatrix4(toWorld);
+    // Connectors carry no vertex colour of their own; give them the darker end
+    // of the wall's AO so a step reads as a shadowed underside/ledge rather
+    // than a bright band of untinted geometry.
+    const cCount = conn.attributes.position.count;
+    const cCol = new Float32Array(cCount * 3);
+    for (let v = 0; v < cCount; v++) {
+      cCol[v * 3 + 0] = 0.62; cCol[v * 3 + 1] = 0.62; cCol[v * 3 + 2] = 0.66;
+    }
+    conn.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+    (mat === 'dressed' ? out.dressed : out.wall).push(conn);
+  };
+
+  // ── CLOSE AGAINST THE FLOOR ──────────────────────────────────────────────
+  // The floor is built to the wall PLANE. If the bottom band is recessed, the
+  // gap between them is open.
+  closeStep(0, 0, bands[0].depth, bands[0].mat);
+
   for (let i = 0; i < bands.length; i++) {
     const b = bands[i];
     const bh = b.y1 - b.y0;
@@ -780,31 +846,27 @@ function bakeWallSegmentGeometry(
     geo.applyMatrix4(toWorld);
     (b.mat === 'dressed' ? out.dressed : out.wall).push(geo);
 
-    // Close the step to the band above. Without this the profile is a set of
-    // floating planes and you can see between them at a grazing angle.
     const next = bands[i + 1];
-    if (!next || Math.abs(next.depth - b.depth) < 1e-4) continue;
-    const dLo = Math.min(b.depth, next.depth);
-    const dHi = Math.max(b.depth, next.depth);
-    const step = dHi - dLo;
-    const conn = new THREE.PlaneGeometry(segLen, step);
-    // A plane faces +Z; rotate it to horizontal. If the LOWER band is the
-    // proud one we're looking at its top (faces up); otherwise we're under the
-    // upper band's overhang (faces down).
-    conn.rotateX(b.depth > next.depth ? -Math.PI / 2 : Math.PI / 2);
-    conn.translate(0, b.y1, (dLo + dHi) / 2);
-    conn.applyMatrix4(toWorld);
-    // Connectors carry no vertex colour of their own; give them the darker end
-    // of the wall's AO so a step reads as a shadowed underside/ledge rather
-    // than a bright band of untinted geometry.
-    const cCount = conn.attributes.position.count;
-    const cCol = new Float32Array(cCount * 3);
-    for (let v = 0; v < cCount; v++) {
-      cCol[v * 3 + 0] = 0.62; cCol[v * 3 + 1] = 0.62; cCol[v * 3 + 2] = 0.66;
-    }
-    conn.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
-    (b.mat === 'dressed' ? out.dressed : out.wall).push(conn);
+    if (next) closeStep(b.y1, b.depth, next.depth, b.mat);
   }
+
+  // ── CLOSE AGAINST THE CEILING ────────────────────────────────────────────
+  // THIS IS THE ONE THAT WAS MISSING, and it shipped as a bug Josh spotted
+  // immediately: *"why are there now these big black void strips."*
+  //
+  // The loop above only closes seams BETWEEN bands. The ceiling sits at the
+  // wall plane (depth 0), and every profile now ends recessed — coursed's cap
+  // at -0.08, plinth's field at -0.14 — so the top of the wall stopped short
+  // of the ceiling and left an open slot the width of that recess, running the
+  // whole perimeter of every room. You looked up and saw straight through the
+  // shell into the void: a hard black strip.
+  //
+  // It was invisible while the profiles stood PROUD (nothing to see through)
+  // and appeared the moment they were inverted to recess, then widened when
+  // the recesses deepened. A wall built from planes has to be closed at BOTH
+  // ends, not just in the middle.
+  const top = bands[bands.length - 1];
+  closeStep(height, top.depth, 0, top.mat);
   return null;
 }
 
