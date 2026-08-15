@@ -1213,7 +1213,12 @@ export const SCENARIOS: Record<string, Scenario> = {
   //     ?scenario=surface-lab&split=0.55            cool the shadows
   //     ?scenario=surface-lab&grade=coldfire        a preset with both
   'surface-lab': {
-    freeze: true,
+    // WALKABLE, unlike the other labs. Josh: *"allow me to walk in the scenario
+    // then i can take a look and screenshot for you."* A frozen pose can only
+    // ever answer the question it was framed to answer; surfaces have to be
+    // judged from several distances and angles, because relief needs a grazing
+    // view and colour needs a face-on one and no single camera gives both.
+    freeze: false,
     level: {
       id: 'surface-lab', depth: 2, displayName: 'SURFACE LAB', fogColor: 0x000000,
       // yaw 0, NOT Math.PI, and it matters for a non-obvious reason: the
