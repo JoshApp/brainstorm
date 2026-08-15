@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { freezeTransform } from './animation-gate';
+import { disposeGpu } from './gpu-dispose';
+import { isPooledGeometry, pooledCircle, pooledPlane, pooledSphere, pooledTorus } from './geometry-pool';
+import { stdMat } from '../style/material-registry';
 
 // ARCHWAY EYE — the diegetic exit cue, as the dungeon's own eye set in the
 // keystone. A dark stone eyeball + a glowing iris + two stone lids, mounted at
@@ -102,11 +105,17 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   // Stagger blinks so a row of eyes doesn't wink in unison.
   const blinkOffset = ((pos.x * 1.73 + pos.z * 0.91) % BLINK_PERIOD + BLINK_PERIOD) % BLINK_PERIOD;
 
-  const stone = new THREE.MeshStandardMaterial({ color: 0x17140f, roughness: 1, metalness: 0, flatShading: true, fog: true });
-  const lidStone = new THREE.MeshStandardMaterial({ color: 0x1d1913, roughness: 1, metalness: 0, flatShading: true, fog: true });
+  // THE STONE IS THE SAME STONE IN EVERY EYE. Both of these were minted per
+  // eye, so a floor carried 32 identical MeshStandardMaterials — 32 sets of
+  // uniforms and bind groups expressing one surface. They are never animated
+  // per eye (only the halo/iris/pupil below are), so they belong in the shared
+  // pool, which is also the authority this repo enforces by ratchet test
+  // (tests/material-authority.test.ts). NOTHING MAY DISPOSE THESE — see dispose.
+  const stone = stdMat({ color: 0x17140f, roughness: 1, metalness: 0, flatShading: true, fog: true });
+  const lidStone = stdMat({ color: 0x1d1913, roughness: 1, metalness: 0, flatShading: true, fog: true });
 
   // Socket ring — a carved rim so the eye reads as SET INTO the stone (fixed).
-  const socket = new THREE.Mesh(new THREE.TorusGeometry(EYE_W * 0.62, EYE_W * 0.16, 8, 20), stone);
+  const socket = new THREE.Mesh(pooledTorus(EYE_W * 0.62, EYE_W * 0.16, 8, 20), stone);
   socket.scale.set(1.15, 0.8, 0.5);
   socket.position.z = -0.02;
   group.add(socket);
@@ -117,7 +126,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     map: glowTexture(), color: GAZE_GLOW, transparent: true, opacity: 0,
     blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
   });
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(EYE_W * 1.5, EYE_W * 1.1), haloMat);
+  const halo = new THREE.Mesh(pooledPlane(EYE_W * 1.5, EYE_W * 1.1), haloMat);
   halo.position.z = EYE_W * 0.16;
   group.add(halo);
 
@@ -127,7 +136,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   group.add(gaze);
 
   // Eyeball — flattened almond, recessed slightly into the keystone.
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(EYE_W * 0.5, 16, 12), stone);
+  const ball = new THREE.Mesh(pooledSphere(EYE_W * 0.5, 16, 12), stone);
   ball.scale.set(1.2, 0.82, 0.6);
   ball.position.z = -0.05;
   gaze.add(ball);
@@ -137,20 +146,20 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     color: GAZE_CORE, transparent: true, opacity: 0,
     blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
   });
-  const iris = new THREE.Mesh(new THREE.CircleGeometry(EYE_W * 0.3, 20), irisMat);
+  const iris = new THREE.Mesh(pooledCircle(EYE_W * 0.3, 20), irisMat);
   iris.position.z = EYE_W * 0.2;
   gaze.add(iris);
 
   // Pupil — a dark round centre over the glow so it reads as an EYE, not a gem.
   const pupilMat = new THREE.MeshBasicMaterial({ color: 0x080406, transparent: true, opacity: 0, fog: true });
-  const pupil = new THREE.Mesh(new THREE.CircleGeometry(EYE_W * 0.13, 16), pupilMat);
+  const pupil = new THREE.Mesh(pooledCircle(EYE_W * 0.13, 16), pupilMat);
   pupil.position.z = EYE_W * 0.22;
   gaze.add(pupil);
 
   // Lids — upper + lower stone covers, IN FRONT of the iris so closing them
   // covers the gaze (a real wink). Open → they retract up/down; closed → meet.
   const mkLid = (): THREE.Mesh => {
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(EYE_W * 0.56, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), lidStone);
+    const lid = new THREE.Mesh(pooledSphere(EYE_W * 0.56, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), lidStone);
     lid.scale.set(1.18, 0.62, 0.66);
     lid.position.z = EYE_W * 0.24;
     return lid;
@@ -246,12 +255,18 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
 
   const dispose = (): void => {
     group.parent?.remove(group);
+    // FREE ONLY WHAT THIS EYE OWNS. The geometry is pooled and the stone
+    // materials are shared through the registry, so both outlive this eye and
+    // belong to every other one on the floor — disposing them here would blank
+    // the archways that are still standing. Only the three animated materials
+    // are per-eye. (Deferred, because a teardown can land while the frame that
+    // last drew this eye is still in flight — see scene/gpu-dispose.ts.)
+    const owned: THREE.BufferGeometry[] = [];
     group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
-      const mats = Array.isArray(m.material) ? m.material : (m.material ? [m.material] : []);
-      for (const mm of mats) mm.dispose();
+      const g = (o as THREE.Mesh).geometry;
+      if (g && !isPooledGeometry(g)) owned.push(g);
     });
+    disposeGpu(haloMat, irisMat, pupilMat, ...owned);
   };
 
   return { group, update, dispose };

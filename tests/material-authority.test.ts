@@ -89,7 +89,7 @@ for (const f of files) {
 }
 
 // Measured 2026-08-10 by this test itself. Lower as call sites move to the pool.
-const BUDGET = 78;
+const BUDGET = 75;   // 78 → 75: the archway eye's two stone materials moved to stdMat
 
 test('direct material construction outside the authority does not grow', () => {
   const worst = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);

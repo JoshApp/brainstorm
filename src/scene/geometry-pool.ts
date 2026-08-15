@@ -76,11 +76,25 @@ export function pooledBox(w: number, h: number, d: number): THREE.BoxGeometry {
     () => new THREE.BoxGeometry(w, h, d)) as THREE.BoxGeometry;
 }
 
+/** Whole sphere, or a SLICE of one when the phi/theta arguments are given — a
+ *  half-sphere lid, a dome, a shell cap. The slice arguments are part of the
+ *  cache key, so a dome and a full sphere of the same radius stay distinct. */
 export function pooledSphere(
   radius: number, widthSeg: number = 16, heightSeg: number = 12,
+  phiStart?: number, phiLength?: number, thetaStart?: number, thetaLength?: number,
 ): THREE.SphereGeometry {
-  return getOrCache(`sph:${k(radius)}:${widthSeg}:${heightSeg}`,
-    () => new THREE.SphereGeometry(radius, widthSeg, heightSeg)) as THREE.SphereGeometry;
+  const sliced = phiStart !== undefined || phiLength !== undefined
+    || thetaStart !== undefined || thetaLength !== undefined;
+  const slice = sliced ? `:${k(phiStart ?? 0)}:${k(phiLength ?? Math.PI * 2)}:${k(thetaStart ?? 0)}:${k(thetaLength ?? Math.PI)}` : '';
+  return getOrCache(`sph:${k(radius)}:${widthSeg}:${heightSeg}${slice}`,
+    () => new THREE.SphereGeometry(radius, widthSeg, heightSeg, phiStart, phiLength, thetaStart, thetaLength)) as THREE.SphereGeometry;
+}
+
+/** Flat disc. `pooledRing(0, r)` is nearly the same shape but carries the ring's
+ *  extra inner vertices and its UVs run radially, so a disc gets its own entry. */
+export function pooledCircle(radius: number, segments: number = 16): THREE.CircleGeometry {
+  return getOrCache(`circ:${k(radius)}:${segments}`,
+    () => new THREE.CircleGeometry(radius, segments)) as THREE.CircleGeometry;
 }
 
 export function pooledCylinder(
