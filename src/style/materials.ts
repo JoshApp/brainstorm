@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { DEV } from '../debug/dev';
 
 // Material library for the BIG STATIC SURFACES of the level (walls, floor,
 // ceiling). Dynamic entities (enemies, sword, torches, chests) own their
@@ -135,12 +136,52 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // CEILING = coffered panels (its own language). Warm tint on the floor, cold
   // on the ceiling, neutral walls. Mipmaps + anisotropy keep it stable under
   // the 0.4x render scale (no crawl/flicker).
+  // ── AI-TEXTURE EXPERIMENT ──────────────────────────────────────────────────
+  // Josh: *"would it be easier to use textures for this that we could ai
+  // generate etc"* → *"can you generate one and drop it in"*.
+  //
+  // ?surftex=ai swaps the CPU-baked procedural wall for the FLUX-generated map
+  // in public/art/surfaces/ (see scripts/gen-surface-tex.ts). Everything else
+  // in the pipeline is unchanged — same world-projected triplanar sampling,
+  // same POM march, same wear/moss/roughness layers on top — because the
+  // sampling never needed UVs and therefore never cared where the texture came
+  // from. That is what makes this an A/B rather than a rewrite.
+  //
+  // DEV-only: the generated PNG is ~2MB and has no business in the production
+  // bundle until we've decided it earns its download budget.
+  const wantAiTex = DEV && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('surftex') === 'ai';
   const wallTex = bakeSurfaceTexture(renderer, 'wall');
+  let wallSurfaceTex: THREE.Texture = wallTex;
+  if (wantAiTex) {
+    const loaded = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}art/surfaces/wall-ai.png`);
+    loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
+    loaded.minFilter = THREE.LinearMipmapLinearFilter;
+    loaded.magFilter = THREE.LinearFilter;
+    loaded.anisotropy = 16;
+    loaded.colorSpace = THREE.SRGBColorSpace;
+    wallSurfaceTex = loaded;
+  }
   installSurfaceDetail(wallBase, {
     splat: true,
     brickDamage: true, grooveFill: true, seamGlow: true,
-    tex: wallTex,
-    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
+    tex: wallSurfaceTex,
+    colorTex: wantAiTex,
+    // FEATURE SCALE MUST MATCH TILE SCALE, and this is the first real lesson of
+    // the AI experiment. SURFACE_TILE.wall is 4.6m per repeat — fine for the
+    // CPU bake, which GENERATES its bricks at that scale by construction (it is
+    // handed `px = u * tile[0]` and lays courses in metres). A generated image
+    // knows nothing about metres: it has ~5 block courses across 1024px, so at
+    // a 4.6m repeat each block stretches to about a metre tall and a wall shows
+    // a fraction of one stone — which renders as flat colour blobs, exactly
+    // what the first attempt looked like.
+    //
+    // 1.9m puts the generated blocks at roughly the size the procedural ones
+    // are, so the two are actually comparable. Repetition gets worse at the
+    // tighter tile, which is the honest cost and the thing hex-tiling exists to
+    // fix.
+    tile: wantAiTex ? [1.9, 1.9] : SURFACE_TILE.wall,
+    proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(chasmWall, {
     splat: true,
