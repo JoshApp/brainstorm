@@ -8,6 +8,55 @@ import type { ModelSpec } from '../ecs/model-types';
 // All materials use fog:false so the sword doesn't fade out in dungeon fog
 // (it's a held first-person item, always within "torch-lit" range).
 
+// ── BLADE PROFILE ────────────────────────────────────────────────────────────
+// The blade was a uniform slab (`box [0.04, 0.6, 0.01]`) — same width from
+// guard to tip, ending in a flat chop, with a rectangular cross-section. It was
+// the first model ever authored for this game and it never got the extruded
+// profile every other weapon here uses. At the old idle depth you couldn't
+// tell; the presence pass brought it 7cm nearer the eye and it reads as a
+// paddle.
+//
+// Straight, double-edged, short. The slight waist at 0.38 and the deliberate
+// left/right asymmetry (0.021 vs -0.020, 0.022 vs -0.023) are the "pitted and
+// ill-balanced" of the flavour text — a blade ground back by hand, unevenly,
+// by someone who is not a smith. Kept subtle: this is a silhouette cue, not
+// damage decoration.
+//
+// The tip stays at y = 0.65. MELEE REACH IS DERIVED from the grip→blade extent
+// at item-load, so the profile's top station is a COMBAT number, not just a
+// visual one — moving it silently rebalances the weapon.
+const RUSTED_BLADE_SHAPE: [number, number][] = [
+  // Right edge, hilt → tip
+  [ 0.023, 0.000 ],
+  [ 0.026, 0.090 ],
+  [ 0.025, 0.240 ],
+  [ 0.021, 0.380 ],   // waist
+  [ 0.022, 0.455 ],
+  [ 0.016, 0.560 ],
+  [ 0.000, 0.650 ],   // point
+  // Left edge, tip → hilt
+  [-0.017, 0.558 ],
+  [-0.023, 0.452 ],
+  [-0.020, 0.380 ],
+  [-0.025, 0.240 ],
+  [-0.026, 0.090 ],
+  [-0.023, 0.000 ],
+];
+
+// The honed edge, as a narrow band per cutting side. Sampled at the SAME y
+// stations as the blade outline so it TRACKS THE TAPER — the old edge strips
+// were straight boxes, which is why they could only ever sit alongside a
+// straight blade. Extruded slightly deeper than the blade so the band stands
+// proud on both faces and catches the light the dull flat swallows.
+const RUSTED_EDGE_R_SHAPE: [number, number][] = [
+  [ 0.023, 0.000 ], [ 0.026, 0.090 ], [ 0.025, 0.240 ],
+  [ 0.021, 0.380 ], [ 0.022, 0.455 ], [ 0.016, 0.560 ],
+  [ 0.012, 0.556 ], [ 0.017, 0.452 ], [ 0.016, 0.380 ],
+  [ 0.020, 0.240 ], [ 0.021, 0.090 ], [ 0.018, 0.000 ],
+];
+const RUSTED_EDGE_L_SHAPE: [number, number][] =
+  RUSTED_EDGE_R_SHAPE.map(([x, y]) => [-x, y]);
+
 export const SWORD_RUSTED: ModelSpec = {
   id: 'sword-rusted',
   materials: {
@@ -55,13 +104,20 @@ export const SWORD_RUSTED: ModelSpec = {
     },
   },
   parts: [
-    // Long flat blade — dull rusted flat with thin honed-edge strips
-    // on both cutting sides (the only part that catches light).
-    { name: 'blade',  kind: 'box',      pos: [0,  0.35, 0], size: [0.04, 0.6, 0.01], mat: 'blade' },
-    { name: 'edge_l', kind: 'box',      pos: [-0.020, 0.35, 0], size: [0.004, 0.58, 0.008], mat: 'edge' },
-    { name: 'edge_r', kind: 'box',      pos: [ 0.020, 0.35, 0], size: [0.004, 0.58, 0.008], mat: 'edge' },
-    // Short horizontal cross-guard
-    { name: 'guard',  kind: 'box',      pos: [0,  0.04, 0], size: [0.18, 0.025, 0.04], mat: 'guard' },
+    // Tapered double-edged blade — dull rusted flat, bevelled so the
+    // cross-section is a shallow lens instead of a rectangle. `jitter` pits the
+    // surface: 1.2mm of vertex noise, bucketed by position so shared verts move
+    // together and no seams open. Enough to break the machined look at arm's
+    // length, small enough that the silhouette still reads as a sword.
+    { name: 'blade',  kind: 'extrude',  shape: RUSTED_BLADE_SHAPE, depth: 0.013,
+      bevel: true, bevelSize: 0.0025, bevelThickness: 0.0025, bevelSegments: 1,
+      jitter: 0.0012, mat: 'blade' },
+    // Honed bands, one per cutting side — proud of the blade on both faces.
+    { name: 'edge_r', kind: 'extrude',  shape: RUSTED_EDGE_R_SHAPE, depth: 0.016, mat: 'edge' },
+    { name: 'edge_l', kind: 'extrude',  shape: RUSTED_EDGE_L_SHAPE, depth: 0.016, mat: 'edge' },
+    // Short horizontal cross-guard. Bevelled — at the new idle depth a hard-
+    // edged box beside a bevelled blade reads as the cheaper object of the two.
+    { name: 'guard',  kind: 'box',      pos: [0,  0.04, 0], size: [0.18, 0.025, 0.04], bevel: 0.005, mat: 'guard' },
     // Cylindrical grip
     { name: 'grip',   kind: 'cylinder', pos: [0, -0.04, 0], radius: 0.022, height: 0.13, segments: 8, mat: 'grip' },
     // Spherical pommel at the bottom

@@ -41,6 +41,22 @@ import type { ModelSpec } from '../ecs/model-types';
 const HUMERUS_LENGTH = 0.32;
 const FOREARM_LENGTH = 0.42;
 
+// Forearm bone GIRTH — shared by both arms so the pair can't drift apart.
+//
+// PRESENCE PASS (viewmodel v3). Radii and spacing only; the LENGTHS above are
+// deliberately not in this block. The IK solves on the lengths, so thickness is
+// free — a length change would move the wrist and re-pose every grip in the
+// game.
+//
+// The two bones were thin enough (0.018 / 0.017, 26mm apart) that at arm's
+// length they merged into a single pale stick. ~17% wider and 4mm further
+// apart makes radius and ulna read as TWO bones with a gap between them, which
+// is the entire reason a skeletal arm is worth more than a limb. The dark sinew
+// stays thin so that gap keeps its shadow.
+const FOREARM_SPREAD = 0.015;      // ± offset of each bone from the arm axis
+const RADIUS_BASE = 0.021, RADIUS_TIP = 0.016;
+const ULNA_BASE = 0.020, ULNA_TIP = 0.015;
+
 export const ARM_RIGHT: ModelSpec = {
   id: 'arm-right',
   materials: {
@@ -90,13 +106,13 @@ export const ARM_RIGHT: ModelSpec = {
     // up aimed correctly. Centered at FOREARM_LENGTH / 2 (cylinder
     // midpoint coincides with elbow-local Y = halfway to wrist).
     { name: 'radius', parent: 'elbow', kind: 'cylinder',
-      pos: [-0.013, FOREARM_LENGTH / 2, 0],
-      radius: 0.018, radiusTop: 0.014,
+      pos: [-FOREARM_SPREAD, FOREARM_LENGTH / 2, 0],
+      radius: RADIUS_BASE, radiusTop: RADIUS_TIP,
       height: FOREARM_LENGTH, segments: 12,
       mat: 'bone' },
     { name: 'ulna', parent: 'elbow', kind: 'cylinder',
-      pos: [0.013, FOREARM_LENGTH / 2, 0],
-      radius: 0.017, radiusTop: 0.013,
+      pos: [FOREARM_SPREAD, FOREARM_LENGTH / 2, 0],
+      radius: ULNA_BASE, radiusTop: ULNA_TIP,
       height: FOREARM_LENGTH, segments: 12,
       mat: 'bone' },
     { name: 'sinew', parent: 'elbow', kind: 'cylinder',
@@ -195,13 +211,13 @@ export const ARM_LEFT: ModelSpec = {
       radius: 0.028, segments: [12, 10],
       mat: 'bone' },
     { name: 'radius', parent: 'elbow', kind: 'cylinder',
-      pos: [-0.013, FOREARM_LENGTH / 2, 0],
-      radius: 0.018, radiusTop: 0.014,
+      pos: [-FOREARM_SPREAD, FOREARM_LENGTH / 2, 0],
+      radius: RADIUS_BASE, radiusTop: RADIUS_TIP,
       height: FOREARM_LENGTH, segments: 12,
       mat: 'bone' },
     { name: 'ulna', parent: 'elbow', kind: 'cylinder',
-      pos: [0.013, FOREARM_LENGTH / 2, 0],
-      radius: 0.017, radiusTop: 0.013,
+      pos: [FOREARM_SPREAD, FOREARM_LENGTH / 2, 0],
+      radius: ULNA_BASE, radiusTop: ULNA_TIP,
       height: FOREARM_LENGTH, segments: 12,
       mat: 'bone' },
     { name: 'sinew', parent: 'elbow', kind: 'cylinder',
