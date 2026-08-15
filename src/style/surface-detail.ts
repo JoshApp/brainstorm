@@ -57,12 +57,51 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const tint: any = (tslUniform as any)(new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]));
   let albedo: any = base.mul(sampled.rgb).mul(tint);
 
-  // WORLD MOTTLE — non-tiling value noise (~3m) modulating shade ±6%. The baked
-  // tile repeats every ~5m and the eye finds the repeat on long walls/floors;
-  // the mottle reads as damp, wear, centuries — the main "not flat" layer the
-  // GLSL path had that the bare baked sample lacks.
-  const mot: any = valueNoise2((vec2 as any)(sU.mul(0.33), sV.mul(0.33)));   // already [0,1]
-  albedo = albedo.mul(float(0.94).add(mot.mul(0.12)));
+  // ── WEAR LAYERS (surface v3) ───────────────────────────────────────────────
+  // Josh: *"it all looks so uniform so perfect so bland ... i would like it to
+  // be greasy rough worn."*
+  //
+  // What was here: ONE octave of value noise at ~3m modulating shade by ±6%.
+  // Six percent, at a single scale, is below the threshold where an eye reads
+  // "this surface has a history" — so the tile's own per-cell variation was the
+  // only thing happening, and a tile repeating every ~5m with nothing on top of
+  // it is the definition of uniform.
+  //
+  // Worn stone varies at SEVERAL scales at once, and the scales mean different
+  // things: metres-wide staining and damp (where the room has been used),
+  // hand-sized blotching (where the stone itself differs), and fine grain. Three
+  // octaves, weighted toward the largest, with roughly four times the old range.
+  const macro: any = valueNoise2((vec2 as any)(sU.mul(0.055), sV.mul(0.055)));  // ~18m patches
+  const meso: any = valueNoise2((vec2 as any)(sU.mul(0.33), sV.mul(0.33)));     // ~3m (the old layer)
+  const micro: any = valueNoise2((vec2 as any)(sU.mul(1.9), sV.mul(1.9)));      // ~0.5m grain
+  const grime: any = macro.mul(0.55).add(meso.mul(0.30)).add(micro.mul(0.15));  // → [0,1]
+  albedo = albedo.mul(float(0.78).add(grime.mul(0.40)));
+
+  // CAVITY GRIME — dirt does not sit evenly, it collects. Everything low in the
+  // height field (mortar lines, chips, the pits between flagstones) gets darker
+  // and browner than the faces around it, and more so where the macro layer says
+  // this part of the room is filthy. The existing seam shadow darkens grooves
+  // for DEPTH; this is the same geometry read as ACCUMULATION.
+  const cavity: any = float(1).sub((tslSmoothstep as any)(0.42, 0.95, sampled.a));
+  albedo = albedo.mul((tslMix as any)(
+    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))),
+  ));
+
+  // GRAVITY STREAKS — walls only. Every layer above this one is isotropic, and
+  // isotropic noise is a tell: real filth has a DIRECTION, because water and
+  // soot run down. Sampling the noise with the vertical axis compressed ~12x
+  // stretches its features into long vertical smears — damp runs and soot
+  // trails under ledges — for the cost of one more noise lookup. Floors are
+  // skipped: nothing runs down a floor.
+  if (cfg.proj === 'wall') {
+    const wp: any = positionWorld;
+    const streak: any = valueNoise2((vec2 as any)(
+      wp.x.add(wp.z).mul(1.15),   // across the wall, whichever axis it runs along
+      wp.y.mul(0.095),            // and barely at all down it → vertical runs
+    ));
+    const runs: any = (tslSmoothstep as any)(0.54, 0.98, streak);
+    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.70), runs.mul(0.8)));
+  }
 
   // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.
   const seam: any = float(1).sub((tslSmoothstep as any)(0.45, 0.85, sampled.a));
@@ -100,7 +139,33 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
   const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
   albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
-  (mat as any).roughnessNode = (tslMix as any)((tslUniform as any)(mat.roughness), float(SEAM_ROUGH), wetMask);
+
+  // ── SPATIALLY VARYING ROUGHNESS (surface v3) ───────────────────────────────
+  // THE "greasy" lever, and the one that was missing entirely: roughnessNode
+  // used to be a CONSTANT everywhere except the wet-seam mix, and wetness
+  // defaults to 0 — so every square metre of stone in the game returned light
+  // in exactly the same way. Uniform response is what reads as "perfect", more
+  // than uniform colour does; it's the same reason untextured plastic looks
+  // like plastic.
+  //
+  // Worn stone varies its roughness MORE than its colour, and not randomly:
+  //   GREASE  broad patches, handled and sooted, worn to a dull shine. Comes
+  //           off the macro layer so it agrees with where the staining is.
+  //   CAVITY  crevices hold dust and grit — rougher than the faces.
+  //   PROUD   high points are polished by contact — smoother, and the first
+  //           thing to catch a moving flame.
+  // The payoff is that a single torch no longer lands evenly: it finds the
+  // greasy patches and the worn edges and skips the dusty hollows, and that
+  // changes as the player moves. Pure ALU on a surface already being shaded —
+  // no extra draws, which is the budget that actually matters here.
+  const grease: any = (tslSmoothstep as any)(0.58, 0.96, macro);
+  const proud: any = (tslSmoothstep as any)(0.80, 1.05, sampled.a);
+  const baseRough: any = (tslUniform as any)(mat.roughness);
+  const varied: any = (tslClamp as any)(
+    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)),
+    0.22, 1.0,
+  );
+  (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
