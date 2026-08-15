@@ -151,6 +151,9 @@ let lastTsResolveAt = 0;
 // completion wall-clock fallback below then supplies the coarse signal for
 // free, which is all an idle scaler would do with it anyway.
 let gpuTimingWanted = true;   // until the first applyVideoSettings says otherwise
+/** Whether the adapter ever had the timestamp feature, latched before we touch
+ *  the flag. null = not yet observed. */
+let timestampCapable: boolean | null = null;
 /** Tell the renderer whether any consumer needs real GPU frame times. */
 export function setWebGPUGpuTimingWanted(on: boolean): void { gpuTimingWanted = on; }
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
@@ -1064,8 +1067,22 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     // draining exists to avoid.
     // Keep the backend flag in step with demand, so an unwanted timer costs
     // nothing per PASS either, not just nothing per resolve.
-    if (backend?.isWebGPUBackend && backend.trackTimestamp === true && !gpuTimingWanted) {
-      backend.trackTimestamp = false;
+    //
+    // BOTH WAYS, AND ONLY IF THE DEVICE CAN. The first cut of this only ever
+    // cleared the flag, which meant turning PROFILER TOOLS on could not bring
+    // GPU timing back: the HUD read "n/a gpu", the per-pass breakdown vanished,
+    // and a recording carried gpuSupported:false on a phone that supports
+    // timestamps perfectly well. Reported from the phone the same day.
+    //
+    // Capability has to be remembered too. Three resolves trackTimestamp once
+    // at init against hasFeature('timestamp-query'), so clobbering it destroys
+    // the only record of whether the adapter ever had the feature — restore it
+    // blindly and an unsupported device gets asked for timers forever. Latch
+    // what we saw BEFORE the first flip, and never promise more than that.
+    if (backend?.isWebGPUBackend) {
+      if (timestampCapable === null) timestampCapable = backend.trackTimestamp === true;
+      const want = gpuTimingWanted && timestampCapable;
+      if (backend.trackTimestamp !== want) backend.trackTimestamp = want;
     }
     const nowMs = performance.now();
     if (gpuTimingWanted && !tsInFlight && nowMs - lastTsResolveAt >= TS_RESOLVE_INTERVAL_MS) {
