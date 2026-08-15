@@ -123,16 +123,27 @@ export const ARM_RIGHT: ModelSpec = {
   slots: {
     // ── SHOULDER ─ camera-local rest anchor. Positioned so the
     // shoulder-to-wrist segment fits comfortably within max arm
-    // reach (= HUMERUS + FOREARM = 0.654m), and so the bones extend
-    // through visible screen real estate instead of going off the
-    // top/left of frame.
+    // reach, and so the bones extend through visible screen real
+    // estate instead of going off the top/left of frame.
     //
     // Approximate human shoulder pose is "10cm right, 25cm below,
-    // slight forward" — but with the weapon held at SWORD_IDLE_POS
-    // (0.35, -0.32, -0.55), that anatomical shoulder is OUT OF
-    // REACH (0.684m gap vs 0.654m arm). Pulled it slightly down
+    // slight forward" — but at the weapon's idle position that
+    // anatomical shoulder was OUT OF REACH. Pulled it slightly down
     // and forward so it's within reach AND the elbow bend lands
     // on-screen, not off the top-left.
+    //
+    // ── MEASURED 2026-08-15, because the numbers that used to be
+    // written here had rotted and made this look tighter than it is:
+    //   max reach   = HUMERUS + FOREARM = 0.32 + 0.42 = 0.740m
+    //                 (the old comment said 0.654m — stale)
+    //   shoulder→hand at the CURRENT SWORD_IDLE_POS (0.40,-0.34,-0.48)
+    //                 = 0.558m
+    //   before the v3 presence pass moved the hand
+    //                 = 0.561m
+    // So there is ~0.18m of slack and the IK is nowhere near clamping;
+    // the presence pass changed the span by 3mm. Both lengths are free
+    // to re-tune for LOOK — just re-measure this block if you do, and
+    // remember the lengths (not the radii) are what the IK solves on.
     // Dropped from Y=-0.40 to -0.55 to pull the shoulder lower in
     // camera-local. Effect: the shoulder→wrist line leans more
     // vertical (the wrist is at Y=-0.32, so the shoulder is now 23cm
