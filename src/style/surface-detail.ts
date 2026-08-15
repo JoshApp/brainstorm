@@ -50,7 +50,21 @@ const POM_FADE_FAR = 7.0;
 // (0.06) came out visibly flatter than the old screen-space path: that path was
 // over-driving relief at close range, which was part of what read as harsh.
 // ?relief= to dial.
-const RELIEF_METRES = urlNum('relief', 0.16, 0, 0.6);
+// 0.25 is Josh's setting after dialling it live: *"even the untextured looks
+// better at higher relief, i think it looks flatter at relief 0, i settled on
+// like 0.25."*
+const RELIEF_METRES = urlNum('relief', 0.25, 0, 0.6);
+// Hex-tiling strength. 0 = plain tiling (one sample), 1 = full stochastic
+// blend. ?hex=0 to A/B the repeat back.
+const HEX_MIX = urlNum('hex', 1, 0, 1);
+// How hard the hex weights are sharpened. This is the technique's central
+// trade and it has no free setting:
+//   HIGH  one sample dominates → contrast preserved, but cell borders become
+//         thin visible seams (the faint diagonal Xs across the wall)
+//   LOW   wide smooth blend → seams vanish, but three overlapping stones
+//         average toward grey mud and the stonework loses its punch
+// ?hexsharp= to find where it should sit.
+const HEX_SHARP = urlNum('hexsharp', 5, 1, 16);
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -81,6 +95,85 @@ function valueNoise2(p: any): any {
   const c = hash21(i.add((vec2 as any)(0, 1))), d = hash21(i.add((vec2 as any)(1, 1)));
   return (tslMix as any)((tslMix as any)(a, b, u.x), (tslMix as any)(c, d, u.x), u.y); // → [0,1]
 }
+// ── STOCHASTIC HEX TILING ────────────────────────────────────────────────────
+// Heitz & Neyret's technique, in Morten Mikkelsen's cheaper adaptation — the
+// standard answer to "the eye finds the repeat".
+//
+// Our tile repeats every couple of metres across every wall in the game, and
+// once the stones stopped being identical to each other that repeat became the
+// loudest remaining artefact: you see the same block, with the same chip in the
+// same corner, marching along the wall.
+//
+// How it works: lay a virtual TRIANGULAR grid over the surface. Every point
+// falls inside one triangle, so it has three corners and three barycentric
+// weights. Each corner hashes to its own random OFFSET into the texture. Sample
+// the texture three times at those three offsets and blend by the weights —
+// the pattern is now shuffled differently in every cell, and the cells blend
+// smoothly into each other, so nothing repeats and nothing seams.
+//
+// Mikkelsen's contribution is what makes it affordable: the original preserved
+// the texture's histogram through an expensive transform, because naively
+// averaging three samples washes out contrast (three random stones averaged
+// look like grey mud). Instead we SHARPEN the weights — raise them to a power
+// and renormalise — so one sample dominates almost everywhere and the blend
+// only happens in a narrow band near cell borders. Contrast survives, at the
+// cost of three taps instead of one.
+function hexSample(tex: THREE.Texture, uv: any, period: readonly [number, number]): any {
+  if (HEX_MIX <= 0) return (tslTexture as any)(tex, uv);
+  // Skew into a simplex/triangular grid. 3.464 = 2*sqrt(3) sets the cell size
+  // relative to one texture repeat — roughly one hex per tile, so the shuffle
+  // happens at the same scale as the repeat it is hiding.
+  const su: any = uv.mul(3.464);
+  const sx: any = su.x.sub(su.y.mul(0.57735027));
+  const sy: any = su.y.mul(1.15470054);
+  const bx: any = sx.floor(), by: any = sy.floor();
+  const fx: any = sx.fract(), fy: any = sy.fract();
+  const fz: any = float(1).sub(fx).sub(fy);
+  // Which half of the rhombus are we in — the lower-left or upper-right triangle.
+  const s: any = (fz.lessThan(0) as any).select(float(1), float(0));
+  const s2: any = s.mul(2).sub(1);
+  let w1: any = fz.mul(s2).negate();
+  let w2: any = s.sub(fy.mul(s2));
+  let w3: any = s.sub(fx.mul(s2));
+  // The three cell ids.
+  const v1: any = (vec2 as any)(bx.add(s), by.add(s));
+  const v2: any = (vec2 as any)(bx.add(s), by.add(float(1).sub(s)));
+  const v3: any = (vec2 as any)(bx.add(float(1).sub(s)), by.add(s));
+  // CONTRAST-PRESERVING WEIGHTS (the Mikkelsen part): sharpen so one sample
+  // dominates except in a thin blend band.
+  w1 = w1.max(0).pow(HEX_SHARP); w2 = w2.max(0).pow(HEX_SHARP); w3 = w3.max(0).pow(HEX_SHARP);
+  const wsum: any = w1.add(w2).add(w3).max(1e-5);
+  w1 = w1.div(wsum); w2 = w2.div(wsum); w3 = w3.div(wsum);
+  // ── OFFSETS QUANTISED TO THE PATTERN'S OWN PERIOD ──────────────────────────
+  // The first version used a free random offset, and it produced visible
+  // diagonal criss-cross breaks across the wall. That is not a bug in the
+  // implementation — it is what hex tiling DOES to a structured texture.
+  //
+  // The technique was designed for stochastic material (rock, dirt, bark),
+  // where shifting the pattern by any amount is invisible because there is no
+  // alignment to break. Masonry is the opposite: it is a GRID. Shift one hex
+  // cell by an arbitrary amount and its courses no longer line up with its
+  // neighbour's, so every cell boundary becomes a visible jog in the brickwork.
+  //
+  // Fix: snap the offset to whole multiples of the pattern's own period. The
+  // wall bake lays 4 bricks x 8 courses per tile, so offsets of k/4 and k/8
+  // land brick-on-brick — the courses stay continuous across cell boundaries
+  // while the STONES still shuffle, which is the repetition we actually wanted
+  // to kill. Structure preserved, repeat broken.
+  const per: readonly [number, number] = period;
+  const snap = (h: any, n: number): any => h.mul(n).floor().div(n);
+  const off = (v: any): any => (vec2 as any)(
+    snap(hash21(v), per[0]),
+    snap(hash21(v.add((vec2 as any)(37.1, 17.7))), per[1]),
+  );
+  const t1: any = (tslTexture as any)(tex, uv.add(off(v1)));
+  const t2: any = (tslTexture as any)(tex, uv.add(off(v2)));
+  const t3: any = (tslTexture as any)(tex, uv.add(off(v3)));
+  const blended: any = t1.mul(w1).add(t2.mul(w2)).add(t3.mul(w3));
+  // HEX_MIX lets it be dialled back toward plain tiling for an A/B.
+  return HEX_MIX >= 1 ? blended : (tslMix as any)((tslTexture as any)(tex, uv), blended, float(HEX_MIX));
+}
+
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
 // modulate the base albedo by its shade channel × tint, via a colorNode (a
 // supported migration slot on standard materials under WebGPURenderer).
@@ -109,6 +202,10 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (bounded + warmable). See surface-ao.ts for the same lesson on base colour.
   const uTile: any = (tslUniform as any)(new THREE.Vector2(cfg.tile[0], cfg.tile[1]));
   const uv: any = (vec2 as any)(sU.div(uTile.x), sV.div(uTile.y));
+  // The pattern's own period WITHIN one tile — what hex offsets snap to. The
+  // wall bake lays 4 bricks x 8 courses; the flagstone Voronoi has period 5.
+  const hexPeriod: readonly [number, number] =
+    cfg.hexPeriod ?? (cfg.proj === 'wall' ? [4, 8] : [5, 5]);
 
   // ── PARALLAX OCCLUSION MAPPING ─────────────────────────────────────────────
   // Josh: *"arent there ways to have more texture in the shader ... there must
@@ -174,7 +271,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     for (let i = 0; i < POM_STEPS; i++) {
       // Height channel is 1 = face, lower = recessed, so depth below the face
       // is (1 - h). We have hit the surface once the ray is deeper than it.
-      const surfD: any = float(1).sub((tslTexture as any)(cfg.tex, curUV).a);
+      const surfD: any = float(1).sub(hexSample(cfg.tex, curUV, hexPeriod).a);
       const hit: any = (curD.greaterThanEqual(surfD) as any).select(float(1), float(0));
       const fresh: any = hit.mul(float(1).sub(done));      // keep the FIRST hit only
       hitUV = (tslMix as any)(hitUV, curUV, fresh);
@@ -206,7 +303,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     pomUV = (tslMix as any)(uv, pomUV, done);
   }
 
-  const sampled: any = (tslTexture as any)(cfg.tex, pomUV);
+  const sampled: any = hexSample(cfg.tex, pomUV, hexPeriod);
   // UNIFORM-backed base colour (materialColor), NOT vec3(mat.color.*): a vec3(...)
   // literal bakes the wall/floor tint into the WGSL, forking a fresh shader per
   // distinct shell colour (per-floor pipeline churn). materialColor reads the
@@ -471,7 +568,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const texW: number = Number((cfg.tex.image as { width?: number } | undefined)?.width) || 512;
   const texel: number = 1 / texW;
   const hAt = (du: number, dv: number): any =>
-    (tslTexture as any)(cfg.tex, pomUV.add((vec2 as any)(du * texel, dv * texel))).a;
+    hexSample(cfg.tex, pomUV.add((vec2 as any)(du * texel, dv * texel)), hexPeriod).a;
   // Central differences → slope of the height field along U and V, converted
   // from texel-space to metres using the tile size.
   const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
@@ -520,6 +617,11 @@ export interface SurfaceTexConfig {
    *  whose RGB carries [shade, variant, wear] instead. This changes how the
    *  shader reads every channel — see the note at the top of the WebGPU install. */
   colorTex?: boolean;
+  /** The pattern's own period WITHIN one tile, used to snap hex-tiling offsets
+   *  so a structured texture's grid stays aligned across cells. Defaults to the
+   *  CPU bake's periods (wall = 4 bricks x 8 courses, floor = 5x5 flagstones).
+   *  A generated map needs its own value — see the note in hexSample. */
+  hexPeriod?: readonly [number, number];
   tile: readonly [number, number];     // world metres per repeat
   proj: 'wall' | 'horiz';              // wall = vertical plane, horiz = floor/ceiling
   tint: readonly [number, number, number];
