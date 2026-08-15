@@ -39,6 +39,11 @@ const urlNum = (key: string, dflt: number, lo: number, hi: number): number => {
 const STONE_HUE_SPREAD = urlNum('stonehue', 0.85, 0, 2);
 const STONE_WEAR_SPREAD = urlNum('stonewear', 0.30, 0, 1);
 const POM_DEPTH_M = urlNum('pomdepth', POM_DEPTH_DEFAULT, 0, 0.3);
+const MOSS_AMOUNT = urlNum('moss', 0.75, 0, 2);
+// Metres over which POM depth fades to nothing. Beyond this the mip chain has
+// flattened the height field anyway, so marching it only buys artefacts.
+const POM_FADE_NEAR = 3.5;
+const POM_FADE_FAR = 7.0;
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -138,16 +143,27 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // long streaks, the classic POM failure. The clamp trades a little depth at
     // glancing angles for never breaking — and glancing is exactly where these
     // walls are seen most (see the surface-lab notes on raking light).
-    const tN: any = (tslClamp as any)(viewW.dot(nrm).abs(), 0.35, 1.0);
-    const uPer: any = tU.div(tN).mul(POM_DEPTH_M).div(uTile.x);
-    const vPer: any = tV.div(tN).mul(POM_DEPTH_M).div(uTile.y);
+    const tN: any = (tslClamp as any)(viewW.dot(nrm).abs(), 0.45, 1.0);
+    // DISTANCE FADE. Past a few metres the mip chain has already averaged the
+    // height field flat, so the march is stepping through mush — it produces
+    // artefacts rather than depth, and pays full price for them. Fade the depth
+    // out and the far wall simply goes back to being a normal-mapped surface,
+    // which at that distance is indistinguishable anyway.
+    const dist: any = (cameraPosition as any).sub(pos).length();
+    const fade: any = float(1).sub((tslSmoothstep as any)(POM_FADE_NEAR, POM_FADE_FAR, dist));
+    const depthN: any = float(POM_DEPTH_M).mul(fade);
+    const uPer: any = tU.div(tN).mul(depthN).div(uTile.x);
+    const vPer: any = tV.div(tN).mul(depthN).div(uTile.y);
     const stepUV: any = (vec2 as any)(uPer, vPer).mul(-1 / POM_STEPS);
     const stepD: any = float(1 / POM_STEPS);
 
     let curUV: any = uv;
     let curD: any = float(0);
-    let hitUV: any = uv;
+    let hitUV: any = uv, prevUV: any = uv;
+    let hitSurf: any = float(0), hitRay: any = float(0);
+    let prevSurf: any = float(1), prevRay: any = float(0);
     let done: any = float(0);
+    let lastUV: any = uv, lastSurf: any = float(1), lastRay: any = float(0);
     for (let i = 0; i < POM_STEPS; i++) {
       // Height channel is 1 = face, lower = recessed, so depth below the face
       // is (1 - h). We have hit the surface once the ray is deeper than it.
@@ -155,11 +171,32 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       const hit: any = (curD.greaterThanEqual(surfD) as any).select(float(1), float(0));
       const fresh: any = hit.mul(float(1).sub(done));      // keep the FIRST hit only
       hitUV = (tslMix as any)(hitUV, curUV, fresh);
+      hitSurf = (tslMix as any)(hitSurf, surfD, fresh);
+      hitRay = (tslMix as any)(hitRay, curD, fresh);
+      // ...and the sample just BEFORE it, which is what the interpolation needs.
+      prevUV = (tslMix as any)(prevUV, lastUV, fresh);
+      prevSurf = (tslMix as any)(prevSurf, lastSurf, fresh);
+      prevRay = (tslMix as any)(prevRay, lastRay, fresh);
       done = (tslClamp as any)(done.add(hit), 0, 1);
+      lastUV = curUV; lastSurf = surfD; lastRay = curD;
       curUV = curUV.add(stepUV);
       curD = curD.add(stepD);
     }
-    pomUV = hitUV;
+    // ── THE INTERPOLATION STEP, which I left out and Josh caught ──────────────
+    // *"the pom is doing artifacts i confirmed."* Correct. A linear march alone
+    // is STEEP PARALLAX, not parallax OCCLUSION — it snaps the hit to whichever
+    // discrete step first went under the surface, so every recess edge lands on
+    // a step boundary and the whole wall stairsteps. The occlusion part is
+    // exactly this: solve for where the ray and the height field actually cross
+    // BETWEEN the last two samples. One lerp, no extra texture reads, and it is
+    // the difference between visible banding and none.
+    const after: any = hitSurf.sub(hitRay);            // <= 0 at the hit
+    const before: any = prevSurf.sub(prevRay);         // >  0 before it
+    const denom: any = before.sub(after);
+    const w: any = (tslClamp as any)(before.div(denom.add(1e-5)), 0, 1);
+    pomUV = (tslMix as any)(hitUV, prevUV, w);
+    // Rays that never hit keep the flat UV rather than the last marched one.
+    pomUV = (tslMix as any)(uv, pomUV, done);
   }
 
   const sampled: any = (tslTexture as any)(cfg.tex, pomUV);
@@ -227,6 +264,47 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   albedo = albedo.mul((tslMix as any)(
     float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))),
   ));
+
+  // ── MOSS / LICHEN ──────────────────────────────────────────────────────────
+  // Josh: *"i need more things its still bland, there must be other things we
+  // can do like moss on the walls etc."*
+  //
+  // Every layer so far modulates STONE. Moss is the first thing that is not
+  // stone — a second material living on top of it — and that is why it does
+  // more for "bland" than another octave of grime would. It also carries the
+  // only green in the palette, against a room lit amber, so it reads instantly.
+  //
+  // It is placed by the same logic that places real moss, which is what keeps
+  // it from looking like green noise:
+  //   LOW      it needs damp, and damp collects near the floor. Strongest in
+  //            the bottom ~1.6m of a wall, gone by head height.
+  //   SHELTER  it takes hold in the crevices and pits first, where water sits
+  //            and nothing scrubs it off — so it keys off the SAME cavity term
+  //            the dirt uses, which makes filth and growth agree.
+  //   PATCHY   colonies, not a coat. A separate low-frequency field decides
+  //            where a colony took, and a high-frequency one gives it a fuzzy,
+  //            eaten edge instead of a painted outline.
+  // It also goes ROUGH — moss is the least reflective thing in the room, so it
+  // kills the grazing sheen exactly where it grows and breaks up the highlight.
+  let mossMask: any = float(0);
+  if (MOSS_AMOUNT > 0) {
+    const colony: any = valueNoise2((vec2 as any)(sU.mul(0.19), sV.mul(0.19)));
+    const fuzz: any = valueNoise2((vec2 as any)(sU.mul(2.6), sV.mul(2.6)));
+    const damp: any = cfg.proj === 'wall'
+      ? float(1).sub((tslSmoothstep as any)(0.35, 1.75, (positionWorld as any).y))
+      : float(0.55);                       // floors are damp all over, less strongly
+    const took: any = (tslSmoothstep as any)(0.52, 0.88, colony.mul(0.75).add(fuzz.mul(0.25)));
+    mossMask = (tslClamp as any)(
+      took.mul(damp).mul(float(0.45).add(cavity.mul(0.75))).mul(MOSS_AMOUNT), 0, 1,
+    );
+    // Two greens: the wet dark of a thick colony, and the pale grey-green of
+    // lichen at its dying edge. Mixing by the fuzz field means a patch is
+    // darker in its middle, which is what stops it reading as a flat decal.
+    const MOSS_DEEP: any = (vec3 as any)(0.16, 0.30, 0.14);
+    const MOSS_EDGE: any = (vec3 as any)(0.42, 0.48, 0.33);
+    const mossCol: any = (tslMix as any)(MOSS_DEEP, MOSS_EDGE, fuzz);
+    albedo = (tslMix as any)(albedo, albedo.mul(0.35).add(mossCol.mul(0.65)), mossMask);
+  }
 
   // GRAVITY STREAKS — walls only. Every layer above this one is isotropic, and
   // isotropic noise is a tell: real filth has a DIRECTION, because water and
@@ -308,7 +386,11 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // both ways rather than only adding.
   const stoneWear: any = wear.sub(0.5).mul(STONE_WEAR_SPREAD);
   const varied: any = (tslClamp as any)(
-    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear),
+    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear)
+      // Moss is the least reflective thing in the room. Pushing it toward fully
+      // matte kills the grazing sheen exactly where it grows, so the highlight
+      // breaks around the colonies instead of sliding over them.
+      .add(mossMask.mul(0.45)),
     0.18, 1.0,
   );
   (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);
