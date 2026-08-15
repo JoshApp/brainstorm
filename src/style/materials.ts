@@ -50,7 +50,21 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   });
   const floorBase = new THREE.MeshStandardMaterial({
     color: CONFIG.FLOOR_COLOR,
-    roughness: 1.0,
+    // ROUGHNESS 1.0 → 0.72, and this is the half that isn't about colour.
+    //
+    // Wall 0.95 vs floor 1.0 is no difference at all: both are fully matte, so
+    // both return light the same way and only the albedo separates them — and
+    // with near-black albedo the LIGHT dominates, so they collapse into one
+    // material at two brightnesses. That's the real reason value contrast alone
+    // never fixed this.
+    //
+    // A rougher-than-matte floor can't have a highlight; a smoother one can.
+    // At 0.72 the flagstones take a broad grazing sheen from torchlight — damp
+    // stone — which does three things a colour change cannot: it CARRIES THE
+    // LIGHT'S COLOUR (the premise Josh wants kept), it MOVES with the player,
+    // and it responds to where the flame actually is. Floor and wall now differ
+    // in how they answer light, not just in what colour they are.
+    roughness: 0.72,
     metalness: 0.0,
     vertexColors: true,
     emissive: floorEmissive,
@@ -138,7 +152,17 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // too light/yellow and broke the grimdark. Just a quiet darken in the gaps.
     splat: true, seamShadow: true, seamGlowScale: 0.35,
     tex: bakeSurfaceTexture(renderer, 'floor'),
-    tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.32,
+    // TINT WAS [1.08, 0.9, 0.64] — a hard amber multiply on the floor's albedo:
+    // blue cut by 36%. THAT is why the floor and the wall read as the same
+    // stone. Josh: *"the floor and wall look the exact same hue ... they have
+    // the exact same shade."* The wall's tint is neutral [1,1,1], so the floor
+    // was being pushed warm to meet it, and any change to FLOOR_COLOR was
+    // multiplied straight back out again — which is why making the base colour
+    // cool did nothing visible.
+    //
+    // Now cool, mirroring the ceiling's existing [0.7, 0.8, 1.05]. The system
+    // always supported per-surface tinting; the floor was simply authored warm.
+    tile: SURFACE_TILE.floor, proj: 'horiz', tint: [0.90, 0.97, 1.12], relief: 0.32,
   });
   installSurfaceDetail(ceilingBase, {
     seamShadow: true,   // panel/beam SHADOW for depth — no coloured glow (that looked weird up there)
