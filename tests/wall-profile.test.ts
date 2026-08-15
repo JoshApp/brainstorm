@@ -88,15 +88,42 @@ test('plain is one flush band — the pre-grammar wall', () => {
   }
 });
 
-test('depth offsets stay within the cosmetic budget', () => {
-  // Wall collision is a line on the wall plane, so a proud band is geometry the
-  // player walks through. Past ~8cm it reads as a ledge you ought to be able to
-  // stand on and can't.
+test('no band stands proud of the wall plane', () => {
+  // Wall collision is a line on the wall PLANE. A band at positive depth is
+  // geometry the player walks through — a ledge that clips your knees, which
+  // reads worse than the flat wall it replaced. Profiles must put the frontmost
+  // course at 0 and recess everything else. This is the rule the first version
+  // of these profiles broke.
   for (const name of WALL_PROFILE_NAMES) {
     for (const b of resolveProfile(name, 3.2)) {
       assert.ok(
-        Math.abs(b.depth) <= 0.08 + EPS,
-        `${name}: band '${b.name}' depth ${b.depth} exceeds the 0.08m cosmetic budget`,
+        b.depth <= EPS,
+        `${name}: band '${b.name}' stands proud at depth ${b.depth} — recess instead`,
+      );
+    }
+  }
+});
+
+test('every profile touches the wall plane somewhere', () => {
+  // If a profile recessed EVERY band, collision would sit a visible distance in
+  // front of all the stone and the player would stop against thin air.
+  for (const name of WALL_PROFILE_NAMES) {
+    const bands = resolveProfile(name, 3.2);
+    assert.ok(
+      bands.some((b) => Math.abs(b.depth) < EPS),
+      `${name}: no band sits at depth 0, so collision floats off the geometry`,
+    );
+  }
+});
+
+test('recesses stay shallow enough to be masonry', () => {
+  // A recess deeper than the wall is thick stops being a course and becomes an
+  // alcove — and would punch through into whatever is on the other side.
+  for (const name of WALL_PROFILE_NAMES) {
+    for (const b of resolveProfile(name, 3.2)) {
+      assert.ok(
+        b.depth >= -0.25,
+        `${name}: band '${b.name}' recessed ${b.depth} — that's an alcove, not a course`,
       );
     }
   }

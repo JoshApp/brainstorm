@@ -41,10 +41,14 @@
 // a number across a branch.)
 //
 // ── CONSTRAINTS A PROFILE AUTHOR MUST RESPECT ───────────────────────────────
-// 1. DEPTH IS COSMETIC. Wall collision is recorded separately as a line along
-//    the wall plane, so a band standing proud is geometry the player walks
-//    through. Keep |depth| small (<= ~0.08m) or it will read as a ledge you
-//    ought to be able to stand on and can't.
+// 1. NEVER GO PROUD. Wall collision is a line along the wall PLANE, so a band
+//    at positive depth is geometry the player walks through — a ledge that
+//    clips your knees, which reads worse than a flat wall. Author the
+//    frontmost course at depth 0 and RECESS everything else (negative). Being
+//    stopped slightly short of a hollow is physically correct, and the player
+//    capsule already holds you ~30cm off a wall, so a deep recess is free.
+//    This is why the profiles below bottom out at -0.16 rather than standing
+//    +0.055 proud: see the note above COURSED.
 // 2. BANDS MUST SUM TO THE WALL HEIGHT. `resolveProfile` normalises for you —
 //    it scales flexible bands to fill whatever height the room actually has,
 //    since room heights vary and a profile is authored once.
@@ -88,17 +92,48 @@ const PLAIN: WallBand[] = [
   { name: 'field', h: 1, depth: 0, mat: 'wall' },
 ];
 
+// ── THE FIRST VERSION OF THESE WAS INVISIBLE ────────────────────────────────
+// Shipped with the proud bands at +0.055 / +0.045. Josh, on the live build:
+// *"i dont see a difference with wall coursed tbh."* He was right, and it took
+// a REAL browser to see why — the headless snap's broken grade had been
+// flattering flat geometry all along.
+//
+// The geometry was building correctly (coursed 107,298 tris vs plain 91,832,
+// +17%). Two reasons it couldn't read:
+//
+//   1. THE WALL MATERIAL ALREADY HAS STRONG BRICK RELIEF. The shader draws
+//      ~40cm blocks with deep mortar lines, high contrast. A 5cm step is noise
+//      against that. Whatever the grammar does has to out-scale the pattern
+//      that's already there, not compete with it.
+//   2. NEAR-DARKNESS HIDES SHALLOW STEPS. Relief only reads where light rakes
+//      across it, and most of a DELVE wall is 2+ metres from the nearest
+//      flame. A step needs to be deep enough to throw a shadow at a grazing
+//      angle, not merely to exist.
+//
+// ── AND THE FIX INVERTS THE DESIGN ──────────────────────────────────────────
+// The obvious response — push the proud bands further out — runs straight into
+// the collision constraint: wall collision is a line on the wall PLANE, so
+// proud geometry is geometry the player walks through, and a 15cm ledge that
+// clips your knees is worse than a flat wall.
+//
+// So RECESS instead. The reference course sits AT the wall plane (depth 0) and
+// everything else falls back behind it. Collision now sits flush with the
+// frontmost stone — nothing is walk-through — and the recess can go as deep as
+// the look wants, because being blocked slightly before a hollow is physically
+// correct and the player capsule already holds you ~30cm off a wall.
+//
+// Same relief, right side of the collision plane, and no ceiling on depth.
+
 /**
- * PLINTH — the cheapest departure from flat: a proud base course, nothing else.
+ * PLINTH — the cheapest departure from flat: a base course and a recessed field.
  *
- * One extra band and one connector, and it buys the single most valuable line
- * in the room: a horizontal shadow where wall meets floor, running the whole
- * perimeter. Grounds the wall instead of letting it meet the floor at a bare
- * seam. Safe default for rooms that shouldn't draw attention to themselves.
+ * One extra band and one connector, buying the single most valuable line in the
+ * room: a horizontal shadow where wall meets floor, running the whole perimeter.
+ * Safe default for rooms that shouldn't draw attention to themselves.
  */
 const PLINTH: WallBand[] = [
-  { name: 'plinth', h: 0.42, depth: 0.055, mat: 'dressed', fixed: true },
-  { name: 'field',  h: 1.0,  depth: 0,     mat: 'wall' },
+  { name: 'plinth', h: 0.42, depth: 0,     mat: 'dressed', fixed: true },
+  { name: 'field',  h: 1.0,  depth: -0.10, mat: 'wall' },
 ];
 
 /**
@@ -106,20 +141,19 @@ const PLINTH: WallBand[] = [
  *
  * The full grammar, for rooms that earn a look: five bands and four depth
  * changes, so light rakes across four horizontal edges instead of none. The
- * recessed field between plinth and string course is what stops the wall
- * reading as a stack of shelves — the proud courses need something to be proud
- * OF.
+ * deeply recessed fields are what stop the wall reading as a stack of shelves —
+ * the standing courses need something to stand proud OF.
  *
- * The cap is deliberately shallower than the plinth. Weight belongs at the
- * bottom; a heavier cap than base reads as top-heavy and wrong, and the eye
+ * The cap sits deeper than the plinth. Weight belongs at the bottom; a cap that
+ * projects further than the base reads as top-heavy and wrong, and the eye
  * notices even when it can't say why.
  */
 const COURSED: WallBand[] = [
-  { name: 'plinth',  h: 0.38, depth: 0.055, mat: 'dressed', fixed: true },
-  { name: 'lower',   h: 1.0,  depth: -0.02, mat: 'wall' },
-  { name: 'string',  h: 0.22, depth: 0.045, mat: 'dressed', fixed: true },
-  { name: 'upper',   h: 0.8,  depth: 0,     mat: 'wall' },
-  { name: 'cap',     h: 0.20, depth: 0.030, mat: 'dressed', fixed: true },
+  { name: 'plinth',  h: 0.38, depth: 0,     mat: 'dressed', fixed: true },
+  { name: 'lower',   h: 1.0,  depth: -0.16, mat: 'wall' },
+  { name: 'string',  h: 0.22, depth: -0.02, mat: 'dressed', fixed: true },
+  { name: 'upper',   h: 0.8,  depth: -0.16, mat: 'wall' },
+  { name: 'cap',     h: 0.20, depth: -0.06, mat: 'dressed', fixed: true },
 ];
 
 const PROFILES: Record<WallProfileName, WallBand[]> = {
@@ -190,7 +224,20 @@ export const WALL_PROFILE_NAMES = Object.keys(PROFILES) as WallProfileName[];
  * Cheap by the numbers above: the shell is 0.5% of drawables and these bands
  * merge into the groups that were already being merged.
  */
-export const DEFAULT_WALL_PROFILE: WallProfileName = 'plinth';
+// TEMPORARILY 'coursed', FOR JUDGEMENT — not the intended end state.
+//
+// The preview flag below is DEV-gated, which means it is dead-code-eliminated
+// from the production bundle and cannot do anything on the live site. Josh
+// tests on his phone against the live URL, so `?wallprofile=coursed` was a
+// preview affordance for a workflow he doesn't use — which is why his first
+// look at this reported no difference at all.
+//
+// Until the per-room assignment exists, the loud profile is the default so it
+// can actually be seen where it's actually judged. The end state is 'plinth'
+// (or plain) everywhere ordinary and 'coursed' on rooms that have earned a
+// look — a room reading as deliberately BUILT should mean something, and it
+// can't if every room does it.
+export const DEFAULT_WALL_PROFILE: WallProfileName = 'coursed';
 
 /**
  * DEV-only override so a profile can be previewed on a real seeded floor
