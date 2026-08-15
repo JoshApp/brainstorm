@@ -53,6 +53,10 @@ const POM_FADE_FAR = 7.0;
 // better at higher relief, i think it looks flatter at relief 0, i settled on
 // like 0.25."*
 const RELIEF_METRES = urlNum('relief', 0.25, 0, 0.6);
+// Binary-refinement iterations after the linear POM march. Four halvings cut
+// the residual error 16x for four texture reads. ?pomrefine=0 shows the banding
+// this removes.
+const POM_REFINE: number = Math.round(urlNum('pomrefine', 4, 0, 8));
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -231,7 +235,37 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     const before: any = prevSurf.sub(prevRay);         // >  0 before it
     const denom: any = before.sub(after);
     const w: any = (tslClamp as any)(before.div(denom.add(1e-5)), 0, 1);
-    pomUV = (tslMix as any)(hitUV, prevUV, w);
+    let refined: any = (tslMix as any)(hitUV, prevUV, w);
+
+    // ── BINARY REFINEMENT — the half I skipped, and Josh found it ─────────────
+    // *"it looks like the card stack, is there a better technique for this?"*
+    // Yes, and this is it. The linear interpolation above assumes the surface
+    // varies LINEARLY between the last two samples. Across a sloped joint that
+    // is true. Across anything steeper it is badly wrong, and the hit snaps to
+    // the step that straddled it — one visible band per march step, which is
+    // exactly what his screenshot shows (about eight bands, and POM_STEPS is 8).
+    //
+    // Bisecting instead makes no assumption about the shape at all: sample the
+    // midpoint, keep whichever half still contains the crossing, repeat. Four
+    // iterations divide the remaining error by sixteen, for four texture reads
+    // and no extra marching. This is the step that separates parallax occlusion
+    // mapping from relief mapping proper, and I described leaving it out as a
+    // considered trade when it was really just an omission.
+    let loUV: any = prevUV, hiUV: any = hitUV;
+    let loD: any = prevRay, hiD: any = hitRay;
+    for (let k = 0; k < POM_REFINE; k++) {
+      const midUV: any = (tslMix as any)(loUV, hiUV, float(0.5));
+      const midD: any = loD.add(hiD).mul(0.5);
+      const midSurf: any = float(1).sub((tslTexture as any)(cfg.tex, midUV).a);
+      // Still ABOVE the surface → the crossing is in the far half.
+      const above: any = (midD.lessThan(midSurf) as any).select(float(1), float(0));
+      loUV = (tslMix as any)(loUV, midUV, above);
+      loD = (tslMix as any)(loD, midD, above);
+      hiUV = (tslMix as any)(midUV, hiUV, above);
+      hiD = (tslMix as any)(midD, hiD, above);
+    }
+    if (POM_REFINE > 0) refined = (tslMix as any)(loUV, hiUV, float(0.5));
+    pomUV = refined;
     // Rays that never hit keep the flat UV rather than the last marched one.
     pomUV = (tslMix as any)(uv, pomUV, done);
   }

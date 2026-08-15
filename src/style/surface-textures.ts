@@ -93,6 +93,25 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   const cpos = mixf(0.3, 0.7, dHash(idx, idy, 7.7));
   const crack = crackable * (1 - smooth(0, 0.012 + aa, Math.abs(inbx - cpos)));
   const recess = Math.max(mortar, crack * 0.85);
+  // ── THE JOINT NEEDS A SLOPE, NOT A CLIFF ───────────────────────────────────
+  // Josh: *"it looks like the card stack, is there a better technique for
+  // this?"* — with ~8 visible bands along each joint, and POM marching 8 steps.
+  //
+  // The cause is a CLIFF in the height field. `mortar` transitions over 2*aa,
+  // about a texel, so the side of every joint is essentially VERTICAL. A ray
+  // march samples at discrete depths, and where the surface is vertical the
+  // interpolation between two samples has nothing sane to interpolate — the hit
+  // snaps to whichever step straddled the cliff, and you get one band per step.
+  // No step count fixes that; it just moves the bands closer together.
+  //
+  // The fix is to remove the cliff. A real mortar joint is not a vertical-sided
+  // slot — it is raked and weathered BACK, so the stone slopes into it. Giving
+  // the HEIGHT channel its own much wider ramp models that, and a ray marching
+  // a slope lands where it should. The SHADE keeps the narrow ramp, so the
+  // joint still reads as a crisp dark line: sharp where the eye wants an edge,
+  // sloped where the march needs one.
+  const hMortar = (1 - smooth(0.012, 0.085, dseam)) * seamVar;
+  const hRecess = Math.max(hMortar, crack * 0.7);
   // PER-BRICK SET (v3). Every brick face used to sit flush at height 1.0 —
   // only the mortar and cracks had any depth — so a wall was a flat plane with
   // lines drawn on it and each block read as a painted rectangle rather than a
@@ -132,7 +151,7 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   const h = clampf(1.0 + set + tilt - spallD, 0.25, 1.15);
   return [
     mixf(tone, 0.5, recess) * mixf(1.0, 0.72, spall),
-    mixf(h, 0.4, recess),
+    mixf(h, 0.4, hRecess),
     dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
     clampf(dHash(idx, idy, 9.6) + spall * 0.35, 0, 1),  // WEAR — spalled faces are rougher
   ];
@@ -284,6 +303,9 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // sit on corners rather than ringing every stone.
   const bite = smooth(0.10, 0.0, edM) * smooth(0.72, 0.95, rimN);
   const recess = Math.max(seam, missing);
+  // Sloped gap walls for the height channel — see the note in brickCPU. The
+  // shade keeps the narrow seam so the joint stays a crisp line.
+  const hSeam = 1 - smooth(chipW * 0.4, chipW + 0.075, edM);
   // PER-FLAG SET + TILT (v3). Josh: *"the floor and wall mosaic is bland."*
   // The reason was that every flagstone was perfectly flush — the Voronoi gave
   // each stone a shape and a tone, but they all lay in one plane, so the floor
@@ -312,7 +334,7 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   const h = clampf(1.0 + set + tilt - pit - bite * 0.30, 0.12, 1.15);
   return [
     mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
-    mixf(h, 0.35, seam),
+    mixf(h, 0.35, hSeam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
     clampf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3, 0, 1),  // WEAR — broken stone + bare earth are rough
   ];
