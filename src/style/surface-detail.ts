@@ -106,8 +106,27 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // Meter-space projected coords (sU,sV); uv divides by the tile to get repeats.
   let sU: any, sV: any;
   if (cfg.proj === 'wall') {
-    sU = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
-    sV = pos.y;
+    // ── THE THIRD AXIS, which was missing ─────────────────────────────────────
+    // Josh: *"some textures that are like top or bottom facing flicker weirdly,
+    // kinda the texture alignment flickering wild if i move."*
+    //
+    // Real bug, and this line was it. The horizontal axis was chosen by
+    // comparing |nx| against |nz| — fine for a genuine WALL, where one of them
+    // dominates. But a face pointing UP or DOWN has BOTH near zero, so the
+    // comparison is decided by whatever noise is left in the interpolated
+    // normal: it flips between neighbouring pixels and between frames, and the
+    // texture snaps 90° back and forth as you move. Props and framing use the
+    // 'wall' projection and have plenty of horizontal faces, which is exactly
+    // where it showed.
+    //
+    // A two-axis projection cannot describe a horizontal surface. Fall back to
+    // the XZ plane when the face is mostly vertical-facing — which is both
+    // stable AND correct, since an up-facing surface should be laid out in the
+    // ground plane rather than stretched along world Y.
+    const flat: any = nrm.y.abs().greaterThan(0.707);
+    const sideU: any = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
+    sU = (flat as any).select(pos.x, sideU);
+    sV = (flat as any).select(pos.z, pos.y);
   } else {
     sU = pos.x; sV = pos.z;
   }

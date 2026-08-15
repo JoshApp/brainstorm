@@ -105,9 +105,21 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // of washing the whole wall evenly. The step between neighbouring plateaus
   // lands inside the mortar line, which is already recessed, so it reads as
   // masonry and not as a seam artefact.
-  const set = mixf(-0.055, 0.04, dHash(idx, idy, 3.1));
+  // SET RANGE CUT, and the reason is worth writing down. Josh: *"the relief of
+  // the stones reads a bit like the stacked card deck from old windows games,
+  // like its like layers visible."* Exactly right — every brick was a FLAT
+  // PLATEAU at its own discrete height, and POM renders the vertical side of a
+  // plateau as a hard step. A wall of plateaus at ~10 distinct heights is a
+  // stack of cards, and the ray march is honest enough to show it.
+  //
+  // Two fixes together: halve the range so neighbouring plateaus differ by less
+  // than the mortar is deep (the step then hides INSIDE the joint, where a step
+  // belongs), and lean on `tilt` instead — a tilted face has no vertical side
+  // to catch the light, so it reads as a stone that settled rather than a card
+  // that was dealt.
+  const set = mixf(-0.026, 0.020, dHash(idx, idy, 3.1));
   const tAng = dHash(idx, idy, 6.4) * Math.PI * 2;
-  const tAmt = mixf(0.012, 0.055, dHash(idx, idy, 8.8));
+  const tAmt = mixf(0.022, 0.075, dHash(idx, idy, 8.8));   // more lean, fewer cliffs
   const tilt = (Math.cos(tAng) * (inbx - 0.5) + Math.sin(tAng) * (inby - 0.5)) * 2 * tAmt;
   // Tone widened 0.86..1.0 → 0.80..1.06: with light now varying per block, the
   // albedo can carry more spread without the wall reading as noise.
@@ -305,6 +317,82 @@ function dirBlurWrap(src: Float32Array, W: number, H: number,
   return out;
 }
 
+// ── OPERATOR: CHAINED EROSION ────────────────────────────────────────────────
+// The werkkzeug weathering loop, and the last of the operators worth borrowing:
+// BLUR → RE-THRESHOLD → DISTORT, repeated. One pass of any of them is a hint;
+// three iterations is geology.
+//
+// Why the loop does something a single bigger blur cannot:
+//   BLUR alone converges. Keep blurring and every field marches toward its own
+//   average — flat grey. The information dies.
+//   RE-THRESHOLD is what makes it survive: after each blur, push the values
+//   back apart so the smeared field regains hard edges. Blur smears, threshold
+//   re-crisps, and the pair leaves a shape that is neither the original nor
+//   mush — it is the original DIGESTED.
+//   DISTORT then bends the result before the next pass, so the second blur runs
+//   along a slightly different path than the first. That is what stops it
+//   looking like a directional smear and starts it looking like flow.
+//
+// Iterations shrink as they go: the first carves broad channels, the last adds
+// fine branching. Large features first is how erosion actually proceeds, and
+// doing it the other way round just sands the detail off again.
+function sampleWrapBilinear(f: Float32Array, W: number, H: number, x: number, y: number): number {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const ix0 = ((x0 % W) + W) % W, iy0 = ((y0 % H) + H) % H;
+  const ix1 = (ix0 + 1) % W, iy1 = (iy0 + 1) % H;
+  return mixf(
+    mixf(f[iy0 * W + ix0], f[iy0 * W + ix1], fx),
+    mixf(f[iy1 * W + ix0], f[iy1 * W + ix1], fx),
+    fy,
+  );
+}
+/** Resample a field through a periodic noise displacement — the DISTORT step. */
+function distortField(src: Float32Array, W: number, H: number, amp: number, per: number): Float32Array {
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = x / W, v = y / H;
+      const dx = (vnoiseP(u * per, v * per, per, per) - 0.5) * 2 * amp * W;
+      const dy = (vnoiseP(u * per + 5.3, v * per + 9.1, per, per) - 0.5) * 2 * amp * H;
+      out[y * W + x] = sampleWrapBilinear(src, W, H, x + dx, y + dy);
+    }
+  }
+  return out;
+}
+function chainedErosion(
+  src: Float32Array, W: number, H: number,
+  dx: number, dy: number, taps: number, iters: number,
+): Float32Array {
+  let f = src;
+  for (let i = 0; i < iters; i++) {
+    const shrink = Math.pow(0.55, i);                 // each pass finer than the last
+    const t = Math.max(2, Math.round(taps * shrink));
+    // Rotate the flow slightly each pass so the second smear does not simply
+    // retrace the first — real runs braid, they do not stack.
+    const ang = (i - (iters - 1) / 2) * 0.22;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    f = dirBlurWrap(f, W, H, dx * ca - dy * sa, dx * sa + dy * ca, t);
+    // RE-THRESHOLD around the field's own mean, so the pass cannot drift bright
+    // or dark over iterations — it only ever redistributes.
+    let mean = 0;
+    for (let k = 0; k < f.length; k++) mean += f[k];
+    mean /= f.length;
+    // BAND WIDTH is what decides whether this reads as weathering or as
+    // holstein. Josh: *"it reads like cow pattern, but its a lead."* A tight
+    // band around the mean turns the smear into a two-tone mask — big soft
+    // blobs with hard shoulders, i.e. cow. Widening it keeps the field
+    // CONTINUOUS, so the erosion comes out as a gradient of staining with a few
+    // strong runs in it rather than patches of on and off. The band also widens
+    // per iteration, so early passes shape and later ones only shade.
+    const band = 0.34 + i * 0.10;
+    const lo = mean - band, hi = mean + band;
+    for (let k = 0; k < f.length; k++) f[k] = smooth(lo, hi, f[k]);
+    if (i < iters - 1) f = distortField(f, W, H, 0.012 * shrink, 6);
+  }
+  return f;
+}
+
 // ── OPERATOR: COLOUR / TONE REMAP ────────────────────────────────────────────
 // The third werkkzeug operator, and the cheapest of the lot: push a monochrome
 // field through a curve. Generators produce values spread evenly across their
@@ -325,12 +413,12 @@ function toneRemap(v: number, pivot: number, contrast: number): number {
 
 // Per-surface operator settings. Erosion runs ALONG a direction: down a wall
 // (water), and across a floor (traffic).
-const EROSION: Record<SurfaceKind, { dx: number; dy: number; taps: number; amt: number }> = {
-  wall:    { dx: 0.12, dy: 1, taps: 14, amt: 0.30 },   // runs DOWN the wall
-  floor:   { dx: 1, dy: 0.35, taps: 10, amt: 0.22 },   // dragged across
-  ceiling: { dx: 0, dy: 1, taps: 8, amt: 0.10 },
-  dressed: { dx: 0.1, dy: 1, taps: 8, amt: 0.10 },
-  grain:   { dx: 0, dy: 0, taps: 1, amt: 0 },
+const EROSION: Record<SurfaceKind, { dx: number; dy: number; taps: number; amt: number; iters: number }> = {
+  wall:    { dx: 0.12, dy: 1, taps: 18, amt: 0.20, iters: 3 },   // runs DOWN the wall
+  floor:   { dx: 1, dy: 0.35, taps: 12, amt: 0.16, iters: 3 },   // dragged across
+  ceiling: { dx: 0, dy: 1, taps: 8, amt: 0.10, iters: 2 },
+  dressed: { dx: 0.1, dy: 1, taps: 8, amt: 0.10, iters: 2 },
+  grain:   { dx: 0, dy: 0, taps: 1, amt: 0, iters: 0 },
 };
 const TONE: Record<SurfaceKind, { pivot: number; contrast: number }> = {
   wall:    { pivot: 0.62, contrast: 0.80 },
@@ -382,11 +470,11 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   // the operator that makes a surface look ACTED ON rather than merely noisy.
   const ero = EROSION[kind];
   if (ero.amt > 0) {
-    const smear = dirBlurWrap(eroF, CPU_TEX, CPU_TEX, ero.dx, ero.dy, ero.taps);
+    const smear = chainedErosion(eroF, CPU_TEX, CPU_TEX, ero.dx, ero.dy, ero.taps, ero.iters);
     for (let i = 0; i < N; i++) {
       // Only the strong end of the smear cuts — otherwise it is a grey veil
       // over everything instead of distinct runs.
-      const cut = smooth(0.52, 0.95, smear[i]) * ero.amt;
+      const cut = smooth(0.38, 1.0, smear[i]) * ero.amt;   // gentler shoulder
       shadeF[i] *= mixf(1, 0.62, cut);
       heightF[i] -= cut * 0.22;
       wearF[i] = clampf(wearF[i] + cut * 0.5, 0, 1);   // eroded stone is rougher
