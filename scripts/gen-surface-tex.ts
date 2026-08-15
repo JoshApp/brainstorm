@@ -116,6 +116,93 @@ function makeSeamless(png: PNG, band: number): PNG {
   return out;
 }
 
+/** Output resolution. See the note in main() on why smaller is BETTER here. */
+const OUT_SIZE = 512;
+
+/** Separable box blur of a scalar field, wrapping at the edges (the texture tiles). */
+function blurWrap(src: Float32Array, W: number, H: number, r: number): Float32Array {
+  const tmp = new Float32Array(W * H), out = new Float32Array(W * H);
+  const inv = 1 / (2 * r + 1);
+  for (let y = 0; y < H; y++) {
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += src[y * W + ((k % W) + W) % W];
+    for (let x = 0; x < W; x++) {
+      tmp[y * W + x] = acc * inv;
+      acc -= src[y * W + ((x - r % W) + W) % W];
+      acc += src[y * W + ((x + r + 1) % W)];
+    }
+  }
+  for (let x = 0; x < W; x++) {
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += tmp[((((k % H) + H) % H) * W) + x];
+    for (let y = 0; y < H; y++) {
+      out[y * W + x] = acc * inv;
+      acc -= tmp[(((y - r) % H + H) % H) * W + x];
+      acc += tmp[(((y + r + 1) % H) * W) + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * DE-LIGHT — divide out the lighting the model baked into the image.
+ *
+ * Josh: *"yeah do the torches do lighting."* This is the fix, and it matters
+ * more here than in most games: DELVE's whole premise is that form is REVEALED
+ * by coloured light out of black. A texture that arrives with its own shading
+ * already painted on fights that at every pixel — the stone looks lit from
+ * somewhere that isn't your torch, and no amount of dynamic lighting can undo a
+ * shadow that is baked into the albedo.
+ *
+ * The standard fix: estimate the LOCAL MEAN brightness with a wide blur, then
+ * divide by it. Lighting is low-frequency (broad gradients across the image);
+ * material is high-frequency (the grain of the stone). Dividing removes the
+ * former and keeps the latter, so the result is closer to a flat albedo scan
+ * and the torches get to do the work.
+ */
+function deLight(png: PNG): void {
+  const { width: W, height: H } = png;
+  const lum = new Float32Array(W * H);
+  for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
+    lum[i] = 0.299 * png.data[p] + 0.587 * png.data[p + 1] + 0.114 * png.data[p + 2];
+  }
+  // Radius ~1/8 of the image: wide enough to be "the lighting", narrow enough
+  // to leave block-scale variation alone.
+  const local = blurWrap(lum, W, H, Math.max(4, W >> 3));
+  let mean = 0;
+  for (let i = 0; i < lum.length; i++) mean += lum[i];
+  mean /= lum.length;
+  for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
+    // Clamped gain — an unbounded divide blows out wherever the blur went dark.
+    const gain = Math.max(0.55, Math.min(1.8, mean / Math.max(1, local[i])));
+    for (let c = 0; c < 3; c++) {
+      png.data[p + c] = Math.max(0, Math.min(255, Math.round(png.data[p + c] * gain)));
+    }
+  }
+}
+
+/** Simple box downscale by an integer factor, averaging RGBA. */
+function downscale(png: PNG, size: number): PNG {
+  if (png.width <= size) return png;
+  const f = Math.round(png.width / size);
+  const out = new PNG({ width: size, height: size });
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let j = 0; j < f; j++) {
+        for (let i = 0; i < f; i++) {
+          const s = (((y * f + j) * png.width) + (x * f + i)) << 2;
+          r += png.data[s]; g += png.data[s + 1]; b += png.data[s + 2]; a += png.data[s + 3];
+        }
+      }
+      const n = f * f, d = ((y * size) + x) << 2;
+      out.data[d] = r / n; out.data[d + 1] = g / n;
+      out.data[d + 2] = b / n; out.data[d + 3] = a / n;
+    }
+  }
+  return out;
+}
+
 async function main() {
   const backend = falBackend();
   const { prompt, negative } = PROMPTS[kind];
@@ -125,27 +212,50 @@ async function main() {
 
   const raw = PNG.sync.read(res.bytes);
   const tiled = makeSeamless(raw, Math.max(8, raw.width >> 5));
+  deLight(tiled);
+  const out = downscale(tiled, OUT_SIZE);
 
-  // Pack HEIGHT into alpha from luminance. Contrast-stretched so mortar reads
-  // as properly deep rather than "slightly darker" — POM needs range to march
-  // through, and a flat height field is the thing that made the procedural
-  // version look painted on before relief existed.
-  let lo = 255, hi = 0;
-  const lum = new Float32Array(tiled.width * tiled.height);
+  // ── HEIGHT, from LOCAL relief rather than absolute brightness ──────────────
+  // Josh: *"can we use like depth on these textures to fake like 3dness? would
+  // that work?"* — yes, and it already does: POM marches whatever is in alpha.
+  // The question is what to put there.
+  //
+  // v1 used raw luminance, which conflates "dark" with "deep". A soot stain and
+  // a mortar joint are equally dark and only one is a hole, so stains were being
+  // carved into the wall. Using luminance MINUS its local mean measures relief
+  // instead: how much darker this pixel is than its own neighbourhood. A broad
+  // stain shifts pixel and neighbourhood together and cancels; a joint is dark
+  // against bright faces a few pixels away and survives.
+  const W = out.width, H = out.height;
+  const lum = new Float32Array(W * H);
   for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
-    const l = 0.299 * tiled.data[p] + 0.587 * tiled.data[p + 1] + 0.114 * tiled.data[p + 2];
-    lum[i] = l; if (l < lo) lo = l; if (l > hi) hi = l;
+    lum[i] = 0.299 * out.data[p] + 0.587 * out.data[p + 1] + 0.114 * out.data[p + 2];
+  }
+  const localMean = blurWrap(lum, W, H, Math.max(2, W >> 6));   // ~8px at 512
+  let lo = 1e9, hi = -1e9;
+  const rel = new Float32Array(W * H);
+  for (let i = 0; i < rel.length; i++) {
+    rel[i] = lum[i] - localMean[i];
+    if (rel[i] < lo) lo = rel[i];
+    if (rel[i] > hi) hi = rel[i];
   }
   const span = Math.max(1, hi - lo);
-  for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
-    const n = (lum[i] - lo) / span;             // 0 = darkest (deep) … 1 = face
-    tiled.data[p + 3] = Math.round(Math.max(0, Math.min(1, 0.25 + n * 0.75)) * 255);
+  for (let i = 0, p = 0; i < rel.length; i++, p += 4) {
+    const n = (rel[i] - lo) / span;             // 0 = deepest … 1 = proudest
+    out.data[p + 3] = Math.round(Math.max(0, Math.min(1, 0.18 + n * 0.82)) * 255);
   }
 
   const outPath = resolve(process.cwd(), `public/art/surfaces/${kind}-ai.png`);
   if (!existsSync(dirname(outPath))) mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, PNG.sync.write(tiled));
-  console.log(`[gen-surface-tex] wrote ${outPath} (${tiled.width}x${tiled.height}, RGB=albedo A=height)`);
+  writeFileSync(outPath, PNG.sync.write(out));
+  const kb = Math.round(PNG.sync.write(out).length / 1024);
+  // WHY 512 AND NOT 1024, since "could we compress it" was the other question:
+  // shrinking is both the compression AND a fix for *"it pixelates quite hard"*.
+  // The scene renders at a 0.4x PS1 buffer, so a 1024 texture carries far more
+  // detail than there are pixels to show it — and detail finer than a pixel
+  // does not resolve, it ALIASES, which is what the sparkle in Josh's
+  // screenshots is. Less texture is literally less noise here.
+  console.log(`[gen-surface-tex] wrote ${outPath} (${W}x${H}, ${kb} KB, RGB=albedo A=height)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

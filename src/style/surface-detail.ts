@@ -266,7 +266,20 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const meso: any = valueNoise2((vec2 as any)(sU.mul(0.33), sV.mul(0.33)));     // ~3m (the old layer)
   const micro: any = valueNoise2((vec2 as any)(sU.mul(1.9), sV.mul(1.9)));      // ~0.5m grain
   const grime: any = macro.mul(0.55).add(meso.mul(0.30)).add(micro.mul(0.15));  // → [0,1]
-  albedo = albedo.mul(float(0.78).add(grime.mul(0.40)));
+  // ── DON'T DOUBLE UP ON A COLOUR MAP ────────────────────────────────────────
+  // Josh: *"i think there are things infering with it."* Correct. These wear
+  // layers were written to rescue a CLEAN procedural tile — but a generated map
+  // arrives with its own grime, its own moss, its own stains already painted in.
+  // Running the full stack on top applies filth to filth: contrast piles up,
+  // the image goes muddy, and the high-frequency result aliases into exactly
+  // the sparkle in the screenshots.
+  //
+  // So on a colour map the procedural layers back off to a light touch. They
+  // still earn their place — they are WORLD-space and non-tiling, so they break
+  // the repeat that the texture itself cannot — but they stop competing with
+  // detail that is already there.
+  const wearMix = isColorTex ? 0.35 : 1.0;
+  albedo = albedo.mul(float(1 - 0.22 * wearMix).add(grime.mul(0.40 * wearMix)));
 
   // CAVITY GRIME — dirt does not sit evenly, it collects. Everything low in the
   // height field (mortar lines, chips, the pits between flagstones) gets darker
@@ -275,7 +288,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // for DEPTH; this is the same geometry read as ACCUMULATION.
   const cavity: any = float(1).sub((tslSmoothstep as any)(0.42, 0.95, sampled.a));
   albedo = albedo.mul((tslMix as any)(
-    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))),
+    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))).mul(wearMix),
   ));
 
   // ── MOSS / LICHEN ──────────────────────────────────────────────────────────
@@ -308,7 +321,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       : float(0.55);                       // floors are damp all over, less strongly
     const took: any = (tslSmoothstep as any)(0.52, 0.88, colony.mul(0.75).add(fuzz.mul(0.25)));
     mossMask = (tslClamp as any)(
-      took.mul(damp).mul(float(0.45).add(cavity.mul(0.75))).mul(MOSS_AMOUNT), 0, 1,
+      took.mul(damp).mul(float(0.45).add(cavity.mul(0.75))).mul(MOSS_AMOUNT * (isColorTex ? 0.4 : 1)), 0, 1,
     );
     // Two greens: the wet dark of a thick colony, and the pale grey-green of
     // lichen at its dying edge. Mixing by the fuzz field means a patch is
@@ -332,7 +345,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       wp.y.mul(0.095),            // and barely at all down it → vertical runs
     ));
     const runs: any = (tslSmoothstep as any)(0.54, 0.98, streak);
-    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.70), runs.mul(0.8)));
+    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.70), runs.mul(0.8 * wearMix)));
   }
 
   // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.

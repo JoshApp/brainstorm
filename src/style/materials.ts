@@ -180,7 +180,12 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // are, so the two are actually comparable. Repetition gets worse at the
     // tighter tile, which is the honest cost and the thing hex-tiling exists to
     // fix.
-    tile: wantAiTex ? [1.9, 1.9] : SURFACE_TILE.wall,
+    // 2.6m, up from the 1.9 first try. Josh: *"slightly bigger stones i think
+    // so maybe enlargen the texture apply."* Bigger repeat = bigger stones, and
+    // it also reduces how often the tile repeats across a wall, which is the
+    // other complaint. The ceiling on this is that stones eventually outgrow
+    // the wall-profile courses they sit inside.
+    tile: wantAiTex ? [2.6, 2.6] : SURFACE_TILE.wall,
     proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(chasmWall, {
