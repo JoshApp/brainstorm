@@ -133,6 +133,28 @@ When in doubt about what to do next: ask Josh.
   - Aggressive caching — most calls hit cache
   - Character summary every 5 floors
 
+### TSL uniforms default to PER-OBJECT — check every new one
+
+A `uniform()` or `uniformArray()` from `three/tsl` defaults to `objectGroup`,
+which despite the name is **not shared**: the value is packed into every render
+object's own uniform buffer. Write it once per frame from a widely-applied
+material graph and you have paid one GPU upload per drawn object per frame.
+
+`uniformArray()` is worse. It builds a `BufferNode`, and a raw buffer binding
+does not value-compare the way a uniforms group does — three's `Buffer.update()`
+returns `true` unconditionally, so it re-uploads whether or not a byte changed.
+
+**The test is one question: does this value differ per object?** If not, it wants
+`.setGroup(frameGroup)`. Measured on a phone: 367 of 830 upload calls a frame
+were `NO BYTES CHANGED (uploaded anyway)` — the gore splat arrays, copied into
+every wall and floor. Six instances of this bug have been found so far.
+
+Do NOT diagnose this by reading. Five theories were argued from three's source
+and all five were wrong; what settled it was `uploadCensus.changes` in a phone
+recording (`debug/upload-census.ts` diffs each binding's buffer and reports which
+float span moved), alongside `matrixCensus` (what actually moved) and `camSerial`
+(was the camera bit-still). Take a capture and read those before theorising.
+
 ## Architecture Principles
 
 - **Vanilla TypeScript + Three.js.** No framework. UI is vanilla DOM with manual layout.
