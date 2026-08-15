@@ -253,7 +253,27 @@ export const ARM_LEFT: ModelSpec = {
     //     outboard) so the humerus doesn't cross the frame as a
     //     giant near-camera slab — the bones should ENTER from the
     //     bottom-left edge, reading as "my arm", not block the view.
-    shoulder: { pos: [-0.20, -0.58, -0.30], debug: 'axes' },
+    //
+    // ── DROPPED -0.58 → -0.80 (2026-08-15) ───────────────────────
+    // The v3 presence pass raised the lantern 13cm and brought it 18cm
+    // nearer, and the lamp wrist IS this arm's IK target — so the elbow
+    // came up with it and started clipping into frame while running.
+    // ("Moving forward for a while" is literal: momentum widens the FOV
+    // by CONFIG.MOMENTUM.FOV_MAX_DEG, so the frustum GROWS the longer
+    // you run, and a joint that clears at rest stops clearing.)
+    //
+    // Measured with scripts/elbow-probe.ts (imports the real ArmIK AND
+    // reads this slot off the spec, so it can't disagree with the file
+    // it's measuring), at full-momentum FOV, worst bob phase — clearance
+    // of the elbow sphere below the bottom edge:
+    //     old lamp pos, shoulder -0.58   0.095 m
+    //     new lamp pos, shoulder -0.58   0.065 m   ← what Josh saw
+    //     new lamp pos, shoulder -0.80   0.088 m   ← here
+    // i.e. the drop buys back roughly what the presence pass spent.
+    // The elbow POLE is not the lever here and the sweep says so: biasing
+    // it further down also pushes the elbow BACK, and the frustum widens
+    // with depth, so the margin gets WORSE (-2.0 pole → 0.043 m).
+    shoulder: { pos: [-0.20, -0.80, -0.30], debug: 'axes' },
     upper_arm_anchor: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH / 2, 0], debug: 'axes' },
     elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0], debug: 'axes' },
     lower_arm_anchor: { parent: 'elbow', pos: [0, FOREARM_LENGTH / 2, 0], debug: 'axes' },
