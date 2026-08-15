@@ -725,7 +725,22 @@ export const CONFIG = {
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again
-  SWORD_IDLE_POS: [0.35, -0.40, -0.55] as const,  // bottom-right of view (dropped 8cm from -0.32 — sword hangs lower at rest)
+  // PRESENCE PASS (viewmodel v3). The hands were framed to stay out of the
+  // way; the brief now is the opposite — the weapon should be a PRESENT object
+  // in the lower-right, forearm included, not a thin diagonal clipped by the
+  // bottom edge. Two moves, both about screen footprint, neither about pose:
+  //   Z  -0.55 → -0.48   7cm closer to the eye. Perspective does the work —
+  //                      the same blade reads substantially larger. -0.44 was
+  //                      tried and overshot: the tip reached frame-top and
+  //                      occluded the doorway, which reads as the weapon
+  //                      blocking the view rather than being carried.
+  //   Y  -0.40 → -0.34   6cm up, so the fist and a little forearm clear the
+  //                      bottom edge instead of being cropped by it.
+  //   X   0.35 →  0.40   5cm OUT, not in. A nearer blade sweeps a wider arc,
+  //                      so holding the old X pushed it across centre-frame;
+  //                      moving right keeps the whole diagonal in the right
+  //                      third where it belongs.
+  SWORD_IDLE_POS: [0.40, -0.34, -0.48] as const,
   SWORD_IDLE_ROT: [-0.2, -0.15, 0.4] as const,    // tilted across body
 
   // === ENEMY (cross-instance constants only — per-enemy values live in src/content/enemies.ts) ===

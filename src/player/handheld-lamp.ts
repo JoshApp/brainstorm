@@ -83,17 +83,32 @@ let lamp: LampState | null = null;
 //     unchanged; the lantern just slides down rather than vanishing, so
 //     there's never a "light from nowhere" moment.
 // The body offset below hangs the lantern visibly under whichever pivot.
-// Lamp position trimmed down for less screen footprint: pushed
-// further BACK (Z: -0.60 → -0.78), DROPPED lower (Y: -0.11 → -0.26),
-// X unchanged. Combined with a smaller hinge scale below, the lantern
-// reads as a peripheral light source rather than dominating the lower-
-// left corner of the frame.
-const LAMP_RAISED = new THREE.Vector3(-0.36, -0.26, -0.78);
+//
+// PRESENCE PASS (viewmodel v3) — this DELIBERATELY reverses the earlier
+// trim-down. That pass pushed the lantern back (Z -0.60 → -0.78) and down
+// (Y -0.11 → -0.26) to make it "a peripheral light source rather than
+// dominating the lower-left corner." The brief changed: the lantern is the
+// player's one carried light and it should read as a HELD OBJECT, so it comes
+// back forward to the old Z and part-way back up.
+//   Z  -0.78 → -0.60   restores the pre-trim depth; the lantern regains mass.
+//   Y  -0.26 → -0.13   13cm up, and this is the number that actually mattered.
+//                      The hinge is a PIVOT, not the lantern: the body hangs
+//                      BODY_OFFSET_Y (-0.108) BELOW it and that offset scales
+//                      with the hinge, so at 1.7 the body centre sits ~18cm
+//                      under the hinge. -0.24 and -0.20 both still cropped the
+//                      body on the bottom edge — the hinge has to ride high
+//                      for the lantern to sit low-and-visible. Lands the body
+//                      near the old pre-trim -0.11 hinge without the old
+//                      scale-1.8 bulk on top of it.
+//   X  -0.36 → -0.38   2cm out, so the nearer body doesn't crowd centre-frame.
+const LAMP_RAISED = new THREE.Vector3(-0.38, -0.13, -0.60);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out
 // of frame).
-const LAMP_STOWED = new THREE.Vector3(-0.47, -0.29, -0.5);
+// Tracks RAISED forward by the same presence pass so stowing still reads as a
+// SLIDE DOWN-AND-BACK from the carry pose, not a jump to a different depth.
+const LAMP_STOWED = new THREE.Vector3(-0.49, -0.31, -0.46);
 // Live target the hinge eases toward each frame. Mutated by
 // setLampStowed; starts RAISED.
 const lampTarget = LAMP_RAISED.clone();
@@ -118,9 +133,10 @@ export function attachLamp(camera: THREE.Camera) {
   // Body is the visible lantern, hanging below the hinge.
   const hinge = new THREE.Group();
   hinge.position.copy(lampTarget);
-  // Scale 1.8 → 1.4 — smaller lantern, takes less screen real estate
-  // and pairs with the lower / further-back LAMP_RAISED above.
-  hinge.scale.setScalar(1.4);
+  // Presence pass: 1.4 → 1.7. The trim-down took this from 1.8; we come most
+  // of the way back, but not all — the lantern now sits 18cm nearer the eye
+  // than it did at 1.8, so the same scale would read bigger than it used to.
+  hinge.scale.setScalar(1.7);
   camera.add(hinge);
   registerViewmodel(hinge);   // near-depth pass (see render-target.ts)
 
