@@ -23,7 +23,7 @@
 // carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, getCompiledProgramKeys, type FrameSample } from './frame-timing';
-import { getCameraYaw, getCameraPitch } from '../controls/camera';
+import { getCameraYaw, getCameraPitch, getCameraGroundPos } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
 import { censusForRecording, type PipelineCensus } from './pipeline-census';
@@ -63,11 +63,19 @@ interface RecFrame {
   ub: number;
   ubKB: number;
   sys: number[];        // per-system ms, aligned to sysNames
-  /** Camera orientation this frame: [yaw, pitch] in radians. Lets a recording
+  /** Camera this frame: [yaw, pitch, x, z]. Orientation lets a recording
    *  correlate a GPU/fill spike with WHERE the player was looking — pitch-down
    *  fills the screen with the near floor (peak per-pixel lighting), which a
-   *  raw frame-time trace can't explain on its own. */
-  cam: [number, number];
+   *  raw frame-time trace can't explain on its own.
+   *
+   *  POSITION is here because its absence cost a wrong conclusion. Analysing a
+   *  phone capture, "the camera was still" was read off yaw+pitch alone and used
+   *  to argue that ~400 uniform uploads a frame were unconditional — when the
+   *  player may simply have been walking in a straight line. Standing still and
+   *  moving are the first two states any per-frame cost has to be split by, and
+   *  the recording could not tell them apart. The two extra numbers are
+   *  appended, so anything reading cam[0]/cam[1] is unaffected. */
+  cam: [number, number, number, number];
   /** Per-render-pass GPU ms aligned to gpuPhaseNames (prepass/scene/bloom/
    *  blit). Present only while per-pass GPU timing is armed — which the ring
    *  does itself on timer-query devices, where the spans are free. */
@@ -192,6 +200,12 @@ function snapshotGph(phases: Map<string, number>): number[] {
   }
   return arr;
 }
+/** [yaw, pitch, x, z] — see FrameSample.cam for why position is in here. */
+function camSample(): [number, number, number, number] {
+  const g = getCameraGroundPos();
+  return [r2(getCameraYaw()), r2(getCameraPitch()), r2(g.x), r2(g.z)];
+}
+
 function r2(n: number): number { return Math.round(n * 100) / 100; }
 
 function snapshotSys(systems: Map<string, number>): number[] {
@@ -257,7 +271,7 @@ function onRingFrame(s: FrameSample): void {
     ub: s.uploads,
     ubKB: Math.round(s.uploadKB),
     sys: snapshotSys(s.systems),
-    cam: [r2(getCameraYaw()), r2(getCameraPitch())],
+    cam: camSample(),
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
     ev,
   });
