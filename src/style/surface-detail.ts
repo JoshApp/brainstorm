@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, frameGroup } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
@@ -213,9 +213,25 @@ const uSeepStrength = { value: 0 };      // 0 = off; builder enables per floor
 const uSeepTime = { value: 0 };
 // WebGPU mirrors of the seep uniforms (the GLSL path uses the {value} objects
 // above; the TSL colorNode reads these uniform nodes). Kept in sync below.
-const seepTintNode = (tslUniform as any)(new THREE.Vector3(0.8, 0.1, 0.08));
-const seepStrengthNode = (tslUniform as any)(0);
-const seepTimeNode = (tslUniform as any)(0);
+// ── THESE ARE THE SAME NUMBER FOR EVERY OBJECT, SO THEY LIVE IN ONE BUFFER ───
+//
+// A TSL `uniform()` defaults to `objectGroup`, which is NOT a shared group: the
+// value is packed into EVERY render object's own uniform buffer. Change it and
+// every object carrying this material re-uploads — and `seepTime` is written
+// once per frame, forever, from the surface-seep tick.
+//
+// That is what a phone capture measured: ~383 GPU uploads a frame with the
+// player STANDING PERFECTLY STILL, not moving, not turning — against ~138
+// draws, so two to three buffers per drawn object, every frame, expressing a
+// clock. Walking added about 20%; motion was never the cause.
+//
+// `frameGroup` is a sharedUniformGroup, so these become one buffer updated once
+// per frame regardless of how many objects read them. They are global by
+// nature — a time, a room's seep tint, a wetness level — and nothing about them
+// is per-object, which is exactly the test for which group a uniform belongs in.
+const seepTintNode = (tslUniform as any)(new THREE.Vector3(0.8, 0.1, 0.08)).setGroup(frameGroup);
+const seepStrengthNode = (tslUniform as any)(0).setGroup(frameGroup);
+const seepTimeNode = (tslUniform as any)(0).setGroup(frameGroup);
 
 export function setSurfaceSeep(colorHex: number, strength: number): void {
   uSeepTint.value.set(
@@ -242,7 +258,7 @@ export function tickSurfaceSeep(timeSec: number): void {
 // (mood floors run wet); the future splat map (kills, altar overflow)
 // will feed the same uniform per-fragment.
 const uWetness = { value: 0 };
-const wetnessNode = (tslUniform as any)(0);   // WebGPU mirror (TSL roughnessNode reads it)
+const wetnessNode = (tslUniform as any)(0).setGroup(frameGroup);   // WebGPU mirror (TSL roughnessNode reads it); global — see seep uniforms above
 
 export function setSurfaceWetness(strength: number): void {
   uWetness.value = strength;

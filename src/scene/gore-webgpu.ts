@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Vector4 } from 'three/webgpu';
-import { uniform, uniformArray, Fn, Loop, If, Break, int, float, vec3, positionWorld, normalWorld, luminance, mix } from 'three/tsl';
+import { uniform, uniformArray, Fn, Loop, If, Break, int, float, vec3, positionWorld, normalWorld, luminance, mix, frameGroup } from 'three/tsl';
 import { groundYAt } from '../level/elevation';
 import { DEV } from '../debug/dev';
 
@@ -41,7 +41,7 @@ const _pos = Array.from({ length: MAX_GORE }, () => new Vector4());
 const _col = Array.from({ length: MAX_GORE }, () => new Vector4());
 const posArr = (uniformArray as any)(_pos, 'vec4');
 const colArr = (uniformArray as any)(_col, 'vec4');
-const countU = (uniform as any)(0, 'int');
+const countU = (uniform as any)(0, 'int').setGroup(frameGroup);   // global — see surface-detail.ts
 // GPU mirror — wall: WA = (axisFlag, plane, along, height); WB = (r,g,b,effAlpha);
 // WR = (radius, 0, 0, 0).
 const _wpos = Array.from({ length: MAX_WALL }, () => new Vector4());
@@ -50,7 +50,7 @@ const _wrad = Array.from({ length: MAX_WALL }, () => new Vector4());
 const wposArr = (uniformArray as any)(_wpos, 'vec4');
 const wcolArr = (uniformArray as any)(_wcol, 'vec4');
 const wradArr = (uniformArray as any)(_wrad, 'vec4');
-const wcountU = (uniform as any)(0, 'int');
+const wcountU = (uniform as any)(0, 'int').setGroup(frameGroup);   // global — see surface-detail.ts
 
 let nowS = 0;   // updated each tick; avoids per-call performance.now()
 
