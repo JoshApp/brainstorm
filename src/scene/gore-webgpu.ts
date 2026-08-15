@@ -39,17 +39,36 @@ const walls: WallSplat[] = [];
 // GPU mirror — floor: A = (worldX, worldY, worldZ, radius); B = (r, g, b, effAlpha).
 const _pos = Array.from({ length: MAX_GORE }, () => new Vector4());
 const _col = Array.from({ length: MAX_GORE }, () => new Vector4());
-const posArr = (uniformArray as any)(_pos, 'vec4');
-const colArr = (uniformArray as any)(_col, 'vec4');
+// ── ONE BUFFER FOR THE SCENE, NOT ONE PER OBJECT ─────────────────────────────
+//
+// `uniformArray()` builds a BufferNode, which extends UniformNode and therefore
+// defaults to `objectGroup` — a per-object group. Worse, a raw UniformBuffer
+// binding does not value-compare like a UniformsGroup does: three's Buffer
+// .update() returns TRUE unconditionally, so it re-uploads every frame whether
+// or not a single byte moved.
+//
+// Together that means each of these arrays was copied into EVERY drawn object's
+// own buffer and re-sent every frame, forever. A phone capture caught it exactly:
+// 367 of 830 upload calls were `object · NO BYTES CHANGED (uploaded anyway)` —
+// 44% of the frame's uploads carrying data that was already there. The gore
+// graph is compiled into the wall and floor materials, which is most of what a
+// floor draws, which is why it scaled with drawn-object count and looked like
+// "objects are moving" from every angle we measured it.
+//
+// frameGroup is a sharedUniformGroup: one buffer for the whole scene. The
+// unconditional re-upload remains (that is three's, not ours) but it is now
+// five buffers a frame instead of five per drawn object.
+const posArr = (uniformArray as any)(_pos, 'vec4').setGroup(frameGroup);
+const colArr = (uniformArray as any)(_col, 'vec4').setGroup(frameGroup);
 const countU = (uniform as any)(0, 'int').setGroup(frameGroup);   // global — see surface-detail.ts
 // GPU mirror — wall: WA = (axisFlag, plane, along, height); WB = (r,g,b,effAlpha);
 // WR = (radius, 0, 0, 0).
 const _wpos = Array.from({ length: MAX_WALL }, () => new Vector4());
 const _wcol = Array.from({ length: MAX_WALL }, () => new Vector4());
 const _wrad = Array.from({ length: MAX_WALL }, () => new Vector4());
-const wposArr = (uniformArray as any)(_wpos, 'vec4');
-const wcolArr = (uniformArray as any)(_wcol, 'vec4');
-const wradArr = (uniformArray as any)(_wrad, 'vec4');
+const wposArr = (uniformArray as any)(_wpos, 'vec4').setGroup(frameGroup);
+const wcolArr = (uniformArray as any)(_wcol, 'vec4').setGroup(frameGroup);
+const wradArr = (uniformArray as any)(_wrad, 'vec4').setGroup(frameGroup);
 const wcountU = (uniform as any)(0, 'int').setGroup(frameGroup);   // global — see surface-detail.ts
 
 let nowS = 0;   // updated each tick; avoids per-call performance.now()

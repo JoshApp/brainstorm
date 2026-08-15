@@ -89,13 +89,13 @@ class DelveTiledLightsNode extends (LightsNode as any) {
     // lean-lights' proven structure.
     this._pos = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
     this._col = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
-    this._posArr = (uniformArray as any)(this._pos, 'vec4');
-    this._colArr = (uniformArray as any)(this._col, 'vec4');
+    this._posArr = (uniformArray as any)(this._pos, 'vec4').setGroup(frameGroup);
+    this._colArr = (uniformArray as any)(this._col, 'vec4').setGroup(frameGroup);
 
     // Tile slots as float vec4 pairs (indices ≤64 are exact in f32). 0 = empty,
     // else lightIndex+1 — same sentinel scheme as Three's tiled node.
     this._tiles = Array.from({ length: MAX_TILES * 2 }, () => new Vector4());
-    this._tilesArr = (uniformArray as any)(this._tiles, 'vec4');
+    this._tilesArr = (uniformArray as any)(this._tiles, 'vec4').setGroup(frameGroup);   // per-object by default; see scene/gore-webgpu.ts
   }
 
   // Routing — identical policy to lean-lights: lamp (noTile) + shadow casters
