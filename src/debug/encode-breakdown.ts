@@ -95,7 +95,11 @@ export function installEncodeBreakdown(renderer: DelveRenderer): void {
   wrap(r._pipelines, 'isReady', 'enc·pipelineReady');
   wrap(r._nodes, 'needsRefresh', 'enc·nodesCheck');
   wrap(r._nodes, 'updateForRender', 'enc·nodesUpdate');
-  wrap(r._nodes, 'updateBefore', 'enc·nodesBefore');
+  // NOT _nodes.updateBefore — it is a PARENT, not a leaf. PassNode.updateBefore
+  // renders the entire scene pass, so wrapping it wraps everything below it and
+  // reports a number larger than the frame's whole CPU (measured: 11.71ms
+  // against a 10.90ms frame). Kept out so the rows that remain are readable as
+  // self time.
   wrap(r._geometries, 'updateForRender', 'enc·geometry');
   wrap(r.backend, 'draw', 'enc·draw');
   // The render-list build — culling and sorting every object in the scene,
