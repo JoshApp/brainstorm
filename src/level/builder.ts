@@ -828,6 +828,38 @@ function bakeWallSegmentGeometry(
     (mat === 'dressed' ? out.dressed : out.wall).push(conn);
   };
 
+  // Emit the two vertical RETURN faces that close a recessed band at its ends.
+  //
+  // Josh, after the horizontal strips were fixed: *"there are still vertical
+  // strips in the corners and i think black on the ceiling left and right."*
+  // Same root cause, the axis I hadn't done. A recessed band is a niche, and a
+  // niche needs sides as well as a top and a bottom: where two recessed walls
+  // meet at a room corner, neither plane reaches the corner, so an open
+  // vertical slot runs floor-to-ceiling right where the eye goes.
+  //
+  // The returns face INWARD, toward each other, the way the reveals of a real
+  // niche or a window jamb do. At a doorway this is also the correct thing to
+  // build — a recessed panel that stops at an opening should show its return.
+  const closeEnds = (b: { y0: number; y1: number; depth: number; mat: 'wall' | 'dressed' }): void => {
+    if (Math.abs(b.depth) < 1e-4) return;      // flush with the plane: nothing to close
+    const bh = b.y1 - b.y0;
+    for (const sx of [-1, 1] as const) {
+      const ret = new THREE.PlaneGeometry(Math.abs(b.depth), bh);
+      // XY plane facing +Z → rotate about Y so it stands in the YZ plane. The
+      // sign puts each face looking back into the recess rather than out of it.
+      ret.rotateY(sx * Math.PI / 2);
+      ret.translate(sx * segLen / 2, b.y0 + bh / 2, b.depth / 2);
+      ret.applyMatrix4(toWorld);
+      const rCount = ret.attributes.position.count;
+      const rCol = new Float32Array(rCount * 3);
+      for (let v = 0; v < rCount; v++) {
+        rCol[v * 3 + 0] = 0.58; rCol[v * 3 + 1] = 0.58; rCol[v * 3 + 2] = 0.62;
+      }
+      ret.setAttribute('color', new THREE.BufferAttribute(rCol, 3));
+      (b.mat === 'dressed' ? out.dressed : out.wall).push(ret);
+    }
+  };
+
   // ── CLOSE AGAINST THE FLOOR ──────────────────────────────────────────────
   // The floor is built to the wall PLANE. If the bottom band is recessed, the
   // gap between them is open.
@@ -845,6 +877,8 @@ function bakeWallSegmentGeometry(
     geo.translate(0, b.y0 + bh / 2, b.depth);
     geo.applyMatrix4(toWorld);
     (b.mat === 'dressed' ? out.dressed : out.wall).push(geo);
+
+    closeEnds(b);
 
     const next = bands[i + 1];
     if (next) closeStep(b.y1, b.depth, next.depth, b.mat);
