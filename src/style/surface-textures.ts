@@ -255,7 +255,34 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   const gx = modf(mgx, P), gy = modf(mgy, P);
   const edM = ed * FLAG;
   const bt = dHash(gx, gy, 1.3), missing = stepf(0.93, dHash(gx, gy, 8.1));
-  const seam = 1 - smooth(0.03 - aa, 0.03 + aa, edM);
+  // ── CELL-OUTER DAMAGE ──────────────────────────────────────────────────────
+  // OpenKTG's Cells operator has two modes: CellInner (distance to the cell
+  // CENTRE) and CellOuter (distance to the EDGE). We only ever used the edge
+  // distance to cut a clean seam of constant width — which is a CUT, and a cut
+  // is the one thing an old floor is not.
+  //
+  // Josh, on the stones being irregular: *"it doesnt read as damage."* Right,
+  // and this is why: size variation is not damage. DAMAGE LIVES ON EDGES —
+  // chipped rims, broken corners, crumbled arrises. So drive the edge field
+  // itself with noise instead of thresholding it flat:
+  //
+  //   CHIP    the seam WIDTH varies along its length, so the gap between stones
+  //           opens and closes and the edge reads as broken rather than sawn.
+  //   BITE    where the rim is already thin AND the noise agrees, take a deeper
+  //           bite — a corner gone, not just a wider joint. This is what POM
+  //           needs to show actual missing chunks.
+  //
+  // Also the answer to *"the domain warp there doesnt really read"*: a 3cm
+  // coordinate bend inside a 1m Voronoi cell is invisible by construction. The
+  // floor's irregularity has to come from the CELLS, exactly as the wall's now
+  // comes from the bricks.
+  const rimN = vnoiseP(px * 5.5, py * 5.5, 32, 32) * 0.62
+             + vnoiseP(px * 13.0, py * 13.0, 64, 64) * 0.38;
+  const chipW = 0.03 * mixf(0.45, 2.1, rimN);          // seam width, per position
+  const seam = 1 - smooth(chipW - aa, chipW + aa, edM);
+  // A bite needs a thin rim AND the noise to agree, so bites are occasional and
+  // sit on corners rather than ringing every stone.
+  const bite = smooth(0.10, 0.0, edM) * smooth(0.72, 0.95, rimN);
   const recess = Math.max(seam, missing);
   // PER-FLAG SET + TILT (v3). Josh: *"the floor and wall mosaic is bland."*
   // The reason was that every flagstone was perfectly flush — the Voronoi gave
@@ -282,12 +309,12 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // was nothing that could have displayed it. Now it drops hard and the ray
   // march reads it as a pit you look down into, with the seam recess on top.
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
-  const h = clampf(1.0 + set + tilt - pit, 0.12, 1.15);
+  const h = clampf(1.0 + set + tilt - pit - bite * 0.30, 0.12, 1.15);
   return [
-    mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing),
+    mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
     mixf(h, 0.35, seam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
-    clampf(dHash(gx, gy, 9.6) + missing * 0.4, 0, 1),   // WEAR — bare earth is rough
+    clampf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3, 0, 1),  // WEAR — broken stone + bare earth are rough
   ];
 }
 
