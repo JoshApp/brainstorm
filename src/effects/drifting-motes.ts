@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { CONFIG } from '../config';
 import { getTexture } from '../style/procedural-textures';
 import type { WalkableRect } from '../level/types';
@@ -166,8 +167,7 @@ export function setMotesHidden(hidden: boolean): void {
 export function clearDriftingMotes(): void {
   if (gpuMesh) {
     gpuMesh.parent?.remove(gpuMesh);
-    gpuMesh.geometry.dispose();
-    (gpuMesh.material as THREE.Material).dispose();
+    disposeGpu(gpuMesh.geometry, gpuMesh.material as THREE.Material);
     gpuMesh = null;
   }
   rects = [];

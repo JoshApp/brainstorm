@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { buildModel } from '../ecs/build-model';
 import { BONFIRE } from '../content/bonfire';
 import { registerFateFire } from '../level/fate-fire';
@@ -192,9 +193,9 @@ export function spawnBossBonfire(
         settled = true;
         group.position.y = baseY;
         // The souls are spent — clear them.
-        for (const s of souls) { soulRoot.remove(s.spr); (s.spr.material as THREE.Material).dispose(); }
+        for (const s of souls) soulRoot.remove(s.spr);
         scene.remove(soulRoot);
-        soulMat.dispose();
+        disposeGpu(...souls.map((s) => s.spr.material as THREE.Material), soulMat);
         // The fire TAKES — a rising whoosh + a settling thud as the whole mass
         // slams home into the floor (a heavy DOWN jolt under the rattle).
         playGateRaise(pos);

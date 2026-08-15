@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBasicNodeMaterial, Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import { uniform as tslUniform, positionLocal, normalLocal, modelViewMatrix, vec4, nodeObject } from 'three/tsl';
@@ -423,7 +424,7 @@ registerWarmup({
   clear: () => {
     if (!warmOutlineMesh) return;
     warmOutlineMesh.parent?.remove(warmOutlineMesh);
-    warmOutlineMesh.geometry.dispose();
+    disposeGpu(warmOutlineMesh.geometry);
     warmOutlineMesh = null;
   },
 });

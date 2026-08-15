@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpuTree } from '../scene/gpu-dispose';
 import { CONFIG } from '../config';
 import { getBobOffset } from './viewmodel-bob';
 import { getMoveIntent } from './move-intent';
@@ -352,13 +353,7 @@ export function createWeaponViewmodel(
     while (group.children.length > 0) {
       const child = group.children[0];
       group.remove(child);
-      child.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      });
+      disposeGpuTree(child);
     }
   }
 

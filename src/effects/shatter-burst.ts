@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { getTexture } from '../style/procedural-textures';
 import { registerWarmup } from '../content/warmup-registry';
 import { groundYAt } from '../level/elevation';
@@ -208,7 +209,7 @@ export function tickShatterBurst(dt: number): void {
       const fadeT = (s.age - s.life) / FADE_TAIL;
       if (fadeT >= 1) {
         s.mesh.parent?.remove(s.mesh);
-        s.mesh.geometry.dispose();
+        disposeGpu(s.mesh.geometry);
         shards.splice(i, 1);
         continue;
       }
@@ -241,7 +242,7 @@ export function tickShatterBurst(dt: number): void {
 export function clearShatterBurst(): void {
   for (const s of shards) {
     s.mesh.parent?.remove(s.mesh);
-    s.mesh.geometry.dispose();
+    disposeGpu(s.mesh.geometry);
   }
   shards.length = 0;
   for (const p of puffs) {

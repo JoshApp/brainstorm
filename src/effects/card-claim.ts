@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
 import type { DomainId } from '../content/domains';
 import { bindToDomain } from './domain-bind';
+import { disposeGpu } from '../scene/gpu-dispose';
 
 // THE FATE, TAKEN INTO YOU — the diegetic close of a reading.
 //
@@ -119,11 +120,13 @@ export function playCardClaim(cardId: string, accentHex: string, domain?: Domain
     if (done) return;
     done = true;
     camera.remove(rig);
-    faceMat.map?.dispose();
-    faceMat.dispose();
-    flameMat.dispose();
-    for (const e of embers) (e.spr.material as THREE.Material).dispose();
-    (card.geometry as THREE.BufferGeometry).dispose();
+    // Deferred — everything here was on screen a frame ago. The face map is
+    // this card's own canvas texture (not a pooled one), so it goes too.
+    disposeGpu(
+      faceMat.map, faceMat, flameMat,
+      ...embers.map((e) => e.spr.material as THREE.Material),
+      card.geometry as THREE.BufferGeometry,
+    );
   };
 
   // Driven every render off wall-clock time — no external tick, no per-floor

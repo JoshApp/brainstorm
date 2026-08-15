@@ -439,6 +439,58 @@ export function setWebGPUBloomEnabled(on: boolean): void {
 // retire now, dispose when the in-flight queue is empty (drainRetired below).
 let disposables: Array<{ dispose?: () => void }> = [];
 let retired: Array<{ dispose?: () => void }> = [];
+
+// ── The GPU-error dossier (DEV) ─────────────────────────────────────────────
+// WebGPU validation errors don't reliably reach the devtools console attached
+// to the code that caused them — they arrive later, uncaptured, as a wall of
+// identical lines. So every path that SUBMITS brackets its submits in a
+// validation error scope and reports them with a frame-state fingerprint:
+// what was retired, whether a warm was driving, which frame, how deep the
+// queue was. That fingerprint is what root-caused the 2026-07-05 resize storm,
+// and the reason it exists in one place now is that the warm path did NOT have
+// it and its errors were consequently unattributable.
+//
+// `nestOk` is about honest attribution, not safety. Scopes are a LIFO stack and
+// pops are matched by count, so nesting can't corrupt anything — but a pop
+// takes the TOP scope, so a scope opened while another is still pending
+// collects the wrong path's errors. The live path nests with itself by design
+// (MAX_IN_FLIGHT frames each hold a scope until GPU completion), so it opts in;
+// occasional paths pass false and simply skip rather than scramble the label.
+let openScopes = 0;
+function openGpuErrorScope(
+  renderer: DelveRenderer, label: string | (() => string), nestOk = true,
+): () => void {
+  const dev: unknown = import.meta.env.DEV
+    ? (renderer as unknown as { backend?: { device?: unknown } }).backend?.device
+    : null;
+  const d = dev as { pushErrorScope?: (t: string) => void; popErrorScope?: () => Promise<unknown> } | null;
+  if (!d?.pushErrorScope || (!nestOk && openScopes > 0)) return () => { /* not scoped */ };
+  d.pushErrorScope('validation');
+  openScopes++;
+  // SNAPSHOT AT ENCODE TIME. The scope is popped after the GPU completes, so
+  // reading the counters there describes the world as it is once the damage is
+  // long done — inFlight has drained, the warm has ended. What identifies the
+  // culprit is the state when the offending commands were ENCODED, which is
+  // now. (`t` is the wall clock, so a destroy trace can be lined up against it.)
+  const at = ` :: at{t=${Math.round(performance.now())} retired=${retired.length} warming=${warmDepth}`
+    + ` presented=${presentedFrames} inFlight=${inFlight} pass=${sceneTargetSize()?.w ?? '?'}x${sceneTargetSize()?.h ?? '?'}}`;
+  let closed = false;
+  return () => {
+    if (closed) return;   // pops must match pushes exactly, once
+    closed = true;
+    openScopes = Math.max(0, openScopes - 1);
+    d.popErrorScope?.().then((err: unknown) => {
+      if (!err) return;
+      const msg = String((err as { message?: string }).message ?? err);
+      const where = typeof label === 'function' ? label() : label;
+      const ctx = at;
+      // eslint-disable-next-line no-console
+      console.error(`[psx gpu-error] ${where}${ctx} :: ${msg.slice(0, 280)}`);
+      const w = window as unknown as { __gpuErrors?: string[] };
+      (w.__gpuErrors = w.__gpuErrors ?? []).push(msg + ctx);
+    }).catch(() => { /* device lost — nothing to report to */ });
+  };
+}
 function drainRetired(): void {
   // The SAME three-way guard applyPendingResScale uses, and for the same
   // reason. Both destroy GPU resources a queued submit may still reference, but
@@ -933,11 +985,10 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
   renderer.info.reset();
   // DEV: bracket each PSX render in a WebGPU validation error scope so a render-pass
   // hazard (e.g. the reported 'output texture writable+sampled in same scope') is
-  // caught AT the render, logged with the frame's draw count, and stored on
-  // window.__gpuErrors — these don't reliably surface in the devtools console, and
-  // this localizes them to the PSX pass + the frame that triggered them.
-  const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
-  if (dev) dev.pushErrorScope('validation');
+  // caught AT the render and localized to the PSX pass + the frame that triggered
+  // it. Draw count is read lazily, at report time, off this frame's info.
+  const closeScope = openGpuErrorScope(
+    renderer, () => `frame draws=${(renderer as any).info?.render?.drawCalls}`);
   // Whether the GPU queue was empty at this submit — the no-timestamp fallback
   // below only trusts submit→completion wall-clock as a GPU-cost proxy then
   // (with another frame queued ahead, the wall-clock includes its wait too).
@@ -954,7 +1005,7 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     (pipeline as unknown as { render: () => void }).render();
   } catch (err) {
     if (submitGen === inFlightGen) inFlight = Math.max(0, inFlight - 1);
-    if (dev) dev.popErrorScope().catch(() => {});
+    closeScope();
     throw err;
   }
   const backend: any = (renderer as any).backend;
@@ -987,20 +1038,7 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     if (soloSubmit && backend?.isWebGPUBackend && backend.trackTimestamp === false) {
       lastGpuMs = performance.now() - t0;
     }
-    if (dev) dev.popErrorScope().then((err: any) => {
-      if (err) {
-        const msg = String(err.message || err);
-        const draws = (renderer as any).info?.render?.drawCalls;
-        // Frame-state fingerprint for the FLAKY usage-scope storm hunt (the
-        // depth/output TextureBinding|RenderAttachment errors): what was in
-        // flight when this submit was encoded. retired>0 = a pipeline rebuild
-        // is awaiting drainRetired; presented = frame ordinal since boot.
-        const ctx = ` :: ctx{retired=${retired.length} warming=${warmDepth} presented=${presentedFrames} inFlight=${inFlight}}`;
-        // eslint-disable-next-line no-console
-        console.error('[psx gpu-error] frame draws=' + draws + ctx + ' :: ' + msg.slice(0, 280));
-        const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg + ctx);
-      }
-    }).catch(() => {});
+    closeScope();
   };
   // True GPU completion on WebGPU; the WebGL2 backend submits synchronously in
   // render() (no queue object), so it completes here and the cap never skips.
@@ -1026,7 +1064,11 @@ export async function captureDisplayFrame(
   const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
   const height = Math.max(1, Math.round(width * (buf.y / Math.max(1, buf.x))));
   if (!luxRT || luxRT.width !== width || luxRT.height !== height) {
-    luxRT?.dispose();
+    // Same rule as everything else that frees GPU memory here: the previous
+    // capture's submit may still be in flight, and a synchronous dispose is
+    // how you get "used in a submit while destroyed". Retire it instead.
+    const doomed = luxRT;
+    if (doomed) deferGpuDispose(() => doomed.dispose());
     luxRT = new THREE.RenderTarget(width, height, { depthBuffer: false });
     // Display-referred bytes: the pipeline applies the sRGB output transform
     // when the target's texture asks for it (same as the canvas).
@@ -1143,18 +1185,64 @@ export async function warmRenderWebGPU(
 ): Promise<void> {
   drainRetired();
   ensurePipeline(renderer, scene, camera);
-  // A staged resolution change (setWarmLowRes just flipped the scale) resizes
-  // the pass targets, destroying the old depth/output textures — which live
-  // frames still in flight may reference. Drain the queue FIRST, then apply.
-  if (pendingResScale !== null) {
-    await flushWarmRenders(renderer);
-    if (pendingResScale !== null && scenePass) {
-      scenePass.setResolutionScale(pendingResScale);
-      pendingResScale = null;
-    }
-  }
+  // GATE THE LIVE LOOP BEFORE THE RESIZE, NOT AFTER IT.
+  //
+  // A staged resolution change (setWarmLowRes just flipped the scale to 0.05)
+  // resizes the pass targets, and that DESTROYS the old output/depth textures
+  // immediately — so the queue has to be drained first. But draining is an
+  // `await`, and until warmDepth > 0 the live rAF loop is not gated: it wakes
+  // up INSIDE that await, passes both the warmDepth and inFlight checks,
+  // encodes a frame against the textures we are about to free, and then the
+  // resize below pulls them out from under it:
+  //
+  //   Destroyed texture [Texture "output"] used in a submit
+  //   → [Texture "output"] usage (TextureBinding|RenderAttachment) includes
+  //     writable usage and another usage in the same synchronization scope
+  //
+  // which is the boot-time validation storm — every subsequent submit against
+  // the poisoned encoder fails, including the async pipeline creations, so the
+  // console fills with pipeline-compile failures that are only the wreckage.
+  // Entering the warm first makes drain-then-resize atomic against the loop,
+  // which is what the rest of this file's defer machinery already assumes.
   enterWarm();
+  // The live path has been bracketing its submits in a validation error scope
+  // since the storm hunt; the warm path never was, so warm-time errors arrived
+  // as UNCAPTURED console blobs with no ctx{} fingerprint — the exact reason
+  // this one read as unattributable. Now it lands in the same dossier.
+  const closeScope = openGpuErrorScope(renderer, 'warm render', false);
   try {
+    if (pendingResScale !== null) {
+      // REBUILD, DON'T RESIZE IN PLACE.
+      //
+      // `setResolutionScale` resizes the pass target on the next render, which
+      // destroys the old output/depth textures — and draining first is NOT
+      // enough here, because the failing submit comes AFTER the destroy, not
+      // before it. Something upstream keeps a render context primed against the
+      // old textures across the resize, and the next submit through it dies:
+      //
+      //   Destroyed texture [Texture "depth"] used in a submit.
+      //    - While calling [Queue].Submit([CommandBuffer from "renderContext_5"])
+      //
+      // then every later submit fails validation and the console fills up.
+      // (Traced 2026-08-15: destroy at t=3892, offending encode at t=3889+.
+      // Not render bundles — it reproduces identically with ?bundles=0.)
+      //
+      // The warm is where this bites because warmSceneCompile binds the pass
+      // target directly for compileAsync, so a context for it is primed before
+      // the warm's 0.4 → 0.05 flip lands. A REBUILD sidesteps the whole class:
+      // a fresh PassNode gets fresh textures, and the old pass is retired to
+      // drainRetired, which frees it only once the queue is provably empty.
+      //
+      // The live/adaptive path keeps the in-place resize — it never binds the
+      // target behind the pipeline's back, and a rebuild per adaptive step
+      // would churn the post graph mid-play.
+      await flushWarmRenders(renderer);
+      if (pendingResScale !== null) {
+        pendingResScale = null;   // resScale already holds the value; build with it
+        rebuildWebGPUPipeline();
+        ensurePipeline(renderer, scene, camera);   // absorbs the rebuild → fresh pass, fresh textures
+      }
+    }
     // render() encodes + submits synchronously (pipeline compiles happen HERE,
     // on the CPU); completion is only awaited every WARM_FLUSH_EVERY renders to
     // keep the queue bounded without paying a GPU round-trip per batch.
@@ -1165,6 +1253,7 @@ export async function warmRenderWebGPU(
     }
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     leaveWarm();
+    closeScope();
   }
 }
 

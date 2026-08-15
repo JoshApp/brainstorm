@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpuTree } from '../scene/gpu-dispose';
 import { registerWarmup } from '../content/warmup-registry';
 import { damagePlayer } from '../player/health';
 import { setPlayerInAura } from '../player/inside-aura';
@@ -154,12 +155,9 @@ export function clearHazardFields(): void {
 
 function disposeField(f: HazardField): void {
   f.group.parent?.remove(f.group);
-  f.group.traverse((o) => {
-    if (o instanceof THREE.Mesh) {
-      o.geometry.dispose();
-      (o.material as THREE.Material).dispose();
-    }
-  });
+  // A puddle that is expiring was drawn on the frame still in flight — free it
+  // once the queue drains, never on the spot (see scene/gpu-dispose.ts).
+  disposeGpuTree(f.group);
 }
 
 // Warm the hazard puddle material (acid pools etc.) so the first one doesn't compile in-fight.

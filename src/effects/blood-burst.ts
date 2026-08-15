@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { registerWarmup } from '../content/warmup-registry';
 import { stampSplat } from '../scene/splat-map';
 import { getTexture } from '../style/procedural-textures';
@@ -151,7 +152,7 @@ export function tickBloodBurst(dt: number) {
     d.age += dt;
     if (d.age >= d.life) {
       d.mesh.parent?.remove(d.mesh);
-      d.mesh.geometry.dispose();
+      disposeGpu(d.mesh.geometry);
       drops.splice(i, 1);
     }
   }
@@ -191,7 +192,7 @@ export function tickBloodBurst(dt: number) {
 export function clearBloodBurst() {
   for (const d of drops) {
     d.mesh.parent?.remove(d.mesh);
-    d.mesh.geometry.dispose();
+    disposeGpu(d.mesh.geometry);
   }
   drops.length = 0;
   for (const s of sprites) s.sprite.parent?.remove(s.sprite);

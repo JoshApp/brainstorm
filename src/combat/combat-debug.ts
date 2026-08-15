@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { getSettings } from '../settings/settings';
 import { CONFIG } from '../config';
 import { worldCapsule, worldSphere, type Hurtbox as EnemyHurtbox, type HurtZone } from './hurtbox';
@@ -191,8 +192,7 @@ const echoParts: THREE.Mesh[] = [];
 function clearEcho(): void {
   for (const m of echoParts) {
     scene?.remove(m);
-    m.geometry.dispose();
-    (m.material as THREE.Material).dispose();
+    disposeGpu(m.geometry, m.material as THREE.Material);
   }
   echoParts.length = 0;
 }
@@ -366,8 +366,7 @@ export function tickCombatDebug(dt: number, enemies: readonly DebugTarget[]): vo
   for (const [zone, m] of zoneMeshes) {
     if (seenZones.has(zone)) continue;
     scene?.remove(m);
-    m.geometry.dispose();
-    (m.material as THREE.Material).dispose();
+    disposeGpu(m.geometry, m.material as THREE.Material);
     zoneMeshes.delete(zone);
   }
 }

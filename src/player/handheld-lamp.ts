@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu, disposeGpuTree } from '../scene/gpu-dispose';
 
 // Worn hip lantern — a small lantern model parented to the player
 // camera, hanging LOW at the hip (not in a hand). Holds a warm
@@ -350,16 +351,11 @@ export function detachLamp() {
   unregisterLight('player-lamp');
   // Dispose so we don't leak GPU memory when the player swaps offhand
   // back and forth between lamp and shield.
-  lamp.hinge.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh) {
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const m of mats) m.dispose();
-      mesh.geometry.dispose();
-    }
-  });
-  // Sprite materials aren't caught by the mesh traverse above.
-  for (const m of lamp.flameMats) m.dispose();
+  // Deferred: a swap happens mid-play, with the lamp drawn on the frame still
+  // in flight (see scene/gpu-dispose.ts). disposeGpuTree also picks up the
+  // sprite materials the old isMesh-only traverse missed.
+  disposeGpuTree(lamp.hinge);
+  disposeGpu(...lamp.flameMats);
   lamp = null;
 }
 

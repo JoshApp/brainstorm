@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpuTree } from '../scene/gpu-dispose';
 import { CONFIG } from '../config';
 import { composeFlaskHold } from './flask-hold';
 import { mergeRigidViewmodel } from './viewmodel-merge';
@@ -241,14 +242,7 @@ export function disposeFlaskViewmodel(): void {
   if (!group) return;
   unregisterViewmodel(group);
   group.parent?.remove(group);
-  group.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh || (obj as THREE.Sprite).isSprite) {
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const m of mats) m?.dispose();
-      mesh.geometry?.dispose();
-    }
-  });
+  disposeGpuTree(group);
   group = null; wristSlot = null; elixirMat = null; elixirMesh = null; glow = null; shown = 0;
 }
 

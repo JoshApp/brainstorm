@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpu } from '../scene/gpu-dispose';
 
 // Blade trail — a warm-amber ribbon drawn from the held weapon's
 // blade_tip over the last ~180ms, used to extend the charged-strike
@@ -229,8 +230,7 @@ export function clearBladeTrail(): void {
 /** Detach + dispose. Optional — tests / harness teardown. */
 export function disposeBladeTrail(): void {
   mesh?.parent?.remove(mesh);
-  geometry?.dispose();
-  material?.dispose();
+  disposeGpu(geometry, material);
   mesh = null;
   geometry = null;
   material = null;

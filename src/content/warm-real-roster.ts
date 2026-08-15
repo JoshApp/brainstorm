@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resetGoreWebGPU } from '../scene/gore-webgpu';
+import { disposeGpu } from '../scene/gpu-dispose';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
 import { WARM_MODELS } from './warmup-models';
@@ -206,8 +207,10 @@ export async function warmRealRoster(
   resetGoreWebGPU();
 
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
-  for (const g of geometries) g.dispose();
-  decorBox.dispose();
+  // Deferred: the flush above AWAITS, and warm gating is already off by then, so
+  // the live loop can submit a frame that still draws these subjects before the
+  // holder is removed — freeing on the spot races that submit.
+  disposeGpu(...geometries, decorBox);
 
   if (DEV) {
     // eslint-disable-next-line no-console

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeGpuTree } from '../scene/gpu-dispose';
 import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
 import { getOffhandSway } from './viewmodel-sway';
@@ -77,12 +78,6 @@ export function detachOffhandViewmodel() {
   if (!group) return;
   unregisterViewmodel(group);
   group.parent?.remove(group);
-  group.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) m.dispose();
-    mesh.geometry.dispose();
-  });
+  disposeGpuTree(group);
   group = null;
 }

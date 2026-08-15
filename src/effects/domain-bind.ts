@@ -3,6 +3,7 @@ import type { DomainId } from '../content/domains';
 import { DOMAIN_VISUAL } from '../art/domains';
 import { getTexture } from '../style/procedural-textures';
 import { flashDomainGlow } from '../ui/vignette';
+import { disposeGpu } from '../scene/gpu-dispose';
 
 // BINDING WITH A DOMAIN — the shared "this marks you" beat.
 //
@@ -124,7 +125,9 @@ export function bindToDomain(
     if (done) return;
     done = true;
     camera.remove(rig);
-    ringGeo.dispose(); ringMat.dispose(); sigilMat.dispose(); glowMat.dispose();
+    // Deferred: these were drawn on the frame that is very likely still in
+    // flight right now (see scene/gpu-dispose.ts).
+    disposeGpu(ringGeo, ringMat, sigilMat, glowMat);
   };
 
   ring.onBeforeRender = () => {
