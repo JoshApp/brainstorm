@@ -136,6 +136,42 @@ function vnoiseP(x: number, y: number, Px: number, Py: number): number {
   const c = dHash(modf(ix, Px), modf(iy + 1, Py), 0.7), d = dHash(modf(ix + 1, Px), modf(iy + 1, Py), 0.7);
   return mixf(mixf(a, b, fx), mixf(c, d, fx), fy);
 }
+// ── DOMAIN WARP — the .kkrieger / werkkzeug operator, borrowed ───────────────
+// Josh: *"are there things used in kkrieger that we could use as well?"*
+//
+// The lesson from werkkzeug is not a clever noise function, it is the OPERATOR
+// STACK: generate something simple, then blur it, then DISTORT it with another
+// noise field, then remap its colours. Their own example is dots → directional
+// blur → distort → colour map → convincing plywood. Each step is trivial; the
+// richness comes from composing transformations, not from one big formula.
+//
+// This is the first and highest-value operator we were missing, and it is the
+// direct answer to "so uniform so perfect": every generator here computes its
+// pattern from ANALYTIC coordinates, so its grid is mathematically exact. Real
+// masonry is not — courses sag, joints wander, stones bulge. Warping the INPUT
+// COORDINATES before the pattern is evaluated bends the whole grid at once, so
+// the brick courses drift and the flagstone cells deform without a single line
+// of the pattern code changing.
+//
+// PERIODIC by construction: vnoiseP takes explicit periods, so the warp repeats
+// with the tile and the texture stays seamless. Two octaves — a slow bend and a
+// finer wobble — because one frequency reads as "wavy" rather than "old".
+const WARP_PERIOD = 4;          // integer → tiles cleanly over u,v in [0,1)
+function warpUV(u: number, v: number, amp: number): [number, number] {
+  const P = WARP_PERIOD, P2 = P * 2;
+  const nx = vnoiseP(u * P, v * P, P, P) * 0.68
+           + vnoiseP(u * P2 + 3.1, v * P2 + 7.9, P2, P2) * 0.32;
+  const ny = vnoiseP(u * P + 11.3, v * P + 5.7, P, P) * 0.68
+           + vnoiseP(u * P2 + 19.7, v * P2 + 2.3, P2, P2) * 0.32;
+  return [u + (nx - 0.5) * 2 * amp, v + (ny - 0.5) * 2 * amp];
+}
+// How far each surface bends. Walls are LAID by someone and only sag with age;
+// a floor is bedded in earth and moves more. Kept small — past ~0.05 the courses
+// stop reading as masonry and start reading as melted.
+const WARP_AMP: Record<SurfaceKind, number> = {
+  wall: 0.022, floor: 0.034, ceiling: 0.014, dressed: 0.008, grain: 0,
+};
+
 function grainCPU(u: number, v: number): Cell {
   const n = vnoiseP(u * 16, v * 2, 16, 2) * 0.7 + vnoiseP(u * 32, v * 4, 32, 4) * 0.3;
   return [mixf(0.92, 1.05, n), mixf(0.48, 0.52, n), 0.5, 0.5];
@@ -203,7 +239,9 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   const buf = new Uint8Array(CPU_TEX * CPU_TEX * 4);
   for (let yi = 0; yi < CPU_TEX; yi++) {
     for (let xi = 0; xi < CPU_TEX; xi++) {
-      const u = (xi + 0.5) / CPU_TEX, v = (yi + 0.5) / CPU_TEX;
+      const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
+      // WARP FIRST, then evaluate the pattern in the bent coordinates.
+      const [u, v] = WARP_AMP[kind] > 0 ? warpUV(u0, v0, WARP_AMP[kind]) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
