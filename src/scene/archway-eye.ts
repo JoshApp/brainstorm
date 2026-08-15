@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { freezeTransform } from './animation-gate';
+import { freezeTransform, isDrawn } from './animation-gate';
 import { disposeGpu } from './gpu-dispose';
 import { isPooledGeometry, pooledCircle, pooledPlane, pooledSphere, pooledTorus } from './geometry-pool';
 import { stdMat } from '../style/material-registry';
@@ -49,6 +49,82 @@ function glowTexture(): THREE.Texture {
   g.fillRect(0, 0, s, s);
   glowTex = new THREE.CanvasTexture(c);
   return glowTex;
+}
+
+// ── THE STONE OF EVERY EYE ON THE FLOOR, IN THREE OBJECTS ────────────────────
+//
+// A phone capture (2026-08-15) settled what a scene actually costs here, and it
+// is not what the plan assumed. Frame CPU correlated with GPU UPLOADS at r≈0.75
+// and with DRAW COUNT at r≈0.0 — one recording carried twice the draws of the
+// other at slightly lower CPU. 848 of 900 sampled uploads were `updateBinding →
+// writeBuffer`: a uniform write per RENDER OBJECT. So the currency is render
+// objects, and render bundles explain the gap — bundling removes draw calls but
+// not the binding update behind each one.
+//
+// The archway eye was 70 of the floor's 218 meshes, seven render objects per
+// eye. Its four opaque parts are the same two materials and four shapes on every
+// keystone, differing only by transform — the textbook case for instancing, and
+// under this cost model an InstancedMesh is ONE render object no matter how many
+// eyes it carries.
+//
+// The transparent three (halo, iris, pupil) stay loose deliberately: each
+// animates its own opacity per eye, and per-instance opacity is not a thing an
+// InstancedMesh does without emulating it through instanceColor (fine for the
+// two additive ones, wrong for the normal-blended pupil). That is a second step
+// with its own visual risk, and this one is meant to be provably identical.
+const MAX_POOLED_EYES = 64;
+
+interface EyePool {
+  root: THREE.Object3D;          // the level root these eyes belong to
+  group: THREE.Group;
+  socket: THREE.InstancedMesh;
+  ball: THREE.InstancedMesh;
+  lids: THREE.InstancedMesh;     // two per eye, at 2i and 2i+1
+  count: number;
+}
+let pool: EyePool | null = null;
+
+/** Collapsed to nothing — how an instance is "hidden". An InstancedMesh has one
+ *  visibility flag for the whole batch, so a culled eye zeroes its transform
+ *  instead; the vertex shader still runs but the triangles are degenerate. */
+const _ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const _m = new THREE.Matrix4();
+const _mb = new THREE.Matrix4();
+
+function ensurePool(root: THREE.Object3D, stone: THREE.Material, lidStone: THREE.Material): EyePool {
+  if (pool && pool.root === root) return pool;
+  // A new floor: the old pool belongs to a level that is being torn down.
+  if (pool) disposeEyePool();
+  const group = new THREE.Group();
+  group.name = 'archway-eye-pool';
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number): THREE.InstancedMesh => {
+    const im = new THREE.InstancedMesh(geo, mat, n);
+    im.count = 0;                       // grows as eyes register
+    im.frustumCulled = false;           // its instances span the floor; three objects, always submit
+    im.userData.dynamicPart = true;     // never sweep an animated batch into a static one
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(im);
+    return im;
+  };
+  pool = {
+    root, group,
+    socket: mk(pooledTorus(EYE_W * 0.62, EYE_W * 0.16, 8, 20), stone, MAX_POOLED_EYES),
+    ball: mk(pooledSphere(EYE_W * 0.5, 16, 12), stone, MAX_POOLED_EYES),
+    lids: mk(pooledSphere(EYE_W * 0.56, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), lidStone, MAX_POOLED_EYES * 2),
+    count: 0,
+  };
+  root.add(group);
+  return pool;
+}
+
+/** Drop the shared batch. Called when a floor's eyes are torn down. */
+export function disposeEyePool(): void {
+  if (!pool) return;
+  pool.group.parent?.remove(pool.group);
+  // Geometry is pooled and the materials are registry-shared — neither is ours
+  // to free (see the eye's own dispose). The InstancedMeshes are.
+  disposeGpu(pool.socket, pool.ball, pool.lids);
+  pool = null;
 }
 
 // Scratch — reused across all eyes each frame (single-threaded, synchronous).
@@ -115,10 +191,12 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   const lidStone = stdMat({ color: 0x1d1913, roughness: 1, metalness: 0, flatShading: true, fog: true });
 
   // Socket ring — a carved rim so the eye reads as SET INTO the stone (fixed).
-  const socket = new THREE.Mesh(pooledTorus(EYE_W * 0.62, EYE_W * 0.16, 8, 20), stone);
+  // A TRANSFORM HOLDER, not a mesh: the geometry lives in the shared batch, and
+  // this only exists to say where this eye's copy of it sits. Same for the ball
+  // and the two lids below.
+  const socket = new THREE.Object3D();
   socket.scale.set(1.15, 0.8, 0.5);
   socket.position.z = -0.02;
-  group.add(socket);
 
   // Glow halo — soft additive disc so the open eye reads as LIGHT spilling out
   // (fixed; the gaze moves over it).
@@ -135,11 +213,11 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   const gaze = new THREE.Group();
   group.add(gaze);
 
-  // Eyeball — flattened almond, recessed slightly into the keystone.
-  const ball = new THREE.Mesh(pooledSphere(EYE_W * 0.5, 16, 12), stone);
+  // Eyeball — flattened almond, recessed slightly into the keystone. Batched, so
+  // this holder rides the gaze pivot's transform without being in the graph.
+  const ball = new THREE.Object3D();
   ball.scale.set(1.2, 0.82, 0.6);
   ball.position.z = -0.05;
-  gaze.add(ball);
 
   // Iris — the bright gaze. ADDITIVE so it reads as light, not a tinted surface.
   const irisMat = new THREE.MeshBasicMaterial({
@@ -158,8 +236,8 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
 
   // Lids — upper + lower stone covers, IN FRONT of the iris so closing them
   // covers the gaze (a real wink). Open → they retract up/down; closed → meet.
-  const mkLid = (): THREE.Mesh => {
-    const lid = new THREE.Mesh(pooledSphere(EYE_W * 0.56, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), lidStone);
+  const mkLid = (): THREE.Object3D => {
+    const lid = new THREE.Object3D();
     lid.scale.set(1.18, 0.62, 0.66);
     lid.position.z = EYE_W * 0.24;
     return lid;
@@ -167,7 +245,6 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   const lidTop = mkLid();
   const lidBot = mkLid();
   lidBot.rotation.z = Math.PI;        // flip to cover the bottom
-  group.add(lidTop, lidBot);
 
   // THE EYE IS ANIMATED — KEEP IT OUT OF THE STATIC BATCH.
   //
@@ -214,10 +291,69 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   // not update, so it does not recompose, so it costs only being walked.
   freezeTransform(group, socket, halo, gaze, ball, iris, pupil, lidTop, lidBot);
 
+  // Register this eye's stone in the floor's shared batch and place the parts
+  // that never move. `group` is a direct child of `root`, and so is the pool, so
+  // a part's transform in pool space is simply group.matrix x part.matrix — no
+  // world matrices, no dependence on when the graph was last updated.
+  const p = ensurePool(root, stone, lidStone);
+  const slot = p.count < MAX_POOLED_EYES ? p.count++ : -1;
+  if (slot < 0 && import.meta.env.DEV) {
+    // A floor with more keystones than the batch holds would silently lose its
+    // stone — eyes rendered as a floating iris. Sixty-four is far past the ~18 a
+    // real floor builds, so this firing means the assumption changed.
+    // eslint-disable-next-line no-console
+    console.warn(`[archway-eye] pool full at ${MAX_POOLED_EYES}; this eye has no stone`);
+  }
+  if (slot >= 0) {
+    p.socket.count = p.count;
+    p.ball.count = p.count;
+    p.lids.count = p.count * 2;
+    p.socket.setMatrixAt(slot, _m.multiplyMatrices(group.matrix, socket.matrix));
+    p.socket.instanceMatrix.needsUpdate = true;
+  }
+  /** Write this eye's moving stone into the batch. Cheap: three matrix
+   *  multiplies, and the batch uploads once for all eyes rather than once per
+   *  mesh per eye. */
+  const writeInstances = (): void => {
+    if (slot < 0 || !pool || pool.root !== root) return;
+    pool.ball.setMatrixAt(slot, _m.multiplyMatrices(group.matrix, _mb.multiplyMatrices(gaze.matrix, ball.matrix)));
+    pool.lids.setMatrixAt(slot * 2, _m.multiplyMatrices(group.matrix, lidTop.matrix));
+    pool.lids.setMatrixAt(slot * 2 + 1, _m.multiplyMatrices(group.matrix, lidBot.matrix));
+    pool.ball.instanceMatrix.needsUpdate = true;
+    pool.lids.instanceMatrix.needsUpdate = true;
+  };
+  /** Fold this eye's stone away while it is culled. One write on the transition,
+   *  not per frame — a hidden eye must cost nothing, which is the whole point. */
+  const collapseInstances = (): void => {
+    if (slot < 0 || !pool || pool.root !== root) return;
+    pool.socket.setMatrixAt(slot, _ZERO);
+    pool.ball.setMatrixAt(slot, _ZERO);
+    pool.lids.setMatrixAt(slot * 2, _ZERO);
+    pool.lids.setMatrixAt(slot * 2 + 1, _ZERO);
+    pool.socket.instanceMatrix.needsUpdate = true;
+    pool.ball.instanceMatrix.needsUpdate = true;
+    pool.lids.instanceMatrix.needsUpdate = true;
+  };
+  const restoreSocket = (): void => {
+    if (slot < 0 || !pool || pool.root !== root) return;
+    pool.socket.setMatrixAt(slot, _m.multiplyMatrices(group.matrix, socket.matrix));
+    pool.socket.instanceMatrix.needsUpdate = true;
+  };
+  let wasDrawn = true;
+
   let lit = 0;   // eased open amount
   let t = 0;     // life clock (flicker + blink)
 
   const update = (dt: number, openTarget: number, player: { x: number; y: number; z: number }): void => {
+    // OFF-SCREEN EYES DO NOT ANIMATE (scene/animation-gate.ts), and now they do
+    // not occupy the batch either. The gate lives here rather than in the caller
+    // because the eye is what owns the instance slot, so it is what has to fold
+    // it away — once, on the transition.
+    if (!isDrawn(group)) {
+      if (wasDrawn) { wasDrawn = false; collapseInstances(); }
+      return;
+    }
+    if (!wasDrawn) { wasDrawn = true; restoreSocket(); }
     t += dt;
     lit += (Math.min(1, Math.max(0, openTarget)) - lit) * Math.min(1, dt * KINDLE_RATE);
 
@@ -250,6 +386,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     } else _targetQuat.identity();
     gaze.quaternion.slerp(_targetQuat, Math.min(1, dt * GAZE_RATE));
     gaze.updateMatrix();
+    writeInstances();
   };
   update(0, 0, eyeWorld);   // spawn closed, gaze centred
 
