@@ -35,6 +35,7 @@ let sceneAuditProvider: (() => SceneAudit) | null = null;
 export function setSceneAuditProvider(fn: () => SceneAudit): void { sceneAuditProvider = fn; }
 import { getSettings } from '../settings/settings';
 import { armCensus, tickCensus, takeCensus, resetCensus, CENSUS_PERIOD_MS, type CensusResult } from './upload-census';
+import { armMatrixCensus, tickMatrixCensus, takeMatrixCensus, resetMatrixCensus, type MatrixCensusResult } from './matrix-census';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -127,6 +128,9 @@ export interface Recording {
      *  Present only on the WebGPU backend — see debug/upload-census.ts for why
      *  it rides along with a recording rather than being a console command. */
     uploadCensus?: CensusResult;
+  /** WHAT MOVED. The upload census says per-object matrix buffers dominate;
+   *  this says whose matrices actually changed, and whether the camera did. */
+  matrixCensus?: MatrixCensusResult;
     /** Warm-vs-live pipeline coverage: how many pipelines the warm produced, how
      *  many of those it has since LOST, and every post-warm compile classified by
      *  why the warm missed it. `compiledKeys` above says THAT something compiled;
@@ -252,9 +256,11 @@ function onRingFrame(s: FrameSample): void {
   // pressed, so arming on start attributes nothing (measured: the first
   // recording on the census build came back with no census at all).
   tickCensus(censusFrame++);
+  tickMatrixCensus();
   if (now - lastCensusAt > CENSUS_PERIOD_MS) {
     lastCensusAt = now;
     armCensus(censusRenderer, censusFrame);
+    armMatrixCensus();
   }
   const evList = pendingEvents.length ? pendingEvents.slice() : [];
   pendingEvents.length = 0;
@@ -325,6 +331,7 @@ export function setRollingEnabled(on: boolean): void {
     autoSpikeCount = 0;
     lastCensusAt = -Infinity;   // census promptly once the ring comes up
     resetCensus();
+  resetMatrixCensus();
     addFrameListener(onRingFrame);
     // Per-pass GPU spans (render/compute split) are passive WebGPU timestamp
     // queries — always on, so every recording carries them automatically.
@@ -403,6 +410,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       graphics: graphicsSnapshot(),
       sceneAudit: sceneAuditProvider ? sceneAuditProvider() : undefined,
       uploadCensus: takeCensus() ?? undefined,
+      matrixCensus: takeMatrixCensus() ?? undefined,
       compiledKeys: getCompiledProgramKeys().slice(),   // full cacheKeys of in-session compiles
       pipelineCensus: censusForRecording() ?? undefined,
       label,

@@ -3,6 +3,7 @@ import { getSettings } from '../settings/settings';
 import { initFrameTiming, setMarks, marksOn } from './frame-timing';
 import { setStreamEnabled, streamEnabled, broadcastAttr } from './perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './perf-recorder';
+import { setMatrixCensusProvider } from './matrix-census';
 import { auditScene } from './scene-audit';
 import { launchSpector } from './spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './draw-report';
@@ -31,6 +32,10 @@ import type { LiveLevel } from '../level/builder';
 export interface ProfilerWiringDeps {
   renderer: DelveRenderer;
   scene: THREE.Scene;
+  /** The live render camera — the matrix census needs it, because a camera that
+   *  moves dirties every drawn object's modelView at once and that has to be
+   *  distinguishable from objects moving on their own. */
+  camera: THREE.Camera;
   getLevel: () => LiveLevel | null;
 }
 
@@ -60,7 +65,13 @@ function ensureProfilingInited(): void {
  *  PROFILER TOOLS setting. Called at boot and from onSettingsChanged. */
 export function applyProfilerEnabled(): void {
   const on = profilingEnabled();
-  if (on) { ensureProfilingInited(); setSceneAuditProvider(() => auditScene(deps.scene)); }
+  if (on) {
+    ensureProfilingInited();
+    setSceneAuditProvider(() => auditScene(deps.scene));
+    // Same shape, different question: the audit says WHAT is in the scene, the
+    // matrix census says what MOVED (see debug/matrix-census.ts).
+    setMatrixCensusProvider(() => ({ scene: deps.scene, camera: deps.camera }));
+  }
   setRollingEnabled(on);          // dashcam ring fills only while enabled
   setProfilerToolbarVisible(on);
   if (!on) {

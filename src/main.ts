@@ -1691,7 +1691,7 @@ setPerfOverlayVisible(getSettings().perfMeter);
 // Profiling suite wiring (HUD / recorder / draw report / GPU attribution /
 // hotkeys / window.__* handles) — debug/profiler-wiring.ts. Ships in prod
 // behind the PROFILER TOOLS setting; zero footprint until enabled.
-initProfilerWiring({ renderer, scene, getLevel: () => currentLevel });
+initProfilerWiring({ renderer, scene, camera, getLevel: () => currentLevel });
 
 // Fake persisted state for snaps (?fakemeta=1 / ?fakesave=1) — debug/boot-url-screens.ts.
 applyFakeStateFlags();
