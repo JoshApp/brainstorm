@@ -13,7 +13,32 @@ import { DEV } from '../debug/dev';
 // ?pom=0 disables, ?pom=<n> sets the step count (DEV only; the flag is stripped
 // from production, the default is not).
 const POM_DEFAULT_STEPS = 8;
-const POM_DEPTH_M = 0.055;        // apparent depth of the height field, metres
+// Apparent depth of the height field. Josh: *"cant we make the bricks even more
+// 3d."* This is the dial for that — it is how far the ray marches, so it sets
+// how deep a mortar line or a missing flagstone actually goes. Raised 0.055 →
+// 0.10 now that missing stones and spalled faces punch real holes in the height
+// map; at the old depth those holes were being marched through in one step and
+// read as flat dark patches. ?pomdepth= to experiment.
+const POM_DEPTH_DEFAULT = 0.10;
+
+// ── STYLE DIALS ──────────────────────────────────────────────────────────────
+// Josh: *"fuck the rules we have written lets invent this games art style."*
+// These are the knobs worth pushing to find a look, exposed as DEV URL params
+// so a style can be tried in a reload instead of an edit:
+//   ?stonehue=0..2    how far apart different stones' colours sit
+//   ?stonewear=0..1   how much stones differ in roughness
+//   ?pomdepth=0..0.3  how deep the stone goes
+//   ?pom=0..24        march steps (0 = off)
+const urlNum = (key: string, dflt: number, lo: number, hi: number): number => {
+  if (!DEV || typeof window === 'undefined') return dflt;
+  const v = new URLSearchParams(window.location.search).get(key);
+  if (v == null) return dflt;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : dflt;
+};
+const STONE_HUE_SPREAD = urlNum('stonehue', 0.85, 0, 2);
+const STONE_WEAR_SPREAD = urlNum('stonewear', 0.30, 0, 1);
+const POM_DEPTH_M = urlNum('pomdepth', POM_DEPTH_DEFAULT, 0, 0.3);
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -145,7 +170,33 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // pipeline. See the note in surface-ao.ts installPropHeightAOWebGPU.
   const base: any = materialColor;
   const tint: any = (tslUniform as any)(new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]));
-  let albedo: any = base.mul(sampled.rgb).mul(tint);
+  // `.r` BROADCAST, not `.rgb`. G and B no longer duplicate R — they carry this
+  // stone's VARIANT and WEAR (see surface-textures.ts). Reading .rgb here would
+  // drag the identity channels in as a colour cast.
+  const shade: any = (vec3 as any)(sampled.r, sampled.r, sampled.r);
+  const variant: any = sampled.g;
+  const wear: any = sampled.b;
+  let albedo: any = base.mul(shade).mul(tint);
+
+  // ── PER-STONE COLOUR ───────────────────────────────────────────────────────
+  // Josh: *"cant we kinda give the floor a different coloring."*
+  //
+  // Until now every stone in a wall or floor was THE SAME SUBSTANCE at a
+  // different brightness — the generators varied `tone`, a scalar, and nothing
+  // else. No amount of lighting work can turn that into a mosaic, because a
+  // mosaic is made of different ROCKS, not one rock at different exposures.
+  //
+  // VARIANT is a per-cell constant, so each block picks a point on a three-way
+  // ramp and holds it across its whole face: ochre sandstone, cold slate,
+  // green-grey serpentine. The spread is deliberately wide enough to see — this
+  // is the knob to push if the floor still reads as one material.
+  const STONE_A: any = (vec3 as any)(1.14, 0.99, 0.80);   // warm ochre
+  const STONE_B: any = (vec3 as any)(0.84, 0.94, 1.14);   // cold slate
+  const STONE_C: any = (vec3 as any)(0.90, 1.06, 0.88);   // green-grey
+  const lowHalf: any = (tslSmoothstep as any)(0.0, 0.5, variant);
+  const hiHalf: any = (tslSmoothstep as any)(0.5, 1.0, variant);
+  const stoneHue: any = (tslMix as any)((tslMix as any)(STONE_A, STONE_B, lowHalf), STONE_C, hiHalf);
+  albedo = albedo.mul((tslMix as any)((vec3 as any)(1, 1, 1), stoneHue, float(STONE_HUE_SPREAD)));
 
   // ── WEAR LAYERS (surface v3) ───────────────────────────────────────────────
   // Josh: *"it all looks so uniform so perfect so bland ... i would like it to
@@ -251,9 +302,14 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const grease: any = (tslSmoothstep as any)(0.58, 0.96, macro);
   const proud: any = (tslSmoothstep as any)(0.80, 1.05, sampled.a);
   const baseRough: any = (tslUniform as any)(mat.roughness);
+  // PER-STONE WEAR rides on top: some blocks are simply rougher rock than their
+  // neighbours, and a spalled face or a bare-earth pit is rougher still (the
+  // generators fold that into the wear channel). Centred on 0.5 so it pushes
+  // both ways rather than only adding.
+  const stoneWear: any = wear.sub(0.5).mul(STONE_WEAR_SPREAD);
   const varied: any = (tslClamp as any)(
-    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)),
-    0.22, 1.0,
+    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear),
+    0.18, 1.0,
   );
   (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);
 

@@ -47,7 +47,21 @@ const smooth = (e0: number, e1: number, x: number) => { const t = clampf((x - e0
 // The one hash, shared with stone-grid.ts so a cell id computed at runtime and
 // a cell id baked into the texture are the same cell.
 const dHash = stoneHash;
-function brickCPU(px: number, py: number, aa: number): [number, number] {
+
+// ── WHAT A BAKED TEXEL CARRIES ───────────────────────────────────────────────
+// [shade, height, variant, wear]. Shade and height are as before; VARIANT and
+// WEAR are new and they cost nothing, because the bake used to write
+// `buf[o] = buf[o+1] = buf[o+2] = s` — G and B were duplicates of R, two whole
+// channels thrown away on a greyscale value.
+//
+// They carry PER-STONE IDENTITY, which is the thing the shader could never do
+// before: every stone in a wall or floor was the same substance at a different
+// brightness, so no amount of lighting work could make it a mosaic of
+// different rocks. VARIANT lets the shader give each stone its own colour;
+// WEAR lets it give each stone its own roughness. Both are constant across a
+// cell, so they survive mipping as a soft average rather than turning to mush.
+type Cell = [shade: number, height: number, variant: number, wear: number];
+function brickCPU(px: number, py: number, aa: number): Cell {
   // SHARED WITH THE GEOMETRY. wall-courses.ts lays its real courses on this same
   // grid — see style/stone-grid.ts for why the two must not each pick a number.
   const bx = BRICK_W, by = COURSE_H;
@@ -83,19 +97,29 @@ function brickCPU(px: number, py: number, aa: number): [number, number] {
   // Tone widened 0.86..1.0 → 0.80..1.06: with light now varying per block, the
   // albedo can carry more spread without the wall reading as noise.
   const tone = mixf(0.80, 1.06, dHash(idx, idy, 3.7));
-  const h = clampf(1.0 + set + tilt, 0.55, 1.15);
-  return [mixf(tone, 0.5, recess), mixf(h, 0.4, recess)];
+  // SPALL — roughly one brick in twelve has lost its face. Until POM existed a
+  // "broken" brick could only be a darker rectangle; now the height can drop
+  // and the ray march carves an actual bite out of the wall.
+  const spall = stepf(0.92, dHash(idx, idy, 6.9));
+  const spallD = spall * mixf(0.30, 0.55, dHash(idx, idy, 1.7));
+  const h = clampf(1.0 + set + tilt - spallD, 0.25, 1.15);
+  return [
+    mixf(tone, 0.5, recess) * mixf(1.0, 0.72, spall),
+    mixf(h, 0.4, recess),
+    dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
+    clampf(dHash(idx, idy, 9.6) + spall * 0.35, 0, 1),  // WEAR — spalled faces are rougher
+  ];
 }
-function cofferCPU(px: number, py: number, aa: number): [number, number] {
+function cofferCPU(px: number, py: number, aa: number): Cell {
   const PAN = 1.6; const gx = px / PAN, gy = py / PAN;
   const idx = modf(Math.floor(gx), 3), idy = modf(Math.floor(gy), 3);
   const inbx = fract(gx), inby = fract(gy);
   const dB = Math.min(Math.min(inbx, 1 - inbx), Math.min(inby, 1 - inby)) * PAN;
   const beam = 1 - smooth(0.16 - aa, 0.16 + aa, dB);
   const tone = mixf(0.8, 1.0, dHash(idx, idy, 4.2));
-  return [mixf(tone * 0.78, tone, beam), mixf(0.45, 1.0, beam)];
+  return [mixf(tone * 0.78, tone, beam), mixf(0.45, 1.0, beam), 0.5, 0.5];
 }
-function dressedCPU(px: number, py: number, aa: number): [number, number] {
+function dressedCPU(px: number, py: number, aa: number): Cell {
   const bx = 1.6, by = 0.8; let gx = px / bx; const gy = py / by; const row = Math.floor(gy);
   gx += 0.5 * modf(row, 2);
   const idx = modf(Math.floor(gx), 3), idy = modf(row, 4);
@@ -103,7 +127,7 @@ function dressedCPU(px: number, py: number, aa: number): [number, number] {
   const dseam = Math.min(Math.min(inby, 1 - inby) * by, Math.min(inbx, 1 - inbx) * bx);
   const joint = 1 - smooth(0.018 - aa, 0.018 + aa, dseam);
   const tone = mixf(0.92, 1.0, dHash(idx, idy, 3.1));
-  return [mixf(tone, 0.62, joint), mixf(1.0, 0.65, joint)];
+  return [mixf(tone, 0.62, joint), mixf(1.0, 0.65, joint), dHash(idx, idy, 4.2), dHash(idx, idy, 9.6)];
 }
 function vnoiseP(x: number, y: number, Px: number, Py: number): number {
   const ix = Math.floor(x), iy = Math.floor(y); let fx = fract(x), fy = fract(y);
@@ -112,11 +136,11 @@ function vnoiseP(x: number, y: number, Px: number, Py: number): number {
   const c = dHash(modf(ix, Px), modf(iy + 1, Py), 0.7), d = dHash(modf(ix + 1, Px), modf(iy + 1, Py), 0.7);
   return mixf(mixf(a, b, fx), mixf(c, d, fx), fy);
 }
-function grainCPU(u: number, v: number): [number, number] {
+function grainCPU(u: number, v: number): Cell {
   const n = vnoiseP(u * 16, v * 2, 16, 2) * 0.7 + vnoiseP(u * 32, v * 4, 32, 4) * 0.3;
-  return [mixf(0.92, 1.05, n), mixf(0.48, 0.52, n)];
+  return [mixf(0.92, 1.05, n), mixf(0.48, 0.52, n), 0.5, 0.5];
 }
-function flagCPU(px: number, py: number, aa: number): [number, number] {
+function flagCPU(px: number, py: number, aa: number): Cell {
   // Periodic Voronoi (period 5), faithful 2-pass: nearest point then edge dist.
   const FLAG = FLAG_CELL, P = FLAG_PERIOD; const x = px / FLAG, y = py / FLAG;
   const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
@@ -158,8 +182,20 @@ function flagCPU(px: number, py: number, aa: number): [number, number] {
   const tAmt = mixf(0.02, 0.085, dHash(gx, gy, 2.9));
   const tilt = (Math.cos(tAng) * -mrx + Math.sin(tAng) * -mry) * 2 * tAmt;
   const tone = mixf(0.70, 1.06, bt);
-  const h = clampf(1.0 + set + tilt, 0.5, 1.15);
-  return [mixf(tone, 0.5, recess) * mixf(1.0, 0.45, missing), mixf(h, 0.35, recess)];
+  // MISSING STONES ARE HOLES NOW. Josh: *"some stones are missing there but
+  // even the missing texture is just flat color."* Exactly right — `missing`
+  // only ever darkened the shade, so a lifted flagstone was a dark patch
+  // painted on a level floor. The height never moved, because before POM there
+  // was nothing that could have displayed it. Now it drops hard and the ray
+  // march reads it as a pit you look down into, with the seam recess on top.
+  const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
+  const h = clampf(1.0 + set + tilt - pit, 0.12, 1.15);
+  return [
+    mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing),
+    mixf(h, 0.35, seam),
+    dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
+    clampf(dHash(gx, gy, 9.6) + missing * 0.4, 0, 1),   // WEAR — bare earth is rough
+  ];
 }
 function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   const tile = SURFACE_TILE[kind];
@@ -169,15 +205,21 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     for (let xi = 0; xi < CPU_TEX; xi++) {
       const u = (xi + 0.5) / CPU_TEX, v = (yi + 0.5) / CPU_TEX;
       const px = u * tile[0], py = v * tile[1];
-      let shade = 1, height = 1;
-      if (kind === 'wall') [shade, height] = brickCPU(px, py, aa);
-      else if (kind === 'floor') [shade, height] = flagCPU(px, py, aa);
-      else if (kind === 'ceiling') [shade, height] = cofferCPU(px, py, aa);
-      else if (kind === 'dressed') [shade, height] = dressedCPU(px, py, aa);
-      else [shade, height] = grainCPU(u, v);
+      let shade = 1, height = 1, variant = 0.5, wear = 0.5;
+      if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
+      else if (kind === 'floor') [shade, height, variant, wear] = flagCPU(px, py, aa);
+      else if (kind === 'ceiling') [shade, height, variant, wear] = cofferCPU(px, py, aa);
+      else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa);
+      else [shade, height, variant, wear] = grainCPU(u, v);
       const o = (yi * CPU_TEX + xi) * 4;
-      const s = clampf(shade, 0, 1) * 255;
-      buf[o] = buf[o + 1] = buf[o + 2] = s; buf[o + 3] = clampf(height, 0, 1) * 255;
+      // R = shade, G = variant, B = wear, A = height. G and B used to be copies
+      // of R — see the Cell note above. The shader must therefore read shade as
+      // `.r` broadcast, NOT `.rgb`, or it picks up the identity channels as a
+      // colour cast.
+      buf[o] = clampf(shade, 0, 1) * 255;
+      buf[o + 1] = clampf(variant, 0, 1) * 255;
+      buf[o + 2] = clampf(wear, 0, 1) * 255;
+      buf[o + 3] = clampf(height, 0, 1) * 255;
     }
   }
   const tex = new THREE.DataTexture(buf, CPU_TEX, CPU_TEX, THREE.RGBAFormat);
