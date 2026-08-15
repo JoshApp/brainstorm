@@ -39,7 +39,6 @@ const urlNum = (key: string, dflt: number, lo: number, hi: number): number => {
 const STONE_HUE_SPREAD = urlNum('stonehue', 0.85, 0, 2);
 const STONE_WEAR_SPREAD = urlNum('stonewear', 0.30, 0, 1);
 const POM_DEPTH_M = urlNum('pomdepth', POM_DEPTH_DEFAULT, 0, 0.3);
-const MOSS_AMOUNT = urlNum('moss', 0.75, 0, 2);
 // Metres over which POM depth fades to nothing. Beyond this the mip chain has
 // flattened the height field anyway, so marching it only buys artefacts.
 const POM_FADE_NEAR = 3.5;
@@ -54,17 +53,6 @@ const POM_FADE_FAR = 7.0;
 // better at higher relief, i think it looks flatter at relief 0, i settled on
 // like 0.25."*
 const RELIEF_METRES = urlNum('relief', 0.25, 0, 0.6);
-// Hex-tiling strength. 0 = plain tiling (one sample), 1 = full stochastic
-// blend. ?hex=0 to A/B the repeat back.
-const HEX_MIX = urlNum('hex', 1, 0, 1);
-// How hard the hex weights are sharpened. This is the technique's central
-// trade and it has no free setting:
-//   HIGH  one sample dominates → contrast preserved, but cell borders become
-//         thin visible seams (the faint diagonal Xs across the wall)
-//   LOW   wide smooth blend → seams vanish, but three overlapping stones
-//         average toward grey mud and the stonework loses its punch
-// ?hexsharp= to find where it should sit.
-const HEX_SHARP = urlNum('hexsharp', 5, 1, 16);
 const POM_STEPS: number = (() => {
   // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
   // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
@@ -95,85 +83,15 @@ function valueNoise2(p: any): any {
   const c = hash21(i.add((vec2 as any)(0, 1))), d = hash21(i.add((vec2 as any)(1, 1)));
   return (tslMix as any)((tslMix as any)(a, b, u.x), (tslMix as any)(c, d, u.x), u.y); // → [0,1]
 }
-// ── STOCHASTIC HEX TILING ────────────────────────────────────────────────────
-// Heitz & Neyret's technique, in Morten Mikkelsen's cheaper adaptation — the
-// standard answer to "the eye finds the repeat".
-//
-// Our tile repeats every couple of metres across every wall in the game, and
-// once the stones stopped being identical to each other that repeat became the
-// loudest remaining artefact: you see the same block, with the same chip in the
-// same corner, marching along the wall.
-//
-// How it works: lay a virtual TRIANGULAR grid over the surface. Every point
-// falls inside one triangle, so it has three corners and three barycentric
-// weights. Each corner hashes to its own random OFFSET into the texture. Sample
-// the texture three times at those three offsets and blend by the weights —
-// the pattern is now shuffled differently in every cell, and the cells blend
-// smoothly into each other, so nothing repeats and nothing seams.
-//
-// Mikkelsen's contribution is what makes it affordable: the original preserved
-// the texture's histogram through an expensive transform, because naively
-// averaging three samples washes out contrast (three random stones averaged
-// look like grey mud). Instead we SHARPEN the weights — raise them to a power
-// and renormalise — so one sample dominates almost everywhere and the blend
-// only happens in a narrow band near cell borders. Contrast survives, at the
-// cost of three taps instead of one.
-function hexSample(tex: THREE.Texture, uv: any, period: readonly [number, number]): any {
-  if (HEX_MIX <= 0) return (tslTexture as any)(tex, uv);
-  // Skew into a simplex/triangular grid. 3.464 = 2*sqrt(3) sets the cell size
-  // relative to one texture repeat — roughly one hex per tile, so the shuffle
-  // happens at the same scale as the repeat it is hiding.
-  const su: any = uv.mul(3.464);
-  const sx: any = su.x.sub(su.y.mul(0.57735027));
-  const sy: any = su.y.mul(1.15470054);
-  const bx: any = sx.floor(), by: any = sy.floor();
-  const fx: any = sx.fract(), fy: any = sy.fract();
-  const fz: any = float(1).sub(fx).sub(fy);
-  // Which half of the rhombus are we in — the lower-left or upper-right triangle.
-  const s: any = (fz.lessThan(0) as any).select(float(1), float(0));
-  const s2: any = s.mul(2).sub(1);
-  let w1: any = fz.mul(s2).negate();
-  let w2: any = s.sub(fy.mul(s2));
-  let w3: any = s.sub(fx.mul(s2));
-  // The three cell ids.
-  const v1: any = (vec2 as any)(bx.add(s), by.add(s));
-  const v2: any = (vec2 as any)(bx.add(s), by.add(float(1).sub(s)));
-  const v3: any = (vec2 as any)(bx.add(float(1).sub(s)), by.add(s));
-  // CONTRAST-PRESERVING WEIGHTS (the Mikkelsen part): sharpen so one sample
-  // dominates except in a thin blend band.
-  w1 = w1.max(0).pow(HEX_SHARP); w2 = w2.max(0).pow(HEX_SHARP); w3 = w3.max(0).pow(HEX_SHARP);
-  const wsum: any = w1.add(w2).add(w3).max(1e-5);
-  w1 = w1.div(wsum); w2 = w2.div(wsum); w3 = w3.div(wsum);
-  // ── OFFSETS QUANTISED TO THE PATTERN'S OWN PERIOD ──────────────────────────
-  // The first version used a free random offset, and it produced visible
-  // diagonal criss-cross breaks across the wall. That is not a bug in the
-  // implementation — it is what hex tiling DOES to a structured texture.
-  //
-  // The technique was designed for stochastic material (rock, dirt, bark),
-  // where shifting the pattern by any amount is invisible because there is no
-  // alignment to break. Masonry is the opposite: it is a GRID. Shift one hex
-  // cell by an arbitrary amount and its courses no longer line up with its
-  // neighbour's, so every cell boundary becomes a visible jog in the brickwork.
-  //
-  // Fix: snap the offset to whole multiples of the pattern's own period. The
-  // wall bake lays 4 bricks x 8 courses per tile, so offsets of k/4 and k/8
-  // land brick-on-brick — the courses stay continuous across cell boundaries
-  // while the STONES still shuffle, which is the repetition we actually wanted
-  // to kill. Structure preserved, repeat broken.
-  const per: readonly [number, number] = period;
-  const snap = (h: any, n: number): any => h.mul(n).floor().div(n);
-  const off = (v: any): any => (vec2 as any)(
-    snap(hash21(v), per[0]),
-    snap(hash21(v.add((vec2 as any)(37.1, 17.7))), per[1]),
-  );
-  const t1: any = (tslTexture as any)(tex, uv.add(off(v1)));
-  const t2: any = (tslTexture as any)(tex, uv.add(off(v2)));
-  const t3: any = (tslTexture as any)(tex, uv.add(off(v3)));
-  const blended: any = t1.mul(w1).add(t2.mul(w2)).add(t3.mul(w3));
-  // HEX_MIX lets it be dialled back toward plain tiling for an A/B.
-  return HEX_MIX >= 1 ? blended : (tslMix as any)((tslTexture as any)(tex, uv), blended, float(HEX_MIX));
-}
-
+// (Stochastic hex tiling — Heitz/Neyret in Mikkelsen's adaptation — was built
+// here and REMOVED. Josh: *"lets get rid of the moss and the hex etc."* It
+// worked: the ~2m repeat stopped marching along the wall. But it cost three
+// texture taps on EVERY sample — base, all eight POM steps, and the four normal
+// taps — and it left faint diagonal cell seams that only trade against contrast,
+// with no free setting. Recoverable from git if the repeat ever becomes the
+// loudest problem again; the finding worth keeping is that hex tiling fights
+// STRUCTURED textures, and offsets must snap to the pattern's own period or
+// every cell boundary jogs the brick courses.)
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
 // modulate the base albedo by its shade channel × tint, via a colorNode (a
 // supported migration slot on standard materials under WebGPURenderer).
@@ -202,10 +120,6 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (bounded + warmable). See surface-ao.ts for the same lesson on base colour.
   const uTile: any = (tslUniform as any)(new THREE.Vector2(cfg.tile[0], cfg.tile[1]));
   const uv: any = (vec2 as any)(sU.div(uTile.x), sV.div(uTile.y));
-  // The pattern's own period WITHIN one tile — what hex offsets snap to. The
-  // wall bake lays 4 bricks x 8 courses; the flagstone Voronoi has period 5.
-  const hexPeriod: readonly [number, number] =
-    cfg.hexPeriod ?? (cfg.proj === 'wall' ? [4, 8] : [5, 5]);
 
   // ── PARALLAX OCCLUSION MAPPING ─────────────────────────────────────────────
   // Josh: *"arent there ways to have more texture in the shader ... there must
@@ -271,7 +185,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     for (let i = 0; i < POM_STEPS; i++) {
       // Height channel is 1 = face, lower = recessed, so depth below the face
       // is (1 - h). We have hit the surface once the ray is deeper than it.
-      const surfD: any = float(1).sub(hexSample(cfg.tex, curUV, hexPeriod).a);
+      const surfD: any = float(1).sub((tslTexture as any)(cfg.tex, curUV).a);
       const hit: any = (curD.greaterThanEqual(surfD) as any).select(float(1), float(0));
       const fresh: any = hit.mul(float(1).sub(done));      // keep the FIRST hit only
       hitUV = (tslMix as any)(hitUV, curUV, fresh);
@@ -303,7 +217,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     pomUV = (tslMix as any)(uv, pomUV, done);
   }
 
-  const sampled: any = hexSample(cfg.tex, pomUV, hexPeriod);
+  const sampled: any = (tslTexture as any)(cfg.tex, pomUV);
   // UNIFORM-backed base colour (materialColor), NOT vec3(mat.color.*): a vec3(...)
   // literal bakes the wall/floor tint into the WGSL, forking a fresh shader per
   // distinct shell colour (per-floor pipeline churn). materialColor reads the
@@ -311,26 +225,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // pipeline. See the note in surface-ao.ts installPropHeightAOWebGPU.
   const base: any = materialColor;
   const tint: any = (tslUniform as any)(new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]));
-  // TWO TEXTURE LAYOUTS, and the shader has to know which it got.
+  // `.r` BROADCAST, not `.rgb`. G and B do not duplicate R — they carry this
+  // stone's VARIANT and WEAR (see surface-textures.ts). Reading .rgb here would
+  // drag the identity channels in as a colour cast.
   //
-  // PACKED (the CPU bake): R = shade, G = variant, B = wear, A = height. Shade
-  // is a greyscale multiplier over the material's own near-black colour, and
-  // G/B carry per-stone identity — so it must be read as `.r` BROADCAST, never
-  // `.rgb`, or the identity channels arrive as a colour cast.
-  //
-  // COLOUR (an AI-generated map): RGB is the finished colour of the stone and
-  // A is a height derived from luminance. It must NOT be multiplied by the
-  // material's base colour — that base is near-black by design (0x1a1714), so
-  // multiplying would crush a perfectly good texture to nothing. It also has no
-  // identity channels, so variant/wear go neutral and the per-stone colour and
-  // roughness spread simply stop contributing — the texture is expected to
-  // carry that variation itself, which is the whole point of the experiment.
-  const isColorTex = cfg.colorTex === true;
-  const variant: any = isColorTex ? float(0.5) : sampled.g;
-  const wear: any = isColorTex ? float(0.5) : sampled.b;
-  let albedo: any = isColorTex
-    ? (sampled.rgb as any).mul(tint)
-    : base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
+  // (A second layout, for AI-generated COLOUR maps, briefly lived here and was
+  // removed with the texture experiment.)
+  const variant: any = sampled.g;
+  const wear: any = sampled.b;
+  let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
 
   // ── PER-STONE COLOUR ───────────────────────────────────────────────────────
   // Josh: *"cant we kinda give the floor a different coloring."*
@@ -370,20 +273,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const meso: any = valueNoise2((vec2 as any)(sU.mul(0.33), sV.mul(0.33)));     // ~3m (the old layer)
   const micro: any = valueNoise2((vec2 as any)(sU.mul(1.9), sV.mul(1.9)));      // ~0.5m grain
   const grime: any = macro.mul(0.55).add(meso.mul(0.30)).add(micro.mul(0.15));  // → [0,1]
-  // ── DON'T DOUBLE UP ON A COLOUR MAP ────────────────────────────────────────
-  // Josh: *"i think there are things infering with it."* Correct. These wear
-  // layers were written to rescue a CLEAN procedural tile — but a generated map
-  // arrives with its own grime, its own moss, its own stains already painted in.
-  // Running the full stack on top applies filth to filth: contrast piles up,
-  // the image goes muddy, and the high-frequency result aliases into exactly
-  // the sparkle in the screenshots.
-  //
-  // So on a colour map the procedural layers back off to a light touch. They
-  // still earn their place — they are WORLD-space and non-tiling, so they break
-  // the repeat that the texture itself cannot — but they stop competing with
-  // detail that is already there.
-  const wearMix = isColorTex ? 0.35 : 1.0;
-  albedo = albedo.mul(float(1 - 0.22 * wearMix).add(grime.mul(0.40 * wearMix)));
+  albedo = albedo.mul(float(0.78).add(grime.mul(0.40)));
 
   // CAVITY GRIME — dirt does not sit evenly, it collects. Everything low in the
   // height field (mortar lines, chips, the pits between flagstones) gets darker
@@ -392,50 +282,14 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // for DEPTH; this is the same geometry read as ACCUMULATION.
   const cavity: any = float(1).sub((tslSmoothstep as any)(0.42, 0.95, sampled.a));
   albedo = albedo.mul((tslMix as any)(
-    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))).mul(wearMix),
+    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))),
   ));
 
-  // ── MOSS / LICHEN ──────────────────────────────────────────────────────────
-  // Josh: *"i need more things its still bland, there must be other things we
-  // can do like moss on the walls etc."*
-  //
-  // Every layer so far modulates STONE. Moss is the first thing that is not
-  // stone — a second material living on top of it — and that is why it does
-  // more for "bland" than another octave of grime would. It also carries the
-  // only green in the palette, against a room lit amber, so it reads instantly.
-  //
-  // It is placed by the same logic that places real moss, which is what keeps
-  // it from looking like green noise:
-  //   LOW      it needs damp, and damp collects near the floor. Strongest in
-  //            the bottom ~1.6m of a wall, gone by head height.
-  //   SHELTER  it takes hold in the crevices and pits first, where water sits
-  //            and nothing scrubs it off — so it keys off the SAME cavity term
-  //            the dirt uses, which makes filth and growth agree.
-  //   PATCHY   colonies, not a coat. A separate low-frequency field decides
-  //            where a colony took, and a high-frequency one gives it a fuzzy,
-  //            eaten edge instead of a painted outline.
-  // It also goes ROUGH — moss is the least reflective thing in the room, so it
-  // kills the grazing sheen exactly where it grows and breaks up the highlight.
-  let mossMask: any = float(0);
-  if (MOSS_AMOUNT > 0) {
-    const colony: any = valueNoise2((vec2 as any)(sU.mul(0.19), sV.mul(0.19)));
-    const fuzz: any = valueNoise2((vec2 as any)(sU.mul(2.6), sV.mul(2.6)));
-    const damp: any = cfg.proj === 'wall'
-      ? float(1).sub((tslSmoothstep as any)(0.35, 1.75, (positionWorld as any).y))
-      : float(0.55);                       // floors are damp all over, less strongly
-    const took: any = (tslSmoothstep as any)(0.52, 0.88, colony.mul(0.75).add(fuzz.mul(0.25)));
-    mossMask = (tslClamp as any)(
-      took.mul(damp).mul(float(0.45).add(cavity.mul(0.75))).mul(MOSS_AMOUNT * (isColorTex ? 0.4 : 1)), 0, 1,
-    );
-    // Two greens: the wet dark of a thick colony, and the pale grey-green of
-    // lichen at its dying edge. Mixing by the fuzz field means a patch is
-    // darker in its middle, which is what stops it reading as a flat decal.
-    const MOSS_DEEP: any = (vec3 as any)(0.16, 0.30, 0.14);
-    const MOSS_EDGE: any = (vec3 as any)(0.42, 0.48, 0.33);
-    const mossCol: any = (tslMix as any)(MOSS_DEEP, MOSS_EDGE, fuzz);
-    albedo = (tslMix as any)(albedo, albedo.mul(0.35).add(mossCol.mul(0.65)), mossMask);
-  }
-
+  // (MOSS / LICHEN was built here and REMOVED — Josh: *"lets get rid of the moss
+  // and the hex etc."* It placed colonies by damp height, cavity shelter and a
+  // patchy colony field, and went matte so highlights broke around it. The idea
+  // that it was the first layer which ISN'T STONE still seems right, and it is
+  // recoverable from git; it just isn't what this look wants yet.)
   // GRAVITY STREAKS — walls only. Every layer above this one is isotropic, and
   // isotropic noise is a tell: real filth has a DIRECTION, because water and
   // soot run down. Sampling the noise with the vertical axis compressed ~12x
@@ -449,7 +303,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       wp.y.mul(0.095),            // and barely at all down it → vertical runs
     ));
     const runs: any = (tslSmoothstep as any)(0.54, 0.98, streak);
-    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.70), runs.mul(0.8 * wearMix)));
+    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.70), runs.mul(0.8)));
   }
 
   // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.
@@ -516,11 +370,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // both ways rather than only adding.
   const stoneWear: any = wear.sub(0.5).mul(STONE_WEAR_SPREAD);
   const varied: any = (tslClamp as any)(
-    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear)
-      // Moss is the least reflective thing in the room. Pushing it toward fully
-      // matte kills the grazing sheen exactly where it grows, so the highlight
-      // breaks around the colonies instead of sliding over them.
-      .add(mossMask.mul(0.45)),
+    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear),
     0.18, 1.0,
   );
   (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);
@@ -568,7 +418,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const texW: number = Number((cfg.tex.image as { width?: number } | undefined)?.width) || 512;
   const texel: number = 1 / texW;
   const hAt = (du: number, dv: number): any =>
-    hexSample(cfg.tex, pomUV.add((vec2 as any)(du * texel, dv * texel)), hexPeriod).a;
+    (tslTexture as any)(cfg.tex, pomUV.add((vec2 as any)(du * texel, dv * texel))).a;
   // Central differences → slope of the height field along U and V, converted
   // from texel-space to metres using the tile size.
   const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
@@ -612,16 +462,6 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
 
 export interface SurfaceTexConfig {
   tex: THREE.Texture;
-  /** TRUE when `tex` is a COLOUR map (RGB = finished stone colour, A = height),
-   *  as generated by scripts/gen-surface-tex.ts. FALSE/omitted for the CPU bake,
-   *  whose RGB carries [shade, variant, wear] instead. This changes how the
-   *  shader reads every channel — see the note at the top of the WebGPU install. */
-  colorTex?: boolean;
-  /** The pattern's own period WITHIN one tile, used to snap hex-tiling offsets
-   *  so a structured texture's grid stays aligned across cells. Defaults to the
-   *  CPU bake's periods (wall = 4 bricks x 8 courses, floor = 5x5 flagstones).
-   *  A generated map needs its own value — see the note in hexSample. */
-  hexPeriod?: readonly [number, number];
   tile: readonly [number, number];     // world metres per repeat
   proj: 'wall' | 'horiz';              // wall = vertical plane, horiz = floor/ceiling
   tint: readonly [number, number, number];
