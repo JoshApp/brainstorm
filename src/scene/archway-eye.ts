@@ -339,6 +339,16 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     pool.socket.setMatrixAt(slot, _m.multiplyMatrices(group.matrix, socket.matrix));
     pool.socket.instanceMatrix.needsUpdate = true;
   };
+  let glowShown = true;
+  /** Show/hide the eye's own transparent parts. The eye owns these three
+   *  outright — the culler only ever toggles the GROUP — so there is no second
+   *  writer to disagree with, which is the trap that makes shared visibility
+   *  flags miserable. */
+  const setGlowVisible = (on: boolean): void => {
+    if (on === glowShown) return;
+    glowShown = on;
+    halo.visible = on; iris.visible = on; pupil.visible = on;
+  };
   let wasDrawn = true;
 
   let lit = 0;   // eased open amount
@@ -353,6 +363,29 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
       if (wasDrawn) { wasDrawn = false; collapseInstances(); }
       return;
     }
+    // AN EYE IS SET INTO ONE FACE OF THE KEYSTONE, and the stone hides it from
+    // the other side. Every archway mounts two — eye_front and eye_back, one per
+    // room — but the culler's boundary rule keeps a doorway visible while EITHER
+    // adjoining room is, so both eyes of every visible archway were going live.
+    // Half of them face away into the next room and cannot be seen at all.
+    // (Josh, from the phone: seven eyes live in a frame when four or five is the
+    // most you could contrive to see.)
+    //
+    // So: which side of its own face is the player on? This is the same
+    // world->eye-local transform the gaze tracking below already trusts, and the
+    // eye faces local +Z. The margin is deliberately generous — culling
+    // something still on screen pops, and the cost of an extra eye is small next
+    // to that.
+    // Transformed ONCE, in place, and reused by the gaze solve below — this is a
+    // per-eye per-frame path, so it allocates nothing.
+    _toPlayer.set(player.x - eyeWorld.x, player.y - eyeWorld.y, player.z - eyeWorld.z);
+    const haveDir = _toPlayer.lengthSq() > 1e-6;
+    if (haveDir) _toPlayer.normalize().applyQuaternion(invQuat);   // player dir, eye-local
+    const facing = !haveDir || _toPlayer.z > -0.15;
+    if (!facing) {
+      if (wasDrawn) { wasDrawn = false; collapseInstances(); setGlowVisible(false); }
+      return;
+    }
     if (!wasDrawn) { wasDrawn = true; restoreSocket(); }
     t += dt;
     lit += (Math.min(1, Math.max(0, openTarget)) - lit) * Math.min(1, dt * KINDLE_RATE);
@@ -363,6 +396,12 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     const flicker = 0.9 + 0.1 * Math.sin(t * 2.3);
     const shown = lit * blink;
 
+    // A SHUT EYE DRAWS NOTHING, SO IT SHOULD NOT BE DRAWN. These three are
+    // transparent meshes whose opacity rides `shown`, and most eyes on a floor
+    // are shut most of the time — so they were three render objects apiece
+    // submitting fully transparent pixels. The stone stays: a closed eye is
+    // still carved into the keystone.
+    setGlowVisible(shown > 0.002);
     irisMat.opacity = shown * flicker;
     haloMat.opacity = 0.8 * shown * flicker;
     pupilMat.opacity = shown;
@@ -375,9 +414,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
     // to see; otherwise ease back to centre. Clamped to a cone so it never turns
     // past the socket.
     const track = lit > 0.15;
-    _toPlayer.set(player.x - eyeWorld.x, player.y - eyeWorld.y, player.z - eyeWorld.z);
-    if (track && _toPlayer.lengthSq() > 1e-6) {
-      _toPlayer.normalize().applyQuaternion(invQuat);   // player dir in eye-local space
+    if (track && haveDir) {
       _axis.crossVectors(_fwd, _toPlayer);
       if (_axis.lengthSq() > 1e-8) {
         _axis.normalize();
