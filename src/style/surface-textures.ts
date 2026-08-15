@@ -68,7 +68,22 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   let gx = px / bx; const gy = py / by; const row = Math.floor(gy);
   gx += 0.5 * modf(row, 2);
   const idx = modf(Math.floor(gx), 4), idy = modf(row, 8);
-  const inbx = fract(gx), inby = fract(gy);
+  // ── PER-BRICK SET-OUT ──────────────────────────────────────────────────────
+  // The masonry-specific answer to "what would fit a brick wall". A domain warp
+  // — even a faceted one — bends the GRID, and the grid is the one thing a
+  // bricklayer got right: joints are straight because they were struck with a
+  // trowel against a line. What is NOT right in a rough wall is the SET-OUT:
+  // every brick sits a few millimetres off its ideal slot, so the joints wander
+  // in width while staying straight, and no two courses line up perfectly.
+  //
+  // Shifting the brick's boundaries per cell does exactly that: bricks come out
+  // slightly different sizes, the perpends stagger, and the wall reads as laid
+  // by hand — with every edge still dead straight. This is the irregularity
+  // masonry actually has, as opposed to the irregularity noise wants to give it.
+  const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16;   // ± along the course
+  const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10;    // ± in bed height
+  const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
+  const inby = clampf(fract(gy) + jy, 0.001, 0.999);
   const dH = Math.min(inby, 1 - inby) * by, dV = Math.min(inbx, 1 - inbx) * bx;
   const vKeep = stepf(0.18, dHash(modf(Math.floor(gx + 0.5), 4), idy, 9.1));
   const dseam = Math.min(dH, vKeep > 0.5 ? dV : 1e3);
@@ -161,12 +176,32 @@ function vnoiseP(x: number, y: number, Px: number, Py: number): number {
 // stops reading as something anyone LAID. Two octaves — a slow bend and a
 // finer wobble — because one frequency reads as "wavy" rather than "old".
 const WARP_PERIOD = 4;          // integer → tiles cleanly over u,v in [0,1)
-function warpUV(u: number, v: number, amp: number): [number, number] {
+
+// ── SMOOTH vs FACETED ────────────────────────────────────────────────────────
+// Josh: *"can you make the domain warp kinda instead of round like edges? or
+// idk what would fit a brick wall."*
+//
+// Right question. The warp field is value noise with smoothstep interpolation,
+// so it varies CONTINUOUSLY — every displacement is a curve, and a curve
+// dragged through a brick grid gives you melted brick. Stone does not melt.
+//
+// Faceted mode QUANTISES the warp to a small number of levels. The displacement
+// becomes piecewise CONSTANT: patches of the wall shift as rigid units with
+// straight boundaries between them, instead of everything flowing. Slabs that
+// settled against each other, rather than a wall made of wax — which is what a
+// masonry wall actually does as its footing moves.
+const WARP_LEVELS = 5;
+function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, number] {
   const P = WARP_PERIOD, P2 = P * 2;
-  const nx = vnoiseP(u * P, v * P, P, P) * 0.68
-           + vnoiseP(u * P2 + 3.1, v * P2 + 7.9, P2, P2) * 0.32;
-  const ny = vnoiseP(u * P + 11.3, v * P + 5.7, P, P) * 0.68
-           + vnoiseP(u * P2 + 19.7, v * P2 + 2.3, P2, P2) * 0.32;
+  let nx = vnoiseP(u * P, v * P, P, P) * 0.68
+         + vnoiseP(u * P2 + 3.1, v * P2 + 7.9, P2, P2) * 0.32;
+  let ny = vnoiseP(u * P + 11.3, v * P + 5.7, P, P) * 0.68
+         + vnoiseP(u * P2 + 19.7, v * P2 + 2.3, P2, P2) * 0.32;
+  if (faceted) {
+    // Snap to levels → flat facets with hard edges between them.
+    nx = Math.floor(nx * WARP_LEVELS) / (WARP_LEVELS - 1);
+    ny = Math.floor(ny * WARP_LEVELS) / (WARP_LEVELS - 1);
+  }
   return [u + (nx - 0.5) * 2 * amp, v + (ny - 0.5) * 2 * amp];
 }
 // How far each surface bends. Walls are LAID by someone and only sag with age;
@@ -174,6 +209,12 @@ function warpUV(u: number, v: number, amp: number): [number, number] {
 // stop reading as masonry and start reading as melted.
 const WARP_AMP: Record<SurfaceKind, number> = {
   wall: 0.011, floor: 0.034, ceiling: 0.014, dressed: 0.008, grain: 0,
+};
+// Which surfaces settle in slabs rather than flowing. Masonry and dressed stone
+// are LAID — they shift in rigid pieces. A floor bedded in earth genuinely does
+// sink in curves, so it keeps the smooth field.
+const WARP_FACETED: Record<SurfaceKind, boolean> = {
+  wall: true, floor: false, ceiling: true, dressed: true, grain: false,
 };
 
 function grainCPU(u: number, v: number): Cell {
@@ -317,7 +358,8 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     for (let xi = 0; xi < CPU_TEX; xi++) {
       const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
       // WARP FIRST, then evaluate the pattern in the bent coordinates.
-      const [u, v] = WARP_AMP[kind] > 0 ? warpUV(u0, v0, WARP_AMP[kind]) : [u0, v0];
+      const [u, v] = WARP_AMP[kind] > 0
+        ? warpUV(u0, v0, WARP_AMP[kind], WARP_FACETED[kind]) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
