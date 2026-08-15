@@ -31,6 +31,7 @@ import { warmRealRoster } from './content/warm-real-roster';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
 import { absorbWarmPipelines, installPipelineCensusHook } from './debug/pipeline-census';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
+import { installEncodeBreakdown } from './debug/encode-breakdown';
 import { installUploadCounter } from './debug/upload-counter';
 import type { DelveRenderer } from './scene/create-renderer';
 import { initStatusVfxPool } from './effects/status-vfx';
@@ -255,6 +256,8 @@ resolveCrashGpu();   // adapter/context exists now — fill the crash report's G
 // rest of the profiler chain — phone recordings are how we attribute CPU cost.
 // Idle cost: one boolean per render pass.
 installRenderPassCpu(renderer);
+// …and what render·scene is MADE of (enc· rows). See debug/encode-breakdown.ts.
+installEncodeBreakdown(renderer);
 // Per-frame GPU-upload counters (writeBuffer count + KB) for the recorder's
 // ub/ubKB columns — distinguishes an upload-burst "encode storm" from a GC
 // pause landing mid-encode. Same prod-shipping policy as the pass buckets.
