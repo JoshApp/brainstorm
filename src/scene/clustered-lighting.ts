@@ -1,5 +1,5 @@
 import { Lighting, Vector2 } from 'three/webgpu';
-import { Fn, screenCoordinate, positionView, float, int, log, clamp, uniform } from 'three/tsl';
+import { Fn, screenCoordinate, positionView, float, int, log, clamp, uniform, frameGroup } from 'three/tsl';
 // No DefinitelyTyped entry yet for the r185 lighting addons — runtime module is real.
 // @ts-expect-error — untyped examples/jsm module
 import ClusteredLightsNode from 'three/examples/jsm/tsl/lighting/ClusteredLightsNode.js';
@@ -96,7 +96,15 @@ class DelveClusteredLightsNode extends (ClusteredLightsNode as any) {
     // also baked into the post pass, and sharing node subtrees across passes
     // is a needless variable; `screenCoordinate` is exactly what the stock
     // node uses.
-    const passSize = (uniform as any)(this._delvePassSize);
+    // frameGroup — this is the FRAME's pass size, one number for every object.
+    // A TSL uniform defaults to `objectGroup`, which is not shared: the value
+    // is packed into EVERY render object's own uniform buffer, so mutating it
+    // each updateBefore re-uploads every LIT OBJECT IN THE SCENE, every frame.
+    // Clustered is the default WebGPU lighting path, so that is nearly the whole
+    // visible world. Same bug, same fix as the seep clock in
+    // style/surface-detail.ts — see that file for the phone measurement that
+    // found the pattern.
+    const passSize = (uniform as any)(this._delvePassSize).setGroup(frameGroup);
     const index = (Fn as any)(() => {
       // Normalize the builtin fragment coordinate by the live pass size —
       // resolution-agnostic (y=0 at the top, matching the compute's cy=0 =
