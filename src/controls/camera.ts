@@ -76,6 +76,28 @@ export function getCameraYaw(): number { return yaw; }
 export function getCameraPitch(): number { return pitch; }
 export function getCameraGroundPos(): { x: number; z: number } { return { x: camGroundX, z: camGroundZ }; }
 
+// ── IS THE CAMERA BIT-STILL? ─────────────────────────────────────────────────
+// A phone capture found that 45% of every frame's GPU uploads are Three's
+// per-object matrix buffers — one per drawn object, every frame. Three compares
+// matrix VALUES before writing, so those matrices are genuinely changing, which
+// means something moves even while the player is standing still. The recording
+// could not settle it: its camera fields are rounded to 1cm, so any drift below
+// that is invisible exactly where it matters.
+//
+// This is the exact question instead of a rounded one — the full-precision pose
+// as one number. Equal across two frames means the camera did not move at all,
+// including the sub-millimetre drift a rounded readout hides.
+let poseSerial = 0;
+let lastPoseKey = '';
+/** Bumps whenever the camera pose CHANGES at full precision. Compare the value
+ *  across frames: unchanged = the camera was genuinely, bit-exactly still. */
+export function getCameraPoseSerial(): number { return poseSerial; }
+function notePose(camera: THREE.PerspectiveCamera): void {
+  const p = camera.position, r = camera.rotation;
+  const key = `${p.x},${p.y},${p.z},${r.x},${r.y},${r.z}`;
+  if (key !== lastPoseKey) { lastPoseKey = key; poseSerial++; }
+}
+
 /** Direct pitch setter — used by dev-snapshot restore so the camera
  *  resumes at the same up/down angle after a hot reload. The input
  *  drag system reads from this module-level `pitch` each frame, so
@@ -383,6 +405,7 @@ export function updateCamera(
   camera.position.y += heave * CONFIG.EXHAUSTION.HEAVE_Y + st.dip;
   camera.rotation.x += heave * CONFIG.EXHAUSTION.HEAVE_PITCH + st.pitch;
   camera.rotation.z = st.roll;   // roll is otherwise unused — set, don't accumulate
+  notePose(camera);
 }
 
 // Axis-decomposed slide against the set of live enemies. Try the X-only

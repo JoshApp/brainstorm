@@ -23,7 +23,7 @@
 // carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, getCompiledProgramKeys, type FrameSample } from './frame-timing';
-import { getCameraYaw, getCameraPitch, getCameraGroundPos } from '../controls/camera';
+import { getCameraYaw, getCameraPitch, getCameraGroundPos, getCameraPoseSerial } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
 import { censusForRecording, type PipelineCensus } from './pipeline-census';
@@ -76,6 +76,12 @@ interface RecFrame {
    *  the recording could not tell them apart. The two extra numbers are
    *  appended, so anything reading cam[0]/cam[1] is unaffected. */
   cam: [number, number, number, number];
+  /** Full-precision camera-pose serial (controls/camera). Unchanged between two
+   *  frames means the camera was BIT-still — which `cam` cannot say, being
+   *  rounded to 1cm. Added because 45% of a frame's uploads turned out to be
+   *  per-object matrix buffers, and whether the camera truly moved is the
+   *  difference between "inherent" and "a bug". */
+  camSerial: number;
   /** Per-render-pass GPU ms aligned to gpuPhaseNames (prepass/scene/bloom/
    *  blit). Present only while per-pass GPU timing is armed — which the ring
    *  does itself on timer-query devices, where the spans are free. */
@@ -272,6 +278,7 @@ function onRingFrame(s: FrameSample): void {
     ubKB: Math.round(s.uploadKB),
     sys: snapshotSys(s.systems),
     cam: camSample(),
+    camSerial: getCameraPoseSerial(),
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
     ev,
   });
