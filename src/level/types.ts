@@ -7,6 +7,7 @@
 
 import type { FittingKind, Edge } from './opening';
 import type { CorridorTypeId } from './corridor-types';
+import type { WallProfileName } from './wall-profile';
 import type { FloorGraph } from './floor-graph';
 
 export type Vec2 = { x: number; z: number };
@@ -185,6 +186,10 @@ export type RoomSpec = {
    * merged into one mesh — the "dug tunnel" read.
    */
   wallVariant?: 'stone' | 'braced';
+  /** Vertical wall grammar — which stack of bands the wall segments are built
+   *  from (see level/wall-profile.ts). Omitted = 'plain', a single flush band,
+   *  which is byte-for-byte the pre-grammar wall. Opt rooms in individually. */
+  wallProfile?: WallProfileName;
   /**
    * If true, the builder SKIPS shell generation (floor / ceiling /
    * walls) for this room. The rect is still used for ATTRIBUTION:

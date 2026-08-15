@@ -82,7 +82,13 @@ export function makeJitteredPlane(
    *  to the dead-flat stairwell-room floors (makeFloorWithHoles), and lumps
    *  push the player up. Flat floors keep the per-vertex colour tint below,
    *  so they still have surface variation without geometry warp. */
-  opts: { wavy?: boolean; flat?: boolean } = {},
+  /** WALL-PROFILE SPAN. A wall is no longer necessarily one plane — the wall
+   *  profile grammar (level/wall-profile.ts) can split it into stacked BANDS.
+   *  Baked AO darkens toward the floor and ceiling, so a band has to know where
+   *  it sits within the WHOLE wall or every band would get its own floor-shadow
+   *  at its own bottom edge and the wall would come out stripy. Pass the band's
+   *  base offset + the full wall height; omit for a plane that IS the wall. */
+  opts: { wavy?: boolean; flat?: boolean; span?: { base: number; total: number } } = {},
 ): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(
     width,
@@ -155,8 +161,13 @@ export function makeJitteredPlane(
     rgb[2] = base * (0.96 + buildRng() * 0.04);
     if (wavy) {            // WALL — combine the three edge occlusions (take max)
       const py = pos.getY(i), px = pos.getX(i);
-      const floorOcc  = aoSmooth(1 - (py + H2) / FLOOR_FADE) * FLOOR_OCC;
-      const ceilOcc   = aoSmooth(1 - (H2 - py) / CEIL_FADE) * CEIL_OCC;
+      // Height of this vertex within the WHOLE wall, and its distance below the
+      // wall top. With no span these collapse to the old plane-local values, so
+      // an unsplit wall bakes exactly as before.
+      const hUp   = (opts.span ? opts.span.base : 0) + (py + H2);
+      const hDown = (opts.span ? opts.span.total : height) - hUp;
+      const floorOcc  = aoSmooth(1 - hUp / FLOOR_FADE) * FLOOR_OCC;
+      const ceilOcc   = aoSmooth(1 - hDown / CEIL_FADE) * CEIL_OCC;
       const cornerOcc = aoSmooth(1 - (W2 - Math.abs(px)) / CORNER_FADE) * CORNER_OCC;
       applyOcc(rgb, Math.max(floorOcc, ceilOcc, cornerOcc));
     }

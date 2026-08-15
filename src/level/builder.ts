@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
+import {
+  resolveProfile, devWallProfileOverride, DEFAULT_WALL_PROFILE,
+  type WallProfileName,
+} from './wall-profile';
 import { DEV } from '../debug/dev';
 import { spawnNetworkBloodstains } from './network-bloodstains';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
@@ -618,7 +622,11 @@ function buildRoomShell(
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
-      wallGeos.push(bakeWallSegmentGeometry(we, seg.start, seg.end, H + (elevHi - elevLo), elevLo));
+      bakeWallSegmentGeometry(
+        we, seg.start, seg.end, H + (elevHi - elevLo), elevLo,
+        devWallProfileOverride() ?? room.wallProfile ?? DEFAULT_WALL_PROFILE,
+        { wall: wallGeos, dressed: trimGeos },
+      );
       if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, seg.start, seg.end);
       // Record the segment as collision data. The XZ endpoints describe a
       // line in the floor plane along which the player cannot pass.
@@ -708,25 +716,96 @@ function buildRoomShell(
 // segments can be merged into a single mesh — see buildRoomShell). Position
 // + facing depend on which edge it's on; the jittered-plane normal faces
 // into the room (materials.wall is double-sided anyway, so the back is safe).
+// Bake one wall segment as a STACK OF BANDS (see level/wall-profile.ts).
+//
+// A wall used to be a single full-height jittered plane, which is why walls read
+// flat: nothing on them had depth, so nothing cast a line of shadow across
+// anything else. A profile splits the segment into horizontal bands at differing
+// depths — plinth, field, string course, cap — and this closes each depth change
+// with a connector quad so the steps read as carved masonry, not floating panels.
+//
+// The 'plain' profile is a single band at depth 0 and reproduces the old output
+// exactly, so rooms that don't opt in are untouched.
+//
+// Bands are emitted into the caller's EXISTING merge groups (wall / dressed),
+// both of which already merge per room and then fold floor-wide in static-batch.
+// So a five-band profile costs triangles, which the shell has in abundance, and
+// no additional draws.
 function bakeWallSegmentGeometry(
   we: { side: 'N' | 'S' | 'E' | 'W'; perpAxis: 'x' | 'z'; perpCoord: number },
   segStart: number,
   segEnd: number,
   height: number,
   baseY: number = 0,
-): THREE.BufferGeometry {
+  profile: WallProfileName = 'plain',
+  out?: { wall: THREE.BufferGeometry[]; dressed: THREE.BufferGeometry[] },
+): THREE.BufferGeometry | null {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
-  const geo = makeJitteredPlane(segLen, height, { wavy: true });
+
+  // Yaw is chosen per side so the plane's +Z faces INTO the room. That's what
+  // makes `depth` mean the same thing on all four walls: +proud, -recessed.
   let yaw = 0, px = 0, pz = 0;
   if (we.side === 'N') { yaw = 0; px = segMid; pz = we.perpCoord; }
   else if (we.side === 'S') { yaw = Math.PI; px = segMid; pz = we.perpCoord; }
   else if (we.side === 'W') { yaw = Math.PI / 2; px = we.perpCoord; pz = segMid; }
   else { yaw = -Math.PI / 2; px = we.perpCoord; pz = segMid; }
-  const m4 = new THREE.Matrix4().makeRotationY(yaw);
-  m4.setPosition(px, baseY + height / 2, pz);
-  geo.applyMatrix4(m4);
-  return geo;
+  // Local frame: X along the wall, Y up from the wall BASE, Z out into the room.
+  const toWorld = new THREE.Matrix4().makeRotationY(yaw);
+  toWorld.setPosition(px, baseY, pz);
+
+  const bands = resolveProfile(profile, height);
+
+  // Fast path — 'plain' (and any profile that degrades to it in a short room)
+  // is one flush band, which is precisely the old geometry. Return it directly
+  // so the untouched case allocates nothing extra.
+  if (!out || (bands.length === 1 && bands[0].depth === 0)) {
+    const geo = makeJitteredPlane(segLen, height, { wavy: true });
+    geo.translate(0, height / 2, 0);
+    geo.applyMatrix4(toWorld);
+    if (out) out.wall.push(geo);
+    return out ? null : geo;
+  }
+
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    const bh = b.y1 - b.y0;
+    const geo = makeJitteredPlane(segLen, bh, {
+      wavy: true,
+      // Bake AO against the WHOLE wall, not this band — otherwise every band
+      // grows its own floor-shadow at its own bottom edge and the wall stripes.
+      span: { base: b.y0, total: height },
+    });
+    geo.translate(0, b.y0 + bh / 2, b.depth);
+    geo.applyMatrix4(toWorld);
+    (b.mat === 'dressed' ? out.dressed : out.wall).push(geo);
+
+    // Close the step to the band above. Without this the profile is a set of
+    // floating planes and you can see between them at a grazing angle.
+    const next = bands[i + 1];
+    if (!next || Math.abs(next.depth - b.depth) < 1e-4) continue;
+    const dLo = Math.min(b.depth, next.depth);
+    const dHi = Math.max(b.depth, next.depth);
+    const step = dHi - dLo;
+    const conn = new THREE.PlaneGeometry(segLen, step);
+    // A plane faces +Z; rotate it to horizontal. If the LOWER band is the
+    // proud one we're looking at its top (faces up); otherwise we're under the
+    // upper band's overhang (faces down).
+    conn.rotateX(b.depth > next.depth ? -Math.PI / 2 : Math.PI / 2);
+    conn.translate(0, b.y1, (dLo + dHi) / 2);
+    conn.applyMatrix4(toWorld);
+    // Connectors carry no vertex colour of their own; give them the darker end
+    // of the wall's AO so a step reads as a shadowed underside/ledge rather
+    // than a bright band of untinted geometry.
+    const cCount = conn.attributes.position.count;
+    const cCol = new Float32Array(cCount * 3);
+    for (let v = 0; v < cCount; v++) {
+      cCol[v * 3 + 0] = 0.62; cCol[v * 3 + 1] = 0.62; cCol[v * 3 + 2] = 0.66;
+    }
+    conn.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+    (b.mat === 'dressed' ? out.dressed : out.wall).push(conn);
+  }
+  return null;
 }
 
 // Place a dust draft at each OPEN archway — a room wall opening (where a
