@@ -374,10 +374,9 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   const closureH = ceiling - hoodTop;
   if (closureH > 0.06) {
     parts.push({
-      kind: 'box', name: 'wall-above',
+      kind: 'box', name: 'wall-above', mat: 'wallfill',
       pos: [0, hoodTop + closureH / 2, 0],
       size: [fillWidth, closureH, Math.max(opts.wallDepth ?? DEFAULT_WALL_DEPTH, 0.12)],
-      mat: 'stone',
     } as PartSpec);
   }
 
@@ -463,6 +462,24 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // budgets for, and it buys back the hierarchy the gate lost when it
       // stopped being ashlar.
       carved: { color: 0x2a2e34, roughness: 0.98, metalness: 0.0, flatShading: true, detail: 'carved' },
+      // ── THE WALL ABOVE IS WALL, AND IT HAS TO LOOK LIKE THE WALL ──────────
+      // Josh: *"the geometry above the arch is unnecessary ... we can just build
+      // a proper arch."*
+      //
+      // He is reading a seam, and the seam was mine. The closure over the arch
+      // is not optional — `OpeningRect` carries no height, so planWallRing
+      // extrudes the ring floor-to-ceiling and an opening is a full-height gap;
+      // remove the closure and every doorway shows void above it. But it was
+      // wearing the gate's QUIETER dialect ('frame'), which is the whole point
+      // of that dialect and exactly wrong here: it made a calmer, less damaged
+      // patch of masonry sit above every doorway, and a patch of wall that does
+      // not match the wall reads as a thing that should not be there.
+      //
+      // Same stone as the room's walls now. Same world projection, same damage
+      // layers, same everything — so the courses run through it and it stops
+      // being geometry you can see. The arch is just an arch; the wall above it
+      // is just wall.
+      wallfill: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'wall' },
     },
     parts,
     // Mount points for the dungeon's EYE, on the KEYSTONE's outer faces (one

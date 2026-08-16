@@ -15,11 +15,24 @@ import { CONFIG } from '../config';
 
 export const WALL_TORCH: ModelSpec = {
   id: 'wall-torch',
-  // The arm runs from z=-0.02 to z=-0.38 in local space, so the flame has to
-  // stand this far off the masonry for the bracket to reach back INTO it rather
-  // than the bowl being buried in it. This is the number the comment on the arm
-  // part below has always described in prose.
-  mount: { to: 'wall', standoff: 0.20 },
+  // ── THE STANDOFF IS THE ARM'S REACH, AND IT WAS BARELY HALF OF IT ──────────
+  //
+  // The arm runs z = -0.02 to -0.38 in local space. The placer marks the wall's
+  // SURFACE, so for the bracket to end AT the masonry the origin has to stand
+  // 0.38 out from it — less the small bite a bolted bracket takes into the
+  // stone, which is the 0.04.
+  //
+  // It was 0.20. That put the arm's far end 0.18m behind the wall surface, in a
+  // wall 0.25m thick — the bracket ran nearly all the way through, and the flame
+  // (which is the model's ORIGIN, and therefore where the light is registered)
+  // sat 0.14m nearer the stone than the fixture is drawn. Josh, on a screenshot:
+  // *"i think torch lightsources are partially wrong compared to the model and
+  // almost stuck inside the walls."* Both halves of that are this number.
+  //
+  // Moving it out also gives the light back the room it needs: at 0.20 a point
+  // light two handspans off the masonry blows out the wall behind it and reaches
+  // very little floor, which is the other complaint this quietly fixes.
+  mount: { to: 'wall', standoff: 0.34 },
   materials: {
     iron: {
       color: 0x14110d,

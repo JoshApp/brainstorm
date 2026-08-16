@@ -13,6 +13,7 @@ import type { CorpsePose } from '../content/corpses';
 import { rollChestLoot, rollMimic, rollChestTier } from './decor-defaults';
 import { rollDropTable } from '../content/drop-tables';
 import { roomFor, type RoomBox } from './placement';
+import { dressing } from './dressing';
 
 type Anchor = Extract<PropSpec, { kind: 'loot-anchor' }>;
 
@@ -140,7 +141,11 @@ export function distributeLoot(props: PropSpec[], depth: number, rand: () => num
   // CORPSES are small finds — no budget, just spacing.
   for (let i = 0; i < budget.corpse; i++) {
     const a = take(minors, majors);
-    if (a) content.push(makeCorpse(a, rand));
+    // The anchor is still TAKEN when corpses are off, so the rest of the
+    // director's placement is unchanged — a switched-off corpse frees no space
+    // for a chest to wander into, which would make this flag a layout change
+    // rather than a content one.
+    if (a && dressing('loot-corpse')) content.push(makeCorpse(a, rand));
   }
 
   // GATED LOOT (#74) — rarely, seal one room's chests behind a MAKE THE OFFERING

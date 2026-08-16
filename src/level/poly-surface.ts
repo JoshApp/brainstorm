@@ -9,6 +9,7 @@ import type { Claim } from './prop-taxonomy';
 import { FLOOR_CRACK } from '../content/clutter';
 import { COBWEB_CORNER } from '../content/cobweb';
 import type { WallSurface } from './wall-surfaces';
+import { dressing } from './dressing';
 
 // ── DEBRIS HAS A CAUSE. ──────────────────────────────────────────────────────
 //
@@ -141,7 +142,11 @@ export function surfaceDressRoom(r: SurfaceRoom, out: PropSpec[]): void {
         // The rotation draw happens either way — see the note above.
         const rotY = rand() * Math.PI * 2;
         placed++;
-        if (!pool.length) continue;
+        // Gated exactly where `!pool.length` is gated, and for the file's own
+        // stated reason: "A THEME CHANGE IS NOT A LEVEL CHANGE". The draws above
+        // have already happened and must keep happening — the cracks below share
+        // this room's stream, so skipping a draw here would MOVE them.
+        if (!pool.length || !dressing('floor-debris')) continue;
         out.push({
           kind: 'model', model: pool[(laid + placed) % pool.length],
           x, y: 0, z, rotY,
@@ -159,6 +164,7 @@ export function surfaceDressRoom(r: SurfaceRoom, out: PropSpec[]): void {
   const spots = shuffle(candidateSpots(r.poly, { radius: 0.20, band: [1.2, Infinity], pitch: 1.1 }), rand);
   const cracks = Math.max(1, Math.round(3 * ruin * scale));
   for (let i = 0; i < Math.min(cracks, spots.length); i++) {
+    if (!dressing('floor-crack')) { rand(); continue; }   // spend the rotation draw
     out.push({
       kind: 'model', model: FLOOR_CRACK,
       x: spots[i].x, y: 0, z: spots[i].z, rotY: rand() * Math.PI * 2,
@@ -171,7 +177,7 @@ export function surfaceDressRoom(r: SurfaceRoom, out: PropSpec[]): void {
   // rect pass hung these at the four corners of the box, which on a shaped room
   // is open floor. Never in a tended room, which is the actual fix for "the
   // merchant stands inside his own cobwebs".
-  if (!r.claims.includes('tended') && ruin > 0.25) {
+  if (dressing('cobweb-corner') && !r.claims.includes('tended') && ruin > 0.25) {
     let webs = 0;
     for (const c of shuffle(sharpCorners(r.poly), rand)) {
       if (webs >= MAX_WEBS) break;

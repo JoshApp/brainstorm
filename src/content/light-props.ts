@@ -67,8 +67,13 @@ export const WALL_STUB: ModelSpec = {
 // silhouette.
 export const WALL_CRESSET: ModelSpec = {
   id: 'wall-cresset',
-  // Same convention as the torch: origin = flame, arm reaches back in −Z.
-  mount: { to: 'wall', standoff: 0.18 },
+  // Same convention as the torch: origin = flame, arm reaches back in −Z — and
+  // the same fault, found the same way. The wall plate spans z = -0.34..-0.30 and
+  // its own comment says it is "flush with the wall"; at a standoff of 0.18 it
+  // sat 0.14m INSIDE the masonry, invisible, with the basket and the registered
+  // light dragged in behind it. 0.30 puts the plate's face on the wall with the
+  // 0.04 bite a bolted bracket takes. See content/torch.ts for the full note.
+  mount: { to: 'wall', standoff: 0.30 },
   moodTintable: true,
   materials: {
     iron: { color: 0x14110d, roughness: 0.55, metalness: 0.6, flatShading: true },

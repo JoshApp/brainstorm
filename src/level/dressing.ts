@@ -175,18 +175,27 @@ export const DRESSING: Record<string, DressingEntry> = {
   // ── ROOM: surface (things scattered on top of the room) ────────────────────
   'floor-debris': {
     on: false,
-    note: 'Edge-biased scatter, ~1 per 14m2, dealt round-robin from the skin. Off '
-      + 'in the strip. The most numerous producer in the game by a wide margin.',
+    note: 'Scattered rubble, ash mounds, stone shards and iron bars — the '
+      + '`debris.small` skin pool. TWO PRODUCERS ANSWER TO THIS ID, and finding '
+      + 'the second one cost a round: clutter.ts surfacePass dresses RECT rooms, '
+      + 'and poly-surface.ts dresses POLYGON ones. The strip gated the first, which '
+      + 'is the one that almost never runs, and left the one that dresses every '
+      + 'real floor untouched — so Josh was still looking at iron rods and earth '
+      + 'mounds after they had supposedly been cut. Same id, both paths, so they '
+      + 'cannot drift again.',
   },
   'floor-crack': {
     on: false,
-    note: 'Decal cracks, ~1 per 20m2. Off in the strip — the floor stone cracks and '
-      + 'chips in its own height field now, so this is a second crack rhythm laid '
-      + 'over one that is already there.',
+    note: 'Decal cracks. Off in the strip — the floor stone cracks and chips in its '
+      + 'own height field now, so this is a second crack rhythm laid over one that '
+      + 'is already there. Two producers, as with floor-debris: clutter.ts for rect '
+      + 'rooms, poly-surface.ts for polygon ones.',
   },
   'cobweb-corner': {
     on: false,
-    note: 'Faint webs slung in room corners, destructible. Off in the strip.',
+    note: 'Faint webs slung in room corners, destructible. Off in the strip. Two '
+      + 'producers: clutter.ts hangs them at the bounding box corners, '
+      + 'poly-surface.ts at the polygon\'s REAL ones.',
   },
   'wall-damage': {
     on: false,
@@ -223,6 +232,18 @@ export const DRESSING: Record<string, DressingEntry> = {
       + 'DECOR corpse only. The loot-director\'s searchable corpse is a loot anchor '
       + '(removing it removes loot) and network bloodstains are real other-player '
       + 'deaths — the async-multiplayer pillar. Neither is touched by this flag.',
+  },
+  'loot-corpse': {
+    on: false,
+    note: 'The LOOT-BEARING fallen delver — the loot director places these on its '
+      + 'own anchor budget, searchable, with an epitaph. Deliberately left ON when '
+      + 'the decorative corpse was cut, because it is a loot anchor rather than '
+      + 'dressing and removing it removes loot. Josh asked a second time, naming it '
+      + 'directly: "can you disable dead delvers corpses". That is the answer, and '
+      + 'the cost is stated rather than hidden: this floor now has fewer places to '
+      + 'find things, and the corpse budget it was spending is simply not spent.\n'
+      + 'Network bloodstains (real other-player deaths) are still NOT touched by '
+      + 'any flag here — they are the async-multiplayer pillar, not decoration.',
   },
   'bone-shrine': {
     on: false,
