@@ -95,9 +95,30 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   const dH = Math.min(inby, 1 - inby) * by, dV = Math.min(inbx, 1 - inbx) * bx;
   const vKeep = stepf(0.18, dHash(modf(Math.floor(gx + 0.5), 4), idy, 9.1));
   const dseam = Math.min(dH, vKeep > 0.5 ? dV : 1e3);
-  const seamVar = mixf(0.4, 1.0, dHash(idx, idy, 2.3));
+  // ── SEAMVAR SCALED THE MASK, WHICH IS WHY WALL JOINTS WERE BLOTCHY ────────
+  // Josh: *"the crevices on walls are still quite blotchy — torn between a light
+  // sandstone colour and a dark patchiness"*, and *"crevice depth and rim catch
+  // dont seem to do anything on walls."* Both are this line, and they are the
+  // same bug seen from two sides.
+  //
+  // seamVar ran 0.4..1.0 per brick and multiplied the joint MASK. A mask is
+  // COVERAGE, not depth — scaling it does not make a joint shallower, it makes
+  // the joint partly NOT THERE, so it blends only 40% of the way toward the
+  // mortar colour and keeps 60% of the brick's own pale tone. Some joints dark,
+  // some pale, per brick: exactly the light-sandstone-versus-dark patchiness.
+  //
+  // And it silently capped every knob downstream. Crevice depth can only reach
+  // as far as the mask lets it, so on a 0.4 brick the slider had 40% of its
+  // authority and read as broken. The floor has no equivalent scaling, which is
+  // precisely why the same knob works there — the report and the code agree.
+  //
+  // Joints DO vary, but in depth and in fill colour, not in existence. So the
+  // variation moves to the HEIGHT channel (below) where "shallower" is what it
+  // actually means, and the per-segment tone variation mortarFill already does
+  // covers the colour. The shade mask goes to full strength.
+  const seamVar = mixf(0.62, 1.0, dHash(idx, idy, 2.3));
   const jW = 0.03 * jointW('wall');
-  const mortar = (1 - smooth(jW - aa, jW + aa, dseam)) * seamVar;
+  const mortar = 1 - smooth(jW - aa, jW + aa, dseam);
   const crackable = stepf(0.92, dHash(idx, idy, 5.5));
   const cpos = mixf(0.3, 0.7, dHash(idx, idy, 7.7));
   const crack = crackable * (1 - smooth(0, 0.012 + aa, Math.abs(inbx - cpos)));
@@ -180,20 +201,22 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // EDGE CHIPPING — measured from dseam, which is already the distance to the
   // nearest joint, so a chip reaches in from the arris exactly where one would.
   const chip = edgeChip(u, v, dseam, chipAmt('wall'));
-  const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth, 0.25, 1.15);
+  const brk = cornerBreak(inbx, inby, idx, idy, cornerAmt('wall'));
+  const raw = Math.min(1, chip.raw + brk.raw);
+  const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth - brk.depth, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));
   // CREVICE: the channel floor goes toward black, and the arris just outside it
   // catches. Both are scalars on SHADE, so neither can shift the hue.
   const mDark = m.tone * mixf(1, 0.26, crevDark('wall'));
-  const rimLift = 1 + arrisBand(dseam, jW, aa) * 0.55 * crevRim('wall');
+  const rimLift = 1 + arrisBand(dseam, jW, aa) * 0.95 * crevRim('wall');
   return [
     // A fresh break is LIGHTER than the face around it: the inside of the
     // stone never had the soot.
-    mixf(tone, mDark, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, chip.raw) * rimLift,
+    mixf(tone, mDark, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, raw) * rimLift,
     mixf(h, m.h, hRecess),
     dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
-    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35 + chip.raw * 0.75, m.wear, recess), 0, 1),
+    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35 + raw * 0.75, m.wear, recess), 0, 1),
   ];
 }
 function cofferCPU(px: number, py: number, aa: number): Cell {
@@ -514,7 +537,7 @@ function edgeChip(
     raw: bite,
   };
 }
-const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 1.5, 0.6, 0.45,
+const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 0.6, 0.45,
   'corners cracked off, raw stone underneath');
 
 // ── THE TWO HALVES OF A LIT CREVICE, SECOND ATTEMPT ─────────────────────────
@@ -543,10 +566,79 @@ const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 1.5, 0.6, 0.45,
 //
 // Per-surface because he asked for walls specifically, and because a wall arris
 // is struck stone while a floor arris has been walked on for centuries.
-const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1, 0.7, 0.45,
+const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1.5, 0.7, 0.45,
   'how far the bottom of the joint goes toward black');
-const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1, 0.5, 0.35,
+const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.35,
   'the arris rubbed clean — this is the glow, and it stays the stone\u2019s colour');
+
+// ── CORNER BREAKS — the LOW-frequency half of damage ────────────────────────
+// Josh, after trying edge chipping: *"its good but its a high frequency chip.
+// wouldnt it also be good to take whole sections of the sharp corners, like
+// taking that section off and roughly bevelling it"*, and separately *"stones
+// are damaged but not really in form."*
+//
+// Right, and the two are different events rather than two strengths of one.
+// edgeChip is a cell field at ~7cm: gravel-scale, many per block, the surface
+// being nibbled. This is ONE decision PER BLOCK — a corner is gone, and what is
+// left is a bevel across it. That changes the block's SILHOUETTE, which is what
+// "in form" means and what no amount of fine chipping can do, because averaging
+// many small bites just gives you a rounded edge.
+//
+// Deliberately cheap and blocky: pick a corner, pick a size, cut with a diagonal.
+// The cut is a straight ramp — a rough bevel, not a curve — and its line is
+// wobbled by the block's own hash so the four corners of a wall do not all come
+// off at the same angle. `raw` rides out with it so the exposed bevel gets the
+// same never-weathered treatment as a chip: rougher, and lighter for want of
+// centuries of soot.
+function cornerBreak(
+  inbx: number, inby: number, idx: number, idy: number, amt: number,
+): { depth: number; raw: number } {
+  if (amt <= 0) return { depth: 0, raw: 0 };
+  // Roughly one block in five at amt = 1, fewer as it comes down — turning
+  // damage off should remove BREAKS, not shrink every break toward invisible.
+  if (dHash(idx, idy, 5.1) > 0.34 * amt) return { depth: 0, raw: 0 };
+  const pick = dHash(idx, idy, 7.3);
+  const cx = pick < 0.5 ? 0 : 1;
+  const cy = dHash(idx, idy, 1.9) < 0.5 ? 0 : 1;
+  const du = Math.abs(inbx - cx), dv = Math.abs(inby - cy);
+  // Asymmetric so the bevel is not a neat 45 degrees on every stone.
+  const wu = mixf(0.7, 1.5, dHash(idx, idy, 4.4));
+  const size = mixf(0.22, 0.60, dHash(idx, idy, 3.9)) * Math.min(1.5, amt);
+  const t = 1 - (du * wu + dv / wu) / Math.max(1e-4, size);
+  if (t <= 0) return { depth: 0, raw: 0 };
+  const ramp = Math.min(1, t);
+  // DEEPER THAN THE JOINT BESIDE IT, which the first cut was not: at 0.12..0.34
+  // against a 0.6 joint, a "broken corner" sat SHALLOWER than the mortar line
+  // next to it, so it could not read as missing stone. Measured height barely
+  // moved (0.865 -> 0.862 at full strength). A corner that came off has to go
+  // past the joint or it is just a dent.
+  return { depth: ramp * mixf(0.30, 0.68, dHash(idx, idy, 8.7)), raw: ramp };
+}
+/** FLOOR equivalent. A Voronoi flag has no rectangular corners, so "a corner
+ *  came off" becomes "a wedge came off ONE SIDE": pick a direction per cell, and
+ *  cut inward from the rim on that side only. Same event, same silhouette
+ *  change, expressed in the shape language the floor actually has.
+ *
+ *  Wired rather than left dead: a surfaceKnob makes a Floor slider whether or
+ *  not anything reads it, and shipping one that does nothing is the exact bug
+ *  the faceting knob was. */
+function flagBreak(
+  mrx: number, mry: number, gx: number, gy: number, edM: number, amt: number,
+): { depth: number; raw: number } {
+  if (amt <= 0) return { depth: 0, raw: 0 };
+  if (dHash(gx, gy, 5.1) > 0.34 * amt) return { depth: 0, raw: 0 };
+  const ang = dHash(gx, gy, 7.3) * Math.PI * 2;
+  // (-mrx, -mry) is centre-to-pixel, so this is how far along the chosen
+  // direction the pixel lies — positive on the side that broke.
+  const along = Math.cos(ang) * -mrx + Math.sin(ang) * -mry;
+  const reach = mixf(0.10, 0.30, dHash(gx, gy, 3.9)) * Math.min(1.5, amt);
+  const ramp = (1 - smooth(0, reach, edM)) * smooth(0.05, 0.30, along);
+  if (ramp <= 0) return { depth: 0, raw: 0 };
+  return { depth: ramp * mixf(0.30, 0.68, dHash(gx, gy, 8.7)), raw: ramp };
+}
+
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 1.2, 0.9,
+  'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
  *  to 0 a couple of centimetres onto the face. `d` is distance to the joint,
@@ -780,20 +872,22 @@ function flagCPU(px: number, py: number, aa: number, u: number, v: number): Cell
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
   // EDGE CHIPPING on the flag rims — edM is already distance-to-edge in metres.
   const chip = edgeChip(u, v, edM, chipAmt('floor'));
-  const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30 - chip.depth, 0.12, 1.15);
+  const brk = flagBreak(mrx, mry, gx, gy, edM, cornerAmt('floor'));
+  const raw = Math.min(1, chip.raw + brk.raw);
+  const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30 - chip.depth - brk.depth, 0.12, 1.15);
   // Packed dirt and pebbles rather than a constant — see gapFill. `missing`
   // uses it too: a lifted flagstone exposes the same bed the gaps are full of,
   // which is the whole reason the stone under your foot is loose.
   const g = gapFill(u, v, jointTex('floor'));
   const gapMask = Math.max(seam, missing);
   const gDark = g.tone * mixf(1, 0.26, crevDark('floor'));
-  const rimLift = 1 + arrisBand(edM, chipW, aa) * 0.55 * crevRim('floor');
+  const rimLift = 1 + arrisBand(edM, chipW, aa) * 0.95 * crevRim('floor');
   return [
     mixf(tone, gDark, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite)
-      * mixf(1.0, 1.14, chip.raw) * rimLift,
+      * mixf(1.0, 1.14, raw) * rimLift,
     mixf(h, g.h, hSeam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
-    clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3 + chip.raw * 0.75, g.wear, gapMask), 0, 1),
+    clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3 + raw * 0.75, g.wear, gapMask), 0, 1),
   ];
 }
 
