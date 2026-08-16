@@ -87,6 +87,25 @@ const uBandCurve = tuneUniform({
 // narrow band-space window is an enormous spatial one. At 0.35 the stipple
 // covered whole blocks rather than their contours. The knob is honest; the
 // default was not.
+// ── THE SPECULAR GETS ITS OWN CURVE ─────────────────────────────────────────
+// Band curve is shared by the diffuse and the specular, which is right for
+// keeping the two in the same language but wrong for one specific thing worth
+// doing: making the TOP specular band narrow.
+//
+// The suggestion is a good one — "retain the big graphic highlight regions, but
+// only genuinely favourable normal/light/view angles get the almost-flat bright
+// one", so the response reads dark stone -> subtle sheen -> broad lit response
+// -> small hard highlight, rather than dark stone -> BAM. That is a curve above
+// 1 applied to the specular ONLY; doing it on the shared knob would drag the
+// diffuse's band positions along with it, which is a different edit.
+//
+// Defaults to 1 (no change from the shared curve's behaviour) so nothing moves
+// until it is asked to.
+const uSpecCurve = tuneUniform({
+  id: 'speccurve', group: 'Light', label: 'Specular curve', min: 0.5, max: 2.5, value: 1.0,
+  hint: 'above 1 narrows the top highlight band into an accent',
+});
+
 const uBandDither = tuneUniform({
   id: 'banddither', group: 'Light', label: 'Band dither', min: 0, max: 1, value: 0.12,
   hint: 'stipples the band edges; meant to be found, not noticed',
@@ -266,7 +285,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     if (this.specBands) {
       const sm: any = spec.r.max(spec.g).max(spec.b);
       const st: any = sm.div(sm.add(1.0));                       // Reinhard, as the diffuse does
-      const sq: any = posterise(st, this.specBands, uBandCurve as any).min(0.95);
+      const sq: any = posterise(st, this.specBands, (uBandCurve as any).mul(uSpecCurve as any)).min(0.95);
       const sMag: any = sq.div(sq.oneMinus().max(0.001));
       spec = (sm.greaterThan(0.0008) as any).select(spec.mul(sMag.div(sm.max(0.0008))), spec);
     }

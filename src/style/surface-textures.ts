@@ -1057,12 +1057,32 @@ function ridgedP(u: number, v: number, per: number): number {
   const n = vnoiseP(u * per, v * per, per, per);
   return 1 - Math.abs(n * 2 - 1);          // 1 along the fold, 0 at the extremes
 }
+// ── AND CRACKS ARE A CELL NETWORK, NOT A NOISE FIELD ────────────────────────
+// Josh: *"can you make cracks more like the edge chipping? the chipping reads so
+// much better than the cracks parameter."*
+//
+// He is comparing two different techniques and picking the better one. Ridged
+// noise gives a crease that WANDERS — a smooth curve that happens to be thin. A
+// crack does not wander: it runs straight until it meets something, turns, and
+// runs straight again, and where two cracks meet they meet at a NODE. That is a
+// Voronoi edge network, which is exactly what the chipping is built on and
+// exactly why the chipping reads as stone while this did not.
+//
+// So the field becomes distance to a cell BOUNDARY. Straight segments, angular
+// junctions, branching for free. The old ridged octave survives as a MASK — it
+// decides which stretches of the network are actually cracked, so the result is
+// open branching runs rather than the closed loops a full network would give
+// (which read as a mosaic, not as damage).
+//
+// Same shape of fix as the corner breaks: the problem was never the strength,
+// it was that the generator produced the wrong KIND of line.
 function crackField(u: number, v: number): number {
-  // Two octaves: the coarse one decides where a crack runs, the fine one makes
-  // it wander and branch instead of reading as a drawn line.
-  const a = ridgedP(u, v, 6);
-  const b = ridgedP(u + 3.7, v + 1.9, 13);
-  return a * 0.68 + b * 0.32;
+  const c = cellField(u, v, 18);                   // ~25cm cells: a crack network
+  const line = 1 - smooth(0.0, 0.055, c.edge);     // thin, straight-sided, jointed
+  // Which stretches actually split. Without this the whole network is drawn and
+  // the surface reads as crazy paving rather than as a few cracks.
+  const where = ridgedP(u * 0.5 + 3.7, v * 0.5 + 1.9, 5);
+  return line * smooth(0.34, 0.78, where);
 }
 
 // ── OPERATOR: CHAINED EROSION ────────────────────────────────────────────────
@@ -1211,10 +1231,17 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       const cA = crackAmt(kind);
       if (cA > 0) {
         const cf = crackField(u0, v0);
-        const crack = smooth(0.86, 0.995, cf) * cA;
-        shade *= mixf(1, 0.45, crack);
-        height -= crack * 0.28;
-        wear = clampf(wear + crack * 0.55, 0, 1);   // a split face is raw stone
+        // Threshold moved down: the field is now a distance-to-edge network that
+        // is already thin, so the old 0.86..0.995 window (tuned for a noise peak)
+        // would have thrown nearly all of it away.
+        const crack = smooth(0.25, 0.85, cf) * cA;
+        // Darker IN the split, and the shoulders lift like a chip's — a crack
+        // exposes the same never-weathered interior a broken corner does, and
+        // the two kinds of damage should not disagree about what stone looks
+        // like underneath.
+        shade *= mixf(1, 0.42, crack);
+        height -= crack * 0.30;
+        wear = clampf(wear + crack * 0.6, 0, 1);    // a split face is raw stone
       }
       // ── GRIT ───────────────────────────────────────────────────────────────
       // Applied last, in UNWARPED coordinates: grain belongs to the rock, not
