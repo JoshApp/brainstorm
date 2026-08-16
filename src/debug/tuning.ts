@@ -64,21 +64,55 @@ export interface Knob {
   spec: Required<Omit<KnobSpec, 'hint'>> & { hint?: string };
   get(): number;
   set(v: number): void;
-  /** The value this knob started at, for the panel's reset. */
+  /** The value this knob started at — after the URL and the saved set have had
+   *  their say. */
   readonly initial: number;
+  /** The value declared in CODE, before anything seeded it. This is what RESET
+   *  goes back to and what the A/B compares against — not `initial`, which is
+   *  already contaminated by whatever the last session left behind. */
+  readonly authored: number;
 }
 
 const knobs = new Map<string, Knob>();
 const rebakeHooks = new Set<() => void>();
 const changeHooks = new Set<(k: Knob) => void>();
 
-/** Seed from the URL so every existing ?param= keeps working unchanged. */
+// ── YOUR SET SURVIVES A RELOAD ───────────────────────────────────────────────
+// Josh: *"a cached setting that when the tools open i can kinda have default and
+// what i am setting and a way to toggle between easily."*
+//
+// Every value moved off its authored default is written here and re-applied at
+// registration, so a reload comes back to the look you were working on rather
+// than to the shipped one. It has to happen at REGISTRATION and not when the
+// panel opens: the textures bake from these numbers during level build, long
+// before anyone taps TUNE.
+//
+// PRECEDENCE: a URL param beats the saved set beats the authored default. The
+// URL wins on purpose — a link is how a specific look gets communicated, and it
+// would be worthless if the receiving browser's leftovers overrode it.
+const SAVE_KEY = 'delve.tune.mine';
+let mine: Record<string, number> = {};
+try {
+  if (DEV && typeof window !== 'undefined') {
+    mine = JSON.parse(localStorage.getItem(SAVE_KEY) ?? '{}') as Record<string, number>;
+  }
+} catch { mine = {}; }
+
+function persist(): void {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(mine)); } catch { /* private mode */ }
+}
+
+/** Seed from the URL, then the saved set, then the authored default. */
 function seed(id: string, dflt: number, min: number, max: number): number {
   if (!DEV || typeof window === 'undefined') return dflt;
+  const clamp = (n: number) => Math.max(min, Math.min(max, n));
   const v = new URLSearchParams(window.location.search).get(id);
-  if (v == null) return dflt;
-  const n = parseFloat(v);
-  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : dflt;
+  if (v != null) {
+    const n = parseFloat(v);
+    if (Number.isFinite(n)) return clamp(n);
+  }
+  const s = mine[id];
+  return typeof s === 'number' && Number.isFinite(s) ? clamp(s) : dflt;
 }
 
 function register(spec: KnobSpec, apply: ApplyCost, get: () => number, set: (v: number) => void): Knob {
@@ -91,6 +125,7 @@ function register(spec: KnobSpec, apply: ApplyCost, get: () => number, set: (v: 
       apply, hint: spec.hint,
     },
     initial,
+    authored: spec.value,
     get,
     set(v: number) {
       const c = Math.max(spec.min, Math.min(spec.max, v));
@@ -100,6 +135,15 @@ function register(spec: KnobSpec, apply: ApplyCost, get: () => number, set: (v: 
     },
   };
   set(initial);
+  // A value that arrived from a URL counts as part of YOUR SET, so the A/B can
+  // compare a shared link against the shipped look the moment it opens — which
+  // is the main thing you'd want to do with a link someone sent you.
+  //
+  // In memory only, deliberately NOT persisted: the URL is already the record
+  // of that look, and writing it to localStorage would make a link you opened
+  // once stick to the browser forever, which is a surprise nobody asked for.
+  // Saved values are in `mine` already; slider drags and __tune.set persist.
+  if (Math.abs(initial - spec.value) > 1e-6) mine[spec.id] = initial;
   knobs.set(spec.id, knob);
   return knob;
 }
@@ -151,29 +195,113 @@ if (DEV && typeof window !== 'undefined') {
     list: () => listKnobs().map((k) => `${k.spec.group}/${k.spec.id} = ${k.get()}`),
     get: (id: string) => knobs.get(id)?.get(),
     /** Set one knob. Returns the clamped value, or a message if the id is
-     *  wrong — silently doing nothing is the failure mode to avoid here. */
+     *  wrong — silently doing nothing is the failure mode to avoid here.
+     *  RECORDS, like a slider drag does: a console set is an edit, and if it
+     *  weren't recorded the A/B would flip to DEFAULT and then "back" to
+     *  nothing. (Found exactly that way.) */
     set: (id: string, v: number) => {
       const k = knobs.get(id);
       if (!k) return `no knob '${id}' — try __tune.list()`;
       k.set(v);
+      recordKnob(id, k.get());
       return k.get();
     },
     /** Set several at once: __tune.setAll({ flrwarm: 0.6, flrrough: 0.9 }). */
     setAll: (vals: Record<string, number>) =>
-      Object.entries(vals).map(([id, v]) => `${id}: ${
-        knobs.has(id) ? (knobs.get(id)!.set(v), knobs.get(id)!.get()) : 'UNKNOWN'
-      }`),
+      Object.entries(vals).map(([id, v]) => {
+        const k = knobs.get(id);
+        if (!k) return `${id}: UNKNOWN`;
+        k.set(v);
+        recordKnob(id, k.get());
+        return `${id}: ${k.get()}`;
+      }),
     query: () => knobsAsQuery(),
+    notes: () => knobsAsNotes(),
+    reset: () => { resetKnobs(); return 'back to authored defaults'; },
+    ab: () => toggleKnobsShowing(),
   };
 }
 
 /** Current settings as a URL query, so a look found by dragging can be shared
- *  or pasted back — the panel's "copy" button. Only non-default values. */
+ *  or pasted back. Only values that differ from what the CODE declares —
+ *  compared against `authored`, not `initial`, so the export is "everything I
+ *  changed from the shipped look" and not "everything I changed since the page
+ *  loaded", which would come out empty on the reload after a good session. */
 export function knobsAsQuery(): string {
   const parts: string[] = [];
   for (const k of knobs.values()) {
     const v = k.get();
-    if (Math.abs(v - k.initial) > 1e-6) parts.push(`${k.spec.id}=${+v.toFixed(4)}`);
+    if (Math.abs(v - k.authored) > 1e-6) parts.push(`${k.spec.id}=${+v.toFixed(4)}`);
   }
   return parts.join('&');
+}
+
+/** The same set, written for a HUMAN — group, label and value, one per line.
+ *  The query string is what a browser needs; this is what you paste into a
+ *  message when the point is to say what you want changed. */
+export function knobsAsNotes(): string {
+  const rows: string[] = [];
+  for (const k of knobs.values()) {
+    const v = k.get();
+    if (Math.abs(v - k.authored) > 1e-6) {
+      rows.push(`${k.spec.group} · ${k.spec.label}: ${+v.toFixed(3)}  (was ${+k.authored.toFixed(3)})`);
+    }
+  }
+  return rows.length ? rows.join('\n') : '(everything at defaults)';
+}
+
+// ── MINE vs DEFAULT ──────────────────────────────────────────────────────────
+// Josh: *"a way to toggle between easily without it being complicated."*
+//
+// The comparison that matters while tuning is against the look you started
+// from, and holding two states in your head while dragging eight sliders is
+// exactly the thing an eye is bad at. So the panel keeps BOTH: `mine` is every
+// value you have moved, and the authored defaults are always recoverable
+// because they are declared in code and never overwritten.
+//
+// Flipping to DEFAULT does not discard anything — it applies the authored
+// values without recording them, so flipping back restores your set intact.
+// That is the whole reason recording is a separate call from `set` rather than
+// something `set` does for you: the A/B has to move knobs WITHOUT it counting
+// as an edit.
+let showing: 'mine' | 'default' = 'mine';
+export function knobsShowing(): 'mine' | 'default' { return showing; }
+
+/** Record an edit into the saved set. The panel calls this when a SLIDER moves;
+ *  programmatic sets (the A/B, a reset) deliberately do not. */
+export function recordKnob(id: string, v: number): void {
+  const k = knobs.get(id);
+  if (!k) return;
+  if (Math.abs(v - k.authored) < 1e-6) delete mine[id];
+  else mine[id] = v;
+  persist();
+  showing = 'mine';
+}
+
+/** Flip between your set and the shipped defaults. Returns what is now showing. */
+export function toggleKnobsShowing(): 'mine' | 'default' {
+  showing = showing === 'mine' ? 'default' : 'mine';
+  for (const k of knobs.values()) {
+    const target = showing === 'default' ? k.authored : (mine[k.spec.id] ?? k.authored);
+    if (Math.abs(k.get() - target) > 1e-6) k.set(target);
+  }
+  return showing;
+}
+
+/** Throw the saved set away and go back to what the code declares. */
+export function resetKnobs(): void {
+  mine = {};
+  persist();
+  showing = 'mine';
+  for (const k of knobs.values()) {
+    if (Math.abs(k.get() - k.authored) > 1e-6) k.set(k.authored);
+  }
+}
+
+/** How many values are currently moved off the shipped defaults — the panel
+ *  shows it so "I have a set" is visible without opening every tab. */
+export function knobsChangedCount(): number {
+  let n = 0;
+  for (const k of knobs.values()) if (Math.abs(k.get() - k.authored) > 1e-6) n++;
+  return n;
 }

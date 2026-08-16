@@ -13,13 +13,23 @@
 //
 // DEV-gated: mounted only from the DEV hook path, never referenced by
 // production code.
-import { listKnobs, knobGroups, knobsAsQuery, onKnobChange, type Knob } from './tuning';
+import {
+  listKnobs, knobGroups, knobsAsQuery, knobsAsNotes, onKnobChange,
+  recordKnob, toggleKnobsShowing, knobsShowing, resetKnobs, knobsChangedCount,
+  type Knob,
+} from './tuning';
 // Side-effect import: registers the View group's knobs. Without it the group
 // only appears once something else happens to pull the module in.
 import './tuning-view';
 
 let root: HTMLDivElement | null = null;
 let activeGroup = '';
+// Per-row updaters for the CURRENTLY BUILT tab, so the A/B toggle can move
+// every visible slider and readout without rebuilding the DOM (a rebuild
+// scrolls the list back to the top mid-comparison, which is the one thing an
+// A/B must not do).
+let rowRefreshers: (() => void)[] = [];
+let sliderRefreshers: (() => void)[] = [];
 
 const PANEL_POS_KEY = 'delve.tunePanel.pos';
 
@@ -38,10 +48,20 @@ function makeRow(k: Knob, onChanged: () => void): HTMLDivElement {
   const name = document.createElement('span');
   name.textContent = k.spec.label;
   const val = document.createElement('span');
-  css(val, { color: 'rgba(255, 210, 140, 0.95)', fontVariantNumeric: 'tabular-nums' });
-  const showVal = () => { val.textContent = k.get().toFixed(3); };
+  css(val, { fontVariantNumeric: 'tabular-nums' });
+  // A value moved off the shipped default is coloured, one still at it is grey.
+  // With eight tabs it is otherwise impossible to see WHERE your set actually
+  // is without opening every one of them.
+  const showVal = () => {
+    const v = k.get();
+    const moved = Math.abs(v - k.authored) > 1e-6;
+    val.textContent = v.toFixed(3);
+    css(val, { color: moved ? 'rgba(255, 210, 140, 0.95)' : 'rgba(150, 175, 210, 0.5)' });
+    css(name, { color: moved ? 'rgba(220, 235, 255, 0.95)' : 'rgba(200, 225, 255, 0.72)' });
+  };
   showVal();
   head.append(name, val);
+  rowRefreshers.push(showVal);
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -52,10 +72,16 @@ function makeRow(k: Knob, onChanged: () => void): HTMLDivElement {
   css(slider, { width: '100%', margin: '4px 0 0', accentColor: '#c8a068', height: '26px' });
   // `input` not `change` — the whole point is watching it move.
   slider.addEventListener('input', () => {
-    k.set(parseFloat(slider.value));
+    const v = parseFloat(slider.value);
+    k.set(v);
+    // RECORD only here. A slider drag is an edit; the A/B toggle and the reset
+    // also move knobs and must NOT count as one, or flipping to DEFAULT would
+    // overwrite the set you were comparing against.
+    recordKnob(k.spec.id, v);
     showVal();
     onChanged();
   });
+  sliderRefreshers.push(() => { slider.value = String(k.get()); });
 
   const foot = document.createElement('div');
   css(foot, {
@@ -77,6 +103,8 @@ function makeRow(k: Knob, onChanged: () => void): HTMLDivElement {
 function build(): void {
   if (!root) return;
   root.replaceChildren();
+  rowRefreshers = [];
+  sliderRefreshers = [];
 
   const groups = knobGroups();
   if (!groups.length) {
@@ -99,7 +127,13 @@ function build(): void {
 
   for (const g of groups) {
     const tab = document.createElement('button');
-    tab.textContent = g;
+    // A dot marks a tab holding values you've moved. Eight tabs deep, the
+    // question "where did I actually change something" is otherwise answered
+    // only by opening all of them.
+    const touched = listKnobs().some(
+      (k) => k.spec.group === g && Math.abs(k.get() - k.authored) > 1e-6,
+    );
+    tab.textContent = touched ? `${g} ·` : g;
     const on = g === activeGroup;
     css(tab, {
       padding: '5px 9px', minHeight: '28px', borderRadius: '5px', cursor: 'pointer',
@@ -121,26 +155,85 @@ function build(): void {
   for (const k of mine) body.append(makeRow(k, () => { /* value readout handled per-row */ }));
   root.append(body);
 
-  // ── copy the current look as a URL ────────────────────────────────────────
-  // The panel is for FINDING a value; the URL is for KEEPING one. Without this
-  // a look found by dragging exists only until the tab closes.
-  const copy = document.createElement('button');
-  copy.textContent = 'copy as ?query';
-  css(copy, {
-    marginTop: '8px', width: '100%', padding: '7px', minHeight: '32px', borderRadius: '5px',
-    background: 'rgba(14,18,28,0.8)', border: '1px solid rgba(150,180,255,0.35)',
-    color: 'rgba(200,225,255,0.9)', cursor: 'pointer',
-    font: '600 10px ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.06em',
+  // ── ACTIONS ───────────────────────────────────────────────────────────────
+  // The panel is for FINDING a value. These three are for everything that has
+  // to happen to a value after it's found: compare it, keep it, say it.
+  const actions = document.createElement('div');
+  css(actions, { display: 'flex', gap: '6px', marginTop: '9px' });
+
+  // A/B — the one that matters most while tuning. Your eye cannot hold the
+  // previous look while you drag, so the comparison has to be one tap and it
+  // has to be non-destructive in both directions.
+  const ab = document.createElement('button');
+  const paintAB = () => {
+    const mine = knobsShowing() === 'mine';
+    ab.textContent = mine ? `MINE (${knobsChangedCount()})` : 'DEFAULT';
+    css(ab, {
+      background: mine ? 'rgba(200, 160, 104, 0.26)' : 'rgba(90, 110, 150, 0.26)',
+      borderColor: mine ? 'rgba(220,180,120,0.75)' : 'rgba(150,180,255,0.5)',
+      color: mine ? 'rgba(255,220,170,0.98)' : 'rgba(200,220,255,0.9)',
+    });
+  };
+  btnStyle(ab);
+  paintAB();
+  ab.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleKnobsShowing();
+    // Move the visible controls, don't rebuild — see rowRefreshers.
+    for (const f of sliderRefreshers) f();
+    for (const f of rowRefreshers) f();
+    paintAB();
   });
+
+  // RESET — throws the saved set away, not just this session's edits, so the
+  // next reload comes back clean too. Two taps, because it is the one button
+  // here that destroys work.
+  const reset = document.createElement('button');
+  btnStyle(reset);
+  reset.textContent = 'RESET';
+  reset.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (reset.dataset.armed !== '1') {
+      reset.dataset.armed = '1';
+      reset.textContent = 'SURE?';
+      window.setTimeout(() => {
+        if (reset.dataset.armed === '1') { reset.dataset.armed = ''; reset.textContent = 'RESET'; }
+      }, 2500);
+      return;
+    }
+    reset.dataset.armed = '';
+    resetKnobs();
+    build();
+  });
+
+  // COPY — both forms at once. The query is what a browser needs to reproduce
+  // the look; the notes are what a MESSAGE needs, because "flrrough=0.94" does
+  // not tell anyone what you were going for and "Sheen · Floor roughness: 0.94"
+  // does. Josh asked for a way to communicate what he wants, and a URL on its
+  // own is not that.
+  const copy = document.createElement('button');
+  btnStyle(copy);
+  copy.textContent = 'COPY';
   copy.addEventListener('click', (e) => {
     e.stopPropagation();
     const q = knobsAsQuery();
-    const text = q || '(all at defaults)';
-    void navigator.clipboard?.writeText(q).catch(() => { /* clipboard may be blocked */ });
-    copy.textContent = text.length > 42 ? `${text.slice(0, 42)}…` : text;
-    window.setTimeout(() => { copy.textContent = 'copy as ?query'; }, 2200);
+    const text = q ? `${knobsAsNotes()}\n\n?${q}` : '(everything at defaults)';
+    void navigator.clipboard?.writeText(text).catch(() => { /* clipboard may be blocked */ });
+    copy.textContent = q ? `${knobsChangedCount()} COPIED` : 'NOTHING SET';
+    window.setTimeout(() => { copy.textContent = 'COPY'; }, 1800);
   });
-  root.append(copy);
+
+  actions.append(ab, reset, copy);
+  root.append(actions);
+}
+
+function btnStyle(b: HTMLButtonElement): void {
+  css(b, {
+    flex: '1', padding: '8px 4px', minHeight: '34px', borderRadius: '5px',
+    background: 'rgba(14,18,28,0.8)', border: '1px solid rgba(150,180,255,0.35)',
+    color: 'rgba(200,225,255,0.9)', cursor: 'pointer', touchAction: 'manipulation',
+    font: '600 10px ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.06em',
+  });
 }
 
 function makeDraggable(el: HTMLDivElement): void {

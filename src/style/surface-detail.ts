@@ -111,6 +111,63 @@ const uFlrPolishAt = tuneUniform({
   hint: 'high = only a few lanes shine, low = the whole floor does',
 });
 
+// ── THE JOINTS ARE A DIFFERENT SUBSTANCE ─────────────────────────────────────
+// Josh: *"a technique to make like the stone and floor different from their
+// crevices, like the mortar and dirt in the gaps."*
+//
+// Everything the shader did to a crevice until now was a BRIGHTNESS operation:
+// low height means darker, slightly rougher, a touch of pale lift. That is a
+// description of stone in shadow, and it is why the gaps read as shadow. Mortar
+// is not shaded stone. It is lime and sand, poured and struck; packed dirt is
+// not stone at all.
+//
+// Four cues, all driven off the height channel we already sample, so this costs
+// no new texture and no new tap. In rough order of how much each one buys:
+//
+//   HUE LOCK is the big one and it is almost free. Per-stone VARIANT gives each
+//   block its own colour — and the crevice was inheriting its block's colour,
+//   which is precisely what made it read as that block in shadow. Mortar was
+//   mixed in one batch and struck along the whole wall, so it is the SAME
+//   colour everywhere regardless of which stones it sits between. Fading the
+//   variant hue out inside the joint is what separates the two materials.
+//   OWN COLOUR    a desaturated lime-buff grey, not a darker version of the stone.
+//   NEVER POLISHES  the polish terms are gated out of the joints. Aggregate does
+//                 not take a shine no matter how much traffic crosses it — and
+//                 on the floor this is what stops the sheen running straight
+//                 across the gaps as though the whole surface were one slab.
+//   DIRT COLLECTS deeper in, and dirtier where the room is dirty.
+//
+// Note the mask is "low height", so a spalled face and a chipped rim count as
+// joints too. That is right rather than sloppy: filth collects in a bite out of
+// a block for the same reason it collects in a bed joint.
+const uMortarHue = tuneUniform({
+  id: 'mortarhue', group: 'Mortar', label: 'Joint substance', min: 0, max: 1, value: 0.7,
+  hint: 'how far the gaps depart from the stone; 0 = the old darker-stone look',
+});
+const mortarWarm = tuneNumber({
+  id: 'mortarwarm', group: 'Mortar', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
+  apply: 'live', hint: 'cold ash <-> warm lime and sand',
+});
+const uMortarMatte = tuneUniform({
+  id: 'mortarmatte', group: 'Mortar', label: 'Joint matte', min: 0, max: 1, value: 0.8,
+  hint: 'how hard the gaps refuse to take a shine',
+});
+const uMortarDirt = tuneUniform({
+  id: 'mortardirt', group: 'Mortar', label: 'Dirt depth', min: 0, max: 1, value: 0.55,
+  hint: 'how much filth collects down in the gaps',
+});
+
+const uMortarCol = (tslUniform as any)(new THREE.Vector3(0.86, 0.84, 0.78));
+function refreshMortarCol(): void {
+  const w = mortarWarm();
+  // Base is a desaturated pale grey — the point is that it is NOT the stone's
+  // colour, so it must not simply be the stone hue shifted. Warmth swings it
+  // between cold ash and lime-and-sand.
+  (uMortarCol as any).value.set(0.86 + w * 0.10, 0.84, 0.78 - w * 0.10);
+}
+refreshMortarCol();
+onKnobChange((k) => { if (k.spec.id === 'mortarwarm') refreshMortarCol(); });
+
 // Warmth + brightness fold into ONE vec3 that multiplies the floor's authored
 // tint. Two scalars are what you want to drag; one uniform is what the shader
 // wants to read, and recomputing here means the shader never has to know the
@@ -367,6 +424,11 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const variant: any = sampled.g;
   const wear: any = sampled.b;
   const isFloor = cfg.role === 'floor';
+  // THE JOINT MASK — 1 down in the mortar/dirt, 0 on a stone face. Tighter than
+  // the `cavity` mask below, which means "any low spot" and is used for the
+  // depth read; this one means "not stone", and the difference matters because
+  // one of them changes a brightness and the other changes a material.
+  const mortar: any = float(1).sub((tslSmoothstep as any)(0.52, 0.92, sampled.a));
   let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
   // Warmth + brightness ride ON TOP of the authored tint rather than replacing
   // it, so the tint stays the thing a surface declares about itself and this
@@ -391,7 +453,18 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const lowHalf: any = (tslSmoothstep as any)(0.0, 0.5, variant);
   const hiHalf: any = (tslSmoothstep as any)(0.5, 1.0, variant);
   const stoneHue: any = (tslMix as any)((tslMix as any)(STONE_A, STONE_B, lowHalf), STONE_C, hiHalf);
-  albedo = albedo.mul((tslMix as any)((vec3 as any)(1, 1, 1), stoneHue, (uStoneHue as any)));
+  // HUE LOCK IN THE JOINTS. The variant hue is a property of a BLOCK, and the
+  // mortar between two blocks belongs to neither — it was mixed in one batch and
+  // struck along the whole wall, so it is the same colour everywhere. Letting it
+  // inherit its neighbour's hue is exactly what made a gap read as that block in
+  // shadow rather than as a different material.
+  const hueAmt: any = (uStoneHue as any).mul(float(1).sub(mortar.mul(uMortarHue as any)));
+  albedo = albedo.mul((tslMix as any)((vec3 as any)(1, 1, 1), stoneHue, hueAmt));
+  // …and then the joint gets its OWN colour: a desaturated lime-buff, not a
+  // darker version of whatever it sits between.
+  albedo = albedo.mul((tslMix as any)(
+    (vec3 as any)(1, 1, 1), uMortarCol, mortar.mul(uMortarHue as any),
+  ));
 
   // ── WEAR LAYERS (surface v3) ───────────────────────────────────────────────
   // Josh: *"it all looks so uniform so perfect so bland ... i would like it to
@@ -418,9 +491,14 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // and browner than the faces around it, and more so where the macro layer says
   // this part of the room is filthy. The existing seam shadow darkens grooves
   // for DEPTH; this is the same geometry read as ACCUMULATION.
+  //
+  // Depth is now the 'Dirt depth' knob rather than a literal 0.62 — it is the
+  // same layer Josh is asking about ("dirt in the gaps"), so it should be the
+  // same dial, not a second one doing half the job next to it.
   const cavity: any = float(1).sub((tslSmoothstep as any)(0.42, 0.95, sampled.a));
+  const dirtFloor: any = (tslMix as any)(float(1.0), float(0.35), uMortarDirt as any);
   albedo = albedo.mul((tslMix as any)(
-    float(1.0), float(0.62), cavity.mul(float(0.45).add(macro.mul(0.55))),
+    float(1.0), dirtFloor, cavity.mul(float(0.45).add(macro.mul(0.55))),
   ));
 
   // (MOSS / LICHEN was built here and REMOVED — Josh: *"lets get rid of the moss
@@ -515,8 +593,24 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // generators fold that into the wear channel). Centred on 0.5 so it pushes
   // both ways rather than only adding.
   const stoneWear: any = wear.sub(0.5).mul(uStoneWear as any);
+  // ── AGGREGATE DOES NOT TAKE A SHINE ────────────────────────────────────────
+  // Both polish terms are gated OUT of the joints. Mortar and packed dirt are
+  // aggregate — no amount of traffic across a floor puts a gloss on the stuff
+  // between the flags, it just grinds it finer. Without this gate the sheen
+  // runs straight across the gaps as though the whole floor were one slab,
+  // which is half of why it reads as poured metal rather than laid stone.
+  //
+  // And the joints go the other way as well: rougher than the faces around
+  // them, on top of the cavity term, so the difference survives even where the
+  // light is flat.
+  const stoneOnly: any = float(1).sub(mortar.mul(uMortarMatte as any));
   const varied: any = (tslClamp as any)(
-    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(polish)).add(stoneWear),
+    baseRough
+      .add(cavity.mul(0.12))
+      .add(mortar.mul(uMortarMatte as any).mul(0.20))
+      .sub(proud.mul(0.14).mul(stoneOnly))
+      .sub(grease.mul(polish).mul(stoneOnly))
+      .add(stoneWear),
     0.18, 1.0,
   );
   (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);

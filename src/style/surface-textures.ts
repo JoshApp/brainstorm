@@ -300,6 +300,50 @@ const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 5, 'few = slab
 const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.62, 0.42,
   'high = crisp arris, low = filed down');
 
+// ── GRIT — OpenKTG's Noise with OCTAVES, which we never actually took ────────
+// Josh: *"we are able to shape the stones but it still doesnt have like
+// roughness texture and grit you know."*
+//
+// Right, and the gap is specific. Every noise call in this file is ONE octave
+// at ONE frequency — a blob generator. We used it for warping, for erosion, for
+// cracks, always as a single smooth field. Their Noise operator takes an OCTAVE
+// COUNT and sums the field at doubling frequencies with halving amplitude, and
+// that is not a cosmetic difference: a single octave has a characteristic size,
+// so the eye reads it as a pattern of things about that big. A fractal sum has
+// no characteristic size, which is what makes real surfaces read as MATERIAL
+// rather than as a texture of blobs.
+//
+// Periods are powers of two so the sum still tiles with the texture, and each
+// octave is bandlimited by construction — vnoiseP interpolates between lattice
+// points at exactly its period, so nothing in the sum is above the frequency
+// its own octave can represent. That is what lets the mip chain average it away
+// cleanly with distance instead of turning it into sparkle.
+// ── AND THE STANDARD 1/f WEIGHTING IS WRONG FOR THIS JOB ────────────────────
+// Josh, on the first version: *"the grit does something its just very subtle
+// from on and off."* He is right and the cause is the weighting, not the
+// amplitude.
+//
+// Textbook fBm puts HALF its energy in the lowest octave and eighths in the top
+// ones, because it is usually being asked to make terrain — and terrain is
+// mostly its largest feature. Here the largest octave (period 32, so ~14cm
+// features on a 4.6m tile) is BLOTCHING, and this surface already has three
+// separate sources of blotching: the shader's macro/meso/micro grime, the
+// domain warp, and the erosion smear. Adding a fourth changed almost nothing
+// visible, which is exactly the symptom.
+//
+// The thing that was missing is the FINE end — period 256 is ~1.8cm, which is
+// what grit actually is. So the weights are near-flat with the emphasis pushed
+// up, which is not standard fBm and is not meant to be: the octaves this
+// surface was short of are the ones worth spending the energy on.
+function gritField(u: number, v: number): number {
+  return vnoiseP(u * 32, v * 32, 32, 32) * 0.20
+       + vnoiseP(u * 64 + 5.3, v * 64 + 1.7, 64, 64) * 0.26
+       + vnoiseP(u * 128 + 9.1, v * 128 + 4.2, 128, 128) * 0.28
+       + vnoiseP(u * 256 + 2.6, v * 256 + 8.4, 256, 256) * 0.26;
+}
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 1, 0.55, 0.55,
+  'micro grain and pitting in the stone itself');
+
 function warpAmpFor(kind: SurfaceKind): number {
   if (kind === 'wall' || kind === 'floor') return warpAmt(kind);
   return WARP_AMP_BASE[kind];
@@ -614,6 +658,48 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
         shade *= mixf(1, 0.45, crack);
         height -= crack * 0.28;
         wear = clampf(wear + crack * 0.55, 0, 1);   // a split face is raw stone
+      }
+      // ── GRIT ───────────────────────────────────────────────────────────────
+      // Applied last, in UNWARPED coordinates: grain belongs to the rock, not
+      // to the grid it was laid on, so it must not stretch where the warp
+      // stretches. Unwarped also keeps the finest octaves from being smeared
+      // below their own Nyquist by the warp's gradient.
+      //
+      // WHICH CHANNEL is the whole trick. Grit in SHADE aliases into sparkle at
+      // distance and reads as video noise, so it gets a token amount. It goes
+      // mostly into HEIGHT, where it becomes a normal perturbation — i.e. it
+      // modulates LIGHT rather than colour, so a torch rakes across it up close
+      // and the mip chain flattens it to nothing far away, which is exactly how
+      // real grain behaves. The rest goes into WEAR, signed so it spreads
+      // roughness both ways instead of shifting the whole surface rougher.
+      const gA = gritAmt(kind);
+      if (gA > 0) {
+        // Joints get a SANDIER grain than the faces — mortar and packed dirt
+        // are aggregate, stone is crystalline, and one grain over both is the
+        // tell that they are the same substance at different brightness.
+        const joint = 1 - smooth(0.55, 0.95, height);
+        const g = gritField(u0, v0) - 0.5;
+        const sandy = vnoiseP(u0 * 48, v0 * 48, 48, 48) - 0.5;
+        const grain = mixf(g, sandy, joint * 0.7);          // ±0.5, signed
+        height += grain * 0.16 * gA;
+        shade *= 1 + grain * 0.20 * gA;
+        // ── VARIANCE → ROUGHNESS, which is what makes grit survive distance ──
+        // The signed term above spreads roughness both ways, and that is the
+        // part you see up close. But micro-relief in the HEIGHT channel dies
+        // almost immediately as you back away: mipping averages opposing slopes
+        // to flat, so the normal it derives goes smooth and the grain vanishes
+        // — a metre out there is nothing left, which is the other half of why
+        // the first version read as barely-there.
+        //
+        // Roughness does not have that problem. A mip-average of a rough patch
+        // is still rough, because roughness is a STATISTIC and not a direction.
+        // So the grain's MAGNITUDE (centred on its own mean, so it spreads
+        // rather than shifts) is folded into wear as well: where the surface
+        // has lots of fine relief, it stays rough at every distance even after
+        // the relief itself has been filtered away. This is the cheap end of
+        // what Toksvig/LEAN mapping does properly, done once at bake time.
+        const variance = Math.abs(grain) - 0.25;            // mean |grain| ≈ 0.25
+        wear = clampf(wear + grain * 0.5 * gA + variance * 1.1 * gA, 0, 1);
       }
       const i = yi * CPU_TEX + xi;
       shadeF[i] = shade; heightF[i] = height; variantF[i] = variant; wearF[i] = wear;
