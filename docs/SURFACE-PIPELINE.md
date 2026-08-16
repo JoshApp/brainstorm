@@ -123,6 +123,31 @@ to once-per-look.
 
 ---
 
+## What this document does NOT decide
+
+It prices a material. It does not decide what the look is worth.
+
+Some effects cannot bake by construction. Parallax occlusion mapping is the
+clear case: it is view-dependent, so there is no static map that contains it —
+"move it to baked textures" is not a lift for POM, it is a proposal to remove
+it. The wear, grime and streak layers and the per-stone hue/roughness variation
+ARE functions of world position and the baked texture's own channels, and those
+bake cleanly. Know which half you are holding before quoting this document at a
+shader.
+
+And note the gate's granularity: **gate 1 is all-or-nothing per material.** If a
+material keeps one view-dependent node, moving its other layers to baked maps
+buys nothing at this gate — the material still fails, still cannot be static,
+still forces its objects apart from the plain ones. So the useful question is
+usually not "does this effect survive" but "does it survive ON THE SAME MATERIAL
+AS EVERYTHING ELSE". A split — plain surfaces node-free and merged, node graphs
+only on the surfaces that genuinely earn them — collects most of the win without
+giving up the read where it matters.
+
+That trade is a design call. The numbers say what it costs, not whether to pay.
+
+---
+
 ## Checklist for the new surface work
 
 A world-surface material qualifies when all of these hold:
