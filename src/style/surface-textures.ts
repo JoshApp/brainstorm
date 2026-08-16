@@ -196,11 +196,18 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // is as sharp as the texel grid allows, which is the point — this is the one
   // place in the bake that is ALLOWED to be hard-edged.
   const spall = stepf(0.92, dHash(idx, idy, 6.9));
+  // The fracture line is pushed OFF-CENTRE so the flake takes a CORNER rather
+  // than half the block. Josh: *"the damage reads less."* First cut put the line
+  // through the middle and multiplied hard, so about half the brick sat clamped
+  // at maximum depth — a big flat-bottomed region, which reads as a missing
+  // rectangle rather than as a chip. A flake is small, and it is a WEDGE: the
+  // gradient from the fracture line down to the deepest point is the thing the
+  // eye reads as broken stone, and clamping is what destroys it.
   const fAng = dHash(idx, idy, 2.2) * Math.PI * 2;
-  const fOff = mixf(0.30, 0.70, dHash(idx, idy, 4.9));
+  const fOff = mixf(0.58, 0.86, dHash(idx, idy, 4.9));
   const fSide = (inbx - 0.5) * Math.cos(fAng) + (inby - 0.5) * Math.sin(fAng) + (fOff - 0.5);
-  const flake = Math.max(0, -fSide) * mixf(1.1, 2.0, dHash(idx, idy, 1.7));
-  const spallD = spall * Math.min(0.62, flake);
+  const flake = Math.max(0, -fSide) * mixf(1.0, 1.5, dHash(idx, idy, 1.7));
+  const spallD = spall * Math.min(0.55, flake);
   const h = clampf(1.0 + set + tilt + dome - spallD, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));

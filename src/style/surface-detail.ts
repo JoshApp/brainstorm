@@ -134,7 +134,7 @@ const uCrevDark = tuneUniform({
   hint: 'how far the bottom of the channel goes toward black',
 });
 const uCrevRim = tuneUniform({
-  id: 'crevrim', group: 'Crevice', label: 'Rim catch', min: 0, max: 1, value: 0.18,
+  id: 'crevrim', group: 'Crevice', label: 'Rim catch', min: 0, max: 1, value: 0.12,
   hint: 'how brightly the arris takes the torch — this is the glow',
 });
 const uPomDepth = tuneUniform({
@@ -747,9 +747,26 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       .mul(float(1).sub((tslSmoothstep as any)(0.95, 1.0, sampled.a))).mul(uScale);
     albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]),
       rim.mul(uCrevRim as any));
-    // Chroma follows the RIM now too — the light's hue belongs where the light
-    // actually lands, not down a hole it never reaches.
-    seamChroma = float(1.0).add(rim.mul(SEAM_CHROMA));
+    // ── AND THE CHROMA DOES NOT FOLLOW IT. THIS WAS THE "RADIOACTIVE" ─────────
+    // Josh: *"whatever change you just made in that round made the stone like
+    // radio active."* Mine, and this line was it.
+    //
+    // seamChroma feeds the lighting model's per-fragment chroma, which
+    // OVER-SATURATES the lit colour toward the light's own hue. It was driven by
+    // `core` — the deep channel, a thin sliver of texels — and I moved it to
+    // `rim`, which is a broad band. Same multiplier, an order of magnitude more
+    // area, so the torch's orange got amplified across most of the wall.
+    //
+    // It also should not have moved on the merits. The rim is pale bone, and a
+    // pale surface ALREADY returns the light's colour — that is why PALE_BONE is
+    // pale. Saturation amplification on top of that is doubling an effect
+    // physics gives for free. The chroma trick exists for the deep channel
+    // (drinking light, then glowing its hue back), and now the deep channel is
+    // black, so there is nothing left for it to do here.
+    //
+    // Off. If a coloured-crack look is wanted later it belongs on a narrow
+    // authored feature, not on every arris in the room.
+    seamChroma = null;
   }
   // Install the stone lighting model UNCONDITIONALLY, not just for the seam-glow
   // surfaces. The specular scale is the half of the albedo/specular ratio that
