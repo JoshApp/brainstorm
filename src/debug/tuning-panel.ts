@@ -18,9 +18,10 @@ import {
   recordKnob, toggleKnobsShowing, knobsShowing, resetKnobs, knobsChangedCount,
   type Knob,
 } from './tuning';
-// Side-effect import: registers the View group's knobs. Without it the group
-// only appears once something else happens to pull the module in.
+// Side-effect imports: register knob groups that nothing else pulls in. Without
+// these the groups only appear once something happens to import the module.
 import './tuning-view';
+import './tuning-grade';
 
 let root: HTMLDivElement | null = null;
 let activeGroup = '';
