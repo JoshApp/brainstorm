@@ -1140,12 +1140,21 @@ function ridgedP(u: number, v: number, per: number): number {
 //
 // Same operator, opposite outcome, decided by what the surface already contains.
 function crackNetwork(u: number, v: number): number {
+  // ── CHEAP MASKS FIRST ─────────────────────────────────────────────────────
+  // cellField is an 18-iteration double Voronoi and it was being evaluated for
+  // EVERY texel, then multiplied by two masks that throw most of it away. That
+  // is 373ms of the bake — half of everything added today — spent computing a
+  // crack network for the ~85% of the surface that has no crack on it.
+  //
+  // The masks are a handful of hashes each, so testing them first and bailing
+  // costs almost nothing and skips the expensive part wherever they are zero.
+  // Same answer, same look; the operator order was simply the wrong way round.
+  const gate = smooth(0.62, 0.94, ridgedP(u * 0.5 + 3.7, v * 0.5 + 1.9, 3));
+  if (gate <= 0.001) return 0;
+  const cut = smooth(0.40, 0.64, vnoiseP(u * 26 + 5.1, v * 26 + 2.4, 26, 26));
+  if (cut <= 0.001) return 0;
   const c = cellField(u, v, 14);                   // ~33cm cells: longer runs
   const line = 1 - smooth(0.0, 0.045, c.edge);     // thin, straight-sided, jointed
-  // Sparse, or it is a material rather than damage; and CUT at the cell's own
-  // scale so loops open into runs with ends instead of closed polygons.
-  const gate = smooth(0.62, 0.94, ridgedP(u * 0.5 + 3.7, v * 0.5 + 1.9, 3));
-  const cut = smooth(0.40, 0.64, vnoiseP(u * 26 + 5.1, v * 26 + 2.4, 26, 26));
   return line * gate * cut;
 }
 // ── BOTH, INDEPENDENTLY ─────────────────────────────────────────────────────
