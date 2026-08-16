@@ -367,7 +367,7 @@ function surfaceKnob(
 // a decision.
 const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.044, 'how far the pattern bends');
 const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.92, 1.28, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.635, 0.805, 'splits that ignore the joints');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.5, 0.4, 'splits that ignore the joints');
 const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
 const eroAmt = surfaceKnob('erode', 'Erosion', 0, 3, 0.715, 1.0,
   'weathering strength — past 1 pushes beyond the per-surface base');
@@ -562,7 +562,7 @@ function edgeChip(
     raw: bite,
   };
 }
-const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 0.6, 0.45,
+const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.725, 0.45,
   'corners cracked off, raw stone underneath');
 
 // ── THE TWO HALVES OF A LIT CREVICE, SECOND ATTEMPT ─────────────────────────
@@ -591,7 +591,7 @@ const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 0.6, 0.45,
 //
 // Per-surface because he asked for walls specifically, and because a wall arris
 // is struck stone while a floor arris has been walked on for centuries.
-const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1.5, 0.7, 0.45,
+const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1.5, 0.698, 0.45,
   'how far the bottom of the joint goes toward black');
 const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.35,
   'the arris rubbed clean — this is the glow, and it stays the stone\u2019s colour');
@@ -759,7 +759,7 @@ function flagBreak(
   return { depth: ramp * mixf(0.14, 0.72, dHash(gx, gy, 8.7)), raw: ramp };
 }
 
-const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.8, 0.6,
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.96, 0.6,
   'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
@@ -1097,8 +1097,19 @@ function crackNetwork(u: number, v: number): number {
   const cut = smooth(0.40, 0.64, vnoiseP(u * 26 + 5.1, v * 26 + 2.4, 26, 26));
   return line * gate * cut;
 }
-const crackStyle = surfaceKnob('crackstyle', 'Crack style', 0, 1, 0, 1,
-  '0 = wandering splits, 1 = an intricate cut network', 1);
+// ── BOTH, INDEPENDENTLY ─────────────────────────────────────────────────────
+// Josh: *"we could make both crack styles toggleable individually, i think a mix
+// of both would be good."* Right, and a 0/1 selector was the wrong shape for
+// this from the start — the two are not alternatives, they are different EVENTS
+// that a wall can have had both of. A block can carry an old wandering split AND
+// a patch of finer cut network, and nothing about either forbids the other.
+//
+// A selector also quietly cost the mix its best property: overlaid at different
+// scales, the wandering line reads as the STRUCTURAL failure and the network as
+// surface crazing around it, which is the relationship they actually have in
+// stone.
+const webAmt = surfaceKnob('crackweb', 'Crack web', 0, 1.5, 1.0, 0.805,
+  'finer cut network, layered under the wandering splits');
 
 function crackField(u: number, v: number): number {
   // ── THE RIDGED FORM WAS RIGHT. IT JUST DID NOT CUT ────────────────────────
@@ -1271,15 +1282,19 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       // warped frame would make it follow the courses, which is the one thing a
       // split does not do.
       const cA = crackAmt(kind);
-      if (cA > 0) {
-        const network = crackStyle(kind) >= 0.5;
-        const cf = network ? crackNetwork(u0, v0) : crackField(u0, v0);
+      if (cA > 0 || webAmt(kind) > 0) {
+        // Both fields, each with its own strength and its own threshold — the
+        // ridged one peaks near 1 only at a ridge tip, the network is already a
+        // thin line, so one window could never have served both.
+        const wA = webAmt(kind);
         // THE WINDOW IS WHERE THE DEPTH WAS LOST. 0.86..0.995 sampled the very
         // tip of the ridge, so the crack never reached full strength and read as
         // a scratch. Opening it lets the core of the line actually bottom out,
         // which is the "runs deeper" Josh was after — while the field, and so
         // the wandering shape he liked, is untouched.
-        const crack = (network ? smooth(0.25, 0.80, cf) : smooth(0.78, 0.95, cf)) * cA;
+        const wander = smooth(0.78, 0.95, crackField(u0, v0)) * cA;
+        const web = wA > 0 ? smooth(0.25, 0.80, crackNetwork(u0, v0)) * wA : 0;
+        const crack = clampf(Math.max(wander, web), 0, 1);
         // And it cuts like a chip does, because a split exposes the same
         // never-weathered interior a broken corner does — the two kinds of
         // damage should not disagree about what stone looks like underneath.
