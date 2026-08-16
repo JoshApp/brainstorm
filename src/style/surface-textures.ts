@@ -616,16 +616,37 @@ function cornerBreak(
   // position near either end of a side is a corner, but they are now one
   // outcome among many instead of the only one.
   const side = Math.floor(dHash(idx, idy, 7.3) * 4) % 4;
-  const along = mixf(0.08, 0.92, dHash(idx, idy, 1.9));
+  // ── BIASED TO THE ENDS, BECAUSE THAT IS WHERE STONE BREAKS ────────────────
+  // Josh: *"there are barely any corners broken off ... its almost never hitting
+  // the top corners."* My doing — the previous fix spread the origin uniformly
+  // from 0.08 to 0.92 along a side, so it landed at an actual CORNER almost
+  // never, and every break became a notch out of the middle of an edge. I traded
+  // one uniform motif for another.
+  //
+  // The distribution is the fix, not the range. A corner is the thinnest, most
+  // exposed part of a block and it is where masonry loses material first, so
+  // most breaks belong at one end or the other — with mid-edge bites kept as the
+  // minority they should have been all along.
+  const r = dHash(idx, idy, 1.9);
+  const along = r < 0.40 ? mixf(-0.06, 0.16, r / 0.40)
+    : r > 0.60 ? mixf(0.84, 1.06, (r - 0.60) / 0.40)
+      : mixf(0.28, 0.72, (r - 0.40) / 0.20);
   const ox = side === 0 ? along : side === 1 ? along : side === 2 ? 0 : 1;
   const oy = side === 0 ? 0 : side === 1 ? 1 : along;
   const du = Math.abs(inbx - ox), dv = Math.abs(inby - oy);
   // Asymmetric so the bevel is not a neat 45 degrees on every stone.
   const wu = mixf(0.7, 1.5, dHash(idx, idy, 4.4));
-  // Capped: at 0.22..0.60 x1.5 a single break could take 70% of a block, which
-  // reads as half the stone missing rather than as a corner off it.
-  const size = mixf(0.18, 0.44, dHash(idx, idy, 3.9)) * Math.min(1.2, amt);
-  const t = 1 - (du * wu + dv / wu) / Math.max(1e-4, size);
+  // BIGGER. Josh: *"the small chunks look bad, the bigger missing chunks look
+  // better."* A small break is indistinguishable from surface noise; a big one
+  // is an event. So the low end of the range comes up rather than the high end
+  // going further — the point is to stop making forgettable ones.
+  const size = mixf(0.30, 0.58, dHash(idx, idy, 3.9)) * Math.min(1.2, amt);
+  // The OUTLINE wobbles per facet too, so the break is a rough polygon rather
+  // than a clean straight cut. Without this every break is a tidy triangle, and
+  // "more irregular" cannot come from the depth alone.
+  const fb = cellField(u, v, 96);
+  const wob = 1 + (dHash(fb.cx, fb.cy, 6.1) - 0.5) * 0.34;
+  const t = 1 - (du * wu + dv / wu) / Math.max(1e-4, size * wob);
   if (t <= 0) return { depth: 0, raw: 0 };
   // ── CLIFF, THEN PLATEAU, THEN IRREGULARITY ────────────────────────────────
   // Josh: *"corner breaks dont have to go down to 0 always, they can also leave
@@ -654,8 +675,7 @@ function cornerBreak(
   const plateau = smooth(0, CLIFF, t01);    // 0 at the line, 1 immediately after
   // Polygonal roughness on the exposed face — small, and quantised by the cell
   // rather than smooth, so it reads as fracture planes and not as a dent.
-  const f = cellField(u, v, 96);
-  const facet = (dHash(f.cx, f.cy, 4.4) - 0.5) * 0.16;
+  const facet = (dHash(fb.cx, fb.cy, 4.4) - 0.5) * 0.16;
   const ramp = plateau * (1 + facet);
   // DEEPER THAN THE JOINT BESIDE IT, which the first cut was not: at 0.12..0.34
   // against a 0.6 joint, a "broken corner" sat SHALLOWER than the mortar line

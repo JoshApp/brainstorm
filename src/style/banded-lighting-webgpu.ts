@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -66,13 +66,58 @@ const uBandCurve = tuneUniform({
   hint: 'above 1 makes the brightest band an accent instead of a region',
 });
 
+// ── DITHER THE THRESHOLD, NOT THE SCREEN ────────────────────────────────────
+// A quantised light draws its own iso-intensity contours as clean curved lines,
+// which is the one thing that gives posterisation away as a filter rather than
+// a material. Ordered dithering breaks that line into a stipple — but only
+// where a line exists.
+//
+// The trick is WHERE it is applied. Screen-wide dithering adds noise to
+// everything and costs contrast for nothing. Nudging the value by a Bayer
+// offset just BEFORE the floor means a pixel deep inside a band cannot move
+// (it is nowhere near a threshold), while a pixel close to one falls either
+// side depending on its position in the pattern. The dither is therefore
+// confined to the contours automatically, with no mask and no extra branch.
+//
+// The pattern is in RENDER pixels, so at the 0.4x buffer it comes out chunky —
+// which is period-correct rather than a compromise.
+// DEFAULT IS LOW, and 0.35 taught me why. The offset is in BAND UNITS, so how
+// much of the SCREEN it covers depends on how fast the tone is changing — and
+// across a wall lit by one distant candle the tone changes very slowly, so a
+// narrow band-space window is an enormous spatial one. At 0.35 the stipple
+// covered whole blocks rather than their contours. The knob is honest; the
+// default was not.
+const uBandDither = tuneUniform({
+  id: 'banddither', group: 'Light', label: 'Band dither', min: 0, max: 1, value: 0.12,
+  hint: 'stipples the band edges; meant to be found, not noticed',
+});
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/** 2x2 ordered Bayer as an integer 0..3, branchless.
+ *  [[0,2],[3,1]] — verified at all four positions rather than trusted:
+ *  (0,0)=0, (1,0)=2, (0,1)=3, (1,1)=2+3-4=1. */
+function bayer2i(p: any): any {
+  const mx: any = p.x.floor().mod(2);
+  const my: any = p.y.floor().mod(2);
+  return mx.mul(2).add(my.mul(3)).sub(mx.mul(my).mul(4));
+}
+/** 4x4 Bayer in [0,1), built by nesting the 2x2 — the standard construction. */
+function bayer4(p: any): any {
+  return bayer2i(p.mul(0.5)).mul(4).add(bayer2i(p)).div(16);
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** Posterise a [0,1] tone into `bands` steps, with `curve` deciding where those
  *  steps fall. Shared by the diffuse and the specular so the two cannot drift
  *  into different-looking quantisation. */
 function posterise(tone: any, bands: any, curve: any): any {
   const bent: any = (tone as any).max(0.0001).pow(curve);
-  const q: any = bent.mul(bands).add(0.5).floor().div(bands);
+  // Offset in BAND UNITS, so its effect is relative to the step size rather
+  // than to the absolute value — a coarse quantisation and a fine one dither by
+  // the same visual proportion.
+  const jitter: any = (bayer4(screenCoordinate as any) as any).sub(0.5).mul(uBandDither as any);
+  const q: any = bent.mul(bands).add(jitter).add(0.5).floor().div(bands);
   return q.max(0.0001).pow((float as any)(1).div(curve));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
