@@ -1,4 +1,5 @@
 import type { LevelSpec } from './types';
+import { CONFIG } from '../config';
 import { FLOOR_CANDLE } from '../content/candle';
 import { floorGlow } from '../content/light-props';
 import { rollStarterWeapons } from '../content/starter-weapons';
@@ -160,7 +161,7 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
         // THE APSE — the short walls behind the altars, where the stair is.
         // Moonlight blue, mounted low so it doesn't fight the stair's own halo.
         pick: (s) => s.mid[1] < -3,
-        spacing: [2.4, 4], height: 1.8, minWall: 1.8,
+        spacing: [2.4, 4], height: CONFIG.SCONCE_HEIGHT_SHORT, minWall: 1.8,
         tint: 0x88aaff, intensity: 0.75,
       },
       {
@@ -170,7 +171,7 @@ export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSp
         // Same spacing band as the piers plus `inBays`, so the flames land in
         // the bays BETWEEN them instead of fighting them for the same stone.
         pick: (s) => s.length > 6,
-        spacing: [3.0, 4.6], inBays: true, height: 2.0,
+        spacing: [3.0, 4.6], inBays: true, height: CONFIG.SCONCE_HEIGHT,
         tint: (m) => (m.z > 2 ? 0xffaa55 : 0xc8c0e0),
         intensity: (m) => (m.z > 2 ? 0.9 : 0.7),
       },

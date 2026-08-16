@@ -81,7 +81,32 @@ export const CONFIG = {
   TORCH_DECAY: 2.0,
   TORCH_FLICKER_AMOUNT: 0.4,   // how much intensity varies (0-1)
   TORCH_FLICKER_SPEED: 0.08,   // how fast it changes (lower = slower)
-  TORCH_HEIGHT: 2.2,           // mounted on wall
+  // ── HOW HIGH A SCONCE HANGS ────────────────────────────────────────────────
+  // Josh: *"the lights are higher placed in real floors than in the test chamber
+  // and we optimized for that as well, so place the lights like the low lights
+  // in the test chamber"*, and *"we have to do a little tweaking of the light
+  // height etc. so it also illuminates the floor a bit."*
+  //
+  // He is describing a real gap. surface-lab hangs its torches at 1.1 and 1.6
+  // and the stone was tuned under those; generated floors hung them at 2.0 and
+  // 1.9, where the cone points down at the floor from above rather than RAKING
+  // across it. A raking light is the whole reason the masonry has relief — at a
+  // grazing angle every arris, chip and broken corner throws a shadow, and from
+  // above they flatten out. Dropping the mount does two things at once: it rakes
+  // the wall, and it puts the source nearer the ground so the floor gets lit
+  // (the falloff is quadratic, so half a metre closer is a lot).
+  //
+  // 1.55m is a hand below eye level (PLAYER_HEIGHT 1.6). Not the lab's 1.1 —
+  // that reads as a torch at your hip and it was never meant to be stood in —
+  // but firmly in the "someone reached up and set it in a bracket" band.
+  //
+  // These were five bare literals across poly-floor, starter-chamber and
+  // builder, which is why the lab and the game could drift apart without anyone
+  // noticing. One number to drag now.
+  // (The old TORCH_HEIGHT: 2.2 that sat here was read by nothing at all.)
+  SCONCE_HEIGHT: 1.55,         // a long wall's rhythm — the main one
+  SCONCE_HEIGHT_SHORT: 1.45,   // a short return: lower still, it lights a corner
+  SCONCE_HEIGHT_MOUTH: 1.5,    // a corridor mouth — wayfinding, quiet
 
   // === HANDHELD LAMP ===
   // Player-carried light source that follows the camera. Gives consistent

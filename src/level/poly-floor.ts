@@ -2337,8 +2337,8 @@ function lightRoom(
   // The brackets this room COULD hang something on. `sconcesOn` answers exactly
   // that and nothing more — how many it gets, and which, is decided below.
   let mounts: Mount[] = sconcesOn(r.walls, [
-    { pick: (s) => s.length >= 5, spacing: [3.0, 4.6], inBays: true, height: 2.0, intensity: 0.85 },
-    { pick: (s) => s.length >= 2.2, spacing: [3, 5], height: 1.9, intensity: 0.6, minWall: 2.2 },
+    { pick: (s) => s.length >= 5, spacing: [3.0, 4.6], inBays: true, height: CONFIG.SCONCE_HEIGHT, intensity: 0.85 },
+    { pick: (s) => s.length >= 2.2, spacing: [3, 5], height: CONFIG.SCONCE_HEIGHT_SHORT, intensity: 0.6, minWall: 2.2 },
   ]).map((t) => ({ x: t.x, z: t.z, height: t.height, rotY: t.rotY, wall: t.wall }));
 
   // A `dark` room keeps only the brackets by the door. Not zero — a room with no

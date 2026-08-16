@@ -2320,7 +2320,7 @@ export function buildLevel(
           }
         }
         sconces.push({
-          x: sx, z: sz, height: 1.85, wall,
+          x: sx, z: sz, height: CONFIG.SCONCE_HEIGHT_MOUTH, wall,
           colorTint: mouthTint,
           // Wayfinding, not mood: quiet.
           intensityMul: 0.5,
