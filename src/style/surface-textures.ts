@@ -1076,13 +1076,55 @@ function ridgedP(u: number, v: number, per: number): number {
 //
 // Same shape of fix as the corner breaks: the problem was never the strength,
 // it was that the generator produced the wrong KIND of line.
+// ── TWO CRACK LANGUAGES, ONE PER SURFACE ────────────────────────────────────
+// Josh: *"this doesnt look half bad on the floor — on the floor it can carve
+// intricate patterns, but on the walls it reads bad."*
+//
+// Which makes it a per-surface CHOICE rather than a mistake to delete. The
+// network fails on a wall for a specific reason — a wall is already divided into
+// rectangles, so a second tessellation over the top of it is two grids arguing,
+// and the eye reads the newer one as glass. A floor slab is a big irregular
+// polygon with nothing competing inside it, so the same network reads as
+// something CUT INTO the stone.
+//
+// Same operator, opposite outcome, decided by what the surface already contains.
+function crackNetwork(u: number, v: number): number {
+  const c = cellField(u, v, 14);                   // ~33cm cells: longer runs
+  const line = 1 - smooth(0.0, 0.045, c.edge);     // thin, straight-sided, jointed
+  // Sparse, or it is a material rather than damage; and CUT at the cell's own
+  // scale so loops open into runs with ends instead of closed polygons.
+  const gate = smooth(0.62, 0.94, ridgedP(u * 0.5 + 3.7, v * 0.5 + 1.9, 3));
+  const cut = smooth(0.40, 0.64, vnoiseP(u * 26 + 5.1, v * 26 + 2.4, 26, 26));
+  return line * gate * cut;
+}
+const crackStyle = surfaceKnob('crackstyle', 'Crack style', 0, 1, 0, 1,
+  '0 = wandering splits, 1 = an intricate cut network', 1);
+
 function crackField(u: number, v: number): number {
-  const c = cellField(u, v, 18);                   // ~25cm cells: a crack network
-  const line = 1 - smooth(0.0, 0.055, c.edge);     // thin, straight-sided, jointed
-  // Which stretches actually split. Without this the whole network is drawn and
-  // the surface reads as crazy paving rather than as a few cracks.
-  const where = ridgedP(u * 0.5 + 3.7, v * 0.5 + 1.9, 5);
-  return line * smooth(0.34, 0.78, where);
+  // ── THE RIDGED FORM WAS RIGHT. IT JUST DID NOT CUT ────────────────────────
+  // Two detours to get back here, and both were informative.
+  //
+  // First I rebuilt this on a Voronoi EDGE NETWORK, because the chipping reads
+  // so much better and the chipping is cell-based. Josh: *"the cracking reads
+  // too much like spiders web — its like a glass window cracking."* Correct: a
+  // complete tessellation is what a PANE does, because the whole pane fails at
+  // once. Masonry develops one split, maybe two, and they end somewhere.
+  //
+  // Then: *"the other crack calculation of forms was good, it just didnt run as
+  // deep as this technique."* Which is the actual diagnosis, and it was never
+  // about the shape. Ridged noise makes exactly the right FORM — a thin line
+  // that wanders across the stone ignoring the joints. What it lacked was
+  // DEPTH, and that came from the threshold: a 0.86..0.995 window sampled the
+  // very tip of the ridge, so the crack was not only thin but never reached
+  // full strength anywhere. It was a scratch, not a split.
+  //
+  // So: the original two-octave ridged field, unchanged, and the cutting moved
+  // to where the problem actually was — see the threshold and depth at the call
+  // site. The lesson is that "technique B looks better" did not mean technique
+  // B's shape; it meant technique B's bite, and I replaced the wrong half first.
+  const a = ridgedP(u, v, 6);
+  const b = ridgedP(u + 3.7, v + 1.9, 13);
+  return a * 0.68 + b * 0.32;
 }
 
 // ── OPERATOR: CHAINED EROSION ────────────────────────────────────────────────
@@ -1230,17 +1272,19 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       // split does not do.
       const cA = crackAmt(kind);
       if (cA > 0) {
-        const cf = crackField(u0, v0);
-        // Threshold moved down: the field is now a distance-to-edge network that
-        // is already thin, so the old 0.86..0.995 window (tuned for a noise peak)
-        // would have thrown nearly all of it away.
-        const crack = smooth(0.25, 0.85, cf) * cA;
-        // Darker IN the split, and the shoulders lift like a chip's — a crack
-        // exposes the same never-weathered interior a broken corner does, and
-        // the two kinds of damage should not disagree about what stone looks
-        // like underneath.
-        shade *= mixf(1, 0.42, crack);
-        height -= crack * 0.30;
+        const network = crackStyle(kind) >= 0.5;
+        const cf = network ? crackNetwork(u0, v0) : crackField(u0, v0);
+        // THE WINDOW IS WHERE THE DEPTH WAS LOST. 0.86..0.995 sampled the very
+        // tip of the ridge, so the crack never reached full strength and read as
+        // a scratch. Opening it lets the core of the line actually bottom out,
+        // which is the "runs deeper" Josh was after — while the field, and so
+        // the wandering shape he liked, is untouched.
+        const crack = (network ? smooth(0.25, 0.80, cf) : smooth(0.78, 0.95, cf)) * cA;
+        // And it cuts like a chip does, because a split exposes the same
+        // never-weathered interior a broken corner does — the two kinds of
+        // damage should not disagree about what stone looks like underneath.
+        shade *= mixf(1, 0.38, crack);
+        height -= crack * 0.44;
         wear = clampf(wear + crack * 0.6, 0, 1);    // a split face is raw stone
       }
       // ── GRIT ───────────────────────────────────────────────────────────────
