@@ -32,13 +32,11 @@ import { rebuildWebGPUPipeline } from '../style/render-webgpu';
 import { tuneNumber, onKnobChange } from './tuning';
 
 const EXPO = 'expo';
-const SAT = 'gsat';
 
 // The baseline grade's own exposure, captured before anything overrides it, so
 // the knob's default is the shipped look rather than whatever a previous
 // session left in the overrides.
 const BASE_EXPOSURE = getActiveGrade().exposure;
-const BASE_SAT = getActiveGrade().saturation;
 
 tuneNumber({
   id: EXPO, group: 'Stone', label: 'Exposure', min: 0.04, max: 0.9, value: BASE_EXPOSURE,
@@ -46,43 +44,17 @@ tuneNumber({
   hint: 'pull DOWN as Stone albedo goes up; rebuilds the pipeline',
 });
 
-// ── SATURATION, and why it got louder without anyone touching it ────────────
-// Josh, repeatedly and from the very start of this thread: *"does something pull
-// everything into amber?"* and now *"it's like yellow."*
-//
-// Measured today: mean frame saturation is ~0.61, which is a lot, and the
-// crevice work is not the cause (with it off, 0.612; with it on, 0.575).
-//
-// The part worth naming is that the albedo rebalance MADE THIS WORSE, and
-// unavoidably so. Before it, these surfaces were mostly a specular lobe, and a
-// dielectric's specular is near-white — so the walls returned a fairly neutral
-// highlight regardless of the torch. Lifting the albedo means the DIFFUSE term
-// now dominates, and diffuse multiplies the light's own colour. The stone
-// correctly returns more of the torch, so the room went warmer as a direct
-// consequence of the surface starting to work. Physics, not a bug — but it lands
-// on top of a grade already at saturation 1.15 with an amber tint.
-//
-// Two levers and they do different things: THIS one pulls the whole image back
-// toward neutral, while Stone hue spread (Stone tab) breaks the amber MASS into
-// different-coloured rocks. The second is usually the better answer — and note
-// it only started working today, so it has never actually been tried at strength.
+// The grade lives in the post pipeline, which has to be rebuilt to see a new
+// value — cheap, but not free, and a slider fires on every pixel of drag. One
+// trailing rebuild per gesture instead of sixty.
 let pending = 0;
-function applyGrade(o: { expo?: number; sat?: number }): void {
-  setGradeOverrides(o);
+function applyExposure(v: number): void {
+  setGradeOverrides({ expo: v });
   if (pending) window.clearTimeout(pending);
   pending = window.setTimeout(() => { pending = 0; rebuildWebGPUPipeline(); }, 140);
 }
 
-tuneNumber({
-  id: SAT, group: 'Stone', label: 'Saturation', min: 0.3, max: 1.6, value: BASE_SAT,
-  apply: 'live',
-  hint: 'pulls the whole image toward neutral; rebuilds the pipeline',
-});
-
-onKnobChange((k) => {
-  if (k.spec.id === EXPO) applyGrade({ expo: k.get() });
-  if (k.spec.id === SAT) applyGrade({ sat: k.get() });
-});
+onKnobChange((k) => { if (k.spec.id === EXPO) applyExposure(k.get()); });
 
 // Apply a URL- or save-seeded value once at startup. Unlike the camera pitch
 // this has nothing racing it — the grade is read at every pipeline build, so
@@ -90,10 +62,7 @@ onKnobChange((k) => {
 if (typeof window !== 'undefined') {
   window.setTimeout(() => {
     const k = (window as unknown as { __tune?: { get(id: string): number | undefined } }).__tune;
-    const e = k?.get(EXPO), s = k?.get(SAT);
-    const o: { expo?: number; sat?: number } = {};
-    if (typeof e === 'number' && Math.abs(e - BASE_EXPOSURE) > 1e-4) o.expo = e;
-    if (typeof s === 'number' && Math.abs(s - BASE_SAT) > 1e-4) o.sat = s;
-    if (Object.keys(o).length) applyGrade(o);
+    const v = k?.get(EXPO);
+    if (typeof v === 'number' && Math.abs(v - BASE_EXPOSURE) > 1e-4) applyExposure(v);
   }, 1200);
 }

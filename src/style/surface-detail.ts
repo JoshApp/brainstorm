@@ -124,19 +124,6 @@ const uStoneSpec = tuneUniform({
   id: 'stonespec', group: 'Light', label: 'Stone specular', min: 0, max: 1.5, value: 0.35,
   hint: 'dry weathered stone reflects far less than the 4% default',
 });
-
-// The two halves of a lit crevice, which used to be one confused effect — see
-// the long note at the seam-glow block. Their own group because "how does light
-// behave in the cracks" is a question Josh has come back to three times and it
-// should be one place to find.
-const uCrevDark = tuneUniform({
-  id: 'crevdark', group: 'Crevice', label: 'Crevice depth', min: 0, max: 1, value: 0.6,
-  hint: 'how far the bottom of the channel goes toward black',
-});
-const uCrevRim = tuneUniform({
-  id: 'crevrim', group: 'Crevice', label: 'Rim catch', min: 0, max: 1, value: 0.12,
-  hint: 'how brightly the arris takes the torch — this is the glow',
-});
 const uPomDepth = tuneUniform({
   id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
   hint: 'how deep the stone goes',
@@ -704,69 +691,9 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // saturate its LIT colour toward the light's hue (subtle, the skeleton trick).
   let seamChroma: any = null;
   if (cfg.seamGlow) {
-    // ── THE GLOW WAS IN THE WRONG PLACE ───────────────────────────────────────
-    // Josh: *"i originally wanted the crevices to kinda flow the light so the
-    // crevices glow, but currently that doesn't fully work and it clashes with
-    // the darker crevices — maybe it does maybe it doesn't."*
-    //
-    // It doesn't clash. The two were swapped.
-    //
-    // What was here lifted the DEEPEST part of the channel toward pale bone. The
-    // deepest part of a crevice is the part light cannot reach — it is the one
-    // place in the whole surface guaranteed to be dark. Lifting it fights both
-    // physics and the grimdark, which is exactly why a previous pass had to shrink
-    // the effect to 0.06 and leave a comment saying crevices should drink light
-    // rather than glow. That was abandoning the idea, not implementing it.
-    //
-    // Put each half where it belongs and they stop competing:
-    //
-    //   CORE — the bottom of the channel — goes toward BLACK. Occlusion. This is
-    //   what makes a joint read as having a depth rather than a colour, and it is
-    //   the chiaroscuro the whole art direction is built on.
-    //
-    //   RIM — the arris, the lip where the face rolls into the joint — CATCHES.
-    //   It is the first thing a raking torch strikes, it is rubbed clean of dirt
-    //   by everything that passes, and it is where the light's own hue belongs.
-    //
-    // A dark channel with a bright lip is what a lit crevice actually looks like,
-    // and it is a stronger "the light pools in the cracks" read than a uniformly
-    // brightened groove ever was — because now there is something for the light
-    // to be pooling AGAINST.
-    const core: any = float(1).sub((tslSmoothstep as any)(0.20, 0.46, sampled.a)).mul(uScale);
-    albedo = albedo.mul((tslMix as any)(float(1.0), float(0.16), core.mul(uCrevDark as any)));
-    // The rim is a NARROW BAND, not a threshold: it peaks on the arris where the
-    // face turns into the joint, and falls off toward both the flat face and the
-    // channel floor.
-    //
-    // First cut had it 0.52..0.99, which is most of the ramp rather than its lip —
-    // and every edge in the room lit up as a bright yellow outline, which is
-    // precisely the "stark yellow rings" the old CORE_GLOW comment warned about.
-    // Being in the right PLACE is not enough; a rim has to be rim-WIDTH or it is
-    // just the old mistake pointed the other way.
-    const rim: any = (tslSmoothstep as any)(0.80, 0.93, sampled.a)
-      .mul(float(1).sub((tslSmoothstep as any)(0.95, 1.0, sampled.a))).mul(uScale);
-    albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]),
-      rim.mul(uCrevRim as any));
-    // ── AND THE CHROMA DOES NOT FOLLOW IT. THIS WAS THE "RADIOACTIVE" ─────────
-    // Josh: *"whatever change you just made in that round made the stone like
-    // radio active."* Mine, and this line was it.
-    //
-    // seamChroma feeds the lighting model's per-fragment chroma, which
-    // OVER-SATURATES the lit colour toward the light's own hue. It was driven by
-    // `core` — the deep channel, a thin sliver of texels — and I moved it to
-    // `rim`, which is a broad band. Same multiplier, an order of magnitude more
-    // area, so the torch's orange got amplified across most of the wall.
-    //
-    // It also should not have moved on the merits. The rim is pale bone, and a
-    // pale surface ALREADY returns the light's colour — that is why PALE_BONE is
-    // pale. Saturation amplification on top of that is doubling an effect
-    // physics gives for free. The chroma trick exists for the deep channel
-    // (drinking light, then glowing its hue back), and now the deep channel is
-    // black, so there is nothing left for it to do here.
-    //
-    // Off. If a coloured-crack look is wanted later it belongs on a narrow
-    // authored feature, not on every arris in the room.
-    seamChroma = null;
+    const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(uScale);
+    albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
+    seamChroma = float(1.0).add(core.mul(SEAM_CHROMA));
   }
   // Install the stone lighting model UNCONDITIONALLY, not just for the seam-glow
   // surfaces. The specular scale is the half of the albedo/specular ratio that
@@ -971,8 +898,9 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // SHOULDERS stay darker (crevice shadow → contrast). Scaled by relief so flat
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
-const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the RIM lifts toward (picks up light hue cleanly)
-const SEAM_CHROMA = 0.25;  // VIVID: over-saturate the rim's LIT colour toward the light's hue — subtle, past this it reads as stark yellow rings
+const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
+const CORE_GLOW = 0.06;    // how far the DEEPEST seam lifts toward PALE_BONE — KEEP TINY: the pale lift brightens the mortar to bright-yellow outlines and breaks the grimdark dark. Crevices should mostly DRINK light (shadow), not glow.
+const SEAM_CHROMA = 0.25;  // VIVID: over-saturate the seam's LIT colour toward the light's hue — subtle, past this it reads as stark yellow rings
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────
