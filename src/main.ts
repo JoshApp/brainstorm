@@ -15,6 +15,7 @@ const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') !=
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
+import { bindSight } from './scene/sight-distance';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
 import { attachLampArm } from './player/lamp-arm';
@@ -389,6 +390,11 @@ setOwnedItemsProvider(() => {
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
+// The fog, the camera's far plane and the room culler all have to agree about
+// how far you can see, so ONE module owns that number and tells them when it
+// moves. See scene/sight-distance.ts — and scripts/_room-scale.ts, the
+// measurement that says the current value cannot show you the room you are in.
+bindSight(scene.fog as THREE.Fog, camera);
 scene.add(camera); // required for the sword (camera child) to render
 
 // Bug-report frame capture: a fresh render then a canvas read (WebGPU buffers

@@ -4,6 +4,7 @@ import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
+import { sightFar } from '../scene/sight-distance';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
 
@@ -56,15 +57,20 @@ interface Neighbour {
 const MARGIN = 1.5;
 const EPS = RECT_EPS;
 
-// Distance cap on the flood-fill: a doorway beyond FOG_FAR leads ONLY to
-// geometry that's already 100% fog-black (fog reaches full opacity at
-// FOG_FAR), so the room behind it can't be seen and shouldn't be drawn. The
-// frustum (CAMERA_FAR) used to be the only distance gate; on a long straight
-// sightline through aligned doorways nothing broke LOS, so every room out to
-// the far plane was submitted — including the fogged-invisible ones. Gating
-// the doorway cross on FOG_FAR cuts those rooms at the source, independent of
-// the frustum, and keeps the two clips in lockstep with the fog wall.
-const CULL_DIST2 = CONFIG.FOG_FAR * CONFIG.FOG_FAR;
+// Distance cap on the flood-fill: a doorway beyond the sight distance leads
+// ONLY to geometry that's already 100% fog-black (fog reaches full opacity
+// there), so the room behind it can't be seen and shouldn't be drawn. The
+// frustum used to be the only distance gate; on a long straight sightline
+// through aligned doorways nothing broke LOS, so every room out to the far
+// plane was submitted — including the fogged-invisible ones. Gating the doorway
+// cross on the fog distance cuts those rooms at the source, independent of the
+// frustum, and keeps the two clips in lockstep with the fog wall.
+//
+// ASKED, NOT CACHED. This was `const cullDist2 = CONFIG.FOG_FAR ** 2`, frozen
+// at import — which is why the sight distance could not be changed at runtime
+// without the culler disagreeing with the fog and clipping rooms inside visible
+// air. scene/sight-distance.ts owns the number now.
+const cullDist2 = (): number => sightFar() * sightFar();
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -503,7 +509,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           // and LOS tests. Measured from the camera in the floor plane, like
           // the rest of the cull.
           const ddx = nb.ox - cx, ddz = nb.oz - cz;
-          if (ddx * ddx + ddz * ddz > CULL_DIST2) continue;
+          if (ddx * ddx + ddz * ddz > cullDist2()) continue;
           // In the view cone (yaw frustum, with reveal margin) AND not occluded
           // by a wall (line-of-sight). Sample the doorway at the CAMERA'S eye
           // height, not a fixed world-1.2 — so a sunken/raised room (the stair-
@@ -605,7 +611,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // Ground truth needs the whole world present; restored by the tick below.
     showAll();
     camera.updateMatrixWorld();
-    raycaster.far = CONFIG.FOG_FAR;
+    raycaster.far = sightFar();
 
     const seenRays = new Map<string, { rays: number; nearest: number }>();
     let hits = 0;
@@ -653,7 +659,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       if (!visible.has(nb.id)) continue;
       sawDrawnNeighbour = true;
       const ddx = nb.ox - cx, ddz = nb.oz - cz;
-      if (ddx * ddx + ddz * ddz > CULL_DIST2) { reasons.push('fog-distance'); continue; }
+      if (ddx * ddx + ddz * ddz > cullDist2()) { reasons.push('fog-distance'); continue; }
       const tag = nb.guessed ? '(guessed-door)' : '';
       const px = nb.ox + nb.nx * THROUGH_STEP, pz = nb.oz + nb.nz * THROUGH_STEP;
       sphere.center.set(px, camera.position.y, pz);
