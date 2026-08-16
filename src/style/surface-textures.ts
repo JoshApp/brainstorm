@@ -487,9 +487,14 @@ const courseVarAmt = tuneNumber({
   id: 'coursevar', group: 'Wall', label: 'Course variation', min: 0, max: 1, value: 0.45,
   hint: 'how much course HEIGHTS differ — 0 is the old uniform grid',
 });
+// 0.8 rather than a guess: measured across the range, that is where the size
+// mix lands on the target — 30% small, 9% unusually large, the rest medium or
+// large, with small-stone clusters up to four long. At 1.0 the smallest stone
+// drops to 0.27m, which at this render scale stops being masonry and becomes
+// confetti once mortar, grit and chromatic aberration are on top of it.
 const blockVarAmt = tuneNumber({
-  id: 'blockvar', group: 'Wall', label: 'Block variation', min: 0, max: 1, value: 0.5,
-  hint: 'how much stone WIDTHS and counts differ within a course',
+  id: 'blockvar', group: 'Wall', label: 'Block variation', min: 0, max: 1, value: 0.8,
+  hint: 'width spread and how often small stones cluster to fill a gap',
 });
 // Josh: *"its boring if the walls are always as big as the strip — the most
 // interesting thing was bigger stones side by side with smaller stones."*

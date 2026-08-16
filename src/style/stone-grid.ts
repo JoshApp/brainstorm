@@ -117,12 +117,73 @@ let courseEdges: number[] = [];
  *  or two small buckets rather than the whole tile. */
 let stonesByCourse: Stone[][] = [];
 
-function widths(seed: number, n: number, total: number, vary: number): number[] {
-  const w: number[] = []; let t = 0;
-  for (let i = 0; i < n; i++) {
-    const k = 1 + (stoneHash(seed, i, 5.77) - 0.5) * 2 * vary;
-    w.push(Math.max(0.25, k)); t += k > 0.25 ? k : 0.25;
+// ── LARGE STONES SET THE STRUCTURE, SMALL ONES SOLVE THE GAPS ───────────────
+// The first version drew every width independently from one range, which is
+// uniform-random and reads as such: after a while the eye finds the rule, which
+// is "all these stones are about the same size, give or take". That is a
+// different hidden rule from the old constant grid, but it is still a rule.
+//
+// What a laid wall actually does is lay BIG stones because a big stone is less
+// work, and then fill whatever awkward space is left with a handful of small
+// ones. So the rhythm goes large, large, then a cluster of three or four small,
+// then large again — and the smalls arrive TOGETHER because they are all
+// solving the same leftover gap, not sprinkled evenly because a hash said so.
+//
+// So the course is laid by WALKING it rather than by dividing it:
+//
+//     72%  medium or large   the structure
+//     20%  starts a CLUSTER of 3-5 small ones   the repair
+//      8%  unusually large    the punctuation
+//
+// Deliberately biased large, because the big slabs are the chunky identity and
+// small stones are meant to break repetition, not turn the wall into cobbles.
+// And the smallest are kept well above confetti — at the render scale, small
+// stone plus mortar plus grit plus chromatic aberration stops being masonry and
+// becomes noise.
+//
+// Widths are normalised to the tile at the end, so however the walk goes the
+// pattern still repeats exactly.
+function widths(seed: number, _n: number, total: number, vary: number): number[] {
+  const w: number[] = [];
+  let hi = 0;
+  const h = () => stoneHash(seed, hi++, 5.77);
+  const lerp1 = (k: number) => 1 + (k - 1) * vary;   // vary 0 => the old uniform grid
+  let cluster = 0, acc = 0, guard = 0;
+  while (acc < BLOCKS_PER_TILE && guard++ < 32) {
+    let k: number;
+    if (cluster > 0) {
+      k = 0.30 + h() * 0.22;                 // the small ones filling a gap
+      cluster--;
+    } else {
+      const r = h();
+      if (r < 0.11) {
+        // RARE, and never alone. A huge stone with smaller ones packed around it
+        // reads as constructed — someone had one good block and filled beside
+        // it; five unrelated sizes in a row reads as a generator. So an outsized
+        // stone always drags a short cluster along behind it, which is the
+        // cheapest way to make the sizes locally CORRELATED rather than each
+        // drawn independently.
+        //
+        // The top end is pulled in (was 1.7..2.4) because at that size these
+        // stopped reading as masonry and started reading as rectangular panels,
+        // which is the failure mode of the whole idea.
+        //
+        // The FREQUENCY went the other way, and the reason is worth writing
+        // down. "Rare" is barely available in a 4.6m tiling texture: a tile
+        // holds about forty stones, so a 5% chance produced ZERO across the
+        // whole wall as often as not — and any that did appear would repeat
+        // every 4.6m anyway. Rare-but-present and rare-but-absent are not
+        // distinguishable here. 11% puts three or four in a tile, which is
+        // "occasional" at the only granularity this texture can express.
+        k = 1.55 + h() * 0.45;
+        cluster = 2 + Math.floor(h() * 2);
+      } else if (r < 0.80) k = 0.9 + h() * 0.55; // medium / large: the structure
+      else { cluster = 2 + Math.floor(h() * 3); k = 0.30 + h() * 0.22; }
+    }
+    const kk = Math.max(0.22, lerp1(k));
+    w.push(kk); acc += kk;
   }
+  const t = w.reduce((a, b) => a + b, 0);
   return w.map((k) => (k / t) * total);
 }
 
@@ -157,8 +218,11 @@ function rebuildGrid(): void {
     // the column decisions made below.
     if (paired[c] && !isPairLower) continue;
 
-    const n = Math.max(2, BLOCKS_PER_TILE + Math.round((stoneHash(c, 1, 7.13) - 0.5) * 2 * spread));
-    const ws = widths(c, n, TILE_W, vBlock);
+    // The COUNT falls out of the walk — laying stones until the course is full
+    // is what produces the rhythm; choosing a count first and dividing by it is
+    // what produced the uniformity.
+    const ws = widths(c, 0, TILE_W, vBlock);
+    const n = ws.length;
     // Running bond at zero width-variation, faded out as real variation arrives.
     const bond = (c % 2 === 1) ? BRICK_W * 0.5 * (1 - Math.min(1, vBlock)) : 0;
     let x = -bond;
