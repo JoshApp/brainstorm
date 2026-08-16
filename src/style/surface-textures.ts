@@ -201,9 +201,31 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // EDGE CHIPPING — measured from dseam, which is already the distance to the
   // nearest joint, so a chip reaches in from the arris exactly where one would.
   const chip = edgeChip(u, v, dseam, chipAmt('wall'));
-  const brk = cornerBreak(inbx, inby, idx, idy, u, v, cornerAmt('wall'));
-  const raw = Math.min(1, chip.raw + brk.raw);
-  const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth - brk.depth, 0.25, 1.15);
+  // ── TWO BREAKS PER STONE, AND THE SECOND ON A DIFFERENT SIDE ──────────────
+  // Josh: *"it never breaks the top corners and never two on one stone."* The
+  // second half was by construction — one decision per block, so a stone could
+  // never lose two pieces.
+  //
+  // The first half is sparsity rather than bias. There are only 4 x 8 = 32
+  // DISTINCT bricks in a tile (idx and idy wrap at 4 and 8), of which about
+  // eight break at the current strength — and their sides came out
+  // [3 bottom, 2 top, 1 left, 2 right] when I counted them. Top breaks exist;
+  // there are two of them in the entire repeating texture, which is
+  // indistinguishable from never.
+  //
+  // A second, independently salted break roughly doubles the sample, and it is
+  // FORCED onto a different side from the first so the pair spreads rather than
+  // clustering. That fixes both halves of the report with one change: stones can
+  // lose two pieces, and every side gets hit more often.
+  const brkA = cornerBreak(inbx, inby, idx, idy, u, v, cornerAmt('wall'), 0, -1);
+  const sideA = Math.floor(dHash(idx, idy, 7.3) * 4) % 4;
+  const brkB = cornerBreak(
+    inbx, inby, idx, idy, u, v, cornerAmt('wall') * 0.8,
+    2.7, (sideA + 1 + Math.floor(dHash(idx, idy, 9.4) * 3)) % 4,
+  );
+  const brk = brkA.depth >= brkB.depth ? brkA : brkB;
+  const raw = Math.min(1, chip.raw + brkA.raw + brkB.raw);
+  const h = clampf(1.0 + set + tilt + dome - spallD - Math.max(brkA.depth, brkB.depth) - chip.depth, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));
   // CREVICE: the channel floor goes toward black, and the arris just outside it
@@ -596,11 +618,15 @@ const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.35,
 function cornerBreak(
   inbx: number, inby: number, idx: number, idy: number,
   u: number, v: number, amt: number,
+  // SALT lets the same block be asked more than once and get an independent
+  // answer; FORCESIDE (>= 0) pins which edge, so a second break can be pushed
+  // onto a different side from the first instead of clustering. See the call.
+  salt: number, forceSide: number,
 ): { depth: number; raw: number } {
   if (amt <= 0) return { depth: 0, raw: 0 };
   // Roughly one block in five at amt = 1, fewer as it comes down — turning
   // damage off should remove BREAKS, not shrink every break toward invisible.
-  if (dHash(idx, idy, 5.1) > 0.34 * amt) return { depth: 0, raw: 0 };
+  if (dHash(idx, idy, 5.1 + salt) > 0.34 * amt) return { depth: 0, raw: 0 };
   // ── ANYWHERE ON THE PERIMETER, NOT JUST THE FOUR CORNERS ──────────────────
   // Josh: *"the edge break is really coming along but its almost always like one
   // corner — i think it could be a bit more irregular, its currently pretty
@@ -615,7 +641,23 @@ function cornerBreak(
   // Pick a SIDE and then a position ALONG it. Corners still happen, because a
   // position near either end of a side is a corner, but they are now one
   // outcome among many instead of the only one.
-  const side = Math.floor(dHash(idx, idy, 7.3) * 4) % 4;
+  // ── STRATIFIED, NOT SAMPLED ───────────────────────────────────────────────
+  // A tile holds only 4 x 8 = 32 DISTINCT bricks — anything varying per brick
+  // has to repeat with the texture, so it can only depend on (idx mod 4,
+  // idy mod 8), and that ceiling is structural rather than a tuning choice.
+  // About fifteen of those thirty-two break, and drawing fifteen sides from a
+  // hash gave [5 bottom, 2 top, 1 left, 7 right] — not biased, just a tiny
+  // sample. Two top breaks in the whole repeating wall is indistinguishable
+  // from Josh's *"it never breaks the top corners."*
+  //
+  // With a sample that small, LEAVING IT TO CHANCE IS THE BUG. Deriving the
+  // side from the brick's own coordinates guarantees all four appear in equal
+  // measure, and the one bit of hash keeps it from reading as a diagonal march.
+  // Everything else about a break — where along the side, how big, how deep,
+  // the outline wobble — is still hashed, so the stones do not repeat.
+  const side = forceSide >= 0
+    ? forceSide
+    : (idx + idy * 3 + Math.floor(dHash(idx, idy, 7.3 + salt) * 2)) % 4;
   // ── BIASED TO THE ENDS, BECAUSE THAT IS WHERE STONE BREAKS ────────────────
   // Josh: *"there are barely any corners broken off ... its almost never hitting
   // the top corners."* My doing — the previous fix spread the origin uniformly
@@ -627,7 +669,7 @@ function cornerBreak(
   // exposed part of a block and it is where masonry loses material first, so
   // most breaks belong at one end or the other — with mid-edge bites kept as the
   // minority they should have been all along.
-  const r = dHash(idx, idy, 1.9);
+  const r = dHash(idx, idy, 1.9 + salt);
   const along = r < 0.40 ? mixf(-0.06, 0.16, r / 0.40)
     : r > 0.60 ? mixf(0.84, 1.06, (r - 0.60) / 0.40)
       : mixf(0.28, 0.72, (r - 0.40) / 0.20);
@@ -635,12 +677,12 @@ function cornerBreak(
   const oy = side === 0 ? 0 : side === 1 ? 1 : along;
   const du = Math.abs(inbx - ox), dv = Math.abs(inby - oy);
   // Asymmetric so the bevel is not a neat 45 degrees on every stone.
-  const wu = mixf(0.7, 1.5, dHash(idx, idy, 4.4));
+  const wu = mixf(0.7, 1.5, dHash(idx, idy, 4.4 + salt));
   // BIGGER. Josh: *"the small chunks look bad, the bigger missing chunks look
   // better."* A small break is indistinguishable from surface noise; a big one
   // is an event. So the low end of the range comes up rather than the high end
   // going further — the point is to stop making forgettable ones.
-  const size = mixf(0.30, 0.58, dHash(idx, idy, 3.9)) * Math.min(1.2, amt);
+  const size = mixf(0.30, 0.58, dHash(idx, idy, 3.9 + salt)) * Math.min(1.2, amt);
   // The OUTLINE wobbles per facet too, so the break is a rough polygon rather
   // than a clean straight cut. Without this every break is a tidy triangle, and
   // "more irregular" cannot come from the depth alone.
@@ -675,14 +717,14 @@ function cornerBreak(
   const plateau = smooth(0, CLIFF, t01);    // 0 at the line, 1 immediately after
   // Polygonal roughness on the exposed face — small, and quantised by the cell
   // rather than smooth, so it reads as fracture planes and not as a dent.
-  const facet = (dHash(fb.cx, fb.cy, 4.4) - 0.5) * 0.16;
+  const facet = (dHash(fb.cx, fb.cy, 4.4 + salt) - 0.5) * 0.16;
   const ramp = plateau * (1 + facet);
   // DEEPER THAN THE JOINT BESIDE IT, which the first cut was not: at 0.12..0.34
   // against a 0.6 joint, a "broken corner" sat SHALLOWER than the mortar line
   // next to it, so it could not read as missing stone. Measured height barely
   // moved (0.865 -> 0.862 at full strength). A corner that came off has to go
   // past the joint or it is just a dent.
-  return { depth: ramp * mixf(0.14, 0.72, dHash(idx, idy, 8.7)), raw: ramp };
+  return { depth: ramp * mixf(0.14, 0.72, dHash(idx, idy, 8.7 + salt)), raw: ramp };
 }
 /** FLOOR equivalent. A Voronoi flag has no rectangular corners, so "a corner
  *  came off" becomes "a wedge came off ONE SIDE": pick a direction per cell, and

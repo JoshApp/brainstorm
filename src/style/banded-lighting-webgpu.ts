@@ -92,6 +92,42 @@ const uBandDither = tuneUniform({
   hint: 'stipples the band edges; meant to be found, not noticed',
 });
 
+// ── THE LADDER: WHERE A BAND STARTS AND HOW BRIGHT IT IS, SEPARATELY ────────
+//
+// Even bands couple two decisions that have no reason to be coupled. With N
+// steps of equal width, moving a threshold moves every other threshold, and the
+// brightness of a band is fixed at wherever it happens to land. The Band curve
+// knob loosens that — it moves all the thresholds along a power law — but it
+// still cannot say "the top band should start late AND be only this bright".
+//
+// Here the two are independent: four thresholds decide WHERE the light steps,
+// five values decide WHAT it steps to. That is the difference between tuning a
+// formula and drawing a response curve, and it is what makes the brightest band
+// an ACCENT — a thin sliver of near-white on the few surfaces facing a flame —
+// rather than a region that claims every well-lit slab.
+//
+// Defaults are the shape ChatGPT proposed and they are a reasonable start:
+// thresholds bunched low so most of the material lives in the middle bands, and
+// a top value short of 1.0 so nothing clips to paper.
+//
+// Off by default (Ladder mode 0) because the even path is what Josh has been
+// tuning all day, and switching the whole lighting response out from under a
+// set he chose would not be an improvement, it would be a different game.
+const uBandMode = tuneUniform({
+  id: 'bandmode', group: 'Ladder', label: 'Ladder mode', min: 0, max: 1, value: 0, step: 1,
+  hint: '0 = even bands (count + curve), 1 = the explicit ladder below',
+});
+const LADDER_T = [0.10, 0.27, 0.52, 0.78];
+const LADDER_V = [0.06, 0.18, 0.38, 0.64, 0.90];
+const uLt = LADDER_T.map((v, i) => tuneUniform({
+  id: `lt${i}`, group: 'Ladder', label: `Step ${i + 1} at`, min: 0, max: 1, value: v,
+  hint: `light level where band ${i + 2} begins`,
+}));
+const uLv = LADDER_V.map((v, i) => tuneUniform({
+  id: `lv${i}`, group: 'Ladder', label: `Band ${i + 1} value`, min: 0, max: 1, value: v,
+  hint: i === 0 ? 'the shadow floor' : i === 4 ? 'the highlight accent' : 'a mid band',
+}));
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** 2x2 ordered Bayer as an integer 0..3, branchless.
  *  [[0,2],[3,1]] — verified at all four positions rather than trusted:
@@ -111,14 +147,25 @@ function bayer4(p: any): any {
 /** Posterise a [0,1] tone into `bands` steps, with `curve` deciding where those
  *  steps fall. Shared by the diffuse and the specular so the two cannot drift
  *  into different-looking quantisation. */
-function posterise(tone: any, bands: any, curve: any): any {
-  const bent: any = (tone as any).max(0.0001).pow(curve);
+function posterise(tone: any, bands: any, curve: any, allowLadder = false): any {
   // Offset in BAND UNITS, so its effect is relative to the step size rather
   // than to the absolute value — a coarse quantisation and a fine one dither by
   // the same visual proportion.
   const jitter: any = (bayer4(screenCoordinate as any) as any).sub(0.5).mul(uBandDither as any);
+  const bent: any = (tone as any).max(0.0001).pow(curve);
   const q: any = bent.mul(bands).add(jitter).add(0.5).floor().div(bands);
-  return q.max(0.0001).pow((float as any)(1).div(curve));
+  const even: any = q.max(0.0001).pow((float as any)(1).div(curve));
+  // The specular never takes the ladder: it is a different quantity in a
+  // different range, and a tonal response curve authored for diffuse light
+  // would mean nothing applied to a highlight's magnitude.
+  if (!allowLadder) return even;
+  // Ladder. Jitter converted to TONE units — a band is roughly 0.2 wide — so the
+  // dither carries the same visual weight in both modes rather than silently
+  // changing strength when the mode flips.
+  const t: any = (tone as any).add(jitter.mul(0.2));
+  let lad: any = uLv[0];
+  for (let i = 0; i < 4; i++) lad = (t.greaterThan(uLt[i] as any) as any).select(uLv[i + 1], lad);
+  return ((uBandMode as any).greaterThan(0.5) as any).select(lad, even);
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -195,7 +242,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // so a floor's huge polygons can take harder quantisation than a wall's
     // rectangles), else the global.
     const dBands: any = this.bandsNode ?? uBands;
-    const quantTone: any = posterise(tone, dBands, uBandCurve as any);
+    const quantTone: any = posterise(tone, dBands, uBandCurve as any, true);
     const bandedTone: any = (mix as any)(quantTone, tone, uBandSoft as any).min(0.88);
     const bandedMag: any = bandedTone.div(bandedTone.oneMinus().max(0.001));
     const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
