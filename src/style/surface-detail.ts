@@ -351,7 +351,14 @@ function jointUniformPair(
 
 const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.72,
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
-const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.76, 0.6,
+// WALL DEFAULT 0.76 -> 0.35. Not a taste change — a units change. The term used
+// to add up to 0.20 roughness to the JOINT and was entirely clipped away on the
+// wall, so 0.76 was a number chosen while watching nothing happen. It now
+// subtracts up to 0.20 from the STONE FACE, where it is fully effective, and
+// 0.35 lands the face/joint contrast a little above where the shipped wall
+// actually sat (0.06) rather than 3x past it. Drag it up for a wetter stone
+// against a dry joint; the whole range does something now.
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.35, 0.6,
   'how hard the gaps refuse to take a shine');
 const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
   'how much filth collects down in the gaps');
@@ -815,7 +822,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // Fade the joints out toward the corner. Not all the way to zero even at full
   // strength: a corner with NO joints at all stops being masonry and becomes a
   // poured pier, and the thing being built here is a big stone, not a blank.
-  mortar = mortar.mul(float(1).sub(quoin.mul(0.82)));
+  mortar = mortar.mul(float(1).sub(quoin.mul(0.95)));
   let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
   // Warmth + brightness ride ON TOP of the authored tint rather than replacing
   // it, so the tint stays the thing a surface declares about itself and this
@@ -1035,10 +1042,36 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // them, on top of the cavity term, so the difference survives even where the
   // light is flat.
   const stoneOnly: any = float(1).sub(mortar.mul(uMortarMatte as any));
+  // ── JOINT MATTE HAD NO HEADROOM, WHICH IS WHY IT DID NOTHING ──────────────
+  //
+  // Josh: *"the joint sliders like matte and most of the joint sliders do almost
+  // nothing cranked full up and down."* Measured, and it is arithmetic rather
+  // than a matter of degree. On a wall:
+  //
+  //     baseRough 0.94  +  cavity 0.12  =  1.06     <- already past the clamp
+  //     + mortar x matte x 0.20                     <- every bit of it discarded
+  //
+  // The joint term was pushing roughness UP from a base that is already almost
+  // fully matte, into a ceiling of 1.0. It was dead on arrival at any value. The
+  // floor, at 0.796, has just enough room that some of it survives — which is
+  // exactly why Josh has always found the floor's joint knobs more responsive
+  // than the wall's, and the arithmetic and the report agree.
+  //
+  // So the contrast moves to the side that HAS headroom: the joint stays where
+  // it is and the STONE FACE is made smoother by the same term. Same relative
+  // difference between joint and face, same knob, same direction of meaning
+  // ("how much more matte is the joint than the stone") — but now the range is
+  // 0.18..base rather than base..1.0, so the slider has authority everywhere
+  // instead of only on surfaces that happen to be authored glossy.
+  //
+  // `faceOnly` is the PURE face mask. `stoneOnly` below it is deliberately not
+  // reused: that one is already scaled by matte, so driving matte through it
+  // would square the knob and make the bottom half of its travel do nothing.
+  const faceOnly: any = float(1).sub(mortar);
   const varied: any = (tslClamp as any)(
     baseRough
       .add(cavity.mul(0.12))
-      .add(mortar.mul(uMortarMatte as any).mul(0.20))
+      .sub(faceOnly.mul(uMortarMatte as any).mul(0.20))
       .sub(proud.mul(0.14).mul(stoneOnly))
       .sub(grease.mul(polish).mul(stoneOnly))
       .add(stoneWear),
@@ -1094,7 +1127,26 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // from texel-space to metres using the tile size.
   const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
   const dV: any = hAt(0, 1).sub(hAt(0, -1)).mul(0.5 * texW).div(uTile.y);
-  const amp: any = (uRelief as any).mul(cfg.relief);
+  // THE QUOIN TAKES THE RELIEF WITH IT, and this is the half that was still
+  // giving the corner away. Josh: *"the stones spawning corners of the poly room,
+  // they are almost aligned but the gaps and stone kinda differs, so its like a
+  // small seam between the corners where its like a texture cut instead of the
+  // stone continuing or kinda ending properly."*
+  //
+  // Two walls meeting at a corner sample the pattern along their OWN direction
+  // (see the 2026-08-16 projection change), so their phases differ and the joints
+  // on either side of the arris do not meet. That is correct — masonry interlocks
+  // at a corner, it does not flow through it — but ALMOST aligning is the one
+  // outcome that reads as a texture error rather than as masonry, and a
+  // near-miss is what two independent phases usually produce.
+  //
+  // Suppressing the joint's COLOUR there was not enough on its own, because the
+  // height channel still displaced it: the mask said "no joint here" while the
+  // normal perturbation went on carving one, so the mismatched groove survived in
+  // the lighting. Scaling the relief by the same term means that at the arris
+  // both walls are smooth solid stone with no joint to disagree about, which is
+  // exactly what a quoin is.
+  const amp: any = (uRelief as any).mul(cfg.relief).mul(float(1).sub(quoin.mul(0.9)));
   // The tangent frame is FREE for the same reason POM's was: these UVs are
   // projected on world axes, so U and V *are* world axes — and they are the
   // ones already chosen above. This was the third site re-deciding for itself,

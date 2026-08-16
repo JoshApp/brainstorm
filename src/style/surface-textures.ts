@@ -93,7 +93,30 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // a big dome and a big break, not a small one stretched.
   const gy = st.iy + (py - st.y0) / Math.max(1e-5, by);
   const gx = st.ix + (px - st.x0) / Math.max(1e-5, bx);
-  const idx = modf(st.ix, 8), idy = modf(st.iy, COURSES_PER_TILE);
+  // ── THE STONE'S IDENTITY, AND THE MODULO THAT WAS DESTROYING IT ────────────
+  //
+  // WAS `modf(st.ix, 8)`. Sixteen per-stone properties below are keyed on this
+  // pair — set, tilt, dome, tone, spall, chips, corner breaks, the lost perpend —
+  // so it decides whether two stones are different stones. The modulo made some
+  // of them the same stone.
+  //
+  // The worst case is exact and it is the one Josh reported: *"some of the big
+  // stones are like two stones in one without a gap between them."* When a course
+  // PAIRS (stone-grid.ts), a column may be laid as two stacked stones, and the
+  // upper one is marked `ix: i + 64` precisely so it reads as its own stone.
+  // 64 is a multiple of 8. `modf(i + 64, 8) === modf(i, 8)`, so the mark was
+  // erased and the pair drew one identity between them: same tone, same set,
+  // same tilt, same spall, and the same roll on whether to lose their joint. Two
+  // stones, stacked, identical in every respect, with one horizontal joint
+  // between them — which is a description of one stone.
+  //
+  // It also collided plain neighbours: the width walk lays up to a dozen stones
+  // in a course, so ix 8 and ix 0 were the same stone as well.
+  //
+  // NO MODULO IS NEEDED AT ALL. `stoneAt` returns indices from the per-tile stone
+  // list, so ix and iy are already tile-local and already repeat with the tile —
+  // the wrapping the modulo was there to provide was provided by the grid.
+  const idx = st.ix, idy = st.iy;
   // ── PER-BRICK SET-OUT ──────────────────────────────────────────────────────
   // The masonry-specific answer to "what would fit a brick wall". A domain warp
   // — even a faceted one — bends the GRID, and the grid is the one thing a
@@ -143,9 +166,25 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   const seamVar = mixf(0.62, 1.0, dHash(idx, idy, 2.3));
   const jW = 0.03 * jointW('wall');
   const mortar = 1 - smooth(jW - aa, jW + aa, dseam);
-  const crackable = stepf(0.92, dHash(idx, idy, 5.5));
+  // ── THE SPLIT NOBODY COULD TURN OFF ────────────────────────────────────────
+  // Josh: *"setting joint gap doesnt affect all of them, some big ones stay ...
+  // the gap slider doesnt close some of the biggest gaps."*
+  //
+  // This is that. 8% of stones are split down the middle by a dark line as wide
+  // as a joint, and until now it answered to NOTHING: not Joint width (which
+  // scales `jW`, not this), and not the Cracks knob either — that one gates a
+  // different pass entirely, the world-space crack field at the bottom of this
+  // file. So a slider named Cracks was on screen while these cracks ignored it,
+  // which is worse than having no slider at all.
+  //
+  // Routed through the same knob now, and through Joint width for its WIDTH, so
+  // "close the gaps" closes these too. They are still their own thing — a split
+  // through the middle of a stone is not a joint between two — but a knob that
+  // visibly governs some gaps and silently not others is not a knob, it is a
+  // trap.
+  const crackable = stepf(0.92, dHash(idx, idy, 5.5)) * crackAmt('wall');
   const cpos = mixf(0.3, 0.7, dHash(idx, idy, 7.7));
-  const crack = crackable * (1 - smooth(0, 0.012 + aa, Math.abs(inbx - cpos)));
+  const crack = crackable * (1 - smooth(0, 0.012 * jointW('wall') + aa, Math.abs(inbx - cpos)));
   const recess = Math.max(mortar, crack * 0.85);
   // ── THE JOINT NEEDS A SLOPE, NOT A CLIFF ───────────────────────────────────
   // Josh: *"it looks like the card stack, is there a better technique for
