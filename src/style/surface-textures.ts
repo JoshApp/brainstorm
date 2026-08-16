@@ -142,6 +142,20 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   const tAng = dHash(idx, idy, 6.4) * Math.PI * 2;
   const tAmt = mixf(0.022, 0.075, dHash(idx, idy, 8.8));   // more lean, fewer cliffs
   const tilt = (Math.cos(tAng) * (inbx - 0.5) + Math.sin(tAng) * (inby - 0.5)) * 2 * tAmt;
+  // ── DOMING (OpenKTG's CellInner) ───────────────────────────────────────────
+  // Their Cells operator has two modes and we had only ever used one. CellOuter
+  // (distance to the EDGE) gave the floor its chipped rims. CellInner —
+  // distance to the CENTRE — is the other half, and it does something no amount
+  // of noise can: it makes each face CONVEX.
+  //
+  // That matters because worn stone is not flat. A block that has been rained
+  // on and rubbed past for centuries is highest in the middle and falls away to
+  // its arrises, and a convex face turns a point light into a soft moving
+  // highlight instead of a flat wash. It is the difference between a stone and
+  // a tile with a stone printed on it — and unlike the tilt above, which leans
+  // a flat plane, this actually curves it.
+  const dcx = (inbx - 0.5) * 2, dcy = (inby - 0.5) * 2;
+  const dome = Math.max(0, 1 - (dcx * dcx + dcy * dcy)) * 0.055 * domeAmt();
   // Tone widened 0.86..1.0 → 0.80..1.06: with light now varying per block, the
   // albedo can carry more spread without the wall reading as noise.
   const tone = mixf(0.80, 1.06, dHash(idx, idy, 3.7));
@@ -150,7 +164,7 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // and the ray march carves an actual bite out of the wall.
   const spall = stepf(0.92, dHash(idx, idy, 6.9));
   const spallD = spall * mixf(0.30, 0.55, dHash(idx, idy, 1.7));
-  const h = clampf(1.0 + set + tilt - spallD, 0.25, 1.15);
+  const h = clampf(1.0 + set + tilt + dome - spallD, 0.25, 1.15);
   return [
     mixf(tone, 0.5, recess) * mixf(1.0, 0.72, spall),
     mixf(h, 0.4, hRecess),
@@ -223,7 +237,6 @@ const WARP_PERIOD = 4;          // integer → tiles cleanly over u,v in [0,1)
 // straight boundaries between them, instead of everything flowing. Slabs that
 // settled against each other, rather than a wall made of wax — which is what a
 // masonry wall actually does as its footing moves.
-const WARP_LEVELS = 5;
 function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, number] {
   const P = WARP_PERIOD, P2 = P * 2;
   let nx = vnoiseP(u * P, v * P, P, P) * 0.68
@@ -232,8 +245,9 @@ function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, n
          + vnoiseP(u * P2 + 19.7, v * P2 + 2.3, P2, P2) * 0.32;
   if (faceted) {
     // Snap to levels → flat facets with hard edges between them.
-    nx = Math.floor(nx * WARP_LEVELS) / (WARP_LEVELS - 1);
-    ny = Math.floor(ny * WARP_LEVELS) / (WARP_LEVELS - 1);
+    const L = Math.max(2, Math.round(warpFacet()));
+    nx = Math.floor(nx * L) / (L - 1);
+    ny = Math.floor(ny * L) / (L - 1);
   }
   return [u + (nx - 0.5) * 2 * amp, v + (ny - 0.5) * 2 * amp];
 }
@@ -258,6 +272,24 @@ const brickJitter = tuneNumber({
 const eroAmt = tuneNumber({
   id: 'erode', group: 'Bake', label: 'Erosion', min: 0, max: 1, value: 1.0,
   hint: 'weathering strength (1 = as authored)',
+});
+const crackAmt = tuneNumber({
+  id: 'cracks', group: 'Bake', label: 'Cracks', min: 0, max: 1, value: 0.55,
+  hint: 'splits that ignore the joints',
+});
+const domeAmt = tuneNumber({
+  id: 'dome', group: 'Bake', label: 'Stone doming', min: 0, max: 1, value: 0.45,
+  hint: 'how convex the walked-on faces are',
+});
+// Already in the code but not reachable until now — a value you cannot try is
+// a value nobody tuned.
+const warpFacet = tuneNumber({
+  id: 'facet', group: 'Bake', label: 'Warp faceting', min: 2, max: 24, value: 5, step: 1,
+  hint: 'few = slabs settling, many = smooth bending',
+});
+const eroSteep = tuneNumber({
+  id: 'erosteep', group: 'Bake', label: 'Erosion steepness', min: 0, max: 1, value: 0.38,
+  hint: 'low = broad staining, high = distinct runs',
 });
 const toneCon = tuneNumber({
   id: 'tone', group: 'Bake', label: 'Tone contrast', min: 0.4, max: 1.6, value: 1.0,
@@ -353,6 +385,11 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   const tAng = dHash(gx, gy, 5.3) * Math.PI * 2;
   const tAmt = mixf(0.02, 0.085, dHash(gx, gy, 2.9));
   const tilt = (Math.cos(tAng) * -mrx + Math.sin(tAng) * -mry) * 2 * tAmt;
+  // CellInner doming — see the note in brickCPU. Flags dome MORE than wall
+  // blocks because they are the ones actually walked on, and a floor worn
+  // convex is the single most legible sign that a place has been used.
+  const dr2 = mrx * mrx + mry * mry;
+  const dome = Math.max(0, 1 - dr2 * 3.2) * 0.075 * domeAmt();
   const tone = mixf(0.70, 1.06, bt);
   // MISSING STONES ARE HOLES NOW. Josh: *"some stones are missing there but
   // even the missing texture is just flat color."* Exactly right — `missing`
@@ -361,7 +398,7 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // was nothing that could have displayed it. Now it drops hard and the ray
   // march reads it as a pit you look down into, with the seam recess on top.
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
-  const h = clampf(1.0 + set + tilt - pit - bite * 0.30, 0.12, 1.15);
+  const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30, 0.12, 1.15);
   return [
     mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
     mixf(h, 0.35, hSeam),
@@ -394,6 +431,32 @@ function dirBlurWrap(src: Float32Array, W: number, H: number,
     }
   }
   return out;
+}
+
+
+// ── OPERATOR: RIDGED NOISE (OpenKTG's NoiseAbs) ──────────────────────────────
+// Their Noise operator has a mode flag we never had an equivalent for:
+// NoiseDirect uses noise(x,y), NoiseAbs uses ABS(noise(x,y)). That one absolute
+// value changes the SHAPE of the field completely — a smooth field has round
+// hills and round valleys, an absolute one has round hills and SHARP CREASES
+// where it folds through zero.
+//
+// Creases are what a crack is. Every noise layer in this file so far is a blob
+// generator, which is why the surface could look weathered but never SPLIT.
+// Ridged noise thresholded near its peak gives thin branching lines that wander
+// across stones instead of following the joints — the one kind of damage that
+// ignores how the wall was built, because a crack does not care where the
+// bricklayer put the mortar.
+function ridgedP(u: number, v: number, per: number): number {
+  const n = vnoiseP(u * per, v * per, per, per);
+  return 1 - Math.abs(n * 2 - 1);          // 1 along the fold, 0 at the extremes
+}
+function crackField(u: number, v: number): number {
+  // Two octaves: the coarse one decides where a crack runs, the fine one makes
+  // it wander and branch instead of reading as a drawn line.
+  const a = ridgedP(u, v, 6);
+  const b = ridgedP(u + 3.7, v + 1.9, 13);
+  return a * 0.68 + b * 0.32;
 }
 
 // ── OPERATOR: CHAINED EROSION ────────────────────────────────────────────────
@@ -534,6 +597,19 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       else if (kind === 'ceiling') [shade, height, variant, wear] = cofferCPU(px, py, aa);
       else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa);
       else [shade, height, variant, wear] = grainCPU(u, v);
+      // ── CRACKS ─────────────────────────────────────────────────────────────
+      // Applied AFTER the pattern, in unwarped coordinates, precisely because a
+      // crack is not part of the masonry: it happened to it. Running it in the
+      // warped frame would make it follow the courses, which is the one thing a
+      // split does not do.
+      const cA = crackAmt();
+      if (cA > 0) {
+        const cf = crackField(u0, v0);
+        const crack = smooth(0.86, 0.995, cf) * cA;
+        shade *= mixf(1, 0.45, crack);
+        height -= crack * 0.28;
+        wear = clampf(wear + crack * 0.55, 0, 1);   // a split face is raw stone
+      }
       const i = yi * CPU_TEX + xi;
       shadeF[i] = shade; heightF[i] = height; variantF[i] = variant; wearF[i] = wear;
       // The field the erosion pass will smear. Periodic so it keeps tiling.
@@ -553,7 +629,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     for (let i = 0; i < N; i++) {
       // Only the strong end of the smear cuts — otherwise it is a grey veil
       // over everything instead of distinct runs.
-      const cut = smooth(0.38, 1.0, smear[i]) * ero.amt * eroAmt();   // gentler shoulder
+      const cut = smooth(eroSteep(), 1.0, smear[i]) * ero.amt * eroAmt();
       shadeF[i] *= mixf(1, 0.62, cut);
       heightF[i] -= cut * 0.22;
       wearF[i] = clampf(wearF[i] + cut * 0.5, 0, 1);   // eroded stone is rougher
