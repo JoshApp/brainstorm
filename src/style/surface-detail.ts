@@ -687,6 +687,20 @@ export function setSurfaceWetness(strength: number): void {
   wetnessNode.value = strength;
 }
 
+// ── THIS IS A GPU-STRENGTH DIAL, NOT A FEATURE TOGGLE ───────────────────────
+// The name says "enabled" and the body sets a uniform to 0. The node graph
+// stays bolted to the material either way, so `material.colorNode` is still
+// defined, three's containsNode() still returns true, and the PER-OBJECT CPU
+// cost is byte-for-byte identical with this off.
+//
+// Which makes it the wrong instrument for the obvious experiment. A/B-ing a
+// frame with this on and off measures the shader's GPU work and NOTHING about
+// what the node graph costs on the CPU — and since the phone is CPU-encode
+// bound (2026-07-03 triage, and the peer session's 2026-08-16 measurements),
+// that is the half you would actually be trying to price. You would come away
+// concluding the surface shader is CPU-free.
+//
+// Use the encode-breakdown's nodeMat/plain split for that question instead.
 export function setSurfaceDetailEnabled(on: boolean): void {
   uDetailStrength.value = on ? 1 : 0;
 }
