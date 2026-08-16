@@ -176,9 +176,18 @@ function widths(seed: number, _n: number, total: number, vary: number): number[]
         // distinguishable here. 11% puts three or four in a tile, which is
         // "occasional" at the only granularity this texture can express.
         k = 1.55 + h() * 0.45;
-        cluster = 2 + Math.floor(h() * 2);
+        cluster = 1 + Math.floor(h() * 2);
       } else if (r < 0.80) k = 0.9 + h() * 0.55; // medium / large: the structure
-      else { cluster = 2 + Math.floor(h() * 3); k = 0.30 + h() * 0.22; }
+      else {
+        // SHORTER CLUSTERS. *"Reduce the frequency of the very narrow vertical
+        // wall stones — when clustered they start looking like filler pieces
+        // generated to solve the tiling algorithm."* Exactly the right read:
+        // three or four narrow stones in a row stops being "someone filled a
+        // gap" and starts being "the algorithm had space left over". One or two
+        // reads as a repair; four reads as a remainder.
+        cluster = Math.floor(h() * 2.2);
+        k = 0.32 + h() * 0.24;
+      }
     }
     const kk = Math.max(0.22, lerp1(k));
     w.push(kk); acc += kk;

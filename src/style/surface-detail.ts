@@ -307,7 +307,7 @@ const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
 // Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
 // vec3 and you want to drag one number, so the conversion happens here.
 const mortarWarmW = tuneNumber({
-  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: -0.31,
+  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: 0.4,
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
@@ -364,11 +364,11 @@ onKnobChange((k) => {
 // the floor ids are in Josh's saved set and in every URL he has sent today, and
 // a tidier naming scheme is not worth silently invalidating those.
 const wallWarm = tuneNumber({
-  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: 0,
+  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: 0.34,
   apply: 'live', hint: 'cold grey <-> warm sandstone; the floor has its own',
 });
 const wallBright = tuneNumber({
-  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.0,
+  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.12,
   apply: 'live', hint: 'how much light the wall gives back at all',
 });
 
@@ -395,11 +395,11 @@ const wallBright = tuneNumber({
 // Wall roughness defaults to 0.95 — exactly what the material already carried —
 // so nothing moves until it is asked to.
 const uWallRough = tuneUniform({
-  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.95,
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.872,
   hint: 'low = damp/polished sheen, high = dry matte stone',
 });
 const uWallPolish = tuneUniform({
-  id: 'wallpolish', group: 'Wall', label: 'Rubbed polish', min: 0, max: 0.6, value: 0.26,
+  id: 'wallpolish', group: 'Wall', label: 'Rubbed polish', min: 0, max: 0.6, value: 0.264,
   hint: 'shoulders and hands, where the wall has been squeezed past',
 });
 const uWallPolishAt = tuneUniform({
