@@ -183,10 +183,14 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));
+  // CREVICE: the channel floor goes toward black, and the arris just outside it
+  // catches. Both are scalars on SHADE, so neither can shift the hue.
+  const mDark = m.tone * mixf(1, 0.26, crevDark('wall'));
+  const rimLift = 1 + arrisBand(dseam, jW, aa) * 0.55 * crevRim('wall');
   return [
     // A fresh break is LIGHTER than the face around it: the inside of the
     // stone never had the soot.
-    mixf(tone, m.tone, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, chip.raw),
+    mixf(tone, mDark, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, chip.raw) * rimLift,
     mixf(h, m.h, hRecess),
     dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
     clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35 + chip.raw * 0.75, m.wear, recess), 0, 1),
@@ -513,6 +517,45 @@ function edgeChip(
 const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 1.5, 0.6, 0.45,
   'corners cracked off, raw stone underneath');
 
+// ── THE TWO HALVES OF A LIT CREVICE, SECOND ATTEMPT ─────────────────────────
+// Josh: *"we do them into pale but we could really make them dark, especially
+// for walls"*, and *"your experimentation with the rim wasnt bad, it was just
+// the wrong color or albedo — we could try that once more."*
+//
+// He is right on both counts and I know exactly what was wrong the first time.
+// Three separate mistakes, all avoidable:
+//
+//   IT BOOSTED CHROMA on a broad band, which over-saturates toward the light's
+//   own hue. That was the radioactive yellow. Gone — a rim needs no help taking
+//   the torch's colour, a brighter surface does that by itself.
+//
+//   IT MIXED TOWARD PALE BONE — a near-white — so the arris went a different
+//   COLOUR from the stone it belongs to. That is the "wrong colour" he is
+//   describing. It is a scalar on SHADE now, so the rim is the same stone,
+//   brighter. Hue-preserving by construction rather than by tuning.
+//
+//   IT LIVED IN THE SHADER, keyed off the height VALUE, which collides with any
+//   fine height detail of comparable amplitude — grit at his settings swings 20%
+//   of a joint's depth, so the mask fired all over the block faces. Here in the
+//   BAKE the exact distance to the joint is a local, `dseam`, so there is
+//   nothing to collide with and no extra texture tap. It should always have been
+//   here: the rim is a property of the pattern, and this is where the pattern is.
+//
+// Per-surface because he asked for walls specifically, and because a wall arris
+// is struck stone while a floor arris has been walked on for centuries.
+const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1, 0.7, 0.45,
+  'how far the bottom of the joint goes toward black');
+const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1, 0.5, 0.35,
+  'the arris rubbed clean — this is the glow, and it stays the stone\u2019s colour');
+
+/** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
+ *  to 0 a couple of centimetres onto the face. `d` is distance to the joint,
+ *  `jw` the joint's half-width, both in metres. */
+function arrisBand(d: number, jw: number, aa: number): number {
+  const RIM = 0.020;
+  return smooth(jw - aa, jw + aa, d) * (1 - smooth(jw + RIM, jw + RIM * 2.4, d));
+}
+
 /** A periodic Voronoi cell field. Returns the squared distance to the nearest
  *  centre and that cell's id hashes, so a caller can give each cell its own
  *  identity. Shared by the wall's mortar aggregate and the floor's pebbles —
@@ -743,9 +786,11 @@ function flagCPU(px: number, py: number, aa: number, u: number, v: number): Cell
   // which is the whole reason the stone under your foot is loose.
   const g = gapFill(u, v, jointTex('floor'));
   const gapMask = Math.max(seam, missing);
+  const gDark = g.tone * mixf(1, 0.26, crevDark('floor'));
+  const rimLift = 1 + arrisBand(edM, chipW, aa) * 0.55 * crevRim('floor');
   return [
-    mixf(tone, g.tone, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite)
-      * mixf(1.0, 1.14, chip.raw),
+    mixf(tone, gDark, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite)
+      * mixf(1.0, 1.14, chip.raw) * rimLift,
     mixf(h, g.h, hSeam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
     clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3 + chip.raw * 0.75, g.wear, gapMask), 0, 1),
