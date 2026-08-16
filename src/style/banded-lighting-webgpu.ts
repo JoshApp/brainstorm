@@ -166,11 +166,44 @@ function bayer4(p: any): any {
 /** Posterise a [0,1] tone into `bands` steps, with `curve` deciding where those
  *  steps fall. Shared by the diffuse and the specular so the two cannot drift
  *  into different-looking quantisation. */
-function posterise(tone: any, bands: any, curve: any, allowLadder = false): any {
+function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp: any = null): any {
   // Offset in BAND UNITS, so its effect is relative to the step size rather
   // than to the absolute value — a coarse quantisation and a fine one dither by
   // the same visual proportion.
-  const jitter: any = (bayer4(screenCoordinate as any) as any).sub(0.5).mul(uBandDither as any);
+  let jitter: any = (bayer4(screenCoordinate as any) as any).sub(0.5).mul(uBandDither as any);
+  // ── AND THE BANDS THEMSELVES WANDER ────────────────────────────────────────
+  //
+  // Josh: *"i love how light works etc. but its kinda a perfect circular
+  // highlight on close sources ... if the light is close it gets this kinda
+  // perfect circular banded sheen."*
+  //
+  // He is describing a bullseye, and it is honest output: a point light's
+  // irradiance falls off radially, a flat wall turns that into concentric
+  // circles, and quantising a smooth radial gradient draws those circles as
+  // hard rings. Every step is correct and the result reads as a target painted
+  // on the stone.
+  //
+  // The Bayer dither above cannot help. It breaks a band edge at the PIXEL
+  // scale, which is what it is for (removing the staircase), and it lives in
+  // SCREEN space, so it swims when the camera moves and leaves the ring's shape
+  // exactly where it was. What the ring needs is for its BOUNDARY to wander —
+  // in world space, over metres, so a circle becomes a broken crescent and then
+  // islands.
+  //
+  // So the caller may hand in a warp, in the same BAND UNITS as the jitter, and
+  // it is added at the same place. Where it comes from is the surface's
+  // business, not the lighting model's: the stone shader knows which STONE a
+  // fragment belongs to, and per-stone is the strongest version of this — a ring
+  // crossing five stones breaks into five offset arcs, which is masonry catching
+  // light rather than a gradient being posterised.
+  //
+  // WEIGHTED TOWARD THE OUTER BANDS. The hot core is where the eye reads the
+  // light source and it should stay clean; the faint outer rings are where the
+  // bullseye actually reads as one. `1 - tone` does that in one term.
+  if (warp !== null) {
+    const outer: any = (float as any)(1).sub(tone as any).clamp(0, 1);
+    jitter = jitter.add((warp as any).mul(outer));
+  }
   const bent: any = (tone as any).max(0.0001).pow(curve);
   const q: any = bent.mul(bands).add(jitter).add(0.5).floor().div(bands);
   const even: any = q.max(0.0001).pow((float as any)(1).div(curve));
@@ -211,6 +244,10 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // When set, the DIRECT SPECULAR is posterised the same way the diffuse is.
   // See the note in finish().
   specBands: any;
+  /** Per-fragment offset to the band boundaries, in BAND UNITS — see posterise.
+   *  Supplied by the stone shader so the rings a close light draws follow the
+   *  masonry instead of the falloff. Null on every other material. */
+  bandWarp: any;
   // Per-material DIFFUSE band count. A floor's enormous irregular polygons turn
   // hard quantisation into graphic shapes; a wall already has brick boundaries,
   // surface variation and RGB separation competing for the same edges, so it
@@ -219,6 +256,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   constructor(
     chroma = 1, chromaNode: any = null, rimDarkReactive = 0,
     specScale: any = null, specBands: any = null, bandsNode: any = null,
+    bandWarp: any = null,
   ) {
     super();
     this.chroma = chroma;
@@ -227,6 +265,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     this.specScale = specScale;
     this.specBands = specBands;
     this.bandsNode = bandsNode;
+    this.bandWarp = bandWarp;
   }
   // SINGLE-SCATTER direct specular — match WebGL's RE_Direct_Physical EXACTLY.
   // Three's WGSL PhysicalLightingModel.direct() uses BRDF_GGX_MULTISCATTER, which
@@ -261,7 +300,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // so a floor's huge polygons can take harder quantisation than a wall's
     // rectangles), else the global.
     const dBands: any = this.bandsNode ?? uBands;
-    const quantTone: any = posterise(tone, dBands, uBandCurve as any, true);
+    const quantTone: any = posterise(tone, dBands, uBandCurve as any, true, this.bandWarp);
     const bandedTone: any = (mix as any)(quantTone, tone, uBandSoft as any).min(0.88);
     const bandedMag: any = bandedTone.div(bandedTone.oneMinus().max(0.001));
     const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
@@ -285,7 +324,8 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     if (this.specBands) {
       const sm: any = spec.r.max(spec.g).max(spec.b);
       const st: any = sm.div(sm.add(1.0));                       // Reinhard, as the diffuse does
-      const sq: any = posterise(st, this.specBands, (uBandCurve as any).mul(uSpecCurve as any)).min(0.95);
+      const sq: any = posterise(st, this.specBands, (uBandCurve as any).mul(uSpecCurve as any),
+        false, this.bandWarp).min(0.95);
       const sMag: any = sq.div(sq.oneMinus().max(0.001));
       spec = (sm.greaterThan(0.0008) as any).select(spec.mul(sMag.div(sm.max(0.0008))), spec);
     }
@@ -413,14 +453,16 @@ export function setMaterialSeamChromaWebGPU(mat: any, chromaNode: any): void {
  * So: albedo UP and stone specular DOWN, with global exposure untouched.
  */
 export function setMaterialStoneLightingWebGPU(
-  mat: any, opts: { chromaNode?: any; specScale?: any; specBands?: any; bands?: any },
+  mat: any,
+  opts: { chromaNode?: any; specScale?: any; specBands?: any; bands?: any; bandWarp?: any },
 ): void {
   const chromaNode = opts.chromaNode ?? null;
   const specScale = opts.specScale ?? null;
   const specBands = opts.specBands ?? null;
   const bands = opts.bands ?? null;
+  const bandWarp = opts.bandWarp ?? null;
   mat.setupLightingModel = () =>
-    new BandedPhysicalLightingModel(1, chromaNode, 0, specScale, specBands, bands);
+    new BandedPhysicalLightingModel(1, chromaNode, 0, specScale, specBands, bands, bandWarp);
 }
 
 /** Restore the stock (un-banded) lighting model on a material — used for the

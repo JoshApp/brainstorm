@@ -219,6 +219,47 @@ const uQuoin = tuneUniform({
   hint: 'joints fade and damage calms where walls turn — 0 is off',
 });
 
+// ── THE BULLSEYE ────────────────────────────────────────────────────────────
+//
+// Josh: *"i love how light works etc. but its kinda a perfect circular highlight
+// on close sources ... walls and floor, if the light is close it gets this kinda
+// perfect circular banded sheen."*
+//
+// Every step producing that is correct, which is why it took a screenshot to
+// see. A point light's irradiance falls off radially; a flat wall turns that
+// into concentric circles; quantising a smooth radial gradient draws those
+// circles as hard rings. Honest output, and it reads as a target painted on the
+// stone.
+//
+// The Bayer dither already in the posteriser cannot help. It breaks a band edge
+// at the PIXEL scale — that is its job, removing the staircase — and it lives in
+// SCREEN space, so it swims with the camera and leaves the ring's shape exactly
+// where it was. What a ring needs is for its BOUNDARY to wander in WORLD space,
+// over metres.
+//
+// Two sources, and the first is the one that does the work:
+//
+//   PER STONE. `variant` is a per-cell constant — the same value across a whole
+//   block — so pushing the band threshold by it means each stone lands on a
+//   slightly different band. A ring crossing five stones breaks into five
+//   offset arcs. That is masonry catching light rather than a gradient being
+//   posterised, and it costs nothing: the channel is already sampled.
+//
+//   SUB-STONE. A slow world-space noise on top, so the boundary also wanders
+//   WITHIN a big slab instead of stopping dead at its edges.
+//
+// The posteriser weights this toward the outer bands (see `posterise`), so the
+// hot core stays clean and readable and it is the faint outer rings — the ones
+// that actually read as a bullseye — that break up.
+const uBandWarp = tuneUniform({
+  id: 'bandwarp', group: 'Light', label: 'Band break-up', min: 0, max: 1.5, value: 0.55,
+  hint: 'breaks the rings a close light draws into stone-sized arcs; 0 = perfect circles',
+});
+const uBandWarpNoise = tuneUniform({
+  id: 'bandwarpn', group: 'Light', label: 'Break-up within a stone', min: 0, max: 1.5, value: 0.4,
+  hint: 'wander inside a big slab, so the break-up is not only at the joints',
+});
+
 const uSpecBands = tuneUniform({
   id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 9, step: 1,
   hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
@@ -981,9 +1022,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // has to reach every stone surface — the pillars and the dressed framing are
   // the same rock as the walls, and one of them keeping a 4% sheen while the
   // others lose it would read as two different materials.
+  // The band warp, in BAND UNITS (see posterise). Both terms are centred on zero
+  // so this shifts a boundary either way rather than brightening the surface.
+  const warpStone: any = variant.sub(0.5).mul(uBandWarp as any);
+  const warpNoise: any = valueNoise2((vec2 as any)(sU.mul(0.42), sV.mul(0.42)))
+    .sub(0.5).mul(uBandWarpNoise as any);
   setMaterialStoneLightingWebGPU(mat, {
     chromaNode: seamChroma, specScale: stoneSpec(isFloor), specBands: uSpecBands,
     bands: isFloor ? uFloorBands : uWallBands,
+    bandWarp: warpStone.add(warpNoise),
   });
 
   // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
