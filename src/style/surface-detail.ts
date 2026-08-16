@@ -172,11 +172,11 @@ const uSpecBands = tuneUniform({
   hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
 });
 const uPomDepth = tuneUniform({
-  id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
+  id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: 0.12,
   hint: 'how deep the stone goes',
 });
 const uRelief = tuneUniform({
-  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.282,
+  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.402,
   hint: 'how hard light rakes across the surface',
 });
 
