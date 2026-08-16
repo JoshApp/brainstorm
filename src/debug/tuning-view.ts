@@ -15,11 +15,12 @@
 // viewmodel's update loop changes, so toggling it back leaves everything where
 // it was.
 import { getViewmodelRoots } from '../style/render-frame';
-import { setCameraPitch } from '../controls/camera';
+import { setCameraPitch, setCameraYaw } from '../controls/camera';
 import { tuneNumber, onKnobChange, getKnob } from './tuning';
 
 const SHOW_VM = 'showvm';
 const PITCH = 'pitch';
+const YAW = 'yaw';
 
 tuneNumber({
   id: SHOW_VM, group: 'View', label: 'Show viewmodel', min: 0, max: 1, value: 1, step: 1,
@@ -51,9 +52,21 @@ tuneNumber({
   apply: 'live', hint: 'negative looks down at the floor; a drag overrides it',
 });
 
+// Yaw for the same reason, and it arrived the moment a shot needed a CORNER:
+// a walkable scenario's authored yaw points you down one axis, and anything
+// framed off-axis — a corner, a wall seen raking rather than face-on — is
+// unreachable without dragging, which is not repeatable. Same setter story as
+// pitch: write the camera module's own variable, because the look code
+// overwrites camera.rotation.y every frame from it.
+tuneNumber({
+  id: YAW, group: 'View', label: 'Look yaw', min: -Math.PI, max: Math.PI, value: 0,
+  apply: 'live', hint: 'turn on the spot; positive turns left',
+});
+
 onKnobChange((k) => {
   if (k.spec.id === SHOW_VM) apply();
   if (k.spec.id === PITCH) setCameraPitch(k.get());
+  if (k.spec.id === YAW) setCameraYaw(k.get());
 });
 
 function apply(): void {
@@ -87,8 +100,11 @@ if (typeof window !== 'undefined') {
  *  not silently undone by whatever ran last. */
 export function reapplyViewKnobs(): void {
   apply();
-  const p = getKnob(PITCH);
   // Zero means "wherever the game put you" — asserting it would fight the
-  // level-entry reset it is meant to survive, and win nothing.
+  // level-entry reset it is meant to survive, and win nothing. Yaw especially:
+  // the scenario's authored startPos.yaw is a real decision.
+  const p = getKnob(PITCH);
   if (p && Math.abs(p.get()) > 1e-4) setCameraPitch(p.get());
+  const y = getKnob(YAW);
+  if (y && Math.abs(y.get()) > 1e-4) setCameraYaw(y.get());
 }
