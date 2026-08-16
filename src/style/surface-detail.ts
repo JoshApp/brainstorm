@@ -1158,7 +1158,38 @@ export function installNamedSurfaceDetail(material: THREE.Material, name: string
   if (cfg) installSurfaceDetail(material, cfg);
 }
 
+// ── ?detail=0 — THE ONLY HONEST A/B FOR THIS SYSTEM (DEV) ────────────────────
+// setSurfaceDetailEnabled below sets a UNIFORM to zero. It is a strength dial,
+// not a switch: the node graph stays bolted on, the POM loop still marches, and
+// every texture tap still happens — the result is just multiplied by 0. So the
+// ATTR sweep's `detail textures` stage measures approximately nothing, and on
+// 2026-08-16 it duly reported -0.48ms, which reads as "the surface shader is
+// free" when it is really "we did not turn it off".
+//
+// This flag skips the install entirely, so the material keeps its stock shading
+// and never gets the graph at all. That prices the WHOLE system in one reload
+// A/B — GPU fill AND the per-object CPU encode the uniform dial is blind to,
+// which is the half that matters on the phone.
+//
+//   ?scenario=surface-lab&profiler=1            baseline
+//   ?scenario=surface-lab&profiler=1&detail=0   without
+//
+// It changes the picture (banded lighting rides along), which is the point: it
+// is a measuring instrument, not a quality setting. DEV-only — in production
+// import.meta.env.DEV is the literal false, so this collapses to `if (false)`
+// and is dead-code-eliminated along with the URL read.
+let detailBypass: boolean | null = null;
+function detailBypassed(): boolean {
+  if (!import.meta.env.DEV) return false;
+  if (detailBypass === null) {
+    detailBypass = new URLSearchParams(window.location.search).get('detail') === '0';
+    if (detailBypass) console.log('[surface] detail bypassed (?detail=0) — measuring, not styling');
+  }
+  return detailBypass;
+}
+
 export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexConfig): void {
+  if (detailBypassed()) return;
   cfgMap.set(material, cfg);
   // WEBGPU: set a colorNode that triplanar-samples the (CPU-baked) surface
   // texture in WORLD space (matching the GLSL's world-projected UVs) and
