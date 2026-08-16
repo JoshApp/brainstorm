@@ -17,6 +17,17 @@ import { buildPolyDressing, PILASTER } from '../src/level/poly-dressing';
 import { MAX_WALL_RECESS } from '../src/level/wall-courses';
 import { describeWalls } from '../src/level/wall-surfaces';
 import { ARCHETYPES, generateRoomShape, pointInPoly, type Poly } from '../src/level/room-shape';
+import { DRESSING } from '../src/level/dressing';
+
+// SHELL TRIM IS SWITCHED OFF IN THE SHIPPED MANIFEST (2026-08-16), and this file
+// tests the trim BUILDER, not the switch. Same reasoning as tests/corridor-decor:
+// a flag meaning "do not run this right now" must not also mean "stop checking
+// whether it is correct", or level/dressing.ts becomes the place code goes to rot
+// while it waits to be brought back — and bringing it back deliberately, one at a
+// time, is the entire point of that file.
+DRESSING['shell-skirting'].on = true;
+DRESSING['shell-cornice'].on = true;
+DRESSING['shell-pilaster'].on = true;
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {

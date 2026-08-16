@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mountPoints, type WallSurface } from './wall-surfaces';
 import type { Volume } from './room-occupancy';
 import { MAX_WALL_RECESS } from './wall-courses';
+import { dressing } from './dressing';
 
 // ── MAKING A POLYGON ROOM READ AS BUILT ──────────────────────────────────────
 //
@@ -105,12 +106,18 @@ export function buildPolyDressing(
 ): THREE.BufferGeometry | null {
   const parts: THREE.BufferGeometry[] = [];
 
+  // Each course asks the manifest by name, so the skirting and the cornice can be
+  // decided separately — they are the same geometry doing two different jobs at
+  // two different distances from the eye.
+  const courses = [
+    ...(dressing('shell-skirting')
+      ? [{ y: elevation + SKIRTING.y, h: SKIRTING.h, depth: SKIRTING.depth }] : []),
+    ...(dressing('shell-cornice')
+      ? [{ y: elevation + height - CORNICE.fromTop, h: CORNICE.h, depth: CORNICE.depth }] : []),
+  ];
   for (const s of spans) {
     if (s.length >= MIN_TRIM_SPAN) {
-      for (const c of [
-        { y: elevation + SKIRTING.y, h: SKIRTING.h, depth: SKIRTING.depth },
-        { y: elevation + height - CORNICE.fromTop, h: CORNICE.h, depth: CORNICE.depth },
-      ]) {
+      for (const c of courses) {
         const seat = seatedBox(c.depth - BURY);
         parts.push(courseBox(s, s.length, c.h, seat.depth, c.y, seat.out));
       }
@@ -118,7 +125,7 @@ export function buildPolyDressing(
 
   }
 
-  for (const p of pilasterPlan(spans, height, elevation, pilaster)) {
+  for (const p of dressing('shell-pilaster') ? pilasterPlan(spans, height, elevation, pilaster) : []) {
     // SEATED HERE, not in the plan. The plan says how far the pier stands into
     // the room; the mesh is that plus a tail reaching behind the deepest the
     // masonry can go, so it meets stone wherever the courses happen to be.

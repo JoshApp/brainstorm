@@ -584,9 +584,11 @@ function buildRoomShell(
     const segMid = (segStart + segEnd) / 2;
     const inward = we.side === 'N' || we.side === 'W' ? 1 : -1;
     const alongX = we.side === 'N' || we.side === 'S';
+    // Same two switches the polygon path reads (level/poly-dressing.ts), so a
+    // rect corridor and a poly room cannot end up trimmed differently.
     for (const t of [
-      { y: elev + 0.075, h: 0.15, depth: 0.07 },        // skirting
-      { y: elev + H - 0.06, h: 0.12, depth: 0.055 },    // cornice
+      ...(dressing('shell-skirting') ? [{ y: elev + 0.075, h: 0.15, depth: 0.07 }] : []),
+      ...(dressing('shell-cornice') ? [{ y: elev + H - 0.06, h: 0.12, depth: 0.055 }] : []),
     ]) {
       const geo = new THREE.BoxGeometry(
         alongX ? segLen : t.depth,

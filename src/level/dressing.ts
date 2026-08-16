@@ -108,6 +108,50 @@ export const DRESSING: Record<string, DressingEntry> = {
       + 'geometry, not a prop leaned against it afterwards.',
   },
 
+  // ── SHELL TRIM (built by the room shell itself, not by a decorator) ───────
+  //
+  // These three are not props. They are emitted by the room SHELL — poly-dressing.ts
+  // for polygon rooms, builder's trimSegment for rects — which is why turning off
+  // every producer in the strip left them standing and Josh had to point at a
+  // screenshot: *"remove the butresses and lower untextured strips."* They are
+  // still automatic dressing nobody asked a room for, so they belong on this list
+  // with everything else rather than in a second, invisible one.
+  'shell-pilaster': {
+    on: false,
+    note: 'ENGAGED PIERS — the vertical dressed-stone strips standing against a '
+      + 'wall. The "buttresses" in the screenshot: the prop buttress had already '
+      + 'gone, these had not, and from inside a room they read the same. Authored '
+      + 'when a wall was a flat plane that needed vertical relief; the masonry '
+      + 'supplies that now, and a smooth pale strip over textured stone reads as '
+      + 'untextured rather than as architecture.',
+  },
+  'shell-skirting': {
+    on: false,
+    note: 'The base course where wall meets floor — the "lower untextured strips". '
+      + 'Same argument as the plinth band in wall-profile.ts, which went for the '
+      + 'same reason on the same day: it was the only source of a shadow line at '
+      + 'the floor joint, and it is not any more.',
+  },
+  'shell-cornice': {
+    on: false,
+    note: 'The band where wall meets ceiling. Its own entry rather than sharing the '
+      + 'skirting flag, because it is a different decision — it is far from the eye '
+      + 'and does not read as untextured the way the skirting does, so it is the '
+      + 'more likely of the two to come back. Off for now because keeping a cornice '
+      + 'while cutting the skirting leaves a room banded at the top only.',
+  },
+  'wall-collapse': {
+    on: false,
+    note: 'THE COLLAPSED PATCH — a cluster of missing stones with the rubble they '
+      + 'left heaped at the foot of the wall. Cut by name: Josh, 2026-08-16, "also '
+      + 'the kinda rubble at the base of walls." Note this is SHELL geometry, not '
+      + 'the wall-pile prop, which is a separate entry and also off — two producers '
+      + 'were putting broken stone at the bottom of a wall and both had to be found. '
+      + 'Worth bringing back deliberately one day: the hole and the rubble under it '
+      + 'are one authored idea (wall-courses.ts: "a hole with no rubble is a '
+      + 'texture; rubble with no hole is a prop somebody put there").',
+  },
+
   // ── ROOM: surface (things scattered on top of the room) ────────────────────
   'floor-debris': {
     on: false,

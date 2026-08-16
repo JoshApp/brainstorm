@@ -14,6 +14,8 @@ import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
 import { makeCoursedWall, wallWear, tintAsFlagstones } from './wall-courses';
+// Aliased: this file already has a local `dressing` (the trim geometry).
+import { dressing as dressingOn } from './dressing';
 
 // ── BUILDING A POLYGON ROOM ──────────────────────────────────────────────────
 //
@@ -231,7 +233,7 @@ export function buildPolyRoomShell(
   // decided here it is one wall, in a minority of rooms, and it is the wall you
   // remember the room by. Long walls only, and the LONGEST eligible one, so the
   // patch lands where there is space to see it.
-  const collapseSpan = shellWear > COLLAPSE_ROOM_WEAR
+  const collapseSpan = !dressingOn('wall-collapse') ? -1 : shellWear > COLLAPSE_ROOM_WEAR
     ? spans.reduce<{ i: number; len: number }>((best, s, i) => {
       const l = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
       return l > best.len ? { i, len: l } : best;
