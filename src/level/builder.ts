@@ -184,6 +184,7 @@ import {
   makeSteppedRampGeometry,
 } from './geometry-prims';
 import { getPropAABB } from './prop-aabb';
+import { dressing } from './dressing';
 
 function buildRoomShell(
   scene: THREE.Object3D,
@@ -1224,7 +1225,7 @@ export function buildLevel(
     // without this pushes a second set of doors onto the first.
     const hasOriginArch = spec.props.some(
       (pr) => (pr as { _dbg?: string })._dbg === 'origin-arch');
-    if (spec.startPos && !hasOriginArch) {
+    if (dressing('origin-arch') && spec.startPos && !hasOriginArch) {
       const yaw = spec.startPos.yaw ?? 0;
       const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
       // ORIGIN ARCH — the closed pair of doors on the wall BEHIND the

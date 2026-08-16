@@ -42,15 +42,21 @@ const sillOf = (width: number, wallDepth = WALL_T) => {
   return (model.parts as Box[]).find((p) => p.name === 'sill');
 };
 
-test('EVERY FRAME KIND CARRIES ONE', () => {
-  // Both sides of the archway/doorframe split, because the sill is added at the
-  // one seam they share — and the whole point of putting it there was that a
-  // sill authored twice disagrees with itself the first time one is tuned.
+test('EVERY OPENING CARRIES ONE, AT EVERY WIDTH', () => {
+  // This used to check both sides of an archway/doorframe split. THERE IS ONE
+  // GATE now (2026-08-16) — see chooseFrameModel — so the interesting property
+  // is no longer "both kinds get a sill" but "the width no longer changes what
+  // you get", which is the whole claim of the unification and the thing a
+  // reintroduced threshold would break.
   const narrow = ARCHWAY_MIN_WIDTH - 0.5, wide = ARCHWAY_MIN_WIDTH + 1.0;
-  assert.equal(chooseFrameModel({ width: narrow, ceilingHeight: 3.2, wallDepth: WALL_T }).kind, 'doorframe');
+  assert.equal(chooseFrameModel({ width: narrow, ceilingHeight: 3.2, wallDepth: WALL_T }).kind, 'archway');
   assert.equal(chooseFrameModel({ width: wide, ceilingHeight: 3.2, wallDepth: WALL_T }).kind, 'archway');
-  assert.ok(sillOf(narrow), 'a doorframe has no sill');
-  assert.ok(sillOf(wide), 'an archway has no sill');
+  // slimOnly is accepted and ignored; a caller passing it still gets the gate.
+  assert.equal(
+    chooseFrameModel({ width: narrow, ceilingHeight: 3.2, wallDepth: WALL_T, slimOnly: true }).kind,
+    'archway', 'slimOnly still forks the frame');
+  assert.ok(sillOf(narrow), 'a narrow opening has no sill');
+  assert.ok(sillOf(wide), 'a wide opening has no sill');
 });
 
 test('THE SILL SPANS THE WALL AND LAPS PAST BOTH FACES', () => {

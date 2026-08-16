@@ -6,6 +6,7 @@ import type { RoomOccupancy } from './room-occupancy';
 import { roomType, type RoomTypeId } from './room-types';
 import { propFacts, claimsConflict, type Claim } from './prop-taxonomy';
 import { expandGroup } from './prop-groups';
+import { dressing } from './dressing';
 
 // ── THE SMALL FOUND THINGS ───────────────────────────────────────────────────
 //
@@ -182,7 +183,7 @@ export function decorPolyFloor(
   // rolling it per room multiplies it by the room count and turns "every few
   // floors" into "most floors" without anybody choosing that.
   const bodyRooms = rooms.filter((r) => !roomType(r.type).clean && roomType(r.type).minorLoot);
-  if (bodyRooms.length > 0 && rand() < CORPSE_CHANCE) {
+  if (dressing('decor-corpse') && bodyRooms.length > 0 && rand() < CORPSE_CHANCE) {
     const r = bodyRooms[Math.floor(rand() * bodyRooms.length)];
     const spot = openSpot(r, rand, 0.6);
     if (spot) {
@@ -202,7 +203,7 @@ export function decorPolyFloor(
   }
 
   // A bone shrine — the same beat, arranged by somebody. Also once a floor.
-  if (bodyRooms.length > 0 && rand() < SHRINE_CHANCE) {
+  if (dressing('bone-shrine') && bodyRooms.length > 0 && rand() < SHRINE_CHANCE) {
     const r = bodyRooms[Math.floor(rand() * bodyRooms.length)];
     const spot = openSpot(r, rand, 1.1);
     if (spot) {
@@ -225,7 +226,7 @@ export function decorPolyFloor(
     const runeWall = [...r.walls]
       .filter((s) => s.length >= RUNE_MIN_WALL && !s.jambA && !s.jambB)
       .sort((a, b) => b.length - a.length)[0];
-    if (runeWall && rand() < RUNE_CHANCE) {
+    if (runeWall && dressing('wall-rune') && rand() < RUNE_CHANCE) {
       // Off-centre, because mid-wall is where a doorway usually is and where
       // the eye already goes.
       const t = 0.3 + rand() * 0.4;
@@ -266,7 +267,8 @@ export function decorPolyFloor(
     // A dead end is where it belongs and where it reads best anyway — a side
     // passage nobody has walked in years. It gates a detour you chose, costs one
     // swing, and can never stand between the player and the stairs.
-    if (r.doorways.length && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
+    if (dressing('mouth-cobweb')
+        && r.doorways.length && r.exits === 1 && !r.onMainline && def.minorLoot && rand() < WEB_CHANCE) {
       // The doorway nearest the mouth, so a room with two holes still webs the
       // one the player arrives through. Position, yaw and width all come off
       // the portal — see the note on DecorRoom.doorways for what happened when

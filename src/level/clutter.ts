@@ -18,6 +18,8 @@ import { claimsAdmitModel, resolveRoomClaims, type Claim } from './prop-taxonomy
 import { resolveSkin, skinCandidates } from './skin';
 import { activeSkin } from './skins';
 import type { PlaceKind, PlacementAuthority } from './placement-authority';
+import { dressing } from './dressing';
+import { pointInPoly } from './room-shape';
 
 // =====================================================================
 // LEVEL DECORATION PIPELINE
@@ -115,6 +117,24 @@ interface RoomContext {
   admits: (modelId: string) => boolean;
   centreSampler: () => { x: number; z: number };
   edgeSampler: () => { x: number; z: number };
+  /**
+   * Is this point actually INSIDE the room, as opposed to inside its bounding
+   * rect?
+   *
+   * Everything else in this context is rect-shaped — minX/maxX/minZ/maxZ, the
+   * opening lists, the samplers — because it was written when a room WAS a
+   * rect. A polygon room's rect is its bounding box, so its corners and any
+   * chamfer are stone, and a placer that walks the rect edge to find a wall can
+   * walk straight into the masonry. That is a real bug the poly-floor invariant
+   * catches ("a prop in stone means a placer is reasoning about the rect behind
+   * the shape's back") and it surfaced the moment the 2026-08-16 dressing strip
+   * shifted the RNG stream — it was always reachable, the dice had just not
+   * landed there.
+   *
+   * Rect rooms have no polygon and answer true inside their rect, so this is
+   * exactly as permissive as the old behaviour where the old behaviour was right.
+   */
+  inside: (x: number, z: number) => boolean;
 }
 
 /**
@@ -251,6 +271,10 @@ function buildRoomContext(
   const maxX = rect.x + rect.w / 2;
   const minZ = rect.z - rect.d / 2;
   const maxZ = rect.z + rect.d / 2;
+  const poly = room.poly;
+  const inside = (x: number, z: number) => poly
+    ? pointInPoly(poly as Parameters<typeof pointInPoly>[0], x, z)
+    : x >= minX && x <= maxX && z >= minZ && z <= maxZ;
   const openN = wallOpenings(rect, 'N', allRectsFlat);
   const openS = wallOpenings(rect, 'S', allRectsFlat);
   const openE = wallOpenings(rect, 'E', allRectsFlat);
@@ -341,7 +365,7 @@ function buildRoomContext(
     area: rect.w * rect.d,
     openN, openS, openE, openW,
     existing, tooClose, claims, admits,
-    centreSampler, edgeSampler,
+    centreSampler, edgeSampler, inside,
   };
 }
 
@@ -351,6 +375,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // Corner mounds — volumetric piles of silt slumping out of each
   // corner. One large mound max per chamber so a single corner
   // reads as the "collapsed" focal point.
+  if (dressing('corner-mound')) {
   const corners: Array<{ x: number; z: number; rotY: number; nearOpening: boolean }> = [
     { x: ctx.minX + 0.45, z: ctx.minZ + 0.45, rotY: 0,
       nearOpening: nearOpeningOnEither(ctx.openN, ctx.openW, ctx.minX + 0.45, ctx.minZ + 0.45) },
@@ -376,10 +401,11 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
     out.push({ kind: 'model', model: variant, x: c.x, y: 0, z: c.z, rotY: c.rotY });
     ctx.existing.push({ x: c.x, z: c.z });
   }
+  }
 
   // Wall buttresses — floor-to-ceiling structural columns attached
   // to a wall. The biggest single change to room silhouette.
-  const buttressCount = ctx.area >= 60 ? 2 : ctx.area >= 30 ? 1 : 0;
+  const buttressCount = !dressing('wall-buttress') ? 0 : ctx.area >= 60 ? 2 : ctx.area >= 30 ? 1 : 0;
   for (let i = 0; i < buttressCount; i++) {
     placeWallAttached(WALL_BUTTRESS, 0.30, 0.7, ctx, out, rand);
   }
@@ -390,7 +416,8 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // swallowed. An ACCENT, not carpet — at most one per chamber (two
   // in true halls), and plenty of rooms roll none.
   const nicheRoll = rand();
-  const nicheCount = ctx.area >= 90 && nicheRoll < 0.6 ? 2 : ctx.area >= 28 && nicheRoll < 0.5 ? 1 : 0;
+  const nicheCount = !dressing('ossuary-niche') ? 0
+    : ctx.area >= 90 && nicheRoll < 0.6 ? 2 : ctx.area >= 28 && nicheRoll < 0.5 ? 1 : 0;
   // The large niche is a SEARCHABLE bone shrine (drops from the 'ossuary' table,
   // spewed forward into the room). The small niche stays pure decoration.
   for (let i = 0; i < nicheCount; i++) {
@@ -402,7 +429,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // Carries a circular collision so the player has to path around
   // it — the columns aren't just visual, they ARE obstacles
   // (matches what they read as visually).
-  const columnCount = ctx.area >= 80 ? 2 : ctx.area >= 40 ? 1 : 0;
+  const columnCount = !dressing('ruined-column') ? 0 : ctx.area >= 80 ? 2 : ctx.area >= 40 ? 1 : 0;
   for (let i = 0; i < columnCount; i++) {
     for (let a = 0; a < 8; a++) {
       const p = ctx.centreSampler();
@@ -441,7 +468,8 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // would contradict — a burning brazier in a room the floor already declared
   // abandoned is the same contradiction as a cobweb in a shop, pointing the
   // other way. (prop-taxonomy: iron-brazier / cresset-pike both claim 'tended'.)
-  if (!hasCentrepiece && ctx.area >= 50 && ctx.admits('iron-brazier') && rand() < 0.22) {
+  if (dressing('light-accent')
+      && !hasCentrepiece && ctx.area >= 50 && ctx.admits('iron-brazier') && rand() < 0.22) {
     // Single helper for "near any door / corridor opening on any
     // wall." Each axis check uses the right coord against the right
     // opening list (openings on N/S walls have X-ranges; openings
@@ -497,7 +525,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   }
 
   // Wall piles — slump against a wall, lean into the room.
-  const wallPileCount = Math.max(0, Math.round(ctx.area / 25));
+  const wallPileCount = dressing('wall-pile') ? Math.max(0, Math.round(ctx.area / 25)) : 0;
   for (let i = 0; i < wallPileCount; i++) {
     placeWallPile(ctx, out, rand);
   }
@@ -507,7 +535,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
   // (a stub plus the piece that fell off, reading as a story).
   // Rare: medium-large rooms only, low chance per slot. Carries
   // AABB collision so the player paths around it.
-  const fallenCount = ctx.area >= 80 ? 2 : ctx.area >= 50 ? 1 : 0;
+  const fallenCount = !dressing('fallen-pillar') ? 0 : ctx.area >= 80 ? 2 : ctx.area >= 50 ? 1 : 0;
   for (let i = 0; i < fallenCount; i++) {
     if (rand() > 0.6) continue;            // not every slot fills
     for (let a = 0; a < 8; a++) {
@@ -544,7 +572,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, h
 function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
   // Floor debris — edge-biased, varied. Per-room shuffle of the
   // pool so the same chunk model doesn't dominate a chamber.
-  const floorCount = Math.max(1, Math.round(ctx.area / 14));
+  const floorCount = dressing('floor-debris') ? Math.max(1, Math.round(ctx.area / 14)) : 0;
   // WHAT the scatter is made of comes from the SKIN (docs/LEVEL-ARCHITECTURE.md
   // §9), not from a list in this file — a theme is a palette, and this pass
   // should only be deciding how much and where.
@@ -575,7 +603,7 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   }
 
   // Floor cracks — free placement anywhere.
-  const crackCount = Math.max(1, Math.round(ctx.area / 20));
+  const crackCount = dressing('floor-crack') ? Math.max(1, Math.round(ctx.area / 20)) : 0;
   for (let i = 0; i < crackCount; i++) {
     for (let a = 0; a < 6; a++) {
       const p = ctx.centreSampler();
@@ -609,7 +637,7 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   // is the real fix for "the merchant stands inside his own cobwebs": the apron
   // added on 2026-08-04 kept webs off the vendor's toes, but a tended room should
   // never have grown one anywhere in it.
-  let webs = ctx.admits('cobweb-corner') ? 0 : 99;
+  let webs = ctx.admits('cobweb-corner') && dressing('cobweb-corner') ? 0 : 99;
   for (const c of cobwebCorners) {
     if (webs >= 2) break;                 // never more than two webs in a room
     if (rand() > 0.28) continue;          // most corners stay bare
@@ -632,7 +660,7 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   }
 
   // Wall damage — scorches and gouges on clear wall sections.
-  const wallCount = Math.max(0, Math.round(ctx.area / 30));
+  const wallCount = dressing('wall-damage') ? Math.max(0, Math.round(ctx.area / 30)) : 0;
   for (let i = 0; i < wallCount; i++) {
     placeWallDamage(ctx, out, rand);
   }
@@ -648,7 +676,7 @@ function corridorSurfacePass(ctx: RoomContext, out: PropSpec[], rand: () => numb
   const length = Math.max(ctx.rect.w, ctx.rect.d);
   // ~1 piece per 3m of length, capped. Corridors are normally
   // 1.8-5m long so this lands at 1-2 pieces typically.
-  const floorCount = Math.max(0, Math.floor(length / 3));
+  const floorCount = dressing('corridor-debris') ? Math.max(0, Math.floor(length / 3)) : 0;
   // WHAT the scatter is made of comes from the SKIN (docs/LEVEL-ARCHITECTURE.md
   // §9), not from a list in this file — a theme is a palette, and this pass
   // should only be deciding how much and where.
@@ -694,7 +722,7 @@ function corridorSurfacePass(ctx: RoomContext, out: PropSpec[], rand: () => numb
     }
   }
   // A single floor crack per longer corridor.
-  const crackCount = length > 3 ? 1 : 0;
+  const crackCount = dressing('corridor-crack') && length > 3 ? 1 : 0;
   for (let i = 0; i < crackCount; i++) {
     for (let a = 0; a < 6; a++) {
       const p = ctx.centreSampler();
@@ -742,6 +770,9 @@ function placeWallPile(ctx: RoomContext, out: PropSpec[], rand: () => number): v
       }
     }
     if (blocked) continue;
+    // THE ROOM IS A SHAPE, NOT A RECT. `minX + 0.35` is a point on the bounding
+    // box's edge, which in a chamfered or L-shaped room is inside the masonry.
+    if (!ctx.inside(x, z)) continue;
     if (ctx.tooClose(x, z, 0.9)) continue;
     out.push({ kind: 'model', model: WALL_PILE, x, y: 0, z, rotY });
     ctx.existing.push({ x, z });
@@ -778,6 +809,11 @@ function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number):
       }
     }
     if (blocked) continue;
+    // A mark belongs ON the wall plane, so `inside` is asked a short step IN
+    // from where the mark goes — the plane itself reads as outside the polygon
+    // and always would. Same question as the wall pile, asked where the answer
+    // means something.
+    if (!ctx.inside(x + (ctx.rect.x - x) * 0.08, z + (ctx.rect.z - z) * 0.08)) continue;
     if (ctx.tooClose(x, z, 0.8)) continue;
     const mark = resolveSkin(activeSkin(), { intent: 'wall.damage' }, rand);
     if (!mark) return;

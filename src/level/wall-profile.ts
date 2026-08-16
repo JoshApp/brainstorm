@@ -243,20 +243,32 @@ export const WALL_PROFILE_NAMES = Object.keys(PROFILES) as WallProfileName[];
  * Cheap by the numbers above: the shell is 0.5% of drawables and these bands
  * merge into the groups that were already being merged.
  */
-// TEMPORARILY 'coursed', FOR JUDGEMENT — not the intended end state.
+// 'plain' — AND THE GRAMMAR HAS BEEN MADE REDUNDANT BY THE STONE.
 //
-// The preview flag below is DEV-gated, which means it is dead-code-eliminated
-// from the production bundle and cannot do anything on the live site. Josh
-// tests on his phone against the live URL, so `?wallprofile=coursed` was a
-// preview affordance for a workflow he doesn't use — which is why his first
-// look at this reported no difference at all.
+// Josh, 2026-08-16: *"lets get rid of the lower bands between walls and floors,
+// i think with the new wall geometry we can get rid of the banding as well or at
+// least at the pertrusion."*
 //
-// Until the per-room assignment exists, the loud profile is the default so it
-// can actually be seen where it's actually judged. The end state is 'plinth'
-// (or plain) everywhere ordinary and 'coursed' on rooms that have earned a
-// look — a room reading as deliberately BUILT should mean something, and it
-// can't if every room does it.
-export const DEFAULT_WALL_PROFILE: WallProfileName = 'coursed';
+// This file's whole premise was that a wall was ONE JITTERED PLANE and the only
+// way to get a real shadow line onto it was to step the geometry. Read the
+// header: "no plinth, no string course, no cap — nothing with actual depth, so
+// no surface ever casts a line of shadow across another." That was true when it
+// was written and it is not true now. The masonry itself has depth — POM
+// displaces the stone, the height field rakes it, the courses vary in size and
+// break at their corners — so a band is no longer the cheapest source of a
+// shadow line. It is a SECOND, COARSER rhythm laid across a surface that already
+// has one, and two rhythms that don't agree read as a bar bolted to a wall.
+//
+// That is the same diagnosis that took the string course out of COURSED, applied
+// one level up. The string course lost to the stone; so do the plinth and the
+// cap.
+//
+// THE PROFILES ARE NOT DELETED. `resolveProfile` is unchanged and 'plinth' /
+// 'coursed' still build exactly what they built — the vocabulary is data and a
+// room that has earned a deliberately BUILT read can still ask for one. What
+// changed is the DEFAULT, which is the only part that was making every wall in
+// the dungeon look the same.
+export const DEFAULT_WALL_PROFILE: WallProfileName = 'plain';
 
 /**
  * DEV-only override so a profile can be previewed on a real seeded floor

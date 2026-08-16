@@ -19,7 +19,7 @@
 //   npm test
 
 import assert from 'node:assert/strict';
-import { archway, archGeometry, archwayColumnOffset, archwayPassableHalfBand } from '../src/content/archway';
+import { archway, archGeometry, JAMB_HALF_THICK, archwayColumnOffset, archwayPassableHalfBand } from '../src/content/archway';
 import { WALL_T } from '../src/level/poly-room-shell';
 import { COURSE_H, BRICK_W } from '../src/style/stone-grid';
 
@@ -55,7 +55,7 @@ test('THE ARCH SPRINGS FROM THE JAMBS', () => {
   // metre outboard in mid-air.
   for (const w of WIDTHS) {
     const g = archGeometry(w, 3.2);
-    const jambInner = archwayColumnOffset(w) - 0.16;   // JAMB_HALF_THICK
+    const jambInner = archwayColumnOffset(w) - JAMB_HALF_THICK;
     assert.ok(Math.abs(g.halfSpan - Math.max(0.35, jambInner)) < 1e-9,
       `w${w}: arch spans ±${g.halfSpan.toFixed(3)} but the jambs stand at ±${jambInner.toFixed(3)}`);
   }
@@ -212,42 +212,78 @@ test('the nav gate still fits a player', () => {
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
 
-test('THE WALL ABOVE A GATE IS WALL, NOT ONE BLOCK', () => {
-  // Josh: *"that stacked mass on top of it looks ugly, it's just a dumb block."*
+test('THE WALL ABOVE A GATE IS WALL, AND IT IS THE WALL S OWN THICKNESS', () => {
+  // Josh, first: *"that stacked mass on top of it looks ugly, it's just a dumb
+  // block."* The answer then was to lay coursed masonry on its face, standing
+  // proud of the fill so the two read as stone on stone.
   //
-  // The fill closing a doorway's full-height gap is a median 2.6m tall over a
-  // median 4.8m ceiling (measured, 625 doorways on 64 floors) — two square
-  // metres of blank stone in a room whose every other wall is coursed geometry.
-  // Coursing goes on its face, and it has to actually be there at the heights
-  // the generator produces, not just at the bench's convenient 3.2m.
+  // Josh, again, 2026-08-16: *"lets make them not expand endless till they hit
+  // the ceiling but make them simply a nice arch."* That is the same complaint
+  // arriving from the other side, and it says the first fix treated a symptom.
+  // The blank frontage was ugly because it was FRONTAGE — a slab at the gate's
+  // full reveal depth, standing 0.16m proud of the wall on both faces, running
+  // to the ceiling. Dressing it made it a better-looking wrong thing. It should
+  // not have been part of the gate at all.
+  //
+  // So the invariant flipped, and this test flipped with it. The closure above
+  // the hood is now the WALL's thickness, flush with the wall's faces, carrying
+  // the same world-projected masonry as the stone either side of the doorway.
+  // What this pins is that it stays flush: the day something makes it proud
+  // again, the gate grows frontage again and it will be this that says so.
   for (const c of [3.6, 4.2, 4.8, 5.6]) {
     const spec = archway({ width: 2.4, ceilingHeight: c, wallDepth: WALL_T });
-    const spandrel = spec.parts.filter((p) => /^spandrel-/.test((p as { name?: string }).name ?? '')) as
-      Array<{ size: number[] }>;
-    assert.ok(spandrel.length >= 1,
-      `c${c}: no stones above the arch — the fill is still one block`);
-    // The rule, stated the way the complaint was: no single stone up there is
-    // bigger than a stone. Height-independent, so it holds at every ceiling the
-    // generator produces rather than only at the convenient ones.
-    const tallest = Math.max(...spandrel.map((p) => p.size[1]));
-    const widest = Math.max(...spandrel.map((p) => p.size[0]));
-    assert.ok(tallest <= COURSE_H + 0.02,
-      `c${c}: a ${tallest.toFixed(2)}m-tall stone above the arch — courses are ${COURSE_H}m`);
-    assert.ok(widest <= BRICK_W + 0.02,
-      `c${c}: a ${widest.toFixed(2)}m-wide stone above the arch — bricks are ${BRICK_W}m`);
-    // And it stands PROUD of the fill, or the two are coplanar and z-fight.
-    const fill = (spec.parts.find((p) => (p as { name?: string }).name === 'fill') as
-      { a: { size: number[] } }).a.size[2];
-    const deepest = Math.max(...spandrel.map((p) => (p as { size: number[] }).size[2]));
-    assert.ok(deepest > fill + 0.01,
-      `c${c}: the coursing sits at ${deepest.toFixed(2)}m in a ${fill.toFixed(2)}m fill — coplanar`);
+    const above = spec.parts.find((p) => (p as { name?: string }).name === 'wall-above') as
+      { pos: number[]; size: number[] } | undefined;
+    assert.ok(above, `c${c}: no closure above the arch — the doorway shows void`);
+    // FLUSH. The wall is WALL_T thick; the closure must be that, not the gate's
+    // reveal (which is WALL_T + 2 x FRAME_PROUD and would stand out both sides).
+    assert.ok(above.size[2] <= WALL_T + 0.01,
+      `c${c}: the closure is ${above.size[2].toFixed(2)}m deep in a ${WALL_T}m wall — that is frontage`);
+    // And the GATE's own stone stops well below the ceiling, which is the thing
+    // "not expand endless till they hit the ceiling" actually asks for.
+    const fill = spec.parts.find((p) => (p as { name?: string }).name === 'fill') as
+      { a: { pos: number[]; size: number[] } };
+    const fillTop = fill.a.pos[1] + fill.a.size[1] / 2;
+    assert.ok(fillTop < c - 0.2,
+      `c${c}: the gate's fill reaches ${fillTop.toFixed(2)}m of a ${c}m ceiling`);
+    // The closure has to actually meet it — a gap here is a slit of void.
+    const closureBottom = above.pos[1] - above.size[1] / 2;
+    assert.ok(closureBottom <= fillTop + 0.01,
+      `c${c}: ${(closureBottom - fillTop).toFixed(3)}m of void between the hood and the wall above`);
+    assert.ok(Math.abs((above.pos[1] + above.size[1] / 2) - c) < 0.01,
+      `c${c}: the closure stops short of the ceiling`);
   }
   // A LOW room has no wall above the arch and must not grow one.
-  const low = archway({ width: 2.4, ceilingHeight: 2.8, wallDepth: WALL_T });
   const g = archGeometry(2.4, 2.8);
-  const headroom = 2.8 - (g.spring + g.rise);
-  if (headroom < 0.3) {
-    assert.equal(low.parts.filter((p) => /^spandrel-/.test((p as { name?: string }).name ?? '')).length, 0,
-      'coursing laid in a room with no wall above the arch');
+  if (2.8 - (g.spring + g.rise) < 0.3) {
+    const low = archway({ width: 2.4, ceilingHeight: 2.8, wallDepth: WALL_T });
+    assert.equal(low.parts.filter((p) => (p as { name?: string }).name === 'wall-above').length, 0,
+      'a closure built in a room with no wall above the arch');
+  }
+});
+
+test('THE HOOD FINISHES THE ARCH', () => {
+  // The hood mould is what makes the gate END. Two things have to hold or it is
+  // decoration rather than a termination: it must sit OUTSIDE the voussoir ring
+  // (a hood inside the ring is just another voussoir), and it must run PAST the
+  // ring at both springings so it lands on wall instead of stopping in mid-air.
+  for (const w of [1.2, 2.4, 4.0]) {
+    const spec = archway({ width: w, ceilingHeight: 4.2, wallDepth: WALL_T });
+    const hood = spec.parts.filter((p) => /^hood-/.test((p as { name?: string }).name ?? '')) as
+      Array<{ pos: number[] }>;
+    assert.ok(hood.length > 0, `w${w}: no hood — the arch has no top`);
+    const g = archGeometry(w, 4.2);
+    const radial = (p: { pos: number[] }) =>
+      Math.hypot(p.pos[0], p.pos[1] - g.centreY);
+    for (const h of hood) {
+      assert.ok(radial(h) > g.radius + 0.01,
+        `w${w}: a hood block sits inside the arch ring`);
+    }
+    // Past the springing: the outermost hood block is wider apart in X than the
+    // ring's own extrados.
+    const extradosX = (g.radius + 0.19) * Math.sin(g.halfAngle);
+    const hoodX = Math.max(...hood.map((h) => Math.abs(h.pos[0])));
+    assert.ok(hoodX > extradosX,
+      `w${w}: the hood stops at ${hoodX.toFixed(2)} inside the ring's ${extradosX.toFixed(2)} — it hangs in air`);
   }
 });

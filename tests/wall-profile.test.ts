@@ -129,11 +129,24 @@ test('recesses stay shallow enough to be masonry', () => {
   }
 });
 
-test('the default profile resolves and is not plain', () => {
-  // The default is what every un-opted room gets; if it silently became 'plain'
-  // the whole grammar would ship switched off without anything failing.
+test('the default profile is a real profile, and the grammar still works', () => {
+  // THIS TEST USED TO ASSERT THE DEFAULT IS NOT 'plain'. That was the right
+  // guard while the band grammar was the ONLY thing giving a wall depth — a
+  // silent fall back to one flat band would have shipped the whole feature
+  // switched off with nothing failing.
+  //
+  // The default is 'plain' ON PURPOSE now (2026-08-16): the masonry shader
+  // displaces and breaks the stone itself, so a band is a second, coarser
+  // rhythm laid over one that already reads. See DEFAULT_WALL_PROFILE.
+  //
+  // What is still worth pinning is what the old assertion was really protecting
+  // — that the VOCABULARY is intact, so a room that asks for a profile gets one.
+  // A default of 'plain' is a decision; a 'coursed' that quietly resolves to one
+  // band is a bug, and that is the thing this now catches.
   assert.ok(WALL_PROFILE_NAMES.includes(DEFAULT_WALL_PROFILE), 'default is not a known profile');
-  assert.ok(resolveProfile(DEFAULT_WALL_PROFILE, 3.2).length > 1, 'default emits a single band');
+  assert.ok(resolveProfile(DEFAULT_WALL_PROFILE, 3.2).length >= 1, 'default emits no bands at all');
+  assert.ok(resolveProfile('plinth', 3.2).length > 1, 'plinth collapsed to a single band');
+  assert.ok(resolveProfile('coursed', 3.2).length > 2, 'coursed collapsed');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

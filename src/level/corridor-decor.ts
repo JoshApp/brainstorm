@@ -10,6 +10,7 @@ import {
 } from '../content/clutter';
 import { OSSUARY_NICHE_SMALL } from '../content/ossuary';
 import { pointInPoly, type Poly } from './room-shape';
+import { dressing } from './dressing';
 
 // ── ROOMS STAGE EVENTS. CORRIDORS HOLD EVIDENCE. ─────────────────────────────
 //
@@ -238,6 +239,7 @@ export function dressCorridors(
   roomFloors: ReadonlyArray<Poly>,
   rand: () => number,
 ): PropSpec[] {
+  if (!dressing('corridor-beats')) return [];
   /**
    * IS THERE STONE BEHIND THIS WALL MOUNT?
    *

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { archway } from '../content/archway';
-import { doorframe } from '../content/doorframe';
 import type { ModelSpec } from '../ecs/model-types';
 import type { BuiltModel } from '../ecs/build-model';
 import { buildArchwayEye } from '../scene/archway-eye';
@@ -9,13 +8,12 @@ import { registerArchwayLure } from '../scene/threshold-draft';
 // FRAME — the one place that knows how to dress an opening in stone. Every
 // passage the player walks through (procgen corridor mouths, tilemap door runs,
 // the fitting drain's archway/fog-gate openings) is framed through these two
-// seams, so the "wide gets an archway, narrow gets a doorframe" rule and the
-// shared visual fittings (the dungeon's nav eye) never drift
-// apart again. What stays per-caller — collision blockers, nav gates, and the
+// seams, so every doorway in the game is the same gate and the shared visual
+// fittings (the dungeon's nav eye) never drift apart again. What stays per-caller — collision blockers, nav gates, and the
 // door/mist SEAL state machines — isn't the frame; it's what lives in it.
 
-// Wide mouths get the full archway (columns carry collision); narrower ones get
-// the slim, collision-friendly doorframe. ONE threshold — see chooseFrameModel.
+// VESTIGIAL — see chooseFrameModel. Kept only because callers import it; every
+// opening gets the archway now, at every width.
 export const ARCHWAY_MIN_WIDTH = 2.0;
 
 export interface FrameOpts {
@@ -83,16 +81,38 @@ const SILL_SHOULDER = 0.18;
  *  under anything the step-up code or a player's feet would notice. */
 const SILL_PROUD = 0.008;
 
-/** The single archway-vs-doorframe decision + the model to build for it. */
+/**
+ * The model to build for an opening. THERE IS ONE GATE.
+ *
+ * Josh, 2026-08-16: *"lets get rid of the two types of archways and only make
+ * the massive stone one the default that we redesign a little."*
+ *
+ * The split existed for a measured reason and the reason has since been fixed
+ * out from under it. The jambs used to stand INSIDE the opening with their outer
+ * faces flush to its edges, so an archway ate a full jamb-thickness off each side
+ * of the way through — 0.68m gone from every doorway, which necked a 1.7m squeeze
+ * to 1.02m. A narrow opening genuinely could not carry one, so the slim doorframe
+ * was built for those and a width threshold picked between them.
+ *
+ * Then the jambs were moved OUT to flank the opening (see archwayColumnOffset).
+ * From that moment an archway has cost a narrow doorway exactly nothing — the
+ * whole hole is yours to walk through at every width, and `archwayPassableHalfBand`
+ * can only get wider, which is the direction the stair-mouth soft-lock guarantee
+ * and the nav gates care about. The threshold outlived its cause by some months.
+ *
+ * `slimOnly` and `ARCHWAY_MIN_WIDTH` are still accepted so nothing downstream
+ * breaks, and both are now ignored. When the second gate is wanted back it should
+ * come back as a DIFFERENT PLACE — a postern that means something — not as a
+ * silent consequence of an opening being 1.9m instead of 2.1m.
+ */
 export function chooseFrameModel(o: FrameOpts): FrameChoice {
-  const wide = o.width >= ARCHWAY_MIN_WIDTH && !o.slimOnly;
-  const opts = {
-    width: o.width, ceilingHeight: o.ceilingHeight,
-    openHeight: o.openHeight, wallDepth: o.wallDepth,
+  const choice: FrameChoice = {
+    kind: 'archway',
+    model: archway({
+      width: o.width, ceilingHeight: o.ceilingHeight,
+      openHeight: o.openHeight, wallDepth: o.wallDepth,
+    }),
   };
-  const choice: FrameChoice = wide
-    ? { kind: 'archway', model: archway(opts) }
-    : { kind: 'doorframe', model: doorframe(opts) };
   return o.wallDepth ? withSill(choice, o.width, o.wallDepth) : choice;
 }
 

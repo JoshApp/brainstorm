@@ -1,6 +1,5 @@
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
 import { revealDepthFor, DEFAULT_WALL_DEPTH } from './frame-depth';
-import { coursedPanel } from './frame-coursing';
 
 // Corridor archway — the stone gate at the mouth of a corridor where it joins a
 // room. Sells the transition between chambers: instead of stepping from one box
@@ -78,12 +77,23 @@ export interface ArchwayOptions {
   wallDepth?: number;
 }
 
-const JAMB_HALF_THICK = 0.16;      // half the jamb's size along the wall (X)
+// ── THE JAMBS ARE MASSIVE NOW, AND IT IS A HIERARCHY ARGUMENT ────────────────
+// 0.16 (a 0.32m pilaster) was authored against a wall that was a flat plane with
+// a painted brick pattern on it. The wall now lays real stones that run to 1.5m+
+// across, and beside those a third of a metre of jamb reads as a stick. The gate
+// stopped being the biggest thing in the picture, which is the whole job of a
+// gate. 0.26 (a 0.52m pier) puts it back on the right side of the wall's own
+// blocks — and because the jambs flank the opening rather than standing in it,
+// widening them only ever widens the passable band (archwayPassableHalfBand).
+export const JAMB_HALF_THICK = 0.26;      // half the jamb's size along the wall (X)
 const BASE_HEIGHT     = 0.28;
 const BASE_OVERHANG   = 0.07;      // plinth extends this far past the jamb each side
 const IMPOST_HEIGHT   = 0.16;      // the block the arch springs from
 const IMPOST_OVERHANG = 0.075;
-const COURSES         = 3;         // shaft blocks between plinth and impost
+// TWO courses, not three. Same argument as the jamb width one level down: the
+// shaft should read as a couple of massive stones, not as a stack of small ones.
+// The shader supplies the imperfection; the geometry should supply the shape.
+const COURSES         = 2;         // shaft blocks between plinth and impost
 
 // NO BEVELS, AND IT IS A MEASUREMENT NOT A TASTE. A chamfer on the fifteen
 // blocks here swaps every one for a RoundedBoxGeometry, and a floor's sixteen
@@ -100,6 +110,13 @@ const VOUSSOIRS       = 7;
 const VOUSSOIR_RADIAL = 0.19;      // ring thickness
 const KEYSTONE_RADIAL = 0.34;
 const LINTEL_OVERHANG = 0.10;      // fill extends past the opening each side
+/** The hood mould over the extrados — the ring that FINISHES the arch. Slim:
+ *  it is a lip that throws a shadow, not a second course of voussoirs. */
+const HOOD_RADIAL     = 0.12;
+/** Radians the hood runs past the voussoir ring at each springing, so it lands
+ *  ON the wall either side instead of stopping in mid-air at the impost. */
+const HOOD_SPREAD     = 0.18;
+const HOOD_BLOCKS     = 9;
 
 /**
  * Every depth in this model, solved from the wall the gate is set into.
@@ -259,7 +276,12 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   // circle the voussoirs are laid on — so the stone and the ring can never
   // disagree about where the curve is, which is what would happen if the fill
   // were hand-fitted boxes around it.
-  const fillH = Math.max(0.12, ceiling - g.spring);
+  // The gate's own stone spans springing → hood, NOT springing → ceiling. The
+  // hood's top is derived below from the same circle, so this is stated once
+  // here in the terms the box needs and re-derived there in the terms the
+  // closure needs; both come off `g`, so they cannot drift.
+  const gateTop = g.centreY + g.radius + VOUSSOIR_RADIAL + HOOD_RADIAL;
+  const fillH = Math.max(0.12, gateTop - g.spring);
   parts.push({
     kind: 'csg', op: 'subtract', mat: 'stone', name: 'fill',
     a: { kind: 'box', pos: [0, g.spring + fillH / 2, 0], size: [fillWidth, fillH, D.fill], mat: 'stone' },
@@ -298,22 +320,64 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     } as PartSpec);
   }
 
-  // ── THE WALL ABOVE THE ARCH ────────────────────────────────────────
+  // ── THE HOOD, AND WHERE THE GATE STOPS ─────────────────────────────
   //
-  // The fill above is a doorway-sized hole in the wall ring, closed with one
-  // box — a median 2.6m of blank stone over every gate, reaching 5.4m at the
-  // worst. Coursed masonry goes on its face, standing proud of the fill so the
-  // two read as stone laid on stone rather than z-fighting as one plane. The
-  // shared panel (content/frame-coursing.ts) lays it on the same world grid the
-  // wall texture uses, so the joints line up with the mortar behind them.
+  // Josh, 2026-08-16: *"lets make them not expand endless till they hit the
+  // ceiling but make them simply a nice arch."*
   //
-  // It starts above the ring's crown: the spandrels are the arch's own stone,
-  // and coursing laid across them would say the mason built the wall first.
-  const crown = g.centreY + g.radius + KEYSTONE_RADIAL;
-  parts.push(...coursedPanel({
-    width: fillWidth, baseY: crown, topY: ceiling,
-    depth: D.fill + 0.08, mat: 'stone', prefix: 'spandrel', seed: 7,
-  }));
+  // He is describing a real fault and it was two things stacked. `planWallRing`
+  // cuts an opening from FLOOR TO CEILING, so the gate has always had to close
+  // the hole above itself or you would see void over every doorway — fine, and
+  // not negotiable. But that closure was being made out of GATE: a slab at the
+  // full reveal depth (0.57m, standing 0.16m proud of the wall on both faces)
+  // with coursed masonry laid proud of THAT, running all the way up. In a 5m
+  // room the arch was a metre of it and blank monumental frontage was the other
+  // four. Nothing said where the gate ended, so it read as not ending.
+  //
+  // A gate ends at its HOOD. The hood mould (label course, dripstone — masons
+  // have had a word for this for eight hundred years) is a slim ring laid over
+  // the extrados that finishes the arch and throws the one shadow that says
+  // "this is the top of the thing." Above it, the hole is closed by a plate at
+  // the WALL's OWN THICKNESS, flush with the wall's faces — same stone, same
+  // world-projected masonry, no proud edge. It is not part of the gate and it
+  // does not read as part of the gate; it is the wall, continuing.
+  //
+  // (The proud coursed spandrel panel is gone with the slab it was dressing. It
+  // was solving "this blank frontage is boring", which was the wrong problem —
+  // the frontage should not have been there.)
+  const step2 = (2 * (g.halfAngle + HOOD_SPREAD)) / HOOD_BLOCKS;
+  const hoodRho = g.radius + VOUSSOIR_RADIAL + HOOD_RADIAL / 2;
+  for (let i = 0; i < HOOD_BLOCKS; i++) {
+    const theta = -(g.halfAngle + HOOD_SPREAD) + (i + 0.5) * step2;
+    parts.push({
+      kind: 'box',
+      name: `hood-${i}`,
+      pos: [hoodRho * Math.sin(theta), g.centreY + hoodRho * Math.cos(theta), 0],
+      rot: [0, 0, -theta],
+      size: [hoodRho * step2 * 1.10, HOOD_RADIAL, D.arch + 0.06],
+      mat: 'stone',
+    } as PartSpec);
+  }
+  // Where the gate's own stone stops. Everything above this is wall.
+  const hoodTop = g.centreY + g.radius + VOUSSOIR_RADIAL + HOOD_RADIAL;
+
+  // ── THE WALL ABOVE, WHICH IS WALL ──────────────────────────────────
+  //
+  // Flush: `wallDepth` thick, centred on the wall plane, so its faces are the
+  // wall's faces. The world-projected masonry carries straight across it — the
+  // courses line up with the stone either side because they are computed from
+  // world position, not from this model — and there is no proud edge to catch a
+  // lamp and announce a seam. A rect room passes wallDepth 0 (its wall is a
+  // single plane), so the plate takes a minimum thickness rather than vanishing.
+  const closureH = ceiling - hoodTop;
+  if (closureH > 0.06) {
+    parts.push({
+      kind: 'box', name: 'wall-above',
+      pos: [0, hoodTop + closureH / 2, 0],
+      size: [fillWidth, closureH, Math.max(opts.wallDepth ?? DEFAULT_WALL_DEPTH, 0.12)],
+      mat: 'stone',
+    } as PartSpec);
+  }
 
   // ── THE JAMBS ──────────────────────────────────────────────────────
   const impostY = g.spring - IMPOST_HEIGHT / 2;
@@ -365,7 +429,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     } as PartSpec);
   }
 
-  const id = `archway2-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}-r${reveal.toFixed(2)}`;
+  const id = `archway3-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}-r${reveal.toFixed(2)}`;
 
   const spec: ModelSpec = {
     id,

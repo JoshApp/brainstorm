@@ -32,6 +32,20 @@ import { corridorType, MIN_WALKABLE_WIDTH } from '../src/level/corridor-types';
 import { planPortals } from '../src/level/portals';
 import { pointInPoly } from '../src/level/room-shape';
 import type { PropSpec, RoomSpec } from '../src/level/types';
+import { DRESSING } from '../src/level/dressing';
+
+// THE PRODUCER IS SWITCHED OFF IN THE SHIPPED MANIFEST (2026-08-16 strip), and
+// this file tests the producer, not the switch. A flag that says "don't run
+// this right now" must not also mean "stop checking whether it is correct" —
+// the whole premise of level/dressing.ts is that these come BACK, one at a
+// time, deliberately. If corridor beats returned to a floor with their
+// invariants unverified for however many weeks they sat off, the manifest would
+// have quietly become a place where code goes to rot.
+//
+// So: turn it on for the duration of this file. That the tests below then pass
+// is exactly the claim worth making — the beats still place correctly, they are
+// simply not being asked to.
+DRESSING['corridor-beats'].on = true;
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
