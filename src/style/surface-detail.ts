@@ -345,16 +345,48 @@ onKnobChange((k) => {
 // tint. Two scalars are what you want to drag; one uniform is what the shader
 // wants to read, and recomputing here means the shader never has to know the
 // knobs exist.
+// -- AND THE WALL NEEDS THE SAME TWO --------------------------------------
+// The Sheen group is floor-only because the floor is the only surface Josh ever
+// complained about. That left a real asymmetry: he pulled the floor to -0.44
+// warmth, and the wall has no equivalent, so it can only sit at whatever amber
+// the scene gives it.
+//
+// Measured on the current look - mean channel ratios over a wall band and a
+// floor band of the same frame:
+//
+//     wall    R 86.8  G 67.2  B 47.2   ->  1 : 0.77 : 0.54
+//     floor   R 88.8  G 75.7  B 65.0   ->  1 : 0.85 : 0.73
+//
+// The wall is not slightly warmer, it is a different temperature, and nothing in
+// the panel could have moved it. A missing control reading as a look.
+//
+// Named `wallwarm`/`wallbright` rather than renaming the floor pair to match:
+// the floor ids are in Josh's saved set and in every URL he has sent today, and
+// a tidier naming scheme is not worth silently invalidating those.
+const wallWarm = tuneNumber({
+  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: 0,
+  apply: 'live', hint: 'cold grey <-> warm sandstone; the floor has its own',
+});
+const wallBright = tuneNumber({
+  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.0,
+  apply: 'live', hint: 'how much light the wall gives back at all',
+});
+
 const uFlrTintAdj = (tslUniform as any)(new THREE.Vector3(1, 1, 1));
-function refreshFloorTint(): void {
-  const w = flrWarm(), b = flrBright();
+const uWallTintAdj = (tslUniform as any)(new THREE.Vector3(1, 1, 1));
+function refreshSurfaceTints(): void {
   // Opposed R/B swing with G held: that is a colour-TEMPERATURE move, which is
   // what "silver vs warm stone" actually is. Scaling all three would only be
   // the brightness knob again.
-  (uFlrTintAdj as any).value.set(b * (1 + w * 0.20), b, b * (1 - w * 0.22));
+  const set = (u: any, w: number, b: number) =>
+    u.value.set(b * (1 + w * 0.20), b, b * (1 - w * 0.22));
+  set(uFlrTintAdj, flrWarm(), flrBright());
+  set(uWallTintAdj, wallWarm(), wallBright());
 }
-refreshFloorTint();
-onKnobChange((k) => { if (k.spec.id === 'flrwarm' || k.spec.id === 'flrbright') refreshFloorTint(); });
+refreshSurfaceTints();
+onKnobChange((k) => {
+  if (['flrwarm', 'flrbright', 'wallwarm', 'wallbright'].includes(k.spec.id)) refreshSurfaceTints();
+});
 
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
 // seep-flow layers. mx_noise_float is 3D gradient noise (8 corner gradients + interp,
@@ -648,8 +680,10 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
   // Warmth + brightness ride ON TOP of the authored tint rather than replacing
   // it, so the tint stays the thing a surface declares about itself and this
-  // stays the thing being experimented with. At the defaults it is (1,1,1).
-  if (isFloor) albedo = albedo.mul(uFlrTintAdj);
+  // stays the thing being experimented with. At the defaults both are (1,1,1).
+  // Everything that is not the floor takes the wall's pair - ceiling, framing
+  // and pillars are the same stone by the same hands, the rule surfaceKnob uses.
+  albedo = albedo.mul(isFloor ? uFlrTintAdj : uWallTintAdj);
 
   // ── PER-STONE COLOUR ───────────────────────────────────────────────────────
   // Josh: *"cant we kinda give the floor a different coloring."*
