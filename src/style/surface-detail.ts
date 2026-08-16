@@ -149,7 +149,7 @@ const uStoneLift = tuneUniform({
 // 0.72 rather than matching the wall's 0.59: the floor is the one seen almost
 // entirely at grazing incidence, where a banded specular model gives away the
 // most, and it is the surface the identity is hanging on.
-const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.59, 0.72,
+const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.59, 0.63,
   'dry weathered stone reflects far less than the 4% default');
 
 // The highlight is the last part of the image still rendered as a smooth
@@ -224,11 +224,11 @@ const uSpecBands = tuneUniform({
   hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
 });
 const uPomDepth = tuneUniform({
-  id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: 0.1,
+  id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: 0.1005,
   hint: 'how deep the stone goes',
 });
 const uRelief = tuneUniform({
-  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.35,
+  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.351,
   hint: 'how hard light rakes across the surface',
 });
 
@@ -349,7 +349,7 @@ function jointUniformPair(
   return (isFloor) => (isFloor ? f : w);
 }
 
-const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.72,
+const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.475,
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
 // WALL DEFAULT 0.76 -> 0.35. Not a taste change — a units change. The term used
 // to add up to 0.20 roughness to the JOINT and was entirely clipped away on the
@@ -358,9 +358,9 @@ const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.
 // 0.35 lands the face/joint contrast a little above where the shipped wall
 // actually sat (0.06) rather than 3x past it. Drag it up for a wetter stone
 // against a dry joint; the whole range does something now.
-const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.35, 0.6,
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.315, 0.495,
   'how hard the gaps refuse to take a shine');
-const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
+const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.295, 0.67,
   'how much filth collects down in the gaps');
 
 // Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
@@ -370,7 +370,7 @@ const mortarWarmW = tuneNumber({
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
-  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: -0.13,
+  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: 0.32,
   apply: 'live', hint: 'cold ash <-> warm earth',
 });
 
@@ -423,11 +423,11 @@ onKnobChange((k) => {
 // the floor ids are in Josh's saved set and in every URL he has sent today, and
 // a tidier naming scheme is not worth silently invalidating those.
 const wallWarm = tuneNumber({
-  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: 0.34,
+  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: -0.09,
   apply: 'live', hint: 'cold grey <-> warm sandstone; the floor has its own',
 });
 const wallBright = tuneNumber({
-  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.186,
+  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.012,
   apply: 'live', hint: 'how much light the wall gives back at all',
 });
 
@@ -454,11 +454,11 @@ const wallBright = tuneNumber({
 // Wall roughness defaults to 0.95 — exactly what the material already carried —
 // so nothing moves until it is asked to.
 const uWallRough = tuneUniform({
-  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.94,
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.904,
   hint: 'low = damp/polished sheen, high = dry matte stone',
 });
 const uWallPolish = tuneUniform({
-  id: 'wallpolish', group: 'Wall', label: 'Rubbed polish', min: 0, max: 0.6, value: 0.264,
+  id: 'wallpolish', group: 'Wall', label: 'Rubbed polish', min: 0, max: 0.6, value: 0.306,
   hint: 'shoulders and hands, where the wall has been squeezed past',
 });
 const uWallPolishAt = tuneUniform({

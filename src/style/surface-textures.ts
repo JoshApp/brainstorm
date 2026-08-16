@@ -702,7 +702,7 @@ const smallRateAmt = tuneNumber({
   hint: 'how often the wall stops to fill a gap with small ones',
 });
 
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.515, 1.86,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.53, 1.86,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -747,7 +747,7 @@ const jointTex = surfaceKnob('joint', 'Joint texture', 0, 3, 0.9, 1.5,
 // the thin sawn seam we had is the less truthful of the two. Defaults nudged up
 // so the texture has somewhere to be — dial back toward 1.0 for tight joints,
 // at the cost of the gap going featureless again for the reason above.
-const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 0.974,
+const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 0.708, 1.198,
   'narrow joints cannot hold detail — see the note in surface-textures.ts');
 
 // ── EDGE CHIPPING — damage lives on the ARRIS ───────────────────────────────
@@ -1005,7 +1005,7 @@ function flagBreak(
   return { depth: ramp * mixf(0.14, 0.72, dHash(gx, gy, 8.7)), raw: ramp };
 }
 
-const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.78, 2.19,
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.915, 2.19,
   'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling

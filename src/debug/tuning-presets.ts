@@ -22,15 +22,41 @@ import { listKnobs, getKnob, recordKnob, registerPresetApi } from './tuning';
 export interface Preset { name: string; values: Record<string, number>; }
 
 // ── BUILT-INS ───────────────────────────────────────────────────────────────
-// Both of Josh's wall sets from 2026-08-16, kept as rivals rather than one
-// overwriting the other. They differ in a coherent way and it is worth naming:
-// SHEEN runs the stone specular well above MATTE (0.59 vs 0.35) on a rougher,
-// brighter surface with much LESS damage — fewer cracks, less chipping, fewer
-// corner breaks. MATTE is the darker, drier, more broken one.
 //
-// SHEEN is now also the SHIPPED default, so its chip is a way back to the look
-// rather than a way to it. MATTE is the one that changes anything.
+// BASE PROFILE is the shipped look, and it is first because it is the one to
+// come back to. Josh, 2026-08-17, handing over the set: *"new defaults, make a
+// profile, call it base profile and make it the default."*
+//
+// It is written out here in full even though every value equals the authored
+// default, which makes the chip a no-op when nothing has been touched. That is
+// deliberate. The authored defaults are spread across two files and fifteen
+// declarations, and they move — three of them moved yesterday for reasons that
+// had nothing to do with taste (the floor's specular was a stale shared value,
+// joint matte was arithmetically dead, the joint width followed the set-out
+// fix). This list is the look as ONE object, at one moment, chosen by eye. When
+// the next mechanical fix moves a default underneath it, the difference between
+// "the current defaults" and "the look Josh signed off" stops being invisible.
+//
+// The two wall sets below it stay as rivals. SHEEN runs the stone specular well
+// above MATTE on a rougher, brighter surface with much LESS damage; MATTE is the
+// darker, drier, more broken one. Both predate BASE and neither is the default
+// any more — applying one changes the wall and leaves the floor alone.
 const BUILT_IN: Preset[] = [
+  {
+    name: 'base profile',
+    values: {
+      // relief
+      pomdepth: 0.1005, relief: 0.351,
+      // wall stone
+      wallwarm: -0.09, wallbright: 1.012, wallrough: 0.904, wallpolish: 0.306,
+      gritw: 1.53, cornerw: 0.915,
+      // wall joints
+      mortarmattew: 0.315, mortardirtw: 0.295, jointw2w: 0.708,
+      // floor
+      stonespecf: 0.63, mortarhuef: 0.475, mortarmattef: 0.495,
+      mortardirtf: 0.67, mortarwarmf: 0.32, jointw2f: 1.198,
+    },
+  },
   {
     name: 'wall · matte',
     values: {
