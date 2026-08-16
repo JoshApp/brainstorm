@@ -318,7 +318,28 @@ const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the 
 const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 0.715, 1.0, 'weathering strength');
 const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
 const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.964, 'how far stones separate in value');
-const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 11, 'few = slabs settling, many = bending', 1);
+// ── THE FLOOR'S FACETING KNOB WAS DEAD ──────────────────────────────────────
+// Josh: *"the jaggedness for floor also does nothing while it looks good on the
+// wall."* Correct, and it never could have done anything. Whether a surface
+// facets at all was a hardcoded table (WARP_FACETED, below) with floor set to
+// false, so warpFacet('floor') was never called — the knob existed, the panel
+// showed it, dragging it changed a number nobody read. He set it to 11 and got
+// nothing, which is exactly what the code does.
+//
+// My fault for making a per-surface PAIR out of a value only one surface
+// consumed. The knob is the switch now: 0 means the smooth continuous warp,
+// anything from 1 up is the number of quantisation levels. The table survives
+// only for ceiling and dressed stone, which have no knobs of their own.
+//
+// Floor DEFAULTS TO 0 — the smooth warp it has always had. His 11 was chosen
+// blind, against a control that did nothing, so adopting it would be adopting a
+// number he never actually saw. It works now; it wants looking at.
+const warpFacet = surfaceKnob('facet', 'Warp faceting', 0, 24, 5, 0,
+  '0 = smooth bending, higher = rigid slabs settling', 1);
+function warpFacetedFor(kind: SurfaceKind): boolean {
+  if (kind === 'wall' || kind === 'floor') return warpFacet(kind) >= 1;
+  return WARP_FACETED[kind];
+}
 
 // ── EDGE SHARPNESS ───────────────────────────────────────────────────────────
 // Josh: *"everything looks like rounded edges like rounded bevel ... stones are
@@ -428,18 +449,49 @@ const jointTex = surfaceKnob('joint', 'Joint texture', 0, 3, 0.9, 1.5,
 const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.8,
   'narrow joints cannot hold detail — see the note in surface-textures.ts');
 
+/** A periodic Voronoi cell field. Returns the squared distance to the nearest
+ *  centre and that cell's id hashes, so a caller can give each cell its own
+ *  identity. Shared by the wall's mortar aggregate and the floor's pebbles —
+ *  they are the same operator at different scales, and having written it twice
+ *  once already is how the two drifted apart. */
+function cellField(u: number, v: number, P: number): { d2: number; cx: number; cy: number } {
+  const x = u * P, y = v * P;
+  const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
+  let md = 9, mgx = 0, mgy = 0;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = modf(ipx + i, P), cy = modf(ipy + j, P);
+    const ox = dHash(cx, cy, 0.31), oy = dHash(cx, cy, 5.17);
+    const rx = i + ox - fpx, ry = j + oy - fpy; const dd = rx * rx + ry * ry;
+    if (dd < md) { md = dd; mgx = cx; mgy = cy; }
+  }
+  return { d2: md, cx: mgx, cy: mgy };
+}
+
 /** WALL — mortar patchwork, keyed on the JOINT SEGMENT.
  *
  *  The word Josh used is the design: pointing is done in runs, between one pair
  *  of blocks at a time, and re-done in patches over centuries. So the unit of
- *  variation is a SEGMENT of joint, not a position along a continuous ribbon —
- *  each half-brick length gets its own tone, its own fill depth, and a chance
- *  of having fallen out entirely. That is what makes it read as work someone
- *  did rather than as a channel between stones.
+ *  variation is a SEGMENT of joint, not a position along a continuous ribbon.
  *
- *  On top of that, AGGREGATE: mortar is sand and lime with small stones in it,
- *  so it is coarser than the crystalline grain the blocks get. Two scales,
- *  because one reads as noise.
+ *  ── AND THE FIRST VERSION WAS BLOTCHY BECAUSE THAT WAS ALL IT WAS ───────────
+ *  Josh: *"the floor mortar looks good but the wall doesnt ... the wall is still
+ *  like bland and blotchy."* Right, and the two generators explain themselves.
+ *  The floor's gap got a CELL FIELD — organic, edged, structure at pebble scale.
+ *  The wall's got a per-segment hash and nothing else, which means solid
+ *  rectangles of tone in a chain: blotches, by construction, at exactly the
+ *  scale the eye reads as blotchy.
+ *
+ *  (He guessed the axis orientation. Reasonable guess — that WAS the bug for
+ *  the flickering faces — but no: it is that one generator has internal
+ *  structure and the other only had identity.)
+ *
+ *  The aggregate that was supposed to break it up could not: it ran at periods
+ *  96 and 192, i.e. 5.3 and 2.7 texels, inside a joint about 4 texels wide. It
+ *  was at the resolution limit before it started. So the wall gets the same
+ *  cell field the floor has, at mortar-aggregate scale — sand and small stones
+ *  set in lime — and the per-segment tone is pulled in hard, from a 0.74..1.30
+ *  swing to 0.86..1.16. Patchwork should be a tint across a run of pointing,
+ *  not a different colour of stone.
  *
  *  gx/gy are the brick-grid coordinates the caller already has, so segments
  *  land on the masonry instead of drifting across it. Periods 8 x 16 = the
@@ -448,15 +500,23 @@ const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.8,
 function mortarFill(gx: number, gy: number, u: number, v: number, amt: number):
   { tone: number; h: number; wear: number } {
   const sx = modf(Math.floor(gx * 2), 8), sy = modf(Math.floor(gy * 2), 16);
-  const segTone = mixf(0.74, 1.30, dHash(sx, sy, 5.9));   // re-pointed patches
-  const segFill = mixf(-0.09, 0.07, dHash(sx, sy, 2.4));  // raked deep vs flush
-  const gone = stepf(0.86, dHash(sx, sy, 6.6));           // this run has fallen out
-  // Aggregate — sand and small stones, coarser than the stone's own grit.
-  const agg = (vnoiseP(u * 96, v * 96, 96, 96) - 0.5) * 0.6
-            + (vnoiseP(u * 192 + 3.7, v * 192 + 8.1, 192, 192) - 0.5) * 0.4;
-  const tone = 0.5 * mixf(1, segTone, amt) * (1 + agg * 0.55 * amt) * mixf(1, 0.62, gone * amt);
-  const h = 0.4 + (segFill + agg * 0.10) * amt - gone * 0.16 * amt;
-  return { tone, h, wear: clampf(0.72 + agg * 0.5 + gone * 0.2, 0, 1) };
+  const segTone = mixf(0.86, 1.16, dHash(sx, sy, 5.9));   // re-pointed patches
+  const segFill = mixf(-0.07, 0.05, dHash(sx, sy, 2.4));  // raked deep vs flush
+  const gone = stepf(0.88, dHash(sx, sy, 6.6));           // this run has fallen out
+  // AGGREGATE as a cell field — the grains in the mix, each with its own tone
+  // and sitting slightly proud of the lime around it. ~2cm on a 4.6m tile,
+  // which is about two texels: as fine as the bake can carry, and the reason
+  // the joint has to be widened before any of it is visible.
+  const agg = cellField(u, v, 224);
+  const grain = dHash(agg.cx, agg.cy, 7.7);
+  const gTone = mixf(0.82, 1.22, grain);
+  const proud = (1 - smooth(0.0, 0.42, Math.sqrt(agg.d2))) * 0.05;
+  // …over a continuous bed, so the joint is not purely cellular either.
+  const bed = (vnoiseP(u * 72, v * 72, 72, 72) - 0.5);
+  const tone = 0.5 * mixf(1, segTone, amt) * mixf(1, gTone, amt * 0.8)
+             * (1 + bed * 0.30 * amt) * mixf(1, 0.62, gone * amt);
+  const h = 0.4 + (segFill + proud + bed * 0.06) * amt - gone * 0.16 * amt;
+  return { tone, h, wear: clampf(0.72 + bed * 0.5 - grain * 0.2 + gone * 0.2, 0, 1) };
 }
 
 /** FLOOR — packed dirt with small stones in it.
@@ -477,20 +537,11 @@ function gapFill(u: number, v: number, amt: number): { tone: number; h: number; 
   // texture: at the widened default the gap is ~5cm, so two pebbles fit across
   // it. One texel is 10mm, so this is about as fine as the bake can carry
   // before the cells drop below Nyquist and mip to mush.
-  const P = 192;
-  const x = u * P, y = v * P;
-  const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
-  let md = 9, mgx = 0, mgy = 0;
-  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
-    const cx = modf(ipx + i, P), cy = modf(ipy + j, P);
-    const ox = dHash(cx, cy, 0.31), oy = dHash(cx, cy, 5.17);
-    const rx = i + ox - fpx, ry = j + oy - fpy; const dd = rx * rx + ry * ry;
-    if (dd < md) { md = dd; mgx = cx; mgy = cy; }
-  }
+  const { d2, cx: mgx, cy: mgy } = cellField(u, v, 192);
   // Only some cells are a stone; the rest is the dirt they are bedded in.
   const isStone = stepf(0.52, dHash(mgx, mgy, 3.3));
   const stoneTone = mixf(0.78, 1.18, dHash(mgx, mgy, 7.1));
-  const prouder = isStone * (1 - smooth(0.0, 0.35, Math.sqrt(md))) * 0.13;
+  const prouder = isStone * (1 - smooth(0.0, 0.35, Math.sqrt(d2))) * 0.13;
   // The dirt bed itself is lumpy, not flat.
   const dirt = (vnoiseP(u * 64, v * 64, 64, 64) - 0.5) * 0.6
              + (vnoiseP(u * 150 + 4.4, v * 150 + 1.2, 150, 150) - 0.5) * 0.4;
@@ -798,7 +849,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
       // WARP FIRST, then evaluate the pattern in the bent coordinates.
       const wAmp = warpAmpFor(kind);
-      const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, WARP_FACETED[kind], kind) : [u0, v0];
+      const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, warpFacetedFor(kind), kind) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa, u, v);

@@ -223,21 +223,49 @@ const uFlrPolishAt = tuneUniform({
 // Note the mask is "low height", so a spalled face and a chipped rim count as
 // joints too. That is right rather than sloppy: filth collects in a bite out of
 // a block for the same reason it collects in a bed joint.
-const uMortarHue = tuneUniform({
-  id: 'mortarhue', group: 'Mortar', label: 'Joint substance', min: 0, max: 1, value: 0.7,
-  hint: 'how far the gaps depart from the stone; 0 = the old darker-stone look',
-});
-const mortarWarm = tuneNumber({
-  id: 'mortarwarm', group: 'Mortar', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
+// ── PER SURFACE, because a wall joint and a floor gap are not one material ───
+// Josh: *"the floor mortar looks good but the wall doesnt yet, can you make them
+// two separate things so i can tune independent?"*
+//
+// They should never have shared. Lime pointing struck between blocks and earth
+// trodden into a floor are different substances that happen to occupy the same
+// part of the height field, and one slider for both means every value is a
+// compromise nobody chose — the same argument that split the bake knobs, which
+// I made then and did not apply here.
+//
+// These live in the WALL and FLOOR tabs rather than a 'Mortar' tab of their own,
+// so the rule is uniform: anything that differs per surface sits in that
+// surface's tab. Ceiling, framing and pillars follow the wall — vertical-ish
+// work by the same hands, same rule surfaceKnob already uses.
+//
+// The selection happens at graph-build time (isFloor is a JS boolean), so this
+// is a fork in the node graph rather than a branch in the shader — and wall and
+// floor already had distinct graphs, so it costs no new pipeline variant.
+function jointUniformPair(
+  id: string, label: string, min: number, max: number,
+  wallV: number, floorV: number, hint: string,
+): (isFloor: boolean) => { value: number } {
+  const w = tuneUniform({ id: `${id}w`, group: 'Wall', label, min, max, value: wallV, hint });
+  const f = tuneUniform({ id: `${id}f`, group: 'Floor', label, min, max, value: floorV, hint });
+  return (isFloor) => (isFloor ? f : w);
+}
+
+const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.7,
+  'how far the gaps depart from the stone; 0 = the old darker-stone look');
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.8,
+  'how hard the gaps refuse to take a shine');
+const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.55, 0.55,
+  'how much filth collects down in the gaps');
+
+// Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
+// vec3 and you want to drag one number, so the conversion happens here.
+const mortarWarmW = tuneNumber({
+  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
-const uMortarMatte = tuneUniform({
-  id: 'mortarmatte', group: 'Mortar', label: 'Joint matte', min: 0, max: 1, value: 0.8,
-  hint: 'how hard the gaps refuse to take a shine',
-});
-const uMortarDirt = tuneUniform({
-  id: 'mortardirt', group: 'Mortar', label: 'Dirt depth', min: 0, max: 1, value: 0.55,
-  hint: 'how much filth collects down in the gaps',
+const mortarWarmF = tuneNumber({
+  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
+  apply: 'live', hint: 'cold ash <-> warm earth',
 });
 
 // ── AND THESE WERE AUTHORED FAR TOO WEAK ────────────────────────────────────
@@ -252,15 +280,19 @@ const uMortarDirt = tuneUniform({
 // full) rather than a tasteful nudge. A joint IS much darker than the stone
 // either side of it — packed dirt and weathered lime are not a shade of the
 // same rock — and being timid about that is what made the gaps read as absence.
-const uMortarCol = (tslUniform as any)(new THREE.Vector3(0.62, 0.60, 0.55));
+const uMortarColW = (tslUniform as any)(new THREE.Vector3(0.62, 0.60, 0.55));
+const uMortarColF = (tslUniform as any)(new THREE.Vector3(0.62, 0.60, 0.55));
 function refreshMortarCol(): void {
-  const w = mortarWarm();
   // The point is that it is NOT the stone's colour, so it must not simply be
   // the stone hue shifted. Warmth swings it between cold ash and lime-and-sand.
-  (uMortarCol as any).value.set(0.62 + w * 0.16, 0.60, 0.55 - w * 0.16);
+  const set = (u: any, w: number) => u.value.set(0.62 + w * 0.16, 0.60, 0.55 - w * 0.16);
+  set(uMortarColW, mortarWarmW());
+  set(uMortarColF, mortarWarmF());
 }
 refreshMortarCol();
-onKnobChange((k) => { if (k.spec.id === 'mortarwarm') refreshMortarCol(); });
+onKnobChange((k) => {
+  if (k.spec.id === 'mortarwarmw' || k.spec.id === 'mortarwarmf') refreshMortarCol();
+});
 
 // Warmth + brightness fold into ONE vec3 that multiplies the floor's authored
 // tint. Two scalars are what you want to drag; one uniform is what the shader
@@ -521,6 +553,12 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const variant: any = sampled.g;
   const wear: any = sampled.b;
   const isFloor = cfg.role === 'floor';
+  // Resolve this surface's joint knobs once, so every use below reads the same
+  // pair and a future edit cannot pick the wall's by accident.
+  const uMortarHue: any = mortarHue(isFloor);
+  const uMortarMatte: any = mortarMatte(isFloor);
+  const uMortarDirt: any = mortarDirt(isFloor);
+  const uMortarCol: any = isFloor ? uMortarColF : uMortarColW;
   // THE JOINT MASK — 1 down in the mortar/dirt, 0 on a stone face. Tighter than
   // the `cavity` mask below, which means "any low spot" and is used for the
   // depth read; this one means "not stone", and the difference matters because
