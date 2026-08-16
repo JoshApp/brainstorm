@@ -177,14 +177,19 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // and the ray march carves an actual bite out of the wall.
   const spall = stepf(0.92, dHash(idx, idy, 6.9));
   const spallD = spall * mixf(0.30, 0.55, dHash(idx, idy, 1.7));
-  const h = clampf(1.0 + set + tilt + dome - spallD, 0.25, 1.15);
+  // EDGE CHIPPING — measured from dseam, which is already the distance to the
+  // nearest joint, so a chip reaches in from the arris exactly where one would.
+  const chip = edgeChip(u, v, dseam, chipAmt('wall'));
+  const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));
   return [
-    mixf(tone, m.tone, recess) * mixf(1.0, 0.72, spall),
+    // A fresh break is LIGHTER than the face around it: the inside of the
+    // stone never had the soot.
+    mixf(tone, m.tone, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, chip.raw),
     mixf(h, m.h, hRecess),
     dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
-    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35, m.wear, recess), 0, 1),
+    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35 + chip.raw * 0.75, m.wear, recess), 0, 1),
   ];
 }
 function cofferCPU(px: number, py: number, aa: number): Cell {
@@ -312,10 +317,11 @@ function surfaceKnob(
 // rounding artefact from the session it was found in is noise pretending to be
 // a decision.
 const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.044, 'how far the pattern bends');
-const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.28, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.805, 'splits that ignore the joints');
+const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.92, 1.28, 'how badly it was laid');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.635, 0.805, 'splits that ignore the joints');
 const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
-const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 0.715, 1.0, 'weathering strength');
+const eroAmt = surfaceKnob('erode', 'Erosion', 0, 3, 0.715, 1.0,
+  'weathering strength — past 1 pushes beyond the per-surface base');
 const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
 const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.94, 'how far stones separate in value');
 // ── THE FLOOR'S FACETING KNOB WAS DEAD ──────────────────────────────────────
@@ -401,7 +407,7 @@ function gritField(u: number, v: number): number {
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
 // whether it is where he wanted to be or where the control stopped him.
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.32,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.725,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -446,25 +452,101 @@ const jointTex = surfaceKnob('joint', 'Joint texture', 0, 3, 0.9, 1.5,
 // the thin sawn seam we had is the less truthful of the two. Defaults nudged up
 // so the texture has somewhere to be — dial back toward 1.0 for tight joints,
 // at the cost of the gap going featureless again for the reason above.
-const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.38,
+const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 0.974,
   'narrow joints cannot hold detail — see the note in surface-textures.ts');
+
+// ── EDGE CHIPPING — damage lives on the ARRIS ───────────────────────────────
+// Josh: *"i would like something that chips edges, like wall blocks damaged
+// edges, cracked or broken off, leaving rough surface beneath where the stone is
+// broken."*
+//
+// Three separate things in that sentence, and the last one is the one I missed
+// when I tried this before and had to revert it:
+//
+//   ON THE EDGE. A block does not break in the middle of its face — it breaks
+//   where it is thin and exposed, at the arris and hardest at the corners. So
+//   this reaches INWARD from the joint and dies off a few centimetres in,
+//   instead of being sprinkled over the whole face.
+//
+//   ANGULAR. Stone parts along planes, so the bite has straight edges. A cell
+//   field gives that for free: each cell is a polygon, and taking a whole cell
+//   leaves the polygon's own straight boundary as the fracture line. Noise gives
+//   rounded blobs, which is what makes damage read as erosion instead.
+//
+//   ROUGH BENEATH. The part that makes it read as BROKEN rather than as a hole.
+//   The inside of a stone is not the outside of a stone: it has never been
+//   dressed, never been weathered, never been rubbed by anything passing. So the
+//   exposed break drives WEAR hard — which is roughness, so it kills the sheen
+//   exactly where the surface is fresh — and lifts the tone slightly, because
+//   the interior has not had centuries of soot on it. That contrast between a
+//   worn face and a raw break is the whole read.
+//
+// Returns depth to remove and how exposed the break is, so the caller can spend
+// the second one on wear and tone as well as height.
+function edgeChip(
+  u: number, v: number, distToEdge: number, amt: number,
+): { depth: number; raw: number } {
+  if (amt <= 0) return { depth: 0, raw: 0 };
+  // How far in from the arris a chip can reach. Small on purpose: past a few
+  // centimetres it stops being a chipped edge and becomes a missing block.
+  const REACH = 0.11;
+  const edgeBand = 1 - smooth(0, REACH, distToEdge);
+  if (edgeBand <= 0.001) return { depth: 0, raw: 0 };
+  // ~7cm cells — the size a corner of dressed stone actually comes off in.
+  const c = cellField(u, v, 64);
+  // Only some cells broke. Scaled by amt so the knob controls HOW MANY as well
+  // as how deep — turning damage down should mean fewer chips, not shallower
+  // ones everywhere, which is what a single depth multiplier would have given.
+  if (dHash(c.cx, c.cy, 8.3) > 0.30 * amt) return { depth: 0, raw: 0 };
+  // The WHOLE cell comes away, and its Voronoi boundary is the fracture line —
+  // straight-sided, because that is how stone parts. Falls off over a narrow
+  // band at the edge so the rim is crisp rather than a disc fading out from the
+  // middle, which is what keying off distance-to-centre gave: a dot per cell,
+  // affecting half a percent of the surface. Measured before believing it.
+  const core = smooth(0.0, 0.10, c.edge);
+  const bite = core * edgeBand;
+  return {
+    depth: bite * mixf(0.16, 0.40, dHash(c.cx, c.cy, 2.7)) * Math.min(1.6, amt),
+    raw: bite,
+  };
+}
+const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 1.5, 0.6, 0.45,
+  'corners cracked off, raw stone underneath');
 
 /** A periodic Voronoi cell field. Returns the squared distance to the nearest
  *  centre and that cell's id hashes, so a caller can give each cell its own
  *  identity. Shared by the wall's mortar aggregate and the floor's pebbles —
  *  they are the same operator at different scales, and having written it twice
  *  once already is how the two drifted apart. */
-function cellField(u: number, v: number, P: number): { d2: number; cx: number; cy: number } {
+function cellField(u: number, v: number, P: number):
+  { d2: number; cx: number; cy: number; edge: number } {
   const x = u * P, y = v * P;
   const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
-  let md = 9, mgx = 0, mgy = 0;
+  let md = 9, mgx = 0, mgy = 0, mrx = 0, mry = 0;
   for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
     const cx = modf(ipx + i, P), cy = modf(ipy + j, P);
     const ox = dHash(cx, cy, 0.31), oy = dHash(cx, cy, 5.17);
     const rx = i + ox - fpx, ry = j + oy - fpy; const dd = rx * rx + ry * ry;
-    if (dd < md) { md = dd; mgx = cx; mgy = cy; }
+    if (dd < md) { md = dd; mgx = cx; mgy = cy; mrx = rx; mry = ry; }
   }
-  return { d2: md, cx: mgx, cy: mgy };
+  // ── SECOND PASS: distance to the cell EDGE, not to its centre (CellOuter) ──
+  // Distance-to-centre is radial, so thresholding it gives a DISC at each cell
+  // and the polygon's straight boundary never appears. The edge distance is what
+  // makes a Voronoi cell read as a shape with sides — which is the whole reason
+  // to use cells for fracture rather than noise. Same construction flagCPU
+  // already uses for its chipped rims.
+  let ed = 9;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = modf(ipx + i, P), cy = modf(ipy + j, P);
+    const ox = dHash(cx, cy, 0.31), oy = dHash(cx, cy, 5.17);
+    const rx = i + ox - fpx, ry = j + oy - fpy;
+    const dx = rx - mrx, dy = ry - mry; const dl = dx * dx + dy * dy;
+    if (dl > 1e-5) {
+      const nl = Math.sqrt(dl);
+      ed = Math.min(ed, 0.5 * (mrx + rx) * (dx / nl) + 0.5 * (mry + ry) * (dy / nl));
+    }
+  }
+  return { d2: md, cx: mgx, cy: mgy, edge: ed };
 }
 
 /** WALL — mortar patchwork, keyed on the JOINT SEGMENT.
@@ -653,17 +735,20 @@ function flagCPU(px: number, py: number, aa: number, u: number, v: number): Cell
   // was nothing that could have displayed it. Now it drops hard and the ray
   // march reads it as a pit you look down into, with the seam recess on top.
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
-  const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30, 0.12, 1.15);
+  // EDGE CHIPPING on the flag rims — edM is already distance-to-edge in metres.
+  const chip = edgeChip(u, v, edM, chipAmt('floor'));
+  const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30 - chip.depth, 0.12, 1.15);
   // Packed dirt and pebbles rather than a constant — see gapFill. `missing`
   // uses it too: a lifted flagstone exposes the same bed the gaps are full of,
   // which is the whole reason the stone under your foot is loose.
   const g = gapFill(u, v, jointTex('floor'));
   const gapMask = Math.max(seam, missing);
   return [
-    mixf(tone, g.tone, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
+    mixf(tone, g.tone, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite)
+      * mixf(1.0, 1.14, chip.raw),
     mixf(h, g.h, hSeam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
-    clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3, g.wear, gapMask), 0, 1),
+    clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3 + chip.raw * 0.75, g.wear, gapMask), 0, 1),
   ];
 }
 

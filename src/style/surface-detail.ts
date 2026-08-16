@@ -254,13 +254,13 @@ const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
 const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.54,
   'how hard the gaps refuse to take a shine');
-const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.55, 0.61,
+const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
   'how much filth collects down in the gaps');
 
 // Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
 // vec3 and you want to drag one number, so the conversion happens here.
 const mortarWarmW = tuneNumber({
-  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
+  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: -0.31,
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
