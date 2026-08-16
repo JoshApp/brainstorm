@@ -124,6 +124,50 @@ const uStoneSpec = tuneUniform({
   id: 'stonespec', group: 'Light', label: 'Stone specular', min: 0, max: 1.5, value: 0.35,
   hint: 'dry weathered stone reflects far less than the 4% default',
 });
+
+// The highlight is the last part of the image still rendered as a smooth
+// physical falloff — the diffuse has been cel-banded for years and the specular
+// under it never was. On a floor seen at grazing incidence that lobe is the
+// loudest thing in frame, which is why some slabs go glossy in a way nothing
+// else in the picture does. Posterising it puts the highlight in the same
+// language as everything else: chunky regions with edges, not a gradient.
+//
+// ── I CALLED THIS A MISTAKE AND JOSH DISAGREES, SO IT IS HIS CALL ───────────
+// I tried it at 6, judged that it "wrecks the image", and defaulted it to 32 —
+// off in all but name. Josh, seeing the same frames: *"i kinda liked the
+// specular lobe with broad roughness tbh, it was close to a very unique look."*
+//
+// So the note I wrote was an opinion dressed as a finding. What is actually
+// TRUE is the mechanism: these surfaces run at roughness ~0.75, so the lobe is
+// broad, and quantising a broad lobe draws the light's own iso-intensity
+// contours as visible rings. What I called a failure is that mechanism, and
+// whether concentric tonal regions around a flame read as an artefact or as a
+// style is not a question measurement can answer. It is the same shape of
+// error as recommending he push Stone hue spread UP because I had proved it
+// worked: knowing what a knob DOES never tells you which way to turn it.
+//
+// LEFT UNDECIDED ON PURPOSE. Josh again, after I put it back: *"the tuning you
+// had later was also pretty, maybe better — not sure, its something we can
+// decide. maybe the chatgpt curve is even better so we can experiment."* So the
+// default is the bold end he first responded to, and every neighbouring look is
+// one drag away rather than one commit away.
+// Per-surface DIFFUSE bands. The floor's enormous irregular slabs turn hard
+// quantisation into graphic shapes; a wall already has brick boundaries, surface
+// variation and joint contrast competing for the same edges, so it takes a
+// gentler one. Both start near the global 5 so nothing jumps on load.
+const uWallBands = tuneUniform({
+  id: 'bandsw', group: 'Wall', label: 'Light bands', min: 2, max: 16, value: 6, step: 1,
+  hint: 'more steps = softer, since the wall has plenty of edges already',
+});
+const uFloorBands = tuneUniform({
+  id: 'bandsf', group: 'Floor', label: 'Light bands', min: 2, max: 16, value: 4, step: 1,
+  hint: 'fewer steps = bolder; big slabs carry hard bands well',
+});
+
+const uSpecBands = tuneUniform({
+  id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 6, step: 1,
+  hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
+});
 const uPomDepth = tuneUniform({
   id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
   hint: 'how deep the stone goes',
@@ -725,9 +769,28 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // saturate its LIT colour toward the light's hue (subtle, the skeleton trick).
   let seamChroma: any = null;
   if (cfg.seamGlow) {
-    const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(uScale);
-    albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
-    seamChroma = float(1.0).add(core.mul(SEAM_CHROMA));
+    // ── THE CHECKER PATTERN IN THE WALL JOINTS WAS THIS ──────────────────────
+    // Josh: *"look at the wall crevices, for some reason they are like a checker
+    // pattern."*
+    //
+    // Two effects used to live here and both are now done properly in the bake,
+    // where the joint's exact geometry is known:
+    //
+    //   CORE_GLOW lifted the deepest seam toward pale bone — the backwards move
+    //   this file has already been round twice. Crevice depth owns that now, as
+    //   a scalar on shade, and it goes the right direction.
+    //
+    //   SEAM_CHROMA over-saturated the seam toward the light's own hue. That is
+    //   what made half the joints read bright YELLOW while the other half stayed
+    //   dark — and the alternation is not random: the chroma is driven by the
+    //   seam's DEPTH, and depth still varies per brick (seamVar on the height
+    //   channel). Per-brick variation of a yellow glow, on a running-bond grid
+    //   offset half a brick per course, is a checkerboard. It was invisible while
+    //   the joints were pale mush and became obvious the moment they went dark.
+    //
+    // Both gone. The bake's Crevice depth and Rim catch do this hue-preservingly
+    // and without a mask that can disagree with the pattern that made it.
+    seamChroma = null;
   }
   // Install the stone lighting model UNCONDITIONALLY, not just for the seam-glow
   // surfaces. The specular scale is the half of the albedo/specular ratio that
@@ -735,7 +798,10 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // has to reach every stone surface — the pillars and the dressed framing are
   // the same rock as the walls, and one of them keeping a 4% sheen while the
   // others lose it would read as two different materials.
-  setMaterialStoneLightingWebGPU(mat, { chromaNode: seamChroma, specScale: uStoneSpec });
+  setMaterialStoneLightingWebGPU(mat, {
+    chromaNode: seamChroma, specScale: uStoneSpec, specBands: uSpecBands,
+    bands: isFloor ? uFloorBands : uWallBands,
+  });
 
   // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
@@ -932,9 +998,6 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // SHOULDERS stay darker (crevice shadow → contrast). Scaled by relief so flat
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
-const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
-const CORE_GLOW = 0.06;    // how far the DEEPEST seam lifts toward PALE_BONE — KEEP TINY: the pale lift brightens the mortar to bright-yellow outlines and breaks the grimdark dark. Crevices should mostly DRINK light (shadow), not glow.
-const SEAM_CHROMA = 0.25;  // VIVID: over-saturate the seam's LIT colour toward the light's hue — subtle, past this it reads as stark yellow rings
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────

@@ -46,6 +46,37 @@ const uBandSoft = tuneUniform({
   hint: '0 = hard cel steps, 1 = smooth gradient',
 });
 
+// ── WHERE THE BANDS LAND, not how many there are ────────────────────────────
+// The band count decides how many steps; this decides where they SIT. Straight
+// quantisation spaces them evenly, so the brightest band gets as much of the
+// surface as the base tone does — which is why large areas go almost white while
+// the cracks go almost black. Bending the tone before quantising moves the
+// thresholds without changing their number:
+//
+//   > 1  pushes thresholds toward the BRIGHT end, so most of the material lives
+//        in the middle bands and the top one becomes an accent rather than a
+//        region. This is the direction that fixes the blown floor slabs.
+//   < 1  the opposite: more resolution in the shadows.
+//
+// The inverse power is applied after quantising so the endpoints do not move —
+// otherwise this would just be a gamma slider that darkens everything, and the
+// band POSITIONS are the whole point.
+const uBandCurve = tuneUniform({
+  id: 'bandcurve', group: 'Light', label: 'Band curve', min: 0.5, max: 2.5, value: 1.25,
+  hint: 'above 1 makes the brightest band an accent instead of a region',
+});
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/** Posterise a [0,1] tone into `bands` steps, with `curve` deciding where those
+ *  steps fall. Shared by the diffuse and the specular so the two cannot drift
+ *  into different-looking quantisation. */
+function posterise(tone: any, bands: any, curve: any): any {
+  const bent: any = (tone as any).max(0.0001).pow(curve);
+  const q: any = bent.mul(bands).add(0.5).floor().div(bands);
+  return q.max(0.0001).pow((float as any)(1).div(curve));
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
@@ -66,12 +97,25 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // setMaterialStoneLightingWebGPU — this is how the stone's sheen gets turned
   // down without touching the exposure every other object in the game shares.
   specScale: any;
-  constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0, specScale: any = null) {
+  // When set, the DIRECT SPECULAR is posterised the same way the diffuse is.
+  // See the note in finish().
+  specBands: any;
+  // Per-material DIFFUSE band count. A floor's enormous irregular polygons turn
+  // hard quantisation into graphic shapes; a wall already has brick boundaries,
+  // surface variation and RGB separation competing for the same edges, so it
+  // wants a gentler curve. Null = use the global.
+  bandsNode: any;
+  constructor(
+    chroma = 1, chromaNode: any = null, rimDarkReactive = 0,
+    specScale: any = null, specBands: any = null, bandsNode: any = null,
+  ) {
     super();
     this.chroma = chroma;
     this.chromaNode = chromaNode;
     this.rimDarkReactive = rimDarkReactive;
     this.specScale = specScale;
+    this.specBands = specBands;
+    this.bandsNode = bandsNode;
   }
   // SINGLE-SCATTER direct specular — match WebGL's RE_Direct_Physical EXACTLY.
   // Three's WGSL PhysicalLightingModel.direct() uses BRDF_GGX_MULTISCATTER, which
@@ -102,13 +146,40 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     const light: any = dd.div(alb);                       // albedo-independent light term
     const mag: any = light.r.max(light.g).max(light.b);
     const tone: any = mag.div(mag.add(1.0));              // Reinhard → perceived range
-    const quantTone: any = tone.mul(uBands as any).add(0.5).floor().div(uBands as any);
+    // Per-material band count when the material supplied one (stone surfaces do,
+    // so a floor's huge polygons can take harder quantisation than a wall's
+    // rectangles), else the global.
+    const dBands: any = this.bandsNode ?? uBands;
+    const quantTone: any = posterise(tone, dBands, uBandCurve as any);
     const bandedTone: any = (mix as any)(quantTone, tone, uBandSoft as any).min(0.88);
     const bandedMag: any = bandedTone.div(bandedTone.oneMinus().max(0.001));
     const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
     const newDD: any = (mag.greaterThan(0.0015) as any).select(bandedDD, dd);
+    // ── AND THE SPECULAR CAN BE POSTERISED TOO ────────────────────────────────
+    // Only the DIFFUSE has ever been banded, so the highlight underneath it has
+    // always been a smooth physical falloff. On a floor at grazing incidence
+    // that smooth lobe is the loudest thing in the frame, and it is the one part
+    // of the image still rendered as "PBR with a retro filter over it" rather
+    // than in the game's own language.
+    //
+    // Quantising it gives chunky highlight REGIONS with edges instead of a
+    // gradient — the same cel logic, applied to the term that was escaping it.
+    //
+    // Done here on the TOTAL rather than per light in direct(): quantising each
+    // light's contribution and then summing them re-smooths the result, because
+    // three quantised lights at different levels add to something continuous
+    // again. The banding has to happen after the accumulation or it does not
+    // band at all.
+    let spec: any = rl.directSpecular;
+    if (this.specBands) {
+      const sm: any = spec.r.max(spec.g).max(spec.b);
+      const st: any = sm.div(sm.add(1.0));                       // Reinhard, as the diffuse does
+      const sq: any = posterise(st, this.specBands, uBandCurve as any).min(0.95);
+      const sMag: any = sq.div(sq.oneMinus().max(0.001));
+      spec = (sm.greaterThan(0.0008) as any).select(spec.mul(sMag.div(sm.max(0.0008))), spec);
+    }
     // Recompose outgoing with the banded direct diffuse + the untouched rest.
-    let out: any = newDD.add(rl.indirectDiffuse).add(rl.directSpecular).add(rl.indirectSpecular);
+    let out: any = newDD.add(rl.indirectDiffuse).add(spec).add(rl.indirectSpecular);
     // CHROMA / PAINTED — over-saturate the lit colour toward the light's hue.
     // A per-fragment chromaNode (seam mask) wins over the scalar when present.
     if (this.chromaNode) {
@@ -231,11 +302,14 @@ export function setMaterialSeamChromaWebGPU(mat: any, chromaNode: any): void {
  * So: albedo UP and stone specular DOWN, with global exposure untouched.
  */
 export function setMaterialStoneLightingWebGPU(
-  mat: any, opts: { chromaNode?: any; specScale?: any },
+  mat: any, opts: { chromaNode?: any; specScale?: any; specBands?: any; bands?: any },
 ): void {
   const chromaNode = opts.chromaNode ?? null;
   const specScale = opts.specScale ?? null;
-  mat.setupLightingModel = () => new BandedPhysicalLightingModel(1, chromaNode, 0, specScale);
+  const specBands = opts.specBands ?? null;
+  const bands = opts.bands ?? null;
+  mat.setupLightingModel = () =>
+    new BandedPhysicalLightingModel(1, chromaNode, 0, specScale, specBands, bands);
 }
 
 /** Restore the stock (un-banded) lighting model on a material — used for the

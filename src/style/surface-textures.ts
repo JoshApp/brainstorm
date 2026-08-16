@@ -201,7 +201,7 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // EDGE CHIPPING — measured from dseam, which is already the distance to the
   // nearest joint, so a chip reaches in from the arris exactly where one would.
   const chip = edgeChip(u, v, dseam, chipAmt('wall'));
-  const brk = cornerBreak(inbx, inby, idx, idy, cornerAmt('wall'));
+  const brk = cornerBreak(inbx, inby, idx, idy, u, v, cornerAmt('wall'));
   const raw = Math.min(1, chip.raw + brk.raw);
   const h = clampf(1.0 + set + tilt + dome - spallD - chip.depth - brk.depth, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
@@ -516,11 +516,14 @@ function edgeChip(
   if (amt <= 0) return { depth: 0, raw: 0 };
   // How far in from the arris a chip can reach. Small on purpose: past a few
   // centimetres it stops being a chipped edge and becomes a missing block.
-  const REACH = 0.11;
+  // Bigger chips — Josh: *"edge chipping slightly more big chips."* Cells at
+  // ~10cm instead of ~7cm (below), and the reach inward grows to match, so a
+  // chip takes a real bite out of an arris rather than stippling it.
+  const REACH = 0.15;
   const edgeBand = 1 - smooth(0, REACH, distToEdge);
   if (edgeBand <= 0.001) return { depth: 0, raw: 0 };
   // ~7cm cells — the size a corner of dressed stone actually comes off in.
-  const c = cellField(u, v, 64);
+  const c = cellField(u, v, 44);
   // Only some cells broke. Scaled by amt so the knob controls HOW MANY as well
   // as how deep — turning damage down should mean fewer chips, not shallower
   // ones everywhere, which is what a single depth multiplier would have given.
@@ -530,7 +533,7 @@ function edgeChip(
   // band at the edge so the rim is crisp rather than a disc fading out from the
   // middle, which is what keying off distance-to-centre gave: a dot per cell,
   // affecting half a percent of the surface. Measured before believing it.
-  const core = smooth(0.0, 0.10, c.edge);
+  const core = smooth(0.0, 0.13, c.edge);
   const bite = core * edgeBand;
   return {
     depth: bite * mixf(0.16, 0.40, dHash(c.cx, c.cy, 2.7)) * Math.min(1.6, amt),
@@ -591,28 +594,75 @@ const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.35,
 // same never-weathered treatment as a chip: rougher, and lighter for want of
 // centuries of soot.
 function cornerBreak(
-  inbx: number, inby: number, idx: number, idy: number, amt: number,
+  inbx: number, inby: number, idx: number, idy: number,
+  u: number, v: number, amt: number,
 ): { depth: number; raw: number } {
   if (amt <= 0) return { depth: 0, raw: 0 };
   // Roughly one block in five at amt = 1, fewer as it comes down — turning
   // damage off should remove BREAKS, not shrink every break toward invisible.
   if (dHash(idx, idy, 5.1) > 0.34 * amt) return { depth: 0, raw: 0 };
-  const pick = dHash(idx, idy, 7.3);
-  const cx = pick < 0.5 ? 0 : 1;
-  const cy = dHash(idx, idy, 1.9) < 0.5 ? 0 : 1;
-  const du = Math.abs(inbx - cx), dv = Math.abs(inby - cy);
+  // ── ANYWHERE ON THE PERIMETER, NOT JUST THE FOUR CORNERS ──────────────────
+  // Josh: *"the edge break is really coming along but its almost always like one
+  // corner — i think it could be a bit more irregular, its currently pretty
+  // pattery."*
+  //
+  // Right, and it was structural rather than a tuning matter: the origin could
+  // only ever be one of FOUR points, so every break was a triangle pinned to a
+  // corner and the wall came out with the same motif repeated. Stone does not
+  // only lose corners — it loses bites out of the middle of an edge too, and
+  // those read completely differently.
+  //
+  // Pick a SIDE and then a position ALONG it. Corners still happen, because a
+  // position near either end of a side is a corner, but they are now one
+  // outcome among many instead of the only one.
+  const side = Math.floor(dHash(idx, idy, 7.3) * 4) % 4;
+  const along = mixf(0.08, 0.92, dHash(idx, idy, 1.9));
+  const ox = side === 0 ? along : side === 1 ? along : side === 2 ? 0 : 1;
+  const oy = side === 0 ? 0 : side === 1 ? 1 : along;
+  const du = Math.abs(inbx - ox), dv = Math.abs(inby - oy);
   // Asymmetric so the bevel is not a neat 45 degrees on every stone.
   const wu = mixf(0.7, 1.5, dHash(idx, idy, 4.4));
-  const size = mixf(0.22, 0.60, dHash(idx, idy, 3.9)) * Math.min(1.5, amt);
+  // Capped: at 0.22..0.60 x1.5 a single break could take 70% of a block, which
+  // reads as half the stone missing rather than as a corner off it.
+  const size = mixf(0.18, 0.44, dHash(idx, idy, 3.9)) * Math.min(1.2, amt);
   const t = 1 - (du * wu + dv / wu) / Math.max(1e-4, size);
   if (t <= 0) return { depth: 0, raw: 0 };
-  const ramp = Math.min(1, t);
+  // ── CLIFF, THEN PLATEAU, THEN IRREGULARITY ────────────────────────────────
+  // Josh: *"corner breaks dont have to go down to 0 always, they can also leave
+  // a kinda lower stone behind. now its band ramping which looks weird — it
+  // would more likely be a polygon underneath than a ramp towards 0, probably
+  // like a steep cliff and then a plateau and then irregularities, or just
+  // chamfered towards 0."*
+  //
+  // Two wrong shapes in a row before this. First a linear ramp, which reads as
+  // the corner SAGGING. Then quantising that ramp into three levels, which just
+  // made the sag terraced — banding a wrong shape does not make it a right one.
+  //
+  // What a break actually leaves is a NEW SURFACE at a NEW HEIGHT: a cliff where
+  // the stone parted, then a face sitting lower than the original, then the
+  // roughness of the fracture on top of that. So:
+  //
+  //   CLIFF     the drop happens over a few per cent of the wedge, so there is a
+  //             hard arris at the fracture rather than an easing-in.
+  //   PLATEAU   the exposed face is FLAT and at a per-block depth, and crucially
+  //             that depth is often NOT the bottom. Some blocks lose a sliver,
+  //             some lose a corner outright — "a lower stone left behind".
+  //   FACETS    polygonal irregularity ON the plateau, a few per cent either
+  //             way, so the broken face is stone rather than a machined pocket.
+  const t01 = Math.min(1, t);
+  const CLIFF = 0.07;                       // fraction of the wedge the drop takes
+  const plateau = smooth(0, CLIFF, t01);    // 0 at the line, 1 immediately after
+  // Polygonal roughness on the exposed face — small, and quantised by the cell
+  // rather than smooth, so it reads as fracture planes and not as a dent.
+  const f = cellField(u, v, 96);
+  const facet = (dHash(f.cx, f.cy, 4.4) - 0.5) * 0.16;
+  const ramp = plateau * (1 + facet);
   // DEEPER THAN THE JOINT BESIDE IT, which the first cut was not: at 0.12..0.34
   // against a 0.6 joint, a "broken corner" sat SHALLOWER than the mortar line
   // next to it, so it could not read as missing stone. Measured height barely
   // moved (0.865 -> 0.862 at full strength). A corner that came off has to go
   // past the joint or it is just a dent.
-  return { depth: ramp * mixf(0.30, 0.68, dHash(idx, idy, 8.7)), raw: ramp };
+  return { depth: ramp * mixf(0.14, 0.72, dHash(idx, idy, 8.7)), raw: ramp };
 }
 /** FLOOR equivalent. A Voronoi flag has no rectangular corners, so "a corner
  *  came off" becomes "a wedge came off ONE SIDE": pick a direction per cell, and
@@ -623,7 +673,8 @@ function cornerBreak(
  *  not anything reads it, and shipping one that does nothing is the exact bug
  *  the faceting knob was. */
 function flagBreak(
-  mrx: number, mry: number, gx: number, gy: number, edM: number, amt: number,
+  mrx: number, mry: number, gx: number, gy: number, edM: number,
+  u: number, v: number, amt: number,
 ): { depth: number; raw: number } {
   if (amt <= 0) return { depth: 0, raw: 0 };
   if (dHash(gx, gy, 5.1) > 0.34 * amt) return { depth: 0, raw: 0 };
@@ -632,12 +683,21 @@ function flagBreak(
   // direction the pixel lies — positive on the side that broke.
   const along = Math.cos(ang) * -mrx + Math.sin(ang) * -mry;
   const reach = mixf(0.10, 0.30, dHash(gx, gy, 3.9)) * Math.min(1.5, amt);
-  const ramp = (1 - smooth(0, reach, edM)) * smooth(0.05, 0.30, along);
+  // Same shape as the wall's: a cliff at the break, a flat lower face behind it,
+  // and polygonal irregularity on that face. A ramp down to nothing reads as the
+  // flag sagging into the gap rather than as a piece having come off it.
+  const side = smooth(0.05, 0.30, along);
+  const t01 = 1 - smooth(0, reach, edM);
+  if (t01 <= 0 || side <= 0) return { depth: 0, raw: 0 };
+  const plateau = smooth(0, 0.10, t01) * side;
+  const f = cellField(u, v, 96);
+  const facet = (dHash(f.cx, f.cy, 4.4) - 0.5) * 0.16;
+  const ramp = plateau * (1 + facet);
   if (ramp <= 0) return { depth: 0, raw: 0 };
-  return { depth: ramp * mixf(0.30, 0.68, dHash(gx, gy, 8.7)), raw: ramp };
+  return { depth: ramp * mixf(0.14, 0.72, dHash(gx, gy, 8.7)), raw: ramp };
 }
 
-const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 1.2, 0.9,
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.8, 0.6,
   'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
@@ -872,7 +932,7 @@ function flagCPU(px: number, py: number, aa: number, u: number, v: number): Cell
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
   // EDGE CHIPPING on the flag rims — edM is already distance-to-edge in metres.
   const chip = edgeChip(u, v, edM, chipAmt('floor'));
-  const brk = flagBreak(mrx, mry, gx, gy, edM, cornerAmt('floor'));
+  const brk = flagBreak(mrx, mry, gx, gy, edM, u, v, cornerAmt('floor'));
   const raw = Math.min(1, chip.raw + brk.raw);
   const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30 - chip.depth - brk.depth, 0.12, 1.15);
   // Packed dirt and pebbles rather than a constant — see gapFill. `missing`
