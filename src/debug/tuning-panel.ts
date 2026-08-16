@@ -22,6 +22,7 @@ import {
 // these the groups only appear once something happens to import the module.
 import './tuning-view';
 import './tuning-grade';
+import { allPresets, applyPreset, savePreset } from './tuning-presets';
 
 let root: HTMLDivElement | null = null;
 let activeGroup = '';
@@ -148,6 +149,38 @@ function build(): void {
     bar.append(tab);
   }
   root.append(bar);
+
+  // ── PRESETS ───────────────────────────────────────────────────────────────
+  // Josh: *"can you keep both as presets so i can switch between."* The A/B
+  // button compares a set against the shipped defaults, which is the tool for
+  // dragging one slider; it cannot hold two rival looks. These can.
+  //
+  // A preset only sets the knobs it names, so they compose — a wall look and a
+  // floor look can be applied one after the other — and applying one cannot
+  // quietly reset a surface it says nothing about.
+  const presets = allPresets();
+  if (presets.length) {
+    const row = document.createElement('div');
+    css(row, { display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' });
+    for (const p of presets) {
+      const chip = document.createElement('button');
+      chip.textContent = p.name;
+      css(chip, {
+        padding: '4px 8px', minHeight: '26px', borderRadius: '4px', cursor: 'pointer',
+        background: 'rgba(60, 40, 20, 0.55)', border: '1px solid rgba(200,160,104,0.45)',
+        color: 'rgba(255,225,180,0.9)', touchAction: 'manipulation',
+        font: '600 9px ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.05em',
+      });
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const msg = applyPreset(p.name);
+        chip.textContent = msg.includes('unknown') ? msg.slice(0, 22) : 'APPLIED';
+        window.setTimeout(() => { chip.textContent = p.name; build(); }, 900);
+      });
+      row.append(chip);
+    }
+    root.append(row);
+  }
 
   // ── knobs for the active tab ──────────────────────────────────────────────
   const body = document.createElement('div');

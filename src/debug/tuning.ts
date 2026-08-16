@@ -98,6 +98,18 @@ try {
   }
 } catch { mine = {}; }
 
+// Lazily reached so this module does not import tuning-presets, which imports
+// this one — a cycle that would bite at module-init time rather than at a call.
+type PresetApi = { list(): string[]; apply(n: string): string; save(n: string): string; del(n: string): string };
+let presetApiRef: PresetApi | null = null;
+export function registerPresetApi(api: PresetApi): void { presetApiRef = api; }
+function presetApi(): PresetApi {
+  return presetApiRef ?? {
+    list: () => [], apply: () => 'presets not loaded (open the TUNE panel once)',
+    save: () => 'presets not loaded', del: () => 'presets not loaded',
+  };
+}
+
 function persist(): void {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(mine)); } catch { /* private mode */ }
 }
@@ -216,6 +228,13 @@ if (DEV && typeof window !== 'undefined') {
         return `${id}: ${k.get()}`;
       }),
     query: () => knobsAsQuery(),
+    // Presets, from the console as well as the panel — savePreset captures
+    // whatever currently differs from the defaults, so a look found by dragging
+    // can be kept without a round trip through me.
+    presets: () => presetApi().list(),
+    preset: (name: string) => presetApi().apply(name),
+    savePreset: (name: string) => presetApi().save(name),
+    deletePreset: (name: string) => presetApi().del(name),
     notes: () => knobsAsNotes(),
     reset: () => { resetKnobs(); return 'every knob back to authored defaults'; },
     /** One tab's worth — the same scope the panel's RESET button uses. */
