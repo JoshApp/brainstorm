@@ -62,7 +62,12 @@ const dHash = stoneHash;
 // WEAR lets it give each stone its own roughness. Both are constant across a
 // cell, so they survive mipping as a soft average rather than turning to mush.
 type Cell = [shade: number, height: number, variant: number, wear: number];
-function brickCPU(px: number, py: number, aa: number): Cell {
+// u,v are the tile-normalised coordinates the caller already computed. They are
+// passed in rather than recovered from px/py because the gap generators need
+// INTEGER PERIODS to stay seamless, and a period only tiles cleanly against
+// [0,1) — dividing metres back out by a tile size the generator does not know
+// is how a seam gets introduced by accident.
+function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cell {
   // SHARED WITH THE GEOMETRY. wall-courses.ts lays its real courses on this same
   // grid — see style/stone-grid.ts for why the two must not each pick a number.
   const bx = BRICK_W, by = COURSE_H;
@@ -90,7 +95,8 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   const vKeep = stepf(0.18, dHash(modf(Math.floor(gx + 0.5), 4), idy, 9.1));
   const dseam = Math.min(dH, vKeep > 0.5 ? dV : 1e3);
   const seamVar = mixf(0.4, 1.0, dHash(idx, idy, 2.3));
-  const mortar = (1 - smooth(0.03 - aa, 0.03 + aa, dseam)) * seamVar;
+  const jW = 0.03 * jointW('wall');
+  const mortar = (1 - smooth(jW - aa, jW + aa, dseam)) * seamVar;
   const crackable = stepf(0.92, dHash(idx, idy, 5.5));
   const cpos = mixf(0.3, 0.7, dHash(idx, idy, 7.7));
   const crack = crackable * (1 - smooth(0, 0.012 + aa, Math.abs(inbx - cpos)));
@@ -114,7 +120,10 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // sloped where the march needs one.
   // Sharpness narrows the ramp toward the joint: 1 = the face holds its height
   // right to the arris, 0 = the old wide fillet.
-  const eW = mixf(0.085, 0.026, edgeSharp('wall'));
+  // Scaled by the joint width so the height ramp always spans the joint — a
+  // fixed ramp inside a widened joint reaches the bottom early and leaves a
+  // flat-bottomed slot, which is the card-stack cliff back again.
+  const eW = mixf(0.085, 0.026, edgeSharp('wall')) * jointW('wall');
   const hMortar = (1 - smooth(0.010, eW, dseam)) * seamVar;
   const hRecess = Math.max(hMortar, crack * 0.7);
   // PER-BRICK SET (v3). Every brick face used to sit flush at height 1.0 —
@@ -168,11 +177,13 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   const spall = stepf(0.92, dHash(idx, idy, 6.9));
   const spallD = spall * mixf(0.30, 0.55, dHash(idx, idy, 1.7));
   const h = clampf(1.0 + set + tilt + dome - spallD, 0.25, 1.15);
+  // The joint is no longer a constant — see mortarFill.
+  const m = mortarFill(gx, gy, u, v, jointTex('wall'));
   return [
-    mixf(tone, 0.5, recess) * mixf(1.0, 0.72, spall),
-    mixf(h, 0.4, hRecess),
+    mixf(tone, m.tone, recess) * mixf(1.0, 0.72, spall),
+    mixf(h, m.h, hRecess),
     dHash(idx, idy, 4.2),                       // VARIANT — this block's colour
-    clampf(dHash(idx, idy, 9.6) + spall * 0.35, 0, 1),  // WEAR — spalled faces are rougher
+    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35, m.wear, recess), 0, 1),
   ];
 }
 function cofferCPU(px: number, py: number, aa: number): Cell {
@@ -275,13 +286,27 @@ function surfaceKnob(
   return (kind) => (kind === 'floor' ? f() : w());
 }
 
-const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.011, 0.034, 'how far the pattern bends');
-const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 1.0, 1.0, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.55, 0.55, 'splits that ignore the joints');
-const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.20, 0.35, 'how convex the faces are');
-const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 1.0, 1.0, 'weathering strength');
-const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.38, 0.38, 'low = staining, high = runs');
-const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 1.0, 1.0, 'how far stones separate in value');
+// ── THE WALL DEFAULTS ARE JOSH'S, FOUND BY DRAGGING ─────────────────────────
+// He sent the set back on 2026-08-16 — the first look in this file arrived at
+// by looking rather than by me picking a number and defending it afterwards.
+// Adopted verbatim; the numbers in the `(was …)` comments are what shipped
+// before, kept so the move is legible rather than silent.
+//
+// Worth naming what he changed, because it is consistent: doming way UP (0.20 →
+// 0.61) and edges SHARPER (0.62 → 0.81), while erosion and tone contrast came
+// DOWN. That is a wall of hard-arrised blocks worn convex in their middles,
+// rather than soft-edged blocks with heavy staining — and both of my defaults
+// were on the wrong side of it.
+//
+// Floor values are untouched: he tuned the wall, and quietly moving the floor
+// to match would be inventing a decision he did not make.
+const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.034, 'how far the pattern bends');
+const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.0, 'how badly it was laid');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.55, 'splits that ignore the joints');
+const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.35, 'how convex the faces are');
+const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 0.715, 1.0, 'weathering strength');
+const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
+const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 1.0, 'how far stones separate in value');
 const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 5, 'few = slabs settling, many = bending', 1);
 
 // ── EDGE SHARPNESS ───────────────────────────────────────────────────────────
@@ -341,8 +366,127 @@ function gritField(u: number, v: number): number {
        + vnoiseP(u * 128 + 9.1, v * 128 + 4.2, 128, 128) * 0.28
        + vnoiseP(u * 256 + 2.6, v * 256 + 8.4, 256, 256) * 0.26;
 }
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 1, 0.55, 0.55,
+// Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
+// on a slider's maximum means the range was picked wrong — you cannot tell
+// whether it is where he wanted to be or where the control stopped him.
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 1.5, 1.0, 0.55,
   'micro grain and pitting in the stone itself');
+
+// ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
+// Josh: *"the texture in the gaps is still not so good, its better but still
+// looking like the ABSENCE of texture rather than there being, like for the
+// floor dirt or small rocks, and for the walls like mortar patchwork."*
+//
+// He has read the code without reading it. The gap is literally an absence:
+// every generator here ends with `mixf(tone, 0.5, recess)` and `mixf(h, 0.4,
+// hRecess)` — the joint is a CONSTANT, one flat grey at one flat depth. All the
+// work of the last few days went into the stones; the space between them was
+// never given a generator at all, and no amount of shading a constant will make
+// it look like a substance.
+//
+// So each surface gets its own gap generator, at its own scale, masked to the
+// gap — which is the werkkzeug composition move (generate two fields
+// independently, combine through a mask) rather than another layer on one field.
+//
+// They are deliberately DIFFERENT generators, because the two gaps are not the
+// same stuff. Mortar is struck by hand in segments between blocks; the dirt in
+// a floor is packed and has stones in it. One shared "gap noise" would have
+// been the same mistake at a smaller scale.
+const jointTex = surfaceKnob('joint', 'Joint texture', 0, 1.5, 0.9, 0.9,
+  'wall = mortar patchwork, floor = dirt and small stones');
+
+// ── AND THE GAP HAS TO BE WIDE ENOUGH TO HOLD ANY ──────────────────────────
+// The first cut of the above did almost nothing on the FLOOR, and the reason is
+// arithmetic rather than art. The floor tile is 5.25m across 512 texels, so one
+// texel is 10mm; the seam was 3cm wide, i.e. THREE TEXELS. Nothing can be drawn
+// inside a three-texel channel — a pebble field at 4cm cells is larger than the
+// gap it is supposed to fill, so each length of seam landed inside a single
+// cell and came out flat.
+//
+// That is also the honest answer to *"it looks like the absence of texture"*:
+// at that width there is no room for texture to exist, whatever we generate.
+// It is why the WALL read better on the same change — mortarFill's variation is
+// per-SEGMENT at half-brick pitch (~10 texels), which survives a narrow
+// channel, while the aggregate inside it did not.
+//
+// So width becomes a dial. It is not only a workaround: flagstones bedded in
+// earth genuinely sit with several centimetres of packed dirt between them, and
+// the thin sawn seam we had is the less truthful of the two. Defaults nudged up
+// so the texture has somewhere to be — dial back toward 1.0 for tight joints,
+// at the cost of the gap going featureless again for the reason above.
+const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 2.6, 1.25, 1.8,
+  'narrow joints cannot hold detail — see the note in surface-textures.ts');
+
+/** WALL — mortar patchwork, keyed on the JOINT SEGMENT.
+ *
+ *  The word Josh used is the design: pointing is done in runs, between one pair
+ *  of blocks at a time, and re-done in patches over centuries. So the unit of
+ *  variation is a SEGMENT of joint, not a position along a continuous ribbon —
+ *  each half-brick length gets its own tone, its own fill depth, and a chance
+ *  of having fallen out entirely. That is what makes it read as work someone
+ *  did rather than as a channel between stones.
+ *
+ *  On top of that, AGGREGATE: mortar is sand and lime with small stones in it,
+ *  so it is coarser than the crystalline grain the blocks get. Two scales,
+ *  because one reads as noise.
+ *
+ *  gx/gy are the brick-grid coordinates the caller already has, so segments
+ *  land on the masonry instead of drifting across it. Periods 8 x 16 = the
+ *  tile's 4 bricks x 8 courses at half-brick resolution, so it still tiles.
+ */
+function mortarFill(gx: number, gy: number, u: number, v: number, amt: number):
+  { tone: number; h: number; wear: number } {
+  const sx = modf(Math.floor(gx * 2), 8), sy = modf(Math.floor(gy * 2), 16);
+  const segTone = mixf(0.74, 1.30, dHash(sx, sy, 5.9));   // re-pointed patches
+  const segFill = mixf(-0.09, 0.07, dHash(sx, sy, 2.4));  // raked deep vs flush
+  const gone = stepf(0.86, dHash(sx, sy, 6.6));           // this run has fallen out
+  // Aggregate — sand and small stones, coarser than the stone's own grit.
+  const agg = (vnoiseP(u * 96, v * 96, 96, 96) - 0.5) * 0.6
+            + (vnoiseP(u * 192 + 3.7, v * 192 + 8.1, 192, 192) - 0.5) * 0.4;
+  const tone = 0.5 * mixf(1, segTone, amt) * (1 + agg * 0.55 * amt) * mixf(1, 0.62, gone * amt);
+  const h = 0.4 + (segFill + agg * 0.10) * amt - gone * 0.16 * amt;
+  return { tone, h, wear: clampf(0.72 + agg * 0.5 + gone * 0.2, 0, 1) };
+}
+
+/** FLOOR — packed dirt with small stones in it.
+ *
+ *  Not mortar: nobody pointed a floor. What sits between flagstones is earth
+ *  that has been trodden into the gap, and the reason it does not read as a
+ *  smooth trough is that it is full of PEBBLES. So the gap gets its own
+ *  Voronoi at ~4cm — each cell a stone, each stone slightly proud of the dirt
+ *  around it with its own tone — over a lumpy dirt bed rather than a clean
+ *  channel.
+ *
+ *  A cell field rather than noise on purpose: pebbles have edges and sit
+ *  against each other. Thresholded noise gives blobs, and blobs in a gap is
+ *  what we already had.
+ */
+function gapFill(u: number, v: number, amt: number): { tone: number; h: number; wear: number } {
+  // ~2.7cm cells on a 5.25m tile. Sized against the GAP, not against the
+  // texture: at the widened default the gap is ~5cm, so two pebbles fit across
+  // it. One texel is 10mm, so this is about as fine as the bake can carry
+  // before the cells drop below Nyquist and mip to mush.
+  const P = 192;
+  const x = u * P, y = v * P;
+  const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
+  let md = 9, mgx = 0, mgy = 0;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = modf(ipx + i, P), cy = modf(ipy + j, P);
+    const ox = dHash(cx, cy, 0.31), oy = dHash(cx, cy, 5.17);
+    const rx = i + ox - fpx, ry = j + oy - fpy; const dd = rx * rx + ry * ry;
+    if (dd < md) { md = dd; mgx = cx; mgy = cy; }
+  }
+  // Only some cells are a stone; the rest is the dirt they are bedded in.
+  const isStone = stepf(0.52, dHash(mgx, mgy, 3.3));
+  const stoneTone = mixf(0.78, 1.18, dHash(mgx, mgy, 7.1));
+  const prouder = isStone * (1 - smooth(0.0, 0.35, Math.sqrt(md))) * 0.13;
+  // The dirt bed itself is lumpy, not flat.
+  const dirt = (vnoiseP(u * 64, v * 64, 64, 64) - 0.5) * 0.6
+             + (vnoiseP(u * 150 + 4.4, v * 150 + 1.2, 150, 150) - 0.5) * 0.4;
+  const tone = 0.5 * mixf(1, mixf(0.86, stoneTone, isStone), amt) * (1 + dirt * 0.5 * amt);
+  const h = 0.35 + (prouder + dirt * 0.12) * amt;
+  return { tone, h, wear: clampf(0.80 + dirt * 0.4 - isStone * 0.25, 0, 1) };
+}
 
 function warpAmpFor(kind: SurfaceKind): number {
   if (kind === 'wall' || kind === 'floor') return warpAmt(kind);
@@ -362,7 +506,7 @@ function grainCPU(u: number, v: number): Cell {
   const n = vnoiseP(u * 16, v * 2, 16, 2) * 0.7 + vnoiseP(u * 32, v * 4, 32, 4) * 0.3;
   return [mixf(0.92, 1.05, n), mixf(0.48, 0.52, n), 0.5, 0.5];
 }
-function flagCPU(px: number, py: number, aa: number): Cell {
+function flagCPU(px: number, py: number, aa: number, u: number, v: number): Cell {
   // Periodic Voronoi (period 5), faithful 2-pass: nearest point then edge dist.
   const FLAG = FLAG_CELL, P = FLAG_PERIOD; const x = px / FLAG, y = py / FLAG;
   const ipx = Math.floor(x), ipy = Math.floor(y), fpx = fract(x), fpy = fract(y);
@@ -407,7 +551,7 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // comes from the bricks.
   const rimN = vnoiseP(px * 5.5, py * 5.5, 32, 32) * 0.62
              + vnoiseP(px * 13.0, py * 13.0, 64, 64) * 0.38;
-  const chipW = 0.03 * mixf(0.45, 2.1, rimN);          // seam width, per position
+  const chipW = 0.03 * jointW('floor') * mixf(0.45, 2.1, rimN);   // seam width, per position
   const seam = 1 - smooth(chipW - aa, chipW + aa, edM);
   // A bite needs a thin rim AND the noise to agree, so bites are occasional and
   // sit on corners rather than ringing every stone.
@@ -448,11 +592,16 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // march reads it as a pit you look down into, with the seam recess on top.
   const pit = missing * mixf(0.55, 0.78, dHash(gx, gy, 7.3));
   const h = clampf(1.0 + set + tilt + dome - pit - bite * 0.30, 0.12, 1.15);
+  // Packed dirt and pebbles rather than a constant — see gapFill. `missing`
+  // uses it too: a lifted flagstone exposes the same bed the gaps are full of,
+  // which is the whole reason the stone under your foot is loose.
+  const g = gapFill(u, v, jointTex('floor'));
+  const gapMask = Math.max(seam, missing);
   return [
-    mixf(tone, 0.5, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
-    mixf(h, 0.35, hSeam),
+    mixf(tone, g.tone, seam) * mixf(1.0, 0.42, missing) * mixf(1.0, 0.70, bite),
+    mixf(h, g.h, hSeam),
     dHash(gx, gy, 4.2),                          // VARIANT — this flag's colour
-    clampf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3, 0, 1),  // WEAR — broken stone + bare earth are rough
+    clampf(mixf(dHash(gx, gy, 9.6) + missing * 0.4 + bite * 0.3, g.wear, gapMask), 0, 1),
   ];
 }
 
@@ -641,8 +790,8 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, WARP_FACETED[kind], kind) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
-      if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
-      else if (kind === 'floor') [shade, height, variant, wear] = flagCPU(px, py, aa);
+      if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa, u, v);
+      else if (kind === 'floor') [shade, height, variant, wear] = flagCPU(px, py, aa, u, v);
       else if (kind === 'ceiling') [shade, height, variant, wear] = cofferCPU(px, py, aa);
       else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa);
       else [shade, height, variant, wear] = grainCPU(u, v);
