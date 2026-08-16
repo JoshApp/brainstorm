@@ -52,6 +52,189 @@ export const BRICK_W = 1.15;
 export const FLAG_CELL = 1.05;
 export const FLAG_PERIOD = 5;
 
+// ── VARIABLE COURSING — size, not wobble ────────────────────────────────────
+//
+// Josh, looking at reference masonry: *"they almost do no wobble but rather have
+// some stones bigger and smaller work together, and in some screenshots some are
+// way bigger / smaller."*
+//
+// That is a different MODEL of irregularity from the one this grid had, and the
+// better one. Ours came from wobble — a domain warp bending the whole grid and a
+// per-brick jitter nudging boundaries — so every joint was slightly off-true.
+// Real masons produce the opposite: every joint dead straight, struck against a
+// line, but the STONES are different sizes because that is what came out of the
+// quarry. Wobble reads as melted; size variation reads as built. It is also why
+// no amount of grit or erosion could rescue the wall — the detail was sitting on
+// a grid whose fundamental structure said "machine-made, then bent".
+//
+// So courses vary in HEIGHT and blocks vary in WIDTH, and nothing bends.
+//
+// ── WHY IT LIVES HERE ───────────────────────────────────────────────────────
+// This module exists so the texture and the real geometry cannot invent
+// different masonry (see the header). A variable grid makes that far easier to
+// get wrong than a constant did: COURSE_H is a number anyone can read, whereas
+// "where does course 5 start" is a computation, and two implementations of a
+// computation drift. So the table is built once here and both sides ask it.
+//
+// The variation amounts are pushed in rather than imported, because this module
+// is deliberately free of the knob system and of THREE — whoever owns the
+// sliders calls setStoneVariation and every consumer sees the same grid.
+//
+// PERIODS ARE UNCHANGED: 8 courses over 4.8m and 4 nominal blocks over 4.6m are
+// exactly the tile the texture already repeats on, so seamlessness is preserved
+// by construction rather than by tuning.
+export const COURSES_PER_TILE = 8;
+export const BLOCKS_PER_TILE = 4;
+const TILE_H = COURSE_H * COURSES_PER_TILE;
+const TILE_W = BRICK_W * BLOCKS_PER_TILE;
+
+// ── AND SOME STONES SPAN TWO COURSES ────────────────────────────────────────
+// Josh: *"its boring if the walls are always as big as the strip. the most
+// interesting thing was something where there were also bigger stones and then
+// side to side with smaller stones."*
+//
+// Right, and varying the widths could never give it. However much a course's
+// stones differ from each other, every one of them is still exactly one course
+// tall, so the wall stays a stack of ribbons. The thing the reference has is a
+// stone that is TWICE as tall as its neighbours, with two small ones stacked
+// beside it — and that is a two-dimensional fact the row-by-row table could not
+// express.
+//
+// So the grid stops being rows of blocks and becomes a LIST OF STONES, each
+// with its own rectangle. Courses may PAIR: a paired pair shares one set of
+// vertical joints, and each column within it is either one tall stone or two
+// stacked ones. That is exactly how mixed ashlar is laid, and it is the smallest
+// change that makes "bigger stones side by side with smaller" representable at
+// all rather than approximable.
+//
+// Pairing is decided per course from the hash and never straddles the tile
+// boundary, so the wall still repeats seamlessly — checked, not assumed.
+let vCourse = 0, vBlock = 0, vTall = 0;
+
+export interface Stone { x0: number; x1: number; y0: number; y1: number; ix: number; iy: number; }
+let courseEdges: number[] = [];
+/** Stones bucketed by the course they START in, so a lookup only ever scans one
+ *  or two small buckets rather than the whole tile. */
+let stonesByCourse: Stone[][] = [];
+
+function widths(seed: number, n: number, total: number, vary: number): number[] {
+  const w: number[] = []; let t = 0;
+  for (let i = 0; i < n; i++) {
+    const k = 1 + (stoneHash(seed, i, 5.77) - 0.5) * 2 * vary;
+    w.push(Math.max(0.25, k)); t += k > 0.25 ? k : 0.25;
+  }
+  return w.map((k) => (k / t) * total);
+}
+
+function rebuildGrid(): void {
+  // COURSES. Weights from the hash, normalised so they sum to the tile exactly —
+  // normalising rather than clamping is what keeps the pattern seamless however
+  // wild the variation gets.
+  const cw: number[] = []; let tot = 0;
+  for (let i = 0; i < COURSES_PER_TILE; i++) {
+    const k = Math.max(0.25, 1 + (stoneHash(i, 0, 3.31) - 0.5) * 2 * vCourse);
+    cw.push(k); tot += k;
+  }
+  courseEdges = [0];
+  let acc = 0;
+  for (let i = 0; i < COURSES_PER_TILE; i++) { acc += (cw[i] / tot) * TILE_H; courseEdges.push(acc); }
+  courseEdges[COURSES_PER_TILE] = TILE_H;
+
+  // PAIRING. A course may pair with the one above it, but only if that one is
+  // inside the tile and not already spoken for — otherwise a pair would wrap and
+  // the texture would seam.
+  const paired: boolean[] = new Array(COURSES_PER_TILE).fill(false);
+  for (let c = 0; c < COURSES_PER_TILE - 1; c++) {
+    if (paired[c]) continue;
+    if (stoneHash(c, 2, 8.19) < vTall) { paired[c] = true; paired[c + 1] = true; }
+  }
+
+  stonesByCourse = Array.from({ length: COURSES_PER_TILE }, () => [] as Stone[]);
+  const spread = Math.round(vBlock * 2.4);
+  for (let c = 0; c < COURSES_PER_TILE; c++) {
+    const isPairLower = paired[c] && !(c > 0 && paired[c - 1] && stoneHash(c - 1, 2, 8.19) < vTall);
+    // The upper half of a pair places nothing of its own — its stones belong to
+    // the column decisions made below.
+    if (paired[c] && !isPairLower) continue;
+
+    const n = Math.max(2, BLOCKS_PER_TILE + Math.round((stoneHash(c, 1, 7.13) - 0.5) * 2 * spread));
+    const ws = widths(c, n, TILE_W, vBlock);
+    // Running bond at zero width-variation, faded out as real variation arrives.
+    const bond = (c % 2 === 1) ? BRICK_W * 0.5 * (1 - Math.min(1, vBlock)) : 0;
+    let x = -bond;
+    const yLo = courseEdges[c];
+    const yMid = courseEdges[c + 1];
+    const yHi = isPairLower ? courseEdges[c + 2] : yMid;
+    for (let i = 0; i < n; i++) {
+      const x0 = x, x1 = x + ws[i]; x = x1;
+      if (!isPairLower) {
+        stonesByCourse[c].push({ x0, x1, y0: yLo, y1: yMid, ix: i, iy: c });
+      } else if (stoneHash(c, i, 2.53) < 0.45) {
+        // ONE TALL STONE across both courses.
+        stonesByCourse[c].push({ x0, x1, y0: yLo, y1: yHi, ix: i, iy: c });
+      } else {
+        // Two stacked, and the split is not the halfway point — a pair of
+        // unequal stones reads as laid, an even split reads as a grid.
+        const split = yLo + (yHi - yLo) * (0.34 + stoneHash(c, i, 9.02) * 0.32);
+        stonesByCourse[c].push({ x0, x1, y0: yLo, y1: split, ix: i, iy: c });
+        stonesByCourse[c].push({ x0, x1, y0: split, y1: yHi, ix: i + 64, iy: c });
+      }
+    }
+  }
+}
+
+/** Set how far the masonry departs from the uniform grid. All zero = the old
+ *  constant grid exactly, so this is off until someone asks for it. */
+export function setStoneVariation(courseVar: number, blockVar: number, tallVar = 0): void {
+  if (courseVar === vCourse && blockVar === vBlock && tallVar === vTall && courseEdges.length) return;
+  vCourse = courseVar; vBlock = blockVar; vTall = tallVar;
+  rebuildGrid();
+}
+
+/** Which course world-Y lands in. Kept for consumers that only need the row. */
+export function courseAt(y: number): { i: number; y0: number; y1: number } {
+  if (!courseEdges.length) rebuildGrid();
+  const tiles = Math.floor(y / TILE_H);
+  const ly = y - tiles * TILE_H;
+  for (let i = 0; i < COURSES_PER_TILE; i++) {
+    if (ly < courseEdges[i + 1]) {
+      return { i, y0: tiles * TILE_H + courseEdges[i], y1: tiles * TILE_H + courseEdges[i + 1] };
+    }
+  }
+  const last = COURSES_PER_TILE - 1;
+  return { i: last, y0: tiles * TILE_H + courseEdges[last], y1: (tiles + 1) * TILE_H };
+}
+
+/** THE STONE at a world point: its full rectangle, whatever height it is.
+ *  Scans the bucket for this course and the one below, because a tall stone
+ *  starting below reaches up into this one. */
+export function stoneAt(x: number, y: number): Stone {
+  if (!stonesByCourse.length) rebuildGrid();
+  const ty = Math.floor(y / TILE_H), tx = Math.floor(x / TILE_W);
+  const ly = y - ty * TILE_H, lx = x - tx * TILE_W;
+  let ci = COURSES_PER_TILE - 1;
+  for (let i = 0; i < COURSES_PER_TILE; i++) if (ly < courseEdges[i + 1]) { ci = i; break; }
+  for (const c of [ci, ci - 1, ci - 2]) {
+    if (c < 0) continue;
+    for (const st of stonesByCourse[c]) {
+      // x wraps within the tile, so test the stone shifted by one tile too —
+      // the running-bond offset can push a stone across the seam.
+      for (const off of [0, TILE_W, -TILE_W]) {
+        if (lx >= st.x0 + off && lx < st.x1 + off && ly >= st.y0 && ly < st.y1) {
+          return {
+            x0: tx * TILE_W + st.x0 + off, x1: tx * TILE_W + st.x1 + off,
+            y0: ty * TILE_H + st.y0, y1: ty * TILE_H + st.y1, ix: st.ix, iy: st.iy,
+          };
+        }
+      }
+    }
+  }
+  // Nothing claimed it (should not happen; the stones tile the plane). Fall back
+  // to the course band so a lookup can never return nonsense.
+  const c = courseAt(y);
+  return { x0: tx * TILE_W, x1: tx * TILE_W + TILE_W, y0: c.y0, y1: c.y1, ix: 0, iy: c.i };
+}
+
 const fract = (x: number) => x - Math.floor(x);
 const modf = (x: number, y: number) => x - y * Math.floor(x / y);
 

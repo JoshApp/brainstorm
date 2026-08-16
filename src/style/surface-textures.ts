@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
-import { BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash } from './stone-grid';
+import {
+  BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash,
+  stoneAt, setStoneVariation, COURSES_PER_TILE,
+} from './stone-grid';
 import { tuneNumber, onRebake } from '../debug/tuning';
 import { DEV } from '../debug/dev';
 
@@ -69,12 +72,28 @@ type Cell = [shade: number, height: number, variant: number, wear: number];
 // [0,1) — dividing metres back out by a tile size the generator does not know
 // is how a seam gets introduced by accident.
 function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cell {
-  // SHARED WITH THE GEOMETRY. wall-courses.ts lays its real courses on this same
-  // grid — see style/stone-grid.ts for why the two must not each pick a number.
-  const bx = BRICK_W, by = COURSE_H;
-  let gx = px / bx; const gy = py / by; const row = Math.floor(gy);
-  gx += 0.5 * modf(row, 2);
-  const idx = modf(Math.floor(gx), 4), idy = modf(row, 8);
+  // ── SIZE VARIATION, NOT WOBBLE ─────────────────────────────────────────────
+  // The grid is no longer uniform: courses have their own heights and each
+  // course its own blocks, from the shared table in stone-grid.ts. Every joint
+  // is still dead straight — that is the whole point, and the difference
+  // between masonry and melted wax.
+  //
+  // SHARED WITH THE GEOMETRY, and now more load-bearing than ever: COURSE_H was
+  // a number anyone could read, whereas "where does course 5 start" is a
+  // computation, and two implementations of a computation drift. Both sides ask
+  // the same table.
+  const st = stoneAt(px, py);
+  const by = st.y1 - st.y0;
+  const bx = st.x1 - st.x0;
+  // Position within THIS STONE, 0..1 on each axis — the rest of the generator is
+  // written against these and does not care that a stone may now be twice as
+  // tall as its neighbour. Everything per-stone (set, tilt, dome, tone, spall,
+  // chips, corner breaks) therefore scales with the stone it belongs to for
+  // free, which is the real payoff of moving to a stone list: a big block gets
+  // a big dome and a big break, not a small one stretched.
+  const gy = st.iy + (py - st.y0) / Math.max(1e-5, by);
+  const gx = st.ix + (px - st.x0) / Math.max(1e-5, bx);
+  const idx = modf(st.ix, 8), idy = modf(st.iy, COURSES_PER_TILE);
   // ── PER-BRICK SET-OUT ──────────────────────────────────────────────────────
   // The masonry-specific answer to "what would fit a brick wall". A domain warp
   // — even a faceted one — bends the GRID, and the grid is the one thing a
@@ -92,8 +111,13 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10 * jS;    // ± in bed height
   const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
   const inby = clampf(fract(gy) + jy, 0.001, 0.999);
+  // Distances to this stone's OWN edges, in metres — bx/by are now per-stone, so
+  // a joint round a big block is the same width as one round a small block
+  // rather than scaling with it, which is what mortar actually does.
   const dH = Math.min(inby, 1 - inby) * by, dV = Math.min(inbx, 1 - inbx) * bx;
-  const vKeep = stepf(0.18, dHash(modf(Math.floor(gx + 0.5), 4), idy, 9.1));
+  // Occasionally a perpend is lost — two stones grown together, or the joint
+  // weathered shut. Keyed on this stone rather than on a grid slot now.
+  const vKeep = stepf(0.14, dHash(idx, idy, 9.1));
   const dseam = Math.min(dH, vKeep > 0.5 ? dV : 1e3);
   // ── SEAMVAR SCALED THE MASK, WHICH IS WHY WALL JOINTS WERE BLOTCHY ────────
   // Josh: *"the crevices on walls are still quite blotchy — torn between a light
@@ -456,6 +480,28 @@ function gritField(u: number, v: number): number {
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
 // whether it is where he wanted to be or where the control stopped him.
+// The two halves of the size variation. Wall-only: a floor is a Voronoi of
+// slabs and already has all the size variation it can use, so a shared pair
+// would be a dead slider on one surface — the faceting mistake again.
+const courseVarAmt = tuneNumber({
+  id: 'coursevar', group: 'Wall', label: 'Course variation', min: 0, max: 1, value: 0.45,
+  hint: 'how much course HEIGHTS differ — 0 is the old uniform grid',
+});
+const blockVarAmt = tuneNumber({
+  id: 'blockvar', group: 'Wall', label: 'Block variation', min: 0, max: 1, value: 0.5,
+  hint: 'how much stone WIDTHS and counts differ within a course',
+});
+// Josh: *"its boring if the walls are always as big as the strip — the most
+// interesting thing was bigger stones side by side with smaller stones."*
+// Varying widths could never give that: every stone was still exactly one
+// course tall, so the wall stayed a stack of ribbons. This is the share of
+// courses that pair up, within which a column is either one tall stone or two
+// stacked ones.
+const tallVarAmt = tuneNumber({
+  id: 'tallvar', group: 'Wall', label: 'Tall stones', min: 0, max: 1, value: 0.5,
+  hint: 'stones spanning two courses, beside smaller ones',
+});
+
 const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.86,
   'micro grain and pitting in the stone itself');
 
@@ -1250,6 +1296,10 @@ const TONE: Record<SurfaceKind, { pivot: number; contrast: number }> = {
 };
 
 function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
+  // Push the variation into the shared grid before generating, so the table the
+  // texture reads and the table the geometry reads are the same one. Cheap and
+  // idempotent — it early-outs when nothing changed.
+  setStoneVariation(courseVarAmt(), blockVarAmt(), tallVarAmt());
   const tile = SURFACE_TILE[kind];
   const aa = (tile[0] / CPU_TEX) * 0.7;
   const N = CPU_TEX * CPU_TEX;
