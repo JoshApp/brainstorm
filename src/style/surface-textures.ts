@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
 import { BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash } from './stone-grid';
 import { tuneNumber, onRebake } from '../debug/tuning';
+import { DEV } from '../debug/dev';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -300,14 +301,24 @@ function surfaceKnob(
 //
 // Floor values are untouched: he tuned the wall, and quietly moving the floor
 // to match would be inventing a decision he did not make.
-const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.034, 'how far the pattern bends');
-const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.0, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.55, 'splits that ignore the joints');
-const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.35, 'how convex the faces are');
+// Floor values are his too now, from a second pass on 2026-08-16. Same shape of
+// move as the wall — doming UP (0.35 → 0.66) and edges SHARPER (0.42 → 0.66) —
+// which makes it a consistent preference rather than two separate opinions, and
+// says my soft-and-weathered defaults were wrong on both surfaces.
+//
+// He also flagged the rounding: the panel's step landed a couple of values a
+// hair off where he meant (warp 0.0576 for 0.058, joint width 1.786 for 1.8).
+// Written as what he MEANT, not what the slider emitted — a default carrying a
+// rounding artefact from the session it was found in is noise pretending to be
+// a decision.
+const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.058, 'how far the pattern bends');
+const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.02, 'how badly it was laid');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.765, 'splits that ignore the joints');
+const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
 const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 0.715, 1.0, 'weathering strength');
 const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
-const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 1.0, 'how far stones separate in value');
-const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 5, 'few = slabs settling, many = bending', 1);
+const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.964, 'how far stones separate in value');
+const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 11, 'few = slabs settling, many = bending', 1);
 
 // ── EDGE SHARPNESS ───────────────────────────────────────────────────────────
 // Josh: *"everything looks like rounded edges like rounded bevel ... stones are
@@ -322,7 +333,7 @@ const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 5, 'few = slab
 // knob rather than a number I pick: narrow ramp = crisp arrises and some
 // banding, wide ramp = smooth march and soft edges. Dressed stone wants sharp,
 // a worn floor wants soft, which is exactly why it is per-surface too.
-const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.62, 0.42,
+const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.805, 0.66,
   'high = crisp arris, low = filed down');
 
 // ── GRIT — OpenKTG's Noise with OCTAVES, which we never actually took ────────
@@ -369,7 +380,7 @@ function gritField(u: number, v: number): number {
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
 // whether it is where he wanted to be or where the control stopped him.
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 1.5, 1.0, 0.55,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 0.55,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -392,7 +403,7 @@ const gritAmt = surfaceKnob('grit', 'Grit', 0, 1.5, 1.0, 0.55,
 // same stuff. Mortar is struck by hand in segments between blocks; the dirt in
 // a floor is packed and has stones in it. One shared "gap noise" would have
 // been the same mistake at a smaller scale.
-const jointTex = surfaceKnob('joint', 'Joint texture', 0, 1.5, 0.9, 0.9,
+const jointTex = surfaceKnob('joint', 'Joint texture', 0, 3, 0.9, 1.5,
   'wall = mortar patchwork, floor = dirt and small stones');
 
 // ── AND THE GAP HAS TO BE WIDE ENOUGH TO HOLD ANY ──────────────────────────
@@ -414,7 +425,7 @@ const jointTex = surfaceKnob('joint', 'Joint texture', 0, 1.5, 0.9, 0.9,
 // the thin sawn seam we had is the less truthful of the two. Defaults nudged up
 // so the texture has somewhere to be — dial back toward 1.0 for tight joints,
 // at the cost of the gap going featureless again for the reason above.
-const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 2.6, 1.25, 1.8,
+const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.8,
   'narrow joints cannot hold detail — see the note in surface-textures.ts');
 
 /** WALL — mortar patchwork, keyed on the JOINT SEGMENT.
@@ -919,6 +930,51 @@ onRebake(() => {
     fresh.dispose();
   }
 });
+
+// ── INSPECT WHAT THE BAKE ACTUALLY PRODUCED ─────────────────────────────────
+// Every question about "does this knob do anything" so far has been answered by
+// screenshotting and squinting, and torch flicker is large enough to swamp a
+// pixel diff — a null control (two captures, nothing changed) came out as big
+// as most of the knobs being tested. The bake output is the one place in this
+// pipeline where the truth is a plain array of numbers, so make it readable.
+//
+// __surfTex.stats('floor') gives the channel histograms; __surfTex.mask('floor',
+// lo, hi) gives the mean of the smoothstep mask the SHADER builds from the
+// height channel, which is the number that decides whether a joint-masked
+// effect can do anything at all.
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __surfTex?: unknown }).__surfTex = {
+    kinds: () => [...live.keys()],
+    stats: (kind: SurfaceKind) => {
+      const t = live.get(kind);
+      if (!t) return `no baked texture for '${kind}' — try __surfTex.kinds()`;
+      const d = t.image.data as Uint8Array;
+      const ch = ['shade', 'variant', 'wear', 'height'];
+      const out: Record<string, unknown> = {};
+      for (let c = 0; c < 4; c++) {
+        let min = 255, max = 0, sum = 0; const n = d.length / 4;
+        for (let i = c; i < d.length; i += 4) { const v = d[i]; if (v < min) min = v; if (v > max) max = v; sum += v; }
+        out[ch[c]] = { min: +(min / 255).toFixed(3), mean: +(sum / n / 255).toFixed(3), max: +(max / 255).toFixed(3) };
+      }
+      return out;
+    },
+    /** Mean of smoothstep(lo,hi,height) inverted — i.e. the joint mask the
+     *  shader uses. Near zero means every joint-masked knob is inert by
+     *  construction, whatever its value. */
+    mask: (kind: SurfaceKind, lo = 0.52, hi = 0.92) => {
+      const t = live.get(kind);
+      if (!t) return `no baked texture for '${kind}'`;
+      const d = t.image.data as Uint8Array;
+      let sum = 0, over = 0; const n = d.length / 4;
+      for (let i = 3; i < d.length; i += 4) {
+        const x = Math.max(0, Math.min(1, (d[i] / 255 - lo) / (hi - lo)));
+        const m = 1 - x * x * (3 - 2 * x);
+        sum += m; if (m > 0.5) over++;
+      }
+      return { meanMask: +(sum / n).toFixed(4), pctStronglyMasked: +(100 * over / n).toFixed(2) };
+    },
+  };
+}
 
 export function bakeSurfaceTexture(_renderer: DelveRenderer, kind: SurfaceKind): THREE.DataTexture {
   // The GLSL bake (ShaderMaterial + readRenderTargetPixels) was WebGL-only; the

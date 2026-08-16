@@ -41,6 +41,61 @@ const uStoneWear = tuneUniform({
   id: 'stonewear', group: 'Stone', label: 'Stone wear spread', min: 0, max: 1, value: 0.30,
   hint: 'how much stones differ in roughness',
 });
+
+// ── STONE ALBEDO — and why every colour knob has felt dead ──────────────────
+// Josh: *"joint substance, joint warmth and dirt depth dont do anything, just
+// joint matte does something."* He is right, and the cause is not in the mortar
+// code — it is one number that has been under all of this the whole time.
+//
+// MEASURED (frame-averaged capture, real Chrome, torch flicker averaged out —
+// a null control with nothing changed reads mean 1.0 / p99 6.6):
+//
+//     knob                     mean    p99     path
+//     Floor roughness          30.9    93.6    roughnessNode
+//     Stone wear spread        17.0    71.0    roughnessNode
+//     Joint matte               2.4    17.9    roughnessNode
+//     Dirt depth                1.3     7.0    colorNode      <- at the noise floor
+//     Stone hue spread          1.1     5.8    colorNode      <- at the noise floor
+//     Joint substance           1.0     5.2    colorNode      <- at the noise floor
+//
+// It is not the mortar mask (36% of floor texels are strongly masked — checked
+// directly against the baked texture via __surfTex.mask). It is not the cel
+// banding (measured with it off; no difference). It is not clipping (zero
+// clipped pixels).
+//
+// It is that the stone materials' base colour is essentially BLACK — 0.004 and
+// 0.010 in LINEAR space. Every albedo operation in this shader — per-stone hue,
+// grime, cavity, the mortar's colour, the dirt — multiplies a number that is
+// already ~0.004, so all of it lands under the specular term, which for a
+// dielectric sits at F0 = 0.04 and is therefore FOUR TO TEN TIMES the diffuse
+// albedo here. What you are looking at on these walls is very nearly a pure
+// specular lobe with a black surface under it.
+//
+// That single fact explains a lot of the last month:
+//   - "the floor is too silver metallic" — near-black diffuse plus a visible
+//     specular highlight IS the appearance of polished dark stone or metal.
+//     It is not a tint problem, it is an albedo-to-specular ratio problem.
+//   - "it all looks so uniform so perfect so bland" — the luminance histogram
+//     is bunched between 40% and 70% with nothing below 30% or above 80%. That
+//     is what a specular lobe looks like on its own.
+//   - "the gaps look like the absence of texture" — their colour differences
+//     are multiplying 0.004.
+//   - why roughness knobs feel powerful and colour knobs feel dead.
+//
+// CONFIRMED by test, not just reasoned: lifting these base colours 25x made
+// Stone hue spread 4.7x more effective (mean 1.05 -> 4.89, p99 5.7 -> 19.7).
+//
+// This knob is the experiment, and it DEFAULTS TO 1 (no change) on purpose.
+// Raising albedo without lowering light is not a free win — the scene's torch
+// intensities and the grade's exposure (0.37, i.e. already pulling brightness
+// down 2.7x) were both set against a near-black surface, so the paired move is
+// albedo UP and exposure DOWN. That is the game's whole lighting balance, which
+// is Josh's call and a proper piece of work, not something to slide under him.
+// Try it with:  __tune.set('stonelift', 12); __gradeSet({ exposure: 0.12 })
+const uStoneLift = tuneUniform({
+  id: 'stonelift', group: 'Stone', label: 'Stone albedo', min: 1, max: 40, value: 1,
+  hint: 'lifts the near-black base; pair with exposure DOWN or it blows out',
+});
 const uPomDepth = tuneUniform({
   id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
   hint: 'how deep the stone goes',
@@ -157,13 +212,24 @@ const uMortarDirt = tuneUniform({
   hint: 'how much filth collects down in the gaps',
 });
 
-const uMortarCol = (tslUniform as any)(new THREE.Vector3(0.86, 0.84, 0.78));
+// ── AND THESE WERE AUTHORED FAR TOO WEAK ────────────────────────────────────
+// Measured, after the albedo lift above made colour visible at all: 'Joint
+// substance' still sat at the noise floor while 'Stone hue spread' cleared it
+// 4.7x. The ratio is the explanation and it is arithmetic — stone hue moves
+// 100% of texels by up to ±28%, the joint colour moved 36% of them by 17%, so
+// it was always going to land about 4.5x smaller. It was doing exactly what I
+// wrote; what I wrote was too polite to see.
+//
+// So the joint's colour is a real departure now (~40% down and desaturated at
+// full) rather than a tasteful nudge. A joint IS much darker than the stone
+// either side of it — packed dirt and weathered lime are not a shade of the
+// same rock — and being timid about that is what made the gaps read as absence.
+const uMortarCol = (tslUniform as any)(new THREE.Vector3(0.62, 0.60, 0.55));
 function refreshMortarCol(): void {
   const w = mortarWarm();
-  // Base is a desaturated pale grey — the point is that it is NOT the stone's
-  // colour, so it must not simply be the stone hue shifted. Warmth swings it
-  // between cold ash and lime-and-sand.
-  (uMortarCol as any).value.set(0.86 + w * 0.10, 0.84, 0.78 - w * 0.10);
+  // The point is that it is NOT the stone's colour, so it must not simply be
+  // the stone hue shifted. Warmth swings it between cold ash and lime-and-sand.
+  (uMortarCol as any).value.set(0.62 + w * 0.16, 0.60, 0.55 - w * 0.16);
 }
 refreshMortarCol();
 onKnobChange((k) => { if (k.spec.id === 'mortarwarm') refreshMortarCol(); });
@@ -413,7 +479,10 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // distinct shell colour (per-floor pipeline churn). materialColor reads the
   // colour from a per-material uniform → identical WGSL across tints → one shared
   // pipeline. See the note in surface-ao.ts installPropHeightAOWebGPU.
-  const base: any = materialColor;
+  // …times the albedo lift, which is 1 by default. See the note on uStoneLift:
+  // this base is ~0.004 linear, which is why every colour operation below has
+  // been landing under the specular term.
+  const base: any = (materialColor as any).mul(uStoneLift as any);
   const tint: any = (tslUniform as any)(new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]));
   // `.r` BROADCAST, not `.rgb`. G and B do not duplicate R — they carry this
   // stone's VARIANT and WEAR (see surface-textures.ts). Reading .rgb here would
@@ -496,9 +565,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // same layer Josh is asking about ("dirt in the gaps"), so it should be the
   // same dial, not a second one doing half the job next to it.
   const cavity: any = float(1).sub((tslSmoothstep as any)(0.42, 0.95, sampled.a));
-  const dirtFloor: any = (tslMix as any)(float(1.0), float(0.35), uMortarDirt as any);
+  const dirtFloor: any = (tslMix as any)(float(1.0), float(0.16), uMortarDirt as any);
   albedo = albedo.mul((tslMix as any)(
     float(1.0), dirtFloor, cavity.mul(float(0.45).add(macro.mul(0.55))),
+  ));
+  // …and again down in the JOINT proper, which is deeper than a mere cavity and
+  // holds correspondingly more filth. Same knob — a second slider for "dirt,
+  // but further in" would be two controls for one judgement.
+  albedo = albedo.mul((tslMix as any)(
+    float(1.0), float(0.45), mortar.mul(uMortarDirt as any),
   ));
 
   // (MOSS / LICHEN was built here and REMOVED — Josh: *"lets get rid of the moss
