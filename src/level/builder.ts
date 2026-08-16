@@ -1483,7 +1483,11 @@ export function buildLevel(
           // for every leg of a dogleg while the frame emitter mounts one — a
           // hole with no frame in it, which is strictly worse than the dead
           // frame this rule exists to remove.
-          spec.corridors.map((c) => ({ ...c.rect, link: c.linkId })),
+          // `passageH` is what lets the room build a LINTEL over each doorway
+          // at the same height the archway's crown lands (poly-room-shell.ts).
+          // Without it the wall guesses, and the window between "blocks the way
+          // through" and "leaves daylight over it" is 0.31m wide.
+          spec.corridors.map((c) => ({ ...c.rect, link: c.linkId, passageH: c.height })),
           holes,
         );
       } else {

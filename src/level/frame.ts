@@ -25,6 +25,9 @@ export interface FrameOpts {
    *  depth in the frame model — see content/frame-depth.ts. Polygon rooms pass
    *  `WALL_T`; rect rooms pass 0, because their wall is a single plane. */
   wallDepth?: number;
+  /** False when the room's own wall closes the gap above this opening with a
+   *  lintel (polygon rooms). See ArchwayOptions.closeAbove. */
+  closeAbove?: boolean;
   /** Force the slim doorframe regardless of width — a stair-room mouth (an
    *  archway column would soft-lock the stair) or a door/gate/fog opening that
    *  owns its own seal and wants no columns in the gap. */
@@ -111,6 +114,7 @@ export function chooseFrameModel(o: FrameOpts): FrameChoice {
     model: archway({
       width: o.width, ceilingHeight: o.ceilingHeight,
       openHeight: o.openHeight, wallDepth: o.wallDepth,
+      closeAbove: o.closeAbove,
     }),
   };
   return o.wallDepth ? withSill(choice, o.width, o.wallDepth) : choice;

@@ -88,6 +88,10 @@ export function emitFramesForPortals(spec: LevelSpec): void {
         // a 1.10m reveal in 0.25m of stone is what put half of every doorway
         // out in the corridor. See content/frame-depth.ts.
         wallDepth: WALL_T,
+        // The ROOM's wall closes the gap above this doorway with a lintel
+        // (level/poly-room-shell.ts), so the gate must not also build a plate to
+        // the ceiling — that plate is the "geometry above the arch".
+        closeAbove: false,
         slimOnly: stairMouth,
       });
 

@@ -75,6 +75,20 @@ export interface ArchwayOptions {
    * wall is a single plane. Default: a thin dungeon wall.
    */
   wallDepth?: number;
+  /**
+   * Should the gate close the wall above itself?
+   *
+   * `planWallRing` cuts an opening from floor to ceiling, so SOMETHING has to
+   * fill the gap over the arch or the doorway shows void. Historically that was
+   * the gate, with a plate reaching to the ceiling. A polygon room's shell now
+   * builds a proper LINTEL out of its own wall instead — same stone, same
+   * coursing, merged into the wall mesh, so there is nothing to see — and passes
+   * false here. Rect rooms have no shell to build one and keep the plate.
+   *
+   * Default true, so the risky direction (a doorway showing void) is never the
+   * one a caller gets by forgetting.
+   */
+  closeAbove?: boolean;
 }
 
 // ── THE JAMBS ARE MASSIVE NOW, AND IT IS A HIERARCHY ARGUMENT ────────────────
@@ -247,13 +261,27 @@ export function archGeometry(width: number, ceiling: number, openHeight?: number
 /** id → spec. Module-level, so the second floor's doorways are free. */
 const MEMO = new Map<string, ModelSpec>();
 
+/**
+ * The top of the gate's own stone — where the hood ends and the wall begins.
+ *
+ * Exported because the WALL needs it: a polygon room closes its own doorways
+ * with a lintel (level/poly-room-shell.ts), and the lintel has to start where
+ * the gate stops. Solved from the same `archGeometry` the ring is laid on, so
+ * the two cannot disagree about how tall the gate is.
+ */
+export function archwayGateTop(width: number, ceiling: number, openHeight?: number): number {
+  const g = archGeometry(snap(width, WIDTH_STEP), snap(ceiling, 0.2),
+    openHeight === undefined ? undefined : snap(openHeight, 0.2));
+  return g.centreY + g.radius + VOUSSOIR_RADIAL + HOOD_RADIAL;
+}
+
 export function archway(opts: ArchwayOptions): ModelSpec {
   const width = snap(opts.width, WIDTH_STEP);
   const ceiling = snap(opts.ceilingHeight ?? 3.2, 0.2);
   const open = opts.openHeight === undefined ? undefined : snap(opts.openHeight, 0.2);
   const reveal = revealDepthFor(opts.wallDepth ?? DEFAULT_WALL_DEPTH);
   const D = depths(reveal);
-  const memoKey = `${width}|${ceiling}|${open ?? '-'}|${reveal}`;
+  const memoKey = `${width}|${ceiling}|${open ?? '-'}|${reveal}|${opts.closeAbove ?? true}`;
   const hit = MEMO.get(memoKey);
   // SAME OBJECT, not an equal one. The builder's CSG cache is a WeakMap keyed
   // on the part, so returning a fresh-but-identical spec would cache nothing.
@@ -372,7 +400,10 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   // lamp and announce a seam. A rect room passes wallDepth 0 (its wall is a
   // single plane), so the plate takes a minimum thickness rather than vanishing.
   const closureH = ceiling - hoodTop;
-  if (closureH > 0.06) {
+  // `closeAbove: false` when the WALL is closing its own doorway with a lintel.
+  // A polygon room does that now; a rect room's wall is a single plane with no
+  // shell to build one, so it still relies on the gate for its closure.
+  if (closureH > 0.06 && (opts.closeAbove ?? true)) {
     parts.push({
       kind: 'box', name: 'wall-above', mat: 'wallfill',
       pos: [0, hoodTop + closureH / 2, 0],
@@ -430,7 +461,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     } as PartSpec);
   }
 
-  const id = `archway3-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}-r${reveal.toFixed(2)}`;
+  const id = `archway4-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-s${g.spring.toFixed(2)}-r${reveal.toFixed(2)}`;
 
   const spec: ModelSpec = {
     id,

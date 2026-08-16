@@ -114,8 +114,39 @@ export type WallSpan = {
   jambB: boolean;
 };
 
+/**
+ * A hole the ring cut, in world coords, on the wall's INNER line.
+ *
+ * The planner has always known these — `gaps` below is exactly this list — and
+ * has always thrown them away, returning only the stone it kept. That was fine
+ * while a doorway was a full-height gap somebody else closed. It is not fine now
+ * that the WALL closes its own doorways (see the lintel in poly-room-shell.ts),
+ * because the closure has to sit over the same hole the ring cut, computed by
+ * the same clip, or it is a second opinion about where the doorway is.
+ */
+export type WallDoorway = {
+  edge: number;
+  a: V2; b: V2;
+  /** Outer-face equivalents, so a lintel can close the wall's full thickness. */
+  oa: V2; ob: V2;
+  /**
+   * Interior height of the passage behind this hole, in metres.
+   *
+   * The LOWEST among the openings that made it, because the lintel over a
+   * doorway has to clear the arch's crown without floating above the arch's
+   * hood, and that window is only 0.31m wide. Taking the low end keeps the
+   * lintel at or under the real gate's top — stone behind stone, invisible —
+   * where taking the high end would put daylight over the doorway.
+   */
+  passageH: number;
+};
+
 export type OpeningRect = {
   x: number; z: number; w: number; d: number;
+  /** Interior height of the corridor this rect belongs to. Drives the LINTEL
+   *  the room builds over the doorway — see WallDoorway.passageH. Absent on
+   *  callers that have no corridor (a stairwell hole); a default is used. */
+  passageH?: number;
   /** Which CONNECTION this rect belongs to (RoomSpec.linkId). A dogleg's legs
    *  share one, so the ring cuts ONE doorway for the way through rather than
    *  one per leg — see `oneDoorPerConnection` in portals.ts. Absent on the
@@ -143,10 +174,37 @@ export function planWallRing(
    *  guessing which edge a corridor came through. */
   cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
 ): WallSpan[] {
+  return planWallRingFull(poly, thickness, openings, minSpan, cuts).spans;
+}
+
+/** When an opening does not say how tall its passage is — a stairwell hole, a
+ *  legacy caller. The low end of the rolled corridor range, which is the safe
+ *  end: a lintel placed for a low passage sits under a taller gate's hood and
+ *  is simply covered by it. */
+const DEFAULT_PASSAGE_H = 2.3;
+
+/** What the ring plan actually produces: the stone, and the holes in it. */
+export interface WallRingPlan { spans: WallSpan[]; doorways: WallDoorway[]; }
+
+/**
+ * `planWallRing`, plus the doorways.
+ *
+ * Split out rather than duplicated: a second function that re-clipped the
+ * openings would be a second opinion about where a doorway is, and the two would
+ * drift the first time either was tuned.
+ */
+export function planWallRingFull(
+  poly: Ring,
+  thickness: number,
+  openings: ReadonlyArray<OpeningRect> = [],
+  minSpan = 0.14,
+  cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
+): WallRingPlan {
   const n = poly.length;
-  if (n < 3) return [];
+  if (n < 3) return { spans: [], doorways: [] };
   const ring = offsetRing(poly, thickness);
   const spans: WallSpan[] = [];
+  const doorways: WallDoorway[] = [];
 
   for (let i = 0; i < n; i++) {
     const a = poly[i], b = poly[(i + 1) % n];
@@ -197,8 +255,33 @@ export function planWallRing(
       const ob: V2 = atEnd ? ring[(i + 1) % n] : [ib[0] + nrm[0] * thickness, ib[1] + nrm[1] * thickness];
       spans.push({ edge: i, a: ia, b: ib, oa, ob, jambA: !atStart, jambB: !atEnd });
     }
+
+    // The holes, in the same edge-local terms the spans came from. Merged first
+    // (two corridors overlapping one edge are one doorway, not two) by reusing
+    // the same subtract the spans went through — the complement of `keep`.
+    for (const [t0, t1] of subtractSpans(keep)) {
+      if ((t1 - t0) * len < minSpan) continue;
+      const da: V2 = [a[0] + dx * t0, a[1] + dz * t0];
+      const db: V2 = [a[0] + dx * t1, a[1] + dz * t1];
+      // Which openings made this hole? Whichever ones still clip to it. Their
+      // LOWEST passage wins — see WallDoorway.passageH.
+      let passageH = Infinity;
+      for (const r of openings) {
+        if (r.passageH === undefined) continue;
+        const g = clipEdgeToRect(a, b, r, 0) ?? narrowTo(a, b, r, clipEdgeToRect(a, b, r, thickness));
+        if (!g) continue;
+        if (g[1] <= t0 + 1e-6 || g[0] >= t1 - 1e-6) continue;   // no overlap
+        passageH = Math.min(passageH, r.passageH);
+      }
+      doorways.push({
+        edge: i, a: da, b: db,
+        oa: [da[0] + nrm[0] * thickness, da[1] + nrm[1] * thickness],
+        ob: [db[0] + nrm[0] * thickness, db[1] + nrm[1] * thickness],
+        passageH: isFinite(passageH) ? passageH : DEFAULT_PASSAGE_H,
+      });
+    }
   }
-  return spans;
+  return { spans, doorways };
 }
 
 /**
