@@ -15,9 +15,11 @@
 // viewmodel's update loop changes, so toggling it back leaves everything where
 // it was.
 import { getViewmodelRoots } from '../style/render-frame';
+import { setCameraPitch } from '../controls/camera';
 import { tuneNumber, onKnobChange, getKnob } from './tuning';
 
 const SHOW_VM = 'showvm';
+const PITCH = 'pitch';
 
 tuneNumber({
   id: SHOW_VM, group: 'View', label: 'Show viewmodel', min: 0, max: 1, value: 1, step: 1,
@@ -27,7 +29,32 @@ tuneNumber({
   hint: '0 hides the hands and weapon',
 });
 
-onKnobChange((k) => { if (k.spec.id === SHOW_VM) apply(); });
+// ── LOOK PITCH — so the FLOOR can be judged in the same lab ──────────────────
+// Josh: *"maybe you need a way to in the same scenario snapshot the floor."*
+//
+// The surface lab is walkable, which is right — relief needs a grazing view and
+// colour needs a face-on one — but a walkable scenario has no authored camera
+// angle, only a spawn position and a yaw. There is nowhere to say "and look
+// down at the flagstones", and on a touch build getting a repeatable downward
+// angle by dragging is guesswork.
+//
+// A pitch that can be TYPED (or dragged, or seeded from the URL as ?pitch=-0.7)
+// makes the floor shot repeatable — the same angle before and after a change,
+// which is the whole point of a lab. It writes the camera module's own pitch
+// rather than camera.rotation.x, because the look code reads that variable
+// every frame and would overwrite anything set on the object directly.
+//
+// Not clamped tighter than the camera's own limit: looking straight down at
+// your boots is a legitimate way to inspect a floor texture.
+tuneNumber({
+  id: PITCH, group: 'View', label: 'Look pitch', min: -1.5, max: 1.5, value: 0,
+  apply: 'live', hint: 'negative looks down at the floor; a drag overrides it',
+});
+
+onKnobChange((k) => {
+  if (k.spec.id === SHOW_VM) apply();
+  if (k.spec.id === PITCH) setCameraPitch(k.get());
+});
 
 function apply(): void {
   const k = getKnob(SHOW_VM);
@@ -48,14 +75,20 @@ function apply(): void {
 if (typeof window !== 'undefined') {
   let tries = 0;
   const t = window.setInterval(() => { apply(); if (++tries > 40) window.clearInterval(t); }, 250);
+  // Pitch is NOT polled. It is a camera angle, and re-asserting it every 250ms
+  // would yank the view out from under anyone who looked somewhere else. It is
+  // applied at the one moment that clobbers it instead — main.ts calls
+  // reapplyViewKnobs() right after its level-entry setCameraPitch(0).
 }
 
-/** Re-apply after anything that rebuilds the viewmodel (a weapon swap replaces
- *  the roots, and a fresh root defaults to visible). Called from the equip path
- *  so the toggle does not silently come undone. */
+/** Re-apply after anything that rebuilds the viewmodel or resets the camera —
+ *  a weapon swap replaces the roots (and a fresh root defaults to visible), and
+ *  entering a level zeroes the pitch. Called from those sites so the knobs are
+ *  not silently undone by whatever ran last. */
 export function reapplyViewKnobs(): void {
-  const k = getKnob(SHOW_VM);
-  if (!k) return;
-  const show = k.get() > 0.5;
-  for (const root of getViewmodelRoots()) root.visible = show;
+  apply();
+  const p = getKnob(PITCH);
+  // Zero means "wherever the game put you" — asserting it would fight the
+  // level-entry reset it is meant to survive, and win nothing.
+  if (p && Math.abs(p.get()) > 1e-4) setCameraPitch(p.get());
 }

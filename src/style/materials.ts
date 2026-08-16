@@ -167,6 +167,12 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     //
     // Now cool, mirroring the ceiling's existing [0.7, 0.8, 1.05]. The system
     // always supported per-surface tinting; the floor was simply authored warm.
+    // role:'floor' opts this one material into the live Sheen knobs — Josh:
+    // *"the floor is a bit too silver metallic ... i think it could be cool if
+    // we could experiment a bit with it."* The tint below stays the AUTHORED
+    // value; the knobs ride on top of it, so nothing here has to move while
+    // he's finding the look.
+    role: 'floor',
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [0.90, 0.97, 1.12], relief: 0.32,
   });
   installSurfaceDetail(ceilingBase, {

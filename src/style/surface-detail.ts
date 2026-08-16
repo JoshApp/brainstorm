@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
 
-import { tuneUniform, tuneNumber } from '../debug/tuning';
+import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
 
 // ── POM TUNING ───────────────────────────────────────────────────────────────
 // Read ONCE at module load, not per material: the step count is unrolled into
@@ -63,6 +63,69 @@ const POM_REFINE: number = Math.round(tuneNumber({
 })());
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// ── THE SHEEN GROUP — how the FLOOR answers light ────────────────────────────
+// Josh: *"the floor is a bit too silver metallic, from afar it has this awesome
+// sheen, and yes stone can be like mirror polished from stepping on it but i
+// think it could be cool if we could experiment a bit with it ... we are going
+// to make a kinda elaborate setup and then i will step by step experiment and
+// tell you whats missing."*
+//
+// So this is the setup, not an opinion about where the values should land. Four
+// things make that floor silver and until now not one of them could be moved
+// without a reload:
+//
+//   COLOUR      the floor tint was pushed cool ([0.90, 0.97, 1.12]) to stop it
+//               reading as the same stone as the wall. Cool + bright = silver.
+//   BRIGHTNESS  a pale albedo takes more light back than a dark one, and 'too
+//               metallic' is often just 'too bright' wearing a colour.
+//   ROUGHNESS   0.72 is what gives it a broad specular sheen at all. This is
+//               the dial between damp stone and dry stone.
+//   POLISH      the grease layer subtracts up to 0.26 more roughness in broad
+//               patches, and THAT is the mirror-from-being-stepped-on read.
+//               Two knobs, because how STRONG the polish is and how much of the
+//               floor gets it are different questions with different answers.
+//
+// Floor-scoped on purpose: the wall has never been the complaint, and roughness
+// is a per-material property anyway. `cfg.role === 'floor'` selects them, which
+// costs no new pipeline variant — the floor material already has a unique flag
+// combination (horiz + splat + seamShadow + seamGlowScale), so its node graph
+// was already its own.
+const flrWarm = tuneNumber({
+  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: 0,
+  apply: 'live', hint: 'negative = colder/more silver, positive = warm stone',
+});
+const flrBright = tuneNumber({
+  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 1.0,
+  apply: 'live', hint: 'how much light the stone gives back at all',
+});
+const uFlrRough = tuneUniform({
+  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.72,
+  hint: 'low = wet/polished sheen, high = dry matte stone',
+});
+const uFlrPolish = tuneUniform({
+  id: 'flrpolish', group: 'Sheen', label: 'Traffic polish', min: 0, max: 0.6, value: 0.26,
+  hint: 'how much smoother the worn patches get',
+});
+const uFlrPolishAt = tuneUniform({
+  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.58,
+  hint: 'high = only a few lanes shine, low = the whole floor does',
+});
+
+// Warmth + brightness fold into ONE vec3 that multiplies the floor's authored
+// tint. Two scalars are what you want to drag; one uniform is what the shader
+// wants to read, and recomputing here means the shader never has to know the
+// knobs exist.
+const uFlrTintAdj = (tslUniform as any)(new THREE.Vector3(1, 1, 1));
+function refreshFloorTint(): void {
+  const w = flrWarm(), b = flrBright();
+  // Opposed R/B swing with G held: that is a colour-TEMPERATURE move, which is
+  // what "silver vs warm stone" actually is. Scaling all three would only be
+  // the brightness knob again.
+  (uFlrTintAdj as any).value.set(b * (1 + w * 0.20), b, b * (1 - w * 0.22));
+}
+refreshFloorTint();
+onKnobChange((k) => { if (k.spec.id === 'flrwarm' || k.spec.id === 'flrbright') refreshFloorTint(); });
+
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
 // seep-flow layers. mx_noise_float is 3D gradient noise (8 corner gradients + interp,
 // the heaviest single thing in the surface shader); these layers only need a smooth
@@ -278,7 +341,12 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // removed with the texture experiment.)
   const variant: any = sampled.g;
   const wear: any = sampled.b;
+  const isFloor = cfg.role === 'floor';
   let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
+  // Warmth + brightness ride ON TOP of the authored tint rather than replacing
+  // it, so the tint stays the thing a surface declares about itself and this
+  // stays the thing being experimented with. At the defaults it is (1,1,1).
+  if (isFloor) albedo = albedo.mul(uFlrTintAdj);
 
   // ── PER-STONE COLOUR ───────────────────────────────────────────────────────
   // Josh: *"cant we kinda give the floor a different coloring."*
@@ -406,16 +474,24 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // greasy patches and the worn edges and skips the dusty hollows, and that
   // changes as the player moves. Pure ALU on a surface already being shaded —
   // no extra draws, which is the budget that actually matters here.
-  const grease: any = (tslSmoothstep as any)(0.58, 0.96, macro);
+  // FLOOR: threshold + strength are live (the Sheen group), because "polished
+  // from being stepped on" is a look with a wide right answer and the only way
+  // to find it is to drag it. The window stays a fixed 0.38 wide — moving both
+  // edges independently turns one judgement into two, and the edge that matters
+  // is where the polish STARTS.
+  const greaseLo: any = isFloor ? (uFlrPolishAt as any) : float(0.58);
+  const greaseHi: any = isFloor ? (uFlrPolishAt as any).add(0.38) : float(0.96);
+  const grease: any = (tslSmoothstep as any)(greaseLo, greaseHi, macro);
   const proud: any = (tslSmoothstep as any)(0.80, 1.05, sampled.a);
-  const baseRough: any = (tslUniform as any)(mat.roughness);
+  const polish: any = isFloor ? (uFlrPolish as any) : float(0.26);
+  const baseRough: any = isFloor ? (uFlrRough as any) : (tslUniform as any)(mat.roughness);
   // PER-STONE WEAR rides on top: some blocks are simply rougher rock than their
   // neighbours, and a spalled face or a bare-earth pit is rougher still (the
   // generators fold that into the wear channel). Centred on 0.5 so it pushes
   // both ways rather than only adding.
   const stoneWear: any = wear.sub(0.5).mul(uStoneWear as any);
   const varied: any = (tslClamp as any)(
-    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear),
+    baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(polish)).add(stoneWear),
     0.18, 1.0,
   );
   (mat as any).roughnessNode = (tslMix as any)(varied, float(SEAM_ROUGH), wetMask);
@@ -509,6 +585,12 @@ export interface SurfaceTexConfig {
   tex: THREE.Texture;
   tile: readonly [number, number];     // world metres per repeat
   proj: 'wall' | 'horiz';              // wall = vertical plane, horiz = floor/ceiling
+  /** WHAT this surface is, as opposed to how it is projected — the ceiling
+   *  shares the floor's projection and should share none of its tuning. Opts a
+   *  surface into the live Sheen knobs; only the floor has any today. Costs no
+   *  extra pipeline variant while it names a config that was already structurally
+   *  unique. */
+  role?: 'floor';
   tint: readonly [number, number, number];
   relief: number;                      // normal-perturbation strength
   /** WORLD-SPACE brick damage (rough masonry walls only): sparse

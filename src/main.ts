@@ -184,6 +184,7 @@ import { installDevHooks } from './debug/dev-hooks';
 import { mountLuxButtonIfEnabled } from './debug/lux-button';
 import { initProfilerWiring, applyProfilerEnabled } from './debug/profiler-wiring';
 import { applyFakeStateFlags, handleDebugScreenFlags } from './debug/boot-url-screens';
+import { reapplyViewKnobs } from './debug/tuning-view';
 
 // The entry module executed — tell the stale-shell watchdog in index.html the app booted,
 // so it won't self-heal (reload). If a deploy had left a stale cached shell pointing at
@@ -708,6 +709,13 @@ initLevelLoader({
       return null;
     });
     setCameraPitch(0);   // forget the stairs — wake looking level
+    // …then let the DEV View knobs have the last word, because THIS line is
+    // what was quietly eating ?pitch=. The knob is seeded at module load, the
+    // level arrives many seconds later, and whoever wins is decided by
+    // ordering rather than by intent. Re-asserting here makes the intent
+    // explicit; it is a no-op at the default (pitch 0, viewmodel shown) and
+    // dead-code-eliminated in production.
+    if (import.meta.env.DEV) reapplyViewKnobs();
     // Wake seated at the threshold bonfire. FULL ceremony (heavy blink,
     // blur-to-focus) where the fiction says you slept: the run's first
     // floor, the tutorial, and the floor after a safe-room rest.

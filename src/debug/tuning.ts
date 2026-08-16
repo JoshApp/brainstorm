@@ -137,6 +137,36 @@ export function knobGroups(): string[] {
 }
 export function getKnob(id: string): Knob | undefined { return knobs.get(id); }
 
+// ── window.__tune — the same knobs, from a console or a script ───────────────
+// The panel is for a thumb; this is for everything else. It exists because
+// verifying a live knob without it means a full page reload with a ?param —
+// which is precisely the loop this file was written to kill, and I walked
+// straight back into it the first time I tried to check my own work.
+//
+// It also makes a look SCRIPTABLE: an A/B screenshot pair is now two
+// __tune.set() calls between two captures, instead of two level rebuilds.
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __tune?: unknown }).__tune = {
+    /** Every knob as 'group/id = value', for finding the id you want. */
+    list: () => listKnobs().map((k) => `${k.spec.group}/${k.spec.id} = ${k.get()}`),
+    get: (id: string) => knobs.get(id)?.get(),
+    /** Set one knob. Returns the clamped value, or a message if the id is
+     *  wrong — silently doing nothing is the failure mode to avoid here. */
+    set: (id: string, v: number) => {
+      const k = knobs.get(id);
+      if (!k) return `no knob '${id}' — try __tune.list()`;
+      k.set(v);
+      return k.get();
+    },
+    /** Set several at once: __tune.setAll({ flrwarm: 0.6, flrrough: 0.9 }). */
+    setAll: (vals: Record<string, number>) =>
+      Object.entries(vals).map(([id, v]) => `${id}: ${
+        knobs.has(id) ? (knobs.get(id)!.set(v), knobs.get(id)!.get()) : 'UNKNOWN'
+      }`),
+    query: () => knobsAsQuery(),
+  };
+}
+
 /** Current settings as a URL query, so a look found by dragging can be shared
  *  or pasted back — the panel's "copy" button. Only non-default values. */
 export function knobsAsQuery(): string {

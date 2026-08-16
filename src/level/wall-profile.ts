@@ -132,28 +132,47 @@ const PLAIN: WallBand[] = [
  * Safe default for rooms that shouldn't draw attention to themselves.
  */
 const PLINTH: WallBand[] = [
-  { name: 'plinth', h: 0.42, depth: 0,     mat: 'dressed', fixed: true },
+  { name: 'plinth', h: 0.42, depth: 0,     mat: 'wall', fixed: true },
   { name: 'field',  h: 1.0,  depth: -0.14, mat: 'wall' },
 ];
 
 /**
- * COURSED — plinth, recessed field, string course, upper field, cap.
+ * COURSED — plinth, recessed field, cap. Three bands, two depth changes.
  *
- * The full grammar, for rooms that earn a look: five bands and four depth
- * changes, so light rakes across four horizontal edges instead of none. The
- * deeply recessed fields are what stop the wall reading as a stack of shelves —
- * the standing courses need something to stand proud OF.
+ * ── THE STRING COURSE IS GONE, AND SO IS THE DRESSED STONE ──────────────────
+ * Josh, on the screenshots: *"can you remove the vertical bars that we added in
+ * front of the mid section of the wall, i dont think we need it right now with
+ * the cool new stone, and the bottom section towards the floor as well as
+ * towards the ceiling it needs to have some sort of matching texture."*
  *
- * The cap sits deeper than the plinth. Weight belongs at the bottom; a cap that
- * projects further than the base reads as top-heavy and wrong, and the eye
- * notices even when it can't say why.
+ * Both halves of that are the same mistake, made when the grammar was the ONLY
+ * thing giving a wall depth. Back then the wall was a flat plane with a painted
+ * brick pattern on it, so a band standing in front of the field was the only
+ * source of a real shadow line, and a DIFFERENT material on that band was the
+ * only way to say "this course is finished stone."
+ *
+ * Neither is true now. The stone itself has depth — POM displaces it, the
+ * height field rakes it — so a band that stands in front of the field competes
+ * with the masonry instead of framing it, and reads as a bar bolted across the
+ * wall rather than as part of it. And the dressed ashlar the plinth and cap
+ * were using is a genuinely different stone (bigger blocks, thin clean joints,
+ * no brick damage, no seep), which at the base of a rough wall reads as a
+ * smooth blank slab — the flat pale band in his screenshot.
+ *
+ * So: the field is one continuous run of masonry, the plinth steps FORWARD of
+ * it at the base and the cap steps forward less at the top, and all three are
+ * the same stone. What survives is the pair of horizontal shadow lines, which
+ * is the part that was ever doing the work. Weight still belongs at the
+ * bottom — the cap projects less than the plinth, and the eye notices when it
+ * doesn't even if it can't say why.
+ *
+ * Side benefit, since it is the seam the peer session cares about: three bands
+ * on ONE material merge into one group instead of five bands across two.
  */
 const COURSED: WallBand[] = [
-  { name: 'plinth',  h: 0.38, depth: 0,     mat: 'dressed', fixed: true },
-  { name: 'lower',   h: 1.0,  depth: -0.22, mat: 'wall' },
-  { name: 'string',  h: 0.22, depth: -0.03, mat: 'dressed', fixed: true },
-  { name: 'upper',   h: 0.8,  depth: -0.22, mat: 'wall' },
-  { name: 'cap',     h: 0.20, depth: -0.08, mat: 'dressed', fixed: true },
+  { name: 'plinth',  h: 0.38, depth: 0,     mat: 'wall', fixed: true },
+  { name: 'field',   h: 1.0,  depth: -0.22, mat: 'wall' },
+  { name: 'cap',     h: 0.20, depth: -0.08, mat: 'wall', fixed: true },
 ];
 
 const PROFILES: Record<WallProfileName, WallBand[]> = {

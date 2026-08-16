@@ -679,8 +679,11 @@ function buildRoomShell(
       // attribute even though it has no tint of its own, because everything
       // ELSE in trimGeos does.
       //
-      // This bit: the wall-profile bands ('dressed' plinth / string course /
-      // cap) also merge here, and they come from makeJitteredPlane, which
+      // This bit: any wall-profile band on the 'dressed' material also merges
+      // here. (None do today — the profiles are all one stone now, see
+      // wall-profile.ts — but the mismatch is a property of the MERGE, not of
+      // who happens to feed it, and the next dressed band would hit it again.)
+      // Those bands come from makeJitteredPlane, which
       // always writes vertex colours. mergeGeometries REFUSES a batch whose
       // members disagree about attributes, and it refuses by returning null —
       // which the merge below quietly skipped, dropping the whole dressed
