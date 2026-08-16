@@ -3,6 +3,7 @@ import { setMaterialStoneLightingWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix, uv as uvNode } from 'three/tsl';
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
+import { cornerFieldNode } from '../scene/corner-field';
 
 // ── POM TUNING ───────────────────────────────────────────────────────────────
 // Read ONCE at module load, not per material: the step count is unrolled into
@@ -188,6 +189,34 @@ const uWallBands = tuneUniform({
 const uFloorBands = tuneUniform({
   id: 'bandsf', group: 'Floor', label: 'Light bands', min: 2, max: 16, value: 5, step: 1,
   hint: 'fewer steps = bolder; big slabs carry hard bands well',
+});
+
+// ── THE QUOIN — masonry that knows it is turning a corner ───────────────────
+//
+// Josh, 2026-08-16: *"every polygon transition creates another vertical
+// architectural line"*, and the proposal that came with it — bias stones near a
+// corner larger and more regular, so the masonry itself communicates "this is a
+// corner" rather than needing a pillar to say it. That is exactly the right
+// ambition for rooms stripped back to walls and floor: architectural structure
+// with no extra geometry.
+//
+// HOW A TILING BAKE DOES SOMETHING IT CANNOT DO. The stone LAYOUT is baked once
+// and repeats, so "make this stone bigger here" is not available — the layout
+// has no idea where it is. But SUPPRESSING THE JOINTS between stones has almost
+// the same effect on the eye and is a pure per-fragment operation: two adjacent
+// baked stones with no joint drawn between them read as ONE larger stone. So the
+// quoin does not enlarge anything. It hides the evidence that the stone is two.
+//
+// It also calms the surface — corner damage and per-stone wear both come down —
+// which is the other half of the note ("larger, calmer masonry near a corner").
+//
+// The FIELD that says how cornered a place is lives in scene/corner-field.ts;
+// see its header for why it is a world-space texture rather than a vertex
+// attribute (mergeGeometries silently nulls on attribute mismatch, and wall
+// geometry comes from two independent builders).
+const uQuoin = tuneUniform({
+  id: 'quoin', group: 'Wall', label: 'Corner quoins', min: 0, max: 1, value: 0.7,
+  hint: 'joints fade and damage calms where walls turn — 0 is off',
 });
 
 const uSpecBands = tuneUniform({
@@ -770,7 +799,23 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // the `cavity` mask below, which means "any low spot" and is used for the
   // depth read; this one means "not stone", and the difference matters because
   // one of them changes a brightness and the other changes a material.
-  const mortar: any = float(1).sub((tslSmoothstep as any)(0.52, 0.92, sampled.a));
+  let mortar: any = float(1).sub((tslSmoothstep as any)(0.52, 0.92, sampled.a));
+  // ── QUOIN: THE CORNER IS ONE STONE ─────────────────────────────────────────
+  // Walls only. A floor has no corners in the architectural sense — its slabs
+  // run under the wall and out the other side — and a horizontal surface reading
+  // the same field would put mystery smooth patches in every corner of the
+  // ground. `cfg.proj === 'wall'` is the same test the rest of this file uses to
+  // mean "a vertical masonry surface".
+  //
+  // The field is inert (0) until a floor builds one, so the bench, the title
+  // screen and any rect-only level are untouched without a second code path.
+  const quoin: any = cfg.proj === 'wall'
+    ? cornerFieldNode(positionWorld).mul(uQuoin as any)
+    : float(0);
+  // Fade the joints out toward the corner. Not all the way to zero even at full
+  // strength: a corner with NO joints at all stops being masonry and becomes a
+  // poured pier, and the thing being built here is a big stone, not a blank.
+  mortar = mortar.mul(float(1).sub(quoin.mul(0.82)));
   let albedo: any = base.mul((vec3 as any)(sampled.r, sampled.r, sampled.r)).mul(tint);
   // Warmth + brightness ride ON TOP of the authored tint rather than replacing
   // it, so the tint stays the thing a surface declares about itself and this
@@ -975,7 +1020,10 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // neighbours, and a spalled face or a bare-earth pit is rougher still (the
   // generators fold that into the wear channel). Centred on 0.5 so it pushes
   // both ways rather than only adding.
-  const stoneWear: any = wear.sub(0.5).mul(uStoneWear as any);
+  // ...and calmer, per the same note: the corner stone is the one the mason
+  // chose well and set carefully, so its face varies less than the field around
+  // it. Same term, so the two halves of a quoin can never drift apart.
+  const stoneWear: any = wear.sub(0.5).mul(uStoneWear as any).mul(float(1).sub(quoin.mul(0.6)));
   // ── AGGREGATE DOES NOT TAKE A SHINE ────────────────────────────────────────
   // Both polish terms are gated OUT of the joints. Mortar and packed dirt are
   // aggregate — no amount of traffic across a floor puts a gloss on the stuff

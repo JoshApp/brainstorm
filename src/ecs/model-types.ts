@@ -47,10 +47,13 @@ export interface MaterialDef {
    * texture and wall projection, so alignment is kept, but without the
    * world-space damage layers and at two thirds the relief; for architecture
    * that has to out-rank the wall it stands in), 'dressed' (finer ashlar),
-   * 'grain' (faint column grain). World-projected, so no UVs needed. Registered
-   * at material-build time; unknown names no-op.
+   * 'grain' (faint column grain), 'carved' (grain at a block's relief — for
+   * geometry ROTATED out of the wall's frame, like an arch's voussoirs, where a
+   * directional course pattern would run diagonally across the stone).
+   * World-projected, so no UVs needed. Registered at material-build time;
+   * an unknown name warns in DEV and installs nothing.
    */
-  detail?: 'wall' | 'frame' | 'dressed' | 'grain';
+  detail?: 'wall' | 'frame' | 'dressed' | 'grain' | 'carved';
   /**
    * Fresnel rim glow — brightens fragments where the surface normal
    * grazes the view direction (the silhouette edge). Classic "ghost

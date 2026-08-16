@@ -76,6 +76,7 @@ import { registerFateFire } from './fate-fire';
 import { clearFateGate } from '../state/fate-gate';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
+import { buildCornerField, clearCornerField } from '../scene/corner-field';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -1264,6 +1265,19 @@ export function buildLevel(
       maxZ = Math.max(maxZ, r.rect.z + r.rect.d / 2);
     }
     if (isFinite(minX)) resetSplatMap(minX - 2, minZ - 2, maxX - minX + 4, maxZ - minZ + 4);
+  }
+  // CORNER FIELD: where this floor's walls turn, for the quoin term in the
+  // surface shader (scene/corner-field.ts). Built from the room OUTLINES the
+  // generator already produced rather than inferred back out of geometry, so it
+  // agrees with the walls by construction. Rect-only floors (the tutorial, the
+  // debug scenarios) have no polygons and simply get no field — the term is
+  // inert at 0 and costs one texture tap against a 1x1.
+  {
+    const polys = spec.rooms
+      .map((r) => r.poly)
+      .filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
+    if (polys.length) buildCornerField({ polys });
+    else clearCornerField();
   }
   const wallSegments: WallSegment[] = [];
   // Hoisted: stair-footprint AABBs push into this BEFORE the prop pass

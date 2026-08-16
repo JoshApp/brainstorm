@@ -237,9 +237,38 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // for, taken off the channel that actually carries it.
     relief: 0.20,
   });
+  const grainTex = bakeSurfaceTexture(renderer, 'grain');
   registerSurfaceDetail('grain', {
-    tex: bakeSurfaceTexture(renderer, 'grain'),
+    tex: grainTex,
     tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.05,
+  });
+  // ── CARVED — stone with NO DIRECTION IN IT ────────────────────────────────
+  //
+  // For geometry that is ROTATED out of the wall's frame: the voussoirs of an
+  // arch, and anything else laid on a curve.
+  //
+  // Josh forwarded the diagnosis 2026-08-16 and it is exactly right: *"don't
+  // world-project rectangular masonry straight through an arch, it'll look like
+  // someone cut an arch-shaped hole through wallpaper."* The wall's detail is
+  // DIRECTIONAL — courses run at world Y = k x COURSE_H — and a voussoir sits at
+  // 40 degrees to that, so horizontal mortar lines run diagonally across a stone
+  // that is visibly a wedge. The block says "I am laid around a curve" and the
+  // texture on it says "I am part of a flat coursed wall".
+  //
+  // The fix is not an angular projection mode (that needs per-part orientation
+  // in the shader, i.e. a material per voussoir). It is to use a pattern with NO
+  // PREFERRED DIRECTION, at which point rotation stops mattering at all. That
+  // texture already exists: 'grain' was baked for exactly this problem one
+  // surface over — materials.ts, on the prop columns, "so a round shaft catches
+  // torchlight without the masonry pattern smearing around its curve." A curve is
+  // a curve.
+  //
+  // Relief 0.14 rather than grain's 0.05, because a voussoir is a hand-dressed
+  // block that should still catch a lamp, where a column shaft wants to stay
+  // quiet. Same texture, same flags, so no new pipeline variant.
+  registerSurfaceDetail('carved', {
+    tex: grainTex,
+    tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.14,
   });
   installNamedSurfaceDetail(propStone, 'grain');   // columns: faint grain only
 

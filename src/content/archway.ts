@@ -316,7 +316,9 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       pos: [rho * Math.sin(theta), g.centreY + rho * Math.cos(theta), 0],
       rot: [0, 0, -theta],
       size: [tang, radial, key ? D.keystone : D.arch],
-      mat: 'stone',
+      // 'carved', not the wall's stone — this block is rotated out of the wall's
+      // frame and a directional course pattern would run diagonally across it.
+      mat: 'carved',
     } as PartSpec);
   }
 
@@ -355,7 +357,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       pos: [hoodRho * Math.sin(theta), g.centreY + hoodRho * Math.cos(theta), 0],
       rot: [0, 0, -theta],
       size: [hoodRho * step2 * 1.10, HOOD_RADIAL, D.arch + 0.06],
-      mat: 'stone',
+      mat: 'carved',
     } as PartSpec);
   }
   // Where the gate's own stone stops. Everything above this is wall.
@@ -445,6 +447,22 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // with the masonry they interrupt; the world-space damage layers come off
       // so the gate is the calm thing in a noisy wall rather than more of it.
       stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'frame' },
+      // ── THE RING IS DRESSED STONE, AND THAT IS BOTH TRUE AND USEFUL ────────
+      // A second material on this model, after it was deliberately reduced to
+      // one ("ONE material, and it is the WALL's"). The reason that consolidation
+      // was right has not changed — a gate is a hole in a wall and its LAID stone
+      // should be the wall's — but it over-reached: a voussoir is not laid, it is
+      // CUT, and it sits at up to 40 degrees to the wall's coursing. Giving the
+      // ring the wall's directional pattern put horizontal mortar lines running
+      // diagonally across every wedge.
+      //
+      // So the split now falls where the masonry itself splits: JAMBS AND THE
+      // WALL ABOVE are laid stone and speak 'frame'; the RING (voussoirs,
+      // keystone, hood) is carved stone and speaks 'carved'. Two materials is
+      // one extra merge group per floor, which the frame comment already
+      // budgets for, and it buys back the hierarchy the gate lost when it
+      // stopped being ashlar.
+      carved: { color: 0x2a2e34, roughness: 0.98, metalness: 0.0, flatShading: true, detail: 'carved' },
     },
     parts,
     // Mount points for the dungeon's EYE, on the KEYSTONE's outer faces (one
