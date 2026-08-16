@@ -1214,6 +1214,23 @@ export function registerSurfaceDetail(name: string, cfg: SurfaceTexConfig): void
 }
 export function installNamedSurfaceDetail(material: THREE.Material, name: string): void {
   const cfg = namedConfigs.get(name);
+  // A MISSING NAME IS SILENT, AND SILENCE IS THE WRONG ANSWER HERE.
+  //
+  // Adding the 'frame' dialect meant answering "did that actually take?" and
+  // finding there is no way to tell: the material ends up smooth and untextured,
+  // which is a plausible-looking result, and the static batcher then swaps the
+  // material anyway so the name is not even inspectable in the scene afterwards.
+  // A typo, or registering a config AFTER the first model that asks for it, both
+  // land here and both look like a shading decision rather than a bug.
+  //
+  // DEV-only, so it costs the shipped bundle nothing.
+  if (!cfg && import.meta.env.DEV) {
+    console.warn(
+      `[surface-detail] no config registered as '${name}' — this material gets NO `
+      + `detail. Either the name is a typo, or it was asked for before `
+      + `buildMaterials() registered it. Known: ${[...namedConfigs.keys()].join(', ') || '(none yet)'}`,
+    );
+  }
   if (cfg) installSurfaceDetail(material, cfg);
   // Leave the NAME on the material. A named detail is the only kind that can be
   // reconstructed later from the material alone, and the static batcher needs
