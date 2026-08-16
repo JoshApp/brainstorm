@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
 
-import { DEV } from '../debug/dev';
+import { tuneUniform, tuneNumber } from '../debug/tuning';
 
 // ── POM TUNING ───────────────────────────────────────────────────────────────
 // Read ONCE at module load, not per material: the step count is unrolled into
@@ -20,55 +20,47 @@ const POM_DEFAULT_STEPS = 8;
 // map; at the old depth those holes were being marched through in one step and
 // read as flat dark patches. ?pomdepth= to experiment.
 const POM_DEPTH_DEFAULT = 0.10;
-
-// ── STYLE DIALS ──────────────────────────────────────────────────────────────
-// Josh: *"fuck the rules we have written lets invent this games art style."*
-// These are the knobs worth pushing to find a look, exposed as DEV URL params
-// so a style can be tried in a reload instead of an edit:
-//   ?stonehue=0..2    how far apart different stones' colours sit
-//   ?stonewear=0..1   how much stones differ in roughness
-//   ?pomdepth=0..0.3  how deep the stone goes
-//   ?pom=0..24        march steps (0 = off)
-const urlNum = (key: string, dflt: number, lo: number, hi: number): number => {
-  if (!DEV || typeof window === 'undefined') return dflt;
-  const v = new URLSearchParams(window.location.search).get(key);
-  if (v == null) return dflt;
-  const n = parseFloat(v);
-  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : dflt;
-};
-const STONE_HUE_SPREAD = urlNum('stonehue', 0.85, 0, 2);
-const STONE_WEAR_SPREAD = urlNum('stonewear', 0.30, 0, 1);
-const POM_DEPTH_M = urlNum('pomdepth', POM_DEPTH_DEFAULT, 0, 0.3);
 // Metres over which POM depth fades to nothing. Beyond this the mip chain has
 // flattened the height field anyway, so marching it only buys artefacts.
 const POM_FADE_NEAR = 3.5;
 const POM_FADE_FAR = 7.0;
-// Relief amplitude in METRES of apparent height per unit of the height channel.
-// A real quantity, unlike the RELIEF_BOOST=26 fudge it replaces — the gradient
-// below is now a true slope, so this scales something meaningful. First value
-// (0.06) came out visibly flatter than the old screen-space path: that path was
-// over-driving relief at close range, which was part of what read as harsh.
-// ?relief= to dial.
-// 0.25 is Josh's setting after dialling it live: *"even the untextured looks
-// better at higher relief, i think it looks flatter at relief 0, i settled on
-// like 0.25."*
-const RELIEF_METRES = urlNum('relief', 0.25, 0, 0.6);
-// Binary-refinement iterations after the linear POM march. Four halvings cut
-// the residual error 16x for four texture reads. ?pomrefine=0 shows the banding
-// this removes.
-const POM_REFINE: number = Math.round(urlNum('pomrefine', 4, 0, 8));
-const POM_STEPS: number = (() => {
-  // DEV from debug/dev.ts, NOT a bare `import.meta.env.DEV`. This runs at
-  // MODULE LOAD, and under the tsx test runner `import.meta.env` is undefined,
-  // so reading `.DEV` off it throws before any test body runs. That took out 34
-  // test files on the first attempt — the guard exists in dev.ts for exactly
-  // this and its comment says so.
-  if (!DEV || typeof window === 'undefined') return POM_DEFAULT_STEPS;
-  const v = new URLSearchParams(window.location.search).get('pom');
-  if (v == null) return POM_DEFAULT_STEPS;
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? Math.max(0, Math.min(24, n)) : POM_DEFAULT_STEPS;
-})();
+
+// ── STYLE DIALS ──────────────────────────────────────────────────────────────
+// Registered with debug/tuning.ts, which means each declaration below is BOTH
+// the value and its entry in the in-game panel — group, label, range and hint
+// travel with the number they describe. URL params of the same id still seed
+// them, so every ?relief= link from before keeps working.
+// LIVE knobs — TSL uniforms, so dragging the slider moves the picture with no
+// rebuild and no reload. Each `tuneUniform` call is also its own registration:
+// it appears in the in-game panel under its group with no UI code anywhere.
+const uStoneHue = tuneUniform({
+  id: 'stonehue', group: 'Stone', label: 'Stone hue spread', min: 0, max: 2, value: 0.85,
+  hint: 'how far apart different stones\u2019 colours sit',
+});
+const uStoneWear = tuneUniform({
+  id: 'stonewear', group: 'Stone', label: 'Stone wear spread', min: 0, max: 1, value: 0.30,
+  hint: 'how much stones differ in roughness',
+});
+const uPomDepth = tuneUniform({
+  id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
+  hint: 'how deep the stone goes',
+});
+const uRelief = tuneUniform({
+  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.25,
+  hint: 'how hard light rakes across the surface',
+});
+
+// STRUCTURAL — unrolled into the node graph, so these cannot be uniforms. They
+// register as 'reload' knobs, and the panel says so on the slider rather than
+// pretending it worked.
+const POM_STEPS: number = Math.round(tuneNumber({
+  id: 'pom', group: 'Relief', label: 'POM steps', min: 0, max: 24, value: POM_DEFAULT_STEPS,
+  step: 1, apply: 'reload', hint: '0 = off',
+})());
+const POM_REFINE: number = Math.round(tuneNumber({
+  id: 'pomrefine', group: 'Relief', label: 'POM refine', min: 0, max: 8, value: 4,
+  step: 1, apply: 'reload', hint: 'binary halvings; 0 shows the banding',
+})());
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
@@ -192,7 +184,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // which at that distance is indistinguishable anyway.
     const dist: any = (cameraPosition as any).sub(pos).length();
     const fade: any = float(1).sub((tslSmoothstep as any)(POM_FADE_NEAR, POM_FADE_FAR, dist));
-    const depthN: any = float(POM_DEPTH_M).mul(fade);
+    const depthN: any = (uPomDepth as any).mul(fade);
     const uPer: any = tU.div(tN).mul(depthN).div(uTile.x);
     const vPer: any = tV.div(tN).mul(depthN).div(uTile.y);
     const stepUV: any = (vec2 as any)(uPer, vPer).mul(-1 / POM_STEPS);
@@ -306,7 +298,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const lowHalf: any = (tslSmoothstep as any)(0.0, 0.5, variant);
   const hiHalf: any = (tslSmoothstep as any)(0.5, 1.0, variant);
   const stoneHue: any = (tslMix as any)((tslMix as any)(STONE_A, STONE_B, lowHalf), STONE_C, hiHalf);
-  albedo = albedo.mul((tslMix as any)((vec3 as any)(1, 1, 1), stoneHue, float(STONE_HUE_SPREAD)));
+  albedo = albedo.mul((tslMix as any)((vec3 as any)(1, 1, 1), stoneHue, (uStoneHue as any)));
 
   // ── WEAR LAYERS (surface v3) ───────────────────────────────────────────────
   // Josh: *"it all looks so uniform so perfect so bland ... i would like it to
@@ -421,7 +413,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // neighbours, and a spalled face or a bare-earth pit is rougher still (the
   // generators fold that into the wear channel). Centred on 0.5 so it pushes
   // both ways rather than only adding.
-  const stoneWear: any = wear.sub(0.5).mul(STONE_WEAR_SPREAD);
+  const stoneWear: any = wear.sub(0.5).mul(uStoneWear as any);
   const varied: any = (tslClamp as any)(
     baseRough.add(cavity.mul(0.12)).sub(proud.mul(0.14)).sub(grease.mul(0.26)).add(stoneWear),
     0.18, 1.0,
@@ -476,7 +468,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // from texel-space to metres using the tile size.
   const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
   const dV: any = hAt(0, 1).sub(hAt(0, -1)).mul(0.5 * texW).div(uTile.y);
-  const amp: any = (tslUniform as any)(cfg.relief * RELIEF_METRES);
+  const amp: any = (uRelief as any).mul(cfg.relief);
   // The tangent frame is FREE again for the same reason POM's was: these UVs
   // are projected on world axes, so U and V *are* world axes.
   let uAxisW: any, vAxisW: any;

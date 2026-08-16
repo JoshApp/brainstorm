@@ -15,6 +15,8 @@ import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from 
 import { captureDrawReport } from './draw-report';
 import { runGpuAttribution } from './gpu-attribution';
 import { launchSpector } from './spector-launch';
+import { toggleTuningPanel } from './tuning-panel';
+import { DEV } from './dev';
 
 let root: HTMLDivElement | null = null;
 let hudBtn: HTMLButtonElement | null = null;
@@ -83,6 +85,14 @@ function mount(): void {
   spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
 
   root.append(hudBtn, recBtn, saveBtn, drawBtn, attrBtn, spcBtn);
+  // TUNE — the self-building knob panel (debug/tuning-panel.ts). DEV-only,
+  // unlike the rest of this toolbar: the profiling buttons are safe for players
+  // and ship behind a setting, but a slider that re-bakes textures is not.
+  if (DEV) {
+    const tuneBtn = makeBtn('TUNE');
+    tuneBtn.addEventListener('click', () => toggleTuningPanel());
+    root.append(tuneBtn);
+  }
   document.body.appendChild(root);
 
   onRecordingState(paintRec);

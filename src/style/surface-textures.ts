@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
 import { BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash } from './stone-grid';
+import { tuneNumber, onRebake } from '../debug/tuning';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -80,8 +81,9 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // slightly different sizes, the perpends stagger, and the wall reads as laid
   // by hand — with every edge still dead straight. This is the irregularity
   // masonry actually has, as opposed to the irregularity noise wants to give it.
-  const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16;   // ± along the course
-  const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10;    // ± in bed height
+  const jS = brickJitter();
+  const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16 * jS;   // ± along the course
+  const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10 * jS;    // ± in bed height
   const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
   const inby = clampf(fract(gy) + jy, 0.001, 0.999);
   const dH = Math.min(inby, 1 - inby) * by, dV = Math.min(inbx, 1 - inbx) * bx;
@@ -238,7 +240,35 @@ function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, n
 // How far each surface bends. Walls are LAID by someone and only sag with age;
 // a floor is bedded in earth and moves more. Kept small — past ~0.05 the courses
 // stop reading as masonry and start reading as melted.
-const WARP_AMP: Record<SurfaceKind, number> = {
+// Registered knobs, 'rebake' tier: moving one regenerates the CPU texture and
+// copies the new pixels into the SAME DataTexture, so the picture updates
+// without a reload and without anything downstream rebinding.
+const warpWall = tuneNumber({
+  id: 'warpwall', group: 'Bake', label: 'Wall warp', min: 0, max: 0.05, value: 0.011,
+  hint: 'how far the courses sag',
+});
+const warpFloor = tuneNumber({
+  id: 'warpfloor', group: 'Bake', label: 'Floor warp', min: 0, max: 0.08, value: 0.034,
+  hint: 'how much the flags shift',
+});
+const brickJitter = tuneNumber({
+  id: 'brickjit', group: 'Bake', label: 'Brick set-out', min: 0, max: 0.4, value: 1.0,
+  hint: 'how badly the bricks were laid (1 = as authored)',
+});
+const eroAmt = tuneNumber({
+  id: 'erode', group: 'Bake', label: 'Erosion', min: 0, max: 1, value: 1.0,
+  hint: 'weathering strength (1 = as authored)',
+});
+const toneCon = tuneNumber({
+  id: 'tone', group: 'Bake', label: 'Tone contrast', min: 0.4, max: 1.6, value: 1.0,
+  hint: 'how far the stones separate in value',
+});
+function warpAmpFor(kind: SurfaceKind): number {
+  if (kind === 'wall') return warpWall();
+  if (kind === 'floor') return warpFloor();
+  return WARP_AMP_BASE[kind];
+}
+const WARP_AMP_BASE: Record<SurfaceKind, number> = {
   wall: 0.011, floor: 0.034, ceiling: 0.014, dressed: 0.008, grain: 0,
 };
 // Which surfaces settle in slabs rather than flowing. Masonry and dressed stone
@@ -495,8 +525,8 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     for (let xi = 0; xi < CPU_TEX; xi++) {
       const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
       // WARP FIRST, then evaluate the pattern in the bent coordinates.
-      const [u, v] = WARP_AMP[kind] > 0
-        ? warpUV(u0, v0, WARP_AMP[kind], WARP_FACETED[kind]) : [u0, v0];
+      const wAmp = warpAmpFor(kind);
+      const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, WARP_FACETED[kind]) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
@@ -518,12 +548,12 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   // is where water goes; across a floor, because that is where feet go. This is
   // the operator that makes a surface look ACTED ON rather than merely noisy.
   const ero = EROSION[kind];
-  if (ero.amt > 0) {
+  if (ero.amt > 0 && eroAmt() > 0) {
     const smear = chainedErosion(eroF, CPU_TEX, CPU_TEX, ero.dx, ero.dy, ero.taps, ero.iters);
     for (let i = 0; i < N; i++) {
       // Only the strong end of the smear cuts — otherwise it is a grey veil
       // over everything instead of distinct runs.
-      const cut = smooth(0.38, 1.0, smear[i]) * ero.amt;   // gentler shoulder
+      const cut = smooth(0.38, 1.0, smear[i]) * ero.amt * eroAmt();   // gentler shoulder
       shadeF[i] *= mixf(1, 0.62, cut);
       heightF[i] -= cut * 0.22;
       wearF[i] = clampf(wearF[i] + cut * 0.5, 0, 1);   // eroded stone is rougher
@@ -537,7 +567,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     // R = shade, G = variant, B = wear, A = height. G and B are NOT copies of
     // R — they carry per-stone identity (see the Cell note above), so the
     // shader must read shade as `.r` broadcast, never `.rgb`.
-    buf[o] = clampf(toneRemap(clampf(shadeF[i], 0, 1), tone.pivot, tone.contrast), 0, 1) * 255;
+    buf[o] = clampf(toneRemap(clampf(shadeF[i], 0, 1), tone.pivot, tone.contrast * toneCon()), 0, 1) * 255;
     buf[o + 1] = clampf(variantF[i], 0, 1) * 255;
     buf[o + 2] = clampf(wearF[i], 0, 1) * 255;
     buf[o + 3] = clampf(heightF[i], 0, 1) * 255;
@@ -556,9 +586,29 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   return tex;
 }
 
+// Every texture handed out, so a rebake can refresh them all in place.
+const live = new Map<SurfaceKind, THREE.DataTexture>();
+
+// ── REBAKE IN PLACE ──────────────────────────────────────────────────────────
+// Copying the fresh pixels into the EXISTING DataTexture is what makes the
+// 'rebake' tier feel live. Handing out a NEW texture would mean every material
+// holding the old one has to be found and re-pointed, and the TSL graph that
+// captured it would need rebuilding — i.e. a reload by another name. Same
+// object, new bytes, needsUpdate: nothing downstream even knows.
+onRebake(() => {
+  for (const [kind, tex] of live) {
+    const fresh = bakeSurfaceCPU(kind);
+    (tex.image.data as Uint8Array).set(fresh.image.data as Uint8Array);
+    tex.needsUpdate = true;
+    fresh.dispose();
+  }
+});
+
 export function bakeSurfaceTexture(_renderer: DelveRenderer, kind: SurfaceKind): THREE.DataTexture {
   // The GLSL bake (ShaderMaterial + readRenderTargetPixels) was WebGL-only; the
   // sole (WebGPU) path generates the SAME patterns on the CPU (bakeSurfaceCPU) —
   // faithful, one-time, no GL/readback.
-  return bakeSurfaceCPU(kind);
+  const tex = bakeSurfaceCPU(kind);
+  live.set(kind, tex);
+  return tex;
 }
