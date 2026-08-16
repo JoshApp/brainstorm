@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
 
@@ -162,32 +162,59 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (floor/ceiling) it's the world XZ plane. Anisotropic tile is respected.
   const pos: any = positionWorld;
   const nrm: any = normalWorld;
-  // Meter-space projected coords (sU,sV); uv divides by the tile to get repeats.
-  let sU: any, sV: any;
+
+  // ── ONE PROJECTION FRAME, DECIDED ONCE ──────────────────────────────────────
+  // Josh: *"some textures that are like top or bottom facing flicker weirdly"*,
+  // and after a first fix, *"some of the top surfaces are still flickering ...
+  // there seems to be a subset of operations unstable on the top and maybe
+  // bottom surface."*
+  //
+  // "A subset of operations" is exactly right and is the whole bug. THREE
+  // separate places in this function need to know which world axes the texture
+  // runs along — the UV projection, the POM march direction, and the tangent
+  // frame the height gradient is converted through — and each one used to
+  // decide it independently by re-testing the normal.
+  //
+  // The test is `|nx| > |nz|`: which way does this wall face. It is fine on a
+  // genuine wall, where one of them dominates. On a face pointing UP or DOWN
+  // both are near zero, so the answer is decided by whatever noise is left in
+  // the interpolated normal — it flips between neighbouring pixels and between
+  // frames, and the texture snaps 90° as you move. Props, framing and the wall
+  // profile's band closures all use the 'wall' projection and all have
+  // horizontal faces, which is where it shows.
+  //
+  // I fixed ONE of the three sites last time (the UV projection) and reported
+  // the flicker as fixed. The march and the tangent frame kept re-deciding,
+  // which is why a subset of the shading went on flickering while the pattern
+  // itself held still. Deciding once and passing the frame down is what makes
+  // that class of bug impossible rather than fixed — three copies of a decision
+  // will drift again the next time one of them is touched.
+  //
+  // DOMINANT AXIS, not a 0.707 cutoff: pick the world plane the face is most
+  // parallel to. A two-axis projection cannot describe a horizontal surface at
+  // all, so an up-facing one is laid out in the ground plane, which is both
+  // stable and what you'd want anyway.
+  //
+  // A hard axis choice still has a seam at 45° — real triplanar blends across
+  // it, and that costs three times the taps on a shader that already marches
+  // this texture eight times, so it stays hard. The rooms are axis-aligned;
+  // nothing in the shell sits near the seam.
+  let sU: any, sV: any;      // metre-space projected coords
+  let axisU: any, axisV: any; // and the WORLD directions they run along
   if (cfg.proj === 'wall') {
-    // ── THE THIRD AXIS, which was missing ─────────────────────────────────────
-    // Josh: *"some textures that are like top or bottom facing flicker weirdly,
-    // kinda the texture alignment flickering wild if i move."*
-    //
-    // Real bug, and this line was it. The horizontal axis was chosen by
-    // comparing |nx| against |nz| — fine for a genuine WALL, where one of them
-    // dominates. But a face pointing UP or DOWN has BOTH near zero, so the
-    // comparison is decided by whatever noise is left in the interpolated
-    // normal: it flips between neighbouring pixels and between frames, and the
-    // texture snaps 90° back and forth as you move. Props and framing use the
-    // 'wall' projection and have plenty of horizontal faces, which is exactly
-    // where it showed.
-    //
-    // A two-axis projection cannot describe a horizontal surface. Fall back to
-    // the XZ plane when the face is mostly vertical-facing — which is both
-    // stable AND correct, since an up-facing surface should be laid out in the
-    // ground plane rather than stretched along world Y.
-    const flat: any = nrm.y.abs().greaterThan(0.707);
-    const sideU: any = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
-    sU = (flat as any).select(pos.x, sideU);
+    const flat: any = nrm.y.abs().greaterThanEqual((tslMax as any)(nrm.x.abs(), nrm.z.abs()));
+    const faceX: any = nrm.x.abs().greaterThan(nrm.z.abs());   // ±X-facing wall → U runs along Z
+    sU = (flat as any).select(pos.x, (faceX as any).select(pos.z, pos.x));
     sV = (flat as any).select(pos.z, pos.y);
+    axisU = (flat as any).select(
+      (vec3 as any)(1, 0, 0),
+      (faceX as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
+    );
+    axisV = (flat as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, 1, 0));
   } else {
     sU = pos.x; sV = pos.z;
+    axisU = (vec3 as any)(1, 0, 0);
+    axisV = (vec3 as any)(0, 0, 1);
   }
   // Tile / tint / seam-scale ride PER-MATERIAL UNIFORMS, not baked literals: a
   // `cfg.tile[0]` divisor or `vec3(cfg.tint)` inlined into the WGSL forks a fresh
@@ -227,13 +254,11 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   if (POM_STEPS > 0 && cfg.relief > 0) {
     const viewW: any = (cameraPosition as any).sub(pos).normalize();   // surface → eye
     // Tangential components along the SAME world axes the UVs are projected on.
-    let tU: any, tV: any;
-    if (cfg.proj === 'wall') {
-      tU = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(viewW.z, viewW.x);
-      tV = viewW.y;
-    } else {
-      tU = viewW.x; tV = viewW.z;
-    }
+    // Projecting onto the frame vectors rather than re-picking a component is
+    // what keeps this in step with the UVs — it is the same decision by
+    // construction, not the same decision written out twice.
+    const tU: any = viewW.dot(axisU);
+    const tV: any = viewW.dot(axisV);
     // Component along the surface normal. Clamped away from zero: at grazing
     // incidence the true offset tends to infinity and the march smears into
     // long streaks, the classic POM failure. The clamp trades a little depth at
@@ -545,20 +570,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const dU: any = hAt(1, 0).sub(hAt(-1, 0)).mul(0.5 * texW).div(uTile.x);
   const dV: any = hAt(0, 1).sub(hAt(0, -1)).mul(0.5 * texW).div(uTile.y);
   const amp: any = (uRelief as any).mul(cfg.relief);
-  // The tangent frame is FREE again for the same reason POM's was: these UVs
-  // are projected on world axes, so U and V *are* world axes.
-  let uAxisW: any, vAxisW: any;
-  if (cfg.proj === 'wall') {
-    uAxisW = (nrm.x.abs().greaterThan(nrm.z.abs()) as any)
-      .select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0));
-    vAxisW = (vec3 as any)(0, 1, 0);
-  } else {
-    uAxisW = (vec3 as any)(1, 0, 0);
-    vAxisW = (vec3 as any)(0, 0, 1);
-  }
+  // The tangent frame is FREE for the same reason POM's was: these UVs are
+  // projected on world axes, so U and V *are* world axes — and they are the
+  // ones already chosen above. This was the third site re-deciding for itself,
+  // which meant that on a horizontal face the perturbed NORMAL flipped even
+  // when the pattern under it did not: the stone held still and the lighting
+  // on it strobed.
   const nWorld: any = nrm
-    .sub(uAxisW.mul(dU.mul(amp)))
-    .sub(vAxisW.mul(dV.mul(amp)))
+    .sub(axisU.mul(dU.mul(amp)))
+    .sub(axisV.mul(dV.mul(amp)))
     .normalize();
   // normalNode wants a VIEW-space normal; the frame above is world.
   (mat as any).normalNode = (cameraViewMatrix as any).transformDirection(nWorld);
