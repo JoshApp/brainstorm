@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { clearance } from './floor-region';
 import type { Poly } from './room-shape';
 import { BRICK_W, COURSE_H, courseRows, flagstoneCell, stoneHash } from '../style/stone-grid';
+import { dressing } from './dressing';
 
 // ── COURSED MASONRY ──────────────────────────────────────────────────────────
 //
@@ -170,6 +171,21 @@ export function makeCoursedWall(
   const rand = opts.rand;
   const wear = Math.max(0, Math.min(1, opts.wear ?? 0.35));
   const courseH = opts.courseH ?? COURSE_H;
+  // CLEAN WALLS. See level/dressing.ts 'shell-coursing' for the argument; the
+  // short version is that this file's depth variation was the third system
+  // independently giving a wall relief, and the masonry shader is now the first.
+  //
+  // A NOTE ON THE RNG, because the obvious worry is wrong and it cost a round to
+  // establish that. Turning this off makes the function consume FEWER randoms —
+  // the per-vertex grime pass at the bottom draws once per vertex, and a flat
+  // wall has fewer vertices. That would be alarming if `rand` were the floor's
+  // build stream, because every roll after it would shift and a shading switch
+  // would reroll the dungeon. It is not: poly-room-shell passes `wearStream(room.id)`,
+  // a stream seeded from the room's own id and used for nothing but wall wear.
+  // The shift is contained to one room's grime and cannot reach layout, spawns or
+  // loot. So the draws are simply skipped, rather than the function being
+  // contorted to spend randoms it has no use for.
+  const coursed = dressing('shell-coursing');
 
   // ── THE COURSES ────────────────────────────────────────────────────
   //
@@ -193,7 +209,7 @@ export function makeCoursedWall(
   // different frequencies is what stops a procedural surface reading as noise:
   // the eye finds the long shape first and the detail second.
   const bowPhase = rand() * Math.PI * 2;
-  const bowAmp = bowAmpFor(wear);
+  const bowAmp = coursed ? bowAmpFor(wear) : 0;
   const bowAt = (x: number) => Math.sin(x / Math.max(1.2, len * 0.31) + bowPhase) * bowAmp;
 
   const pos: number[] = [], uv: number[] = [], idx: number[] = [];
@@ -221,7 +237,8 @@ export function makeCoursedWall(
   const depth: number[] = [];
   for (let c = 0; c + 1 < rows.length; c++) {
     const r = (rand() - 0.5) * 2;
-    depth.push(r < 0 ? r * RECESS_MAX * (0.35 + wear) : r * PROUD_MAX * (0.35 + wear));
+    const d = r < 0 ? r * RECESS_MAX * (0.35 + wear) : r * PROUD_MAX * (0.35 + wear);
+    depth.push(coursed ? d : 0);
   }
 
   const half = len / 2;
@@ -303,8 +320,15 @@ export function makeCoursedWall(
       // light, and the reason the whole file exists. Wound so it faces up-and-in
       // when this course stands proud of the one under it, which is the common
       // case and the one you see from a torch on the floor.
-      const b0 = dBelow + bowAt(x0), b1 = dBelow + bowAt(x1);
-      push([x0, y0, b0], [x1, y0, b1], [x1, y0, z1], [x0, y0, z0]);
+      //
+      // Skipped when the two courses sit at the same depth: with clean walls that
+      // is EVERY step, and a zero-area quad is a pair of degenerate triangles the
+      // rasteriser still has to chew through and `computeVertexNormals` still has
+      // to average a garbage normal from.
+      if (Math.abs(d - dBelow) > 1e-4) {
+        const b0 = dBelow + bowAt(x0), b1 = dBelow + bowAt(x1);
+        push([x0, y0, b0], [x1, y0, b1], [x1, y0, z1], [x0, y0, z0]);
+      }
     }
   }
 
@@ -366,7 +390,7 @@ export function makeCoursedWall(
   // recessed one would need the course split around it to be visible at all.
   // A wall wants a handful of these, not a field of them — the course line is
   // the shape, and a block is a place the line is interrupted.
-  const blocks = Math.round(wear * rows.length * 0.55);
+  const blocks = coursed ? Math.round(wear * rows.length * 0.55) : 0;
   for (let i = 0; i < blocks; i++) {
     const c = Math.floor(rand() * (rows.length - 1));
     const y0 = rows[c], y1 = rows[c + 1];

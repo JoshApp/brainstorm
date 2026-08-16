@@ -116,6 +116,26 @@ export const DRESSING: Record<string, DressingEntry> = {
   // screenshot: *"remove the butresses and lower untextured strips."* They are
   // still automatic dressing nobody asked a room for, so they belong on this list
   // with everything else rather than in a second, invisible one.
+  'shell-coursing': {
+    on: false,
+    note: 'PER-COURSE DEPTH in the wall face — every course of every wall pushed '
+      + 'proud or recessed by a random amount, with a step quad between courses, a '
+      + 'slow bow across the span, and a handful of single blocks left standing '
+      + 'proud. Cut by name: Josh, 2026-08-16, "get rid of the banding in the wall '
+      + 'shell, where it displaces bands with different offsets etc. because that '
+      + 'isnt properly built, i wanna have clean walls for the start."\n'
+      + 'This is the LAST of the three systems that were each independently giving '
+      + 'a wall depth — the profile bands (wall-profile.ts, now plain), the shell '
+      + 'trim (now off), and this. All three were authored when the wall was a flat '
+      + 'plane with a painted pattern and geometry was the only way to get a shadow '
+      + 'line onto it. The masonry displaces itself now, so all three were arguing '
+      + 'with it at a coarser scale.\n'
+      + 'OFF DOES NOT MEAN GONE. makeCoursedWall still runs and still emits the '
+      + 'same tessellation, which the wall-contact and prop-contact AO passes need '
+      + 'vertices for; it just builds the face at depth zero. The steps and the '
+      + 'proud blocks stop being emitted at all, so this is fewer triangles rather '
+      + 'than more.',
+  },
   'shell-pilaster': {
     on: false,
     note: 'ENGAGED PIERS — the vertical dressed-stone strips standing against a '
