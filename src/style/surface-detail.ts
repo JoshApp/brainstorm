@@ -492,15 +492,47 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // all, so an up-facing one is laid out in the ground plane, which is both
   // stable and what you'd want anyway.
   //
-  // A hard axis choice still has a seam at 45° — real triplanar blends across
-  // it, and that costs three times the taps on a shader that already marches
-  // this texture eight times, so it stays hard. The rooms are axis-aligned;
-  // nothing in the shell sits near the seam.
+  // ── THE WALL'S OWN DIRECTION, NOT THE NEAREST WORLD AXIS ───────────────────
+  // The paragraph that used to sit here said a hard axis choice "still has a
+  // seam at 45°" and dismissed it: *"the rooms are axis-aligned; nothing in the
+  // shell sits near the seam."* That was true of the test chamber and FALSE of
+  // every generated room. room-shape.ts chamfers convex corners at exactly 45°
+  // on all six archetypes, and calls the chamfer "most of what makes" a room
+  // read as a polygon — so the shell is full of the one angle the projection
+  // could not describe. types.ts says it outright: "arbitrary-angle walls".
+  //
+  // Josh: *"the poly room breaks the room into polygon corners and the texture
+  // isnt good when it jumps corners, it breaks."*
+  //
+  // Two things went wrong on a chamfer, and the loud one is not the seam:
+  //
+  //   1. STRETCH. Projecting a 45° wall onto world X advances the coordinate at
+  //      cos(45°) = 0.707 of the distance actually walked along it, so its
+  //      stones come out 1.41× wider than the stones on the straight wall they
+  //      butt into. That is the break — a size mismatch at every corner cut.
+  //   2. The |nx| > |nz| test is a coin flip when they are EQUAL, so which way
+  //      a chamfer lays out is arbitrary and two adjacent ones can disagree.
+  //
+  // Both die the same way: take the direction the wall actually runs instead of
+  // the nearest world axis. That is the horizontal vector perpendicular to the
+  // normal — cross(worldUp, N), which for up = (0,1,0) simplifies to
+  // (n.z, 0, −n.x), so it costs a 2D normalize and no cross at all. Exact at
+  // every angle, no branch, and it collapses to the old behaviour (up to a
+  // mirror) on axis-aligned walls, which is why the tuned look survives it.
+  //
+  // Corners still change phase, and they SHOULD — real masonry interlocks at a
+  // corner rather than flowing through it. What they no longer do is change
+  // scale.
   let sU: any, sV: any;      // metre-space projected coords
   let axisU: any, axisV: any; // and the WORLD directions they run along
   if (cfg.proj === 'wall') {
     const flat: any = nrm.y.abs().greaterThanEqual((tslMax as any)(nrm.x.abs(), nrm.z.abs()));
-    const faceX: any = nrm.x.abs().greaterThan(nrm.z.abs());   // ±X-facing wall → U runs along Z
+    // Horizontal length of the normal — the normalizer for the along-wall
+    // vector, and 1.0 on any truly vertical wall. Floored so a face that is
+    // very nearly horizontal cannot divide by zero on its way into the `flat`
+    // branch that will discard this anyway.
+    const hLen: any = nrm.x.mul(nrm.x).add(nrm.z.mul(nrm.z)).sqrt().max(1e-4);
+    const alongU: any = (vec3 as any)(nrm.z.div(hLen), 0, nrm.x.negate().div(hLen));
     // ── A HORIZONTAL STRIP CANNOT KNOW WHICH WALL IT BELONGS TO ───────────────
     // Josh: *"the top and face of a wall doesnt match — with small strips both
     // faces should be one stone but they are not continuous, the top is its own
@@ -532,11 +564,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // at the arris, carried on into the wall — so the course continues instead
     // of jumping to whatever the depth coordinate happened to land on.
     const flatV: any = (isTagged as any).select(uvA.y, (swapAxes as any).select(pos.x, pos.z));
-    sU = (flat as any).select(flatU, (faceX as any).select(pos.z, pos.x));
+    // Distance ALONG the wall, in metres, for a wall at any angle. On an
+    // axis-aligned wall this is ±pos.z / ±pos.x — the old expression, possibly
+    // mirrored — and on a chamfer it is the thing the old expression could not
+    // express.
+    sU = (flat as any).select(flatU, pos.dot(alongU));
     sV = (flat as any).select(flatV, pos.y);
     axisU = (flat as any).select(
       (swapAxes as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
-      (faceX as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
+      alongU,
     );
     axisV = (flat as any).select(
       (swapAxes as any).select((vec3 as any)(1, 0, 0), (vec3 as any)(0, 0, 1)),
