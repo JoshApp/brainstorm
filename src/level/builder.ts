@@ -1681,10 +1681,9 @@ export function buildLevel(
       // the group is parented, below; a searchable prop also opts OUT of the
       // static merge so its meshes survive for the outline to hull.
       // Framed openings (archway / doorframe props): install the shared visual
-      // fittings — proximity crown glow + the dungeon's nav eye at the model's
-      // keystone slots. Same seam the fitting drain uses (see level/frame.ts), so
+      // fittings — the dungeon's nav eye at the model's keystone slots. Same seam the fitting drain uses (see level/frame.ts), so
       // every framed mouth dresses identically no matter who emitted the prop.
-      if (prop.proximityGlow) {
+      if (prop.framedOpening) {
         installFrameFittings(built, root, prop.x, prop.z, (px, pz) =>
           spec.corridors.some((c) =>
             Math.abs(px - c.rect.x) <= c.rect.w / 2 && Math.abs(pz - c.rect.z) <= c.rect.d / 2));
@@ -1697,9 +1696,10 @@ export function buildLevel(
       // A FRAMED OPENING IS A BOUNDARY OBJECT, not a room's decoration. It
       // stands IN the wall between two spaces and is seen from both, so the
       // culler cannot assign it to one of them — see room-culling.ts.
-      // `proximityGlow` is the frame marker: every archway and doorframe sets
-      // it and nothing else does.
-      built.group.userData.dbgKind = prop.proximityGlow ? 'frame' : 'prop';
+      // `framedOpening` is the frame marker: every archway and doorframe sets
+      // it and nothing else does. (It was called `proximityGlow` until the crown
+      // glow was removed — a flag named for a thing it no longer does.)
+      built.group.userData.dbgKind = prop.framedOpening ? 'frame' : 'prop';
       // Mood-tint pass: if the spec opts in (moodTintable), recolour
       // its flame material + every additive sprite particle + the
       // attached light to match the average torch tint of the room
@@ -1733,7 +1733,7 @@ export function buildLevel(
         // biggest draw-call win on a floor. The merge skips meshes named 'flame'
         // (the flicker) and all sprites; the prop's LIGHT is a separate pool
         // source, untouched. Mood-tint sets colour once at spawn so a tinted body
-        // bakes fine. Archways/doorframes (proximityGlow) ARE folded now — their
+        // bakes fine. Archways/doorframes (framedOpening) ARE folded now — their
         // glow material is per-gate and the merge is per-corridor, so each gate
         // collapses to ~one mesh that still pulses. They were the single biggest
         // bucket of loose draws down a long hall.

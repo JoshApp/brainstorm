@@ -1192,6 +1192,18 @@ export function registerSurfaceDetail(name: string, cfg: SurfaceTexConfig): void
 export function installNamedSurfaceDetail(material: THREE.Material, name: string): void {
   const cfg = namedConfigs.get(name);
   if (cfg) installSurfaceDetail(material, cfg);
+  // Leave the NAME on the material. A named detail is the only kind that can be
+  // reconstructed later from the material alone, and the static batcher needs
+  // exactly that: it replaces a prop's material with a shared baked one, and
+  // without a name to re-install it would silently drop the detail (which it
+  // did — see scene/static-batch.ts, detailNameOf).
+  if (cfg) (material.userData as { surfaceDetail?: string }).surfaceDetail = name;
+}
+
+/** The named detail installed on a material, if any — the batcher's way of
+ *  carrying a detail across a material swap. */
+export function surfaceDetailNameOf(material: THREE.Material): string | undefined {
+  return (material.userData as { surfaceDetail?: string }).surfaceDetail;
 }
 
 // ── ?detail=0 — THE ONLY HONEST A/B FOR THIS SYSTEM (DEV) ────────────────────

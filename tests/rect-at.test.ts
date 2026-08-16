@@ -83,11 +83,11 @@ test('A FRAMED DOORWAY JOINS TWO ROOMS, SO IT BELONGS TO BOTH', () => {
     const spec = generatePolyFloor(depth, seed);
     const nodes = nodesOf(spec);
     for (const p of (spec.props ?? []) as PropSpec[]) {
-      // `proximityGlow` is the frame marker — every archway and doorframe sets
+      // `framedOpening` is the frame marker — every archway and doorframe sets
       // it and nothing else does. The builder stamps those groups
       // `dbgKind: 'frame'` off the same flag.
-      const f = p as { proximityGlow?: boolean; x: number; z: number; rotY?: number };
-      if (!f.proximityGlow) continue;
+      const f = p as { framedOpening?: boolean; x: number; z: number; rotY?: number };
+      if (!f.framedOpening) continue;
       frames++;
       // The frame's local +Z runs through the gate.
       const s = Math.sin(f.rotY ?? 0), c = Math.cos(f.rotY ?? 0);

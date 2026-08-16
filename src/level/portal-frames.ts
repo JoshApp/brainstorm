@@ -94,7 +94,7 @@ export function emitFramesForPortals(spec: LevelSpec): void {
       const base = {
         kind: 'model' as const, model,
         x, y: 0, z, rotY: p.rotY,
-        proximityGlow: true,
+        framedOpening: true,
       };
 
       if (kind === 'doorframe') {

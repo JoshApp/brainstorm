@@ -23,10 +23,18 @@ import { coursedPanel } from './frame-coursing';
 //   the far end of a dark room and you know it is a way through before you can
 //   make out anything else about it.
 //
-//   THE GLOW IS THE RING, NOT THE FRAME. The old one raised its emissive on
-//   every part. Now only the voussoirs and the imposts they spring from carry
-//   the 'glow' material, so approaching lights a RING and the jambs stay
-//   stone. One shape says "threshold" instead of the whole object brightening.
+//   NO PROXIMITY GLOW. There used to be a second stone material, 'glow', on the
+//   voussoirs and imposts, whose emissive was raised by threshold-draft as the
+//   player approached — a lit ring on every gate in the dungeon. Its own comment
+//   admitted what it was: "the archway crown — its natural warm proximity glow
+//   (decoration, not the cue)". That is the thing this project's lighting
+//   doctrine names as the one it must not do — *"if we use special lighting as
+//   pure decoration, we destroy that signal"* — and Josh called it a bug on
+//   sight. The ring is now the same stone as the jambs.
+//
+//   What still lights at a threshold is the dungeon's EYE on the keystone, which
+//   is a real cue (it kindles toward unexplored ground) and is untouched: it
+//   mounts through the eye_front / eye_back slots, not through this material.
 //
 //   COURSED JAMBS. Three blocks with alternating depth and a chamfer instead
 //   of one extruded pillar, so a jamb self-shadows and reads as masonry.
@@ -286,7 +294,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       pos: [rho * Math.sin(theta), g.centreY + rho * Math.cos(theta), 0],
       rot: [0, 0, -theta],
       size: [tang, radial, key ? D.keystone : D.arch],
-      mat: 'glow',
+      mat: 'stone',
     } as PartSpec);
   }
 
@@ -353,7 +361,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       kind: 'box', name: 'impost',
       pos: [x, impostY, 0],
       size: [impostHalf * 2, IMPOST_HEIGHT, D.impost],
-      mat: 'glow',
+      mat: 'stone',
     } as PartSpec);
   }
 
@@ -362,12 +370,13 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   const spec: ModelSpec = {
     id,
     materials: {
-      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
-      // The arch ring. Identical to stone at rest (emissive 0); the threshold
-      // system raises the warm emissive as the player nears, so a RING lights
-      // up rather than the whole gate. Modulated by material id 'glow' (see
-      // the builder's proximityGlow handling).
-      glow: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
+      // ONE material, and it is the WALL's. A gate is a hole in a wall, so its
+      // stone should be that wall's stone — and because the detail projects in
+      // world space, the frame's courses line up with the masonry they
+      // interrupt rather than running to a rhythm of their own.
+      // (Was 'dressed', a finer ashlar, alongside a second 'glow' material for
+      // the ring. Both are gone: see the header.)
+      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'wall' },
     },
     parts,
     // Mount points for the dungeon's EYE, on the KEYSTONE's outer faces (one

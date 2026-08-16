@@ -3,6 +3,7 @@ import { attribute as tslAttribute } from 'three/tsl';
 import type { LiveLevel } from '../level/builder';
 import { getAllInteractables } from '../interactables/system';
 import { deferGpuDispose } from '../style/render-webgpu';
+import { surfaceDetailNameOf, installNamedSurfaceDetail } from '../style/surface-detail';
 import { rectOf, tagOrigin } from './provenance';
 
 // ── STATIC-WORLD BATCHING (BatchedMesh) ──────────────────────────────────────
@@ -228,8 +229,28 @@ const bakedMats = new Map<string, THREE.MeshStandardMaterial>();
 // scalars are the same shape of problem and get the same answer, which leaves
 // the family as what genuinely needs a distinct SHADER: flat vs smooth normals,
 // and fog on/off.
+// ── A BAKED DETAIL IS PART OF THE FAMILY ────────────────────────────────────
+// Josh: *"several things not using the stone texture like doorframes and things
+// build onto the wall surface as decoration like beams etc."*
+//
+// archway.ts, doorframe.ts and origin-arch.ts all declare `detail: 'dressed'`,
+// build-model.ts installs it, and then THIS FILE threw it away. Baking swaps the
+// prop's material for a shared one, and the shared one had no detail — so every
+// framed opening in the game came out as flat untextured stone sitting inside a
+// fully textured wall. Measured on a depth-2 floor: 11 materials carried surface
+// detail with batching on, 25 with `?batchworld=0`.
+//
+// isBakeable already refuses to eat an emissiveNode for exactly this reason
+// ("baking would overwrite the whole chain and silently delete the rim"). A
+// colorNode is the same kind of claim on the material and was simply not on the
+// list. Refusing to bake would fix it and cost the batching, so instead the
+// detail joins the FAMILY KEY: props that want dressed stone batch together into
+// a dressed-stone batch, props that want grain into a grain one, everything else
+// stays exactly as it was. One extra draw per detail kind in use, not per prop.
 function bakeFamilyKey(m: THREE.MeshStandardMaterial): string {
-  return `${m.flatShading ? 'f' : 's'}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`;
+  const d = surfaceDetailNameOf(m);
+  return `${m.flatShading ? 'f' : 's'}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`
+    + (d ? `|d:${d}` : '');
 }
 
 function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
@@ -286,6 +307,15 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
     (m as unknown as { roughnessNode?: unknown }).roughnessNode = surf.x;
     (m as unknown as { metalnessNode?: unknown }).metalnessNode = surf.y;
     m.name = `static-batch-baked:${key}`;
+    // Re-install the surface detail the source material carried, now that the
+    // family key guarantees only same-detail props share this material. Done
+    // LAST so the detail's own colour/normal/roughness chain wins over the
+    // attribute reads above — that costs these props their per-vertex roughness,
+    // which is the right trade: dressed stone should read as one substance, and
+    // the alternative is having no stone texture at all. Vertex COLOUR survives
+    // regardless: three multiplies the colour attribute in after colorNode.
+    const detail = surfaceDetailNameOf(src);
+    if (detail) installNamedSurfaceDetail(m, detail);
     bakedMats.set(key, m);   // module-lifetime — pins the batch pipeline across floors
   }
   return m;

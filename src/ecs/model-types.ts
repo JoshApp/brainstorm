@@ -41,11 +41,13 @@ export interface MaterialDef {
   chroma?: number;
   /**
    * Opt this material into a baked, mipmapped surface detail by NAME (see
-   * style/surface-textures.ts) — e.g. 'dressed' (ashlar framing for archways /
-   * doorframes), 'grain' (faint column grain). World-projected, so no UVs
-   * needed. Registered at material-build time; unknown names no-op.
+   * style/surface-textures.ts) — 'wall' (the shell's own masonry, the default
+   * answer for anything built INTO a wall: a frame's courses then line up with
+   * the wall they interrupt), 'dressed' (finer ashlar), 'grain' (faint column
+   * grain). World-projected, so no UVs needed. Registered at material-build
+   * time; unknown names no-op.
    */
-  detail?: 'dressed' | 'grain';
+  detail?: 'wall' | 'dressed' | 'grain';
   /**
    * Fresnel rim glow — brightens fragments where the surface normal
    * grazes the view direction (the silhouette edge). Classic "ghost

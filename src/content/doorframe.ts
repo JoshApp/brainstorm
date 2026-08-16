@@ -276,7 +276,7 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
       pos: [rho * Math.sin(theta), g.centreY + rho * Math.cos(theta), 0],
       rot: [0, 0, -theta],
       size: [tang, radial, key ? D.keystone : D.arch],
-      mat: 'glow',
+      mat: 'stone',
     } as PartSpec);
   }
 
@@ -337,7 +337,7 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
       kind: 'box', name: 'impost',
       pos: [x, impostY, 0],
       size: [impostHalf * 2, IMPOST_HEIGHT, D.impost],
-      mat: 'glow',
+      mat: 'stone',
     } as PartSpec);
   }
 
@@ -347,13 +347,10 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
     id,
     materials: {
       // The archway's stone, exactly. These are two gates in one dungeon; a
-      // different grey would say they were quarried in different centuries.
-      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
-      // The ring. Identical to stone at rest (emissive 0); the threshold system
-      // raises the warm emissive as the player nears, so a RING lights up rather
-      // than the whole gate. Same 'glow' contract the archway uses (see the
-      // builder's proximityGlow handling).
-      glow: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
+      // different grey would say they were quarried in different centuries —
+      // and that now means the WALL's stone, since the archway took it. The
+      // proximity-glow ring is gone here too; see content/archway.ts.
+      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'wall' },
     },
     parts,
     // Eye mount points on the KEYSTONE's outer faces, one per side since a

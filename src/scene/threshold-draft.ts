@@ -71,15 +71,12 @@ const drafts: Draft[] = [];
 let hazeTex: THREE.Texture | null = null;
 let moteTex: THREE.Texture | null = null;
 
-// Archway frame glow — the lintel/keystone 'glow' material on each corridor
-// archway, brightened by player proximity so the gate's crown lights up to
-// mark a passage. Registered by the builder for props flagged proximityGlow.
-// Toned down from 0.3 to 0.13 so the archway crown still warms as
-// the player approaches but doesn't read as a bright "glow".
-// Combined with the emissive colour shift on the 'glow' material
-// (0xff8c3a → 0xc05a18 in content/archway.ts), the peak proximity
-// glow now sits at a much more restrained register.
-const GLOW_MAX_EMISSIVE = 0.16;
+// (The ARCHWAY FRAME GLOW lived here — a 'glow' material on every gate's
+// voussoir ring whose emissive rose with player proximity. It is gone, along
+// with the material: the comment on its own tick called it "decoration, not the
+// cue", and decoration is precisely what this project's lighting doctrine says
+// an uncommon light may not be. What lights at a threshold now is the EYE
+// below, which means something. See content/archway.ts.)
 
 // ── HOW WIDE THE GAZE CARRIES ───────────────────────────────────────────────
 // A warm eye is never fully shut: it holds at EYE_OPEN_FLOOR from anywhere in
@@ -90,13 +87,6 @@ const GLOW_MAX_EMISSIVE = 0.16;
 const EYE_OPEN_FLOOR = 0.42;
 const EYE_BLOOM_FAR = 14.0;        // m — beyond this the eye sits at the floor
 const EYE_BLOOM_NEAR = 3.0;        // m — fully open
-
-interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
-const frameGlows: FrameGlow[] = [];
-
-export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): void {
-  frameGlows.push({ mat, x, z });
-}
 
 // EXIT LURE — the diegetic navigation cue, the dungeon's own EYE set in the arch
 // keystone (see scene/archway-eye.ts). It OPENS (lids part, iris kindles) on the
@@ -273,33 +263,8 @@ function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote):
   }
 }
 
-/** Per-frame. Haze blooms with player proximity; dust drifts (only near);
- *  archway frames glow brighter as you approach. */
+/** Per-frame. Haze blooms with player proximity; dust drifts (only near). */
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
-  // Archway crown — its natural warm proximity glow (decoration, not the cue).
-  //
-  // DRIVEN BY THE NEAREST GATE, not per-gate, because the material is SHARED.
-  // ecs/build-model.ts pools materials by canonical definition, so every archway
-  // on the floor hands the same object to registerArchwayGlow — the old loop
-  // wrote that one object once per gate and the LAST registration won, which
-  // meant the crowns lit by your distance to whichever gate happened to be
-  // registered last rather than the one you were standing at.
-  //
-  // Taking the minimum is not a compromise here: the ramp is 2.5m→1.0m and
-  // gates sit at opposite ends of corridors, so you are only ever inside one
-  // gate's radius at a time. Same look, and it is the gate you are AT.
-  if (frameGlows.length > 0) {
-    let nearest = Infinity;
-    for (const f of frameGlows) {
-      const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-      if (dist < nearest) nearest = dist;
-    }
-    const intensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, nearest);
-    // Still written per registration: pooling is an implementation detail of
-    // the model builder, and a future unpooled material must not go dark.
-    for (const f of frameGlows) f.mat.emissiveIntensity = intensity;
-  }
-
   // Exit eyes — OPEN only where it's a NEAR entrance (adjacent to the current
   // room) to unexplored ground; CLOSE where the branch is explored. The open
   // TARGET blooms by proximity (the gaze kindles as you near it, not across the
@@ -381,6 +346,5 @@ export function clearThresholdDrafts(): void {
   }
   for (const lure of lures) lure.eye.dispose();
   drafts.length = 0;
-  frameGlows.length = 0;
   lures.length = 0;
 }

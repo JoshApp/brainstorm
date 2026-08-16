@@ -181,30 +181,35 @@ test('IT IS THE SAME MASONRY AS THE WIDE GATE', () => {
   // that is the decision Josh reversed — so the shared palette is asserted
   // rather than left to drift back apart the next time either is touched.
   const spec = doorframe({ width: 1.6, ceilingHeight: 3.2, wallDepth: WALL_T });
-  const mats = spec.materials as Record<string, { color: number; emissive?: number }>;
+  const mats = spec.materials as Record<string, { color: number; emissive?: number; detail?: string }>;
   assert.ok(mats.stone, 'no stone material — withSill mounts its slab as "stone" and would render untextured');
-  assert.ok(mats.glow, 'no glow material — the proximity threshold lights nothing');
   assert.equal(mats.stone.color, 0x262a30, 'the postern quarried its stone somewhere else');
-  assert.equal(mats.glow.emissive, 0xc05a18, 'the ring does not carry the threshold glow');
-  // And the glow is on the RING, not on everything: the read is one shape
-  // lighting up as you near it, not the whole gate brightening.
-  //
-  // Asserted by WHICH PARTS carry it, not by counting them. The first version
-  // of this check demanded more stone parts than glowing ones and went red on a
-  // correct model: under a 3.2m ceiling the crown sits 0.05m below it, the
-  // spandrel panel emits no courses at all, and 7 ring blocks tie 7 stone ones.
-  // The count was never the property — a gate with one enormous glowing fill
-  // would have passed it.
-  const glowNames = spec.parts
-    .filter((p) => (p as { mat?: string }).mat === 'glow')
-    .map((p) => (p as { name?: string }).name ?? '?');
-  assert.ok(glowNames.length > 0, 'nothing carries the threshold glow');
-  for (const n of glowNames) {
-    assert.ok(/^(voussoir-|keystone|impost)/.test(n),
-      `'${n}' carries the proximity glow — it belongs to the ring and its springers, not the masonry`);
+
+  // ── ONE MATERIAL, AND IT IS THE WALL'S ─────────────────────────────────────
+  // This test used to assert the opposite: that a second 'glow' material existed
+  // and carried an emissive ring lit by player proximity. Josh called that glow
+  // a bug — and the project's own lighting doctrine agrees, since an uncommon
+  // light is supposed to MEAN something and that one was decoration on every
+  // gate in the dungeon. So the assertion is inverted rather than deleted: the
+  // property worth protecting is that a gate is ONE stone, and that nothing here
+  // quietly starts glowing again.
+  assert.equal(mats.glow, undefined,
+    'the proximity glow material is back — an uncommon light that means nothing');
+  for (const [name, m] of Object.entries(mats)) {
+    assert.ok(!m.emissive, `'${name}' emits light; a gate is stone, not a lamp`);
   }
-  // The structure it is NOT on, stated positively so a rename cannot quietly
-  // empty the rule above.
+  assert.equal(mats.stone.detail, 'wall',
+    'the gate stopped using the wall\'s masonry — its courses will not line up with the wall it pierces');
+
+  // Every part is that one material, so no piece of the gate can drift onto a
+  // different stone the next time this model is edited.
+  const others = spec.parts
+    .map((p) => (p as { mat?: string; name?: string }))
+    .filter((p) => p.mat !== undefined && p.mat !== 'stone');
+  assert.equal(others.length, 0,
+    `parts on a non-stone material: ${others.map((p) => `${p.name}:${p.mat}`).join(', ')}`);
+  // The structure is still all there — a "one material" rule is trivially
+  // satisfied by a gate that lost its pieces.
   for (const want of ['fill', 'plinth', 'course-0']) {
     const p = spec.parts.find((q) => (q as { name?: string }).name === want);
     assert.ok(p, `no '${want}' part — the gate lost a piece of its structure`);

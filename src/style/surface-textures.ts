@@ -274,15 +274,83 @@ function cofferCPU(px: number, py: number, aa: number): Cell {
   const tone = mixf(0.8, 1.0, dHash(idx, idy, 4.2));
   return [mixf(tone * 0.78, tone, beam), mixf(0.45, 1.0, beam), 0.5, 0.5];
 }
-function dressedCPU(px: number, py: number, aa: number): Cell {
+// ── DRESSED ASHLAR — THE SAME STONE, CUT PROPERLY ────────────────────────────
+// Josh: *"several things not using the stone texture like doorframes and things
+// build onto the wall surface as decoration like beams etc."*
+//
+// They were opted in the whole time — archway.ts, doorframe.ts and
+// origin-arch.ts all declare `detail: 'dressed'`, and surfaceKnob() routes every
+// non-floor surface through the WALL's values, so grit, cracks and erosion were
+// already running here. What was missing is everything brickCPU does BETWEEN the
+// grid and the output: chipped arrises, broken corners, spalled faces, a mortar
+// fill with its own tone, the crevice darkening, the rim catch. This function
+// was eight lines — a joint grid and a per-block tone — so beside a wall
+// carrying all of that, every doorframe read as smooth plastic. That is the
+// whole of the complaint, and none of it was the shader's fault.
+//
+// It gets the same treatment now, at DRESSED strengths rather than wall ones.
+// Same rock; but chosen, squared and fitted by someone being paid for it. So:
+// tighter joints, faces closer to flush, every perpend actually struck, and much
+// less damage — framing sits recessed and protected, and a mason does not leave
+// a broken arris on the thing people walk through. What damage does land should
+// read as age rather than as rubble.
+//
+// Scalars, not re-authored numbers: each one multiplies the wall knob it
+// corresponds to, so when Josh drags Edge chipping the framing follows him and
+// stays a fraction of the wall instead of drifting into its own look.
+const DRESS = {
+  chip: 0.45,     // an arris chips, but rarely and never deeply
+  corner: 0.40,   // and one break per stone, where the wall gets two
+  set: 0.42,      // fitted flush: a fraction of the wall's plateau spread
+  dome: 0.55,     // cut flat, then worn slightly convex
+  spall: 0.965,   // ~1 face in 28 has lost its skin, against the wall's 1 in 12
+  joint: 0.62,    // a fine joint, not a rubble one
+};
+function dressedCPU(px: number, py: number, aa: number, u: number, v: number): Cell {
   const bx = 1.6, by = 0.8; let gx = px / bx; const gy = py / by; const row = Math.floor(gy);
   gx += 0.5 * modf(row, 2);
   const idx = modf(Math.floor(gx), 3), idy = modf(row, 4);
-  const inbx = fract(gx), inby = fract(gy);
+  // Set-out at a third of the wall's: dressed stone is squared to a line, but
+  // "squared by hand" still is not "squared by machine".
+  const jS = jitterAmt('wall') * 0.35;
+  const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16 * jS;
+  const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10 * jS;
+  const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
+  const inby = clampf(fract(gy) + jy, 0.001, 0.999);
+  // No lost perpends here (the wall drops one joint in seven). Ashlar is fitted.
   const dseam = Math.min(Math.min(inby, 1 - inby) * by, Math.min(inbx, 1 - inbx) * bx);
-  const joint = 1 - smooth(0.018 - aa, 0.018 + aa, dseam);
-  const tone = mixf(0.92, 1.0, dHash(idx, idy, 3.1));
-  return [mixf(tone, 0.62, joint), mixf(1.0, 0.65, joint), dHash(idx, idy, 4.2), dHash(idx, idy, 9.6)];
+  const jW = 0.03 * jointW('wall') * DRESS.joint;
+  const recess = 1 - smooth(jW - aa, jW + aa, dseam);
+  // The height ramp is wider than the shade ramp for the same reason it is on
+  // the wall: a vertical-sided joint is a cliff, and POM renders a cliff as one
+  // hard band per march step.
+  const eW = mixf(0.085, 0.026, edgeSharp('wall')) * jointW('wall') * DRESS.joint;
+  const seamVar = mixf(0.74, 1.0, dHash(idx, idy, 2.3));
+  const hRecess = (1 - smooth(0.010, eW, dseam)) * seamVar;
+  const set = mixf(-0.026, 0.020, dHash(idx, idy, 3.1)) * DRESS.set;
+  const tAng = dHash(idx, idy, 6.4) * Math.PI * 2;
+  const tAmt = mixf(0.022, 0.075, dHash(idx, idy, 8.8)) * DRESS.set;
+  const tilt = (Math.cos(tAng) * (inbx - 0.5) + Math.sin(tAng) * (inby - 0.5)) * 2 * tAmt;
+  const dcx = (inbx - 0.5) * 2, dcy = (inby - 0.5) * 2;
+  const dome = Math.max(0, 1 - (dcx * dcx + dcy * dcy)) * 0.055 * domeAmt('wall') * DRESS.dome;
+  const tone = mixf(0.88, 1.04, dHash(idx, idy, 3.7));   // selected stone: tighter spread
+  const spall = stepf(DRESS.spall, dHash(idx, idy, 6.9));
+  const spallD = spall * mixf(0.18, 0.34, dHash(idx, idy, 1.7));
+  const chip = edgeChip(u, v, dseam, chipAmt('wall') * DRESS.chip);
+  // ONE break, salted differently from either of the wall's so a doorframe next
+  // to a wall does not repeat the wall's pattern of losses.
+  const brk = cornerBreak(inbx, inby, idx, idy, u, v, cornerAmt('wall') * DRESS.corner, 1.9, -1);
+  const raw = Math.min(1, chip.raw + brk.raw);
+  const h = clampf(1.0 + set + tilt + dome - spallD - brk.depth - chip.depth, 0.25, 1.15);
+  const m = mortarFill(gx, gy, u, v, jointTex('wall'));
+  const mDark = m.tone * mixf(1, 0.26, crevDark('wall'));
+  const rimLift = 1 + arrisBand(dseam, jW, aa) * 0.95 * crevRim('wall');
+  return [
+    mixf(tone, mDark, recess) * mixf(1.0, 0.72, spall) * mixf(1.0, 1.14, raw) * rimLift,
+    mixf(h, m.h, hRecess),
+    dHash(idx, idy, 4.2),
+    clampf(mixf(dHash(idx, idy, 9.6) + spall * 0.35 + raw * 0.75, m.wear, recess), 0, 1),
+  ];
 }
 function vnoiseP(x: number, y: number, Px: number, Py: number): number {
   const ix = Math.floor(x), iy = Math.floor(y); let fx = fract(x), fy = fract(y);
@@ -1338,7 +1406,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa, u, v);
       else if (kind === 'floor') [shade, height, variant, wear] = flagCPU(px, py, aa, u, v);
       else if (kind === 'ceiling') [shade, height, variant, wear] = cofferCPU(px, py, aa);
-      else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa);
+      else if (kind === 'dressed') [shade, height, variant, wear] = dressedCPU(px, py, aa, u, v);
       else [shade, height, variant, wear] = grainCPU(u, v);
       // ── CRACKS ─────────────────────────────────────────────────────────────
       // Applied AFTER the pattern, in unwarped coordinates, precisely because a

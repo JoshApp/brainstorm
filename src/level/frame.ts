@@ -4,13 +4,13 @@ import { doorframe } from '../content/doorframe';
 import type { ModelSpec } from '../ecs/model-types';
 import type { BuiltModel } from '../ecs/build-model';
 import { buildArchwayEye } from '../scene/archway-eye';
-import { registerArchwayLure, registerArchwayGlow } from '../scene/threshold-draft';
+import { registerArchwayLure } from '../scene/threshold-draft';
 
 // FRAME — the one place that knows how to dress an opening in stone. Every
 // passage the player walks through (procgen corridor mouths, tilemap door runs,
 // the fitting drain's archway/fog-gate openings) is framed through these two
 // seams, so the "wide gets an archway, narrow gets a doorframe" rule and the
-// shared visual fittings (proximity glow + the dungeon's nav eye) never drift
+// shared visual fittings (the dungeon's nav eye) never drift
 // apart again. What stays per-caller — collision blockers, nav gates, and the
 // door/mist SEAL state machines — isn't the frame; it's what lives in it.
 
@@ -127,11 +127,11 @@ function withSill(choice: FrameChoice, width: number, wallDepth: number): FrameC
 // interior on either side.
 const FACE_SAMPLE = 1.2;
 
-/** Attach the visual fittings every framed opening shares: the proximity crown
- *  GLOW ('glow' material) + the dungeon's nav EYE at each keystone slot the
- *  model declares (eye_front / eye_back). Call after the frame model is built
- *  AND positioned, with the opening's world centre `(x, z)` — that's the key the
- *  nav system matches eyes + glow to floor-graph edges. The eye mounts INTO the
+/** Attach the visual fittings every framed opening shares: the dungeon's nav
+ *  EYE at each keystone slot the model declares (eye_front / eye_back). Call
+ *  after the frame model is built AND positioned, with the opening's world
+ *  centre `(x, z)` — that's the key the nav system matches eyes to floor-graph
+ *  edges. The eye mounts INTO the
  *  frame group, so it culls with the doorway it belongs to; what keeps it out
  *  of the static merge is the per-mesh `dynamicPart` opt-out it sets on itself,
  *  not where it is parented (see archway-eye.ts).
@@ -145,15 +145,11 @@ export function installFrameFittings(
   built: BuiltModel, root: THREE.Object3D, x: number, z: number,
   looksIntoCorridor?: (px: number, pz: number) => boolean,
 ): void {
-  const glow = built.materials.get('glow');
-  if (glow) {
-    // This material's emissive is written EVERY FRAME by player proximity, so
-    // nothing downstream may treat it as a constant. In particular the static
-    // batcher's colour/emissive→vertex bake would freeze it at its build-time
-    // value, which is 0 — every crown on the floor dark for good.
-    glow.userData.animatedEmissive = true;
-    registerArchwayGlow(glow as THREE.MeshStandardMaterial, x, z);
-  }
+  // (The 'glow' material — the crown's proximity glow — is gone; a frame is one
+  // stone material now. A welcome side effect: that material was tagged
+  // `animatedEmissive` to keep the static batcher's emissive→vertex bake from
+  // freezing it dark, which also kept every gate on the floor OUT of the batch.
+  // Frames batch now.)
   built.group.updateMatrixWorld(true);
   for (const slotName of ['eye_front', 'eye_back'] as const) {
     const slot = built.slots.get(slotName);

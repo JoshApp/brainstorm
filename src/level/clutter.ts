@@ -989,7 +989,7 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
           spec.props.push({
             kind: 'model', model,
             x: ax, y: 0, z: az, rotY,
-            proximityGlow: true,
+            framedOpening: true,
             _dbg: 'doorframe',
             // Jamb blockers when the opening can spare them (>= 1.6m —
             // see doorframeCollision); stair-room mouths stay collision-
@@ -1005,7 +1005,7 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
           spec.props.push({
             kind: 'model', model,
             x: ax, y: 0, z: az, rotY,
-            proximityGlow: true,   // lintel/keystone glow as the player nears
+            framedOpening: true,   // marks it as a frame: gets the nav eye
             _dbg: 'archway',
             // Column blockers sit at the column centre offsets so
             // collision matches the visible columns.

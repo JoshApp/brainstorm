@@ -140,13 +140,23 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // procedural a bit."* The generator survives as scripts/gen-surface-tex.ts if
   // it is ever wanted again; nothing in the runtime path depends on it now.)
   const wallTex = bakeSurfaceTexture(renderer, 'wall');
-  installSurfaceDetail(wallBase, {
+  const wallCfg = {
     splat: true,
     brickDamage: true, grooveFill: true, seamGlow: true,
     tex: wallTex,
     tile: SURFACE_TILE.wall,
-    proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
-  });
+    proj: 'wall' as const,
+    tint: [1.0, 1.0, 1.0] as const,
+    relief: 0.30,
+  };
+  installSurfaceDetail(wallBase, wallCfg);
+  // The wall's OWN stone, available to ModelSpec by name. Josh: *"i think we
+  // should make archways just the standard wall material right now, we can
+  // always tune it a bit."* A framed opening is a hole in a wall, so the
+  // default answer for anything built into one is the wall's masonry — and
+  // because the projection is world-space, a frame's courses line up with the
+  // wall they interrupt instead of running to their own rhythm.
+  registerSurfaceDetail('wall', wallCfg);
   installSurfaceDetail(chasmWall, {
     splat: true,
     tex: wallTex, brickDamage: true, grooveFill: true, seamGlow: true,
@@ -185,7 +195,12 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // config by name too, so the ModelSpec compiler can opt archways/doorframes in.
   const dressedCfg = {
     tex: bakeSurfaceTexture(renderer, 'dressed'),
-    tile: SURFACE_TILE.dressed, proj: 'wall' as const, tint: [1.0, 1.0, 1.0] as const, relief: 0.16,
+    // Relief 0.16 → 0.24: that value was set when dressedCPU emitted an almost
+    // flat height field (a joint line and nothing else), so there was little for
+    // the relief to show. It now carries set-out, tilt, doming, spall, chips and
+    // a broken corner like the wall does, and at 0.16 most of that was being
+    // flattened back out. Still under the wall's 0.30 — ashlar IS flatter.
+    tile: SURFACE_TILE.dressed, proj: 'wall' as const, tint: [1.0, 1.0, 1.0] as const, relief: 0.24,
   };
   installSurfaceDetail(dressedBase, dressedCfg);
   registerSurfaceDetail('dressed', dressedCfg);

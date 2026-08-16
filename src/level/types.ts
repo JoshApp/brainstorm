@@ -327,7 +327,7 @@ export type PropSpec =
        *  threshold system, which raises its warm emissive as the player nears
        *  (archways glowing to mark a passage). No-op if the model has no
        *  material id 'glow'. */
-      proximityGlow?: boolean;
+      framedOpening?: boolean;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
       /** If true, this decoration is BREAKABLE — the builder spawns it as a
