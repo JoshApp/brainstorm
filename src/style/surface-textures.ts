@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
 import {
   BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash,
-  stoneAt, setStoneVariation, setStoneSizes, COURSES_PER_TILE,
+  stoneAt, setStoneVariation, setStoneSizes, COURSES_PER_TILE, BLOCKS_PER_TILE,
 } from './stone-grid';
 import { tuneNumber, onRebake } from '../debug/tuning';
 import { DEV } from '../debug/dev';
@@ -52,6 +52,34 @@ const smooth = (e0: number, e1: number, x: number) => { const t = clampf((x - e0
 // The one hash, shared with stone-grid.ts so a cell id computed at runtime and
 // a cell id baked into the texture are the same cell.
 const dHash = stoneHash;
+
+/** The masonry tile, in metres — the period every world-keyed hash must wrap on
+ *  or the texture seams. Derived from the shared grid rather than restated. */
+const TILE_W_M = BRICK_W * BLOCKS_PER_TILE;
+const TILE_H_M = COURSE_H * COURSES_PER_TILE;
+
+/** How far a boundary may wander from its ideal line, in metres, at set-out 1. */
+export const SET_OUT_MAX = 0.045;
+
+/**
+ * The set-out offset of a stone BOUNDARY, in metres.
+ *
+ * Keyed on the boundary's own (tile-local) position and NOTHING else, which is
+ * the whole point: the two stones either side of a joint call this with the same
+ * coordinate, get the same answer, and therefore agree about where their joint
+ * is. Key it on the stone instead — as this did until 2026-08-16 — and every
+ * joint is drawn twice, from two different opinions, at two different widths.
+ *
+ * Exported for the test, which checks the agreement rather than trusting it.
+ */
+export function setOut(w: number, period: number, salt: number, amount: number): number {
+  // Quantised before hashing so two callers that computed the same boundary
+  // through different arithmetic (one as x1, the other as x0) cannot land on
+  // different keys through floating-point drift. 0.25mm is far finer than any
+  // real difference between stones and far coarser than the drift.
+  const key = Math.round(modf(w, period) * 4000);
+  return (dHash(key, salt, 12.9) - 0.5) * 2 * SET_OUT_MAX * amount;
+}
 
 // ── WHAT A BAKED TEXEL CARRIES ───────────────────────────────────────────────
 // [shade, height, variant, wear]. Shade and height are as before; VARIANT and
@@ -129,15 +157,55 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // slightly different sizes, the perpends stagger, and the wall reads as laid
   // by hand — with every edge still dead straight. This is the irregularity
   // masonry actually has, as opposed to the irregularity noise wants to give it.
+  // ── THE SET-OUT BELONGS TO THE BOUNDARY, NOT TO THE STONE ──────────────────
+  //
+  // Josh, on a close screenshot: *"see how the joints are different across
+  // edges?"* — one edge of a stone a hairline, the next a black band.
+  //
+  // The old version added a per-STONE offset to the stone's own interior
+  // coordinate and measured the joint from that:
+  //
+  //     inbx = fract(gx) + jx        // jx is one number for the whole stone
+  //     dV   = min(inbx, 1 - inbx) * bx
+  //
+  // Shifting the interior coordinate moves a stone's two opposite edges in
+  // OPPOSITE directions: at +jx the left edge reports a distance of jx*bx (the
+  // joint pulls INTO the stone and vanishes) while the right edge clamps to
+  // ~0 (the joint sits full-width). Worse, the neighbour across a shared
+  // boundary draws its own independent jx, so THE TWO STONES DISAGREE ABOUT
+  // WHERE THEIR JOINT IS — sometimes both lean away and the gap doubles,
+  // sometimes both lean the same way and it closes to nothing.
+  //
+  // The magnitude made it unmissable rather than subtle. jx reaches
+  // ±0.16 × 0.92 / 2 ≈ ±0.074 in NORMALISED units, which on a 1.15m stone is
+  // ±0.085m — larger than the entire joint (0.075m wide at the shipped
+  // setting). The knob is called "how badly it was laid" and it was laying the
+  // JOINTS badly, not the stones.
+  //
+  // A joint is a fact about a BOUNDARY and both stones either side of it have to
+  // agree. So the offset is now keyed on the boundary's own position rather than
+  // on the stone: two neighbours hash the same coordinate, get the same number,
+  // and the joint between them is one consistent width. The stones still come
+  // out slightly different sizes and the perpends still stagger — that was
+  // always the point — but a joint is a joint everywhere.
+  //
+  // The key is TILE-LOCAL (modf by the tile period), because the same boundary
+  // one tile over must hash identically or the texture seams.
   const jS = jitterAmt('wall');
-  const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16 * jS;   // ± along the course
-  const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10 * jS;    // ± in bed height
-  const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
-  const inby = clampf(fract(gy) + jy, 0.001, 0.999);
-  // Distances to this stone's OWN edges, in metres — bx/by are now per-stone, so
-  // a joint round a big block is the same width as one round a small block
-  // rather than scaling with it, which is what mortar actually does.
-  const dH = Math.min(inby, 1 - inby) * by, dV = Math.min(inbx, 1 - inbx) * bx;
+  const ex0 = st.x0 + setOut(st.x0, TILE_W_M, 1.7, jS);
+  const ex1 = st.x1 + setOut(st.x1, TILE_W_M, 1.7, jS);
+  const ey0 = st.y0 + setOut(st.y0, TILE_H_M, 5.3, jS);
+  const ey1 = st.y1 + setOut(st.y1, TILE_H_M, 5.3, jS);
+  // Un-jittered, and deliberately: these locate features WITHIN a stone (the
+  // split crack, the dome, the chips) where nothing has to agree with a
+  // neighbour, and folding the set-out into them was only ever a side effect of
+  // measuring the joint through them.
+  const inbx = clampf(fract(gx), 0.001, 0.999);
+  const inby = clampf(fract(gy), 0.001, 0.999);
+  // Distances to this stone's OWN edges, in metres — so a joint round a big
+  // block is the same width as one round a small block rather than scaling with
+  // it, which is what mortar actually does.
+  const dH = Math.min(py - ey0, ey1 - py), dV = Math.min(px - ex0, ex1 - px);
   // Occasionally a perpend is lost — two stones grown together, or the joint
   // weathered shut. Keyed on this stone rather than on a grid slot now.
   const vKeep = stepf(0.14, dHash(idx, idy, 9.1));
