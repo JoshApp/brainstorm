@@ -175,8 +175,32 @@ function brickCPU(px: number, py: number, aa: number, u: number, v: number): Cel
   // SPALL — roughly one brick in twelve has lost its face. Until POM existed a
   // "broken" brick could only be a darker rectangle; now the height can drop
   // and the ray march carves an actual bite out of the wall.
+  // ── STONE BREAKS ON A PLANE. IT DOES NOT DISH ───────────────────────────────
+  // Josh: *"our stones look a little bit plastic ... slightly worn but not
+  // damaged."* Both halves of that come from the same thing: every shape this
+  // file makes is a SMOOTH CURVE. The warp is smoothstep-interpolated value
+  // noise, the doming is a paraboloid, the tilt is a plane, the erosion is a
+  // blur, the grit is more smooth noise. A surface built entirely from soft
+  // curvature is a surface made of pillows — which is exactly what plastic
+  // looks like, and it is why the wall reads as worn rather than damaged.
+  // Wear is smooth. DAMAGE IS ANGULAR.
+  //
+  // The old spall was a uniform depth drop across the whole brick — a shallow
+  // dish, the roundest possible hole. A real spall is a FLAKE: stone parts along
+  // a plane, leaving a straight fracture line and a wedge behind it, with a
+  // sharp arris where the flake left. So cut with a line instead of a dish —
+  // pick a direction and an offset per brick, and take everything on one side of
+  // it, deeper the further from the fracture.
+  //
+  // Costs nothing extra: same hash lookups, one dot product. The edge it leaves
+  // is as sharp as the texel grid allows, which is the point — this is the one
+  // place in the bake that is ALLOWED to be hard-edged.
   const spall = stepf(0.92, dHash(idx, idy, 6.9));
-  const spallD = spall * mixf(0.30, 0.55, dHash(idx, idy, 1.7));
+  const fAng = dHash(idx, idy, 2.2) * Math.PI * 2;
+  const fOff = mixf(0.30, 0.70, dHash(idx, idy, 4.9));
+  const fSide = (inbx - 0.5) * Math.cos(fAng) + (inby - 0.5) * Math.sin(fAng) + (fOff - 0.5);
+  const flake = Math.max(0, -fSide) * mixf(1.1, 2.0, dHash(idx, idy, 1.7));
+  const spallD = spall * Math.min(0.62, flake);
   const h = clampf(1.0 + set + tilt + dome - spallD, 0.25, 1.15);
   // The joint is no longer a constant — see mortarFill.
   const m = mortarFill(gx, gy, u, v, jointTex('wall'));
@@ -392,11 +416,34 @@ const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.805, 0.66,
 // what grit actually is. So the weights are near-flat with the emphasis pushed
 // up, which is not standard fBm and is not meant to be: the octaves this
 // surface was short of are the ones worth spending the energy on.
-function gritField(u: number, v: number): number {
+// ── AND HALF THE OCTAVES ARE CREASED, NOT ROUNDED ───────────────────────────
+// Same "plastic" diagnosis as the spall below. Plain value noise interpolates
+// with smoothstep, so every feature it makes is a rounded bump — grit built
+// only from it is a field of tiny pillows, which at close range is precisely
+// the plastic read. Mineral surfaces are not made of bumps; they are made of
+// FACETS meeting at creases, because that is how crystal and fracture work.
+//
+// abs(n - 0.5) is the same NoiseAbs / ridged trick already used for the cracks,
+// one operator applied at a different scale: it folds the field through zero so
+// what were smooth zero-crossings become sharp V-shaped creases. Half the
+// energy stays rounded — real stone has both — but the fine end is creased,
+// because that is the end you are close enough to read.
+// Its own knob rather than baked in, and defaulting LOW, because ridging raises
+// the contrast of the fine octaves — so folding it in at full strength changed
+// the character of grit underneath a value Josh had already tuned against the
+// smooth version, and his 1.5 came out as pale blotching. Same mistake as
+// adopting a number he chose against a dead control: don't move the meaning of
+// a slider someone has already set.
+const gritCrease = surfaceKnob('gritcrease', 'Grit crease', 0, 1, 0.3, 0.3,
+  'rounded bumps <-> mineral creases at the fine end');
+
+function gritField(u: number, v: number, crease: number): number {
+  const rid = (x: number) => 1 - 2 * Math.abs(x - 0.5);   // NoiseAbs: creases, not bumps
+  const mixR = (x: number) => mixf(x, rid(x), crease);
   return vnoiseP(u * 32, v * 32, 32, 32) * 0.20
-       + vnoiseP(u * 64 + 5.3, v * 64 + 1.7, 64, 64) * 0.26
-       + vnoiseP(u * 128 + 9.1, v * 128 + 4.2, 128, 128) * 0.28
-       + vnoiseP(u * 256 + 2.6, v * 256 + 8.4, 256, 256) * 0.26;
+       + vnoiseP(u * 64 + 5.3, v * 64 + 1.7, 64, 64) * 0.24
+       + mixR(vnoiseP(u * 128 + 9.1, v * 128 + 4.2, 128, 128)) * 0.28
+       + mixR(vnoiseP(u * 256 + 2.6, v * 256 + 8.4, 256, 256)) * 0.28;
 }
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
@@ -889,10 +936,20 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
         // are aggregate, stone is crystalline, and one grain over both is the
         // tell that they are the same substance at different brightness.
         const joint = 1 - smooth(0.55, 0.95, height);
-        const g = gritField(u0, v0) - 0.5;
+        const g = gritField(u0, v0, gritCrease(kind)) - 0.5;
         const sandy = vnoiseP(u0 * 48, v0 * 48, 48, 48) - 0.5;
         const grain = mixf(g, sandy, joint * 0.7);          // ±0.5, signed
-        height += grain * 0.16 * gA;
+        // HEIGHT gets only a sliver, and this was a real collision rather than
+        // a taste call. At 0.16 with Josh's grit of 1.5 the swing is +/-0.24 on
+        // a range where a mortar joint is 0.6 deep — grit was 40% of the joint
+        // depth, i.e. not grit at all but macro relief competing with the
+        // masonry. Two things broke on it: anything keying off the height VALUE
+        // to find a joint (the crevice rim) fired all over the block faces
+        // instead, and POM spent its march stepping through grain.
+        //
+        // Grit belongs in the NORMAL and the ROUGHNESS, which is where it is
+        // legible anyway; the height only needs enough to seed the normal.
+        height += grain * 0.05 * gA;
         shade *= 1 + grain * 0.20 * gA;
         // ── VARIANCE → ROUGHNESS, which is what makes grit survive distance ──
         // The signed term above spreads roughness both ways, and that is the
