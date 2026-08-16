@@ -835,6 +835,56 @@ function bakeWallSegmentGeometry(
   const spanW = segLen + extS + extE;      // widened extent
   const spanX = (extE - extS) / 2;         // ...and its recentred midpoint
 
+  // ── TELL THE SHADER HOW TO TEXTURE A HORIZONTAL STRIP ──────────────────────
+  // Josh: *"the top and face of a wall doesnt match — with small strips both
+  // faces should be one stone but the top is its own texture"*, then after a
+  // partial fix, *"now its aligned in one of the four room sides"*, then
+  // *"faces +x is good."*
+  //
+  // The surface shader picks its texture frame from the NORMAL, and one of these
+  // strips has a normal of ±Y, which says nothing about the wall it caps. Both
+  // of its coordinates came out wrong, in different ways:
+  //
+  //   U fell back to world X. On a N/S wall — which runs along X — that agreed
+  //   by luck; on a W/E wall it came out ninety degrees off. Two walls right,
+  //   two wrong.
+  //
+  //   V fell back to the depth coordinate, which has nothing to do with the
+  //   height the face was at. That is why "faces +x is good" was ALSO luck, and
+  //   computably so: that strip sampled V at x = -4.5, which over a 4.8m tile is
+  //   -0.938 repeats, against the face's 0.38/4.8 = 0.079 at the arris. They
+  //   differ by 1.017 tiles — one whole repeat plus 8cm — so it very nearly
+  //   continued. The z = -5.5 wall differs by 0.225 of a tile, about three
+  //   courses out, and looks it.
+  //
+  // Neither is fixable in the shader; the information is not in the fragment. It
+  // is here, so say it. The carrier is the UV attribute: every wall geometry is a
+  // PlaneGeometry so it already has one, the merge already preserves it, and the
+  // world-projected shader has never read it. Free space that needs no new
+  // attribute — which matters, because adding one to a merge group is what
+  // silently dropped every dressed band once already.
+  //
+  // uv.x is a sentinel outside the [0,1] a PlaneGeometry emits, so anything
+  // untagged is unambiguously "no flag" rather than accidentally meaning
+  // something. uv.y is the V that continues from the face.
+  //
+  // `refDepth` is the PROUD band's depth — the face this strip is an extension
+  // of — and not the wall plane. A strip between two RECESSED bands (the field
+  // and the cap) never touches the plane, so measuring from it left that one
+  // strip 0.08 out while the other two were exact. Caught by checking the baked
+  // numbers rather than by looking at it.
+  const tagStrip = (geo: THREE.BufferGeometry, refDepth: number): void => {
+    const alongZ = we.side === 'W' || we.side === 'E';
+    const uvA = geo.attributes.uv as THREE.BufferAttribute;
+    const pA = geo.attributes.position as THREE.BufferAttribute;
+    for (let v = 0; v < uvA.count; v++) {
+      uvA.setX(v, alongZ ? 2 : -1);
+      // Local frame: Y is height above the wall base, Z is depth into the room.
+      uvA.setY(v, baseY + pA.getY(v) + Math.abs(pA.getZ(v) - refDepth));
+    }
+    uvA.needsUpdate = true;
+  };
+
   // Emit the horizontal surface bridging two depths at height `yAt`.
   //
   // A band is a PLANE, so a depth change leaves an open slot you can see
@@ -852,6 +902,11 @@ function bakeWallSegmentGeometry(
     // we're looking at its top (faces up); otherwise we're under an overhang.
     conn.rotateX(belowDepth > aboveDepth ? -Math.PI / 2 : Math.PI / 2);
     conn.translate(spanX, yAt, (dLo + dHi) / 2);
+    // Tag BEFORE going to world space — the reference below is a LOCAL depth,
+    // and recovering it from world coordinates means re-deriving which way this
+    // wall's local +Z points, which is exactly the information the local frame
+    // already has.
+    tagStrip(conn, dHi);
     conn.applyMatrix4(toWorld);
     // Connectors carry no vertex colour of their own; give them the darker end
     // of the wall's AO so a step reads as a shadowed underside/ledge rather
@@ -862,29 +917,6 @@ function bakeWallSegmentGeometry(
       cCol[v * 3 + 0] = 0.62; cCol[v * 3 + 1] = 0.62; cCol[v * 3 + 2] = 0.66;
     }
     conn.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
-    // ── TELL THE SHADER WHICH WALL THIS STRIP BELONGS TO ─────────────────────
-    // Josh: *"the top and face of a wall doesnt match — both faces should be one
-    // stone but the top is its own texture."*
-    //
-    // The surface shader picks its texture axes from the NORMAL, and this strip's
-    // normal is ±Y, which cannot say which wall it caps. It fell back to the
-    // ground plane, so on a W/E wall — which runs along Z — the strip's pattern
-    // came out ninety degrees to the face below it. N/S walls run along X and so
-    // happened to agree already, which is why only half the walls in a room
-    // looked wrong.
-    //
-    // We know the answer here and nowhere else does, so say it. The carrier is
-    // the UV attribute: every wall geometry is a PlaneGeometry so it already has
-    // one, the merge already preserves it, and the world-projected shader has
-    // never read it — free space that costs no new attribute and so cannot trip
-    // the merge-mismatch trap that ate the dressed bands once already.
-    //
-    // Values are deliberately OUTSIDE the [0,1] a PlaneGeometry emits, so an
-    // untagged surface is unambiguous rather than accidentally meaning something.
-    const alongZ = we.side === 'W' || we.side === 'E';
-    const cUv = conn.attributes.uv as THREE.BufferAttribute;
-    for (let v = 0; v < cUv.count; v++) cUv.setX(v, alongZ ? 2 : -1);
-    cUv.needsUpdate = true;
     (mat === 'dressed' ? out.dressed : out.wall).push(conn);
   };
 

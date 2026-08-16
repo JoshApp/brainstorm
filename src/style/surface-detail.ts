@@ -408,10 +408,16 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // preserves. A sentinel OUTSIDE the [0,1] range a PlaneGeometry produces, so
     // any surface that has NOT been tagged — props, framing, anything with real
     // UVs — is unambiguously "no flag" and keeps the old behaviour.
-    const tagged: any = (uvNode() as any).x;
-    const swapAxes: any = tagged.greaterThan(1.5);
+    const uvA: any = uvNode();
+    // Tag values are -1 and 2, so |t - 0.5| > 1 catches both and cannot catch a
+    // PlaneGeometry's own [0,1]. One test, no boolean-or needed.
+    const isTagged: any = uvA.x.sub(0.5).abs().greaterThan(1.0);
+    const swapAxes: any = uvA.x.greaterThan(1.5);
     const flatU: any = (swapAxes as any).select(pos.z, pos.x);
-    const flatV: any = (swapAxes as any).select(pos.x, pos.z);
+    // V comes from the BAKED value on a tagged strip — the height the face had
+    // at the arris, carried on into the wall — so the course continues instead
+    // of jumping to whatever the depth coordinate happened to land on.
+    const flatV: any = (isTagged as any).select(uvA.y, (swapAxes as any).select(pos.x, pos.z));
     sU = (flat as any).select(flatU, (faceX as any).select(pos.z, pos.x));
     sV = (flat as any).select(flatV, pos.y);
     axisU = (flat as any).select(
