@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
+import { setMaterialStoneLightingWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
@@ -82,19 +82,47 @@ const uStoneWear = tuneUniform({
 //     are multiplying 0.004.
 //   - why roughness knobs feel powerful and colour knobs feel dead.
 //
-// CONFIRMED by test, not just reasoned: lifting these base colours 25x made
-// Stone hue spread 4.7x more effective (mean 1.05 -> 4.89, p99 5.7 -> 19.7).
+// ── AND THE FIX IS NOT THE OBVIOUS ONE ──────────────────────────────────────
+// The first answer was albedo UP and the grade's exposure DOWN, and it works —
+// measured at matched brightness, Stone hue spread went from 1.2x the noise
+// floor to 5.5x. But exposure is GLOBAL. Creatures, flames, items, particles
+// and every overlay were balanced against it and none of them come through this
+// shader, so cutting exposure to fix the walls darkens the whole rest of the
+// game to pay for it. That is a regression bought with a fix, and looking at it
+// on screen made that obvious in a way the numbers had not.
 //
-// This knob is the experiment, and it DEFAULTS TO 1 (no change) on purpose.
-// Raising albedo without lowering light is not a free win — the scene's torch
-// intensities and the grade's exposure (0.37, i.e. already pulling brightness
-// down 2.7x) were both set against a near-black surface, so the paired move is
-// albedo UP and exposure DOWN. That is the game's whole lighting balance, which
-// is Josh's call and a proper piece of work, not something to slide under him.
-// Try it with:  __tune.set('stonelift', 12); __gradeSet({ exposure: 0.12 })
+// The stone's own SPECULAR is the other half of the same ratio and it touches
+// nothing else — see setMaterialStoneLightingWebGPU in banded-lighting-webgpu.
+// So the landed pair is albedo UP, stone specular DOWN, exposure UNTOUCHED, and
+// the two values below were found by bisecting for equal mean frame luminance
+// rather than picked.
+//
+// MEASURED AT MATCHED BRIGHTNESS, exposure untouched (null floor in brackets):
+//
+//     knob                shipped          landed
+//     Stone hue spread    1.69  (1.3x)     5.43  (7.9x)
+//     Dirt depth          0.84  (0.6x)     2.00  (2.9x)
+//     Joint substance     0.70  (0.5x)     1.16  (1.7x)
+//     Stone wear spread  18.58 (14.1x)     6.97 (10.1x)
+//
+// Colour goes from below the noise floor to well above it, and roughness stops
+// being fourteen times more influential than colour — which is what "the
+// surface answers light with its shine instead of its colour" meant in numbers.
+//
+// The sheen itself also goes: pixels above 80% luminance fall from 3.99% of the
+// frame to 0.07%, at the same mean brightness. That is the silver, leaving.
 const uStoneLift = tuneUniform({
-  id: 'stonelift', group: 'Stone', label: 'Stone albedo', min: 1, max: 40, value: 1,
-  hint: 'lifts the near-black base; pair with exposure DOWN or it blows out',
+  id: 'stonelift', group: 'Stone', label: 'Stone albedo', min: 1, max: 40, value: 5.7,
+  hint: 'lifts the near-black base so colour work is visible at all',
+});
+
+// The other half of the same ratio, and the reason global exposure does NOT
+// have to move — see setMaterialStoneLightingWebGPU. Turning the stone's own
+// sheen down changes the albedo-to-specular balance without darkening every
+// creature, flame and item in the game to pay for it.
+const uStoneSpec = tuneUniform({
+  id: 'stonespec', group: 'Light', label: 'Stone specular', min: 0, max: 1.5, value: 0.35,
+  hint: 'dry weathered stone reflects far less than the 4% default',
 });
 const uPomDepth = tuneUniform({
   id: 'pomdepth', group: 'Relief', label: 'POM depth', min: 0, max: 0.3, value: POM_DEPTH_DEFAULT,
@@ -623,11 +651,19 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (b)+(c) COLOURED GLOW — thin-crack surfaces ONLY (brick walls + flagstone
   // floors). Lift the deep channel toward bone-pale (matte hue pickup) and over-
   // saturate its LIT colour toward the light's hue (subtle, the skeleton trick).
+  let seamChroma: any = null;
   if (cfg.seamGlow) {
     const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(uScale);
     albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
-    setMaterialSeamChromaWebGPU(mat, float(1.0).add(core.mul(SEAM_CHROMA)));
+    seamChroma = float(1.0).add(core.mul(SEAM_CHROMA));
   }
+  // Install the stone lighting model UNCONDITIONALLY, not just for the seam-glow
+  // surfaces. The specular scale is the half of the albedo/specular ratio that
+  // does not touch global exposure (see setMaterialStoneLightingWebGPU), and it
+  // has to reach every stone surface — the pillars and the dressed framing are
+  // the same rock as the walls, and one of them keeping a 4% sheen while the
+  // others lose it would read as two different materials.
+  setMaterialStoneLightingWebGPU(mat, { chromaNode: seamChroma, specScale: uStoneSpec });
 
   // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).

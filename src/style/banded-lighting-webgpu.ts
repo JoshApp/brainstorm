@@ -15,7 +15,36 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 // + ambient ride along proportionally (small under DELVE's torch-lit diffuse
 // look). Matches the original's BAND_COUNT + Reinhard-space stepping.
 
-const BANDS = 4.0;
+// ── THE BANDING WAS ALWAYS HERE. THE SPECULAR SMEAR WAS HIDING IT ───────────
+//
+// Only the DIRECT DIFFUSE is banded (line ~67); indirect and specular stay
+// smooth. Direct diffuse scales with albedo — and the stone's albedo is ~0.004
+// linear, while a dielectric's specular F0 is 0.04. So for the whole life of
+// this look, the banded term has been roughly a tenth of the signal and the
+// smooth specular has been nine tenths: four hard steps, buried under a sheen.
+//
+// Lift the albedo to something a real stone has and the ratio inverts — the
+// banded term dominates, and four steps across the entire lit range is far too
+// few to carry an image. That is not a new bug introduced by the lift; it is
+// the cel model finally being visible, at a step count chosen when it wasn't.
+//
+// So both halves are dials now:
+//   BANDS     how many steps. 4 was fine as a garnish, and is not enough as
+//             the main event.
+//   SOFTNESS  blends the quantised tone back toward the continuous one. Cel
+//             shading wants a hard edge; a hard edge at 0.4x render scale with
+//             a MOVING lamp crawls. This is the knob for that trade, and it is
+//             a trade rather than a bug to fix.
+import { tuneUniform } from '../debug/tuning';
+
+const uBands = tuneUniform({
+  id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 10, step: 1,
+  hint: 'how many steps the direct light is posterised into',
+});
+const uBandSoft = tuneUniform({
+  id: 'bandsoft', group: 'Light', label: 'Band softness', min: 0, max: 1, value: 0.12,
+  hint: '0 = hard cel steps, 1 = smooth gradient',
+});
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
@@ -33,11 +62,16 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // dark, fading as the lamp finds the form. Colour·intensity + fresnel power
   // still ride the per-vertex aRevealRim vec4 — one shared pipeline.
   rimDarkReactive: number;
-  constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0) {
+  // Optional node scaling this material's DIRECT SPECULAR. See the note on
+  // setMaterialStoneLightingWebGPU — this is how the stone's sheen gets turned
+  // down without touching the exposure every other object in the game shares.
+  specScale: any;
+  constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0, specScale: any = null) {
     super();
     this.chroma = chroma;
     this.chromaNode = chromaNode;
     this.rimDarkReactive = rimDarkReactive;
+    this.specScale = specScale;
   }
   // SINGLE-SCATTER direct specular — match WebGL's RE_Direct_Physical EXACTLY.
   // Three's WGSL PhysicalLightingModel.direct() uses BRDF_GGX_MULTISCATTER, which
@@ -53,9 +87,9 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
     const irradiance: any = dotNL.mul(lightColor);
     reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
-    reflectedLight.directSpecular.addAssign(
-      irradiance.mul((BRDF_GGX as any)({ lightDirection, f0: specularColor, f90: (float as any)(1), roughness })),
-    );
+    let spec: any = irradiance.mul((BRDF_GGX as any)({ lightDirection, f0: specularColor, f90: (float as any)(1), roughness }));
+    if (this.specScale) spec = spec.mul(this.specScale);
+    reflectedLight.directSpecular.addAssign(spec);
   }
   finish(builder: any): void {
     const context = builder.context;
@@ -68,7 +102,8 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     const light: any = dd.div(alb);                       // albedo-independent light term
     const mag: any = light.r.max(light.g).max(light.b);
     const tone: any = mag.div(mag.add(1.0));              // Reinhard → perceived range
-    const bandedTone: any = tone.mul(BANDS).add(0.5).floor().div(BANDS).min(0.88);
+    const quantTone: any = tone.mul(uBands as any).add(0.5).floor().div(uBands as any);
+    const bandedTone: any = (mix as any)(quantTone, tone, uBandSoft as any).min(0.88);
     const bandedMag: any = bandedTone.div(bandedTone.oneMinus().max(0.001));
     const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
     const newDD: any = (mag.greaterThan(0.0015) as any).select(bandedDD, dd);
@@ -166,6 +201,41 @@ export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: numbe
  *  the light's colour while the slab faces stay neutral. Still banded. */
 export function setMaterialSeamChromaWebGPU(mat: any, chromaNode: any): void {
   mat.setupLightingModel = () => new BandedPhysicalLightingModel(1, chromaNode);
+}
+
+/**
+ * STONE LIGHTING — seam chroma plus a specular scale, installed on every
+ * surface that goes through style/surface-detail.ts.
+ *
+ * ── WHY THE SPECULAR AND NOT THE EXPOSURE ───────────────────────────────────
+ * Measured 2026-08-16: the stone's base colour is ~0.004 linear while a
+ * dielectric's specular F0 is 0.04, so these surfaces are close to a pure
+ * specular lobe over a black substrate. Every colour operation in the surface
+ * shader lands under that lobe, which is why every colour knob read at the
+ * noise floor while every roughness knob was strong.
+ *
+ * The obvious fix — lift the albedo and pull the grade's exposure down to
+ * compensate — works, and it is measurably right for stone (stone hue spread
+ * went from 1.2x the noise floor to 5.5x at matched brightness). But exposure
+ * is GLOBAL. Creatures, flames, items, particles and every UI-adjacent overlay
+ * were all balanced against the current one, and none of them go through this
+ * shader, so cutting it to fix the walls would darken the entire rest of the
+ * game to pay for it. That is a regression bought with a fix.
+ *
+ * Scaling the stone's own specular changes the SAME RATIO and touches nothing
+ * else. It is also the more defensible reading physically: weathered, sooted,
+ * dry dungeon stone genuinely reflects less than the 4% default a clean
+ * dielectric gets, and the 4% was never authored for it — it is simply what
+ * MeshStandardMaterial assumes when nobody says otherwise.
+ *
+ * So: albedo UP and stone specular DOWN, with global exposure untouched.
+ */
+export function setMaterialStoneLightingWebGPU(
+  mat: any, opts: { chromaNode?: any; specScale?: any },
+): void {
+  const chromaNode = opts.chromaNode ?? null;
+  const specScale = opts.specScale ?? null;
+  mat.setupLightingModel = () => new BandedPhysicalLightingModel(1, chromaNode, 0, specScale);
 }
 
 /** Restore the stock (un-banded) lighting model on a material — used for the
