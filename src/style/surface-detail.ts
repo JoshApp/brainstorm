@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setMaterialStoneLightingWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix, uv as uvNode } from 'three/tsl';
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
 
@@ -387,13 +387,41 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   if (cfg.proj === 'wall') {
     const flat: any = nrm.y.abs().greaterThanEqual((tslMax as any)(nrm.x.abs(), nrm.z.abs()));
     const faceX: any = nrm.x.abs().greaterThan(nrm.z.abs());   // ±X-facing wall → U runs along Z
-    sU = (flat as any).select(pos.x, (faceX as any).select(pos.z, pos.x));
-    sV = (flat as any).select(pos.z, pos.y);
+    // ── A HORIZONTAL STRIP CANNOT KNOW WHICH WALL IT BELONGS TO ───────────────
+    // Josh: *"the top and face of a wall doesnt match — with small strips both
+    // faces should be one stone but they are not continuous, the top is its own
+    // texture."*
+    //
+    // The frame above is chosen from the NORMAL alone, and a band's top strip
+    // has a normal of ±Y, which says nothing about the wall under it. So the
+    // strip fell back to the ground plane (U = world X) while the wall face used
+    // whichever axis it runs along. On a N/S wall that happens to be world X too
+    // and the joints DO carry over the arris; on a W/E wall the wall runs along
+    // Z and the strip's pattern comes out at ninety degrees to it. Two of the
+    // four walls in every room lined up and two did not, which is why it reads
+    // as the top "doing its own thing" rather than as a consistent choice.
+    //
+    // No amount of shader cleverness fixes that — the information is not in the
+    // fragment. The builder HAS it (see closeStep in level/builder.ts), so it
+    // now writes the along-wall axis into the strip's UV, which every wall
+    // geometry already carries, nothing else reads, and the merge already
+    // preserves. A sentinel OUTSIDE the [0,1] range a PlaneGeometry produces, so
+    // any surface that has NOT been tagged — props, framing, anything with real
+    // UVs — is unambiguously "no flag" and keeps the old behaviour.
+    const tagged: any = (uvNode() as any).x;
+    const swapAxes: any = tagged.greaterThan(1.5);
+    const flatU: any = (swapAxes as any).select(pos.z, pos.x);
+    const flatV: any = (swapAxes as any).select(pos.x, pos.z);
+    sU = (flat as any).select(flatU, (faceX as any).select(pos.z, pos.x));
+    sV = (flat as any).select(flatV, pos.y);
     axisU = (flat as any).select(
-      (vec3 as any)(1, 0, 0),
+      (swapAxes as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
       (faceX as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
     );
-    axisV = (flat as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, 1, 0));
+    axisV = (flat as any).select(
+      (swapAxes as any).select((vec3 as any)(1, 0, 0), (vec3 as any)(0, 0, 1)),
+      (vec3 as any)(0, 1, 0),
+    );
   } else {
     sU = pos.x; sV = pos.z;
     axisU = (vec3 as any)(1, 0, 0);

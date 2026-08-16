@@ -862,6 +862,29 @@ function bakeWallSegmentGeometry(
       cCol[v * 3 + 0] = 0.62; cCol[v * 3 + 1] = 0.62; cCol[v * 3 + 2] = 0.66;
     }
     conn.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+    // ── TELL THE SHADER WHICH WALL THIS STRIP BELONGS TO ─────────────────────
+    // Josh: *"the top and face of a wall doesnt match — both faces should be one
+    // stone but the top is its own texture."*
+    //
+    // The surface shader picks its texture axes from the NORMAL, and this strip's
+    // normal is ±Y, which cannot say which wall it caps. It fell back to the
+    // ground plane, so on a W/E wall — which runs along Z — the strip's pattern
+    // came out ninety degrees to the face below it. N/S walls run along X and so
+    // happened to agree already, which is why only half the walls in a room
+    // looked wrong.
+    //
+    // We know the answer here and nowhere else does, so say it. The carrier is
+    // the UV attribute: every wall geometry is a PlaneGeometry so it already has
+    // one, the merge already preserves it, and the world-projected shader has
+    // never read it — free space that costs no new attribute and so cannot trip
+    // the merge-mismatch trap that ate the dressed bands once already.
+    //
+    // Values are deliberately OUTSIDE the [0,1] a PlaneGeometry emits, so an
+    // untagged surface is unambiguous rather than accidentally meaning something.
+    const alongZ = we.side === 'W' || we.side === 'E';
+    const cUv = conn.attributes.uv as THREE.BufferAttribute;
+    for (let v = 0; v < cUv.count; v++) cUv.setX(v, alongZ ? 2 : -1);
+    cUv.needsUpdate = true;
     (mat === 'dressed' ? out.dressed : out.wall).push(conn);
   };
 
