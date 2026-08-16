@@ -1221,6 +1221,11 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: false,
     level: {
       id: 'surface-lab', depth: 2, displayName: 'SURFACE LAB', fogColor: 0x000000,
+      // No threshold bonfire. The builder auto-places one dead ahead of the
+      // spawn, which in a room built to look at STONE is a bright orange object
+      // sitting in the middle of the thing being judged. This is the authored
+      // opt-out the safe rooms use.
+      composerManagedFires: true,
       // yaw 0, NOT Math.PI, and it matters for a non-obvious reason: the
       // builder casts the ORIGIN ARCH — the sealed doors "the way you came" —
       // backward from startPos.yaw onto the containing room's wall. With
@@ -1228,7 +1233,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       // i.e. exactly the flat stone this lab exists to look at. The camera is
       // driven by playerPos.lookAt below, so flipping this only moves the arch
       // behind the viewer, where a surface lab wants it.
-      startPos: { x: 0, z: -1.5, yaw: 0 },
+      startPos: { x: 0, z: -3.9, yaw: 0 },
       // Shortened 14m → 10m deep. At 14 the far wall sat ~13m out, past the
       // torches' reach, so it read as a black void and the frame lost the one
       // surface you can see FLAT ON — side walls at a grazing angle show
@@ -1279,7 +1284,11 @@ export const SCENARIOS: Record<string, Scenario> = {
     // their perspective run at this distance, which is the trade: a raking
     // side wall shows RELIEF, a lit far wall shows COLOUR, and the far wall
     // was the half that wasn't working.
-    playerPos: { x: 0, z: -1.5, lookAt: { x: 0, z: -5.5, y: 0.9 } },
+    // CLOSE. Josh, tuning: *"i think you should go closer with your test
+    // scenario."* At 4m the wall filled a third of the frame; at 1.6m it fills
+    // it, which is what you want when the question is how a surface reads
+    // rather than how a room does. Still inside lamp range with room to spare.
+    playerPos: { x: 0, z: -3.9, lookAt: { x: 0, z: -5.5, y: 1.15 } },
   },
 
   // BLOAT LAB — the detonating ooze, posed for a look and for a fight.

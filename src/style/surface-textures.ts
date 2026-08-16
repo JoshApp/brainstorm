@@ -81,7 +81,7 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // slightly different sizes, the perpends stagger, and the wall reads as laid
   // by hand — with every edge still dead straight. This is the irregularity
   // masonry actually has, as opposed to the irregularity noise wants to give it.
-  const jS = brickJitter();
+  const jS = jitterAmt('wall');
   const jx = (dHash(idx, idy, 12.9) - 0.5) * 0.16 * jS;   // ± along the course
   const jy = (dHash(idx, idy, 4.3) - 0.5) * 0.10 * jS;    // ± in bed height
   const inbx = clampf(fract(gx) + jx, 0.001, 0.999);
@@ -112,7 +112,10 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // a slope lands where it should. The SHADE keeps the narrow ramp, so the
   // joint still reads as a crisp dark line: sharp where the eye wants an edge,
   // sloped where the march needs one.
-  const hMortar = (1 - smooth(0.012, 0.085, dseam)) * seamVar;
+  // Sharpness narrows the ramp toward the joint: 1 = the face holds its height
+  // right to the arris, 0 = the old wide fillet.
+  const eW = mixf(0.085, 0.026, edgeSharp('wall'));
+  const hMortar = (1 - smooth(0.010, eW, dseam)) * seamVar;
   const hRecess = Math.max(hMortar, crack * 0.7);
   // PER-BRICK SET (v3). Every brick face used to sit flush at height 1.0 —
   // only the mortar and cracks had any depth — so a wall was a flat plane with
@@ -155,7 +158,7 @@ function brickCPU(px: number, py: number, aa: number): Cell {
   // a tile with a stone printed on it — and unlike the tilt above, which leans
   // a flat plane, this actually curves it.
   const dcx = (inbx - 0.5) * 2, dcy = (inby - 0.5) * 2;
-  const dome = Math.max(0, 1 - (dcx * dcx + dcy * dcy)) * 0.055 * domeAmt();
+  const dome = Math.max(0, 1 - (dcx * dcx + dcy * dcy)) * 0.055 * domeAmt('wall');
   // Tone widened 0.86..1.0 → 0.80..1.06: with light now varying per block, the
   // albedo can carry more spread without the wall reading as noise.
   const tone = mixf(0.80, 1.06, dHash(idx, idy, 3.7));
@@ -237,7 +240,7 @@ const WARP_PERIOD = 4;          // integer → tiles cleanly over u,v in [0,1)
 // straight boundaries between them, instead of everything flowing. Slabs that
 // settled against each other, rather than a wall made of wax — which is what a
 // masonry wall actually does as its footing moves.
-function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, number] {
+function warpUV(u: number, v: number, amp: number, faceted: boolean, faceKind: SurfaceKind): [number, number] {
   const P = WARP_PERIOD, P2 = P * 2;
   let nx = vnoiseP(u * P, v * P, P, P) * 0.68
          + vnoiseP(u * P2 + 3.1, v * P2 + 7.9, P2, P2) * 0.32;
@@ -245,7 +248,7 @@ function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, n
          + vnoiseP(u * P2 + 19.7, v * P2 + 2.3, P2, P2) * 0.32;
   if (faceted) {
     // Snap to levels → flat facets with hard edges between them.
-    const L = Math.max(2, Math.round(warpFacet()));
+    const L = Math.max(2, Math.round(warpFacet(faceKind)));
     nx = Math.floor(nx * L) / (L - 1);
     ny = Math.floor(ny * L) / (L - 1);
   }
@@ -254,50 +257,51 @@ function warpUV(u: number, v: number, amp: number, faceted: boolean): [number, n
 // How far each surface bends. Walls are LAID by someone and only sag with age;
 // a floor is bedded in earth and moves more. Kept small — past ~0.05 the courses
 // stop reading as masonry and start reading as melted.
-// Registered knobs, 'rebake' tier: moving one regenerates the CPU texture and
-// copies the new pixels into the SAME DataTexture, so the picture updates
-// without a reload and without anything downstream rebinding.
-const warpWall = tuneNumber({
-  id: 'warpwall', group: 'Bake', label: 'Wall warp', min: 0, max: 0.05, value: 0.011,
-  hint: 'how far the courses sag',
-});
-const warpFloor = tuneNumber({
-  id: 'warpfloor', group: 'Bake', label: 'Floor warp', min: 0, max: 0.08, value: 0.034,
-  hint: 'how much the flags shift',
-});
-const brickJitter = tuneNumber({
-  id: 'brickjit', group: 'Bake', label: 'Brick set-out', min: 0, max: 0.4, value: 1.0,
-  hint: 'how badly the bricks were laid (1 = as authored)',
-});
-const eroAmt = tuneNumber({
-  id: 'erode', group: 'Bake', label: 'Erosion', min: 0, max: 1, value: 1.0,
-  hint: 'weathering strength (1 = as authored)',
-});
-const crackAmt = tuneNumber({
-  id: 'cracks', group: 'Bake', label: 'Cracks', min: 0, max: 1, value: 0.55,
-  hint: 'splits that ignore the joints',
-});
-const domeAmt = tuneNumber({
-  id: 'dome', group: 'Bake', label: 'Stone doming', min: 0, max: 1, value: 0.45,
-  hint: 'how convex the walked-on faces are',
-});
-// Already in the code but not reachable until now — a value you cannot try is
-// a value nobody tuned.
-const warpFacet = tuneNumber({
-  id: 'facet', group: 'Bake', label: 'Warp faceting', min: 2, max: 24, value: 5, step: 1,
-  hint: 'few = slabs settling, many = smooth bending',
-});
-const eroSteep = tuneNumber({
-  id: 'erosteep', group: 'Bake', label: 'Erosion steepness', min: 0, max: 1, value: 0.38,
-  hint: 'low = broad staining, high = distinct runs',
-});
-const toneCon = tuneNumber({
-  id: 'tone', group: 'Bake', label: 'Tone contrast', min: 0.4, max: 1.6, value: 1.0,
-  hint: 'how far the stones separate in value',
-});
+// ── PER-SURFACE KNOB PAIRS ───────────────────────────────────────────────────
+// Josh: *"is there a way to seperate the sliders for floor and wall?"* Yes, and
+// they should never have shared one: a wall is LAID and weathers by water
+// running down it, a floor is BEDDED and weathers by being walked on. Tuning
+// them together means every value is a compromise nobody chose.
+//
+// One call makes both knobs and returns a lookup, so the pair cannot drift
+// apart and neither can be forgotten. Ceiling and dressed stone follow the wall
+// — they are vertical-ish work by the same hands.
+function surfaceKnob(
+  id: string, label: string, min: number, max: number,
+  wallV: number, floorV: number, hint: string, step?: number,
+): (kind: SurfaceKind) => number {
+  const w = tuneNumber({ id: `${id}w`, group: 'Wall', label, min, max, value: wallV, hint, step });
+  const f = tuneNumber({ id: `${id}f`, group: 'Floor', label, min, max, value: floorV, hint, step });
+  return (kind) => (kind === 'floor' ? f() : w());
+}
+
+const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.011, 0.034, 'how far the pattern bends');
+const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 1.0, 1.0, 'how badly it was laid');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.55, 0.55, 'splits that ignore the joints');
+const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.20, 0.35, 'how convex the faces are');
+const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 1.0, 1.0, 'weathering strength');
+const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.38, 0.38, 'low = staining, high = runs');
+const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 1.0, 1.0, 'how far stones separate in value');
+const warpFacet = surfaceKnob('facet', 'Warp faceting', 2, 24, 5, 5, 'few = slabs settling, many = bending', 1);
+
+// ── EDGE SHARPNESS ───────────────────────────────────────────────────────────
+// Josh: *"everything looks like rounded edges like rounded bevel ... stones are
+// sometimes rounded but this looks like someone filed them down."*
+//
+// Fair, and it is my doing. Killing the card-stack banding meant widening the
+// height ramp at every joint from about one texel to ~70mm, which turns a sharp
+// arris into a fillet on EVERY edge in the game. That fixed the march and filed
+// the stone down at the same time.
+//
+// The two pull against each other and there is no free setting, so it becomes a
+// knob rather than a number I pick: narrow ramp = crisp arrises and some
+// banding, wide ramp = smooth march and soft edges. Dressed stone wants sharp,
+// a worn floor wants soft, which is exactly why it is per-surface too.
+const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.62, 0.42,
+  'high = crisp arris, low = filed down');
+
 function warpAmpFor(kind: SurfaceKind): number {
-  if (kind === 'wall') return warpWall();
-  if (kind === 'floor') return warpFloor();
+  if (kind === 'wall' || kind === 'floor') return warpAmt(kind);
   return WARP_AMP_BASE[kind];
 }
 const WARP_AMP_BASE: Record<SurfaceKind, number> = {
@@ -367,7 +371,8 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   const recess = Math.max(seam, missing);
   // Sloped gap walls for the height channel — see the note in brickCPU. The
   // shade keeps the narrow seam so the joint stays a crisp line.
-  const hSeam = 1 - smooth(chipW * 0.4, chipW + 0.075, edM);
+  const eWf = mixf(0.075, 0.020, edgeSharp('floor'));
+  const hSeam = 1 - smooth(chipW * 0.4, chipW + eWf, edM);
   // PER-FLAG SET + TILT (v3). Josh: *"the floor and wall mosaic is bland."*
   // The reason was that every flagstone was perfectly flush — the Voronoi gave
   // each stone a shape and a tone, but they all lay in one plane, so the floor
@@ -389,7 +394,7 @@ function flagCPU(px: number, py: number, aa: number): Cell {
   // blocks because they are the ones actually walked on, and a floor worn
   // convex is the single most legible sign that a place has been used.
   const dr2 = mrx * mrx + mry * mry;
-  const dome = Math.max(0, 1 - dr2 * 3.2) * 0.075 * domeAmt();
+  const dome = Math.max(0, 1 - dr2 * 3.2) * 0.075 * domeAmt('floor');
   const tone = mixf(0.70, 1.06, bt);
   // MISSING STONES ARE HOLES NOW. Josh: *"some stones are missing there but
   // even the missing texture is just flat color."* Exactly right — `missing`
@@ -589,7 +594,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       const u0 = (xi + 0.5) / CPU_TEX, v0 = (yi + 0.5) / CPU_TEX;
       // WARP FIRST, then evaluate the pattern in the bent coordinates.
       const wAmp = warpAmpFor(kind);
-      const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, WARP_FACETED[kind]) : [u0, v0];
+      const [u, v] = wAmp > 0 ? warpUV(u0, v0, wAmp, WARP_FACETED[kind], kind) : [u0, v0];
       const px = u * tile[0], py = v * tile[1];
       let shade = 1, height = 1, variant = 0.5, wear = 0.5;
       if (kind === 'wall') [shade, height, variant, wear] = brickCPU(px, py, aa);
@@ -602,7 +607,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
       // crack is not part of the masonry: it happened to it. Running it in the
       // warped frame would make it follow the courses, which is the one thing a
       // split does not do.
-      const cA = crackAmt();
+      const cA = crackAmt(kind);
       if (cA > 0) {
         const cf = crackField(u0, v0);
         const crack = smooth(0.86, 0.995, cf) * cA;
@@ -624,12 +629,12 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   // is where water goes; across a floor, because that is where feet go. This is
   // the operator that makes a surface look ACTED ON rather than merely noisy.
   const ero = EROSION[kind];
-  if (ero.amt > 0 && eroAmt() > 0) {
+  if (ero.amt > 0 && eroAmt(kind) > 0) {
     const smear = chainedErosion(eroF, CPU_TEX, CPU_TEX, ero.dx, ero.dy, ero.taps, ero.iters);
     for (let i = 0; i < N; i++) {
       // Only the strong end of the smear cuts — otherwise it is a grey veil
       // over everything instead of distinct runs.
-      const cut = smooth(eroSteep(), 1.0, smear[i]) * ero.amt * eroAmt();
+      const cut = smooth(eroSteep(kind), 1.0, smear[i]) * ero.amt * eroAmt(kind);
       shadeF[i] *= mixf(1, 0.62, cut);
       heightF[i] -= cut * 0.22;
       wearF[i] = clampf(wearF[i] + cut * 0.5, 0, 1);   // eroded stone is rougher
@@ -643,7 +648,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
     // R = shade, G = variant, B = wear, A = height. G and B are NOT copies of
     // R — they carry per-stone identity (see the Cell note above), so the
     // shader must read shade as `.r` broadcast, never `.rgb`.
-    buf[o] = clampf(toneRemap(clampf(shadeF[i], 0, 1), tone.pivot, tone.contrast * toneCon()), 0, 1) * 255;
+    buf[o] = clampf(toneRemap(clampf(shadeF[i], 0, 1), tone.pivot, tone.contrast * toneCon(kind)), 0, 1) * 255;
     buf[o + 1] = clampf(variantF[i], 0, 1) * 255;
     buf[o + 2] = clampf(wearF[i], 0, 1) * 255;
     buf[o + 3] = clampf(heightF[i], 0, 1) * 255;

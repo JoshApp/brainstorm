@@ -14,6 +14,9 @@
 // DEV-gated: mounted only from the DEV hook path, never referenced by
 // production code.
 import { listKnobs, knobGroups, knobsAsQuery, onKnobChange, type Knob } from './tuning';
+// Side-effect import: registers the View group's knobs. Without it the group
+// only appears once something else happens to pull the module in.
+import './tuning-view';
 
 let root: HTMLDivElement | null = null;
 let activeGroup = '';
