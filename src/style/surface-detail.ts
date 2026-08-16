@@ -125,7 +125,30 @@ const uStoneLift = tuneUniform({
 // damp sheen where a wall never does, so one number for both was a compromise in
 // the one place the two surfaces differ most obviously. Same rule as everything
 // else per-surface: it lives in that surface's tab.
-const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.59, 0.3525,
+// ── THE FLOOR HAD THE WEAKEST HIGHLIGHT IN THE SCENE, WHICH IS BACKWARDS ────
+//
+// Josh, 2026-08-16: *"torches at 1.55m height dont put sheen onto the floor so we
+// have to kinda bump something so they reach the floor."*
+//
+// The reach is fine and the geometry is fine — worth stating, because "the light
+// doesn't get there" was the natural reading and it sends you to the wrong knob.
+// TORCH_DISTANCE is 11m with a 1.55m mount, so the floor is thoroughly inside
+// the falloff; and for a floor (normal up) with a light at 1.55m and an eye at
+// 1.60m, the specular highlight lands almost exactly HALFWAY between you and the
+// torch, at every separation. The sheen was always available. It was being
+// rendered at 0.3525.
+//
+// That number is a leftover. This started as ONE shared knob and was split into a
+// wall/floor pair; the wall then got dialled to 0.59 over an evening of looking
+// at walls, and the floor silently kept the old shared value. So the surface
+// whose entire material premise is a damp grazing sheen (materials.ts: "at 0.72
+// the flagstones take a broad grazing sheen from torchlight") was reflecting 60%
+// of what the DRY wall beside it reflects.
+//
+// 0.72 rather than matching the wall's 0.59: the floor is the one seen almost
+// entirely at grazing incidence, where a banded specular model gives away the
+// most, and it is the surface the identity is hanging on.
+const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.59, 0.72,
   'dry weathered stone reflects far less than the 4% default');
 
 // The highlight is the last part of the image still rendered as a smooth

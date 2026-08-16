@@ -43,11 +43,14 @@ export interface MaterialDef {
    * Opt this material into a baked, mipmapped surface detail by NAME (see
    * style/surface-textures.ts) — 'wall' (the shell's own masonry, the default
    * answer for anything built INTO a wall: a frame's courses then line up with
-   * the wall they interrupt), 'dressed' (finer ashlar), 'grain' (faint column
-   * grain). World-projected, so no UVs needed. Registered at material-build
-   * time; unknown names no-op.
+   * the wall they interrupt), 'frame' (the same stone spoken QUIETLY — wall
+   * texture and wall projection, so alignment is kept, but without the
+   * world-space damage layers and at two thirds the relief; for architecture
+   * that has to out-rank the wall it stands in), 'dressed' (finer ashlar),
+   * 'grain' (faint column grain). World-projected, so no UVs needed. Registered
+   * at material-build time; unknown names no-op.
    */
-  detail?: 'wall' | 'dressed' | 'grain';
+  detail?: 'wall' | 'frame' | 'dressed' | 'grain';
   /**
    * Fresnel rim glow — brightens fragments where the surface normal
    * grazes the view direction (the silhouette edge). Classic "ghost

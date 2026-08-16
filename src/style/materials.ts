@@ -204,6 +204,39 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   };
   installSurfaceDetail(dressedBase, dressedCfg);
   registerSurfaceDetail('dressed', dressedCfg);
+  // ── THE FRAME IS A DIALECT OF THE WALL, NOT A DIFFERENT LANGUAGE ──────────
+  //
+  // Josh, 2026-08-16, relaying a read of the gate against the new masonry: the
+  // arch had stopped parsing as `wall → architectural frame → opening` and was
+  // reading as `continuous noisy stone → black hole`. The diagnosis was that the
+  // gate carries the same amount of speckle, chipping and quantised variation as
+  // the wall around it, so nothing tells the eye which one is the important
+  // architecture — and the recommendation was explicitly NOT to give it a
+  // different shader, but to make it a quieter dialect of the same material.
+  //
+  // That is right, and the reason it is right is that the gate USED to establish
+  // hierarchy materially: it was 'dressed' ashlar, a visibly finer stone. When it
+  // moved to the wall's stone (so a doorway's courses would line up with the
+  // masonry they interrupt — see archway.ts) it gained alignment and lost
+  // hierarchy, and nobody replaced the hierarchy.
+  //
+  // So: THE WALL'S TEXTURE, on the wall's world projection, so the alignment is
+  // kept exactly. What comes off is the loud layers laid ON TOP of that texture —
+  // world-space brick damage (the missing bricks and uneven coursework), the
+  // groove fill and the seam glow — plus a third off the relief. Same stone,
+  // same lighting, same quantisation; the mason simply took more care here.
+  //
+  // Reusing 'dressed's exact FLAG SET is deliberate rather than incidental. The
+  // flags select the node graph, so an unprecedented combination would be a new
+  // pipeline variant to warm and a compile hitch the first time a doorway comes
+  // into view. This one has been compiled since the day dressed stone existed.
+  registerSurfaceDetail('frame', {
+    tex: wallTex,
+    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0],
+    // 0.20 against the wall's 0.30 — the ~35% less surface breakup the note asked
+    // for, taken off the channel that actually carries it.
+    relief: 0.20,
+  });
   registerSurfaceDetail('grain', {
     tex: bakeSurfaceTexture(renderer, 'grain'),
     tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.05,

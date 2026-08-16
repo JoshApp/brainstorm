@@ -440,7 +440,11 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // interrupt rather than running to a rhythm of their own.
       // (Was 'dressed', a finer ashlar, alongside a second 'glow' material for
       // the ring. Both are gone: see the header.)
-      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'wall' },
+      // 'frame', not 'wall' — the quieter dialect (style/materials.ts). Same
+      // texture on the same world projection, so a gate's courses still line up
+      // with the masonry they interrupt; the world-space damage layers come off
+      // so the gate is the calm thing in a noisy wall rather than more of it.
+      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'frame' },
     },
     parts,
     // Mount points for the dungeon's EYE, on the KEYSTONE's outer faces (one

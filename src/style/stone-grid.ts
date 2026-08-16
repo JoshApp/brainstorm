@@ -143,13 +143,35 @@ let stonesByCourse: Stone[][] = [];
 //
 // Widths are normalised to the tile at the end, so however the walk goes the
 // pattern still repeats exactly.
+// ── AND THE WHOLE RHYTHM IS DRAGGABLE ───────────────────────────────────────
+//
+// Two knobs, because the walk above encodes a COMPOSITION and the only honest
+// way to tune a composition is to look at it. They are deliberately not five:
+// `scale` moves the structural stones, `smallRate` moves how often the wall
+// stops to fill a gap, and between them they cover the note that prompted this
+// ("fewer, larger anchor blocks; fewer tiny filler pieces") without anybody
+// having to guess three correlated percentages at once.
+//
+// WHY `scale` WORKS DESPITE THE NORMALISATION. Every course is normalised to the
+// tile at the end, so scaling EVERY band would cancel exactly and do nothing.
+// Scaling only the structural bands is what has an effect, and the effect is the
+// one you want by construction: the walk fills the course sooner, so it lays
+// FEWER stones, and normalising then makes each of them wider. Larger and fewer
+// are the same lever, which is exactly how a real wall works.
+let vScale = 1, vSmallRate = 0.20;
+
 function widths(seed: number, _n: number, total: number, vary: number): number[] {
   const w: number[] = [];
   let hi = 0;
   const h = () => stoneHash(seed, hi++, 5.77);
   const lerp1 = (k: number) => 1 + (k - 1) * vary;   // vary 0 => the old uniform grid
+  // The structural bands start at 0.11 (huge) and run to the small-cluster
+  // threshold. Raising smallRate eats into the MEDIUM band, never into the huge
+  // one — a wall with fewer big stones and more filler is not what anyone means
+  // by "more small stones", it is just a worse wall.
+  const smallAt = Math.min(0.97, Math.max(0.11, 1 - vSmallRate));
   let cluster = 0, acc = 0, guard = 0;
-  while (acc < BLOCKS_PER_TILE && guard++ < 32) {
+  while (acc < BLOCKS_PER_TILE && guard++ < 48) {
     let k: number;
     if (cluster > 0) {
       k = 0.30 + h() * 0.22;                 // the small ones filling a gap
@@ -175,9 +197,9 @@ function widths(seed: number, _n: number, total: number, vary: number): number[]
         // every 4.6m anyway. Rare-but-present and rare-but-absent are not
         // distinguishable here. 11% puts three or four in a tile, which is
         // "occasional" at the only granularity this texture can express.
-        k = 1.55 + h() * 0.45;
+        k = (1.55 + h() * 0.45) * vScale;
         cluster = 1 + Math.floor(h() * 2);
-      } else if (r < 0.80) k = 0.9 + h() * 0.55; // medium / large: the structure
+      } else if (r < smallAt) k = (0.9 + h() * 0.55) * vScale; // medium / large: the structure
       else {
         // SHORTER CLUSTERS. *"Reduce the frequency of the very narrow vertical
         // wall stones — when clustered they start looking like filler pieces
@@ -261,6 +283,18 @@ function rebuildGrid(): void {
 export function setStoneVariation(courseVar: number, blockVar: number, tallVar = 0): void {
   if (courseVar === vCourse && blockVar === vBlock && tallVar === vTall && courseEdges.length) return;
   vCourse = courseVar; vBlock = blockVar; vTall = tallVar;
+  rebuildGrid();
+}
+
+/**
+ * Set the SIZE RHYTHM — how big the structural stones are and how often the wall
+ * fills a gap with small ones. See the note above `widths`.
+ *
+ * `scale` 1 is the authored walk. `smallRate` 0.20 is the authored 20%.
+ */
+export function setStoneSizes(scale: number, smallRate: number): void {
+  if (scale === vScale && smallRate === vSmallRate && courseEdges.length) return;
+  vScale = scale; vSmallRate = smallRate;
   rebuildGrid();
 }
 

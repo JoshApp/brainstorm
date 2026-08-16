@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
 import {
   BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash,
-  stoneAt, setStoneVariation, COURSES_PER_TILE,
+  stoneAt, setStoneVariation, setStoneSizes, COURSES_PER_TILE,
 } from './stone-grid';
 import { tuneNumber, onRebake } from '../debug/tuning';
 import { DEV } from '../debug/dev';
@@ -573,6 +573,26 @@ const blockVarAmt = tuneNumber({
 const tallVarAmt = tuneNumber({
   id: 'tallvar', group: 'Wall', label: 'Tall stones', min: 0, max: 1, value: 0.455,
   hint: 'stones spanning two courses, beside smaller ones',
+});
+
+// ── FEWER, LARGER ANCHOR BLOCKS ─────────────────────────────────────────────
+// The note that prompted these, forwarded 2026-08-16: the walls read as a
+// patchwork quilt in polygon rooms where they read as a backdrop in the test
+// chamber, and the fix proposed was "fewer, larger anchor blocks" — a rhythm of
+// a big stone, a couple of mediums, one big, rather than five middling ones in a
+// row. It came with numbers (-30% count, +25% width, -60% tiny) which are three
+// guesses at one dial; these are the dial.
+//
+// Both default to the authored walk, so they change nothing until dragged. See
+// the note above `widths` in stone-grid.ts for why scaling only the STRUCTURAL
+// stones is what makes the count fall.
+const stoneScaleAmt = tuneNumber({
+  id: 'stonescale', group: 'Wall', label: 'Stone size', min: 0.6, max: 2.0, value: 1.0,
+  hint: 'bigger structural stones, and therefore fewer of them',
+});
+const smallRateAmt = tuneNumber({
+  id: 'smallrate', group: 'Wall', label: 'Filler stones', min: 0, max: 0.5, value: 0.20,
+  hint: 'how often the wall stops to fill a gap with small ones',
 });
 
 const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.515, 1.86,
@@ -1382,6 +1402,7 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   // texture reads and the table the geometry reads are the same one. Cheap and
   // idempotent — it early-outs when nothing changed.
   setStoneVariation(courseVarAmt(), blockVarAmt(), tallVarAmt());
+  setStoneSizes(stoneScaleAmt(), smallRateAmt());
   const tile = SURFACE_TILE[kind];
   const aa = (tile[0] / CPU_TEX) * 0.7;
   const N = CPU_TEX * CPU_TEX;
