@@ -37,6 +37,7 @@ import { reportPassCpu, passCpuWanted } from './frame-timing';
 
 let installed = false;
 const buckets = new Map<string, number>();
+const counts = new Map<string, number>();
 
 /**
  * Wrap `obj[key]`, accumulating wall-clock into `label`.
@@ -61,6 +62,57 @@ function wrap(obj: any, key: string, label: string, outermostOnly = false): void
     } finally {
       depth--;
       buckets.set(label, (buckets.get(label) ?? 0) + (performance.now() - t0));
+    }
+  };
+}
+
+
+// ── SPLIT BY MATERIAL KIND ───────────────────────────────────────────────────
+//
+// "What does the surface shader cost per object" cannot be answered by toggling
+// SURFACE DETAIL off: setSurfaceDetailEnabled only zeroes a uniform, so the node
+// graph stays on the material, `hasNode` stays true, and the per-object CPU is
+// unchanged. The switch moves GPU work, not this.
+//
+// So bucket the encode by whether the render object's material carries any node
+// property — the exact thing three's `containsNode` tests, and the exact thing
+// that decides whether an object could ever take the static fast path. Emits ms
+// AND counts, because the number worth having is µs PER OBJECT, and the mix of
+// node vs plain objects changes shot to shot.
+//
+// The property scan is cached per material: walking every key of every material
+// per object per frame would cost more than it measures.
+const nodeMatCache = new WeakMap<object, boolean>();
+function materialHasNode(mat: any): boolean {
+  if (!mat) return false;
+  const hit = nodeMatCache.get(mat);
+  if (hit !== undefined) return hit;
+  let found = false;
+  for (const k in mat) {
+    try { const v = mat[k]; if (v && v.isNode) { found = true; break; } } catch { /* getter threw */ }
+  }
+  nodeMatCache.set(mat, found);
+  return found;
+}
+
+/** Wrap a per-render-object method, splitting time + count by material kind.
+ *  `renderObject` is args[0] for every manager call in _renderObjectDirect. */
+function wrapSplit(obj: any, key: string, label: string): void {
+  const orig = obj?.[key];
+  if (typeof orig !== 'function') return;
+  obj[key] = function (this: unknown, ...args: unknown[]): unknown {
+    if (!passCpuWanted()) return orig.apply(this, args);
+    const ro = args[0] as { material?: unknown } | undefined;
+    const kind = materialHasNode(ro?.material) ? 'nodeMat' : 'plain';
+    const t0 = performance.now();
+    try {
+      return orig.apply(this, args);
+    } finally {
+      const ms = performance.now() - t0;
+      buckets.set(`${label}·${kind}`, (buckets.get(`${label}·${kind}`) ?? 0) + ms);
+      // COUNT, not ms — the systems map is ms-valued, so this row is a
+      // deliberate abuse of it. Named encN· so nobody reads it as a duration.
+      counts.set(`encN·${kind}`, (counts.get(`encN·${kind}`) ?? 0) + 1);
     }
   };
 }
@@ -90,11 +142,11 @@ export function installEncodeBreakdown(renderer: DelveRenderer): void {
     console.log('[encode-breakdown] installed');
   }
   wrap(r._objects, 'get', 'enc·objects');
-  wrap(r._bindings, 'updateForRender', 'enc·bindings');
+  wrapSplit(r._bindings, 'updateForRender', 'enc·bindings');
   wrap(r._pipelines, 'updateForRender', 'enc·pipelines');
   wrap(r._pipelines, 'isReady', 'enc·pipelineReady');
   wrap(r._nodes, 'needsRefresh', 'enc·nodesCheck');
-  wrap(r._nodes, 'updateForRender', 'enc·nodesUpdate');
+  wrapSplit(r._nodes, 'updateForRender', 'enc·nodesUpdate');
   // NOT _nodes.updateBefore — it is a PARENT, not a leaf. PassNode.updateBefore
   // renders the entire scene pass, so wrapping it wraps everything below it and
   // reports a number larger than the frame's whole CPU (measured: 11.71ms
@@ -111,7 +163,11 @@ export function installEncodeBreakdown(renderer: DelveRenderer): void {
 /** Flush this frame's buckets into the systems map. Call once per frame, after
  *  the render, before frame-timing samples. */
 export function flushEncodeBreakdown(): void {
-  if (buckets.size === 0) return;
+  if (buckets.size === 0 && counts.size === 0) return;
   for (const [label, ms] of buckets) reportPassCpu(label, ms);
+  // Counts ride the same map (see wrapSplit) so they land in recordings beside
+  // the times; divide to get µs per object.
+  for (const [label, n] of counts) reportPassCpu(label, n);
   buckets.clear();
+  counts.clear();
 }
