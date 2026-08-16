@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LiveLevel } from './builder';
+import { markStatic } from '../scene/animation-gate';
 
 // Per-room static-fixture batching. Repeated props (torches, and any static
 // decoration that opts in) are each built as a Group of separate meshes — so
@@ -113,6 +114,8 @@ export function batchStaticFixtures(level: LiveLevel): void {
     const roomId = key.slice(0, key.indexOf('|'));
     const mesh = new THREE.Mesh(merged, mat);
     mesh.name = 'fixtures-merged';
+    // Dead-static sconce/candle geometry — the flames stayed separate above.
+    markStatic(mesh);
     mesh.userData.dbgKind = 'fixtures';
     mesh.userData.dbgSource = `fixtures · ${roomId}`;
     mesh.castShadow = cast;          // inherit the group's intent, not a forced true
