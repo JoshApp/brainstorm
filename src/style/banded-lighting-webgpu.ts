@@ -38,11 +38,11 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 import { tuneUniform } from '../debug/tuning';
 
 const uBands = tuneUniform({
-  id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 10, step: 1,
+  id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 5, step: 1,
   hint: 'how many steps the direct light is posterised into',
 });
 const uBandSoft = tuneUniform({
-  id: 'bandsoft', group: 'Light', label: 'Band softness', min: 0, max: 1, value: 0.12,
+  id: 'bandsoft', group: 'Light', label: 'Band softness', min: 0, max: 1, value: 0.075,
   hint: '0 = hard cel steps, 1 = smooth gradient',
 });
 

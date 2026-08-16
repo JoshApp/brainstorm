@@ -34,11 +34,11 @@ const POM_FADE_FAR = 7.0;
 // rebuild and no reload. Each `tuneUniform` call is also its own registration:
 // it appears in the in-game panel under its group with no UI code anywhere.
 const uStoneHue = tuneUniform({
-  id: 'stonehue', group: 'Stone', label: 'Stone hue spread', min: 0, max: 2, value: 0.85,
+  id: 'stonehue', group: 'Stone', label: 'Stone hue spread', min: 0, max: 2, value: 0.27,
   hint: 'how far apart different stones\u2019 colours sit',
 });
 const uStoneWear = tuneUniform({
-  id: 'stonewear', group: 'Stone', label: 'Stone wear spread', min: 0, max: 1, value: 0.30,
+  id: 'stonewear', group: 'Stone', label: 'Stone wear spread', min: 0, max: 1, value: 0.28,
   hint: 'how much stones differ in roughness',
 });
 
@@ -112,7 +112,7 @@ const uStoneWear = tuneUniform({
 // The sheen itself also goes: pixels above 80% luminance fall from 3.99% of the
 // frame to 0.07%, at the same mean brightness. That is the silver, leaving.
 const uStoneLift = tuneUniform({
-  id: 'stonelift', group: 'Stone', label: 'Stone albedo', min: 1, max: 40, value: 5.7,
+  id: 'stonelift', group: 'Stone', label: 'Stone albedo', min: 1, max: 40, value: 3.535,
   hint: 'lifts the near-black base so colour work is visible at all',
 });
 
@@ -129,7 +129,7 @@ const uPomDepth = tuneUniform({
   hint: 'how deep the stone goes',
 });
 const uRelief = tuneUniform({
-  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.25,
+  id: 'relief', group: 'Relief', label: 'Relief amplitude', min: 0, max: 0.6, value: 0.282,
   hint: 'how hard light rakes across the surface',
 });
 
@@ -174,23 +174,23 @@ const POM_REFINE: number = Math.round(tuneNumber({
 // combination (horiz + splat + seamShadow + seamGlowScale), so its node graph
 // was already its own.
 const flrWarm = tuneNumber({
-  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: 0,
+  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: -0.46,
   apply: 'live', hint: 'negative = colder/more silver, positive = warm stone',
 });
 const flrBright = tuneNumber({
-  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 1.0,
+  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 0.796,
   apply: 'live', hint: 'how much light the stone gives back at all',
 });
 const uFlrRough = tuneUniform({
-  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.72,
+  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.756,
   hint: 'low = wet/polished sheen, high = dry matte stone',
 });
 const uFlrPolish = tuneUniform({
-  id: 'flrpolish', group: 'Sheen', label: 'Traffic polish', min: 0, max: 0.6, value: 0.26,
+  id: 'flrpolish', group: 'Sheen', label: 'Traffic polish', min: 0, max: 0.6, value: 0.345,
   hint: 'how much smoother the worn patches get',
 });
 const uFlrPolishAt = tuneUniform({
-  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.58,
+  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.6,
   hint: 'high = only a few lanes shine, low = the whole floor does',
 });
 
@@ -250,11 +250,11 @@ function jointUniformPair(
   return (isFloor) => (isFloor ? f : w);
 }
 
-const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.7,
+const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.72,
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
-const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.8,
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.54,
   'how hard the gaps refuse to take a shine');
-const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.55, 0.55,
+const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.55, 0.61,
   'how much filth collects down in the gaps');
 
 // Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
@@ -264,7 +264,7 @@ const mortarWarmW = tuneNumber({
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
-  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: 0.15,
+  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: 0.35,
   apply: 'live', hint: 'cold ash <-> warm earth',
 });
 

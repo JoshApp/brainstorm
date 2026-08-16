@@ -311,13 +311,13 @@ function surfaceKnob(
 // Written as what he MEANT, not what the slider emitted — a default carrying a
 // rounding artefact from the session it was found in is noise pretending to be
 // a decision.
-const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.058, 'how far the pattern bends');
-const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.02, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.765, 'splits that ignore the joints');
+const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.044, 'how far the pattern bends');
+const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.77, 1.28, 'how badly it was laid');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.60, 0.805, 'splits that ignore the joints');
 const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
 const eroAmt = surfaceKnob('erode', 'Erosion', 0, 1, 0.715, 1.0, 'weathering strength');
 const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
-const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.964, 'how far stones separate in value');
+const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.94, 'how far stones separate in value');
 // ── THE FLOOR'S FACETING KNOB WAS DEAD ──────────────────────────────────────
 // Josh: *"the jaggedness for floor also does nothing while it looks good on the
 // wall."* Correct, and it never could have done anything. Whether a surface
@@ -334,7 +334,7 @@ const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.964, 'ho
 // Floor DEFAULTS TO 0 — the smooth warp it has always had. His 11 was chosen
 // blind, against a control that did nothing, so adopting it would be adopting a
 // number he never actually saw. It works now; it wants looking at.
-const warpFacet = surfaceKnob('facet', 'Warp faceting', 0, 24, 5, 0,
+const warpFacet = surfaceKnob('facet', 'Warp faceting', 0, 24, 5, 7,
   '0 = smooth bending, higher = rigid slabs settling', 1);
 function warpFacetedFor(kind: SurfaceKind): boolean {
   if (kind === 'wall' || kind === 'floor') return warpFacet(kind) >= 1;
@@ -354,7 +354,7 @@ function warpFacetedFor(kind: SurfaceKind): boolean {
 // knob rather than a number I pick: narrow ramp = crisp arrises and some
 // banding, wide ramp = smooth march and soft edges. Dressed stone wants sharp,
 // a worn floor wants soft, which is exactly why it is per-surface too.
-const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.805, 0.66,
+const edgeSharp = surfaceKnob('edge', 'Edge sharpness', 0, 1, 0.805, 0.26,
   'high = crisp arris, low = filed down');
 
 // ── GRIT — OpenKTG's Noise with OCTAVES, which we never actually took ────────
@@ -401,7 +401,7 @@ function gritField(u: number, v: number): number {
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
 // whether it is where he wanted to be or where the control stopped him.
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 0.55,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.32,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -446,7 +446,7 @@ const jointTex = surfaceKnob('joint', 'Joint texture', 0, 3, 0.9, 1.5,
 // the thin sawn seam we had is the less truthful of the two. Defaults nudged up
 // so the texture has somewhere to be — dial back toward 1.0 for tight joints,
 // at the cost of the gap going featureless again for the reason above.
-const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.8,
+const jointW = surfaceKnob('jointw2', 'Joint width', 0.4, 3.2, 1.25, 1.38,
   'narrow joints cannot hold detail — see the note in surface-textures.ts');
 
 /** A periodic Voronoi cell field. Returns the squared distance to the nearest

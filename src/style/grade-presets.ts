@@ -63,7 +63,7 @@ const WHITE: readonly [number, number, number] = [1, 1, 1];
 // the reference the others are measured against.
 const BASELINE: GradeSpec = {
   name: 'baseline',
-  exposure: 0.37,
+  exposure: 0.277,
   contrast: 1.04,
   saturation: 1.15,
   crushFloor: 0.16,
