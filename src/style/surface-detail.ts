@@ -372,6 +372,41 @@ const wallBright = tuneNumber({
   apply: 'live', hint: 'how much light the wall gives back at all',
 });
 
+// ── AND THE REST OF SHEEN, WHICH THE WALL ALSO NEVER GOT ────────────────────
+// Josh: *"how could we make the wall more interesting? is it because it lacks
+// the sheen sliders the floor has?"* Partly yes, and the list is exact — three
+// values are HARDCODED for the wall while the floor has a knob for each:
+//
+//     roughness         the wall takes mat.roughness (0.95) and nothing can
+//                       move it. That is the single dial that decides whether a
+//                       torch finds anything on the surface at all.
+//     polish            fixed at 0.26. On the floor this is "worn by boots";
+//                       on a wall it is shoulders, hands, and centuries of
+//                       people squeezing past — a real thing, never tunable.
+//     polish threshold  fixed at 0.58, so the wall cannot say whether its
+//                       polish is broad or confined to a few rubbed patches.
+//
+// A surface with one fixed roughness answers every light the same way
+// everywhere, which is most of why the wall reads flatter than the floor even
+// where both are lit. This is the same finding as the albedo work, one level
+// down: it was not that the wall was tuned badly, it was that it could not be
+// tuned at all.
+//
+// Wall roughness defaults to 0.95 — exactly what the material already carried —
+// so nothing moves until it is asked to.
+const uWallRough = tuneUniform({
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.95,
+  hint: 'low = damp/polished sheen, high = dry matte stone',
+});
+const uWallPolish = tuneUniform({
+  id: 'wallpolish', group: 'Wall', label: 'Rubbed polish', min: 0, max: 0.6, value: 0.26,
+  hint: 'shoulders and hands, where the wall has been squeezed past',
+});
+const uWallPolishAt = tuneUniform({
+  id: 'wallpolishat', group: 'Wall', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.58,
+  hint: 'high = only a few rubbed patches, low = the whole wall',
+});
+
 const uFlrTintAdj = (tslUniform as any)(new THREE.Vector3(1, 1, 1));
 const uWallTintAdj = (tslUniform as any)(new THREE.Vector3(1, 1, 1));
 function refreshSurfaceTints(): void {
@@ -868,12 +903,15 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // to find it is to drag it. The window stays a fixed 0.38 wide — moving both
   // edges independently turns one judgement into two, and the edge that matters
   // is where the polish STARTS.
-  const greaseLo: any = isFloor ? (uFlrPolishAt as any) : float(0.58);
-  const greaseHi: any = isFloor ? (uFlrPolishAt as any).add(0.38) : float(0.96);
+  const greaseLo: any = isFloor ? (uFlrPolishAt as any) : (uWallPolishAt as any);
+  const greaseHi: any = (isFloor ? (uFlrPolishAt as any) : (uWallPolishAt as any)).add(0.38);
   const grease: any = (tslSmoothstep as any)(greaseLo, greaseHi, macro);
   const proud: any = (tslSmoothstep as any)(0.80, 1.05, sampled.a);
-  const polish: any = isFloor ? (uFlrPolish as any) : float(0.26);
-  const baseRough: any = isFloor ? (uFlrRough as any) : (tslUniform as any)(mat.roughness);
+  const polish: any = isFloor ? (uFlrPolish as any) : (uWallPolish as any);
+  // Every stone surface now has a live roughness rather than a baked material
+  // constant. Non-floor surfaces share the wall's, which is what ceiling,
+  // framing and pillars already do for warmth and specular.
+  const baseRough: any = isFloor ? (uFlrRough as any) : (uWallRough as any);
   // PER-STONE WEAR rides on top: some blocks are simply rougher rock than their
   // neighbours, and a spalled face or a bare-earth pit is rougher still (the
   // generators fold that into the wear channel). Centred on 0.5 so it pushes
