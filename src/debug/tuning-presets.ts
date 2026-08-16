@@ -24,9 +24,12 @@ export interface Preset { name: string; values: Record<string, number>; }
 // ── BUILT-INS ───────────────────────────────────────────────────────────────
 // Both of Josh's wall sets from 2026-08-16, kept as rivals rather than one
 // overwriting the other. They differ in a coherent way and it is worth naming:
-// SHEEN runs the stone specular nearly three times higher (0.87 vs 0.35) with a
-// rougher, brighter surface and much LESS damage — fewer cracks, less chipping,
-// fewer corner breaks. MATTE is the darker, drier, more broken one.
+// SHEEN runs the stone specular well above MATTE (0.59 vs 0.35) on a rougher,
+// brighter surface with much LESS damage — fewer cracks, less chipping, fewer
+// corner breaks. MATTE is the darker, drier, more broken one.
+//
+// SHEEN is now also the SHIPPED default, so its chip is a way back to the look
+// rather than a way to it. MATTE is the one that changes anything.
 const BUILT_IN: Preset[] = [
   {
     name: 'wall · matte',
@@ -39,7 +42,9 @@ const BUILT_IN: Preset[] = [
   {
     name: 'wall · sheen',
     values: {
-      stonespecw: 0.87, mortarmattew: 0.76, wallbright: 1.186, wallrough: 0.94,
+      // Specular pulled back from 0.87 to 0.59 — Josh's call once this became
+      // the shipped look rather than a rival to it.
+      stonespecw: 0.59, mortarmattew: 0.76, wallbright: 1.186, wallrough: 0.94,
       cracksw: 0.24, erodew: 0.735, tallvar: 0.455, gritw: 1.515,
       chipw: 1.605, cornerw: 0.78, crackwebw: 0.525,
     },

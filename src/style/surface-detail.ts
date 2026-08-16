@@ -125,7 +125,7 @@ const uStoneLift = tuneUniform({
 // damp sheen where a wall never does, so one number for both was a compromise in
 // the one place the two surfaces differ most obviously. Same rule as everything
 // else per-surface: it lives in that surface's tab.
-const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.3525, 0.3525,
+const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.59, 0.3525,
   'dry weathered stone reflects far less than the 4% default');
 
 // The highlight is the last part of the image still rendered as a smooth
@@ -299,7 +299,7 @@ function jointUniformPair(
 
 const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.72,
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
-const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.6,
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.76, 0.6,
   'how hard the gaps refuse to take a shine');
 const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
   'how much filth collects down in the gaps');
@@ -368,7 +368,7 @@ const wallWarm = tuneNumber({
   apply: 'live', hint: 'cold grey <-> warm sandstone; the floor has its own',
 });
 const wallBright = tuneNumber({
-  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.12,
+  id: 'wallbright', group: 'Wall', label: 'Stone albedo', min: 0.4, max: 1.6, value: 1.186,
   apply: 'live', hint: 'how much light the wall gives back at all',
 });
 
@@ -395,7 +395,7 @@ const wallBright = tuneNumber({
 // Wall roughness defaults to 0.95 — exactly what the material already carried —
 // so nothing moves until it is asked to.
 const uWallRough = tuneUniform({
-  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.872,
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.94,
   hint: 'low = damp/polished sheen, high = dry matte stone',
 });
 const uWallPolish = tuneUniform({

@@ -391,9 +391,9 @@ function surfaceKnob(
 // a decision.
 const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.044, 'how far the pattern bends');
 const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.92, 1.28, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.575, 0.715, 'splits that ignore the joints');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.24, 0.715, 'splits that ignore the joints');
 const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
-const eroAmt = surfaceKnob('erode', 'Erosion', 0, 3, 0.715, 1.0,
+const eroAmt = surfaceKnob('erode', 'Erosion', 0, 3, 0.735, 1.0,
   'weathering strength — past 1 pushes beyond the per-surface base');
 const eroSteep = surfaceKnob('erosteep', 'Erosion steepness', 0, 1, 0.295, 0.38, 'low = staining, high = runs');
 const toneCon = surfaceKnob('tone', 'Tone contrast', 0.4, 1.6, 0.868, 0.94, 'how far stones separate in value');
@@ -503,11 +503,11 @@ const blockVarAmt = tuneNumber({
 // courses that pair up, within which a column is either one tall stone or two
 // stacked ones.
 const tallVarAmt = tuneNumber({
-  id: 'tallvar', group: 'Wall', label: 'Tall stones', min: 0, max: 1, value: 0.5,
+  id: 'tallvar', group: 'Wall', label: 'Tall stones', min: 0, max: 1, value: 0.455,
   hint: 'stones spanning two courses, beside smaller ones',
 });
 
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.86,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.515, 1.86,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -613,7 +613,7 @@ function edgeChip(
     raw: bite,
   };
 }
-const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.845, 1.635,
+const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.605, 1.635,
   'corners cracked off, raw stone underneath');
 
 // ── THE TWO HALVES OF A LIT CREVICE, SECOND ATTEMPT ─────────────────────────
@@ -810,7 +810,7 @@ function flagBreak(
   return { depth: ramp * mixf(0.14, 0.72, dHash(gx, gy, 8.7)), raw: ramp };
 }
 
-const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 1.08, 2.19,
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.78, 2.19,
   'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
@@ -1168,7 +1168,7 @@ function crackNetwork(u: number, v: number): number {
 // scales, the wandering line reads as the STRUCTURAL failure and the network as
 // surface crazing around it, which is the relationship they actually have in
 // stone.
-const webAmt = surfaceKnob('crackweb', 'Crack web', 0, 1.5, 1.065, 0.42,
+const webAmt = surfaceKnob('crackweb', 'Crack web', 0, 1.5, 0.525, 0.42,
   'finer cut network, layered under the wandering splits');
 
 function crackField(u: number, v: number): number {
