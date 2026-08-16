@@ -217,7 +217,13 @@ if (DEV && typeof window !== 'undefined') {
       }),
     query: () => knobsAsQuery(),
     notes: () => knobsAsNotes(),
-    reset: () => { resetKnobs(); return 'back to authored defaults'; },
+    reset: () => { resetKnobs(); return 'every knob back to authored defaults'; },
+    /** One tab's worth — the same scope the panel's RESET button uses. */
+    resetTab: (group: string) => {
+      if (!knobGroups().includes(group)) return `no group '${group}' — try ${knobGroups().join(', ')}`;
+      resetKnobs(group);
+      return `${group} back to authored defaults`;
+    },
     ab: () => toggleKnobsShowing(),
   };
 }
@@ -289,13 +295,24 @@ export function toggleKnobsShowing(): 'mine' | 'default' {
 }
 
 /** Throw the saved set away and go back to what the code declares. */
-export function resetKnobs(): void {
-  mine = {};
-  persist();
+/** Throw the saved set away and go back to what the code declares.
+ *
+ *  Scoped to ONE GROUP when given one. Josh: *"can you make the reset just reset
+ *  the tab."* Right call — the panel is used one surface at a time, and a button
+ *  sitting under the Wall tab that silently discards your Floor work as well is
+ *  the kind of thing you only discover by losing something. The blast radius of
+ *  a destructive control should match what you can see when you press it.
+ *
+ *  No argument still resets everything; that is what window.__tune.reset() uses,
+ *  and it is the escape hatch for wiping a whole session's set at once. */
+export function resetKnobs(group?: string): void {
   showing = 'mine';
   for (const k of knobs.values()) {
+    if (group !== undefined && k.spec.group !== group) continue;
+    delete mine[k.spec.id];
     if (Math.abs(k.get() - k.authored) > 1e-6) k.set(k.authored);
   }
+  persist();
 }
 
 /** How many values are currently moved off the shipped defaults — the panel

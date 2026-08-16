@@ -186,24 +186,36 @@ function build(): void {
     paintAB();
   });
 
-  // RESET — throws the saved set away, not just this session's edits, so the
-  // next reload comes back clean too. Two taps, because it is the one button
-  // here that destroys work.
+  // RESET — throws the saved set away for THIS TAB, not just this session's
+  // edits, so the next reload comes back clean too. Two taps, because it is the
+  // one button here that destroys work.
+  //
+  // Tab-scoped: a destructive button should not reach past what you can see when
+  // you press it. It names the tab it will clear so there is no guessing, and
+  // it greys out when that tab has nothing to clear — a reset that does nothing
+  // still costs two taps to discover.
   const reset = document.createElement('button');
   btnStyle(reset);
-  reset.textContent = 'RESET';
+  const tabDirty = () => listKnobs().some(
+    (k) => k.spec.group === activeGroup && Math.abs(k.get() - k.authored) > 1e-6,
+  );
+  const label = `RESET ${activeGroup.toUpperCase()}`;
+  reset.textContent = label;
+  css(reset, { fontSize: '9px' });   // room for the longest tab name
+  if (!tabDirty()) css(reset, { opacity: '0.4' });
   reset.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!tabDirty()) return;
     if (reset.dataset.armed !== '1') {
       reset.dataset.armed = '1';
       reset.textContent = 'SURE?';
       window.setTimeout(() => {
-        if (reset.dataset.armed === '1') { reset.dataset.armed = ''; reset.textContent = 'RESET'; }
+        if (reset.dataset.armed === '1') { reset.dataset.armed = ''; reset.textContent = label; }
       }, 2500);
       return;
     }
     reset.dataset.armed = '';
-    resetKnobs();
+    resetKnobs(activeGroup);
     build();
   });
 
@@ -268,6 +280,11 @@ export function isTuningPanelOpen(): boolean { return !!root; }
 export function toggleTuningPanel(): void {
   if (root) { root.remove(); root = null; return; }
   root = document.createElement('div');
+  // Addressable: the game has other buttons whose labels collide with this
+  // panel's (there is a RESET in the settings screen), and a document-wide
+  // querySelector for one of ours will silently find theirs. Cost me a wrong
+  // conclusion while testing this very button.
+  root.id = 'tune-panel';
   css(root, {
     position: 'fixed', top: '56px', right: '10px', zIndex: '10000',
     width: 'min(300px, 82vw)', padding: '10px',
