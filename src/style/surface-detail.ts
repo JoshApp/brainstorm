@@ -120,10 +120,13 @@ const uStoneLift = tuneUniform({
 // have to move — see setMaterialStoneLightingWebGPU. Turning the stone's own
 // sheen down changes the albedo-to-specular balance without darkening every
 // creature, flame and item in the game to pay for it.
-const uStoneSpec = tuneUniform({
-  id: 'stonespec', group: 'Light', label: 'Stone specular', min: 0, max: 1.5, value: 0.35,
-  hint: 'dry weathered stone reflects far less than the 4% default',
-});
+// Josh: *"can you make the stone specular for walls and floors separate?"* Yes,
+// and it should have been from the start — a floor is walked on and can hold a
+// damp sheen where a wall never does, so one number for both was a compromise in
+// the one place the two surfaces differ most obviously. Same rule as everything
+// else per-surface: it lives in that surface's tab.
+const stoneSpec = jointUniformPair('stonespec', 'Stone specular', 0, 1.5, 0.3525, 0.3525,
+  'dry weathered stone reflects far less than the 4% default');
 
 // The highlight is the last part of the image still rendered as a smooth
 // physical falloff — the diffuse has been cel-banded for years and the specular
@@ -160,12 +163,12 @@ const uWallBands = tuneUniform({
   hint: 'more steps = softer, since the wall has plenty of edges already',
 });
 const uFloorBands = tuneUniform({
-  id: 'bandsf', group: 'Floor', label: 'Light bands', min: 2, max: 16, value: 4, step: 1,
+  id: 'bandsf', group: 'Floor', label: 'Light bands', min: 2, max: 16, value: 5, step: 1,
   hint: 'fewer steps = bolder; big slabs carry hard bands well',
 });
 
 const uSpecBands = tuneUniform({
-  id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 6, step: 1,
+  id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 9, step: 1,
   hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
 });
 const uPomDepth = tuneUniform({
@@ -218,15 +221,15 @@ const POM_REFINE: number = Math.round(tuneNumber({
 // combination (horiz + splat + seamShadow + seamGlowScale), so its node graph
 // was already its own.
 const flrWarm = tuneNumber({
-  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: -0.46,
+  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: -0.44,
   apply: 'live', hint: 'negative = colder/more silver, positive = warm stone',
 });
 const flrBright = tuneNumber({
-  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 0.796,
+  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 1.072,
   apply: 'live', hint: 'how much light the stone gives back at all',
 });
 const uFlrRough = tuneUniform({
-  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.756,
+  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.796,
   hint: 'low = wet/polished sheen, high = dry matte stone',
 });
 const uFlrPolish = tuneUniform({
@@ -234,7 +237,7 @@ const uFlrPolish = tuneUniform({
   hint: 'how much smoother the worn patches get',
 });
 const uFlrPolishAt = tuneUniform({
-  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.6,
+  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.61,
   hint: 'high = only a few lanes shine, low = the whole floor does',
 });
 
@@ -296,7 +299,7 @@ function jointUniformPair(
 
 const mortarHue = jointUniformPair('mortarhue', 'Joint substance', 0, 1, 0.7, 0.72,
   'how far the gaps depart from the stone; 0 = the old darker-stone look');
-const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.54,
+const mortarMatte = jointUniformPair('mortarmatte', 'Joint matte', 0, 1, 0.8, 0.6,
   'how hard the gaps refuse to take a shine');
 const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 1.0, 0.61,
   'how much filth collects down in the gaps');
@@ -308,7 +311,7 @@ const mortarWarmW = tuneNumber({
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
-  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: 0.35,
+  id: 'mortarwarmf', group: 'Floor', label: 'Joint warmth', min: -1, max: 1, value: -0.13,
   apply: 'live', hint: 'cold ash <-> warm earth',
 });
 
@@ -799,7 +802,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // the same rock as the walls, and one of them keeping a 4% sheen while the
   // others lose it would read as two different materials.
   setMaterialStoneLightingWebGPU(mat, {
-    chromaNode: seamChroma, specScale: uStoneSpec, specBands: uSpecBands,
+    chromaNode: seamChroma, specScale: stoneSpec(isFloor), specBands: uSpecBands,
     bands: isFloor ? uFloorBands : uWallBands,
   });
 

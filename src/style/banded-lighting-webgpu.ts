@@ -62,7 +62,7 @@ const uBandSoft = tuneUniform({
 // otherwise this would just be a gamma slider that darkens everything, and the
 // band POSITIONS are the whole point.
 const uBandCurve = tuneUniform({
-  id: 'bandcurve', group: 'Light', label: 'Band curve', min: 0.5, max: 2.5, value: 1.25,
+  id: 'bandcurve', group: 'Light', label: 'Band curve', min: 0.5, max: 2.5, value: 1.35,
   hint: 'above 1 makes the brightest band an accent instead of a region',
 });
 
@@ -102,12 +102,12 @@ const uBandCurve = tuneUniform({
 // Defaults to 1 (no change from the shared curve's behaviour) so nothing moves
 // until it is asked to.
 const uSpecCurve = tuneUniform({
-  id: 'speccurve', group: 'Light', label: 'Specular curve', min: 0.5, max: 2.5, value: 1.0,
+  id: 'speccurve', group: 'Light', label: 'Specular curve', min: 0.5, max: 2.5, value: 1.16,
   hint: 'above 1 narrows the top highlight band into an accent',
 });
 
 const uBandDither = tuneUniform({
-  id: 'banddither', group: 'Light', label: 'Band dither', min: 0, max: 1, value: 0.12,
+  id: 'banddither', group: 'Light', label: 'Band dither', min: 0, max: 1, value: 0.14,
   hint: 'stipples the band edges; meant to be found, not noticed',
 });
 

@@ -367,7 +367,7 @@ function surfaceKnob(
 // a decision.
 const warpAmt = surfaceKnob('warp', 'Warp', 0, 0.08, 0.0096, 0.044, 'how far the pattern bends');
 const jitterAmt = surfaceKnob('setout', 'Set-out', 0, 2, 0.92, 1.28, 'how badly it was laid');
-const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.5, 0.4, 'splits that ignore the joints');
+const crackAmt = surfaceKnob('cracks', 'Cracks', 0, 1, 0.575, 0.715, 'splits that ignore the joints');
 const domeAmt = surfaceKnob('dome', 'Doming', 0, 1, 0.61, 0.66, 'how convex the faces are');
 const eroAmt = surfaceKnob('erode', 'Erosion', 0, 3, 0.715, 1.0,
   'weathering strength — past 1 pushes beyond the per-surface base');
@@ -456,7 +456,7 @@ function gritField(u: number, v: number): number {
 // Range raised to 1.5: Josh landed on 1.0, and a chosen value sitting exactly
 // on a slider's maximum means the range was picked wrong — you cannot tell
 // whether it is where he wanted to be or where the control stopped him.
-const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.725,
+const gritAmt = surfaceKnob('grit', 'Grit', 0, 3, 1.5, 1.86,
   'micro grain and pitting in the stone itself');
 
 // ── WHAT IS IN THE GAP ───────────────────────────────────────────────────────
@@ -562,7 +562,7 @@ function edgeChip(
     raw: bite,
   };
 }
-const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.725, 0.45,
+const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.845, 1.635,
   'corners cracked off, raw stone underneath');
 
 // ── THE TWO HALVES OF A LIT CREVICE, SECOND ATTEMPT ─────────────────────────
@@ -591,9 +591,9 @@ const chipAmt = surfaceKnob('chip', 'Edge chipping', 0, 3, 1.725, 0.45,
 //
 // Per-surface because he asked for walls specifically, and because a wall arris
 // is struck stone while a floor arris has been walked on for centuries.
-const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1.5, 0.698, 0.45,
+const crevDark = surfaceKnob('crevdark', 'Crevice depth', 0, 1.5, 0.698, 0.443,
   'how far the bottom of the joint goes toward black');
-const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.35,
+const crevRim = surfaceKnob('crevrim', 'Rim catch', 0, 1.5, 0.5, 0.345,
   'the arris rubbed clean — this is the glow, and it stays the stone\u2019s colour');
 
 // ── CORNER BREAKS — the LOW-frequency half of damage ────────────────────────
@@ -759,7 +759,7 @@ function flagBreak(
   return { depth: ramp * mixf(0.14, 0.72, dHash(gx, gy, 8.7)), raw: ramp };
 }
 
-const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 0.96, 0.6,
+const cornerAmt = surfaceKnob('corner', 'Corner breaks', 0, 3, 1.08, 2.19,
   'whole corners off, roughly bevelled — changes the block silhouette');
 
 /** The narrow band just OUTSIDE a joint: the arris itself. 1 at the lip, falling
@@ -1108,7 +1108,7 @@ function crackNetwork(u: number, v: number): number {
 // scales, the wandering line reads as the STRUCTURAL failure and the network as
 // surface crazing around it, which is the relationship they actually have in
 // stone.
-const webAmt = surfaceKnob('crackweb', 'Crack web', 0, 1.5, 1.0, 0.805,
+const webAmt = surfaceKnob('crackweb', 'Crack web', 0, 1.5, 1.065, 0.42,
   'finer cut network, layered under the wandering splits');
 
 function crackField(u: number, v: number): number {
