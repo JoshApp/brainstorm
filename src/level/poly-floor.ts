@@ -516,6 +516,12 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       rooms.push(room);
       continue;
     }
+    // NOT anchor-aligned, and measuring is why. Broken down by link KIND, the
+    // spine is 353 corridors and 100% ROUTED already — the router has never once
+    // failed on a consecutive pair. Aligning placement here perturbs a working
+    // layout for nothing (it moved `route` from 590 to 564 by shifting which
+    // floors survive the reroll). The blind links are POCKETS and the CHORD, and
+    // that is where `alignedLaterals` is applied.
     const step = stepFrom(cursor, room.rect, heading, rand, occupiedBoxes);
     place(room, step.at.x, step.at.z);
     rooms.push(room);
@@ -707,6 +713,10 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     if (!conn) continue;
     // The stair-run this loop offers, from the same helper the elevation pass
     // measures a ramp with. The landing carries no slope.
+    // `legAxis` is present on an L (connectL always makes one) and may be absent
+    // on a routed chord that came out straight. Falling back to the rect's long
+    // side is the same number an L's leg reports for a straight run, so the
+    // stair-fit check below reads the same quantity either way.
     const run = conn.rects.reduce((t, rc, k) => (k === 1 ? t
       : t + corridorRampRun(conn.legAxis![k].alongX ? rc.w : rc.d)), 0);
     // The pocket sits one link off its parent, so the fall this has to carry is
@@ -729,7 +739,8 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // than left blank so the chord counts as its own producer instead of
     // disappearing into "unknown".
     addLink(a.id, b.id, 'cor-l0',
-            { ...conn, type: loopType, servedBy: 'chord' as const }, { chord: true });
+            { ...conn, type: loopType, servedBy: 'chord' as const },
+            { chord: true });
     break;
   }
 
@@ -1393,8 +1404,80 @@ function place(r: Placed, x: number, z: number): void {
 
 // ── layout ───────────────────────────────────────────────────────────────────
 
+/**
+ * How far off the centre line a DELIBERATE placement may sit.
+ *
+ * LATERAL_FREEDOM (1.5m) bounds the RANDOM offset, and it is small for a good
+ * reason: a random slide has no idea whether it helps, so every extra metre is
+ * another metre of the reroll's patience spent on faults. An ALIGNED offset is
+ * chosen precisely because it makes two walls face each other, so the same metres
+ * buy a link instead of risking one.
+ *
+ * 5m because that is where docs/SPACES-AND-THRESHOLDS.md measured the router still
+ * holding at 99% while the straight model collapsed to 69% — "placement can be
+ * freed to whatever degree the design wants and the router absorbs it".
+ */
+const ALIGNED_LATERAL = 5;
+
+/**
+ * Laterals that would put a wall of `parent` opposite a wall of `child`.
+ *
+ * ── WHY THIS IS THE WHOLE FIX ────────────────────────────────────────────────
+ *
+ * Placement and connection are solved in that order, and placement has never
+ * consulted the anchors. So `connect` is handed a pair of rooms that may have no
+ * facing walls at all, and then either declines (and a blind producer takes the
+ * link) or gets lucky. The blind producers are 33% of corridors — 24% chord, 9%
+ * guess — and they are where the corner-wrapping doorways come from.
+ *
+ * The freedom to fix it was already here: `geometryFor` takes a `lateral` and
+ * stepFrom has been passing a RANDOM one within +/-1.5m. Nothing was missing
+ * except a reason to prefer one offset over another. This supplies the reason.
+ *
+ * The arithmetic, for a N/S step (E/W swaps the axis): `geometryFor` puts the
+ * child's centre at `from.x + lateral`, so a child anchor sitting `ca - child.x`
+ * from that centre lands at `from.x + lateral + ca - child.x`. Setting that equal
+ * to the parent anchor's world x and solving gives the offset below. Both walls
+ * then sit on one line, perpendicular to the corridor between them, which is
+ * exactly the condition `corridor-route` needs and almost never got.
+ *
+ * The child's poly is still in its own local frame here — it has not been placed —
+ * which is why the child term is a difference from its rect centre and the parent
+ * term is absolute.
+ */
+function alignedLaterals(parent: Placed, child: Placed, dir: Dir): number[] {
+  const alongZ = dir === 'N' || dir === 'S';
+  // The parent's wall must face the way we are going; the child's must face back.
+  const want: readonly [number, number] = alongZ
+    ? (dir === 'N' ? [0, -1] : [0, 1])
+    : (dir === 'E' ? [1, 0] : [-1, 0]);
+  const faces = (n: readonly [number, number], t: readonly [number, number]) =>
+    n[0] * t[0] + n[1] * t[1] > 0.92;   // axis-aligned and pointing the right way
+  const pa = deriveAnchors(parent.id, parent.poly, parent.height)
+    .filter((a) => faces(a.normal as readonly [number, number], want));
+  const ca = deriveAnchors(child.id, child.poly, child.height)
+    .filter((a) => faces(a.normal as readonly [number, number], [-want[0], -want[1]]));
+  const out: number[] = [];
+  for (const p of pa) {
+    for (const c of ca) {
+      // Both ends must be able to host a passage, or aligning them buys nothing.
+      if (p.width[1] < MIN_WALKABLE_WIDTH || c.width[1] < MIN_WALKABLE_WIDTH) continue;
+      const lat = alongZ
+        ? p.at[0] - parent.rect.x - (c.at[0] - child.rect.x)
+        : p.at[1] - parent.rect.z - (c.at[1] - child.rect.z);
+      if (Math.abs(lat) <= ALIGNED_LATERAL) out.push(lat);
+    }
+  }
+  // Smallest first: a placement that barely leaves the centre line disturbs the
+  // least, and the widest pairs tend to align near it anyway.
+  return out.sort((a, b) => Math.abs(a) - Math.abs(b));
+}
+
 function stepFrom(
   from: Box, size: Box, heading: Dir, rand: () => number, occupied: readonly Box[],
+  /** Laterals to TRY FIRST for a given direction — see alignedLaterals. Omitted
+   *  by callers that have no polygons to reason about. */
+  aligned?: (dir: Dir) => number[],
 ): { at: Box; corridor: Box; dir: Dir } {
   // Straight-biased wander: try the current heading, then the two turns. Never
   // reverse — a spine that doubles back reads as a mistake rather than a route.
@@ -1402,10 +1485,18 @@ function stepFrom(
   const order: Dir[] = rand() < 0.55 ? [heading, t0, t1] : [heading, t1, t0];
   for (const dir of order) {
     const len = 4 + rand() * 4;
-    const g = geometryFor(from, size, dir, len, (rand() * 2 - 1) * LATERAL_FREEDOM);
-    const clear = !occupied.some((o) => overlaps(o, g.at, MARGIN))
-      && !occupied.some((o) => o !== from && overlaps(o, g.corridor, MARGIN));
-    if (clear) return { ...g, dir };
+    // ALIGNED OFFSETS FIRST, then the random one. The random draw happens either
+    // way and in the same order, so a floor whose rooms happen to offer no facing
+    // pair rolls exactly as it did before — this adds candidates, it does not
+    // move the stream.
+    const roll = (rand() * 2 - 1) * LATERAL_FREEDOM;
+    const candidates = [...(aligned ? aligned(dir) : []), roll];
+    for (const lateral of candidates) {
+      const g = geometryFor(from, size, dir, len, lateral);
+      const clear = !occupied.some((o) => overlaps(o, g.at, MARGIN))
+        && !occupied.some((o) => o !== from && overlaps(o, g.corridor, MARGIN));
+      if (clear) return { ...g, dir };
+    }
   }
   // Fallback: push straight out, lengthening until it clears. Terminates —
   // far enough away, nothing is there. Degrade, never fail.
