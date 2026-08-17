@@ -19,7 +19,14 @@
 // through me.
 import { listKnobs, getKnob, recordKnob, registerPresetApi } from './tuning';
 
-export interface Preset { name: string; values: Record<string, number>; }
+export interface Preset {
+  name: string;
+  values: Record<string, number>;
+  /** One line on what this look DOES, shown under the selector. A preset's name
+   *  says which one it is; the blurb says why you would pick it, which is the
+   *  thing a list of names cannot tell you. */
+  blurb?: string;
+}
 
 // ── BUILT-INS ───────────────────────────────────────────────────────────────
 //
@@ -43,8 +50,44 @@ export interface Preset { name: string; values: Record<string, number>; }
 // any more — applying one changes the wall and leaves the floor alone.
 const BUILT_IN: Preset[] = [
   {
-    name: 'base profile',
+    // ── THE SHIPPED LOOK, 2026-08-17 ─────────────────────────────────────────
+    // Josh: *"new default profile, add it as new profile ... this is the new
+    // profile i want."*
+    //
+    // Where BASE PROFILE was a stone that still took a highlight, this one is
+    // dry all the way through: floor AND wall roughness pinned at 1.0, the
+    // floor's albedo down a third (1.072 -> 0.76), and its polish threshold up
+    // to 0.95 so only a couple of worn lanes shine at all. The lighting goes the
+    // other way — bands much SOFTER (0.075 -> 0.4) with the response curve and
+    // the specular curve both flattened to 1.0, and the specular posterised into
+    // 5 regions instead of 9. So: fewer, broader, softer steps over matte stone,
+    // where base was harder steps over stone that could gleam.
+    name: 'soft matte',
+    blurb: 'dry stone, broad soft bands — floor and wall fully matte, 5 specular steps',
     values: {
+      bandsoft: 0.4, bandcurve: 1, speccurve: 1, banddither: 0.08,
+      bandwarp: 0.495, bandwarpn: 0.45, specbands: 5,
+      flrwarm: -0.35, flrbright: 0.76, flrrough: 1,
+      flrpolish: 0.303, flrpolishat: 0.95,
+      wallrough: 1,
+    },
+  },
+  {
+    name: 'base profile',
+    blurb: 'the 2026-08-16 look — stone that still takes a highlight, harder bands',
+    values: {
+      // ── THESE TWELVE WERE ADDED WHEN 'soft matte' BECAME THE DEFAULT ────────
+      // and the panel's own preview is what caught it: picking base profile
+      // reported "1 of 17 differ from now", because the only knob it shared with
+      // the new default was wallrough. Every band and floor value soft matte
+      // moved was one base profile had never named, so choosing it would have
+      // restored yesterday's colours on top of today's lighting — a look neither
+      // profile is. A preset has to name what it restores, which is the whole
+      // argument for writing them out as explicit objects rather than deltas.
+      bandsoft: 0.075, bandcurve: 1.35, speccurve: 1.16, banddither: 0.14,
+      bandwarp: 0.55, bandwarpn: 0.4, specbands: 9,
+      flrwarm: -0.44, flrbright: 1.072, flrrough: 0.796,
+      flrpolish: 0.345, flrpolishat: 0.61,
       // relief
       pomdepth: 0.1005, relief: 0.351,
       // wall stone
@@ -59,6 +102,7 @@ const BUILT_IN: Preset[] = [
   },
   {
     name: 'wall · matte',
+    blurb: 'wall only: darker, drier, more broken — leaves the floor alone',
     values: {
       stonespecw: 0.3525, mortarmattew: 0.8, wallbright: 1.12, wallrough: 0.872,
       cracksw: 0.575, erodew: 0.715, tallvar: 0.5, gritw: 1.5,
@@ -67,6 +111,7 @@ const BUILT_IN: Preset[] = [
   },
   {
     name: 'wall · sheen',
+    blurb: 'wall only: brighter and glossier with much less damage',
     values: {
       // Specular pulled back from 0.87 to 0.59 — Josh's call once this became
       // the shipped look rather than a rival to it.

@@ -252,16 +252,16 @@ const uQuoin = tuneUniform({
 // hot core stays clean and readable and it is the faint outer rings — the ones
 // that actually read as a bullseye — that break up.
 const uBandWarp = tuneUniform({
-  id: 'bandwarp', group: 'Light', label: 'Band break-up', min: 0, max: 1.5, value: 0.55,
+  id: 'bandwarp', group: 'Light', label: 'Band break-up', min: 0, max: 1.5, value: 0.495,
   hint: 'breaks the rings a close light draws into stone-sized arcs; 0 = perfect circles',
 });
 const uBandWarpNoise = tuneUniform({
-  id: 'bandwarpn', group: 'Light', label: 'Break-up within a stone', min: 0, max: 1.5, value: 0.4,
+  id: 'bandwarpn', group: 'Light', label: 'Break-up within a stone', min: 0, max: 1.5, value: 0.45,
   hint: 'wander inside a big slab, so the break-up is not only at the joints',
 });
 
 const uSpecBands = tuneUniform({
-  id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 9, step: 1,
+  id: 'specbands', group: 'Light', label: 'Specular bands', min: 2, max: 32, value: 5, step: 1,
   hint: 'posterises the highlight into regions; LOW is the bold end, 32 = off',
 });
 const uPomDepth = tuneUniform({
@@ -314,23 +314,23 @@ const POM_REFINE: number = Math.round(tuneNumber({
 // combination (horiz + splat + seamShadow + seamGlowScale), so its node graph
 // was already its own.
 const flrWarm = tuneNumber({
-  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: -0.44,
+  id: 'flrwarm', group: 'Sheen', label: 'Floor warmth', min: -1, max: 1, value: -0.35,
   apply: 'live', hint: 'negative = colder/more silver, positive = warm stone',
 });
 const flrBright = tuneNumber({
-  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 1.072,
+  id: 'flrbright', group: 'Sheen', label: 'Floor albedo', min: 0.4, max: 1.6, value: 0.76,
   apply: 'live', hint: 'how much light the stone gives back at all',
 });
 const uFlrRough = tuneUniform({
-  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 0.796,
+  id: 'flrrough', group: 'Sheen', label: 'Floor roughness', min: 0.2, max: 1.0, value: 1,
   hint: 'low = wet/polished sheen, high = dry matte stone',
 });
 const uFlrPolish = tuneUniform({
-  id: 'flrpolish', group: 'Sheen', label: 'Traffic polish', min: 0, max: 0.6, value: 0.345,
+  id: 'flrpolish', group: 'Sheen', label: 'Traffic polish', min: 0, max: 0.6, value: 0.303,
   hint: 'how much smoother the worn patches get',
 });
 const uFlrPolishAt = tuneUniform({
-  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.61,
+  id: 'flrpolishat', group: 'Sheen', label: 'Polish threshold', min: 0.1, max: 0.95, value: 0.95,
   hint: 'high = only a few lanes shine, low = the whole floor does',
 });
 
@@ -495,7 +495,7 @@ const wallBright = tuneNumber({
 // Wall roughness defaults to 0.95 — exactly what the material already carried —
 // so nothing moves until it is asked to.
 const uWallRough = tuneUniform({
-  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.904,
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 1,
   hint: 'low = damp/polished sheen, high = dry matte stone',
 });
 const uWallPolish = tuneUniform({

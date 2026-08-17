@@ -30,6 +30,10 @@ let activeGroup = '';
 // every visible slider and readout without rebuilding the DOM (a rebuild
 // scrolls the list back to the top mid-comparison, which is the one thing an
 // A/B must not do).
+/** The profile last applied from the select, so a rebuild does not lose it.
+ *  Not "the active profile" — a dragged slider makes that a fiction — just the
+ *  last thing picked, which is what the picker should still be showing. */
+let lastPickedPreset = '';
 let rowRefreshers: (() => void)[] = [];
 let sliderRefreshers: (() => void)[] = [];
 
@@ -158,28 +162,94 @@ function build(): void {
   // A preset only sets the knobs it names, so they compose — a wall look and a
   // floor look can be applied one after the other — and applying one cannot
   // quietly reset a surface it says nothing about.
+  // ── A SELECT, NOT CHIPS ─────────────────────────────────────────────────────
+  // Josh: *"make the profile selection a select rather than chips and kinda
+  // preview of what it does and easier to select and switch."*
+  //
+  // Chips were fine at two presets and stopped being fine at four: they wrapped
+  // to two rows on a phone, gave no clue what any of them would do, and showed
+  // no indication of which one you were currently looking at. A select is one
+  // touch target with a native picker, it has room for a name that is not
+  // abbreviated, and it leaves a line underneath for the PREVIEW — which is the
+  // part that actually makes switching easier, because the question is never
+  // "what is this one called", it is "what will this one do to the picture".
   const presets = allPresets();
   if (presets.length) {
     const row = document.createElement('div');
-    css(row, { display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' });
-    for (const p of presets) {
-      const chip = document.createElement('button');
-      chip.textContent = p.name;
-      css(chip, {
-        padding: '4px 8px', minHeight: '26px', borderRadius: '4px', cursor: 'pointer',
-        background: 'rgba(60, 40, 20, 0.55)', border: '1px solid rgba(200,160,104,0.45)',
-        color: 'rgba(255,225,180,0.9)', touchAction: 'manipulation',
-        font: '600 9px ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.05em',
-      });
-      chip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const msg = applyPreset(p.name);
-        chip.textContent = msg.includes('unknown') ? msg.slice(0, 22) : 'APPLIED';
-        window.setTimeout(() => { chip.textContent = p.name; build(); }, 900);
-      });
-      row.append(chip);
+    css(row, { marginBottom: '8px' });
+
+    const sel = document.createElement('select');
+    css(sel, {
+      width: '100%', minHeight: '30px', padding: '4px 6px', borderRadius: '5px',
+      background: 'rgba(60, 40, 20, 0.75)', border: '1px solid rgba(200,160,104,0.5)',
+      color: 'rgba(255,228,186,0.95)', cursor: 'pointer', touchAction: 'manipulation',
+      font: '600 11px ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.04em',
+    });
+    // A deliberate no-op first entry. Without it the select would claim whichever
+    // preset happens to be first is the one in effect, which is a lie the moment
+    // a single slider has been dragged — and the panel already tells you what is
+    // dirty (the tab dots, the coloured readouts). This says "pick one", not
+    // "you are here".
+    const head = document.createElement('option');
+    head.value = '';
+    head.textContent = `profile…  (${presets.length})`;
+    sel.append(head);
+
+    const preview = document.createElement('div');
+    css(preview, {
+      font: '400 9px ui-monospace, SFMono-Regular, Menlo, monospace',
+      color: 'rgba(190,215,250,0.62)', letterSpacing: '0.02em',
+      marginTop: '3px', minHeight: '22px', lineHeight: '1.35',
+      // The blurb and the group summary are two lines joined by \n — without
+      // this they collapse onto one and the summary reads as part of the
+      // sentence.
+      whiteSpace: 'pre-line',
+    });
+
+    /** What a preset would do, in the two terms that matter: the sentence its
+     *  author wrote, and which tabs it will move. Generated from the values, so a
+     *  preset that grows a knob cannot forget to mention it. */
+    const describe = (name: string): string => {
+      const pr = presets.find((x) => x.name === name);
+      if (!pr) return '';
+      const ids = Object.keys(pr.values);
+      const groups = [...new Set(
+        ids.map((id) => listKnobs().find((k) => k.spec.id === id)?.spec.group).filter(Boolean),
+      )].join(' · ');
+      const changed = ids.filter((id) => {
+        const k = listKnobs().find((x) => x.spec.id === id);
+        return k && Math.abs(k.get() - pr.values[id]) > 1e-6;
+      }).length;
+      const at = changed === 0 ? 'you are on it' : `${changed} of ${ids.length} differ from now`;
+      return `${pr.blurb ?? `${ids.length} knobs`}\n${groups} — ${at}`;
+    };
+
+    for (const pr of presets) {
+      const opt = document.createElement('option');
+      opt.value = pr.name;
+      opt.textContent = pr.name;
+      sel.append(opt);
     }
+    // Preview on HOVER/keyboard move as well as on commit, so you can read what
+    // a profile does before applying it rather than by trying it.
+    const showPreview = () => { preview.textContent = describe(sel.value) || ' '; };
+    sel.addEventListener('input', showPreview);
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const name = sel.value;
+      if (!name) return;
+      applyPreset(name);
+      // Rebuild so every slider and readout in the open tab reflects the new
+      // values — then restore the selection, because build() makes a new select.
+      lastPickedPreset = name;
+      build();
+    });
+    row.append(sel, preview);
     root.append(row);
+    if (lastPickedPreset && presets.some((x) => x.name === lastPickedPreset)) {
+      sel.value = lastPickedPreset;
+    }
+    showPreview();
   }
 
   // ── knobs for the active tab ──────────────────────────────────────────────
