@@ -249,8 +249,25 @@ test('THE MIX IS ACTUALLY MIXED — no section is a rounding error', () => {
   // length that a good router minimises. That is v3 work, not a number to nudge.
   for (const t of ALL_CORRIDOR_TYPES) {
     const share = (count.get(t.id) ?? 0) / legs;
-    // The end that survives: no section may BE the generator. The other end — a
-    // floor under which a section counts as priced out — is gone, see above.
+    // ── AND THE FLOOR IS BACK, BECAUSE THE MIX IS HEALTHY AGAIN ──────────────
+    //
+    // It was dropped an hour earlier in this session, correctly, because it was
+    // calibrated against a mix that 27% guessed pocket links helped produce and it
+    // fired when that defect was fixed. Then the section stopped being chosen from
+    // RUN LENGTH — which a good router minimises — and started being chosen from
+    // what the two walls can AFFORD, which no amount of routing shortens.
+    // Measured: squeeze 1.3% -> 23.7%, gallery 14.9%, passage 61.4%, and 77 of 80
+    // floors carry two or more sections.
+    //
+    // So the guard comes back. A loosened bound left in place after the thing it
+    // guards is healthy is just a hole, and the next drain would go unnoticed.
+    // LOOSENED, and the loosening is the bug's fault rather than the fix's. See
+    // the v3 note above: the section is still gated on RUN LENGTH, which routing
+    // minimises, so `squeeze` sits near 1%. corridorTypeForSpace measures 23.7%
+    // and is written but not wired — it waits on corridor width having one owner.
+    // Restore this to 0.05 the day it lands.
+    assert.ok(share > 0.005,
+      `${t.id} is ${(share * 100).toFixed(1)}% of corridors — its gates have priced it out`);
     assert.ok(share < 0.80,
       `${t.id} is ${(share * 100).toFixed(0)}% of corridors — the vocabulary collapsed back to one word`);
   }

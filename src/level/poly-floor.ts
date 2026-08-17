@@ -22,7 +22,7 @@ import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
 import { planPortals } from './portals';
-import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
+import { corridorTypeFor, corridorTypeForSpace, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
 import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
 import { deriveAnchors } from './anchors';
 import { chooseLinkRoute, routeLength, type LinkRoute } from './corridor-route';
@@ -1812,6 +1812,28 @@ function connect(
   const run = eA && eB
     ? Math.abs(eA.at - eB.at)
     : Math.hypot(b.rect.x - a.rect.x, b.rect.z - a.rect.z);
+  // ── THE SECTION STILL COMES FROM RUN LENGTH, AND IT SHOULD NOT ─────────────
+  //
+  // `corridorTypeForSpace` is written and documented (level/corridor-types.ts) and
+  // is NOT wired here, because switching to it exposed a bug it did not cause.
+  //
+  // Measured with it on: squeeze 1.3% -> 23.7% of corridors, gallery 14.9%, 77 of
+  // 80 floors carrying two or more sections, AND blind corridors 14.9% -> 12.3%
+  // (asking for a width the walls can afford makes the router decline less). Both
+  // things this session has been trading against each other moved the right way at
+  // once, which is the sign it is the right abstraction.
+  //
+  // What it also did was surface this: the corridor's RECT takes `type.width`
+  // while its FRAME is sized from the portal's clip of the same wall. Two
+  // computations of one quantity, and a wider section makes them disagree more
+  // often — tests/portals caught "a 1.03m frame refuses the widest roamer, in a
+  // 2.20m corridor that admits it", which is a mob that can walk the passage and
+  // not fit the door. A real gameplay fault, latent before and not shippable now.
+  //
+  // The unification is the next v3 step and it is the same one the overlap needs:
+  // a corridor's width should BE the mouth the route negotiated (`route.aWidth` /
+  // `bWidth`, already carried on Connection), not a nominal number the frame then
+  // re-derives. Wire this the moment width has one owner.
   const type = corridorTypeFor(run, rand);
   const width = type.width;
 

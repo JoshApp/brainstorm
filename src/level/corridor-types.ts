@@ -172,6 +172,60 @@ export function corridorTypeFor(runLength: number, rand: () => number): Corridor
   return open[open.length - 1];
 }
 
+/**
+ * Pick a section from THE SPACE THE TWO WALLS CAN AFFORD.
+ *
+ * Josh, 2026-08-17: *"i want rooms to be connected, with bigger and smaller
+ * corridors depending on how much space there is ... we dont have to adhere to any
+ * legacy."*
+ *
+ * ── WHY RUN LENGTH WAS THE WRONG QUANTITY ────────────────────────────────────
+ *
+ * `corridorTypeFor` gates on how FAR the corridor runs, and its own call site
+ * admits the number is an estimate whose "only job is to pick a word". Two things
+ * are wrong with it now:
+ *
+ *   1. A GOOD ROUTER MINIMISES IT. Anchor-aligned placement puts two walls
+ *      opposite each other, facing walls give straight corridors, and straight is
+ *      short — so the long-run sections became unreachable. `squeeze` fell to 1.3%
+ *      of corridors and the old per-section floor fired as though that were a
+ *      regression. A vocabulary keyed to a quantity the solver is trying to reduce
+ *      will always drain as the solver improves.
+ *   2. IT SAYS NOTHING ABOUT THE PLACE. How long a passage is has no bearing on
+ *      how wide it can be; a 20m run between two cramped walls cannot be a gallery
+ *      and a 4m one between two long walls easily can.
+ *
+ * ── WHAT SPACE GIVES INSTEAD ─────────────────────────────────────────────────
+ *
+ * An anchor already declares a width RANGE — the most its wall can host after
+ * corner clearance (level/anchors.ts). So the widest section a link can carry is
+ * simply what BOTH ends can afford, and that is a fact about the architecture
+ * rather than about the pathfinder. A pocket hung off a stub wall gets a squeeze
+ * because it cannot get anything else; two long walls get a gallery because they
+ * can.
+ *
+ * It also restores variety from a source routing does not fight. Room shapes vary,
+ * so wall lengths vary, so affordable widths vary — and no amount of route
+ * optimisation shortens a wall.
+ *
+ * Weights are kept among the ELIGIBLE sections, so the mix stays authored rather
+ * than always taking the widest thing that fits.
+ */
+export function corridorTypeForSpace(affordable: number, rand: () => number): CorridorType {
+  const open = ALL_CORRIDOR_TYPES.filter((t) => t.width <= affordable);
+  // Nothing fits: hand back the narrowest section rather than inventing one. The
+  // router still has the final say and will decline if the walls truly cannot
+  // carry it — a declined link is a reroll, an invented width is a wall clipping
+  // a corridor for the rest of the floor's life.
+  if (!open.length) {
+    return ALL_CORRIDOR_TYPES.reduce((m, t) => (t.width < m.width ? t : m), ALL_CORRIDOR_TYPES[0]);
+  }
+  const total = open.reduce((s, t) => s + t.weight, 0);
+  let roll = rand() * total;
+  for (const t of open) { roll -= t.weight; if (roll <= 0) return t; }
+  return open[open.length - 1];
+}
+
 /** Look-up by id, for a spec that stored the word rather than the numbers. */
 export function corridorType(id: CorridorTypeId | undefined): CorridorType {
   return (id && CORRIDOR_TYPES[id]) || CORRIDOR_TYPES.passage;
