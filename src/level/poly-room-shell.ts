@@ -7,6 +7,7 @@ import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
+import { DEV } from '../debug/dev';
 import { wearStream, WEAR_MIN, WEAR_RANGE } from './room-wear';
 import { polyBounds, pointInPoly, type Poly } from './room-shape';
 import { planWallRingFull, WALL_T, type OpeningRect, type WallSpan } from './poly-shell-plan';
@@ -141,7 +142,6 @@ export function buildPolyRoomShell(
     // hole coords are (x, −z) in local space; the outline is (x, z)
     pointInPoly(poly, hx + rect.x, rect.z - hy)));
   const floorGeo = plateGeometry(local, 'up', safeHoles);
-  subdivideToMaxEdge(floorGeo, FLOOR_MAX_EDGE);
   // LAID, not poured. Same reasoning as the coursed walls, applied to the
   // surface the player looks at most — see tintAsFlagstones. Tint only: the
   // floor stays dead flat, so nothing here can push a player up or make a room
@@ -153,8 +153,10 @@ export function buildPolyRoomShell(
   // Shape space → WORLD. The flagstone Voronoi the shader draws is projected in
   // world XZ, so the tint has to be asked there or it colours a different set of
   // slabs from the ones whose seams the player can see.
-  tintAsFlagstones(floorGeo, shellWear, hashKey(room.id), floorOutline,
-    (sx, sy) => [rect.x + sx, rect.z - sy]);
+  layAsFlagstones(floorGeo, {
+    wear: shellWear, key: room.id, outline: floorOutline,
+    toWorld: (sx, sy) => [rect.x + sx, rect.z - sy],
+  });
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, elev, rect.z);
@@ -178,12 +180,14 @@ export function buildPolyRoomShell(
     // contact darkening passes have vertices where they need them. Coarser
     // than the floor's: a ceiling is four metres away in the dark, and detail
     // you cannot resolve is triangles you are paying for and not seeing.
-    subdivideToMaxEdge(ceilGeo, FLOOR_MAX_EDGE * 2);
     // Ceiling plates are NOT mirrored, so `local` is already their shape space.
     // The band here is soot rather than filth — smoke rises, hits the slab and
     // crawls outward to the walls, so the corners are the black part.
-    tintAsFlagstones(ceilGeo, shellWear * 0.7, hashKey(room.id) ^ 0x5eed, local,
-      (sx, sy) => [rect.x + sx, rect.z + sy]);
+    layAsFlagstones(ceilGeo, {
+      wear: shellWear * 0.7, key: room.id, salt: 0x5eed, outline: local,
+      toWorld: (sx, sy) => [rect.x + sx, rect.z + sy],
+      maxEdge: FLOOR_MAX_EDGE * 2,
+    });
     ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(rect.x, elev + H, rect.z);
@@ -246,9 +250,20 @@ export function buildPolyRoomShell(
     // doorway runs from the passage's ceiling to the room's, and shows a soffit
     // because it has a doorway under it rather than floor. Both are ordinary spans
     // now — see the note on WallSpan.y0.
+    // ── A HEAD NEEDS NO SOFFIT: THE PASSAGE'S OWN CEILING IS ONE ───────────
+    //
+    // `capBottom` closes a span's underside, which a wall standing on the floor has no
+    // need of and the stone OVER a doorway appears to. It does not: the hole is exactly
+    // as tall as the passage behind it (link.ts, WallCut.height), the corridor's plate
+    // crosses the wall's 0.25m band, and its CEILING therefore sits at precisely the
+    // height a soffit would — two horizontal surfaces in the same plane over the same
+    // band. Josh: *"above a corridor the material z fights with the room — the corridor
+    // ceiling z fights with the wall above the corridor's entrance."*
+    //
+    // So the head is closed by the thing behind it, and caps nothing.
     pieces.push(...spanGeometry(
       s, elev + s.y0, s.y1 - s.y0, wallWear(shellWear, wearRand), wearRand,
-      i === collapseSpan, !!s.head,
+      i === collapseSpan, false,
     ));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
@@ -556,6 +571,60 @@ function tintVertices(geo: THREE.BufferGeometry, scale = 1): void {
 
 /** The bounding rect a polygon room should advertise, so everything that still
  *  thinks in rects (elevation, nav bbox, the walkable union) keeps working. */
+/**
+ * Lay a floor or ceiling plate as SLABS — subdivide, then tint.
+ *
+ * ── WHY THIS IS EXPORTED, AND WHY IT IS ONE CALL ─────────────────────────────
+ *
+ * `tintAsFlagstones` needs a DE-INDEXED geometry and silently does nothing on an
+ * indexed one, so it only works after `subdivideToMaxEdge`. That pairing lived here,
+ * inline, twice — and the RECT path in builder.ts did neither. So every polygon room's
+ * floor read as laid slabs with a grime band along its walls, and every CORRIDOR's floor
+ * read as flat untinted stone.
+ *
+ * You cannot see that down a dark corridor. You see it at a DOORWAY: a corridor's plate
+ * crosses the wall's 0.25m band to floor the threshold, and that band is the one strip of
+ * corridor floor the room's own light falls on. Josh, twice: *"there is a small strip
+ * under each portal at the floor level that isn't the floor's texture"*, and after the
+ * wall-material sill was deleted, *"there is a strip of material overlay beneath each
+ * corridor's entrance on the floor at the place where you fixed wall material being used
+ * as floor strip."* Same strip, and never geometry — measured, the plate stops exactly on
+ * its threshold on all 530 end legs, with nothing overlapping. It was the only patch of
+ * floor in the game that was not laid as slabs.
+ *
+ * So it is one exported call and both paths make it.
+ */
+export function layAsFlagstones(
+  geo: THREE.BufferGeometry,
+  opts: {
+    wear: number;
+    /** Stable per-room key, so a rebuild repaints the same slabs. */
+    key: string;
+    /** Boundary in the PLATE's own space, for the perimeter grime band. Omit on a
+     *  plate whose edges are not walls. */
+    outline?: Poly;
+    /** Plate space → world XZ. The slab pattern is world-projected. */
+    toWorld?: (sx: number, sy: number) => [number, number];
+    maxEdge?: number;
+    /** Distinguishes a ceiling from a floor built off the same room. */
+    salt?: number;
+  },
+): void {
+  subdivideToMaxEdge(geo, opts.maxEdge ?? FLOOR_MAX_EDGE);
+  tintAsFlagstones(geo, opts.wear, hashKey(opts.key) ^ (opts.salt ?? 0),
+                   opts.outline, opts.toWorld);
+  // AND IT DID SOMETHING. `tintAsFlagstones` returns silently on an indexed geometry,
+  // which is the property that let a whole path go untinted without anyone noticing —
+  // there is no error to see, just a floor that reads flatter than the one next to it.
+  // `subdivideToMaxEdge` always de-indexes, so this cannot fire today; it is here so that
+  // the next caller to hand this something unexpected is told, rather than shipping a
+  // surface that quietly does not match its neighbours.
+  if (DEV && !geo.getAttribute('color')) {
+    console.warn('[flagstones] plate came back untinted — it will not match the floors '
+      + 'around it. tintAsFlagstones needs a de-indexed geometry.');
+  }
+}
+
 export function polyRoomRect(poly: Poly): { x: number; z: number; w: number; d: number } {
   const b = polyBounds(poly);
   return {

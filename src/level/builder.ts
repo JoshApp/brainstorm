@@ -10,7 +10,7 @@ import { spawnNetworkBloodstains } from './network-bloodstains';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
-import { buildPolyRoomShell } from './poly-room-shell';
+import { buildPolyRoomShell, layAsFlagstones } from './poly-room-shell';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -291,6 +291,30 @@ function buildRoomShell(
     : allFloorHoles.length > 0
       ? makeFloorWithHoles(PW, PD, allFloorHoles)
       : makeJitteredPlane(PW, PD, { flat: true });
+  // ── LAID AS SLABS, LIKE EVERY OTHER FLOOR ────────────────────────────────
+  //
+  // This plate was the one patch of floor in the game that was not. Polygon rooms tint
+  // theirs (poly-room-shell.ts) and corridors come through here, so every corridor floor
+  // read as flat untinted stone against every room's laid slabs.
+  //
+  // You cannot see that down a dark corridor. You see it at a DOORWAY: a corridor's plate
+  // crosses the wall's 0.25m band to floor its own threshold, and that band is the one
+  // strip of corridor floor the room's light falls on. Josh found it twice — once as the
+  // wall-material sill, and again after that was deleted: *"there is a strip of material
+  // overlay beneath each corridor's entrance on the floor."* It was never geometry: the
+  // plate stops exactly on its threshold on all 530 end legs. It was the material.
+  //
+  // Skipped on a SLOPED plate: a stepped stair-run's vertices are treads, not a plane, and
+  // the slab tint asks for plate-space positions. A ramp reading differently from a level
+  // corridor is a real gap, and it is smaller than this one was.
+  if (!sloped) {
+    layAsFlagstones(floorGeo, {
+      wear: room.wear ?? 0.45,
+      key: room.id,
+      outline: [[-PW / 2, -PD / 2], [PW / 2, -PD / 2], [PW / 2, PD / 2], [-PW / 2, PD / 2]],
+      toWorld: (sx, sy) => [PX + sx, PZ - sy],
+    });
+  }
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   if (!sloped) {
     floor.rotation.x = -Math.PI / 2;

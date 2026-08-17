@@ -4,176 +4,103 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 18",
-    "date": "2026-08-11",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The glow around a thing you can touch is built once now, not every time you walk back. The stairs wear one outline instead of two per step.",
-        "area": [
-          "interactables",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The stairway's glow costs less to burn. It looks exactly as it did, which is the point.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The stairs, the merchant and the chest each draw as a fraction of what they were. They have not moved, and they still notice you.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dungeon stops second-guessing how sharp it should be. It had been changing its mind every few seconds, and you felt every one.",
-        "area": [
-          "atmosphere",
-          "tech"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 17",
-    "date": "2026-08-10",
+    "version": "Build 52",
+    "date": "2026-08-17",
     "entries": [
       {
         "tag": "fix",
-        "text": "Leaving a run no longer wakes the whole dungeon from scratch. It was never asleep.",
+        "text": "The floor runs unbroken through every doorway now, and the corners of a turning passage are whole.",
         "area": [
-          "ui",
-          "tech"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon asks the browser to stop forgetting what it built. It does not always listen.",
-        "area": [
-          "tech"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The menu no longer stops to build itself when you crawl back up to it.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon only builds what you are looking at now. It resents the economy.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The stonework agrees to be lit as one thing. It was always one thing.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dungeon stops drawing the rooms behind your back. It was never doing that for your benefit.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Settings will now let you change which graphics API the dark is drawn with. Try both; the phone has opinions.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon's stonework stops announcing itself to the graphics card one block at a time.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The skirmishers have stopped pretending to be men. The acolytes burn along their seams now, and something down there is keeping count of your frames.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The ones that stood and stared have remembered what they are for. The acolytes have put their faces back on, and there is less of them below the waist than you would like.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The skirmishers have bound their faces and taken a stance. The rats show their teeth, which is the only part of them the dark gives back.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The things that shamble at you have stopped standing to attention. They stoop now, and their arms hang lower than you would like.",
-        "area": [
-          "content",
+          "level",
           "atmosphere"
         ]
       },
       {
         "tag": "tune",
-        "text": "The dead have stopped taking the colour of the room they die in. Something in the deep keeps its own light, and now you can see how much of it there is.",
+        "text": "The descent is back — floors fall away beneath you again, and every corridor now stops exactly where its doorway is.",
         "area": [
-          "atmosphere",
-          "content"
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Doorways are the height of what is behind them. The dungeon stopped showing you the void over its own thresholds.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Doorways are exactly as wide as the passage behind them, and the dungeon stopped quietly stacking a second garrison on top of its ambushes.",
+        "area": [
+          "level",
+          "combat"
         ]
       },
       {
         "tag": "tune",
-        "text": "The acolyte stops glowing like a lantern and starts carrying one. The rats have gone dark, and something wet catches your light where their eyes are not.",
+        "text": "The dungeon counts its own dead weight now — shallow floors carry a real fight, and the deep ones stop drowning you.",
         "area": [
-          "atmosphere",
-          "content"
+          "level",
+          "combat"
         ]
       },
       {
-        "tag": "content",
-        "text": "The dark gets its creatures back. Most of them had been quietly glowing, and a thing that glows cannot be hidden — nor properly seen.",
+        "tag": "fix",
+        "text": "Every corridor now arrives where a wall agreed to let it in, and the boss finally has a hall wide enough to be circled in.",
         "area": [
-          "content",
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Loop corridors are planned properly now, or the floor simply goes without one.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Pocket corridors are planned instead of guessed. Straighter halls, and far fewer of them wrong.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Loop corridors are planned like every other corridor now, instead of guessed.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Doorways get their floor back. The threshold belongs to the wall now, not to a gate that might not be there.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The stone goes dry and the light goes soft. Profiles get a proper picker that tells you what each one does.",
+        "area": [
+          "atmosphere",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A close flame stops drawing a bullseye. The light breaks stone by stone now.",
+        "area": [
           "atmosphere"
         ]
       },
       {
         "tag": "tune",
-        "text": "Terror makes a thing clumsy now. Break its nerve and it stumbles away slower than it came, back turned, and the dark is patient.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Corridors stop blinking out of existence a stride before you reach them. The dark was hiding stone it had no business hiding.",
+        "text": "Doorways get a real lintel now — the wall carries itself over the arch instead of the arch carrying the wall.",
         "area": [
           "level",
           "atmosphere"
@@ -182,20 +109,50 @@ export const GENERATED_PATCHLOG = [
     ]
   },
   {
-    "version": "Build 16",
-    "date": "2026-08-09",
+    "version": "Build 51",
+    "date": "2026-08-16",
     "entries": [
       {
-        "tag": "add",
-        "text": "Break a guard, charge a heavy, and the kill now takes its time — the world thickens, the frame closes in red, and something below counts it.",
+        "tag": "fix",
+        "text": "Mortar runs the same width all the way round a stone now, instead of pooling on one side.",
         "area": [
-          "combat",
           "atmosphere"
         ]
       },
       {
         "tag": "fix",
-        "text": "The gate you stand under warms to you now, instead of some other door remembering you fondly from across the floor.",
+        "text": "The floor stops sprouting iron bars, and the torches climb out of the walls they were buried in.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Stones stop being mistaken for each other, and the joint sliders start telling the truth.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The walls stop stepping in and out of themselves. Flat stone, and the light does the rest.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The walls stop wearing skirting boards. Bare stone, floor to ceiling.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Corners are laid with bigger stone now, and the arch stops wearing the wall's pattern sideways.",
         "area": [
           "atmosphere",
           "level"
@@ -203,141 +160,143 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
-        "text": "The eyes keep watch on every way you have not walked, and lose interest in the long way round.",
+        "text": "The gate stops shouting in the same voice as the wall, and the floor remembers it is wet.",
         "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The dark now knows what room you are in. Play in the sun if you must; the dungeon will meet you there, and resent it.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The eyes above the doors have opinions again. Follow the open one; the shut ones have nothing left for you.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The bone shrines are back. Someone had been arranging the dead for weeks and no one could see it.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 15",
-    "date": "2026-08-08",
-    "entries": [
-      {
-        "tag": "tech",
-        "text": "The stairs arrive twice as fast. The dungeon was spending most of its time proving that a corridor was not inside a room on the far side of the floor.",
-        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "tune",
-        "text": "Bleed and poison stop killing faster than the thing that inflicted them. A rat's bite is a wound now, not a sentence.",
+        "text": "The dungeon puts away its furniture. Bare stone, one gate, and the arch stops pretending it holds up the ceiling.",
         "area": [
-          "combat"
+          "level",
+          "atmosphere"
         ]
       },
       {
         "tag": "tune",
-        "text": "Bleed no longer empties you in a single second, and poison remembers it was meant to be attrition. Your flask, in exchange, is honest about being a sip.",
+        "text": "The torches hang lower. The stone shows its scars, and the floor stops being a rumour.",
         "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The dungeon stops being built from boxes. Rooms have shape now, and the stair is always somewhere you can reach — which was not previously guaranteed.",
-        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "fix",
-        "text": "Polygon floors were quietly fielding half a dungeon's worth of enemies. They are all present now, and some of them are waiting in the dark.",
-        "area": [
-          "level",
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The things that wait at the bottom of an act have moved into the new halls. They seem content with the arrangement.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The rubble has started collecting where rubble collects. Rooms that are falling apart now look like it.",
+        "text": "Doorways are cut from the same stone as the walls now, and they stopped glowing when you walk up to them.",
         "area": [
           "level",
           "atmosphere"
         ]
       },
       {
-        "tag": "content",
-        "text": "The door at your back is the same stone as the rest now, and the boards across it are new. Someone did not want you going home.",
+        "tag": "tune",
+        "text": "The wall keeps its warmth against a cold floor, and the small stones stop looking like leftovers.",
         "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stairs down are clear again. Whatever kept setting pillars across them has been persuaded otherwise.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The doors that opened onto nothing are walls again, and the stonework finally agrees with the stone.",
-        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "content",
-        "text": "The small doors are stone now, turned in a full round arch. Someone down here still remembers how it was done.",
+        "text": "The stones were laid by someone working with what they had — big ones first, small ones filling what was left.",
         "area": [
-          "level",
-          "atmosphere"
+          "atmosphere",
+          "level"
         ]
       },
       {
-        "tag": "fix",
-        "text": "The gaps beside the doorframes are stone again. Whatever was watching through them will have to find another way.",
+        "tag": "content",
+        "text": "The wall was built by someone with the stones they had, not by a machine with one mould.",
         "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "A stone can be split and crazed at once now, the way old stone usually is.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The walls split the way stone splits, and something has been cutting patterns into the floor.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The stone splits along straight lines that meet at corners, the way stone actually splits.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The light can be told exactly where to step and how far, and the stones lose corners in pairs.",
+        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "tune",
-        "text": "The halls no longer run in straight lines from the same seam. Something down here got tired of the grid.",
+        "text": "Corners come off the blocks again, and the edges of the light break into grain instead of drawing lines.",
         "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The light steps down in fewer, better-placed stages, and the stone loses pieces in shapes it has not used before.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "Corners have come away from the blocks, and the joints stopped flickering between pale and black.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The joints go black and their edges take the fire — the same stone, darker and brighter, not a different one.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "Corners have come off the stone, and what is underneath was never weathered.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The deep settles on its colour — colder underfoot, warmer at the wall, and the light steps down in fives.",
+        "area": [
+          "atmosphere",
           "level"
         ]
       },
       {
         "tag": "fix",
-        "text": "The threshold is a threshold now — stone underfoot where the passage meets the room, instead of two floors arguing over the same ground.",
+        "text": "The stone along the top of a course carries on from the stone below it, on every wall rather than one.",
         "area": [
           "level",
           "atmosphere"
@@ -345,7 +304,7 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "fix",
-        "text": "The doorframes stop arguing with the passage they stand in.",
+        "text": "The stone along the top of a course lines up with the stone below it now.",
         "area": [
           "level",
           "atmosphere"
@@ -353,62 +312,96 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "fix",
-        "text": "Things in a passage face the passage now, not the room they are merely standing near.",
+        "text": "The stone stops glowing like something you should not stand near.",
         "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "A doorway is the size of the passage behind it. No more grand gates with a tunnel threaded through the middle.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "A side passage stays a side passage. The dungeon stops quietly opening the back of its own dead ends.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Doorways stop wrapping around corners. The masonry finally gets a say in where it is broken.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Passages no longer turn their corner in the middle of somebody's room.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The iron bars have found a wall to be set into. They were embarrassed about it.",
-        "area": [
-          "level",
           "atmosphere"
         ]
       },
       {
         "tag": "tune",
-        "text": "The big rooms have archers in them now. That distance you were enjoying was never free.",
+        "text": "The cracks go black and their edges catch the fire, and the stone breaks along a line now instead of denting.",
         "area": [
-          "combat",
+          "atmosphere",
           "level"
         ]
       },
       {
-        "tag": "add",
-        "text": "Some passages come back around now. You will still walk them twice, but at least it was your idea.",
+        "tag": "content",
+        "text": "There is grit in the pointing now, not just patches of a different colour.",
         "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The stone answers the torch with its colour now, instead of a shine where its colour should be.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The stone finally has colour in it, rather than a shine where its colour should be.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "There is something packed between the stones now, and it is not the same stone.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The stone has grain under your hand now, and what is packed between the blocks is no longer the same rock in shadow.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The stone stops swimming underfoot and overhead when you turn.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The wall is one stone from floor to ceiling now, and the ledge across its middle is gone.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The stone splits where nothing was built, and the faces have worn round under whatever has passed over them.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The stone stops looking like a dealt hand. The joints were cut too clean to be believed, and now they are worn back.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The flagstones have lost corners and their edges no longer match. Something has been dragged over this floor for a very long time.",
+        "area": [
+          "atmosphere",
           "level"
         ]
       }
