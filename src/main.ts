@@ -1547,6 +1547,41 @@ function handleAutostart(): boolean {
     return true;
   }
 
+  // ── ?autostart=floor — LAND ON A GENERATED FLOOR, EVERY RELOAD ─────────────
+  //
+  // Josh, 2026-08-17: *"when you do changes the browser reloads and you end up
+  // in main menu ... for testing you should def do a kinda mode where you dont
+  // always have to wait for descent screen when it reloads, otherwise every
+  // change you do does like reloading."*
+  //
+  // The pieces existed and did not compose into that. `?autostart=1` at depth 1
+  // builds the STARTER CHAMBER — a hand-authored rect room, which is precisely
+  // not the geometry under test — and reaching a real polygon floor meant
+  // `?autostart=1&depth=3&dev=1`, three flags and a depth you did not want,
+  // discoverable only by reading this function.
+  //
+  // So: one flag. `?autostart=floor` skips the title, skips the starter, skips
+  // the descent screen, and drops you on a procgen floor at ?depth (default 1)
+  // with ?seed if you give one. An HMR reload keeps the query string, so the
+  // edit-look-edit loop stops costing a descent each time.
+  //
+  // DEV-gated like ?depth: it hands out a floor jump and a free sword, and
+  // `import.meta.env.DEV` folds the whole branch out of the shipped bundle.
+  if (import.meta.env.DEV && auto === 'floor') {
+    const s = url.get('seed');
+    const seedNum = s != null && s !== '' && Number.isFinite(Number(s)) ? Number(s) : undefined;
+    const d = Math.max(1, Number(url.get('depth') ?? 1) || 1);
+    const floorId = `depth-${d}`;
+    clearSave();
+    startNewRun(floorId, { seed: seedNum, depth: d });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    setSlot('weapon', ITEMS['rusted-sword']);
+    void startRun(floorId, d).then(hideBootLoading);
+    return true;
+  }
+
   // DESCEND path. Accept ?seed=N and (gated) ?depth=N.
   const seedParam = url.get('seed');
   const seed = seedParam != null && seedParam !== '' ? Number(seedParam) : undefined;

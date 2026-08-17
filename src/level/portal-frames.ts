@@ -4,6 +4,7 @@ import { chooseFrameModel } from './frame';
 import { archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
 import { doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
 import { WALL_T } from './poly-room-shell';
+import { dressing } from './dressing';
 
 // ── FRAMES FOR POLYGON DOORWAYS ──────────────────────────────────────────────
 //
@@ -47,6 +48,9 @@ const MIN_WIDTH = 0.7;
  * A no-op on floors with no polygon rooms, so it is safe to call unconditionally.
  */
 export function emitFramesForPortals(spec: LevelSpec): void {
+  // Corridors first — see level/dressing.ts 'archway'. With this off a doorway is
+  // the raw cut, which is the thing being fixed.
+  if (!dressing('archway')) return;
   const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }));
   if (!corridors.length) return;
 

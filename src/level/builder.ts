@@ -2301,7 +2301,7 @@ export function buildLevel(
   // no corners, no room-side light creep.
   {
     const sconces: typeof spec.torches = [];
-    for (const c of spec.corridors) {
+    for (const c of dressing('corridor-sconce') ? spec.corridors : []) {
       if (c.logicalOnly) continue;
       const horizontal = c.rect.w >= c.rect.d;
       const len = horizontal ? c.rect.w : c.rect.d;

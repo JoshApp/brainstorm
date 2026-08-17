@@ -28,6 +28,15 @@ import assert from 'node:assert/strict';
 import { rectAtIn } from '../src/level/rect-at';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import type { LevelSpec, PropSpec } from '../src/level/types';
+import { DRESSING } from '../src/level/dressing';
+
+// FRAMES ARE SWITCHED OFF IN THE SHIPPED MANIFEST while corridors are rebuilt
+// from the cut up (2026-08-17). This file tests the framing, not the switch —
+// same reasoning as tests/corridor-decor and tests/poly-dressing. A flag meaning
+// "do not run this right now" must not also mean "stop checking whether it
+// works", or the manifest becomes where code rots while it waits to come back,
+// and coming back deliberately is the entire point of it.
+DRESSING['archway'].on = true;
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {

@@ -927,6 +927,37 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
  *  corridor-mouth gates procgen floors get — the elevation lab uses it so
  *  ramps are tested WITH their frames, matching live floors. */
 export function emitArchwaysForCorridors(spec: LevelSpec): void {
+  // ── POLYGON ROOMS BELONG TO THE OTHER EMITTER, AND DID NOT ─────────────────
+  //
+  // portal-frames.ts exists because this function "finds openings from RECT
+  // edges and can only place a frame on one of four axis-aligned sides — and a
+  // polygon's wall is a polygon edge, frequently chamfered." Its header states
+  // the split as already true: *"ZERO across 120 polygon floors."*
+  //
+  // That was measured once and has not been true since. `applyGeometryWarp`
+  // calls this unconditionally, and re-measured on 124 generated polygon floors
+  // it produced 841 frames — 6.78 PER FLOOR — four of which landed inside a room
+  // polygon outright. So every polygon doorway has been getting two gates: the
+  // portal-driven one, square to the real wall, and this one, square to the
+  // WORLD on a bounding-box edge. That is Josh's report, 2026-08-17: *"our
+  // archway doorway generation sometimes anchors in the room with weird geometry,
+  // there must be a systematic edgecase failure there of multiple kinds."*
+  //
+  // ── AND FENCING OFF THE ROOMS WAS NOT ENOUGH, WHICH IS THE INTERESTING PART ──
+  //
+  // First cut excluded poly ROOM rects from the opening search, on the theory
+  // that the strays were corridor-to-room. Re-measured: 841 -> 834. Almost none
+  // of them were. They are CORRIDOR-TO-CORRIDOR — a dogleg is several rects, and
+  // where two legs meet this finds a "wall opening" between them and drops a gate
+  // at the bend. A doorway is a hole in a room's wall; the join between two legs
+  // of one passage is not a doorway, and framing it puts a free-standing arch in
+  // the middle of a corridor.
+  //
+  // So the guard is where the contract already said it was: this emitter is the
+  // RECT path's, and a floor with polygon rooms is not the rect path. The vault
+  // floors and the test chambers (which call it directly) have no polygon rooms
+  // and are untouched.
+  if (spec.rooms.some((r) => r.poly && r.poly.length >= 3)) return;
   const allRectsFlat = [
     ...spec.rooms.map((r) => r.rect),
     ...spec.corridors.map((r) => r.rect),

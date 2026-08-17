@@ -231,6 +231,20 @@ export const DRESSING: Record<string, DressingEntry> = {
       + 'deliberately: it is the only decorator in the game that reasons about what '
       + 'a stretch of dungeon is FOR.',
   },
+  'corridor-sconce': {
+    on: false,
+    note: 'The quiet beacon inside a corridor mouth — a sconce on the side wall, '
+      + 'rolled per end, about a quarter of corridors staying dark. Off because Josh '
+      + 'is rebuilding corridors from the hull up, 2026-08-17: "i think we should '
+      + 'also disable additional details inside corridors for now, only the pure hull '
+      + 'geometry and stairs."\n'
+      + 'NOTE WHAT THIS COSTS: corridors go dark except for the player\'s lamp. That '
+      + 'is the intended state while the hull is being fixed — a passage you can only '
+      + 'see by carrying light into it is the honest baseline to judge the geometry '
+      + 'against — but it is a PLAYABILITY change, not just a dressing one, and it is '
+      + 'the first entry on this list that is. Turn it back on before judging how a '
+      + 'floor reads.',
+  },
   'corridor-crack': {
     on: false,
     note: 'One crack per corridor over 3m. Off with the room cracks, same reason.',
@@ -261,6 +275,26 @@ export const DRESSING: Record<string, DressingEntry> = {
     on: false,
     note: 'A corpse arranged by somebody, with a candle. Off with the decor corpse — '
       + 'it is the same beat with staging, so keeping it would half-honour the cut.',
+  },
+  'archway': {
+    on: false,
+    note: 'THE FRAMED GATE in every doorway — jambs, voussoir ring, hood, keystone '
+      + 'and the dungeon\'s eye. Off by Josh\'s call, 2026-08-17: "can we just get '
+      + 'rid of the archways and do corridor cutting geometry first, and then we can '
+      + 'get the archways into it properly."\n'
+      + 'THIS IS NOT ONLY DECORATION, AND THAT IS THE POINT. The frame owns the '
+      + 'SILL — the slab of floor across the threshold (level/frame.ts, withSill), '
+      + 'added there deliberately because "a sill authored twice is a sill that '
+      + 'disagrees with itself". So with frames off, every doorway shows the raw cut '
+      + 'AND the band of floor nobody else covers. That is very likely part of what '
+      + '"corridors generate with holes" already was: where a frame was missing or '
+      + 'mis-anchored, the threshold had no floor. Turning frames off does not '
+      + 'create those holes, it stops hiding them — which is the whole reason to do '
+      + 'corridors first.\n'
+      + 'Also gone with it: the jamb collision blockers, the nav gate band, and the '
+      + 'eye that kindles toward unexplored ground. Pathing still works (the nav '
+      + 'gates narrow, they do not create the way through) but the wayfinding cue '
+      + 'is absent, so do not judge navigation while this is off.',
   },
   'origin-arch': {
     on: false,
