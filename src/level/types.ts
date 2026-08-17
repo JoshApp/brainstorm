@@ -115,16 +115,21 @@ export type RoomSpec = {
    *   anchors, so it leaves each wall perpendicular to a face that agreed to be
    *   cut.
    * 'guess' — the pre-anchor fallback in poly-floor's `connect`. It lays a rect
-   *   down a shared lateral and does not know where the walls are. Kept because
-   *   the router DECLINES rather than improvises and a floor missing a link is
-   *   worse than one guessed corridor, but docs/SPACES-AND-THRESHOLDS.md names it
-   *   as the source of the remaining corner-wrapping doorways.
+   *   down a shared lateral and does not know where the walls are.
+   * 'placement' — WORSE THAN A GUESS, and it was uncounted. When `connect`
+   *   declines a POCKET link, the pocket falls back to `g.corridor`: the rect
+   *   `geometryFor` produced while placing the room, used raw. That rect exists to
+   *   join two BOUNDING BOXES during placement and has never looked at a polygon
+   *   wall in its life.
+   * 'chord' — the loop chord, built by `connectL`. Also pre-anchor; its own
+   *   comment records that it "has no self-room check" and put 3.84m of corridor
+   *   floor inside a room once placement was freed.
    *
    * Recorded because that distinction was invisible: the floor tallied routed vs
    * guessed in aggregate and no individual corridor could be asked. Standing in
    * front of a broken doorway, it is the first thing worth knowing.
    */
-  servedBy?: 'route' | 'guess';
+  servedBy?: 'route' | 'guess' | 'placement' | 'chord';
   /**
    * Which CONNECTION this corridor rect belongs to.
    *

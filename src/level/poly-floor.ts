@@ -545,7 +545,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     spur?: boolean; chord?: boolean;
     legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
     /** Router or blind fallback — see RoomSpec.servedBy. */
-    servedBy?: 'route' | 'guess';
+    servedBy?: 'route' | 'guess' | 'placement' | 'chord';
   }> = [];
   const addLink = (
     from: string, to: string, id: string, conn: Connection,
@@ -627,7 +627,12 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       addLink(parent.id, pocket.id, `cor-p${p}`,
               connect(parent, pocket, rand,
                       occupiedBoxes.filter((o) => o !== g.corridor), rooms)
-                ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage },
+                // NOT A ROUTE AND NOT EVEN THE BLIND FALLBACK — the placement
+                // rect, used raw. Stamped so it stops hiding inside "unknown":
+                // it was 25% of corridors together with the chord, and a plan to
+                // "remove the fallback" that only removed 'guess' would have left
+                // the worse producer running.
+                ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage, servedBy: 'placement' as const },
               { spur: true });   // the elevation pass clamps a spur to the spine's floor
       pockets.push({ pocket, parent: parent.id, forLoop: p === LOOP_POCKET });
       break;
@@ -720,7 +725,11 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // Checked on the PLATE the builder is handed, not on the rect: the rect is
     // meant to end inside the room, and measuring it would reject every chord.
     if (conn.rects.some((rc) => plateInsideRoom(rc, rooms))) continue;
-    addLink(a.id, b.id, 'cor-l0', { ...conn, type: loopType }, { chord: true });
+    // `connectL`, which is pre-anchor — see RoomSpec.servedBy. Stamped rather
+    // than left blank so the chord counts as its own producer instead of
+    // disappearing into "unknown".
+    addLink(a.id, b.id, 'cor-l0',
+            { ...conn, type: loopType, servedBy: 'chord' as const }, { chord: true });
     break;
   }
 
@@ -1482,7 +1491,7 @@ interface Connection {
   rects: Box[];
   type: CorridorType;
   /** Router or blind fallback — see RoomSpec.servedBy. */
-  servedBy?: 'route' | 'guess';
+  servedBy?: 'route' | 'guess' | 'placement' | 'chord';
   /** Set when the legs do not share a travel axis (an L). Handed straight to
    *  the elevation pass, which cannot derive it — see ElevLink.legAxis. */
   legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;

@@ -122,11 +122,57 @@ function weightedPick<T extends { weight: number }>(pool: readonly T[], rand: ()
  * @param roomRect  roomId → its bounding rect. Only the centre is read, to work
  *                  out which end of a corridor each room is on.
  */
+// ── FLAT FLOORS — A DEVELOPMENT STAGE, NOT A DESIGN DECISION ─────────────────
+//
+// Josh, 2026-08-17, sequencing the corridor rebuild: *"elevation and corridor
+// steps is a system we should redo while we are at it ... how about we start by
+// connecting rooms flat surface level and then tackle displacing them up and
+// down?"*
+//
+// That is the right order and it is worth saying why rather than just doing it.
+// Connecting two rooms is a 2D problem: which wall, how wide, what path. Making
+// one room sit 1.4m below another is a 3D one: ramps, plate elevations, where the
+// step lands, what a corridor's floor does across a change of level. Today they
+// are solved together, and every seam defect reported this week has had to be
+// judged with both in play — so a void at a threshold could be a bad cut OR a
+// ramp landing in the wrong place, and there was no way to tell from a screenshot.
+//
+// Flat first makes the connection work MEASURABLE. Then elevation goes back on
+// against a seam that is known good, and anything that breaks is elevation's.
+//
+// THIS IS TEMPORARY. A flat dungeon loses the descent-bias signal ("downhill is
+// forward"), the stair corridors, and the sunken rooms — real losses, all of them
+// deliberate features. The switch exists so they can be judged separately, not
+// because a flat floor is better.
+//
+// The isolated `elevRand` stream is what makes it free: poly-floor draws elevation
+// from its own generator precisely so a change here cannot move a sconce, and its
+// comment records the day that was learned. Turning elevation off therefore
+// changes elevation and nothing else.
+let flat = true;
+
+/** Are floors being built dead level? See the note above. */
+export function flatFloors(): boolean { return flat; }
+/** Turn the elevation pass on or off. Used by the audits that measure the
+ *  connection work with and without it. */
+export function setFlatFloors(on: boolean): void { flat = on; }
+
 export function planElevation(
   links: readonly ElevLink[],
   roomRect: ReadonlyMap<string, Box>,
   rand: () => number,
 ): ElevationPlan {
+  if (flat) {
+    // A WELL-FORMED plan, not an empty one. Every room in the link graph must
+    // appear or downstream lookups fall back to their own defaults and the floor
+    // ends up level in some places and undefined in others — which would look
+    // exactly like the elevation bugs this is meant to take off the table.
+    const room = new Map<string, number>();
+    for (const l of links) { room.set(l.from, 0); room.set(l.to, 0); }
+    const corridor = new Map<string, CorridorStamp>();
+    for (const l of links) for (const id of l.ids) corridor.set(id, { elevation: 0 });
+    return { room, corridor, totalDrop: 0 };
+  }
   const room = new Map<string, number>();
   const corridor = new Map<string, CorridorStamp>();
   // The first link's `from` is the spawn room, and it is the datum.
