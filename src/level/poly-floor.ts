@@ -26,7 +26,7 @@ import { corridorTypeFor, corridorTypeForSpace, type CorridorType, CORRIDOR_TYPE
 import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
 import { deriveAnchors } from './anchors';
 import { chooseLinkRoute, routeLength, type LinkRoute } from './corridor-route';
-import { linkFromRoute, rectsFromLink } from './link';
+import { linkFromRoute, rectsFromLink, type Link } from './link';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
@@ -603,7 +603,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       // the dead doorframe it exists to prevent.
       corridors.push({
         id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id,
-        servedBy: conn.servedBy,
+        servedBy: conn.servedBy, link: conn.link,
       });
       occupiedBoxes.push(rect);
     });
@@ -1778,6 +1778,16 @@ interface Connection {
    * 1.2m step at a doorway.
    */
   route?: LinkRoute;
+  /**
+   * THE POLYLINE, with its two DECLARED CUTS.
+   *
+   * Stage 3. `route` above is the router's own solution; this is that solution
+   * adopted as the record, including `aCut`/`bCut` — the hole each end needs in its
+   * room's wall, stated by the thing that chose it. Carried onto every corridor
+   * RoomSpec so the builder can read a declared cut instead of intersecting a
+   * deliberately-overshooting rect with a polygon to guess one back.
+   */
+  link?: Link;
 }
 
 /**
@@ -1852,7 +1862,7 @@ function routeConnection(
     o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
   if (clash) return null;
 
-  return { rects, type, legAxis: n > 1 ? legAxis : undefined, route };
+  return { rects, type, legAxis: n > 1 ? legAxis : undefined, route, link };
 }
 
 function connect(

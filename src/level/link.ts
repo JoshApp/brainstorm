@@ -36,6 +36,7 @@
 // once.
 
 import type { LinkRoute } from './corridor-route';
+import type { PortalAnchor } from './anchors';
 
 export type P2 = readonly [number, number];
 type Box = { x: number; z: number; w: number; d: number };
@@ -67,6 +68,46 @@ export interface Link {
   /** What each wall agreed to, independently. They need not match. */
   aWidth: number;
   bWidth: number;
+  /** The hole this link needs in each room's wall — see WallCut. */
+  aCut: WallCut;
+  bCut: WallCut;
+}
+
+/**
+ * A DECLARED hole in a room's wall.
+ *
+ * ── STAGE 3'S WHOLE IDEA, IN ONE TYPE ────────────────────────────────────────
+ *
+ * The router picks an anchor on a wall and negotiates a width against it. At that
+ * moment it knows exactly which edge the doorway is in and exactly how far along
+ * that edge it runs. Then it threw that away, built a rect that stabs 0.9m THROUGH
+ * the wall, and a later pass intersected the rect with the polygon to work out
+ * where the hole must have been meant to go.
+ *
+ * Everything that hurt today came out of that round trip. The overshoot puts a
+ * corridor's floor and ceiling slabs inside the room (a ledge underfoot, a soffit
+ * overhead, and the room culling flickering as you step across it), so
+ * `corridor-trim` samples `pointInPoly` every 5cm to find the wall again and pull
+ * the slabs back — measuring a number the router had computed exactly. And a cut
+ * recovered from a bounding box lands wherever the box happens to cross, which is
+ * how a doorway ends up wrapped around a corner with no flat wall to sit in.
+ *
+ * So the link states it. `planWallRingFull` has always accepted exactly this shape
+ * — "pre-decided holes, edge-local; when given, these REPLACE the rect clipping
+ * entirely" — it was simply never handed any.
+ *
+ * EDGE-LOCAL 0..1, matching `planWallRingFull`'s `cuts`. Note this is NOT the
+ * convention `PortalAnchor` uses: an anchor's `t0`/`t1` are METRES along its edge.
+ * Two parameterisations of the same idea is exactly the kind of thing that makes a
+ * conversion lossy, so the metres→fraction division happens once, here, at the one
+ * point that owns the declaration.
+ */
+export interface WallCut {
+  /** Index of the polygon edge holding the hole. */
+  edge: number;
+  /** Start and end along that edge, 0..1 from the edge's first vertex. */
+  t0: number;
+  t1: number;
 }
 
 /** Adopt a solved route as a link. The route already IS this shape. */
@@ -79,7 +120,33 @@ export function linkFromRoute(fromRoom: string, toRoom: string, r: LinkRoute): L
     bAt: r.bAt,
     aWidth: r.aWidth,
     bWidth: r.bWidth,
+    aCut: cutFor(r.a, r.aAt, r.aWidth),
+    bCut: cutFor(r.b, r.bAt, r.bWidth),
   };
+}
+
+/**
+ * The hole an anchor's wall needs, given where the route met it and how wide the
+ * two ends agreed to be.
+ *
+ * The threshold is projected back onto the anchor's OWN edge rather than trusted as
+ * a point in space. They should be the same thing, and if they ever are not, the
+ * edge is the one that matters: it is the stone the hole gets cut in.
+ *
+ * Clamped to the anchor's published span, in metres, before converting. That span
+ * is what the wall said it could afford — clearance from every corner of the
+ * outline, structurally — so a cut may not exceed it even if a width negotiation
+ * upstream ever asks for more.
+ */
+function cutFor(anchor: PortalAnchor, at: P2, width: number): WallCut {
+  const [ax, az] = anchor.edgeFrom;
+  const len = anchor.edgeLength;
+  const ux = (anchor.edgeTo[0] - ax) / len, uz = (anchor.edgeTo[1] - az) / len;
+  const mid = (at[0] - ax) * ux + (at[1] - az) * uz;
+  const half = width / 2;
+  const lo = Math.max(anchor.t0, mid - half);
+  const hi = Math.min(anchor.t1, mid + half);
+  return { edge: anchor.edge, t0: lo / len, t1: hi / len };
 }
 
 /** Total run of the polyline, metres. What a ramp has to fall over. */

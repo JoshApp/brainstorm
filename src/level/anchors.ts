@@ -54,6 +54,18 @@ export interface PortalAnchor {
   space: string;
   /** Index of the polygon edge it sits on. */
   edge: number;
+  /**
+   * That edge's own geometry, in world metres.
+   *
+   * Carried rather than looked up, because the alternative is every consumer
+   * holding on to the polygon in order to ask "which edge was that again" —
+   * `t0`/`t1` are metres along THIS edge and mean nothing without it. The wall
+   * describing itself completely is the point of the anchor model; a consumer that
+   * has to re-derive half of it is a consumer that can derive it differently.
+   */
+  edgeFrom: readonly [number, number];
+  edgeTo: readonly [number, number];
+  edgeLength: number;
   /** Midpoint of the usable run, in world metres. */
   at: readonly [number, number];
   /** Unit normal, pointing OUT of the polygon. */
@@ -291,6 +303,9 @@ export function deriveAnchors(
       id: `${spaceId}#a${i}`,
       space: spaceId,
       edge: i,
+      edgeFrom: [a[0], a[1]],
+      edgeTo: [b[0], b[1]],
+      edgeLength: len,
       at: [a[0] + ux * mid, a[1] + uz * mid],
       normal: [nx, nz],
       t0,

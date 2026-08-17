@@ -9,6 +9,7 @@ import type { FittingKind, Edge } from './opening';
 import type { CorridorTypeId } from './corridor-types';
 import type { WallProfileName } from './wall-profile';
 import type { FloorGraph } from './floor-graph';
+import type { Link } from './link';
 
 export type Vec2 = { x: number; z: number };
 
@@ -130,6 +131,17 @@ export type RoomSpec = {
    * front of a broken doorway, it is the first thing worth knowing.
    */
   servedBy?: 'route' | 'guess' | 'placement' | 'chord';
+  /**
+   * THE POLYLINE THIS CORRIDOR IS A VIEW OF — corridor RoomSpecs only.
+   *
+   * Stage 3 of docs/LINKS-V3.md. `rect` is derived from this, not the other way
+   * round, and `link.aCut` / `link.bCut` state the hole each end needs in its room's
+   * wall. A consumer that wants to know where the doorway is should read the cut;
+   * intersecting the rect with the room polygon recovers an approximation of it, and
+   * that round trip is what put doorways round corners and corridor floor slabs
+   * inside rooms. Absent on the vault path and on blindly-produced links.
+   */
+  link?: Link;
   /**
    * Which CONNECTION this corridor rect belongs to.
    *
