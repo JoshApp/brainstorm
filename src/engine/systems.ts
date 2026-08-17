@@ -600,6 +600,23 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // phase 'always' so flames keep rendering (and wobbling — Date.now
     // flicker, like the old onBeforeRender) across pauses; the status pool
     // simply holds its last positions while status-vfx is gated off.
+    // ── BEFORE THE BATCH FOLDS, NOT AFTER ──────────────────────────────────────
+    //
+    // A marker that draws after the veil has no depth buffer to hide behind, so it is asked
+    // directly whether the player can see it — the SAME `walkable.hasLineOfSight` the light
+    // pool uses to stop a torch lighting through a wall.
+    //
+    // ORDER IS THE WHOLE POINT. This first sat inside the light-pool system, which ticks at
+    // the far end of the frame — long after `sprite-batch` has already folded every
+    // placeholder's visibility into its instance buffer. So the occlusion landed one frame
+    // late, every frame, which reads as flames lagging a step behind the wall they are
+    // meant to be hidden by while you walk.
+    { name: 'signal-occlusion', phase: 'always', tick() {
+      const walkable = getLevel()?.walkable;
+      if (!walkable) return;
+      tickSignalOcclusion(camera.position.x, camera.position.z,
+        walkable.hasLineOfSight.bind(walkable));
+    } },
     { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },
 
     // ── always-on (run through pause/death so the screen stays live) ──
@@ -745,11 +762,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
             walkable.hasLineOfSight(ax, az, bx, bz)
         : undefined;
       tickLightPool(camera, los);
-      // The SAME line of sight, for the same reason one step further on: a marker that
-      // draws after the veil has no depth buffer to hide behind, so it is asked directly
-      // whether the player can see it. Before the batch folds its instances, so a hidden
-      // placeholder is a hidden flame in the same frame.
-      tickSignalOcclusion(camera.position.x, camera.position.z, los);
     } },
 
     // Deferred subject-preview framing — see src/debug/inspect-mode.ts. No-op in

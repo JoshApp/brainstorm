@@ -142,6 +142,32 @@ export interface CullAudit {
   hits: number;
 }
 
+// ── HOW MANY THRESHOLDS AWAY IS THIS SPACE? ──────────────────────────────────
+//
+// The flood already walks doorways, so it already knows. Publishing it turns a number the
+// culler computes for itself into the one legible unit the rest of the game can reason
+// about: GATES. Josh: *"how about we make flames only visible if it's gated by one gate and
+// not more? So you can't see it across a room and a corridor, but you have to break the
+// corridor's seal."*
+//
+// Module-level rather than on the culler instance, because the things that want to ask —
+// the signal layer, a future AI perception rule — should not have to be handed the culler
+// to do it. One floor is alive at a time and the map is rewritten every tick, so there is
+// nothing to get stale.
+const portalDepth = new Map<string, number>();
+let depthNodes: Map<string, RectNode> | null = null;
+
+/** Thresholds between the player's space and this one. 0 = you are in it. Infinity when it
+ *  is not reachable at all this frame — which includes "the culler is off". */
+export function portalDepthOf(id: string): number {
+  return portalDepth.get(id) ?? Infinity;
+}
+
+/** Which space contains this point, by the culler's own rule. Null off the floor. */
+export function spaceIdAt(x: number, z: number): string | null {
+  return depthNodes ? rectAt(depthNodes, x, z)?.id ?? null : null;
+}
+
 export function createRoomCuller(level: LiveLevel): RoomCuller {
   const nodes = new Map<string, RectNode>();
   // Occlusion comes from the walkable grid's line-of-sight (the same check the
@@ -501,12 +527,14 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     const cz = camera.position.z;
     const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
 
+    depthNodes = nodes;
     // Last frame's set, for the transmittance hysteresis. Copied rather than swapped —
     // it holds about five ids, and a swap here would be cleverness bought with confusion.
     wasVisible.clear();
     for (const id of visible) wasVisible.add(id);
     visible.clear();
     trans.clear();
+    portalDepth.clear();
     // Force-visible rooms (active arenas etc.) always render — PLUS every
     // direct neighbour, so the alcove on the other side of an arena gate is
     // also rendered while the arena is active even though the gate's wall
@@ -537,6 +565,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         if (Math.abs(node.cx - cx) <= node.hw + EPS && Math.abs(node.cz - cz) <= node.hd + EPS) {
           visible.add(node.id);
           trans.set(node.id, 1);   // you are standing in it
+          portalDepth.set(node.id, 0);
           queue.push(node.id);
         }
       }
@@ -564,6 +593,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           if (canSeeThrough(nb, cx, cz, camera.position.y)) {
             visible.add(nb.id);
             trans.set(nb.id, t);
+            // A dogleg's own joint is not a gate — the legs are one passage — so depth
+            // only advances where a veil actually stands. Otherwise a bent corridor would
+            // read as further away than a straight one of the same length.
+            const gate = veilAlphaBetween(node.id, nb.id) > 0 ? 1 : 0;
+            const d = (portalDepth.get(node.id) ?? 0) + gate;
+            const prevD = portalDepth.get(nb.id);
+            if (prevD === undefined || d < prevD) portalDepth.set(nb.id, d);
             queue.push(nb.id);
           }
         }

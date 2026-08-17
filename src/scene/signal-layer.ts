@@ -40,6 +40,8 @@
 // belongs in this layer is an authoring decision about what the dungeon is willing to tell
 // you through the dark, so it is declared at the producer.
 import * as THREE from 'three';
+import { portalDepthOf, spaceIdAt } from '../level/room-culling';
+import { signalKnobs } from '../debug/tuning-signal';
 
 /** Reused per test — this runs over every marker, every frame. */
 const scratch = new THREE.Vector3();
@@ -111,13 +113,22 @@ export function isSignal(o: THREE.Object3D): boolean {
 // pool has always used to keep a torch from lighting through a wall. It is the right
 // question ("can the player see this point"), it is independent of what is drawn, and it
 // costs about sixty segment tests a frame next to the pool's twenty-odd.
-type LOS = (ax: number, az: number, bx: number, bz: number) => boolean;
+type LOS = (ax: number, az: number, bx: number, bz: number,
+            opts?: { includeObstacles?: boolean }) => boolean;
 
-const registry: THREE.Object3D[] = [];
+interface Marker {
+  o: THREE.Object3D;
+  /** The space it stands in. Resolved once and kept — markers do not move. */
+  space: string | null;
+  resolved: boolean;
+}
+
+const registry: Marker[] = [];
 
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
 function track(o: THREE.Object3D): void {
-  if (!registry.includes(o)) registry.push(o);
+  if (registry.some((m) => m.o === o)) return;
+  registry.push({ o, space: null, resolved: false });
 }
 
 /**
@@ -133,10 +144,38 @@ function track(o: THREE.Object3D): void {
  */
 export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undefined): void {
   if (!los) return;
-  for (const o of registry) {
-    if (!o.parent) continue;                      // torn down; the batch drops it anyway
-    o.getWorldPosition(scratch);
-    o.visible = los(eyeX, eyeZ, scratch.x, scratch.z);
+  const maxGates = signalKnobs.gates();
+  for (const m of registry) {
+    if (!m.o.parent) continue;                    // torn down; the batch drops it anyway
+    m.o.getWorldPosition(scratch);
+    if (!m.resolved) {
+      m.space = spaceIdAt(scratch.x, scratch.z);
+      // ONLY LATCH ON AN ANSWER. The culler publishes its node map on its first tick, and a
+      // marker built before that would resolve to null — then, latched, be treated as "in
+      // your own space" and never gate again. Retrying until it answers costs one lookup
+      // per marker for the first frame or two of a floor.
+      m.resolved = m.space !== null;
+    }
+
+    // ── HOW MANY GATES DEEP ──────────────────────────────────────────────────
+    //
+    // Josh: *"flames only visible if it's gated by one gate and not more — so you can't see
+    // it across a room and a corridor, but you have to break the corridor's seal."*
+    //
+    // Line of sight alone cannot say this. Two doorways can line up perfectly, so the
+    // segment from your eye to a fire two spaces away is geometrically clear and it draws —
+    // and reading a room you have not committed to reaching is the thing the veil exists to
+    // prevent. GATES are the unit the player feels: the corridor is one, the room past it is
+    // two, and stepping into the corridor is what breaks the next seal.
+    //
+    // An unresolved marker counts as being in your own space, which fails toward visible.
+    const gates = m.space ? portalDepthOf(m.space) : 0;
+    if (gates > maxGates) { m.o.visible = false; continue; }
+
+    // ...and it still has to be SEEN. `includeObstacles` because a pillar between you and a
+    // flame occludes it in the picture; the default (walls only) is tuned for a mob's
+    // perception cone, where a pillar should not break a chase.
+    m.o.visible = los(eyeX, eyeZ, scratch.x, scratch.z, { includeObstacles: true });
   }
 }
 

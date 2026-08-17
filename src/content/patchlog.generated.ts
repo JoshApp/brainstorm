@@ -4,6 +4,19 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 53",
+    "date": "2026-08-18",
+    "entries": [
+      {
+        "tag": "fix",
+        "text": "The fires only reach you if there is a way for them to. No more flames burning through solid stone.",
+        "area": [
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 52",
     "date": "2026-08-17",
     "entries": [
@@ -391,14 +404,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The stone stops swimming underfoot and overhead when you turn.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The wall is one stone from floor to ceiling now, and the ledge across its middle is gone.",
         "area": [
           "atmosphere",
           "level"
