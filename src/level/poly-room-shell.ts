@@ -261,53 +261,27 @@ export function buildPolyRoomShell(
     if (!s.head) wallSegmentsOut.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
   }
 
-  // ── AND THE WALL CLOSES ITS DOORWAY BELOW, TOO ─────────────────────────────
+  // ── NO SILL EITHER. THE CORRIDOR'S OWN FLOOR CROSSES THE THRESHOLD ─────────
   //
-  // Josh, from three marks taken standing in the overlap band of cor-p0-0:
-  // *"floor and room dont sometimes neatly connect with floor and ceilings, and
-  // corridor floor sometimes pokes into the room and sometimes falls short of
-  // it."* Two of the three marks raycast straight down and hit NOTHING.
+  // A sill used to be laid here: a slab across the wall's 0.25m band at every doorway,
+  // 8mm proud, in the WALL's material because it was emitted with the wall's pieces.
   //
-  // Worked from the numbers his marks carried: the corridor rect ends at
-  // x = -1.794 and the room's wall line is x = -2.69, so the rect runs 0.896m
-  // into the room — the deliberate 0.9m OVERLAP. corridor-trim pulls the visible
-  // plate back to the wall's OUTER face (-2.94) and the room's own floor starts at
-  // its outline (-2.69). Between them sits the wall band itself, 0.25m wide,
-  // covered by nobody.
+  // It was covering a real hole. While a corridor rect ran 0.9m INTO the room, the plate
+  // trim pulled the visible slab back to the wall's OUTER face and the room's own floor
+  // started at its INNER outline — leaving the band between them covered by nobody. Josh
+  // found those holes by raycasting straight down through them.
   //
-  // It was covered by the FRAME. `withSill` in level/frame.ts lays a slab across
-  // exactly that band, put there deliberately because "a sill authored twice is a
-  // sill that disagrees with itself" — and frames went off yesterday to expose the
-  // raw cut. I wrote at the time that this would show "the band of floor nobody
-  // else covers", and shipped it anyway; these are those holes.
+  // The overshoot is gone, and with it the trim (corridor-trim.ts, deleted). A rect ends
+  // on the room's inner wall face and the band sits on the CORRIDOR side of that line, so
+  // the corridor's own floor now crosses the threshold and meets the room's floor exactly
+  // there. Nothing is uncovered, and a slab laid over it is just a second surface in the
+  // same place — which is what Josh saw next: *"there is a small strip under each portal
+  // at the floor level that isn't the floor's texture but rather the wall stone texture
+  // ... it looks like two textures there at each portal."* It was two surfaces, and one of
+  // them was wall.
   //
-  // So the sill moves to the same owner as the lintel. The wall closes its own
-  // doorway above AND below, both from the same `doorways` list, and the gate goes
-  // back to being only a gate. That is the answer to "who owns the joint" that
-  // frame.ts was already reaching for — it just picked the frame, and a frame is
-  // optional where a floor is not.
-  const SILL_THICK = 0.10;
-  const SILL_LAP = 0.06;        // past each wall face, so the joint is lapped
-  const SILL_SHOULDER = 0.18;   // past the doorway's edges, under the jambs
-  const SILL_PROUD = 0.008;     // a hair above both floors; never a step
-  for (const d of doorways) {
-    const dx = d.b[0] - d.a[0], dz = d.b[1] - d.a[1];
-    const width = Math.hypot(dx, dz);
-    if (width < 0.2) continue;
-    const ux = dx / width, uz = dz / width;
-    // Outward normal of this doorway — from the inner line to the outer one.
-    const nx = d.oa[0] - d.a[0], nz = d.oa[1] - d.a[1];
-    const nLen = Math.hypot(nx, nz) || 1;
-    const depth = nLen + SILL_LAP * 2;
-    const cx = (d.a[0] + d.b[0]) / 2 + (nx / nLen) * (nLen / 2);
-    const cz = (d.a[1] + d.b[1]) / 2 + (nz / nLen) * (nLen / 2);
-    const sill = new THREE.BoxGeometry(width + SILL_SHOULDER * 2, SILL_THICK, depth);
-    const m = new THREE.Matrix4().makeRotationY(Math.atan2(ux, uz) - Math.PI / 2);
-    m.setPosition(cx, elev + SILL_PROUD - SILL_THICK / 2, cz);
-    sill.applyMatrix4(m);
-    tintVertices(sill);
-    pieces.push(sill);
-  }
+  // If a raised threshold is wanted later it is a DECORATION, authored in floor material
+  // with the archways, not a patch over a hole that no longer exists.
 
   // ── NO LINTEL PASS. THE RING BUILDS THE STONE OVER ITS OWN DOORWAYS ────────
   //

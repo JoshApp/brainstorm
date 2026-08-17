@@ -1,5 +1,4 @@
 import { clipEdgeToRect, edgeNormal, WALL_T, type Ring, type V2 } from './poly-shell-plan';
-import { plateExtentFor } from './corridor-trim';
 
 /** One edge of the room's outline, clipped to a corridor's footprint. */
 type Hit = { edge: number; t0: number; t1: number; len: number };
@@ -318,17 +317,14 @@ export function planPortals(
     // behind it, 2.3% of all cut length, 130 places with more than 0.4m bare —
     // about one per floor, which is the rate at which you find one by walking.
     //
-    // So clip against the PLATE, grown along the corridor's long axis by the
-    // wall band it has to cross to reach the room at all. Not grown laterally:
-    // sideways is the passage's own width, and widening that is the opposite of
-    // the question being asked.
-    const plate = plateExtentFor(c.rect, [poly], undefined, c.alongX);
-    const alongX = plate.w >= plate.d;
-    const socket: Rect = {
-      x: plate.x, z: plate.z,
-      w: plate.w + (alongX ? 2 * WALL_T : 0),
-      d: plate.d + (alongX ? 0 : 2 * WALL_T),
-    };
+    // So clip against what is BUILT, which is now simply the rect. The plate used to be
+    // pulled back to the wall's outer face and then grown a wall thickness along the
+    // corridor's axis so it could reach the wall again — a setback and a matching
+    // stretch, cancelling to within 0.05m. With the overshoot gone (poly-floor.ts,
+    // OVERLAP) the rect ends ON the room's inner wall face already, so both halves are
+    // deleted: growing it now overshoots by the full 0.25m and cuts wall the corridor
+    // does not reach, which tests/portals caught as a 'see-through slot'.
+    const socket: Rect = c.rect;
     // ...BUT A SEALED ROOM IS A FAR WORSE BUG THAN A VOID.
     //
     // A corridor almost entirely swallowed by its rooms trims to `MIN_REMAINING`

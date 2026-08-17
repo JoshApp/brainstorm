@@ -15,12 +15,11 @@
 
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
-import { planPortals, wallCutsFor } from '../src/level/portals';
+import { planPortals, portalInputs, wallCutsFor } from '../src/level/portals';
 import { gateAdmits } from '../src/level/nav-grid';
 import { WIDEST_ROAMER } from '../src/level/anchors';
 import { planWallRing, type Ring } from '../src/level/poly-shell-plan';
 import { WALL_T } from '../src/level/poly-room-shell';
-import { plateExtentFor } from '../src/level/corridor-trim';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -106,15 +105,22 @@ test('NOR WITHOUT FLOOR THAT IS ACTUALLY BUILT', () => {
   // reason it is a SECOND test rather than an edit of the first is that both
   // are true and they fail for different reasons. A cut with no rect behind it
   // is a routing bug; a cut with a rect but no plate is a trim bug.
-  const SETBACK = 0.30;   // the plate stops WALL_SEAT − LAP = 0.20m outside the
-                          // outline BY DESIGN; the frame's sill floors that band.
+  // THE PLATE IS THE RECT. `corridor-trim` used to pull it back 0.20m outside the
+  // outline, because a rect ran 0.9m INTO the room and the slab over that overshoot was
+  // a ledge indoors — and a sill floored the band it vacated. The overshoot is gone, the
+  // trim and the sill with it, and a rect now ends ON the outline. So the tolerance is
+  // just enough for the sampling step, not for a designed setback.
+  const SETBACK = 0.12;
   let cut = 0, bare = 0, worstRun = 0, where = '';
   for (const spec of floors()) {
     const polys = spec.rooms.filter((r) => r.poly).map((r) => r.poly as NonNullable<typeof r.poly>);
-    const plates = spec.corridors.map((c) => plateExtentFor(c.rect, polys));
+    const plates = spec.corridors.map((c) => c.rect);
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      for (const k of wallCutsFor(r.poly, spec.corridors.map((c) => c.rect))) {
+      // Through `portalInputs`, so the cuts are the DECLARED ones the game builds — a
+      // bare rect list asks the old rect-intersection question instead.
+      for (const k of wallCutsFor(r.poly, portalInputs(r.id, spec.corridors)
+                                   .map((o) => ({ ...o.rect, link: o.link, cut: o.cut })))) {
         const a = r.poly[k.edge], b = r.poly[(k.edge + 1) % r.poly.length];
         const dx = b[0] - a[0], dz = b[1] - a[1];
         const span = Math.hypot(dx, dz) * (k.t1 - k.t0);

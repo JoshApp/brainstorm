@@ -32,7 +32,6 @@ import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
 import { planElevation, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
-import { plateExtentFor } from './corridor-trim';
 import { connectivityFaults } from './floor-connectivity';
 import { CONFIG } from '../config';
 import { archetypeForSpan, roomSpan } from './encounter-shape';
@@ -864,12 +863,17 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     //
     // Checked on the PLATE the builder is handed, not on the rect: the rect is
     // meant to end inside the room, and measuring it would reject every chord.
-    // `connectL`, which is pre-anchor — see RoomSpec.servedBy. Stamped rather
-    // than left blank so the chord counts as its own producer instead of
-    // disappearing into "unknown".
+    // ── AND IT KEEPS THE SECTION IT WAS BUILT TO ─────────────────────────────
+    //
+    // This passed `type: loopType`, overriding whatever `routeConnection` decided with
+    // the hardcoded `CORRIDOR_TYPES.passage` it had ASKED for. The router narrows the
+    // request to what the two walls can actually afford (`sectionForWidth`), so a chord
+    // built 1.55m wide was stamped `passage` and published `clearWidth: 2.20` —
+    // measured on d2/s7, and 23 of 189 landings came out "smaller than the passage they
+    // turn" purely because the passage was a fiction. Width has one owner and it is not
+    // the caller's opening request.
     addLink(a.id, b.id, 'cor-l0',
-            { ...conn, type: loopType,
-              servedBy: 'servedBy' in conn ? conn.servedBy : 'chord' },
+            { ...conn, servedBy: 'servedBy' in conn ? conn.servedBy : 'chord' },
             { chord: true });
     break;
   }
@@ -2013,44 +2017,23 @@ function connect(
   if (routed) { linkTally.routed++; return { ...routed, servedBy: 'route' }; }
   linkTally.guessed++;
 
-  // -- EVERYTHING BELOW IS THE PRE-ANCHOR PATH -------------------------------
+  // ── AND THERE IS NO BLIND PATH BELOW THIS. THE ROUTER OR NOTHING ───────────
   //
-  // It can only lay rects down a shared lateral, so it is unreachable for a pair
-  // without one. Those links live or die by the router — which is the point of
-  // freeing placement, and why the reroll's guess-share bar matters more now.
-  if (!aligned) return null;
-
+  // What stood here: a `!aligned` bail, then `dogleg()` for a requested kink, then a
+  // sweep of lateral offsets laying a single straight rect — every one of them stamped
+  // `servedBy: 'guess'`, none of them consulting a wall. Its own comment said "it fires
+  // on 24% of links today; that number is the measure of how far placement still has to
+  // come, and it should be checked before this path is ever deleted."
   //
-  // Kept as the fallback, not deleted, because the router declines rather than
-  // improvises: a link whose walls cannot agree gets no route, and a floor that
-  // loses a link is worse than a floor with one guessed corridor. Degrade,
-  // never fail. It fires on 24% of links today; that number is the measure of
-  // how far placement still has to come, and it should be checked before this
-  // path is ever deleted.
-  if (wantsKink) {
-    const bent = dogleg(a, b, alongZ, sign, base, width, occupied);
-    if (bent) return { rects: bent, type, servedBy: 'guess' };
-  }
-
-  // Straight. Lateral offsets in order: dead centre first, then progressively
-  // further out — a room whose centre line has no wall on this side still has
-  // one somewhere along it.
-  for (const off of [0, 1.5, -1.5, 3, -3, 4.5, -4.5]) {
-    const lat = base + off;
-    const exitA = exitPoint(a, alongZ, sign, lat);
-    const exitB = exitPoint(b, alongZ, -sign, lat);
-    if (!exitA || !exitB) continue;
-    const t0 = Math.min(exitA.at, exitB.at) - OVERLAP;
-    const t1 = Math.max(exitA.at, exitB.at) + OVERLAP;
-    if (t1 <= t0) continue;
-    return {
-      rects: [alongZ
-        ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
-        : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }],
-      type,
-      servedBy: 'guess',
-    };
-  }
+  // Checked. Placement came all the way: rooms are placed BY their link (stage 2), so
+  // the router is offered a pair whose walls already face each other. Measured over 240
+  // floors — spine 438, pocket 258, chord 212, and 100% of all three `servedBy: 'route'`.
+  // The blind path fires on nothing.
+  //
+  // Deleted rather than left unreachable, because a fallback nobody takes is still a
+  // fallback somebody will read as the answer to "what happens when the router fails".
+  // What happens is the caller tries the next candidate pair, and if none work the floor
+  // rerolls or goes without that link — which is stated at each call site.
   return null;
 }
 
@@ -2121,55 +2104,6 @@ function landsInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
 
 
 
-/**
- * Three rects: a leg out of A, a cross piece, a leg into B — offset so you
- * cannot see one room from the other.
- *
- * Returns null rather than forcing it. A dogleg sweeps sideways through space a
- * straight run never touches, so it can collide with a room the layout already
- * placed; when it does, the caller falls back to straight. Degrade, never fail.
- */
-function dogleg(
-  a: Placed, b: Placed, alongZ: boolean, sign: number,
-  base: number, width: number, occupied: readonly Box[],
-): Box[] | null {
-  const mk = (lat: number, t0: number, t1: number, latSpan: number): Box => alongZ
-    ? { x: lat, z: (t0 + t1) / 2, w: latSpan, d: Math.abs(t1 - t0) }
-    : { z: lat, x: (t0 + t1) / 2, d: latSpan, w: Math.abs(t1 - t0) };
-
-  for (const [o1, o2] of DOGLEG_OFFSETS) {
-    const lat1 = base + o1, lat2 = base + o2;
-    const exitA = exitPoint(a, alongZ, sign, lat1);
-    const exitB = exitPoint(b, alongZ, -sign, lat2);
-    if (!exitA || !exitB) continue;
-    const tA = exitA.at, tB = exitB.at;
-    // The bend must have room to be a bend rather than a jog: two leg stubs and
-    // the cross piece between them.
-    if (Math.abs(tB - tA) < width + 3.5) continue;
-    const mid = (tA + tB) / 2;
-
-    const legA = mk(lat1, tA - sign * OVERLAP, mid + sign * (width / 2), width);
-    const legB = mk(lat2, mid - sign * (width / 2), tB + sign * OVERLAP, width);
-    // The cross piece runs BETWEEN the two laterals and overlaps both legs by
-    // half a width at each end, so the joints are interior rather than butted.
-    const cross = alongZ
-      ? { x: (lat1 + lat2) / 2, z: mid, w: Math.abs(lat2 - lat1) + width, d: width }
-      : { z: (lat1 + lat2) / 2, x: mid, d: Math.abs(lat2 - lat1) + width, w: width };
-
-    // The cross piece is pinned to neither room, so it may not stand in one.
-    // Same rule as the L's corner — see landsInsideRoom.
-    if (landsInsideRoom(cross, [a, b])) continue;
-
-    const parts = [legA, cross, legB];
-    // Nothing the layout already placed may be in the way. The two rooms this
-    // connects are excluded — the legs are SUPPOSED to reach into them.
-    const clash = parts.some((p) => occupied.some((o) =>
-      o !== a.rect && o !== b.rect && overlaps(o, p, 0.4)));
-    if (clash) continue;
-    return parts;
-  }
-  return null;
-}
 
 /** Where the polygon boundary is, marching out along the connecting axis on the
  *  line at absolute lateral `lat`. Null if that line never leaves the polygon

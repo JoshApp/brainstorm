@@ -11,7 +11,6 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell } from './poly-room-shell';
-import { plateExtentFor } from './corridor-trim';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -1500,14 +1499,25 @@ export function buildLevel(
           holes,
         );
       } else {
-        // A CORRIDOR'S PLATES STOP AT THE WALL. Its rect runs on into the room
-        // by design (see corridor-trim.ts) and only the connection rules want
-        // that; the floor and ceiling built over it are a ledge and a soffit
-        // standing inside a room that has its own. Rooms pass their own rect,
-        // so nothing but a corridor is affected.
-        const plate = isCorridor.has(r)
-          ? plateExtentFor(r.rect, roomPolys, undefined, r.alongX)
-          : r.rect;
+        // ── A CORRIDOR'S PLATE IS ITS RECT ──────────────────────────────
+        //
+        // It used to be `plateExtentFor(...)`, which walked the rect looking for the
+        // room and pulled the plate back to the wall's OUTER face. That was right while
+        // a corridor rect deliberately ran 0.9m INTO the room: the slab built over that
+        // overshoot was a ledge underfoot and a soffit overhead, inside a room that has
+        // its own floor and its own higher ceiling.
+        //
+        // The overshoot is gone (poly-floor.ts, OVERLAP). A rect now ends ON the room's
+        // inner wall face, and the wall's 0.25m band sits on the CORRIDOR side of that
+        // line — so the rect already covers the band and meets the room's floor exactly
+        // at the threshold. The trim then took a further 0.20m off each end, and Josh
+        // found both halves of that on the phone: *"there is a small strip under each
+        // portal at floor level that isn't the floor's texture but rather the wall stone
+        // texture"* — the setback band, floored by a wall-material sill — and *"the floor
+        // plates that should be the corners are too small so the corridor floor has void
+        // gaps."* Measured: 0.40m off every plate, including 0.40m off every landing
+        // SQUARE, which turns a 1.55m corner into 1.15m with 0.20m of void on each side.
+        const plate = r.rect;
         buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles, plate);
       }
     }

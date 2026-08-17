@@ -30,7 +30,6 @@ import { findOpenings, subtractRanges } from '../src/level/wall-openings';
 import { wallCutsFor, insidePolyRanges } from '../src/level/portals';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
-import { plateExtentFor, WALL_SEAT, LAP } from '../src/level/corridor-trim';
 import { planPortals, portalInputs } from '../src/level/portals';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
@@ -459,74 +458,82 @@ test('NO DOORWAY OPENS ONTO NOTHING', () => {
   assert.ok(checked > 14000, `only ${checked} samples — the sweep is not covering the doorways`);
 });
 
-test('A CORRIDOR STOPS AT THE WALL, AND THE FRAME FLOORS THE THRESHOLD', () => {
-  // Josh, twice from two angles: *"the corridor cleanly expands till the floor
-  // and then we stick the doorframe inside the geometry"*, and *"I could see in
-  // between the room and the corridor there was a gap."* Then the model that
-  // named it: *"it's the same as a pipe and the pipe's connector."*
+test('THE FLOOR IS CONTINUOUS ACROSS EVERY THRESHOLD', () => {
+  // Josh, three times from three angles: *"the corridor cleanly expands till the floor
+  // and then we stick the doorframe inside the geometry"*, *"I could see in between the
+  // room and the corridor there was a gap"*, and then the one that closed it: *"there is
+  // a small strip under each portal at the floor level that isn't the floor's texture but
+  // rather the wall stone texture ... it looks like two textures there at each portal."*
   //
-  // ── WHAT THIS TEST USED TO SAY, AND WHY IT CHANGED ─────────────────────────
+  // ── THE JOINT HAS TWO OWNERS NOW, NOT THREE ────────────────────────────────
   //
-  // It measured how far a corridor's PLATE reached inside a room and allowed up
-  // to three overlaps' worth. That was the right check for a model where the two
-  // plates met by overlapping — and that model was the bug. The room's wall is
-  // 0.25m of masonry standing OUTSIDE its floor outline, so a plate reaching
-  // even 0.10m past the outline had already driven through all of it: corridor
-  // slab, room wall and doorframe all claiming one strip of ground.
+  // It used to be three, going outward from the room:
   //
-  // The plate now stops at the wall's OUTER FACE and the frame carries the floor
-  // of its own threshold. So the old measurement returns ZERO junctions — and
-  // the old test failed on its own not-measuring-anything guard rather than
-  // passing, which is exactly what that guard is for. What replaces it asserts
-  // the new joint instead of a smaller version of the old number.
-  let stops = 0, intrudes = 0, worst = 0;
+  //   [ .. outline ]              the room's plate
+  //   [ outline .. +WALL_T ]      the wall — masonry with a hole in it
+  //   [ +WALL_T .. ]              the corridor's plate
+  //
+  // Nothing floored the middle band, because a corridor rect ran 0.9m INTO the room and
+  // `corridor-trim` pulled the visible slab back to the wall's OUTER face to stop it
+  // laying a ledge indoors. A sill was added to cover the band — in the WALL's material,
+  // because the wall emitted it, which is the strip of the wrong texture Josh found.
+  //
+  // The overshoot is gone. A rect ends ON the outline, and the wall band sits on the
+  // CORRIDOR side of that line, so the corridor's own floor crosses the threshold and
+  // meets the room's floor exactly there. corridor-trim and the sill are both deleted,
+  // and what is left to assert is the thing that was ever actually wanted: walk the
+  // threshold and there is floor under you, all the way, with nobody laying it twice.
+  let doors = 0, gap = 0, ledge = 0, worstGap = 0, worstLedge = 0;
   for (const spec of floors()) {
-    const polys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
+    const polys = spec.rooms.map((r) => r.poly).filter((q): q is NonNullable<typeof q> => !!q && q.length >= 3);
+    const byId = new Map(spec.rooms.map((r) => [r.id, r]));
     for (const c of spec.corridors) {
-      // WITH THE CORRIDOR'S STATED AXIS, the same way the builder calls it. Letting the
-      // trim guess from `w >= d` walks a short wide leg along its WIDTH, finds the room
-      // at both ends, and hands back a plate cut down the middle of a passage — and a
-      // landing is square, so the guess is a coin toss there.
-      const p = plateExtentFor(c.rect, polys, undefined, c.alongX);
-      const alongX = c.alongX ?? p.w >= p.d;
-      const lat = alongX ? p.z : p.x;
-      const lo = (alongX ? p.x : p.z) - (alongX ? p.w : p.d) / 2;
-      const len = alongX ? p.w : p.d;
-      for (const room of spec.rooms) {
-        if (!room.poly) continue;
-        const N = 200;
-        let run = 0, deepest = 0;
-        for (let i = 0; i <= N; i++) {
-          const t = lo + (len * i) / N;
-          const inside = pointInPoly(room.poly, alongX ? t : lat, alongX ? lat : t);
-          run = inside ? run + len / N : 0;
-          deepest = Math.max(deepest, run);
+      const link = c.link;
+      if (!link) continue;
+      for (const [roomId, at] of [
+        [link.fromRoom, link.aAt] as const, [link.toRoom, link.bAt] as const,
+      ]) {
+        const room = byId.get(roomId);
+        if (!room?.poly) continue;
+        // Is this corridor rect the one that ends at this threshold? Only the end legs
+        // are; a middle leg's ends are landings.
+        const near = Math.abs(c.rect.x - at[0]) <= c.rect.w / 2 + 0.01
+                  && Math.abs(c.rect.z - at[1]) <= c.rect.d / 2 + 0.01;
+        if (!near) continue;
+        doors++;
+        // Step outward from the threshold along the wall's own normal, into the wall
+        // band, and inward into the room. Both sides must have floor under them.
+        const alongX = c.alongX ?? c.rect.w > c.rect.d;
+        // The corridor approaches along its travel axis, so the wall's normal at this
+        // threshold is that axis. Which way is INTO the room: whichever way the room's
+        // centre lies.
+        const sign = alongX ? Math.sign(room.rect.x - at[0]) : Math.sign(room.rect.z - at[1]);
+        for (const step of [0.02, 0.10, 0.20]) {
+          const inX = at[0] + (alongX ? sign * step : 0);
+          const inZ = at[1] + (alongX ? 0 : sign * step);
+          const outX = at[0] - (alongX ? sign * step : 0);
+          const outZ = at[1] - (alongX ? 0 : sign * step);
+          const onRoomFloor = polys.some((q) => pointInPoly(q, inX, inZ));
+          const onPlate = Math.abs(outX - c.rect.x) <= c.rect.w / 2 + 1e-6
+                       && Math.abs(outZ - c.rect.z) <= c.rect.d / 2 + 1e-6;
+          if (!onRoomFloor && !onPlate) { gap++; worstGap = Math.max(worstGap, step); }
+          // ...and the corridor's slab must not run on INTO the room, which is the ledge
+          // underfoot and the soffit overhead that started all of this.
+          const plateInside = Math.abs(inX - c.rect.x) <= c.rect.w / 2 - 1e-6
+                           && Math.abs(inZ - c.rect.z) <= c.rect.d / 2 - 1e-6
+                           && polys.some((q) => pointInPoly(q, inX, inZ));
+          if (plateInside) { ledge++; worstLedge = Math.max(worstLedge, step); }
         }
-        if (deepest > 0.02) { intrudes++; worst = Math.max(worst, deepest); }
       }
-      // Did this plate get trimmed at all? Every corridor that meets a room
-      // should have been pulled back; one that was not is a corridor that never
-      // reached the room, which is a different bug the reach flood catches.
-      if (p.trimmedLo > 0.01 || p.trimmedHi > 0.01) stops++;
     }
   }
-  assert.ok(stops > 200, `only ${stops} corridors were trimmed at all — this measured nothing`);
-  assert.equal(intrudes, 0,
-    `${intrudes} corridor plates still lay floor inside a room's own floor (worst `
-    + `${worst.toFixed(2)}m) — the pipe is seated in the socket again`);
-
-  // AND THE JOINT LEAVES NO GROUND UNCOVERED. Measured outward from the room's
-  // floor outline: the room's plate ends at 0, the frame's sill spans the wall
-  // band plus a lap each side, and the corridor's plate starts a lap short of
-  // the wall's outer face. Both laps must be positive or there is a hairline of
-  // void at every doorway — which is the second half of what Josh saw.
-  const SILL_LAP = 0.06;   // level/frame.ts
-  const sillFrom = -SILL_LAP, sillTo = WALL_SEAT + SILL_LAP;
-  const plateFrom = WALL_SEAT - LAP;
-  assert.ok(sillFrom < 0, 'the sill does not reach under the room\'s own floor');
-  assert.ok(sillTo > plateFrom,
-    `the sill ends at ${sillTo.toFixed(2)}m and the corridor starts at ${plateFrom.toFixed(2)}m — `
-    + 'that is a gap you can see the void through');
+  assert.ok(doors > 300, `only ${doors} thresholds sampled — this measured nothing`);
+  assert.equal(gap, 0,
+    `${gap} threshold samples have no floor under them (up to ${worstGap.toFixed(2)}m out) `
+    + '— that is the void you can see between a room and its corridor');
+  assert.equal(ledge, 0,
+    `${ledge} threshold samples have corridor slab inside the room's own floor (up to `
+    + `${worstLedge.toFixed(2)}m in) — the pipe is seated in the socket again`);
 });
 
 test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {
