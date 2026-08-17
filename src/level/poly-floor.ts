@@ -26,6 +26,7 @@ import { corridorTypeFor, corridorTypeForSpace, type CorridorType, CORRIDOR_TYPE
 import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
 import { deriveAnchors } from './anchors';
 import { chooseLinkRoute, routeLength, type LinkRoute } from './corridor-route';
+import { linkFromRoute, rectsFromLink } from './link';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
@@ -1724,41 +1725,23 @@ function routeConnection(
   );
   if (!route) return null;
 
-  const rects: Box[] = [];
-  const legAxis: Array<{ alongX: boolean; fromIsLo: boolean }> = [];
+  // ── THE POLYLINE IS THE RECORD; RECTS ARE DERIVED FROM IT ─────────────────
+  //
+  // Stage 1 of docs/LINKS-V3.md. This conversion used to live here inline, and
+  // throwing the route away afterwards is the single lossy step every corridor
+  // defect on 2026-08-17 traced back to. It now lives in level/link.ts as the ONE
+  // derivation, so stage 3 can delete the overlap in one function instead of
+  // hunting every place a rect implied a doorway.
+  //
+  // Byte-identical output is the gate: `rectsFromLink` is a verbatim extraction,
+  // overlap and corner-cover rule included, both of which are wrong and both of
+  // which are stage 3's job. A refactor that also changes behaviour cannot be
+  // verified.
+  const link = linkFromRoute(a.id, b.id, route);
+  const derived = rectsFromLink(link, { width: type.width, overlap: OVERLAP });
+  if (!derived) return null;
+  const { rects, legAxis } = derived;
   const n = route.legs.length;
-  for (let i = 0; i < n; i++) {
-    const leg = route.legs[i];
-    const alongX = Math.abs(leg.to[0] - leg.from[0]) > Math.abs(leg.to[1] - leg.from[1]);
-    let t0 = alongX ? leg.from[0] : leg.from[1];
-    let t1 = alongX ? leg.to[0] : leg.to[1];
-    const lat = alongX ? leg.from[1] : leg.from[0];
-    const dir = Math.sign(t1 - t0) || 1;
-    // Into the rooms at the two ends — the lookup key, above.
-    if (i === 0) t0 -= dir * OVERLAP;
-    if (i === n - 1) t1 += dir * OVERLAP;
-    // ── WHO COVERS THE CORNER ─────────────────────────────────────────────────
-    //
-    // Only the leg LEAVING a joint extends back through it. The leg arriving
-    // stops dead on the corner's centre.
-    //
-    // Extending both was the obvious symmetric thing and it is wrong: the
-    // arriving leg's far end then lands exactly ON the departing leg's outer
-    // edge, and the orphaned-end check — which asks whether a rect's end sits
-    // inside another rect of the same link — is deciding a boundary case
-    // ("corridor cor-2-0 ends at (-7.4, 16.4) — in nothing"). Stopping at the
-    // centre puts that end half a width INSIDE its neighbour, with no epsilon
-    // to argue about, and the departing leg's own half-width covers the whole
-    // corner square on its own.
-    if (i > 0) t0 -= dir * type.width / 2;
-
-    const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
-    if (hi - lo < 0.1) return null;
-    rects.push(alongX
-      ? { x: (lo + hi) / 2, z: lat, w: hi - lo, d: type.width }
-      : { z: (lo + hi) / 2, x: lat, d: hi - lo, w: type.width });
-    legAxis.push({ alongX, fromIsLo: t0 <= t1 });
-  }
 
   // Nothing already placed may be in the way. The two rooms being joined are
   // expected to overlap their own end rect, so they are excused.
