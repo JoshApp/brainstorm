@@ -222,11 +222,65 @@ export function deriveAnchors(
     const len = Math.hypot(dx, dz);
     if (len < minEdge) continue;
 
-    const t0 = clear, t1 = len - clear;
-    const run = t1 - t0;
-    if (run < CRAWL_MIN) continue;
-
     const ux = dx / len, uz = dz / len;
+
+    // ── THE DOOR CLEARS EVERY CORNER, NOT JUST ITS OWN TWO ──────────────────
+    //
+    // The comment on CORNER_CLEAR above already names this case — *"a chamfered
+    // polygon has corners that are not the ends of the edge you are standing
+    // on"* — and the derivation only ever checked the two ends. Measured on
+    // poly-pocket-0, d5/s31337: an 18-vertex room published an anchor whose own
+    // edge was spotless and which sat 0.50m from a vertex on a PARALLEL edge,
+    // directly along its own outward normal. A door there opens into a
+    // half-metre notch. Nothing downstream could catch it — the corridor asks
+    // the wall, and the wall said yes.
+    //
+    // Stated on the thing that has to fit: EVERY vertex of the outline gets a
+    // keep-out disc, and the narrowest door's CENTRE may not enter it. The radius
+    // is `clear` for the masonry plus half that narrowest door, because the
+    // centre is where the door is measured from. Euclidean, so a vertex standing
+    // off the wall face costs less than one on it — a chamfer 0.5m out blocks a
+    // shorter run of wall than a corner would, which is right.
+    //
+    // The old rule falls out of this one. This edge's own endpoints have perp = 0
+    // and project to s = 0 and s = len, so their discs forbid the first and last
+    // `clear + w/2` of centre — which is t0 = clear, t1 = len - clear once the
+    // span is opened back out. One rule, both cases, and the one it used to miss.
+    const w = CRAWL_MIN;
+    const R = clear + w / 2;
+    const blocked: Array<[number, number]> = [];
+    for (const v of poly) {
+      const s = (v[0] - a[0]) * ux + (v[1] - a[1]) * uz;
+      const perp = Math.abs((v[0] - a[0]) * -uz + (v[1] - a[1]) * ux);
+      if (perp >= R) continue;
+      const reach = Math.sqrt(R * R - perp * perp);
+      blocked.push([s - reach, s + reach]);
+    }
+    // Swept UNCLIPPED, against a centre confined to [w/2, len - w/2]. Clipping the
+    // discs to the edge first loses the one distinction that matters: whether a
+    // boundary is the rim of a disc — where the door exactly touches and is legal —
+    // or the point where a clip truncated a disc the centre is still deep inside.
+    // Conflating them accepted a zero-width "gap" that sat inside three other
+    // discs, which is the anchor 0.34m from a corner this rule exists to refuse.
+    //
+    // Touching IS legal, because the constraint is `dist >= R`. That is not a
+    // technicality: a wall exactly MIN_HOSTING_EDGE long has its two endpoint discs
+    // meet at a single point, and that point is the crawl the constant was defined
+    // to permit. So a gap of zero width counts, and only a NEGATIVE one is refused.
+    blocked.sort((m, n) => m[0] - n[0]);
+    const loBound = w / 2, hiBound = len - w / 2;
+    let cLo = 0, cHi = -1, cursor = loBound;
+    const gap = (upto: number) => {
+      const g0 = Math.max(cursor, loBound), g1 = Math.min(upto, hiBound);
+      if (g1 >= g0 - 1e-9 && g1 - g0 > cHi - cLo) { cLo = g0; cHi = g1; }
+    };
+    for (const [lo, hi] of blocked) { gap(lo); cursor = Math.max(cursor, hi); }
+    gap(hiBound);
+    if (cHi < cLo) continue;
+    const t0 = cLo - w / 2, t1 = cHi + w / 2;
+    const run = t1 - t0;
+    if (run < CRAWL_MIN - 1e-9) continue;
+
     const mid = (t0 + t1) / 2;
     // Outward normal: for a counter-clockwise ring the outside is to the RIGHT
     // of the travel direction.

@@ -237,11 +237,29 @@ test('THE DOORS THIS CANNOT ACCOUNT FOR ARE THE ONES IN CORNERS', () => {
     + 'anchor — the derivation is too strict and would cost the layout doors it needs');
   assert.ok(without.length < total * 0.06,
     `${without.length} of ${total} doors sit where no wall offered an opening`);
-  const inCorner = (xs: number[]) => xs.filter((x) => x < 0).length / xs.length;
-  assert.ok(inCorner(without) > inCorner(withA) * 2,
-    `the unaccounted doors (${(inCorner(without) * 100).toFixed(0)}% in a corner) are no `
-    + `worse than the accounted ones (${(inCorner(withA) * 100).toFixed(0)}%) — the anchors `
-    + 'are not selecting for anything');
+  // ── AND THE COMPARISON IT USED TO MAKE IS OVER ─────────────────────────────
+  //
+  // "The unaccounted doors are more corner-bound than the accounted ones" was the
+  // evidence that the anchors selected for something, back when 11% of doors had no
+  // anchor and 35% of ALL doors overlapped a corner. It has now run out of subject
+  // twice over: the unaccounted set is TWO doors, and neither is in a corner. The
+  // assertion failed at "0% vs 3% — the anchors are not selecting for anything",
+  // which is the sentence a test says when the defect it was calibrated against is
+  // fixed. A ratio between two populations cannot survive one of them emptying.
+  //
+  // So the claim is made directly, against the header's own measurement. Then:
+  // 35% of doorways overlapped a corner, 5th percentile −1.52m — a door wrapping a
+  // metre and a half around onto the next wall. Now: 2.5% and +0.15m. THAT is the
+  // result, and it is a number a regression moves.
+  const inCorner = [...withA, ...without].filter((x) => x < 0).length;
+  assert.ok(inCorner < total * 0.06,
+    `${inCorner} of ${total} doors (${((inCorner / total) * 100).toFixed(1)}%) overlap a corner `
+    + '— was 2.5% when the anchor model landed, and 35% before it');
+  const sorted = [...withA, ...without].sort((a, b) => a - b);
+  const p5 = sorted[Math.floor(0.05 * (sorted.length - 1))];
+  assert.ok(p5 > -0.2,
+    `the 5th-percentile door sits ${p5.toFixed(2)}m from a corner — was +0.15m when the `
+    + 'anchor model landed, and −1.52m before it');
 });
 
 console.log(`${passed} passed, ${failed} failed`);

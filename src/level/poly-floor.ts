@@ -481,9 +481,11 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   const inline = plan.all.filter((e) => e.placement !== 'dedicated');
 
   // The spine has to be long enough to seat everything that wants to be ON it,
-  // between the two bookends. A floor that plans three inline beats and grows
-  // two middle rooms would silently drop one.
-  const n = Math.max(spineLength(depth, rand), 2 + inline.length);
+  // between the two bookends, PLUS one ordinary room for them to stand against.
+  // A floor that plans three inline beats and grows two middle rooms would
+  // silently drop one; a floor that grows exactly three seats them all and has
+  // nowhere left for a fight to happen.
+  const n = Math.max(spineLength(depth, rand), 2 + inline.length + (inline.length ? 1 : 0));
 
   // ── 1 + 2. SHAPE, THEN PLACE ───────────────────────────────────────
   // Shape first: a room's polygon is decided from its ROLE and its budget, and
@@ -500,16 +502,44 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   // Which spine slot each inline beat takes. Spread across the middle rather
   // than stacked at the front: the plan's beats are the floor's landmarks, and
   // landmarks need ordinary rooms to stand against.
+  // ── ONE MIDDLE ROOM IS ALWAYS AN ORDINARY FIGHT ────────────────────────────
+  //
+  // The line above already states the intent — "landmarks need ordinary rooms to
+  // stand against" — and nothing enforced it. Two ways it failed. On d3/s18368 both
+  // middle slots went to inline beats (a feature and a sanctum), so the floor had
+  // ZERO rooms whose type admits enemies apart from the boss hall. And even with a
+  // slot left over, the per-slot coin flip below could turn it `quiet`, which admits
+  // none either.
+  //
+  // Josh, on the pass that was papering over it: *"the top up also looks like a
+  // kinda weird thing — i think when we construct things better, well thats how its
+  // gonna be, no need to care for weird invariants."* Right. `topUpCombat` was a
+  // repair pass compensating for composition, and the fix belongs at composition:
+  // the spine grows a slot for the beats to stand against, and the quiet budget
+  // spends every ordinary slot BUT ONE. No beat is dropped and no floor arrives
+  // with nowhere to fight.
   const middles = n - 2;
   const inlineAt = new Map<number, RoomTypeId>();
   inline.forEach((e, i) => {
     inlineAt.set(1 + Math.floor(((i + 0.5) * middles) / Math.max(1, inline.length)), e.id);
   });
 
+  const ordinary: number[] = [];
+  for (let i = 1; i < n - 1; i++) if (!inlineAt.has(i)) ordinary.push(i);
+  // All but one. The roll still happens for every ordinary slot so the rate reads
+  // the same as it always did — it is the LAST one that cannot be spent, not the
+  // odds on the others.
+  const quietBudget = Math.max(0, ordinary.length - 1);
+  const quiet = new Set<number>();
+  for (const i of ordinary) {
+    const wantsQuiet = rand() < 0.3;
+    if (wantsQuiet && quiet.size < quietBudget) quiet.add(i);
+  }
+
   for (let i = 0; i < n; i++) {
     const type: RoomTypeId = i === 0 ? 'entrance'
       : i === n - 1 ? 'finish'
-      : inlineAt.get(i) ?? (rand() < 0.3 ? 'quiet' : 'combat');
+      : inlineAt.get(i) ?? (quiet.has(i) ? 'quiet' : 'combat');
     const room = shapeRoom(`poly-${i}`, type, depth, rand, type === 'finish' && isBossDepth(depth));
     if (i === 0) {
       place(room, 0, 0);
@@ -622,44 +652,59 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     const parent = rooms[1 + Math.floor(rand() * Math.max(1, spineCount - 2))];
     const pocket = shapeRoom(`poly-pocket-${p}`, spurTypes[p], depth, rand);
     const dirs: Dir[] = shuffle(['N', 'S', 'E', 'W'], rand);
+    // ── STAGE 2b: THE POCKET IS PLACED BY ITS LINK, OR NOT AT ALL ────────────
+    //
+    // docs/LINKS-V3.md, rule 1: placement and connection are ONE decision. A room
+    // positioned first and connected afterwards can end up somewhere no corridor
+    // can reach properly, and then something has to invent one — which is where
+    // every blind pocket link came from. All 39 remaining blind corridors were
+    // pockets.
+    //
+    // Inverted here. Each candidate placement is TRIED — placed, offered to the
+    // router, and rolled back if the router will not take it — and the pocket is
+    // only committed when a real route exists. `connect` still has its blind paths
+    // for other callers, so the acceptance test is explicit: `servedBy === 'route'`
+    // or this placement did not work.
+    //
+    // AND IF NOTHING WORKS THE POCKET IS SKIPPED. That is the degradation the
+    // charter asks for and it is cheap: a pocket is optional content, the floor
+    // reroll already exists and folds its attempt index into the seed, and a floor
+    // with one fewer detour is worth far more than a floor with a corridor that
+    // clips a room. Josh: *"i want rooms to be connected"* — a pocket reached by a
+    // guessed corridor is connected in the graph and broken in the geometry.
+    //
+    // Rollback rather than a dry run because `connect` reads `pocket.poly`, which
+    // only exists in world space once the room is placed. `place` is a translation,
+    // so putting it back is exact.
+    const homeX = pocket.rect.x, homeZ = pocket.rect.z;
+    let placed = false;
     for (const dir of dirs) {
-      // ── THE POCKET WAS PLACED ON THE CENTRE LINE, FULL STOP ────────────────
-      //
-      // No lateral argument at all, so `geometryFor` defaulted to 0. That single
-      // omission is the whole of the pocket's blind rate: every guessed corridor
-      // on the sampled floors is a pocket link, while the SPINE — which does pass
-      // a lateral — is 100% routed. A pocket pinned to its parent's centre line
-      // frequently has no wall facing the parent at all, so the router declines
-      // and the blind path takes the link.
-      //
-      // Aligned offsets first, then the old centre-line placement, so a pocket
-      // whose walls cannot be made to face still gets exactly the placement it
-      // had rather than none.
-      const len = 4 + rand() * 3;
-      let g: { at: Box; corridor: Box } | null = null;
-      for (const lat of [...alignedLaterals(parent, pocket, dir), 0]) {
+      if (placed) break;
+      // SEVERAL GAPS, NOT ONE. The first cut drew a single length per direction
+      // and lost 24 pocket legs to placements that were merely unlucky rather than
+      // impossible — and fewer pockets means fewer rooms, which showed up two
+      // systems away as the loot director concentrating relics into silver chests.
+      // A search that commits to one gap is not a search.
+      const base = 4 + rand() * 3;
+      const gaps = [base, base + 1.5, base - 1.2, base + 3];
+      for (const [len, lat] of gaps.flatMap((g) =>
+        [...alignedLaterals(parent, pocket, dir), 0].map((l) => [g, l] as const))) {
         const cand = geometryFor(parent.rect, pocket.rect, dir, len, lat);
         const bad = occupiedBoxes.some((o) => overlaps(o, cand.at, MARGIN))
                  || occupiedBoxes.some((o) => o !== parent.rect && overlaps(o, cand.corridor, MARGIN));
-        if (!bad) { g = cand; break; }
+        if (bad) continue;
+        place(pocket, cand.at.x, cand.at.z);
+        const conn = connect(parent, pocket, rand, occupiedBoxes, rooms);
+        if (conn?.servedBy !== 'route') { place(pocket, homeX, homeZ); continue; }
+        rooms.push(pocket);
+        occupiedBoxes.push(pocket.rect, cand.corridor);
+        placeholder.set(pocket.id, cand.corridor);
+        // the elevation pass clamps a spur to the spine's floor
+        addLink(parent.id, pocket.id, `cor-p${p}`, conn, { spur: true });
+        pockets.push({ pocket, parent: parent.id, forLoop: p === LOOP_POCKET });
+        placed = true;
+        break;
       }
-      if (!g) continue;
-      place(pocket, g.at.x, g.at.z);
-      rooms.push(pocket);
-      occupiedBoxes.push(pocket.rect, g.corridor);
-      placeholder.set(pocket.id, g.corridor);
-      addLink(parent.id, pocket.id, `cor-p${p}`,
-              connect(parent, pocket, rand,
-                      occupiedBoxes.filter((o) => o !== g.corridor), rooms)
-                // NOT A ROUTE AND NOT EVEN THE BLIND FALLBACK — the placement
-                // rect, used raw. Stamped so it stops hiding inside "unknown":
-                // it was 25% of corridors together with the chord, and a plan to
-                // "remove the fallback" that only removed 'guess' would have left
-                // the worse producer running.
-                ?? { rects: [g.corridor], type: CORRIDOR_TYPES.passage, servedBy: 'placement' as const },
-              { spur: true });   // the elevation pass clamps a spur to the spine's floor
-      pockets.push({ pocket, parent: parent.id, forLoop: p === LOOP_POCKET });
-      break;
     }
   }
 
@@ -1477,8 +1522,36 @@ function shapeRoom(
   const [wLo, wHi, dLo, dHi] = bossHall ? BOSS_HALL_SIZE : (TYPE_SIZE[type] ?? TYPE_SIZE.combat);
   const w = wLo + rand() * (wHi - wLo) + Math.min(3, depth * 0.15);
   const d = dLo + rand() * (dHi - dLo) + Math.min(3, depth * 0.15);
-  const poly = generateRoomShape(kind, { w, d, rand });
-  const b = polyBounds(poly);
+  let poly = generateRoomShape(kind, { w, d, rand });
+  let b = polyBounds(poly);
+
+  // ── THE ROOM IS THE SIZE IT WAS ASKED TO BE ────────────────────────────────
+  //
+  // w and d are a REQUEST, and an archetype is free to return a polygon whose
+  // bounding box is well inside it. Measured over 400 rolls at boss-hall scale:
+  // `cross` delivers 97-98% of the request, but `rotunda` bottoms out at 70% of
+  // the width and `chamber` at 74%. So BOSS_HALL_SIZE's 22×19 floor could arrive
+  // as 16.7×14.4, and "a boss hall has to outrank an arena" — stated in
+  // tests/poly-boss-hall.test.ts and enforced nowhere — held only because the
+  // seeds it sampled happened to roll `cross`. Moving the RNG stream by one call
+  // produced a 22.0×16.0 hall, under the arena it is supposed to outrank.
+  //
+  // Scaled UNIFORMLY, so this is a similarity transform: the archetype's
+  // character — a rotunda's chamfers, a cross's arm proportions — survives
+  // untouched and only the size changes, which is the thing that was wrong. The
+  // room only ever grows to its stated minimum, never shrinks and never stretches.
+  //
+  // Applied to the boss hall because that is where a stated minimum exists. The
+  // same shortfall applies to every TYPE_SIZE entry — ordinary rooms are up to a
+  // quarter smaller than they read as — and correcting that resizes every room on
+  // every floor, which is a decision about feel, not a bug fix.
+  if (bossHall) {
+    const grow = Math.max(wLo / (b.maxX - b.minX), dLo / (b.maxZ - b.minZ));
+    if (grow > 1) {
+      poly = poly.map(([px, pz]) => [px * grow, pz * grow] as const);
+      b = polyBounds(poly);
+    }
+  }
   const ceil = ceilingFor(kind, w, d, rand());
   return {
     id, type, poly,

@@ -82,16 +82,29 @@ test('A SILVER CHEST IS NOT A TRINKET DISPENSER', () => {
         if ((p.loot?.items ?? []).some((i) => i.kind === 'relic')) withRelic++;
       }
     }
-    // A RATE NEEDS A SAMPLE. 60 floors yields ~39 silver chests at depth 1, and a
-    // 20% bar on n=39 has a standard error of ±6pp — so this asserted noise. It
-    // duly fired at 21% on a generator whose true rate, measured over 400 seeds,
-    // is 16.3%. Skip rather than guess when the sample cannot carry the claim.
-    if (silver < 120) continue;
+    // A RATE NEEDS A SAMPLE, AND THE BAR HAS TO KNOW HOW BIG THE SAMPLE IS.
+    //
+    // 60 floors yields ~39 silver chests at depth 1, and a 20% bar on n=39 has a
+    // standard error of ±6pp — so this asserted noise. It duly fired at 21% on a
+    // generator whose true rate is 16%. The first fix raised the sample and put a
+    // hard floor under it, and that only moved the problem: at 200 floors depth 1
+    // yields 138 chests, SE is still ±3pp, and the window read 22% on a generator
+    // measured at 15.1% over 500 floors. A fixed floor cannot fix this, because
+    // the depths yield different counts and the floor is one number.
+    //
+    // So the bar is stated against the EVIDENCE, not the point estimate: fail only
+    // when the sample says the true rate is over 20%. That is the claim anyone
+    // reading this test thinks it makes. A real regression to 30% still fires — at
+    // n=138 its lower bound is 23.6% — while a 22% reading on a 15% generator
+    // does not, which is the whole difference between a bar and a tripwire.
+    if (silver < 60) continue;
     const rate = withRelic / silver;
+    const lowerBound = rate - 1.645 * Math.sqrt((rate * (1 - rate)) / silver);
     // The LADDER has to read: a silver chest is the ambient tier, so its relic
     // rate has to sit clearly under what a key buys you.
-    assert.ok(rate <= 0.20,
-      `depth ${depth}: ${(rate * 100).toFixed(0)}% of ${silver} silver chests hold a relic — too close to gold's promise`);
+    assert.ok(lowerBound <= 0.20,
+      `depth ${depth}: ${(rate * 100).toFixed(0)}% of ${silver} silver chests hold a relic `
+      + `(lower bound ${(lowerBound * 100).toFixed(0)}%) — too close to gold's promise`);
   }
 });
 
