@@ -204,7 +204,10 @@ test('A DOGLEG DOES NOT CHANGE SECTION HALFWAY ROUND THE BEND', () => {
         `d${depth}/s${seed} link ${link} changes ceiling mid-run: ${[...heights].join(', ')}`);
     }
   }
-  assert.ok(bent / links > 0.3,
+  // A COVERAGE FLOOR ONLY. Routing straightens links — see the v3 note below —
+  // so the multi-leg share is no longer a target, just proof the sweep is seeing
+  // bends at all and the one-link-one-section rule above is being exercised.
+  assert.ok(bent / links > 0.15,
     `only ${((bent / links) * 100).toFixed(0)}% of links are multi-leg — this test is not seeing doglegs`);
 });
 
@@ -221,12 +224,33 @@ test('THE MIX IS ACTUALLY MIXED — no section is a rounding error', () => {
     }
     if (here.size >= 2) varied++;
   }
+  // ── V3: THE SECTION VOCABULARY IS GATED ON A QUANTITY ROUTING CHANGED ──────
+  //
+  // Josh, 2026-08-17: *"accept a straighter less varied corridor set, lets get rid
+  // of all things in todays system that makes the job hard ... we dont care about
+  // legacy, do v3 of the system."*
+  //
+  // `corridorTypeFor` picks a section from the link's RUN LENGTH. Routing produces
+  // shorter, straighter links than guessing did — anchor-aligned placement puts two
+  // walls opposite each other, and facing walls make straight corridors — so the
+  // long-run sections stop being reachable. Measured: `squeeze` fell to 1.3% of
+  // corridors and multi-leg links to 30%.
+  //
+  // That is a real content loss and it was accepted deliberately, in exchange for
+  // blind corridors falling from 34.3% to 14.9%. What is NOT acceptable is a test
+  // that pins the mix a BUG produced: the old 5%-per-section floor was measured
+  // when 27% of pocket links were guessed, and guessing is what made the runs long
+  // enough to reach those sections.
+  //
+  // So the bound moves to what still means something — the vocabulary must not
+  // collapse to a single word — and the per-section floor is dropped with its
+  // reason recorded. Section selection wants re-gating on something routing can
+  // actually produce (mouth width, room pair, floor intent) rather than on a run
+  // length that a good router minimises. That is v3 work, not a number to nudge.
   for (const t of ALL_CORRIDOR_TYPES) {
     const share = (count.get(t.id) ?? 0) / legs;
-    // Both ends. A section nobody meets is dead content; a section that is
-    // every corridor is the old single-width generator wearing a new name.
-    assert.ok(share > 0.05,
-      `${t.id} is ${(share * 100).toFixed(1)}% of corridors — its run gates have priced it out`);
+    // The end that survives: no section may BE the generator. The other end — a
+    // floor under which a section counts as priced out — is gone, see above.
     assert.ok(share < 0.80,
       `${t.id} is ${(share * 100).toFixed(0)}% of corridors — the vocabulary collapsed back to one word`);
   }

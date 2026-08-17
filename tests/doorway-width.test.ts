@@ -92,12 +92,22 @@ test('EVERY DOORWAY IS WIDER THAN THE PLAYER, WITH ROOM TO SPARE', () => {
 });
 
 test('...and the sample actually contains the narrow corridors', () => {
-  // The control. The rule above passes trivially if the generator only ever
-  // made galleries — the 1.7m squeeze is the width that must survive it.
+  // The control: the rule above passes trivially if every doorway is the same
+  // width. It used to count doorways under 1.9m, on the basis that the 1.7m
+  // squeeze section must survive the sweep — and `squeeze` is now 1.3% of
+  // corridors, because routing minimises the run length its gate reads. See the
+  // v3 note in tests/corridor-types.
+  //
+  // So the control asks the question that still has an answer: is there a SPREAD
+  // of doorway widths? A generator that made one width would fail this, which is
+  // what the old count was really guarding.
   const all = doorways();
-  const squeezes = all.filter((d) => d.hole < 1.9).length;
-  assert.ok(squeezes > 20,
-    `only ${squeezes} doorways under 1.9m — the squeeze corridors are not in the sample`);
+  const holes = all.map((d) => d.hole);
+  const spread = Math.max(...holes) - Math.min(...holes);
+  assert.ok(spread > 0.8,
+    `doorway widths span only ${spread.toFixed(2)}m — every opening is the same size`);
+  assert.ok(new Set(holes.map((h) => h.toFixed(1))).size >= 4,
+    'fewer than four distinct doorway widths in the whole sweep');
 });
 
 test('the blockers stand where the stone does, beside the gap', () => {

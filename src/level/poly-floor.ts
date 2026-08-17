@@ -622,10 +622,27 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     const pocket = shapeRoom(`poly-pocket-${p}`, spurTypes[p], depth, rand);
     const dirs: Dir[] = shuffle(['N', 'S', 'E', 'W'], rand);
     for (const dir of dirs) {
-      const g = geometryFor(parent.rect, pocket.rect, dir, 4 + rand() * 3);
-      const clash = occupiedBoxes.some((o) => overlaps(o, g.at, MARGIN))
-                 || occupiedBoxes.some((o) => o !== parent.rect && overlaps(o, g.corridor, MARGIN));
-      if (clash) continue;
+      // ── THE POCKET WAS PLACED ON THE CENTRE LINE, FULL STOP ────────────────
+      //
+      // No lateral argument at all, so `geometryFor` defaulted to 0. That single
+      // omission is the whole of the pocket's blind rate: every guessed corridor
+      // on the sampled floors is a pocket link, while the SPINE — which does pass
+      // a lateral — is 100% routed. A pocket pinned to its parent's centre line
+      // frequently has no wall facing the parent at all, so the router declines
+      // and the blind path takes the link.
+      //
+      // Aligned offsets first, then the old centre-line placement, so a pocket
+      // whose walls cannot be made to face still gets exactly the placement it
+      // had rather than none.
+      const len = 4 + rand() * 3;
+      let g: { at: Box; corridor: Box } | null = null;
+      for (const lat of [...alignedLaterals(parent, pocket, dir), 0]) {
+        const cand = geometryFor(parent.rect, pocket.rect, dir, len, lat);
+        const bad = occupiedBoxes.some((o) => overlaps(o, cand.at, MARGIN))
+                 || occupiedBoxes.some((o) => o !== parent.rect && overlaps(o, cand.corridor, MARGIN));
+        if (!bad) { g = cand; break; }
+      }
+      if (!g) continue;
       place(pocket, g.at.x, g.at.z);
       rooms.push(pocket);
       occupiedBoxes.push(pocket.rect, g.corridor);
