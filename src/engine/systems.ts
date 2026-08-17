@@ -41,6 +41,7 @@ import { updateDarkAdaptReadout } from '../debug/dark-adapt-readout';
 import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
 import { tickThresholdVeils } from '../scene/threshold-veil';
+import { tickSignalOcclusion } from '../scene/signal-layer';
 import { isAnyScreenOpen } from '../ui/screen-manager';
 import { isDescendTransition } from '../ui/descent-fade';
 import { tickAllBuffs } from '../ecs/buffs';
@@ -744,6 +745,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
             walkable.hasLineOfSight(ax, az, bx, bz)
         : undefined;
       tickLightPool(camera, los);
+      // The SAME line of sight, for the same reason one step further on: a marker that
+      // draws after the veil has no depth buffer to hide behind, so it is asked directly
+      // whether the player can see it. Before the batch folds its instances, so a hidden
+      // placeholder is a hidden flame in the same frame.
+      tickSignalOcclusion(camera.position.x, camera.position.z, los);
     } },
 
     // Deferred subject-preview framing — see src/debug/inspect-mode.ts. No-op in

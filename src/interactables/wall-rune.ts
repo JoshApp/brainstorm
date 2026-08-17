@@ -49,7 +49,9 @@ export function spawnWallRune(
   markAsSignal(mesh);
   mesh.position.copy(pos);
   mesh.rotation.y = yaw;
-  mesh.renderOrder = 2;       // draw after walls so the additive glow reads
+  // NO explicit renderOrder — markAsSignal above sets SIGNAL_ORDER, which already draws it
+  // after the walls AND after the veil. Setting 2 here put it back under the veil, which is
+  // the one place a glyph most needs to be readable from.
   parent.add(mesh);
 
   // The rune BREATHES — a slow, faint arcane pulse on its glow so it reads as

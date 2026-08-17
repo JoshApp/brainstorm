@@ -6,6 +6,7 @@ import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
 import { createBatchedSprite, isSpriteBatchingEnabled } from '../scene/sprite-batch';
+import { markAsSignal } from '../scene/signal-layer';
 import { createBatchedFlameMesh, isFlameMeshBatchingEnabled } from '../scene/flame-mesh-batch';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
@@ -728,6 +729,11 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
           opacity: part.opacity ?? 1,
           flicker: part.flicker,
         });
+        // THE PLACEHOLDER IS THE MARKER. It is what has a world position, so it is what
+        // gets occlusion-tested; the batch reads its visibility up the parent chain each
+        // tick. See scene/signal-layer.ts for why a thing drawn after the veil has to
+        // carry its own occlusion.
+        markAsSignal(handle.obj);
         return handle.obj;
       }
       const spriteMat = new THREE.SpriteMaterial({

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { markAsSignal } from './signal-layer';
+import { signalDrawOrder } from './signal-layer';
 import { SpriteNodeMaterial } from 'three/webgpu';
 import { instancedBufferAttribute, texture as textureNode, vec4 } from 'three/tsl';
 import { getTexture } from '../style/procedural-textures';
@@ -135,13 +135,14 @@ class Batch {
     mat.name = `sprite-batch:${key}`;
 
     this.mesh = new THREE.Mesh(geo, mat);
-    // ── THE SIGNAL LAYER ────────────────────────────────────────────────────
+    // ── THE SIGNAL LAYER, DRAW ORDER ONLY ───────────────────────────────────
     //
-    // Flames, embers and glints are what the dungeon is willing to tell you through a
-    // veiled doorway. Marking the batch marks all of them at once, which is right: a
-    // flame you can see and an ember from the same fire that you cannot would read as a
-    // bug rather than as a rule. See scene/signal-layer.ts.
-    markAsSignal(this.mesh);
+    // Flames and embers are what the dungeon is willing to tell you through a veiled
+    // doorway, so the batch composites after the veil. ORDER ONLY: this one mesh sits at
+    // the origin and holds every flame on the floor, so occlusion-testing it would ask
+    // about the origin and hide or show them all together. Each instance is gated through
+    // its own placeholder instead — see scene/signal-layer.ts.
+    signalDrawOrder(this.mesh);
     this.mesh.frustumCulled = false;      // instances span the floor; cull per-entry via visibility
     this.mesh.matrixAutoUpdate = false;   // identity — instance positions are world-space
     this.mesh.name = `sprite-batch:${key}`;

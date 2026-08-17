@@ -39,7 +39,10 @@
 // carved sigil that reads by its own emissive is signal without being additive. What
 // belongs in this layer is an authoring decision about what the dungeon is willing to tell
 // you through the dark, so it is declared at the producer.
-import type * as THREE from 'three';
+import * as THREE from 'three';
+
+/** Reused per test — this runs over every marker, every frame. */
+const scratch = new THREE.Vector3();
 
 /**
  * Draw order. The veil sits at VEIL_ORDER; anything above it composites on top and is
@@ -59,6 +62,22 @@ export const SIGNAL_ORDER = 12;
  * none.
  */
 export function markAsSignal(root: THREE.Object3D): void {
+  signalDrawOrder(root);
+  // Tracked at the ROOT only. Occlusion is a question about a PLACE, and every mesh in one
+  // marker is in the same place — testing each would be the same answer several times.
+  track(root);
+}
+
+/**
+ * Draw order only — for a signal surface that has no place of its own.
+ *
+ * The sprite batch is the case: one global mesh at the origin holding every flame on the
+ * floor as instances. It needs to composite after the veil like any marker, but it must NOT
+ * be occlusion-tested, because the answer would be about the world origin and would hide or
+ * show every flame in the dungeon together. Its instances are gated individually through
+ * their placeholders, which DO have places.
+ */
+export function signalDrawOrder(root: THREE.Object3D): void {
   root.traverse((o) => {
     o.renderOrder = SIGNAL_ORDER;
     o.userData.signal = true;
@@ -70,3 +89,59 @@ export function markAsSignal(root: THREE.Object3D): void {
 export function isSignal(o: THREE.Object3D): boolean {
   return o.userData?.signal === true;
 }
+
+// ── SIGNAL SUPPLIES ITS OWN OCCLUSION ────────────────────────────────────────
+//
+// Josh, once the transmittance cull landed: *"since the room is culled I can see flames I
+// shouldn't be able to see ... otherwise the flame vanishes the moment the room is rendered
+// behind the veil when I approach."*
+//
+// Both halves are the same fact. A marker draws AFTER the veil, so it is not sorted against
+// the world — its only occluder is whatever happens to be in the DEPTH BUFFER. Culling is
+// what fills that buffer, so tightening the cull (3.0 spaces where it used to submit 5.0)
+// deleted the very walls the signal layer was relying on to hide behind. The flame
+// reappearing when you approach is the occluder being submitted again.
+//
+// So the invariant is stated where it belongs: ANYTHING THAT RENDERS AFTER THE VEIL HAS
+// OPTED OUT OF THE DEPTH-SORTED WORLD AND MUST SUPPLY ITS OWN OCCLUSION. Not a special case
+// for flames, and not something the culler can be asked to fix by drawing more — a signal
+// gated on what the culler happens to keep would go back to changing as you walked.
+//
+// Line of sight against the level's own walls, the same `walkable.hasLineOfSight` the light
+// pool has always used to keep a torch from lighting through a wall. It is the right
+// question ("can the player see this point"), it is independent of what is drawn, and it
+// costs about sixty segment tests a frame next to the pool's twenty-odd.
+type LOS = (ax: number, az: number, bx: number, bz: number) => boolean;
+
+const registry: THREE.Object3D[] = [];
+
+/** Everything marked, so the occlusion pass does not have to walk the scene. */
+function track(o: THREE.Object3D): void {
+  if (!registry.includes(o)) registry.push(o);
+}
+
+/**
+ * Hide every signal marker the player cannot actually see.
+ *
+ * Runs before the sprite batch folds its instances, so a hidden placeholder is a hidden
+ * flame in the same frame — the batch already reads placeholder visibility up the parent
+ * chain, so this composes with the room culler rather than fighting it.
+ *
+ * With no LOS available (the vault path, a level mid-load) everything stays visible: a
+ * missing occluder should cost a wrong-looking flame, never a missing one, because the
+ * marker is the thing the player is navigating by.
+ */
+export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undefined): void {
+  if (!los) return;
+  for (const o of registry) {
+    if (!o.parent) continue;                      // torn down; the batch drops it anyway
+    o.getWorldPosition(scratch);
+    o.visible = los(eyeX, eyeZ, scratch.x, scratch.z);
+  }
+}
+
+/** Drop the registry — called on level load. */
+export function clearSignals(): void { registry.length = 0; }
+
+/** How many markers are tracked, for a debug readout. */
+export function signalCount(): number { return registry.length; }

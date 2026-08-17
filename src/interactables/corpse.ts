@@ -76,7 +76,9 @@ export function spawnCorpse(
     if (glintSlot) glint.position.copy(glintSlot.position);
     else glint.position.set(...GLINT_FALLBACK);
     glint.rotation.x = -Math.PI / 2.6;
-    glint.renderOrder = 2;
+    // NO explicit renderOrder — markAsSignal above sets SIGNAL_ORDER, which already sorts
+    // it over the corpse AND puts it after the veil. Setting 2 here overwrote that and put
+    // the glint back UNDER the veil, which is the one place it needs to be seen from.
     built.group.add(glint);
   }
 
