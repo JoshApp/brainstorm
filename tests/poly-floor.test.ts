@@ -116,7 +116,19 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
   for (const r of spec.rooms) {
     if (!r.poly || r.poly.length < 3) continue;
     const mine = portalInputs(r.id, spec.corridors).map((o) => ({ ...o.rect, link: o.link, cut: o.cut }));
-    for (const s of planWallRing(r.poly, WALL_T, mine, undefined, wallCutsFor(r.poly, mine))) {
+    // WITH THE CEILING, and skipping the HEADS. The ring now builds the stone over a
+    // doorway as an ordinary span with its own vertical extent (see WallSpan.y0), and
+    // it only does so when it is told the room's height. Omitting the height is the
+    // third variant of this file's own lesson — it would flood a dungeon with no stone
+    // above its doorways, and hide the case where a head is laid at the wrong level.
+    //
+    // A head is excluded from collision for the same reason the shell excludes it: a
+    // segment has no height, and one laid across the stone over a doorway would seal
+    // the doorway. Filtering it HERE rather than not asking for it means this flood
+    // fails if the shell ever stops filtering it there.
+    for (const s of planWallRing(r.poly, WALL_T, mine, undefined,
+                                 wallCutsFor(r.poly, mine), r.height)) {
+      if (s.head) continue;
       segs.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
     }
   }

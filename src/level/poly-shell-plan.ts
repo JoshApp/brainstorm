@@ -112,6 +112,35 @@ export type WallSpan = {
   oa: V2; ob: V2;
   jambA: boolean;
   jambB: boolean;
+  /**
+   * Vertical extent, metres above the room's floor. A wall runs the full height and
+   * these are 0 and the ceiling; the stone OVER a doorway starts at the passage's own
+   * height and runs to the ceiling.
+   *
+   * ── WHY THE RING OWNS THIS NOW ─────────────────────────────────────────────
+   *
+   * A span had no height at all: every one was assumed floor-to-ceiling, so a doorway
+   * was a full-height slot and a separate LINTEL pass was built afterwards to close it
+   * back down. Where that lintel started was solved from the ARCHWAY meant to fill the
+   * doorway — a voussoir ring and hood stand above the clear opening, so the lintel
+   * was placed to hide behind the hood, through a page of algebra and a fake 0.7m
+   * width chosen to make the algebra safe.
+   *
+   * With archways switched off there was nothing filling that band: measured over 648
+   * doorways the lintel sat above the passage on 39.2% of them, up to 0.21m of raw
+   * void. Josh: *"why do we even make different corridor height vs entrance heights
+   * ... that kinda sounds like this is messy and we should redo it completely."*
+   *
+   * So the hole has a height and the wall is never removed above it. The head is an
+   * ordinary span with its own extent, cut by the same clip as everything else, and
+   * there is nothing to place, nothing to guess, and no band whose appearance depends
+   * on a decoration being switched on.
+   */
+  y0: number;
+  y1: number;
+  /** True for the stone OVER a doorway: it shows its underside to anyone walking
+   *  through, where a wall standing on the floor has no underside to show. */
+  head?: boolean;
 };
 
 /**
@@ -210,7 +239,11 @@ export function planWallRingFull(
   thickness: number,
   openings: ReadonlyArray<OpeningRect> = [],
   minSpan = 0.14,
-  cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
+  cuts?: ReadonlyArray<{ edge: number; t0: number; t1: number; height?: number }>,
+  /** The room's interior height. Spans run to it; the stone over a doorway runs from
+   *  the passage's height to it. Omitted → every span is full height and no head is
+   *  emitted, which is the old behaviour for callers that have no ceiling to give. */
+  ceiling?: number,
 ): WallRingPlan {
   const n = poly.length;
   if (n < 3) return { spans: [], doorways: [] };
@@ -265,7 +298,10 @@ export function planWallRingFull(
       // normal, which is what makes the jamb square to the doorway.
       const oa: V2 = atStart ? ring[i] : [ia[0] + nrm[0] * thickness, ia[1] + nrm[1] * thickness];
       const ob: V2 = atEnd ? ring[(i + 1) % n] : [ib[0] + nrm[0] * thickness, ib[1] + nrm[1] * thickness];
-      spans.push({ edge: i, a: ia, b: ib, oa, ob, jambA: !atStart, jambB: !atEnd });
+      spans.push({
+        edge: i, a: ia, b: ib, oa, ob, jambA: !atStart, jambB: !atEnd,
+        y0: 0, y1: ceiling ?? 0,
+      });
     }
 
     // The holes, in the same edge-local terms the spans came from. Merged first
@@ -285,12 +321,35 @@ export function planWallRingFull(
         if (g[1] <= t0 + 1e-6 || g[0] >= t1 - 1e-6) continue;   // no overlap
         passageH = Math.min(passageH, r.passageH);
       }
+      // A DECLARED height beats a rect's. The cut states how tall its passage is
+      // (level/link.ts, WallCut.height); `passageH` above is the same fact arriving
+      // through the rect channel, and is what the vault path still uses.
+      for (const c of cuts ?? []) {
+        if (c.edge !== i || c.height === undefined) continue;
+        if (c.t1 <= t0 + 1e-6 || c.t0 >= t1 - 1e-6) continue;
+        passageH = Math.min(isFinite(passageH) ? passageH : Infinity, c.height);
+      }
+      const openH = isFinite(passageH) ? passageH : DEFAULT_PASSAGE_H;
       doorways.push({
         edge: i, a: da, b: db,
         oa: [da[0] + nrm[0] * thickness, da[1] + nrm[1] * thickness],
         ob: [db[0] + nrm[0] * thickness, db[1] + nrm[1] * thickness],
-        passageH: isFinite(passageH) ? passageH : DEFAULT_PASSAGE_H,
+        passageH: openH,
       });
+      // AND THE STONE OVER IT. An ordinary span, from the passage's own ceiling to the
+      // room's — so the hole is a rectangle and not a slot somebody has to close.
+      if (ceiling !== undefined && ceiling - openH > 0.12) {
+        spans.push({
+          edge: i, a: da, b: db,
+          oa: [da[0] + nrm[0] * thickness, da[1] + nrm[1] * thickness],
+          ob: [db[0] + nrm[0] * thickness, db[1] + nrm[1] * thickness],
+          // The reveals down each side are already built over the full height by the
+          // flanking spans that were cut to make this hole; a head adding its own
+          // would lay them a second time in the same place.
+          jambA: false, jambB: false,
+          y0: openH, y1: ceiling, head: true,
+        });
+      }
     }
   }
   return { spans, doorways };

@@ -167,7 +167,7 @@ export function planPortals(
     id: string; rect: Rect; link?: string;
     /** The DECLARED hole this corridor needs in THIS room's wall, when its link
      *  stated one. Present → the rect is never intersected with the polygon. */
-    cut?: { edge: number; t0: number; t1: number };
+    cut?: { edge: number; t0: number; t1: number; height?: number };
     /** The corridor's stated clear width, for capping the frame. */
     clearWidth?: number;
   }>,
@@ -514,8 +514,11 @@ export function wallCutsFor(
    *  the same function the frame emitter calls, the ring cannot open a hole the
    *  emitter then declines to fill. Optional: the vault path passes bare rects
    *  and each is its own link. */
-  rects: ReadonlyArray<Rect & { link?: string; cut?: { edge: number; t0: number; t1: number } }>,
-): Array<{ edge: number; t0: number; t1: number }> {
+  rects: ReadonlyArray<Rect & {
+    link?: string;
+    cut?: { edge: number; t0: number; t1: number; height?: number };
+  }>,
+): Array<{ edge: number; t0: number; t1: number; height?: number }> {
   // ── A DECLARED CUT IS USED, NOT RECOMPUTED ─────────────────────────────────
   //
   // Stage 3 of docs/LINKS-V3.md, rule 3. An opening that carries a `cut` was given
@@ -528,7 +531,7 @@ export function wallCutsFor(
   //
   // Deduped per link + edge. A dogleg's legs all carry the same link and therefore
   // the same pair of declared cuts, and a room wants ONE hole for the way through.
-  const declared: Array<{ edge: number; t0: number; t1: number }> = [];
+  const declared: Array<{ edge: number; t0: number; t1: number; height?: number }> = [];
   const seen = new Set<string>();
   const rediscover: Array<Rect & { link?: string }> = [];
   for (const rect of rects) {
@@ -536,7 +539,12 @@ export function wallCutsFor(
     const key = `${rect.link ?? ''}|${rect.cut.edge}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    declared.push({ edge: rect.cut.edge, t0: rect.cut.t0, t1: rect.cut.t1 });
+    declared.push({
+      edge: rect.cut.edge, t0: rect.cut.t0, t1: rect.cut.t1,
+      // How TALL the hole is, so the ring can build the stone over it rather than
+      // cutting floor-to-ceiling and leaving a lintel to be placed after the fact.
+      height: rect.cut.height,
+    });
   }
 
   // EVERY cut, not just the leading edge's. A corridor arriving across a

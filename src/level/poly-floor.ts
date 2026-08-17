@@ -1902,7 +1902,7 @@ function routeConnection(
   // it can never overstate the passage.
   const built = sectionForWidth(negotiated);
   const width = built.width;
-  const link = linkFromRoute(a.id, b.id, route, width);
+  const link = linkFromRoute(a.id, b.id, route, width, built.height);
   const derived = rectsFromLink(link, { width, overlap: OVERLAP });
   if (!derived) return null;
   const { rects, legAxis } = derived;

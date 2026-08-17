@@ -108,6 +108,28 @@ export interface WallCut {
   /** Start and end along that edge, 0..1 from the edge's first vertex. */
   t0: number;
   t1: number;
+  /**
+   * How TALL the hole is — the clear height of the passage behind it, metres.
+   *
+   * The same rule as the width, one axis over. The hole used to be cut floor to
+   * ceiling, because an opening carried no height at all, and a LINTEL was then built
+   * to close it back down. Where that lintel started was solved from the ARCHWAY that
+   * was supposed to fill the doorway — its voussoir ring and hood stand above the
+   * clear opening, so the lintel was placed to hide behind the hood.
+   *
+   * With archways switched off (see level/dressing.ts, Josh's call: "can we just get
+   * rid of the archways and do corridor cutting geometry first") there is nothing
+   * filling that band, and measured over 648 doorways the lintel sat above the passage
+   * on 39.2% of them — up to 0.21m of raw void over a doorway, which is what Josh saw
+   * as "corridor ceiling lower than the carved entrance height".
+   *
+   * Josh, on the whole arrangement: *"that kinda sounds like this is messy and we
+   * should redo it completely."* So a cut has a height and the wall is simply never
+   * removed above it. No lintel to place, nothing to guess, and no band that depends
+   * on a decoration being switched on to look right. An archway later sits INSIDE the
+   * hole instead of being load-bearing for the geometry around it.
+   */
+  height: number;
 }
 
 /**
@@ -123,6 +145,9 @@ export interface WallCut {
  */
 export function linkFromRoute(
   fromRoom: string, toRoom: string, r: LinkRoute, width?: number,
+  /** The passage's clear height — see WallCut.height. Defaults to what the walls can
+   *  afford, for callers with no section. */
+  height?: number,
 ): Link {
   return {
     fromRoom,
@@ -132,8 +157,10 @@ export function linkFromRoute(
     bAt: r.bAt,
     aWidth: r.aWidth,
     bWidth: r.bWidth,
-    aCut: cutFor(r.a, r.aAt, Math.min(width ?? r.aWidth, r.aWidth)),
-    bCut: cutFor(r.b, r.bAt, Math.min(width ?? r.bWidth, r.bWidth)),
+    aCut: cutFor(r.a, r.aAt, Math.min(width ?? r.aWidth, r.aWidth),
+                 height ?? r.a.height[1]),
+    bCut: cutFor(r.b, r.bAt, Math.min(width ?? r.bWidth, r.bWidth),
+                 height ?? r.b.height[1]),
   };
 }
 
@@ -150,7 +177,7 @@ export function linkFromRoute(
  * outline, structurally — so a cut may not exceed it even if a width negotiation
  * upstream ever asks for more.
  */
-function cutFor(anchor: PortalAnchor, at: P2, width: number): WallCut {
+function cutFor(anchor: PortalAnchor, at: P2, width: number, height: number): WallCut {
   const [ax, az] = anchor.edgeFrom;
   const len = anchor.edgeLength;
   const ux = (anchor.edgeTo[0] - ax) / len, uz = (anchor.edgeTo[1] - az) / len;
@@ -158,7 +185,12 @@ function cutFor(anchor: PortalAnchor, at: P2, width: number): WallCut {
   const half = width / 2;
   const lo = Math.max(anchor.t0, mid - half);
   const hi = Math.min(anchor.t1, mid + half);
-  return { edge: anchor.edge, t0: lo / len, t1: hi / len };
+  // Clamped to what the wall can hold: an opening cannot be taller than the wall it
+  // is cut into, which is what the anchor's height range already states.
+  return {
+    edge: anchor.edge, t0: lo / len, t1: hi / len,
+    height: Math.min(height, anchor.height[1]),
+  };
 }
 
 /** Total run of the polyline, metres. What a ramp has to fall over. */

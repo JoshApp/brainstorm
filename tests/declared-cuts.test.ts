@@ -22,7 +22,8 @@
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import { deriveAnchors } from '../src/level/anchors';
-import { planPortals } from '../src/level/portals';
+import { planPortals, portalInputs, wallCutsFor } from '../src/level/portals';
+import { planWallRingFull, WALL_T } from '../src/level/poly-shell-plan';
 import type { Poly } from '../src/level/room-shape';
 import type { WallCut } from '../src/level/link';
 
@@ -135,6 +136,66 @@ test('AND IT AGREES WITH THE HOLE THE RECTS ARE CURRENTLY CUTTING', () => {
     `only ${(overlapRate * 100).toFixed(1)}% of declared cuts overlap the rediscovered hole`);
   console.log(`  ${checked} cuts: ${(edgeRate * 100).toFixed(1)}% same edge, `
     + `${(overlapRate * 100).toFixed(1)}% overlapping`);
+});
+
+
+test('THE ENTRANCE IS EXACTLY AS TALL AS THE PASSAGE BEHIND IT', () => {
+  // Josh, from the phone: *"some corridors ceiling is lower than the carved entrance
+  // height thus creating a void gap — why do we even make different corridor height vs
+  // entrance heights?"* There was no reason. A doorway was cut FLOOR TO CEILING, because
+  // an opening carried no height, and a lintel was built afterwards to close it back
+  // down — positioned to hide behind the hood of the ARCHWAY that was supposed to fill
+  // it, through a page of algebra and a fake 0.7m width chosen to keep that algebra on
+  // the safe side of a clamp.
+  //
+  // With archways switched off (level/dressing.ts) nothing filled that band. Measured
+  // over 648 doorways: the lintel sat ABOVE the passage on 39.2% of them, up to 0.21m
+  // of raw void. Josh: *"that kinda sounds like this is messy and we should redo it
+  // completely."*
+  //
+  // It is one number now. `WallCut.height` states how tall the hole is, the ring never
+  // removes the wall above it, and the stone over a doorway is an ordinary span with
+  // its own vertical extent. So this is an EQUALITY, not a tolerance — there is no
+  // second computation left to drift.
+  let doors = 0, heads = 0;
+  for (const seed of SEEDS) {
+    for (const depth of DEPTHS) {
+      let spec;
+      try { spec = generatePolyFloor(depth, seed); } catch { continue; }
+      const byId = new Map((spec.corridors ?? []).map((c) => [c.id, c]));
+      for (const r of spec.rooms) {
+        if (!r.poly || r.poly.length < 3) continue;
+        const H = r.height;
+        const mine = portalInputs(r.id, spec.corridors ?? []).map((o) => ({
+          ...o.rect, link: o.link, cut: o.cut, passageH: byId.get(o.id)?.height,
+        }));
+        const plan = planWallRingFull(
+          r.poly as Poly, WALL_T, mine, undefined, wallCutsFor(r.poly as Poly, mine), H);
+        for (const d of plan.doorways) {
+          doors++;
+          const head = plan.spans.find((sp) => sp.head && sp.edge === d.edge
+            && Math.hypot(sp.a[0] - d.a[0], sp.a[1] - d.a[1]) < 1e-6);
+          if (!head) {
+            // Legitimate only when the passage reaches the ceiling and there is no
+            // band to fill. Anything else is a doorway with void over it.
+            assert.ok(H - d.passageH <= 0.12,
+              `${r.id} d${depth}/s${seed}: a doorway ${d.passageH.toFixed(2)}m tall in a `
+              + `${H.toFixed(2)}m room has NO stone over it — that gap is the void`);
+            continue;
+          }
+          heads++;
+          assert.equal(head.y0, d.passageH,
+            `${r.id} d${depth}/s${seed}: stone over the doorway starts at `
+            + `${head.y0.toFixed(3)}m and the passage ends at ${d.passageH.toFixed(3)}m`);
+          assert.equal(head.y1, H,
+            `${r.id} d${depth}/s${seed}: stone over the doorway stops at `
+            + `${head.y1.toFixed(3)}m, short of the ${H.toFixed(3)}m ceiling`);
+        }
+      }
+    }
+  }
+  assert.ok(doors > 400, `only ${doors} doorways — this measured nothing`);
+  assert.ok(heads > 300, `only ${heads} doorways had stone over them`);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

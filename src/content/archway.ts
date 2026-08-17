@@ -261,19 +261,6 @@ export function archGeometry(width: number, ceiling: number, openHeight?: number
 /** id → spec. Module-level, so the second floor's doorways are free. */
 const MEMO = new Map<string, ModelSpec>();
 
-/**
- * The top of the gate's own stone — where the hood ends and the wall begins.
- *
- * Exported because the WALL needs it: a polygon room closes its own doorways
- * with a lintel (level/poly-room-shell.ts), and the lintel has to start where
- * the gate stops. Solved from the same `archGeometry` the ring is laid on, so
- * the two cannot disagree about how tall the gate is.
- */
-export function archwayGateTop(width: number, ceiling: number, openHeight?: number): number {
-  const g = archGeometry(snap(width, WIDTH_STEP), snap(ceiling, 0.2),
-    openHeight === undefined ? undefined : snap(openHeight, 0.2));
-  return g.centreY + g.radius + VOUSSOIR_RADIAL + HOOD_RADIAL;
-}
 
 export function archway(opts: ArchwayOptions): ModelSpec {
   const width = snap(opts.width, WIDTH_STEP);

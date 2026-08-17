@@ -10,7 +10,6 @@ import { buildRng } from '../engine/rng';
 import { wearStream, WEAR_MIN, WEAR_RANGE } from './room-wear';
 import { polyBounds, pointInPoly, type Poly } from './room-shape';
 import { planWallRingFull, WALL_T, type OpeningRect, type WallSpan } from './poly-shell-plan';
-import { archwayGateTop } from '../content/archway';
 import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
@@ -218,7 +217,7 @@ export function buildPolyRoomShell(
   // it. `describeWalls` used to re-derive its own from the rects — see the note
   // on DescribeOpts.cuts and the 216m it disagreed by.
   const cuts = wallCutsFor(poly, openingRects);
-  const { spans, doorways } = planWallRingFull(poly, WALL_T, openingRects, undefined, cuts);
+  const { spans, doorways } = planWallRingFull(poly, WALL_T, openingRects, undefined, cuts, H);
   // HOW RUINED IS THIS ROOM, and then how ruined is each of its walls. Two
   // levels on purpose: one number per room and the room reads as one place;
   // one number per wall and a room can have three sound sides and a fourth
@@ -243,71 +242,25 @@ export function buildPolyRoomShell(
   const pieces: THREE.BufferGeometry[] = [];
   for (let i = 0; i < spans.length; i++) {
     const s = spans[i];
-    pieces.push(...spanGeometry(s, elev, H, wallWear(shellWear, wearRand), wearRand, i === collapseSpan));
+    // THE SPAN'S OWN EXTENT. A wall runs the room's full height; the stone over a
+    // doorway runs from the passage's ceiling to the room's, and shows a soffit
+    // because it has a doorway under it rather than floor. Both are ordinary spans
+    // now — see the note on WallSpan.y0.
+    pieces.push(...spanGeometry(
+      s, elev + s.y0, s.y1 - s.y0, wallWear(shellWear, wearRand), wearRand,
+      i === collapseSpan, !!s.head,
+    ));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
     // movement code already refuses any step that crosses a segment.
-    wallSegmentsOut.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
+    //
+    // NOT FOR A HEAD. Collision segments are 2D: they have no height, so a segment
+    // laid across the stone OVER a doorway would seal the doorway. The head's
+    // endpoints ARE the hole's endpoints, so this would wall off every opening in
+    // the dungeon while looking, from above, exactly like a room with doors.
+    if (!s.head) wallSegmentsOut.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
   }
 
-  // ── LINTELS — THE WALL CLOSES ITS OWN DOORWAYS ─────────────────────────────
-  //
-  // Josh: *"the geometry above the arch is unnecessary ... we can just build a
-  // proper arch."*
-  //
-  // He was right about the intent and the geometry could not simply go: the ring
-  // cuts an opening from FLOOR TO CEILING (OpeningRect carries no height), so
-  // something must fill the gap over an arch or every doorway shows void. It was
-  // being filled by the GATE, with a plate reaching to the ceiling — which is
-  // why it read as part of the gate, because it was.
-  //
-  // A lintel is the same closure built by the right owner. It is emitted through
-  // `spanGeometry`, exactly as a wall is, so it takes the wall's material, the
-  // wall's coursing, the wall's wear and the wall's merge group: there is no
-  // second material to mismatch and no seam to find, because it IS wall. The
-  // gate is then just a gate, and `closeAbove: false` stops it building the
-  // plate (level/portal-frames.ts passes it).
-  //
-  // WHERE IT STARTS is solved from the gate itself — `archwayGateTop`, off the
-  // same `archGeometry` the voussoir ring is laid on — with the LOWEST passage a
-  // corridor can have. The arch's springing sinks to clear a low corridor, so
-  // its top varies; taking the low end means a real gate always reaches UP into
-  // the lintel rather than stopping short of it. Stone overlapping stone is
-  // invisible; a hand's breadth of daylight over a doorway is not.
-  // WHY 1.9 AND NOT THE 2.3 A CORRIDOR ACTUALLY RUNS AT.
-  //
-  // Work the algebra and `archGeometry` collapses to gateTop = spring + rise +
-  // 0.31, with spring = clamp(cap - rise, 1.78, 2.20) and cap = min(ceiling -
-  // 0.14, openHeight). In the unclamped middle the rise cancels — gateTop is
-  // just cap + 0.31 — so a lower assumed passage always yields a lower lintel,
-  // which is the safe direction.
-  //
-  // At the BOTTOM clamp it stops cancelling, and that is the case worth naming:
-  // a passage under ~2.18m pins the springing at 1.78 and the real gate's top
-  // drops below what a 2.3m assumption predicts. Measured on the numbers, a 2.0m
-  // corridor lands 0.12m under it — a hand's breadth of daylight over the
-  // doorway. Corridors are documented at 2.3-2.6m today, so 2.3 would work
-  // today; 1.9 is below the clamp entirely and cannot be wrong when somebody
-  // rolls a lower tunnel. The cost of being early is stone behind stone, which
-  // is invisible.
-  // ── WHY THE WIDTH PASSED HERE IS NOT THE DOORWAY'S ─────────────────────────
-  //
-  // Work `archGeometry` through and it collapses to
-  //
-  //     gateTop = spring + rise + 0.31,   spring = clamp(cap - rise, 1.78, 2.20)
-  //     cap     = min(ceiling - 0.14, passageH)
-  //
-  // In the unclamped middle the rise CANCELS: gateTop is cap + 0.31 whatever the
-  // width, so the shell and the frame agree exactly even though the shell
-  // measures the doorway's outline and the frame measures the clear span.
-  //
-  // At the bottom clamp it stops cancelling and gateTop becomes 1.78 + rise +
-  // 0.31 — width matters, and the shell's width is always the LARGER of the two
-  // (an outline round a chamfer is longer than the way through). A sweep over
-  // the real range found exactly that: 0.09m of daylight over a doorway. So the
-  // shell asks for the MINIMUM rise by passing a narrow width. It is exact where
-  // width is irrelevant and conservative where it is not, which is the whole
-  // requirement in one substitution.
   // ── AND THE WALL CLOSES ITS DOORWAY BELOW, TOO ─────────────────────────────
   //
   // Josh, from three marks taken standing in the overlap band of cor-p0-0:
@@ -356,26 +309,23 @@ export function buildPolyRoomShell(
     pieces.push(sill);
   }
 
-  const MIN_RISE_WIDTH = 0.7;
-  for (const d of doorways) {
-    const headY = archwayGateTop(MIN_RISE_WIDTH, H, d.passageH);
-    const lintelH = H - headY;
-    // No room above the arch in a low chamber — the gate fills the wall by
-    // itself there, and a sliver of lintel would only z-fight its hood.
-    if (lintelH < 0.12) continue;
-    pieces.push(...spanGeometry(
-      // jambA/jambB FALSE: the reveals down each side of a doorway are already
-      // built, over the full height, by the flanking wall spans that were cut to
-      // make it. A lintel adding its own would lay them a second time in the
-      // same place.
-      { edge: d.edge, a: d.a, b: d.b, oa: d.oa, ob: d.ob, jambA: false, jambB: false },
-      elev + headY, lintelH, wallWear(shellWear, wearRand), wearRand, false,
-      // ...but it DOES need a soffit. Every other wall in the room has the floor
-      // under it; this one has a doorway, and without a cap you look up through
-      // the arch into the hollow of the shell.
-      true,
-    ));
-  }
+  // ── NO LINTEL PASS. THE RING BUILDS THE STONE OVER ITS OWN DOORWAYS ────────
+  //
+  // What stood here: for every doorway, solve `archwayGateTop(0.7, H, passageH)` to
+  // find where the ARCHWAY's hood would end, and build a lintel from there to the
+  // ceiling — a page of algebra, a fake 0.7m width chosen to keep the algebra on the
+  // safe side of a clamp, and a soffit cap.
+  //
+  // All of it existed because a doorway was cut floor-to-ceiling and somebody had to
+  // close it back down, and it was aimed at the archway rather than at the passage
+  // because the archway's ring stands above the clear opening. With archways switched
+  // off (level/dressing.ts) nothing filled that band: 39.2% of 648 doorways had their
+  // lintel ABOVE the passage, up to 0.21m of raw void — Josh's "corridor ceiling lower
+  // than the carved entrance height".
+  //
+  // The hole has a height now (link.ts, WallCut.height) and the ring never removes the
+  // wall above it, so the stone over a doorway is just another span. Nothing to solve,
+  // and nothing that looks wrong when a decoration is off.
   if (pieces.length > 0) {
     const merged = mergeGeometries(pieces, false);
     for (const g of pieces) g.dispose();
