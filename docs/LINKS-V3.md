@@ -90,22 +90,52 @@ More than it adds, which is the sign it is right:
 Rects do not disappear — nav, culling and occupancy read them — but they become a
 **derived view** of the polyline, generated once, never the record.
 
-## Order of work
+## Order of work — ALL FIVE STAGES LANDED, 2026-08-17
 
-Each stage leaves the floor buildable and is measured, not asserted.
+Each stage left the floor buildable and was measured, not asserted.
 
-1. **`Link` as a type, and geometry derived from it.** Build the polyline from the
-   existing router (it already produces exactly this — `LinkRoute` has legs,
-   thresholds and per-end widths), and generate rects from it instead of the reverse.
-   Gate: identical floors, `servedBy: route` unchanged.
-2. **Placement by socket.** Rooms placed by their link. Gate: **blind corridors 0**,
-   and the three blind producers deleted, not merely unused.
-3. **Declared cuts.** Link states its cut; drop `OVERLAP` and the trim. Gate: no
-   void and no z-fight at any threshold — the marks Josh took this morning, clean.
-4. **Width from space.** `corridorTypeForSpace` wired, now that width has one owner.
-   Gate: squeeze back near 24%, restore the 5% section floor.
-5. **Elevation over the polyline.** Legs carry heights; `flatFloors` retired. Gate:
-   the elevation suite passes with routed chords, which today it cannot.
+1. **`Link` as a type, and geometry derived from it.** ✓ Gate met: identical floors.
+2. **Placement by socket.** ✓ Gate met: **blind corridors 0**, all three producers gone.
+   Spine, pocket and chord are 100% routed.
+3. **Declared cuts.** ✓ `Link.aCut`/`bCut` state edge, span AND height. Gate met: over
+   648 doorways the hole matches the passage at the 5th, 50th and 95th percentile, and
+   the stone over a doorway starts exactly at the passage's ceiling — 0 mismatches.
+4. **Width from space.** ✓ `corridorTypeForSpace` wired. Squeeze 1.3% → ~40%, gallery
+   ~9%, 97% of floors carrying two or more sections. The word is applied AFTER the fact
+   by `sectionForWidth`, so it can never overstate what was built.
+5. **Elevation over the polyline.** ✓ A link states its LANDINGS, so the fall is spent
+   along the legs and the bend stays level for any leg count. `flatFloors`, `connectL`
+   and the 0.9m overlap all retired in the same change.
+
+## What this taught, and it is the reason to write it down
+
+**Every single defect in this rebuild was one producer's output being read as a shape.**
+
+- "Three rects, so the middle is the landing" — true of `connectL`, false of the router,
+  and that one sentence is why elevation was switched off for a week.
+- `w > d` as a travel axis — true while a leg is longer than it is wide, false for a Z's
+  middle leg and meaningless for a square landing. It was being used that way in six
+  places, including the shipping plate trim.
+- `min(w, d)` as a clear width — same fault, same six places.
+- `pointInPoly(rect end)` as "this corridor reaches this room" — true only because of the
+  0.9m overshoot, so dropping the overshoot silently returned NO DOORWAYS and the rift
+  planner cut thresholds off.
+- Counting non-dormant spawns as "the floor's fight" — an ambush pack is dormant by
+  design, so ambush rooms read as empty and 43% of every enemy in the game was placed by
+  a repair pass.
+
+The fix in every case was the same: **the thing that decided it should state it.** A
+corridor now states its width, its height, its axis, and whether it is a leg or a
+landing. Nothing infers those from a bounding box.
+
+**And the audits were wrong more often than the code.** Nine separate checks in this
+rebuild reported a healthy floor as broken, every one because it called the real function
+differently than the game does — the flood keying cells with `Math.round` exactly on the
+tie boundary (which cost hours chasing a wall that was not there), ten call sites
+hand-mapping `{ id, rect }` into `planPortals` and stripping the declaration, a control
+that required real data to still disagree. `docs/DESIGN-METHOD.md` says every audit tool
+imports the real function. That is not enough: **it has to call it the way the game calls
+it**, and where the input is easy to get wrong the function should build it itself.
 
 ## The measurements this replaces guesswork with
 

@@ -30,7 +30,7 @@ import { linkFromRoute, rectsFromLink, type Link } from './link';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
-import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
+import { planElevation, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
 import { plateExtentFor } from './corridor-trim';
 import { connectivityFaults } from './floor-connectivity';
@@ -836,8 +836,24 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // The pocket sits one link off its parent, so the fall this has to carry is
     // bounded by that link plus the spine span from the parent to the target.
     const span = Math.abs(spineOf(loopPocket!.parent) - spineOf(b.id)) + 1;
+    // The ramp budget. Asked 371 times over 240 floors and vetoes NONE of them, now
+    // that the router's leg minimums predict the built length — but it is a numeric
+    // budget, not a structural guarantee, so it stays: a grade retune could make it
+    // matter again, and then the floor rerolls rather than shipping a step.
     if (!chordSkipFits(span, run)) continue;
-    if (linkRectsMisplaced({ from: a.id, to: b.id, rects: conn.rects }, roomRects)) continue;
+    // ── TWO GUARDS DELETED HERE, BECAUSE THE ROUTER MAKES THEM IMPOSSIBLE ────
+    //
+    // `linkRectsMisplaced` and `plateInsideRoom` both asked "does a rect of this link
+    // lie inside a room's floor". They existed because `connectL` had no self-room
+    // check — its own comment said so — and once placement was freed it put 3.84m of
+    // corridor floor inside a room on d11/s777.
+    //
+    // connectL is deleted, and the router checks its own legs against every room's
+    // polygon before it returns. Measured over 240 floors: both were asked 371 times
+    // and vetoed ZERO, which is exactly what docs/LINKS-V3.md predicted for them —
+    // "impossible by construction now". A guard that cannot fire is not protection; it
+    // is a standing claim that something upstream might be wrong, and it sends the next
+    // reader looking for a caller that no longer exists.
     // ── AND NO LEG MAY LIE INSIDE A ROOM ──────────────────────────────────
     //
     // `connectL` is the pre-anchor path and has no self-room check — the router
@@ -848,7 +864,6 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     //
     // Checked on the PLATE the builder is handed, not on the rect: the rect is
     // meant to end inside the room, and measuring it would reject every chord.
-    if (conn.rects.some((rc) => plateInsideRoom(rc, rooms))) continue;
     // `connectL`, which is pre-anchor — see RoomSpec.servedBy. Stamped rather
     // than left blank so the chord counts as its own producer instead of
     // disappearing into "unknown".
@@ -2104,40 +2119,6 @@ function landsInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
   return rooms.some((r) => pointInPoly(r.poly, rect.x, rect.z));
 }
 
-/**
- * Does the plate this rect will actually BUILD lie inside a room's floor?
- *
- * `landsInsideRoom` above asks about the rect's CENTRE, which answers a
- * different question: a leg is meant to end inside the room it serves, so its
- * centre being outside says nothing about the metres of slab behind it.
- *
- * This measures the plate the trim will hand the builder — pulled back to the
- * wall's outer face — and walks its length looking for a continuous run inside
- * a room's polygon. That is the thing the player can see: corridor floor
- * standing in a room that has its own. Via `plateExtentFor`, so it is the
- * builder's own answer rather than a second opinion about it.
- */
-function plateInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
-  const polys = rooms.map((r) => r.poly);
-  const p = plateExtentFor(rect, polys);
-  const alongX = p.w >= p.d;
-  const lat = alongX ? p.z : p.x;
-  const lo = (alongX ? p.x : p.z) - (alongX ? p.w : p.d) / 2;
-  const len = alongX ? p.w : p.d;
-  for (const poly of polys) {
-    let run = 0;
-    for (let i = 0; i <= 120; i++) {
-      const t = lo + (len * i) / 120;
-      const inside = pointInPoly(poly, alongX ? t : lat, alongX ? lat : t);
-      // A CONTINUOUS run, not a count: a plate legitimately clips a chamfered
-      // corner for a few centimetres, and rejecting that would refuse most
-      // chords for doing their job.
-      run = inside ? run + len / 120 : 0;
-      if (run > 0.05) return true;
-    }
-  }
-  return false;
-}
 
 
 /**
