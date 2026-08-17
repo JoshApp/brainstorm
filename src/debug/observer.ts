@@ -525,9 +525,20 @@ const api = {
         drawRay(h as { point?: { x: number; y: number; z: number } } | undefined);
         const at = api.here() as Record<string, unknown>;
         const cor = at.corridor as { id: string; servedBy: string } | null;
+        // THE HIT's corridor provenance, not just the one you are standing in.
+        // Josh's first real use pointed at a surface 6.78m away belonging to
+        // cor-1 while he stood in poly-0, and the readout showed servedBy for the
+        // corridor he was IN (none) rather than for the thing he was LOOKING AT —
+        // which is the whole question when a hull is poking into a room.
+        const hitCor = h?.inCorridor
+          ? (spec()?.corridors ?? []).find((c) => c.id === h.inCorridor)
+          : undefined;
+        const hitTag = h?.inCorridor
+          ? ` / ${h.inCorridor}${hitCor?.servedBy ? ` (${hitCor.servedBy})` : ''}`
+          : '';
         hud.textContent = h
           ? `${h.name || '(unnamed)'}  ${h.origin ? `[${h.origin}]` : ''}\n`
-            + `${h.at}m · in ${h.inRoom ?? '—'}${h.inCorridor ? ` / ${h.inCorridor}` : ''}\n`
+            + `${h.at}m · in ${h.inRoom ?? '—'}${hitTag}\n`
             + `you: ${at.room ?? '—'}${cor ? ` / ${cor.id} (${cor.servedBy})` : ''}   —   M to mark`
           : `nothing within 30m\nyou: ${at.room ?? '—'}${cor ? ` / ${cor.id}` : ''}   —   M to mark`;
       }, 250);
