@@ -91,6 +91,17 @@ function roomGraph(spec: LevelSpec): Map<string, Set<string>> {
   for (const legs of byLink.values()) {
     const hit = new Set<string>();
     for (const c of legs) {
+      // ── THE LINK NAMES ITS TWO ROOMS ───────────────────────────────────────
+      //
+      // This tested BOX OVERLAP, which only reported an edge because a corridor rect
+      // was pushed 0.9m THROUGH the wall so the boxes would intersect. Stage 3 of
+      // docs/LINKS-V3.md stops the rect at the threshold, and the boxes then merely
+      // abut — this reported 0 edges for 7 rooms, i.e. a floor of isolated rooms, on
+      // floors that are perfectly well connected. The comment above already learned
+      // the neighbouring half of this lesson ("PER LINK, not per rect"); the rest of
+      // it is that the link knows WHICH rooms, and does not have to be asked in
+      // geometry at all.
+      if (c.link) { hit.add(c.link.fromRoom); hit.add(c.link.toRoom); continue; }
       for (const r of rooms) {
         if (Math.abs(c.rect.x - r.rect.x) < (c.rect.w + r.rect.w) / 2
           && Math.abs(c.rect.z - r.rect.z) < (c.rect.d + r.rect.d) / 2) hit.add(r.id);

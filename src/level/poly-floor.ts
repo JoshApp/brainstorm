@@ -257,6 +257,28 @@ const SHADOW_SHARE = 0.35;
 const DESCENT_CLEAR = 2.2;
 /** How far a corridor pushes past a room's wall, so the opening rect straddles
  *  the wall it is meant to cut instead of stopping at it. */
+/**
+ * How far each end rect pushes PAST its threshold, into the room.
+ *
+ * ── STILL 0.9, AND THE REASON IS NOW EXACTLY ONE THING ────────────────────────
+ *
+ * Stage 3 of docs/LINKS-V3.md set out to delete this. Every consumer that used to
+ * rediscover a doorway from the overshoot has been moved onto the link's DECLARED
+ * cut — the wall ring, the frames, the portal planner, the floor's connectivity gate,
+ * the room graph — and with the overlap set to 0 all of them still work.
+ *
+ * What does not is `connectL`, the pre-anchor L-router that still serves the loop
+ * chord on ELEVATED floors (the routed chord is flat-gated; see the note on
+ * `routedChord`). It produces rects and no link, so it declares no cut, and with
+ * nothing to declare and no overlap to be found by it becomes invisible: measured at
+ * overlap 0, floors carrying a loop fell from 66/72 to 38/72 and a loop's chord
+ * contributed no graph edge at all.
+ *
+ * So the overlap's last dependency is the elevation router, which is stage 5 of the
+ * charter — legs carry their own heights, `connectL` and `flatFloors` both retire, and
+ * this constant goes to 0 in the same change. It is not a number to tune; it is a
+ * migration marker, and it now marks exactly one thing.
+ */
 const OVERLAP = 0.9;
 /**
  * Per ELIGIBLE room — a plain, non-bookend room with no centrepiece.

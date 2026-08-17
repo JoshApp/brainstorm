@@ -186,11 +186,20 @@ test('AND THE AGGREGATE HOLDS ON REAL FLOORS', () => {
       return v;
     };
     for (const c of spec.corridors) {
-      const ends: Array<[number, number]> = [
-        [c.rect.x - c.rect.w / 2, c.rect.z], [c.rect.x + c.rect.w / 2, c.rect.z],
-        [c.rect.x, c.rect.z - c.rect.d / 2], [c.rect.x, c.rect.z + c.rect.d / 2],
-      ];
-      const touch = rooms.filter((r) => ends.some((e) => pointInPoly(r.poly as Poly, e[0], e[1])));
+      // ── WHICH ROOMS DOES THIS CORRIDOR JOIN? THE LINK SAYS ─────────────────
+      //
+      // This used to test whether the rect's END POINTS fell inside a room's polygon,
+      // which only worked because the rect was deliberately pushed 0.9m THROUGH the
+      // wall. Stage 3 of docs/LINKS-V3.md stops it at the threshold, and the moment it
+      // did this sampled ZERO links and reported "this measured nothing" — an audit
+      // reading a fact off a hack instead of off the record.
+      const link = c.link;
+      const touch = link
+        ? rooms.filter((r) => r.id === link.fromRoom || r.id === link.toRoom)
+        : rooms.filter((r) => [
+            [c.rect.x - c.rect.w / 2, c.rect.z], [c.rect.x + c.rect.w / 2, c.rect.z],
+            [c.rect.x, c.rect.z - c.rect.d / 2], [c.rect.x, c.rect.z + c.rect.d / 2],
+          ].some((e) => pointInPoly(r.poly as Poly, e[0], e[1])));
       if (touch.length < 2) continue;
       links++;
       const A = { poly: touch[0].poly as Poly, anchors: anch(touch[0]) };

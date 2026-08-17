@@ -142,6 +142,39 @@ function overlapOpening(cor: GraphNode, room: GraphNode): { x: number; z: number
   return null;
 }
 
+/**
+ * The doorway a LINK declares between these two nodes, if there is one.
+ *
+ * ONLY corridor ↔ room. The link names the room and states the cut it enters by, so
+ * the doorway's midpoint is read off the room's own outline rather than off where two
+ * boxes happen to overlap.
+ *
+ * Room ↔ room is never an edge — there is always stone between two rooms. And
+ * corridor ↔ corridor is a DOGLEG JOINT, which is a corner two legs share by
+ * construction rather than a hole in anything: `sharedOpening` takes the centre of
+ * their real overlap, which is the joint, where naming the two legs and averaging
+ * their centres gives a point diagonally off it and outside both rects.
+ */
+function declaredOpening(
+  a: GraphNode, b: GraphNode,
+  spec: { rooms: RoomSpec[]; corridors: RoomSpec[] },
+): { x: number; z: number } | null {
+  if (a.isCorridor === b.isCorridor) return null;
+  const cor = a.isCorridor ? a : b, room = a.isCorridor ? b : a;
+  const spec_c = spec.corridors.find((c) => c.id === cor.id);
+  const link = spec_c?.link;
+  if (!link) return null;
+  const cut = link.fromRoom === room.id ? link.aCut
+    : link.toRoom === room.id ? link.bCut
+    : null;
+  if (!cut) return null;
+  const poly = spec.rooms.find((r) => r.id === room.id)?.poly;
+  if (!poly || poly.length < 3) return null;
+  const p = poly[cut.edge % poly.length], q = poly[(cut.edge + 1) % poly.length];
+  const t = (cut.t0 + cut.t1) / 2;
+  return { x: p[0] + (q[0] - p[0]) * t, z: p[1] + (q[1] - p[1]) * t };
+}
+
 /** Build the adjacency graph for a floor. `logicalOnly` sub-rooms are excluded
  *  (they have no geometry and would shadow their parent — same rule the culler
  *  uses), so rectAt falls through to the real rect that owns the space. */
@@ -161,7 +194,19 @@ export function buildRoomGraph(spec: { rooms: RoomSpec[]; corridors: RoomSpec[] 
   for (let i = 0; i < arr.length; i++) {
     for (let j = i + 1; j < arr.length; j++) {
       const a = arr[i], b = arr[j];
-      let o = sharedOpening(a, b);
+      // ── A DECLARED DOORWAY IS AN EDGE, AND IT DOES NOT NEED THE BOXES ──────
+      //
+      // Stage 3 of docs/LINKS-V3.md. Everything below this was rect geometry: a
+      // shared wall line, or failing that a corridor whose box ends inside a room's.
+      // That second rule only worked because a corridor rect was deliberately pushed
+      // 0.9m THROUGH the wall so it would overlap — and the moment the overlap was
+      // dropped the graph fell to ZERO edges for seven rooms, taking every loop, the
+      // wall-eye navigation and the cul-de-sac accounting with it.
+      //
+      // The link states which rooms it joins and where it enters each. Asked first,
+      // so the boxes are only consulted for the pairs that have no link to ask.
+      let o = declaredOpening(a, b, spec);
+      if (!o) o = sharedOpening(a, b);
       // ROOM-TO-ROOM IS THE ONLY PAIR THAT MAY NOT OVERLAP-CONNECT. Two polygon
       // rooms whose bounding boxes overlap are two rooms with walls between
       // them and a box that lies about it. Corridor-to-room is the polygon
