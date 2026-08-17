@@ -42,6 +42,7 @@
 import * as THREE from 'three';
 import { WALL_T } from '../level/poly-shell-plan';
 import { veilKnobs } from '../debug/tuning-veil';
+import { VEIL_ORDER, SIGNAL_ORDER } from './signal-layer';
 
 interface Veil {
   mesh: THREE.Mesh;
@@ -132,7 +133,8 @@ export function spawnThresholdVeil(
   const y = floorY + height / 2;
   mesh.position.set(x, y, z);
   mesh.rotation.y = rotY;
-  mesh.renderOrder = 3;
+  // Below SIGNAL_ORDER, which is the whole point — see scene/signal-layer.ts.
+  mesh.renderOrder = VEIL_ORDER;
   mesh.name = 'threshold-veil';
   scene.add(mesh);
   veils.push({ mesh, mat, x, z, y });
@@ -151,6 +153,7 @@ export function tickThresholdVeils(playerPos: THREE.Vector3): void {
   const far = veilKnobs.liftFar();
   const strength = veilKnobs.strength();
   const span = Math.max(0.01, far - near);
+  const through = veilKnobs.signalThrough() > 0.5;
   for (const v of veils) {
     const dx = playerPos.x - v.x, dy = playerPos.y - v.y, dz = playerPos.z - v.z;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -158,6 +161,9 @@ export function tickThresholdVeils(playerPos: THREE.Vector3): void {
     const eased = t * t * (3 - 2 * t);
     const a = eased * strength;
     v.mat.opacity = a;
+    // Above the signal layer means the veil eats it too — the pre-split behaviour, kept as
+    // a live A/B rather than as a memory of what it used to look like.
+    v.mesh.renderOrder = through ? VEIL_ORDER : SIGNAL_ORDER + 5;
     // A fully-lifted veil is not drawn at all. A hundred transparent quads at alpha 0 are
     // a hundred draws that do nothing, and the ones you are standing among are exactly
     // the ones that are lifted.

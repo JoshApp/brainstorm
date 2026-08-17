@@ -7,6 +7,7 @@ import { emit } from '../broadcast/event-bus';
 import { whisper, dismissWhisper } from '../ui/whisper';
 import { showNote } from '../ui/note-card';
 import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
+import { markAsSignal } from '../scene/signal-layer';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 import { createPickup } from './pickup';
@@ -68,6 +69,9 @@ export function spawnCorpse(
       intensity: 0.95,
     });
     glint = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), glintMat);
+    // SIGNAL — the same argument as the wall rune. A glint is how a fallen delver is found
+    // at all, and it is gated by the lamp already; the veil should not get a second vote.
+    markAsSignal(glint);
     const glintSlot = built.slots.get('loot_glint');
     if (glintSlot) glint.position.copy(glintSlot.position);
     else glint.position.set(...GLINT_FALLBACK);

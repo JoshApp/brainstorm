@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-08-17",
     "entries": [
       {
+        "tag": "add",
+        "text": "The dark keeps to the doorways now. Lean in and it gives way; step through and it closes behind you.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The floor is one stone from room to corridor, and the lintel stopped arguing with the ceiling behind it.",
         "area": [
@@ -392,14 +400,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "The stone splits where nothing was built, and the faces have worn round under whatever has passed over them.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone stops looking like a dealt hand. The joints were cut too clean to be believed, and now they are worn back.",
         "area": [
           "atmosphere",
           "level"

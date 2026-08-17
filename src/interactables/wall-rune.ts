@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
+import { markAsSignal } from '../scene/signal-layer';
 import { whisper, dismissWhisper } from '../ui/whisper';
 import { emit } from '../broadcast/event-bus';
 import type { WallMark } from '../content/wall-marks';
@@ -41,6 +42,11 @@ export function spawnWallRune(
     intensity: RUNE_INTENSITY,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(RUNE_W, RUNE_H), mat);
+  // SIGNAL. A glyph is the dungeon telling you where to look, so a veiled doorway must not
+  // swallow it. This changes nothing at range: the reveal material's own alpha is driven by
+  // lamp proximity and cone, so a rune two rooms away is still dark — it only stops the
+  // veil eating one you are close enough to read. See scene/signal-layer.ts.
+  markAsSignal(mesh);
   mesh.position.copy(pos);
   mesh.rotation.y = yaw;
   mesh.renderOrder = 2;       // draw after walls so the additive glow reads

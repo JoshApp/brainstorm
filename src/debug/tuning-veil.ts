@@ -28,4 +28,15 @@ const strength = tuneNumber({
   hint: '0 = no veils at all · 1 = a doorway you have not approached is pure black',
 });
 
-export const veilKnobs = { liftNear, liftFar, strength };
+// The A/B for the layer split itself. At 0 the veil draws OVER the signal layer again —
+// the behaviour before scene/signal-layer.ts existed — so the two can be compared standing
+// in one doorway rather than remembered across a rebuild. The whole claim is that darkness
+// should change the CHANNEL rather than remove the information, and that claim should be
+// falsifiable in one drag.
+const signalThrough = tuneNumber({
+  id: 'veilsig', group: GROUP, label: 'veil · signal through',
+  min: 0, max: 1, step: 1, value: 1, apply: 'live',
+  hint: '1 = flames, runes and glints punch through a veiled doorway · 0 = the veil eats them too',
+});
+
+export const veilKnobs = { liftNear, liftFar, strength, signalThrough };
