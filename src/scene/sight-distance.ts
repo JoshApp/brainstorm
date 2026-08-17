@@ -88,11 +88,11 @@ export function setSight(n: number, f: number): void {
 // The dials. Live tier: nothing here rebuilds a shader — the fog values are
 // uniforms, the far plane is a matrix, and the culler recomputes every frame.
 const nearKnob = tuneNumber({
-  id: 'fognear', group: 'Sight', label: 'Fog near', min: 0, max: 12, value: CONFIG.FOG_NEAR,
+  id: 'fognear', group: 'Dark', label: 'Fog near', min: 0, max: 12, value: CONFIG.FOG_NEAR,
   hint: 'where the dark starts closing in',
 });
 const farKnob = tuneNumber({
-  id: 'fogfar', group: 'Sight', label: 'Fog far', min: 4, max: 40, value: CONFIG.FOG_FAR,
+  id: 'fogfar', group: 'Dark', label: 'Fog far', min: 4, max: 40, value: CONFIG.FOG_FAR,
   hint: 'the black wall. p50 room is 13m long, p90 is 16.5m',
 });
 onKnobChange(() => setSight(nearKnob(), farKnob()));

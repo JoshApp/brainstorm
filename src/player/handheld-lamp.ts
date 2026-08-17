@@ -27,7 +27,8 @@ import { disposeGpu, disposeGpuTree } from '../scene/gpu-dispose';
 // pendulum arc — no manual parametric-arc math needed in the tick.
 
 import { CONFIG } from '../config';
-import { registerLight, unregisterLight } from '../scene/light-pool';
+import { darkKnobs } from '../debug/tuning-dark';
+import { registerLight, unregisterLight, type LightSource } from '../scene/light-pool';
 import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import { mergeRigidViewmodel } from './viewmodel-merge';
 import { getLanternSwing, getBobOffset } from './viewmodel-bob';
@@ -71,6 +72,8 @@ interface LampState {
 }
 
 let lamp: LampState | null = null;
+/** The registered source, kept so its `distance` can be driven live. */
+let lampSource: LightSource | null = null;
 
 // HINGE position — where the pendulum's pivot sits. Two carry poses,
 // swapped on equip (setLampStowed); tickLamp eases between them:
@@ -330,7 +333,10 @@ export function attachLamp(camera: THREE.Camera) {
   };
   lamp = state;
 
-  registerLight({
+  // Held, not just passed: the light pool reads `distance` off the source every tick, so
+  // keeping the reference is what makes the Dark tab's `lamp reach` slider live. Intensity
+  // already had a callback for the flicker; reach never needed one until now.
+  const src: LightSource = {
     id: 'player-lamp',
     category: 'lamp',  // own dedicated slot — never crowded out
     position: worldPos,
@@ -340,7 +346,9 @@ export function attachLamp(camera: THREE.Camera) {
     decay: 1.4,
     getIntensity: () => state.currentIntensity,
     persistent: true,
-  });
+  };
+  lampSource = src;
+  registerLight(src);
 }
 
 /** Live lamp intensity (flicker included) — for the spot-shadow split to track. */
@@ -394,6 +402,11 @@ export function tickLamp(dt: number) {
       Math.sin(f * 7.3) * 0.06 +
       Math.sin(f * 13.1) * 0.03 +
       Math.sin(f * 23.7) * 0.02;
+  // The Dark tab's `lamp strength` slider, live. The lamp is the baseline the whole
+  // lighting grammar is stated against ("anything brighter than the lamp is a signal"),
+  // so it has to be draggable next to the crush rather than in another panel.
+  lamp.baseIntensity = darkKnobs.lampIntensity();
+  if (lampSource) lampSource.distance = darkKnobs.lampDistance();
   lamp.currentIntensity = lamp.baseIntensity * (1 + flicker);
 
   // Ease the carry pose toward the current target (RAISED ↔ STOWED) so

@@ -322,7 +322,12 @@ setFlameMeshBatchScene(scene);
 // brighter (flat wash on the stone). Trimming the fill here — rather than via a
 // low global exposure — lets exposure stay high enough that the EMISSIVE/additive
 // flames stay vivid (a low exposure dimmed them to faint/transparent).
-const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * 0.3);
+// NO 0.3 HERE. It used to read `CONFIG.AMBIENT_INTENSITY * 0.3`, and it was dead: the
+// frame loop rewrites `ambient.intensity` every tick (engine/systems.ts, the note about
+// keeping the ambient CONSTANT), so the multiply survived exactly one frame and the real
+// ambient has been the full authored value all along. A line that states 0.54 while the
+// game runs at 1.80 is worse than no line — it is the number you would tune against.
+const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
 
 // GPU compute embers (WebGPU-only) — rise off the torches. Builds the storage

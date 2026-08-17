@@ -28,6 +28,7 @@ import { flushLux, luxPending } from '../debug/lux';
 import { tickSurfaceSeep } from '../style/surface-detail';
 import { flushSplats } from '../scene/splat-map';
 import { tickGoreWebGPU } from '../scene/gore-webgpu';
+import { darkKnobs } from '../debug/tuning-dark';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
@@ -353,14 +354,18 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // PS1 path ignores renderer tone mapping (render-to-target), so the dark
       // lift lives in the blit shader (additive shadow-raise). Ambient is a
       // secondary fill (applied during the scene render, so it works there).
-      setDarkAdapt(adapt);
+      // Scaled by the Dark tab's `eye adaptation` knob, at the SIGNAL rather than in the
+      // shader, so 0 takes the rune-reveal hint with it too — see tuning-dark.ts.
+      setDarkAdapt(adapt * darkKnobs.adaptMul());
       // Keep the ambient CONSTANT. Its fill colour is a COOL 0x1a1e24, so ramping
       // it with dark-adaptation flooded the whole image with cool/green and
       // bloom-blur. The dark-adapt softening lives in the grade's shader lift
       // (render-webgpu.ts) instead — warm, darkness-weighted, leaves the lit side
       // alone.
+      // Through the knob, so the Dark tab's `ambient fill` slider is live. It reads
+      // CONFIG.AMBIENT_INTENSITY as its authored default, so nothing moves until dragged.
       ambient.intensity = isInspectActive() ? INSPECT_AMBIENT
-        : CONFIG.AMBIENT_INTENSITY;
+        : darkKnobs.ambient();
       updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
     } },
 

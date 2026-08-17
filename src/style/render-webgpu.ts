@@ -263,6 +263,53 @@ export function setWebGPULeanBloom(on: boolean): void {
 // CRUSH_FLOOR is per-preset (truer blacks far away = the big value-separation
 // lever); the START/END distances stay global.
 const CRUSH_START_M = 6, CRUSH_END_M = 12;
+
+// ── THE CRUSH IS ON LIVE UNIFORMS NOW, AND IT IS THE FIRST THING TO REACH FOR ──
+//
+// Josh: *"we need a solution for the darkness — the crush to black is too hard"*, then
+// *"it should just make the crush to black go away."* It was three baked constants, so the
+// only way to judge it was to edit, rebuild and walk back to the same corridor.
+//
+// WHAT IS ACTUALLY DOUBLED HERE, because it is worth stating before anyone drags a slider.
+// Distance is darkened TWICE and by two systems that do not know about each other: linear
+// fog reaches FOG_COLOR (pure black) at FOG_FAR = 9m, and this multiplies the whole frame
+// toward `crushFloor` over 6→12m. So a surface at 9m is both fogged to black and cut to
+// 16%. Raising the fog far without dropping the crush moves the wall, it does not remove
+// it — the two knobs have to be read together, which is why they now sit in one tab.
+//
+// Live uniforms rather than pipeline rebuilds: a knob you can only judge by reloading is a
+// knob nobody tunes. `crushfloor` at 1.0 removes the crush entirely.
+const crushFloorNode = (uniform as any)(0.16);
+const crushStartNode = (uniform as any)(CRUSH_START_M);
+const crushEndNode = (uniform as any)(CRUSH_END_M);
+const legFloorNode = (uniform as any)(0.18);
+const legGammaNode = (uniform as any)(0.62);
+
+/**
+ * Push the darkness knobs. Called by debug/tuning-dark.ts, and seeded from the active
+ * grade at pipeline build so a grade preset still owns the authored look.
+ */
+export function setWebGPUDarkness(v: {
+  crushFloor?: number; crushStart?: number; crushEnd?: number;
+  legFloor?: number; legGamma?: number;
+}): void {
+  if (v.crushFloor !== undefined) (crushFloorNode as any).value = v.crushFloor;
+  if (v.crushStart !== undefined) (crushStartNode as any).value = v.crushStart;
+  if (v.crushEnd !== undefined) (crushEndNode as any).value = v.crushEnd;
+  if (v.legFloor !== undefined) (legFloorNode as any).value = v.legFloor;
+  if (v.legGamma !== undefined) (legGammaNode as any).value = v.legGamma;
+}
+
+/** What the authored look says, for a panel that wants to show the default. */
+export function webGPUDarknessAuthored(): {
+  crushFloor: number; crushStart: number; crushEnd: number; legFloor: number; legGamma: number;
+} {
+  return {
+    crushFloor: getActiveGrade().crushFloor,
+    crushStart: CRUSH_START_M, crushEnd: CRUSH_END_M,
+    legFloor: LEGIBILITY_FLOOR, legGamma: LEGIBILITY_GAMMA,
+  };
+}
 // FOG INSCATTER — the air glows the lights' colour, thicker with distance. The
 // original reused the BLOOM texture (the blurred bright pass) as the haze colour
 // × a depth weight, so it's coloured by whatever lights are near. We do the same.
@@ -750,7 +797,14 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
   if (crushOn) {
-    const crush = (mix as any)(float(1.0), float(G.crushFloor), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+    // Seed the live uniform from the grade, so a preset still authors the look and the
+    // slider starts where the preset put it.
+    (crushFloorNode as any).value = G.crushFloor;
+    // Hand-rolled smoothstep: TSL's takes edge values, and these are NODES now so they can
+    // be dragged. t = clamp((d - a) / (b - a)), then the usual 3t² - 2t³.
+    const span = (crushEndNode as any).sub(crushStartNode).max(float(0.001));
+    const t = distM.sub(crushStartNode).div(span).clamp(0.0, 1.0);
+    const crush = (mix as any)(float(1.0), crushFloorNode, t.mul(t).mul(float(3.0).sub(t.mul(2.0))));
     lit = lit.mul(crush);
   }
 
@@ -845,8 +899,8 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   {
     const amt: any = legibilityNode;
     let d: any = col.max(_float(0.0)).pow(_float(1.0 / 2.2));            // linear → display
-    d = d.pow((mix as any)(_float(1.0), _float(LEGIBILITY_GAMMA), amt)); // open the shadow toe
-    const floorV: any = amt.mul(_float(LEGIBILITY_FLOOR));
+    d = d.pow((mix as any)(_float(1.0), legGammaNode, amt));             // open the shadow toe
+    const floorV: any = amt.mul(legFloorNode);
     d = d.mul(_float(1.0).sub(floorV)).add(floorV);                      // pedestal; white pinned
     col = d.pow(_float(2.2));                                            // display → linear
   }

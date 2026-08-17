@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The floor is one stone from room to corridor, and the lintel stopped arguing with the ceiling behind it.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The floor runs unbroken through every doorway now, and the corners of a turning passage are whole.",
         "area": [
           "level",
@@ -392,14 +400,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The stone stops looking like a dealt hand. The joints were cut too clean to be believed, and now they are worn back.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The flagstones have lost corners and their edges no longer match. Something has been dragged over this floor for a very long time.",
         "area": [
           "atmosphere",
           "level"

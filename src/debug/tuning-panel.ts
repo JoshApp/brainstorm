@@ -21,6 +21,8 @@ import {
 // Side-effect imports: register knob groups that nothing else pulls in. Without
 // these the groups only appear once something happens to import the module.
 import './tuning-view';
+// The darkness tab — see tuning-dark.ts for why these four systems belong together.
+import './tuning-dark';
 import './tuning-grade';
 import { allPresets, applyPreset, savePreset } from './tuning-presets';
 
