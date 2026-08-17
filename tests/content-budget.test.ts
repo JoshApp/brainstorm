@@ -1,13 +1,26 @@
 // The per-floor content budget (procgen v3). These lock in the load-bearing
-// guarantees: a floor is NEVER empty (the bug this system exists to kill),
-// combat scales with depth, intensity bands by depth, and the whole thing is
-// deterministic given a seeded rand.
+// guarantees: a floor is NEVER empty (the bug this system exists to kill), combat
+// scales with depth, the ceiling holds, and the whole thing is deterministic given
+// a seeded rand.
+//
+// ── THE COMBAT CLAIMS ARE MEASURED ON THE GENERATOR NOW ──────────────────────
+//
+// They used to be measured on `combatCount`, a depth-only formula in
+// content-budget.ts. It passed every one of them and was READ BY NOBODY — the
+// density the player met came from a per-room area rule, and a repair pass patched
+// the minimum on the finished floor. So these tests were green while the thing they
+// claimed to protect was decided somewhere else entirely, which is worse than
+// having no test: it certified a number that never reached the game.
+//
+// `allocateCombat` in poly-floor.ts now owns the number, and the claims are checked
+// where they are true or not — on the live enemies of generated floors.
 //
 //   npm test
 
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config';
-import { combatCount, combatIntensity, floorContentBudget, floorEvents } from '../src/level/content-budget';
+import { floorContentBudget, floorEvents } from '../src/level/content-budget';
+import { generatePolyFloor } from '../src/level/poly-floor';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -32,50 +45,51 @@ function lcg(seed: number): () => number {
 
 const B = CONFIG.CONTENT_BUDGET;
 
-test('a floor is NEVER empty — count >= COMBAT_MIN across depths and seeds', () => {
-  for (let depth = 1; depth <= 20; depth++) {
-    for (let seed = 0; seed < 50; seed++) {
-      const n = combatCount(depth, lcg(seed * 7 + depth));
-      assert.ok(n >= B.COMBAT_MIN, `depth ${depth} seed ${seed} → ${n} < MIN ${B.COMBAT_MIN}`);
-      assert.ok(n >= 1, 'and certainly never zero');
-    }
+/** Live (non-dormant) enemies on real generated floors. A dormant spawn is a boss
+ *  behind a fog gate or a sleeping ambusher — the floor's fight is what stands up. */
+function liveCounts(depth: number, n = 40): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    try {
+      const spec = generatePolyFloor(depth, 5000 + i * 7919) as unknown as
+        { spawns?: Array<{ dormant?: boolean }> };
+      out.push((spec.spawns ?? []).filter((x) => !x.dormant).length);
+    } catch { /* a floor that fails its own soundness checks rerolls in play */ }
+  }
+  return out;
+}
+
+test('a floor is NEVER empty — live enemies >= COMBAT_MIN at every depth', () => {
+  // THE BUG THIS SYSTEM EXISTS TO KILL. Shallow floors could roll a walk with no
+  // fight in it. Asserted on the floor the player actually gets.
+  for (const depth of [1, 2, 3, 6, 9]) {
+    const counts = liveCounts(depth);
+    assert.ok(counts.length > 30, `only ${counts.length} floors generated at d${depth}`);
+    const min = Math.min(...counts);
+    assert.ok(min >= B.COMBAT_MIN,
+      `depth ${depth}: a floor shipped with ${min} live enemies, under COMBAT_MIN ${B.COMBAT_MIN}`);
   }
 });
 
-test('count is capped at COMBAT_MAX even very deep', () => {
-  for (let seed = 0; seed < 50; seed++) {
-    const n = combatCount(99, lcg(seed));
-    assert.ok(n <= B.COMBAT_MAX, `depth 99 seed ${seed} → ${n} > MAX ${B.COMBAT_MAX}`);
+test('the ceiling holds — no floor becomes soup', () => {
+  // COMBAT_MAX was exceeded by 44% at depth 9 (23 enemies against a cap of 16) for
+  // as long as nothing summed the rooms, and no test noticed because the test was
+  // reading a formula instead of a floor.
+  for (const depth of [6, 9, 14]) {
+    const counts = liveCounts(depth);
+    const max = Math.max(...counts);
+    assert.ok(max <= B.COMBAT_MAX,
+      `depth ${depth}: a floor shipped with ${max} live enemies, over COMBAT_MAX ${B.COMBAT_MAX}`);
   }
 });
 
 test('combat scales up with depth (deep floors are tougher on average)', () => {
-  const avg = (depth: number) => {
-    let sum = 0;
-    const N = 400;
-    for (let i = 0; i < N; i++) sum += combatCount(depth, lcg(i * 13 + 1));
-    return sum / N;
-  };
-  assert.ok(avg(10) > avg(2), `avg@10 (${avg(10)}) should exceed avg@2 (${avg(2)})`);
-});
-
-test('intensity bands by depth', () => {
-  // Shallow is always light regardless of roll.
-  for (let seed = 0; seed < 20; seed++) {
-    assert.equal(combatIntensity(1, lcg(seed)), 'light');
-    assert.equal(combatIntensity(B.INTENSITY_MEDIUM_DEPTH - 1, lcg(seed)), 'light');
-  }
-  // Mid band is never light, never heavy.
-  for (let seed = 0; seed < 20; seed++) {
-    const i = combatIntensity(B.INTENSITY_MEDIUM_DEPTH, lcg(seed));
-    assert.equal(i, 'medium');
-  }
-  // Deep band yields some heavy and some medium across seeds.
-  const deep = new Set<string>();
-  for (let seed = 0; seed < 200; seed++) deep.add(combatIntensity(B.INTENSITY_HEAVY_DEPTH, lcg(seed)));
-  assert.ok(deep.has('heavy'), 'deep floors can roll heavy');
-  assert.ok(deep.has('medium'), 'deep floors can still roll medium');
-  assert.ok(!deep.has('light'), 'deep floors are never light');
+  const mean = (xs: number[]) => xs.reduce((m, n) => m + n, 0) / xs.length;
+  const shallow = mean(liveCounts(1));
+  const mid = mean(liveCounts(6));
+  assert.ok(mid > shallow + 2,
+    `depth 6 averages ${mid.toFixed(1)} live enemies against depth 1's ${shallow.toFixed(1)} `
+    + '— a descent that does not get heavier');
 });
 
 test('deterministic — same depth + seed → identical budget', () => {
@@ -86,9 +100,12 @@ test('deterministic — same depth + seed → identical budget', () => {
 
 test('floorContentBudget shape', () => {
   const budget = floorContentBudget(5, lcg(1));
-  assert.equal(typeof budget.combat.count, 'number');
-  assert.ok(['light', 'medium', 'heavy'].includes(budget.combat.intensity));
   assert.equal(typeof budget.events.minorFire, 'boolean');
+  assert.equal(typeof budget.events.question, 'boolean');
+  assert.equal(typeof budget.loot.definingFind, 'boolean');
+  // And no `combat` — the floor's fight is allocated in poly-floor.ts, and a field
+  // here would be a second opinion about it. See this file's header.
+  assert.ok(!('combat' in budget), 'the combat budget grew back');
 });
 
 test('minor fire is a chance, not a guarantee (both outcomes occur)', () => {

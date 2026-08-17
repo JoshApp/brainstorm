@@ -1391,24 +1391,26 @@ export const CONFIG = {
   VIGNETTE_FLASH_FADE_MS: 280,
 
   // === FLOOR CONTENT BUDGET (procgen v3) ===
-  // Combat is a per-FLOOR budget applied to open space, NOT an accident of
-  // which vaults were picked. This is the single legible knob per depth — and
-  // COMBAT_MIN is the hard guarantee that a floor is never empty (the v3 bug
-  // fix). Counts are floor TOTALS, distributed across all rooms' open cells.
+  // Combat is a per-FLOOR budget applied to open space, NOT an accident of which
+  // vaults were picked. `allocateCombat` in poly-floor.ts sums what the floor's
+  // rooms are shaped to hold, clamps the total to the two bounds below, and hands
+  // each room its share — so both bounds are arithmetic and nothing has to come
+  // back and audit them.
+  //
+  // SIX KNOBS USED TO LIVE HERE AND DID NOTHING. COMBAT_BASE / PER_DEPTH / JITTER
+  // fed a depth-only count that was computed on every floor and read by nobody,
+  // while the shipping density came from a per-room area rule; the note that stood
+  // here — "the budget is per-FLOOR, so it has to track floor size, not just
+  // depth" — was the argument against those knobs, written next to them. Summing
+  // room areas tracks size by construction, so they are gone rather than retuned.
+  // INTENSITY_MEDIUM_DEPTH / INTENSITY_HEAVY_DEPTH / HEAVY_CHANCE were the same
+  // story: pack intensity comes from a room's ROLE (an ambush is heavy, a trap is
+  // light), depth never entered it, and three constants sat here describing a
+  // depth curve that did not exist. Depth-driven intensity may be worth BUILDING;
+  // it was not worth pretending.
   CONTENT_BUDGET: {
-    // Floors got BIGGER (CONTENT_ROOMS_MIN 3, plus grown spurs) without the
-    // combat budget moving, so the early game thinned out to well under one
-    // enemy per room — you could walk a whole floor barely fighting. The budget
-    // is per-FLOOR, so it has to track floor size, not just depth.
-    COMBAT_BASE: 6,             // enemies on the shallowest floor
-    COMBAT_PER_DEPTH: 1.3,      // + this many per depth deeper
-    COMBAT_JITTER: 1,           // ± whole-enemy wobble so floors vary
     COMBAT_MIN: 5,              // HARD floor — never emptier than this
     COMBAT_MAX: 16,             // cap so deep floors don't become soup
-    // Intensity bands by depth ('heavy' upgrades a pack slot to an elite).
-    INTENSITY_MEDIUM_DEPTH: 4,  // < this → 'light'
-    INTENSITY_HEAVY_DEPTH: 8,   // >= this → chance of 'heavy', else 'medium'
-    HEAVY_CHANCE: 0.35,         // odds a deep floor rolls 'heavy'
     // Minor bonfire = a FOUND event, not floor furniture. This is the per-floor
     // chance one appears (deeper in, a rest/card-draw fire). 1.0 = a fire every
     // floor (the old always-on threshold fire); 0 = fires only at safe rooms.

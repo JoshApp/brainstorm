@@ -143,13 +143,20 @@ test('directFloor is deterministic — same inputs + seed → same plan', () => 
   assert.deepEqual(mk(), mk());
 });
 
-test('directFloor always returns a combat budget', () => {
+test('the director budgets loot and events — and NOT combat', () => {
+  // It used to return a `combat: { count, intensity }` and this test checked it was
+  // a number >= 1. It always was, and nothing ever read it: the density the player
+  // met came from a per-room area rule in poly-floor.ts, and the floor minimum was
+  // repaired after the fact. A test that certifies an unread field is how a number
+  // stays wrong for months, so the field is gone and this asserts it stays gone.
   const plan = directFloor({
     depth: 5, rand: lcg(1), roles,
     fireAnchors: [], fireFallbackCells: [], contentSpots: [], bakedProps: [],
   });
-  assert.equal(typeof plan.budget.combat.count, 'number');
-  assert.ok(plan.budget.combat.count >= 1);
+  assert.equal(typeof plan.budget.events.minorFire, 'boolean');
+  assert.equal(typeof plan.budget.loot.definingFind, 'boolean');
+  assert.ok(!('combat' in plan.budget),
+    'the director grew a combat budget back — combat is allocated in poly-floor.ts');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

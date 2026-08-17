@@ -1,34 +1,38 @@
-// The per-floor CONTENT BUDGET — the "new brain" of procgen v3.
+// The per-floor CONTENT BUDGET — what a floor OWES the player, decided up front.
 //
-// The old model made combat an ACCIDENT: a floor's enemies were whatever fell
-// out of (which vaults got picked) × (how many `X` slots they happened to have)
-// × (a per-slot density coin-flip). At shallow depth that could roll ZERO — the
-// empty-first-floors bug. There was never a floor-level statement of "this floor
-// should contain THIS much combat."
+// The old model made content an ACCIDENT: a floor's enemies were whatever fell out
+// of (which vaults got picked) × (how many `X` slots they happened to have) × (a
+// per-slot density coin-flip). At shallow depth that could roll ZERO — the
+// empty-first-floors bug. This file exists so the floor gets to STATE what it owes
+// instead of discovering it afterwards.
 //
-// v3 inverts it: the budget DECIDES the floor's content up front (a depth-driven
-// combat count with a HARD minimum, plus intensity), and a later pass
-// distributes that budget into open cells across ALL rooms (see
-// enumerateOpenCells + the spawn-injection pass). Combat stops being a property
-// of "combat"-tagged rooms and becomes a property of the floor.
+// ── COMBAT USED TO BE STATED HERE AND IS NOT ANY MORE ────────────────────────
+//
+// It was: a `combat: { count, intensity }` pair, count = COMBAT_BASE + depth ×
+// PER_DEPTH clamped to [MIN, MAX]. It was computed on every floor and READ BY
+// NOBODY, while the real density came from a per-room `area / 40` rule and the
+// minimum was audited on the finished floor and repaired. Three owners of one
+// number, two of them decorative.
+//
+// The tie-break was written next to the constants themselves: *"The budget is
+// per-FLOOR, so it has to track floor size, not just depth."* A depth-only formula
+// gives a cramped floor and a sprawling one the same pack, which is the complaint
+// that comment was making. So combat is now allocated in poly-floor.ts by
+// `allocateCombat` — it sums what the rooms are shaped to hold, which tracks size
+// by construction, clamps that into [COMBAT_MIN, COMBAT_MAX], and hands out shares.
+// COMBAT_MIN holds by arithmetic and nothing comes back to check it.
+//
+// This file keeps what it actually decides: the floor's LOOT and EVENTS.
 //
 // Pure + deterministic: pass a seeded `rand` and the same (depth, seed) always
 // yields the same budget — required for replay + headless balance sweeps. All
-// tuning lives in CONFIG.CONTENT_BUDGET so the design layer can re-curve combat
+// tuning lives in CONFIG.CONTENT_BUDGET so the design layer can re-curve it
 // without touching this logic.
 
 import { CONFIG } from '../config';
-import type { EncounterIntensity } from '../content/encounters';
 import type { Rarity } from '../content/items';
 
 export interface FloorContentBudget {
-  combat: {
-    /** How many enemies this floor should contain, FLOOR-TOTAL (distributed
-     *  across rooms downstream). Always >= COMBAT_MIN — never zero. */
-    count: number;
-    /** Pack intensity for the floor ('heavy' upgrades a slot to an elite). */
-    intensity: EncounterIntensity;
-  };
   loot: {
     /** Whether this floor stages ONE DEFINING FIND — a reward rolled with a
      *  rarity floor and placed on a focal marker (the dais), not sprayed. It
@@ -53,29 +57,6 @@ export interface FloorContentBudget {
      *  deals. A staged deal takes precedence over random ones at the floor cap. */
     question: boolean;
   };
-}
-
-/** Resolve the combat enemy count for a floor: depth-scaled with a ± jitter,
- *  clamped to [MIN, MAX]. The MIN clamp is the load-bearing guarantee that no
- *  floor is ever empty. */
-export function combatCount(depth: number, rand: () => number): number {
-  const b = CONFIG.CONTENT_BUDGET;
-  const jitter = b.COMBAT_JITTER > 0
-    ? Math.round((rand() * 2 - 1) * b.COMBAT_JITTER)
-    : 0;
-  const raw = Math.round(b.COMBAT_BASE + (depth - 1) * b.COMBAT_PER_DEPTH) + jitter;
-  return Math.max(b.COMBAT_MIN, Math.min(b.COMBAT_MAX, raw));
-}
-
-/** Resolve the floor's pack intensity by depth band. Always consumes exactly
- *  one rand() so the stream position is independent of the depth branch (keeps
- *  downstream rolls reproducible). */
-export function combatIntensity(depth: number, rand: () => number): EncounterIntensity {
-  const b = CONFIG.CONTENT_BUDGET;
-  const roll = rand();
-  if (depth < b.INTENSITY_MEDIUM_DEPTH) return 'light';
-  if (depth < b.INTENSITY_HEAVY_DEPTH) return 'medium';
-  return roll < b.HEAVY_CHANCE ? 'heavy' : 'medium';
 }
 
 /** Roll this floor's events. Currently just the minor bonfire: a FOUND fire is
@@ -105,10 +86,6 @@ export function floorLoot(depth: number, rand: () => number): FloorContentBudget
  *  floor seed so the budget reproduces on replay. */
 export function floorContentBudget(depth: number, rand: () => number): FloorContentBudget {
   return {
-    combat: {
-      count: combatCount(depth, rand),
-      intensity: combatIntensity(depth, rand),
-    },
     loot: floorLoot(depth, rand),
     events: floorEvents(depth, rand),
   };

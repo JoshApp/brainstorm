@@ -1046,26 +1046,28 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   // depth (its stair targets the act's safe room, not the next depth).
   const boss = isBossDepth(depth) ? bossById(actForDepth(depth).bossId) : null;
 
+  // ── THE FLOOR DECIDES ITS FIGHT BEFORE ANY OF IT IS PLACED ─────────
+  //
+  // See allocateCombat. Totalled and clamped up front, so COMBAT_MIN holds by
+  // arithmetic and no pass has to come back and check it.
+  const packs = allocateCombat(rooms, boss ? last.id : null);
+  const budget = [...packs.values()].reduce((m, n) => m + n, 0);
+
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
     const descent = r === last && stairs.length ? { x: stairs[0].x, z: stairs[0].z } : undefined;
     if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand, dressRand,
                 props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent,
-                boss && r === last ? boss : undefined)) guardedRooms.add(r.id);
+                boss && r === last ? boss : undefined,
+                packs.get(r.id) ?? 0)) guardedRooms.add(r.id);
   }
 
-  // ── THE FLOOR'S OWN MINIMUM ────────────────────────────────────────
+  // ── AND SPENDS WHAT THE ROOMS COULD NOT SEAT ───────────────────────
   //
-  // Every room budgets its own pack from its own area, and nothing until now
-  // asked what that adds up to. On a small depth-1 floor it adds up to three,
-  // and `CONTENT_BUDGET.COMBAT_MIN` — the regression lock written for exactly
-  // this bug on the vault composer, where shallow depths could roll a floor with
-  // no fight in it — was never consulted by this generator at all. Measured:
-  // 8.6% of floors under the minimum, every one of them depth 1.
-  //
-  // A per-room rule cannot see a floor-level guarantee. So the guarantee is
-  // checked where it is stated — on the finished floor.
-  topUpCombat(rooms, spawns, depth, rand, boss ? last.id : null);
+  // A share is what a room was allowed, not what fits around its props. The
+  // budget belongs to the floor, so the remainder goes wherever there is still
+  // standing room.
+  spendRemainingBudget(rooms, spawns, depth, rand, boss ? last.id : null, budget);
 
   // ── THE FOG WALL ───────────────────────────────────────────────────
   //
@@ -2278,7 +2280,109 @@ function mouthOf(
  * awake, spread from what is already there. Silent when the floor is already
  * over the bar, which is 91% of the time.
  */
-function topUpCombat(
+/**
+ * How many bodies each room gets, decided for the FLOOR before any are placed.
+ *
+ * ── WHY THIS IS AN ALLOCATION AND NOT A MINIMUM ───────────────────────────────
+ *
+ * Each room used to budget its own pack from its own area and nothing asked what
+ * that added up to, so `CONTENT_BUDGET.COMBAT_MIN` — a floor-level guarantee —
+ * was checked on the finished floor and repaired if it had been missed. The note
+ * that stood here said "a per-room rule cannot see a floor-level guarantee", and
+ * that was true of a per-room rule; it is not a reason for the rule to be per-room.
+ *
+ * Josh: *"the top up also looks like a kinda weird thing — i think when we
+ * construct things better, well thats how its gonna be, no need to care for weird
+ * invariants."* So the floor does the arithmetic first. It totals what its rooms
+ * are shaped to hold, clamps that total into [COMBAT_MIN, COMBAT_MAX], and hands
+ * each room a share. The minimum is then a property of the sum, not a rule
+ * something has to come back and enforce.
+ *
+ * ── WHAT THIS DID TO DENSITY, MEASURED ────────────────────────────────────────
+ *
+ * The share is the same `area / 40` each room already asked for, so the intent was
+ * no change at all. It moved anyway, and in both directions, because neither bound
+ * was previously true. Over 60 floors per depth, live enemies, before → after:
+ *
+ *   depth 1   mean 6.5 → 7.3    max 11 → 12
+ *   depth 3   mean 7.0 → 9.2    max 12 → 14
+ *   depth 6   mean 11.2 → 13.2  max 17 → 16
+ *   depth 9   mean 13.3 → 14.7  max 23 → 16
+ *
+ * The means rose because a room that could not seat its share used to drop those
+ * bodies on the floor and the old repair only came back up to COMBAT_MIN; the
+ * remainder is now spent somewhere that has room. And COMBAT_MAX — "a cap so deep
+ * floors don't become soup" — was being exceeded by 44% at depth 9, because nothing
+ * summed the rooms to notice. Floors are denser in the middle and no longer soup at
+ * the bottom, which is a tighter distribution than before, but it IS a change in
+ * feel and it is Josh's to accept or retune.
+ *
+ * ── THERE WERE THREE OWNERS OF THIS NUMBER; THIS IS THE ONE THAT TRACKS SIZE ──
+ *
+ * content-budget.ts states the design in its header — "the floor says you should
+ * contain THIS much combat" — and `floorContentBudget` duly computes a
+ * `combat: { count, intensity }`. The floor director builds it and NOTHING READS
+ * IT. So the documented budget and the shipping density have never been the same
+ * number, which is why the minimum ended up being audited after the fact.
+ *
+ * The tie-break is in the config next to the constants themselves: *"The budget is
+ * per-FLOOR, so it has to track floor size, not just depth."* `combatCount` is
+ * depth-only — COMBAT_BASE + depth × PER_DEPTH, clamped — so a cramped floor and a
+ * sprawling one at the same depth get the same pack, which is the complaint that
+ * comment was written about. Summing what the rooms are shaped to hold tracks size
+ * by construction. So the area sum is the stated intent and `combatCount` is the
+ * vestigial half.
+ *
+ * Left standing rather than deleted: it has its own test file, and choosing between
+ * "delete the depth-driven budget" and "fold a depth term into this one" is a
+ * decision about the shape of the difficulty curve. Flagged, not guessed.
+ */
+function allocateCombat(
+  rooms: readonly Placed[], bossRoomId: string | null,
+): Map<string, number> {
+  const b = CONFIG.CONTENT_BUDGET;
+  // Biggest first, so the largest-remainder pass below and the leftover spend
+  // both favour the rooms with the most floor to put a fight on.
+  const eligible = [...rooms]
+    .filter((r) => r.id !== bossRoomId && roomType(r.type).enemies)
+    .sort((x, y) => polyArea(y.poly) - polyArea(x.poly));
+  const share = new Map<string, number>();
+  if (!eligible.length) return share;
+
+  // WHAT THE ROOM IS SHAPED TO HOLD. Unchanged from the per-room rule.
+  for (const r of eligible) share.set(r.id, Math.max(1, Math.round(polyArea(r.poly) / 40)));
+  let total = [...share.values()].reduce((m, n) => m + n, 0);
+  const target = Math.max(b.COMBAT_MIN, Math.min(b.COMBAT_MAX, total));
+
+  // Hand out the difference one body at a time, largest room first, so a floor
+  // that came up short does not stack the whole correction in one place and a
+  // floor over the cap keeps at least one body in every room it has.
+  for (let guard = 0; total !== target && guard < 200; guard++) {
+    for (const r of (total < target ? eligible : [...eligible].reverse())) {
+      if (total === target) break;
+      const have = share.get(r.id)!;
+      if (total < target) { share.set(r.id, have + 1); total++; }
+      else if (have > 1) { share.set(r.id, have - 1); total--; }
+    }
+    // Every room is down to its last body and the floor is still over the cap.
+    if (total > target && [...share.values()].every((n) => n <= 1)) break;
+  }
+  return share;
+}
+
+/**
+ * Spend whatever the rooms could not seat.
+ *
+ * A share is what a room was ALLOWED, not what fits: props are placed first and
+ * a spawn needs 0.8m of standing room clear of them, so a tight room can come up
+ * short of its own allocation. The budget is the floor's, so the remainder is
+ * spent wherever there is still standing room rather than quietly dropped.
+ *
+ * This is the same mechanism the COMBAT_MIN repair used, asking a different
+ * question: not "is this floor under a magic number" — it cannot be, the budget
+ * is clamped above it — but "is there budget left unspent".
+ */
+function spendRemainingBudget(
   rooms: readonly Placed[], spawns: EnemySpawnSpec[], depth: number, rand: () => number,
   /** The boss's hall, if this floor has one. Topped-up bodies never go there:
    *  the hall is his alone (tests/poly-boss.test.ts), and behind a sealed gate a
@@ -2286,10 +2390,11 @@ function topUpCombat(
    *  dungeon though — skipping the whole floor because it has a boss left the
    *  rooms before the gate holding nothing but sleeping ambushers. */
   bossRoomId: string | null,
+  /** What `allocateCombat` handed out, and so what the floor is owed. */
+  budget: number,
 ): void {
-  const MIN = CONFIG.CONTENT_BUDGET.COMBAT_MIN;
   let live = spawns.filter((s) => !s.dormant).length;
-  if (live >= MIN) return;
+  if (live >= budget) return;
 
   const eligible = [...rooms]
     .filter((r) => r.id !== bossRoomId && roomType(r.type).enemies)
@@ -2297,18 +2402,18 @@ function topUpCombat(
   if (!eligible.length) return;
 
   for (const r of eligible) {
-    if (live >= MIN) break;
+    if (live >= budget) break;
     const open = candidateSpots(r.poly, { radius: 0.9, band: [1.2, Infinity], pitch: 0.8 });
     if (!open.length) continue;
     const taken = spawns.filter((s) => s.roomId === r.id);
-    const want = MIN - live;
+    const want = budget - live;
     const ids = rollFloorEnemies(depth, want, 'medium', rand, archetypeForSpan(roomSpan(r.poly), rand));
     // Spread from the bodies already standing, so a top-up does not double a
     // pack up in one corner of a room that is mostly empty.
     const anchor = taken.length ? taken[taken.length - 1] : null;
     let next = 0;
     for (const s of spreadPick(open, open.length, anchor)) {
-      if (next >= ids.length || live >= MIN) break;
+      if (next >= ids.length || live >= budget) break;
       const vol = { kind: 'cylinder' as const, x: s.x, z: s.z, r: 0.8, y0: 0, y1: 1.8 };
       if (!r.occupancy.fits(vol, 0.2)) continue;
       r.occupancy.reserve(vol, 'spawn');
@@ -2337,6 +2442,10 @@ function furnish(
    * which is not the fight, and on a sealed arena it is not survivable either.
    */
   boss?: BossSpec,
+  /** How many bodies this room was allocated by `allocateCombat`. The floor
+   *  decides the total and hands out shares, so a room no longer budgets its own
+   *  pack and the floor's minimum is arithmetic rather than an afterthought. */
+  pack = 0,
 ): boolean {
   // ── THE WAY DOWN IS CLAIMED BEFORE ANYTHING ELSE IS PLACED ─────────
   //
@@ -2524,7 +2633,8 @@ function furnish(
     ? open.filter((s) => !hasSightline(r.poly, mouth, s))
     : open;
   const picks = hidden.length ? hidden : open;
-  const count = Math.max(1, Math.round(polyArea(r.poly) / 40));
+  // The floor's allocation, not this room's own arithmetic — see allocateCombat.
+  const count = pack;
   // Intensity rides the room's ROLE: an ambush is a hard beat, a passage is a
   // speed bump. The pack roller keeps the group coherent so a room reads as a
   // designed fight rather than a grab-bag.
