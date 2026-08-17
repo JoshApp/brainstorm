@@ -308,6 +308,54 @@ export function buildPolyRoomShell(
   // shell asks for the MINIMUM rise by passing a narrow width. It is exact where
   // width is irrelevant and conservative where it is not, which is the whole
   // requirement in one substitution.
+  // ── AND THE WALL CLOSES ITS DOORWAY BELOW, TOO ─────────────────────────────
+  //
+  // Josh, from three marks taken standing in the overlap band of cor-p0-0:
+  // *"floor and room dont sometimes neatly connect with floor and ceilings, and
+  // corridor floor sometimes pokes into the room and sometimes falls short of
+  // it."* Two of the three marks raycast straight down and hit NOTHING.
+  //
+  // Worked from the numbers his marks carried: the corridor rect ends at
+  // x = -1.794 and the room's wall line is x = -2.69, so the rect runs 0.896m
+  // into the room — the deliberate 0.9m OVERLAP. corridor-trim pulls the visible
+  // plate back to the wall's OUTER face (-2.94) and the room's own floor starts at
+  // its outline (-2.69). Between them sits the wall band itself, 0.25m wide,
+  // covered by nobody.
+  //
+  // It was covered by the FRAME. `withSill` in level/frame.ts lays a slab across
+  // exactly that band, put there deliberately because "a sill authored twice is a
+  // sill that disagrees with itself" — and frames went off yesterday to expose the
+  // raw cut. I wrote at the time that this would show "the band of floor nobody
+  // else covers", and shipped it anyway; these are those holes.
+  //
+  // So the sill moves to the same owner as the lintel. The wall closes its own
+  // doorway above AND below, both from the same `doorways` list, and the gate goes
+  // back to being only a gate. That is the answer to "who owns the joint" that
+  // frame.ts was already reaching for — it just picked the frame, and a frame is
+  // optional where a floor is not.
+  const SILL_THICK = 0.10;
+  const SILL_LAP = 0.06;        // past each wall face, so the joint is lapped
+  const SILL_SHOULDER = 0.18;   // past the doorway's edges, under the jambs
+  const SILL_PROUD = 0.008;     // a hair above both floors; never a step
+  for (const d of doorways) {
+    const dx = d.b[0] - d.a[0], dz = d.b[1] - d.a[1];
+    const width = Math.hypot(dx, dz);
+    if (width < 0.2) continue;
+    const ux = dx / width, uz = dz / width;
+    // Outward normal of this doorway — from the inner line to the outer one.
+    const nx = d.oa[0] - d.a[0], nz = d.oa[1] - d.a[1];
+    const nLen = Math.hypot(nx, nz) || 1;
+    const depth = nLen + SILL_LAP * 2;
+    const cx = (d.a[0] + d.b[0]) / 2 + (nx / nLen) * (nLen / 2);
+    const cz = (d.a[1] + d.b[1]) / 2 + (nz / nLen) * (nLen / 2);
+    const sill = new THREE.BoxGeometry(width + SILL_SHOULDER * 2, SILL_THICK, depth);
+    const m = new THREE.Matrix4().makeRotationY(Math.atan2(ux, uz) - Math.PI / 2);
+    m.setPosition(cx, elev + SILL_PROUD - SILL_THICK / 2, cz);
+    sill.applyMatrix4(m);
+    tintVertices(sill);
+    pieces.push(sill);
+  }
+
   const MIN_RISE_WIDTH = 0.7;
   for (const d of doorways) {
     const headY = archwayGateTop(MIN_RISE_WIDTH, H, d.passageH);
