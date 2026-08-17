@@ -25,11 +25,11 @@ import { planPortals } from './portals';
 import { corridorTypeFor, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
 import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
 import { deriveAnchors } from './anchors';
-import { chooseLinkRoute } from './corridor-route';
+import { chooseLinkRoute, routeLength, type LinkRoute } from './corridor-route';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
-import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
+import { planElevation, linkRectsMisplaced, chordSkipFits, flatFloors } from './poly-elevation';
 import { corridorRampRun } from './elevation';
 import { plateExtentFor } from './corridor-trim';
 import { connectivityFaults } from './floor-connectivity';
@@ -709,16 +709,63 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   }
   pairs.sort((p, q) => p.d - q.d);
   for (const { a, b } of pairs) {
-    const conn = connectL(a, b, loopType.width, occupiedBoxes);
+    // ── THE CHORD ASKS THE ROUTER, ON FLAT FLOORS ──────────────────────────
+    //
+    // The chord was 216 corridors and 100% connectL — not as a fallback, as its
+    // only path — while the spine, which does ask, is 100% routed. A quarter of
+    // the dungeon's corridors were never offered to the careful producer, and
+    // connectL is the least careful one in the file: its own comment says it "has
+    // no self-room check", and once placement was freed it put 3.84m of corridor
+    // floor inside a room.
+    //
+    // WHY THE FLAT CONDITION, and why it is a statement rather than a hack. The
+    // ramp model wants THREE rects — leg, LANDING, leg — because it pins the two
+    // ends to their rooms' plateaus and slopes the middle. Measured: routed chords
+    // come out as 2 rects, connectL's L as 3. With two rects there is no middle,
+    // the fall has nowhere to go, and the seam steps 1.2m.
+    //
+    // But that is a fact about ELEVATION, which is off (level/poly-elevation.ts,
+    // flatFloors) precisely so the connection work can proceed without it. Josh:
+    // *"we disabled elevation for a reason, cant we make it so we first solve this
+    // all on flat corridors?"* Correct, and I had been letting a disabled system
+    // veto a working improvement — the exact legacy-patching he called out. On a
+    // flat floor there is no fall, chordSkipFits is vacuous, and a 2-rect chord is
+    // simply a shorter corridor.
+    //
+    // The condition IS the migration marker: it disappears the day the ramp model
+    // takes its legs from the route (which states them, with endpoints and widths)
+    // instead of inferring a landing from `rects.length === 3`.
+    const routedChord = flatFloors()
+      ? routeConnection(a, b, loopType, rooms, occupiedBoxes, false)
+      : null;
+    const conn = routedChord
+      ? { ...routedChord, servedBy: 'route' as const }
+      : connectL(a, b, loopType.width, occupiedBoxes);
     if (!conn) continue;
-    // The stair-run this loop offers, from the same helper the elevation pass
-    // measures a ramp with. The landing carries no slope.
-    // `legAxis` is present on an L (connectL always makes one) and may be absent
-    // on a routed chord that came out straight. Falling back to the rect's long
-    // side is the same number an L's leg reports for a straight run, so the
-    // stair-fit check below reads the same quantity either way.
-    const run = conn.rects.reduce((t, rc, k) => (k === 1 ? t
-      : t + corridorRampRun(conn.legAxis![k].alongX ? rc.w : rc.d)), 0);
+    // ── THE RAMP MODEL WANTS THREE RECTS, AND A ROUTE GIVES TWO ────────────
+    //
+    // Verified, after getting it wrong twice. connectL always builds an L: leg,
+    // LANDING, leg. The elevation pass pins the two END rects to their rooms'
+    // plateaus and ramps the middle one. Measured across the elevation suite's
+    // corpus: `route` chords come out as 2 rects (50 of them), `chord` chords as
+    // 3 (12). With two rects there IS no middle — both are ends — so the fall has
+    // nowhere to go, one end stops being level with its room, and the seam steps
+    // 1.2m.
+    //
+    // I told Josh this was blocked on the ramp model, then corrected myself that
+    // chordSkipFits "wants one number and a route knows its length" and there was
+    // no blocker. The correction was wrong. The run was never the problem; the
+    // TOPOLOGY is. His general point stands and is the reason this is only a
+    // comment: the ramp model is shaped like a rect count, and it should take its
+    // legs from the route — which states them explicitly, with widths and
+    // endpoints — instead of inferring a landing from `rects.length === 3`.
+    //
+    // Until it does, the chord keeps connectL. That is 29% of chords blind, and it
+    // is the price of not shipping a doorway you fall through.
+    const run = 'route' in conn && conn.route
+      ? corridorRampRun(routeLength(conn.route))
+      : conn.rects.reduce((t, rc, k) => (k === 1 ? t
+        : t + corridorRampRun(conn.legAxis![k].alongX ? rc.w : rc.d)), 0);
     // The pocket sits one link off its parent, so the fall this has to carry is
     // bounded by that link plus the spine span from the parent to the target.
     const span = Math.abs(spineOf(loopPocket!.parent) - spineOf(b.id)) + 1;
@@ -739,7 +786,8 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // than left blank so the chord counts as its own producer instead of
     // disappearing into "unknown".
     addLink(a.id, b.id, 'cor-l0',
-            { ...conn, type: loopType, servedBy: 'chord' as const },
+            { ...conn, type: loopType,
+              servedBy: 'servedBy' in conn ? conn.servedBy : 'chord' },
             { chord: true });
     break;
   }
@@ -1586,6 +1634,29 @@ interface Connection {
   /** Set when the legs do not share a travel axis (an L). Handed straight to
    *  the elevation pass, which cannot derive it — see ElevLink.legAxis. */
   legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+  /**
+   * THE ROUTE, WHERE THERE WAS ONE — the source of truth, not a note.
+   *
+   * routeConnection solved the two thresholds exactly, converted them to rects and
+   * threw the route away, because everything downstream is rect-shaped. Every
+   * corridor defect this week traces to that one lossy step: the 0.9m overlap
+   * exists so a rect can re-derive a cut the route already knew; `legAxis` and the
+   * "middle rect is a landing" rule exist because a rect cannot say how long its
+   * own slope is.
+   *
+   * Josh: *"it feels like we are trying to fix a legacy system instead of
+   * rewriting it."* Right, and this is the smallest honest first move — carry the
+   * route ALONGSIDE the rects rather than discarding it. Rects stay for the
+   * consumers that read them (nav, culling, occupancy, trim); anything that wants
+   * the truth can ask. The rects become a derived view rather than the record.
+   *
+   * The immediate payoff is the chord. I reported routing it as blocked on
+   * rebuilding the ramp model, and that was wrong: chordSkipFits is
+   * `steps * drop <= run * grade` and wants ONE number. A route knows its run
+   * exactly (routeLength). Reverse-engineering it from rects is what produced the
+   * 1.2m step at a doorway.
+   */
+  route?: LinkRoute;
 }
 
 /**
@@ -1678,7 +1749,7 @@ function routeConnection(
     o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
   if (clash) return null;
 
-  return { rects, type, legAxis: n > 1 ? legAxis : undefined };
+  return { rects, type, legAxis: n > 1 ? legAxis : undefined, route };
 }
 
 function connect(
