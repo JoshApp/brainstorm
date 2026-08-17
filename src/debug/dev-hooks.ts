@@ -23,6 +23,7 @@ import { installPerfProbe } from './perf-probe';
 import { installInspector } from './inspector';
 import type { RoomCuller } from '../level/room-culling';
 import { applyLook, LOOKS, LOOK_ORDER } from '../style/look-presets';
+import { installObserver } from './observer';
 
 // DEV-only console hooks + URL overrides — every window.__* inspection handle
 // and DEV URL flag that used to live inline in main.ts. Called ONLY inside an
@@ -54,6 +55,11 @@ export function installDevHooks(deps: DevHookDeps): void {
   // instrument that can answer "is this geometry correct" separately from
   // "does this room look good"; see debug/inspector.ts for why that matters.
   installInspector({ scene, camera, getLevel, enterLit: deps.enterLit });
+  // THE OBSERVER — read-only queries + marks, for debugging geometry WITH Josh
+  // rather than from screenshots of it. See debug/observer.ts. `scene` is handed
+  // in as the raycast root: the level root is a child of it and comes and goes
+  // per floor, so holding the scene means the observer survives a descent.
+  installObserver({ level: () => getLevel()?.spec ?? null, camera: () => camera, root: () => scene });
 
   // ── URL overrides (snap/compare isolation) ────────────────────────────
   // ?ps1=0.3 forces the scene-render scale.

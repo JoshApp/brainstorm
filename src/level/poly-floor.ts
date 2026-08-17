@@ -544,6 +544,8 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     from: string; to: string; rects: Box[]; ids: string[];
     spur?: boolean; chord?: boolean;
     legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+    /** Router or blind fallback — see RoomSpec.servedBy. */
+    servedBy?: 'route' | 'guess';
   }> = [];
   const addLink = (
     from: string, to: string, id: string, conn: Connection,
@@ -562,10 +564,13 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       // `linkId` is the CONNECTION these legs share. Recorded here because this
       // is the only place that knows it — see the note on RoomSpec.linkId, and
       // the dead doorframe it exists to prevent.
-      corridors.push({ id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id });
+      corridors.push({
+        id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id,
+        servedBy: conn.servedBy,
+      });
       occupiedBoxes.push(rect);
     });
-    links.push({ from, to, rects, ids, legAxis: conn.legAxis, ...kind });
+    links.push({ from, to, rects, ids, legAxis: conn.legAxis, servedBy: conn.servedBy, ...kind });
   };
   for (let i = 1; i < rooms.length; i++) {
     const c = connect(rooms[i - 1], rooms[i], rand,
@@ -1476,6 +1481,8 @@ function geometryFor(
 interface Connection {
   rects: Box[];
   type: CorridorType;
+  /** Router or blind fallback — see RoomSpec.servedBy. */
+  servedBy?: 'route' | 'guess';
   /** Set when the legs do not share a travel axis (an L). Handed straight to
    *  the elevation pass, which cannot derive it — see ElevLink.legAxis. */
   legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
@@ -1639,7 +1646,7 @@ function connect(
   // reason to keep a second way of bending.
   const wantsKink = rand() < DOGLEG_CHANCE;
   const routed = routeConnection(a, b, type, rooms, occupied, wantsKink);
-  if (routed) { linkTally.routed++; return routed; }
+  if (routed) { linkTally.routed++; return { ...routed, servedBy: 'route' }; }
   linkTally.guessed++;
 
   // -- EVERYTHING BELOW IS THE PRE-ANCHOR PATH -------------------------------
@@ -1658,7 +1665,7 @@ function connect(
   // path is ever deleted.
   if (wantsKink) {
     const bent = dogleg(a, b, alongZ, sign, base, width, occupied);
-    if (bent) return { rects: bent, type };
+    if (bent) return { rects: bent, type, servedBy: 'guess' };
   }
 
   // Straight. Lateral offsets in order: dead centre first, then progressively
@@ -1677,6 +1684,7 @@ function connect(
         ? { x: lat, z: (t0 + t1) / 2, w: width, d: t1 - t0 }
         : { z: lat, x: (t0 + t1) / 2, d: width, w: t1 - t0 }],
       type,
+      servedBy: 'guess',
     };
   }
   return null;

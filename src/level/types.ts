@@ -109,6 +109,23 @@ export type RoomSpec = {
    */
   corridorType?: CorridorTypeId;
   /**
+   * WHICH PATH PLACED THIS CORRIDOR.
+   *
+   * 'route' — level/corridor-route.ts solved it against the two rooms' published
+   *   anchors, so it leaves each wall perpendicular to a face that agreed to be
+   *   cut.
+   * 'guess' — the pre-anchor fallback in poly-floor's `connect`. It lays a rect
+   *   down a shared lateral and does not know where the walls are. Kept because
+   *   the router DECLINES rather than improvises and a floor missing a link is
+   *   worse than one guessed corridor, but docs/SPACES-AND-THRESHOLDS.md names it
+   *   as the source of the remaining corner-wrapping doorways.
+   *
+   * Recorded because that distinction was invisible: the floor tallied routed vs
+   * guessed in aggregate and no individual corridor could be asked. Standing in
+   * front of a broken doorway, it is the first thing worth knowing.
+   */
+  servedBy?: 'route' | 'guess';
+  /**
    * Which CONNECTION this corridor rect belongs to.
    *
    * A link between two rooms is one connection and often several rects — a
