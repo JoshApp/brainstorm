@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "add",
+        "text": "The dark keeps its shape but not its secrets: through a black doorway you still see the fires, the glyphs, and whatever is looking back.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
         "text": "The dark keeps to the doorways now. Lean in and it gives way; step through and it closes behind you.",
         "area": [
           "atmosphere",
@@ -392,14 +399,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The wall is one stone from floor to ceiling now, and the ledge across its middle is gone.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The stone splits where nothing was built, and the faces have worn round under whatever has passed over them.",
         "area": [
           "atmosphere",
           "level"

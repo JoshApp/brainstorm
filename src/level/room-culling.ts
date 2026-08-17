@@ -5,6 +5,8 @@ import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
 import { sightFar } from '../scene/sight-distance';
+import { veilAlphaBetween } from '../scene/threshold-veil';
+import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
 
@@ -71,6 +73,34 @@ const EPS = RECT_EPS;
 // without the culler disagreeing with the fog and clipping rooms inside visible
 // air. scene/sight-distance.ts owns the number now.
 const cullDist2 = (): number => sightFar() * sightFar();
+
+// ── TRANSMITTANCE: HOW MUCH OF A SPACE ACTUALLY REACHES THE EYE ──────────────
+//
+// The flood already walks thresholds. This gives it a VALUE instead of a boolean: crossing
+// a doorway multiplies by (1 - veilAlpha), so every space carries the fraction of light
+// that reaches the camera along its best path. Two half-open veils in series is 25%, which
+// is what the eye gets and therefore what the renderer should spend.
+//
+// WHY THIS AND NOT JUST THE DISTANCE CAP. `cullDist2` is the fog wall, and the comment on
+// it says the two are kept "in lockstep" deliberately — which is precisely why the
+// darkness could not be relaxed. Push fog out for legibility and the culler pushes out
+// with it: measured over 733 viewpoints, fog at 20m submits 10.4 spaces against 9m's 5.0.
+// The veil predicate instead submits 3.0, because it asks what the player can SEE rather
+// than how far away it is.
+//
+// BOTH TESTS ARE KEPT. Transmittance is the tighter one while veils are on, and the
+// distance cap is the backstop for when they are not — `veil · strength` at 0 restores
+// exactly today's behaviour rather than flooding the whole floor.
+//
+// THE CUT IS EXACT, NOT TUNED. The post tail quantises to 32 levels with a 1/24 Bayer
+// dither ahead of it, so half of one level — 1/64 — is below what the display can
+// distinguish from black. A space dimmer than that cannot pop when it appears, because it
+// was already indistinguishable from nothing.
+const T_INVISIBLE = 1 / 64;
+// HYSTERESIS. A space oscillating across the threshold as you strafe would flicker, so it
+// is held to a looser bar once drawn — the same asymmetry the light pool uses with its
+// area bonus. Enter late, leave later.
+const T_KEEP = T_INVISIBLE * 0.4;
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -373,6 +403,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
 
   let enabled = true;
   const visible = new Set<string>();
+  /** Transmittance per space for THIS frame — see T_INVISIBLE. */
+  const trans = new Map<string, number>();
+  /** What was drawn LAST frame, for the hysteresis on that threshold. */
+  const wasVisible = new Set<string>();
   // Rooms forced to render every frame regardless of frustum / LOS — counted
   // by reference, so two encounters can claim the same room without one
   // dropping the other's claim when it ends.
@@ -467,7 +501,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     const cz = camera.position.z;
     const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
 
+    // Last frame's set, for the transmittance hysteresis. Copied rather than swapped —
+    // it holds about five ids, and a swap here would be cleverness bought with confusion.
+    wasVisible.clear();
+    for (const id of visible) wasVisible.add(id);
     visible.clear();
+    trans.clear();
     // Force-visible rooms (active arenas etc.) always render — PLUS every
     // direct neighbour, so the alcove on the other side of an arena gate is
     // also rendered while the arena is active even though the gate's wall
@@ -497,11 +536,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         if (visible.has(node.id)) continue;
         if (Math.abs(node.cx - cx) <= node.hw + EPS && Math.abs(node.cz - cz) <= node.hd + EPS) {
           visible.add(node.id);
+          trans.set(node.id, 1);   // you are standing in it
           queue.push(node.id);
         }
       }
       while (queue.length) {
         const node = nodes.get(queue.pop()!)!;
+        const tHere = trans.get(node.id) ?? 1;
         for (const nb of node.neighbors) {
           if (visible.has(nb.id)) continue;
           // Past the fog wall? The doorway (hence everything through it) is
@@ -510,6 +551,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           // the rest of the cull.
           const ddx = nb.ox - cx, ddz = nb.oz - cz;
           if (ddx * ddx + ddz * ddz > cullDist2()) continue;
+          // ...and past the VEIL? See T_INVISIBLE. A closed threshold means what is
+          // behind it is below one output level, which is a stronger statement than
+          // "far away" and does not move when the fog does.
+          const t = tHere * (1 - veilAlphaBetween(node.id, nb.id));
+          if (t <= (wasVisible.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
           // In the view cone (yaw frustum, with reveal margin) AND not occluded
           // by a wall (line-of-sight). Sample the doorway at the CAMERA'S eye
           // height, not a fixed world-1.2 — so a sunken/raised room (the stair-
@@ -517,6 +563,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           // plane that may sit above/below its real opening.
           if (canSeeThrough(nb, cx, cz, camera.position.y)) {
             visible.add(nb.id);
+            trans.set(nb.id, t);
             queue.push(nb.id);
           }
         }
@@ -535,7 +582,20 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     for (const node of nodes.values()) {
       const vis = visible.has(node.id);
       for (const o of node.objects) {
-        if (o.visible !== vis) o.visible = vis;
+        // ── A CULLED SPACE KEEPS ITS SIGNAL ─────────────────────────────────
+        //
+        // The whole point of culling by transmittance is that the space is below one
+        // output level — so its STONE is genuinely invisible and worth dropping, while
+        // its markers are what the player reads the room by (scene/signal-layer.ts). A
+        // doorway you cannot see through should still show you the fires behind it.
+        //
+        // Flames survive by architecture rather than by this line: they live in one
+        // global sprite batch with per-entry visibility, not under a per-rect group. This
+        // covers the ones that ARE parented per rect. It only reaches the top level of
+        // `node.objects` — a marked mesh nested under an unmarked group still goes dark
+        // with its parent, which is worth knowing before relying on it for a new marker.
+        const want = vis || isSignal(o);
+        if (o.visible !== want) o.visible = want;
       }
       // Static-world BatchedMesh instances belonging to this rect toggle with
       // it (scene/static-batch.ts) — same occlusion granularity, one draw.

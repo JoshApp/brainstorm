@@ -1112,10 +1112,12 @@ function placeThresholdVeils(root: THREE.Object3D, spec: LevelSpec) {
       // THE CLEAR SPAN AND THE PASSAGE'S OWN HEIGHT — the aperture you walk through, not
       // the arc of outline the hole eats. Same distinction the frame emitter makes, and
       // the same reason: around a chamfer the outline is longer than the way through.
-      spawnThresholdVeil(
-        root, p.mid, p.normal, p.rotY,
-        p.clearWidth, corridor.height, room.elevation ?? 0,
-      );
+      spawnThresholdVeil(root, {
+        mid: p.mid, normal: p.normal, rotY: p.rotY,
+        width: p.clearWidth, height: corridor.height, floorY: room.elevation ?? 0,
+        // The two spaces this threshold joins — the culler asks by this pair.
+        a: room.id, b: corridor.id,
+      });
     }
   }
 }

@@ -51,9 +51,19 @@ interface Veil {
   x: number;
   z: number;
   y: number;
+  /** The two spaces this threshold joins, and its current alpha. Read by the culler:
+   *  a veil is a portal, and how open it is decides both what you can see through it
+   *  and what is worth submitting behind it. */
+  a: string;
+  b: string;
+  alpha: number;
 }
 
 const veils: Veil[] = [];
+/** Keyed on the unordered pair, so the culler can ask about a doorway it knows only by
+ *  the two rects it separates. */
+const byPair = new Map<string, Veil>();
+const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 let veilTex: THREE.Texture | null = null;
 
 /**
@@ -103,15 +113,18 @@ function veilTexture(): THREE.Texture {
  * middle of the masonry band. `rotY` is the portal's own, the same yaw a frame is mounted
  * with, which puts the plane's +Z through the opening.
  */
-export function spawnThresholdVeil(
-  scene: THREE.Object3D,
-  mid: readonly [number, number],
-  normal: readonly [number, number],
-  rotY: number,
-  width: number,
-  height: number,
-  floorY: number,
-): void {
+export function spawnThresholdVeil(scene: THREE.Object3D, o: {
+  mid: readonly [number, number];
+  normal: readonly [number, number];
+  rotY: number;
+  width: number;
+  height: number;
+  floorY: number;
+  /** The two spaces it joins — the room's id and the corridor's. */
+  a: string;
+  b: string;
+}): void {
+  const { mid, normal, rotY, width, height, floorY } = o;
   const mat = new THREE.MeshBasicMaterial({
     map: veilTexture(),
     transparent: true,
@@ -137,7 +150,11 @@ export function spawnThresholdVeil(
   mesh.renderOrder = VEIL_ORDER;
   mesh.name = 'threshold-veil';
   scene.add(mesh);
-  veils.push({ mesh, mat, x, z, y });
+  const veil: Veil = { mesh, mat, x, z, y, a: o.a, b: o.b, alpha: 0 };
+  veils.push(veil);
+  // Last one wins if two openings somehow share a pair; they cannot today, and a wrong
+  // answer here fails toward MORE drawing, which is the safe direction.
+  byPair.set(pairKey(o.a, o.b), veil);
 }
 
 /**
@@ -160,6 +177,7 @@ export function tickThresholdVeils(playerPos: THREE.Vector3): void {
     const t = Math.min(1, Math.max(0, (d - near) / span));
     const eased = t * t * (3 - 2 * t);
     const a = eased * strength;
+    v.alpha = a;
     v.mat.opacity = a;
     // Above the signal layer means the veil eats it too — the pre-split behaviour, kept as
     // a live A/B rather than as a memory of what it used to look like.
@@ -171,6 +189,24 @@ export function tickThresholdVeils(playerPos: THREE.Vector3): void {
   }
 }
 
+/**
+ * How closed is the threshold between these two spaces, 0..1?
+ *
+ * ── THIS IS THE CULLER'S QUESTION TOO ───────────────────────────────────────
+ *
+ * A veil is a portal, and how open it is decides two things at once: what the player can
+ * see through it, and what is worth submitting behind it. Those were separate notions of
+ * visibility before — the fog wall for the eye, `cullDist2 = sightFar²` for the culler,
+ * kept in lockstep by hand — which is exactly why the darkness could not be relaxed
+ * without doubling the draw count.
+ *
+ * FAILS OPEN. An unknown pair returns 0, meaning wide open, so anything this does not know
+ * about is drawn. A veil that is missing should cost frames, never geometry.
+ */
+export function veilAlphaBetween(a: string, b: string): number {
+  return byPair.get(pairKey(a, b))?.alpha ?? 0;
+}
+
 /** Drop every veil — called on level load, like the drafts. */
 export function clearThresholdVeils(): void {
   for (const v of veils) {
@@ -179,6 +215,7 @@ export function clearThresholdVeils(): void {
     v.mat.dispose();
   }
   veils.length = 0;
+  byPair.clear();
 }
 
 /** How many are hanging, for a debug readout. */
