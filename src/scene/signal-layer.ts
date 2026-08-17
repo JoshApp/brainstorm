@@ -124,6 +124,8 @@ interface Marker {
 }
 
 const registry: Marker[] = [];
+let lastEyeX = 0, lastEyeZ = 0;
+let lastLos: LOS | undefined;
 
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
 function track(o: THREE.Object3D): void {
@@ -143,6 +145,9 @@ function track(o: THREE.Object3D): void {
  * marker is the thing the player is navigating by.
  */
 export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undefined): void {
+  // Kept so anything that EMITS signal can ask the same question without being handed the
+  // camera and the level — see canSeeSignalAt.
+  lastEyeX = eyeX; lastEyeZ = eyeZ; lastLos = los;
   if (!los) return;
   const maxGates = signalKnobs.gates();
   for (const m of registry) {
@@ -177,6 +182,25 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
     // perception cone, where a pillar should not break a chase.
     m.o.visible = los(eyeX, eyeZ, scratch.x, scratch.z, { includeObstacles: true });
   }
+}
+
+/**
+ * Can the player see a signal at this point, by the same rule the markers use?
+ *
+ * For EMITTERS rather than objects. An ember cloud is one GPU draw whose whole trajectory
+ * is a function of time and index, so there is no per-particle object to hide — but there
+ * IS a short list of torches feeding it, and asking about those is 16 tests instead of 800.
+ *
+ * Uses the eye and the LOS from the last occlusion tick, so a caller anywhere in the frame
+ * gets the same answer the markers got. Fails VISIBLE when there is no LOS yet, for the same
+ * reason the markers do.
+ */
+export function canSeeSignalAt(x: number, z: number): boolean {
+  if (!lastLos) return true;
+  const space = spaceIdAt(x, z);
+  const gates = space ? portalDepthOf(space) : 0;
+  if (gates > signalKnobs.gates()) return false;
+  return lastLos(lastEyeX, lastEyeZ, x, z, { includeObstacles: true });
 }
 
 /** Drop the registry — called on level load. */

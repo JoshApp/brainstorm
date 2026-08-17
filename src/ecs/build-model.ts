@@ -614,6 +614,11 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
           emissive: (m.emissive ?? m.color).getHex(),
           emissiveIntensity: m.emissiveIntensity ?? 1,
         });
+        // THE OTHER HALF OF A FLAME. The additive wisps go through the sprite batch and are
+        // marked there; this is the solid emissive blob at the core. Both belong to the same
+        // fire, so both belong to the signal layer — marking only one means a veiled doorway
+        // shows you a fire's wisps with no flame inside them.
+        markAsSignal(handle.obj);
         return handle.obj;
       }
       const segs = part.segments ?? [16, 12];

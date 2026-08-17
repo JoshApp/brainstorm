@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { forEachLight } from '../scene/light-pool';
+import { canSeeSignalAt, signalDrawOrder } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
   vertexIndex, time, hash, float, vec3, uniform, uniformArray,
@@ -27,6 +28,9 @@ let points: THREE.Points | null = null;
 const torchArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3()));
 const torchColArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3(1, 0.5, 0.16)));
 const torchCount = (uniform as any)(0);
+/** Embers per emitter — held constant as torches come and go. See tickEmbersGPU. */
+const PER_TORCH = COUNT / MAX_TORCHES;
+const activeCount = (uniform as any)(0);
 const _scratch: THREE.Vector3[] = Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3());
 const _tmpCol = new THREE.Color();
 
@@ -56,7 +60,10 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
     spawn.y.add(0.06).add(rise),
     spawn.z.add(jz).add(driftZ),
   );
-  const finalPos = (torchCount.greaterThan(0) as any).select(pos, (vec3 as any)(0, -100, 0));
+  // Parked below the floor when there is no emitter for this index — either no torches at
+  // all, or this slot is past the active share (see activeCount in tickEmbersGPU).
+  const live = (torchCount.greaterThan(0) as any).and(i.lessThan(activeCount));
+  const finalPos = (live as any).select(pos, (vec3 as any)(0, -100, 0));
 
   // Bright fresh off the flame, fade as it climbs and cools (quick fade-in too).
   const glow = phase.oneMinus().pow(1.4).mul(phase.mul(8.0).clamp(0, 1));
@@ -79,7 +86,10 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
 
   points = new THREE.Points(geom, mat);
   points.frustumCulled = false;
-  points.renderOrder = 5;
+  // AFTER THE VEIL, like the fire they rise from. Embers are gated at the emitter (see
+  // tickEmbersGPU), so any that exist belong to a torch the player can see — and a spark
+  // that dimmed at a doorway while its flame did not would read as two different fires.
+  signalDrawOrder(points);
   // Stay visible through the boot warm so this compute-driven PointsNodeMaterial pipeline
   // compiles THERE (the warm hides the rest of the scene; warmKeep opts back in) — else it
   // first-compiles when a torch/bonfire comes into view in-play (a hitch). See warmup-pass.ts.
@@ -93,6 +103,17 @@ export function tickEmbersGPU(): void {
   let n = 0;
   forEachLight('environment', (src: any) => {
     if (n >= MAX_TORCHES || !src.id.startsWith('torch-')) return;
+    // ── ONLY THE TORCHES YOU CAN SEE ────────────────────────────────────────
+    //
+    // Josh: *"the flames have these particle effects rising — these are not LOS culled."*
+    // Right: this took the first sixteen registered torches with no visibility test at all,
+    // so embers rose from fires through walls and past sealed thresholds while the flames
+    // themselves were correctly hidden.
+    //
+    // Filtered at the EMITTER, which is the only place it can be done: the cloud is one
+    // Points draw whose trajectories are a pure function of time and index, with no
+    // per-particle object to hide. Sixteen tests a frame instead of eight hundred.
+    if (!canSeeSignalAt(src.position.x, src.position.z)) return;
     _scratch[n].copy(src.position);
     // The torch's (possibly flicker-animated) light colour → this torch's embers.
     if (src.getColor) src.getColor(_tmpCol); else _tmpCol.setHex(src.color);
@@ -101,5 +122,15 @@ export function tickEmbersGPU(): void {
   });
   for (let k = 0; k < n; k++) (torchArr as any).array[k].copy(_scratch[k]);
   (torchCount as any).value = n;
+  // ── AND THE DENSITY PER TORCH STAYS PUT ─────────────────────────────────
+  //
+  // `tIdx = hash(i) * torchCount` spreads ALL of COUNT across however many emitters there
+  // are, so dropping a torch from the list does not remove its embers — it hands them to
+  // the survivors. Hiding half the torches on a floor would have doubled the sparks over
+  // every remaining one, which reads as the fires flaring up as you walk away from them.
+  //
+  // So the number of ACTIVE particles tracks the number of emitters, and the rest park
+  // below the floor. Each visible torch keeps its own share whatever else is culled.
+  (activeCount as any).value = n * PER_TORCH;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

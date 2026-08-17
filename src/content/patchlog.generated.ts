@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-08-18",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The fires carry exactly one threshold. What burns beyond the next seal stays its own business until you break it.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The fires only reach you if there is a way for them to. No more flames burning through solid stone.",
         "area": [
@@ -396,14 +403,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "The stone has grain under your hand now, and what is packed between the blocks is no longer the same rock in shadow.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone stops swimming underfoot and overhead when you turn.",
         "area": [
           "atmosphere",
           "level"
