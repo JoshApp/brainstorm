@@ -21,10 +21,10 @@ import { planInterior, type InteriorForm } from './room-interior';
 import { planVoids } from './room-voids';
 import { evictFromVoids } from './void-evict';
 import { emitFramesForPortals } from './portal-frames';
-import { planPortals } from './portals';
-import { corridorTypeFor, corridorTypeForSpace, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
+import { planPortals, portalInputs } from './portals';
+import { corridorTypeFor, corridorTypeForSpace, sectionForWidth, NARROWEST_SECTION, type CorridorType, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH } from './corridor-types';
 import { mainline as graphMainline, faults, type FloorGraph, type GraphEdge } from './floor-graph';
-import { deriveAnchors } from './anchors';
+import { deriveAnchors, facesToward, type PortalAnchor } from './anchors';
 import { chooseLinkRoute, routeLength, type LinkRoute } from './corridor-route';
 import { linkFromRoute, rectsFromLink, type Link } from './link';
 import { ceilingForLink } from './corridor-ceiling';
@@ -36,6 +36,7 @@ import { plateExtentFor } from './corridor-trim';
 import { connectivityFaults } from './floor-connectivity';
 import { CONFIG } from '../config';
 import { archetypeForSpan, roomSpan } from './encounter-shape';
+import type { EncounterArchetype } from '../content/encounters';
 import { resolveSkin } from './skin';
 import { activeSkin } from './skins';
 import { wallFixtureKindOf, wallFixtureModel } from './lit-fixture-pool';
@@ -603,7 +604,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       // the dead doorframe it exists to prevent.
       corridors.push({
         id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id,
-        servedBy: conn.servedBy, link: conn.link,
+        servedBy: conn.servedBy, link: conn.link, clearWidth: type.width,
       });
       occupiedBoxes.push(rect);
     });
@@ -1050,8 +1051,8 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   //
   // See allocateCombat. Totalled and clamped up front, so COMBAT_MIN holds by
   // arithmetic and no pass has to come back and check it.
-  const packs = allocateCombat(rooms, boss ? last.id : null);
-  const budget = [...packs.values()].reduce((m, n) => m + n, 0);
+  const fights = allocateCombat(rooms, boss ? last.id : null, rand);
+  const budget = [...fights.values()].reduce((m, f) => m + f.pack, 0);
 
   const guardedRooms = new Set<string>();
   for (const r of rooms) {
@@ -1059,7 +1060,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     if (furnish(r, mouthOf(r, links), doorwaysOf(r, links), depth, rand, dressRand,
                 props, torches, spawns, mods.byRoom.get(r.id)?.kind, descent,
                 boss && r === last ? boss : undefined,
-                packs.get(r.id) ?? 0)) guardedRooms.add(r.id);
+                fights.get(r.id) ?? null)) guardedRooms.add(r.id);
   }
 
   // ── AND SPENDS WHAT THE ROOMS COULD NOT SEAT ───────────────────────
@@ -1067,7 +1068,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   // A share is what a room was allowed, not what fits around its props. The
   // budget belongs to the floor, so the remainder goes wherever there is still
   // standing room.
-  spendRemainingBudget(rooms, spawns, depth, rand, boss ? last.id : null, budget);
+  spendRemainingBudget(rooms, spawns, depth, rand, boss ? last.id : null, budget, fights);
 
   // ── THE FOG WALL ───────────────────────────────────────────────────
   //
@@ -1085,7 +1086,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   if (boss) {
     const mouth = mouthOf(last, links);
     const ports = planPortals(last.id, last.poly,
-      corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId })));
+      portalInputs(last.id, corridors));
     // The one you come in by. Nearest the mouth — a boss hall is a leaf, so
     // there is normally exactly one, and picking the nearest is only doing work
     // on the floors where the loop pass gave it a second way in.
@@ -1150,8 +1151,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // the RoomSpecs raw compiles (linkId is not `link`) and quietly reinstates a
     // doorway per leg here alone, which is how a standoff rule ends up measuring
     // a door nobody can walk through.
-    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly,
-      corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId })))
+    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly, portalInputs(r.id, corridors))
       .map((p) => ({ x: p.mid[0], z: p.mid[1] })));
   }
   /**
@@ -1351,8 +1351,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       mouth: mouthOf(r, links),
       // THE SAME CALL THE FRAMES MAKE. A web and the stone doorway it hangs in
       // have to agree, and the only way to guarantee that is to ask once.
-      doorways: planPortals(r.id, r.poly,
-        corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }))).map((p) => ({
+      doorways: planPortals(r.id, r.poly, portalInputs(r.id, corridors)).map((p) => ({
         x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.clearWidth,
       })),   // yaw + width too, which the clearance pass above does not need
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
@@ -1463,6 +1462,9 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       const m = mods.byRoom.get(r.id);
       return {
         id: r.id, rect: r.rect, height: r.height, poly: r.poly, roomType: r.type,
+        // The shape of fight this room was allocated, from its SPAN — recorded so
+        // the decision is inspectable rather than only its roster. See RoomSpec.
+        encounter: fights.get(r.id)?.archetype,
         // The plateau this room sits on. Rooms are internally FLAT by design —
         // a fight happens on one plane, so combat math, the splat map and the
         // nav grid never see a slope.
@@ -1747,6 +1749,9 @@ function geometryFor(
  * meant to cut. If the centre line misses the polygon (an ell's centre line can
  * exit through the missing quadrant), try lateral offsets before giving up.
  */
+/** A room's shape plus the openings its walls publish — what the router reasons on. */
+interface RoomWalls { poly: Poly; anchors: PortalAnchor[] }
+
 interface Connection {
   rects: Box[];
   type: CorridorType;
@@ -1816,6 +1821,9 @@ interface Connection {
 function routeConnection(
   a: Placed, b: Placed, type: CorridorType, rooms: readonly Placed[],
   occupied: readonly Box[], preferBend: boolean,
+  /** Pre-derived walls, when the caller already needed them to choose `type`.
+   *  Deriving them twice is two chances to disagree about what a wall affords. */
+  walls?: { A: RoomWalls; B: RoomWalls },
 ): Connection | null {
   // The mouth this step asks for is the SECTION's own width, not the generous
   // one `mouthWidth` would give. A splayed mouth needs geometry that does not
@@ -1823,13 +1831,16 @@ function routeConnection(
   // — and asking for 3.5m here would make every wall that can only afford 2.5m
   // decline a link it can perfectly well serve.
   const sectionMouth = (anchor: { width: readonly [number, number] }): number | null => {
-    const floor = Math.max(anchor.width[0], MIN_WALKABLE_WIDTH);
+    // NARROWEST_SECTION, not MIN_WALKABLE_WIDTH: a mouth between the two has no word
+    // that describes it honestly, and the label then overstates the hole. See the
+    // note on NARROWEST_SECTION.
+    const floor = Math.max(anchor.width[0], NARROWEST_SECTION);
     if (anchor.width[1] < floor) return null;
     return Math.max(floor, Math.min(anchor.width[1], type.width));
   };
 
-  const A = { poly: a.poly, anchors: deriveAnchors(a.id, a.poly, a.height) };
-  const B = { poly: b.poly, anchors: deriveAnchors(b.id, b.poly, b.height) };
+  const A = walls?.A ?? { poly: a.poly, anchors: deriveAnchors(a.id, a.poly, a.height) };
+  const B = walls?.B ?? { poly: b.poly, anchors: deriveAnchors(b.id, b.poly, b.height) };
   const obstacles = rooms.filter((r) => r !== a && r !== b)
     .map((r) => ({ id: r.id, poly: r.poly }));
 
@@ -1850,8 +1861,27 @@ function routeConnection(
   // overlap and corner-cover rule included, both of which are wrong and both of
   // which are stage 3's job. A refactor that also changes behaviour cannot be
   // verified.
-  const link = linkFromRoute(a.id, b.id, route);
-  const derived = rectsFromLink(link, { width: type.width, overlap: OVERLAP });
+  // ── THE RECT TAKES THE LINK'S WIDTH, NOT THE SECTION'S ────────────────────
+  //
+  // docs/LINKS-V3.md rule 2: width has ONE owner, the link. It used to take
+  // `type.width` — the SECTION's nominal width — while each mouth was negotiated
+  // against its own wall and could be narrower than that. So the rect said 2.20m,
+  // the wall's hole said what it could actually afford, and a mob walked a corridor
+  // it could not get out of. Measured after declaring the cuts: 64 of 628 doorways
+  // were still more than 20% narrower than the passage behind them, p5 0.68.
+  //
+  // The narrower of the two mouths, because a passage is only as wide as its
+  // tightest end and the thing walking it has to fit through both.
+  const negotiated = Math.min(route.aWidth, route.bWidth, type.width);
+  // AND THE WORD IS RELABELLED TO WHAT WAS ACTUALLY BUILT. `type` was the section
+  // REQUESTED, before the router negotiated the two mouths; the mouths can come out
+  // narrower than the request, and a corridor stamped `gallery` built at 1.50m gets
+  // a 4.60m ceiling over a slot. See `sectionForWidth` — the label errs downward, so
+  // it can never overstate the passage.
+  const built = sectionForWidth(negotiated);
+  const width = built.width;
+  const link = linkFromRoute(a.id, b.id, route, width);
+  const derived = rectsFromLink(link, { width, overlap: OVERLAP });
   if (!derived) return null;
   const { rects, legAxis } = derived;
   const n = route.legs.length;
@@ -1862,7 +1892,7 @@ function routeConnection(
     o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
   if (clash) return null;
 
-  return { rects, type, legAxis: n > 1 ? legAxis : undefined, route, link };
+  return { rects, type: built, legAxis: n > 1 ? legAxis : undefined, route, link };
 }
 
 function connect(
@@ -1903,6 +1933,13 @@ function connect(
   // Off the centre line there is no shared lateral to measure along, so the run
   // falls back to the distance between the rooms' boxes. An estimate, and it
   // always was — its only job is to pick a word.
+  // Derived ONCE here and handed to the router, rather than derived here and again
+  // inside it. Two derivations of the same walls is two chances to disagree about
+  // what a wall affords, and the section chosen above has to be the section the
+  // router then negotiates against.
+  const A = { poly: a.poly, anchors: deriveAnchors(a.id, a.poly, a.height) };
+  const B = { poly: b.poly, anchors: deriveAnchors(b.id, b.poly, b.height) };
+
   const eA = aligned ? exitPoint(a, alongZ, sign, base) : null;
   const eB = aligned ? exitPoint(b, alongZ, -sign, base) : null;
   const run = eA && eB
@@ -1919,18 +1956,32 @@ function connect(
   // things this session has been trading against each other moved the right way at
   // once, which is the sign it is the right abstraction.
   //
-  // What it also did was surface this: the corridor's RECT takes `type.width`
-  // while its FRAME is sized from the portal's clip of the same wall. Two
-  // computations of one quantity, and a wider section makes them disagree more
-  // often — tests/portals caught "a 1.03m frame refuses the widest roamer, in a
-  // 2.20m corridor that admits it", which is a mob that can walk the passage and
-  // not fit the door. A real gameplay fault, latent before and not shippable now.
+  // ── AND NOW IT IS WIRED, BECAUSE WIDTH HAS ONE OWNER ──────────────────────
   //
-  // The unification is the next v3 step and it is the same one the overlap needs:
-  // a corridor's width should BE the mouth the route negotiated (`route.aWidth` /
-  // `bWidth`, already carried on Connection), not a nominal number the frame then
-  // re-derives. Wire this the moment width has one owner.
-  const type = corridorTypeFor(run, rand);
+  // The note that stood here said: "the corridor's RECT takes `type.width` while
+  // its FRAME is sized from the portal's clip of the same wall. Two computations of
+  // one quantity ... a 1.03m frame refuses the widest roamer, in a 2.20m corridor
+  // that admits it — a mob that can walk the passage and not fit the door. Wire
+  // this the moment width has one owner."
+  //
+  // Width has one owner now (stage 3): the link declares its cut, the rect takes
+  // `min(aWidth, bWidth)`, and measured over 640 doorways ZERO are narrower than
+  // the passage behind them — it was 64 with a 5th percentile of 0.68. So the
+  // section can finally be chosen from the SPACE rather than from the run length,
+  // which is what Josh asked for: *"i want rooms to be connected, with bigger and
+  // smaller corridors depending on how much space there is."*
+  //
+  // `affordable` is the widest opening the two rooms could pair up on — for each
+  // facing pair of anchors, what the tighter of the two walls can host, and the best
+  // such pair. Not a promise: the router still negotiates the actual mouths and may
+  // decline. It is the ceiling on the vocabulary, so a pocket hung off a stub wall
+  // gets a squeeze because that is all it can have, and two long walls get a gallery
+  // because they can.
+  const affordable = Math.max(0, ...A.anchors.flatMap((x) => B.anchors
+    .filter((y) => facesToward(x, y.at[0] - x.at[0], y.at[1] - x.at[1])
+                && facesToward(y, x.at[0] - y.at[0], x.at[1] - y.at[1]))
+    .map((y) => Math.min(x.width[1], y.width[1]))));
+  const type = affordable > 0 ? corridorTypeForSpace(affordable, rand) : corridorTypeFor(run, rand);
   const width = type.width;
 
   // A DOGLEG FIRST, SOMETIMES.
@@ -1951,7 +2002,7 @@ function connect(
   // two anchors is a dogleg that also lands its doors correctly, so there is no
   // reason to keep a second way of bending.
   const wantsKink = rand() < DOGLEG_CHANCE;
-  const routed = routeConnection(a, b, type, rooms, occupied, wantsKink);
+  const routed = routeConnection(a, b, type, rooms, occupied, wantsKink, { A, B });
   if (routed) { linkTally.routed++; return { ...routed, servedBy: 'route' }; }
   linkTally.guessed++;
 
@@ -2291,7 +2342,35 @@ function mouthOf(
  * over the bar, which is 91% of the time.
  */
 /**
- * How many bodies each room gets, decided for the FLOOR before any are placed.
+ * Floor area per enemy, when handing out a room's share.
+ *
+ * ── CALIBRATED TO WHAT A ROOM CAN ACTUALLY SEAT, NOT TO ITS AREA ──────────────
+ *
+ * This was 40, inherited from the per-room rule. A share is what a room is ALLOWED,
+ * and props are placed before enemies are, so a room that was allowed `area / 40`
+ * bodies could not stand them all up — it simply dropped the surplus, and the old
+ * code's shipped density was therefore never the density it asked for.
+ *
+ * Handing the surplus to another room made the gap visible and large: 43% of every
+ * enemy on the floor was being placed by the leftover pass rather than by the room
+ * it was allocated to. That is not a leftover, it is the main producer — and it
+ * placed those bodies with a fixed 'medium' intensity into the LARGEST rooms first,
+ * which flattened the span gradient encounter-shape.ts exists to create (measured:
+ * hall/middle ranged share fell from 1.29x to 1.11x).
+ *
+ * It stayed at 40 in the end: with the accounting corrected the leftover pass covers
+ * only the rooms that genuinely came up short, and the density that results is the
+ * one the game has always shipped. The over-allocation was never the cause — see the
+ * dormant-ambusher note in `spendRemainingBudget` for what was.
+ */
+const AREA_PER_BODY = 40;
+
+/** A room's share of the floor's fight: how many bodies, and what shape of fight. */
+interface RoomFight { pack: number; archetype: EncounterArchetype }
+
+/**
+ * How many bodies each room gets, and what kind of fight it is, decided for the
+ * FLOOR before any of it is placed.
  *
  * ── WHY THIS IS AN ALLOCATION AND NOT A MINIMUM ───────────────────────────────
  *
@@ -2348,8 +2427,8 @@ function mouthOf(
  * decision about the shape of the difficulty curve. Flagged, not guessed.
  */
 function allocateCombat(
-  rooms: readonly Placed[], bossRoomId: string | null,
-): Map<string, number> {
+  rooms: readonly Placed[], bossRoomId: string | null, rand: () => number,
+): Map<string, RoomFight> {
   const b = CONFIG.CONTENT_BUDGET;
   // Biggest first, so the largest-remainder pass below and the leftover spend
   // both favour the rooms with the most floor to put a fight on.
@@ -2357,10 +2436,24 @@ function allocateCombat(
     .filter((r) => r.id !== bossRoomId && roomType(r.type).enemies)
     .sort((x, y) => polyArea(y.poly) - polyArea(x.poly));
   const share = new Map<string, number>();
-  if (!eligible.length) return share;
+  const shape = new Map<string, EncounterArchetype>();
+  if (!eligible.length) return new Map();
 
-  // WHAT THE ROOM IS SHAPED TO HOLD. Unchanged from the per-room rule.
-  for (const r of eligible) share.set(r.id, Math.max(1, Math.round(polyArea(r.poly) / 40)));
+  for (const r of eligible) {
+    // WHAT THE ROOM IS SHAPED TO HOLD. Unchanged from the per-room rule.
+    share.set(r.id, Math.max(1, Math.round(polyArea(r.poly) / AREA_PER_BODY)));
+    // AND WHAT IT IS SHAPED TO FIGHT LIKE. Its span, not its area — an archer needs
+    // a straight line, and a long room has one a square of the same floor area does
+    // not. encounter-shape.ts owns the rule; the short version is that a hall used
+    // to be the same encounter as a chamber with more bodies in it.
+    //
+    // ROLLED HERE, ONCE. It used to be rolled inside `furnish` and rolled AGAIN in
+    // the leftover spend, which draws from the largest rooms first — so the extra
+    // bodies in a hall were shaped by a fresh coin rather than by the hall, and the
+    // gradient the whole mechanism exists for got diluted at exactly the top band.
+    // tests/encounter-shape caught it as "hall 21.5% ranged vs middle 19.7%".
+    shape.set(r.id, archetypeForSpan(roomSpan(r.poly), rand));
+  }
   let total = [...share.values()].reduce((m, n) => m + n, 0);
   const target = Math.max(b.COMBAT_MIN, Math.min(b.COMBAT_MAX, total));
 
@@ -2377,7 +2470,7 @@ function allocateCombat(
     // Every room is down to its last body and the floor is still over the cap.
     if (total > target && [...share.values()].every((n) => n <= 1)) break;
   }
-  return share;
+  return new Map([...share].map(([id, pack]) => [id, { pack, archetype: shape.get(id)! }]));
 }
 
 /**
@@ -2402,8 +2495,25 @@ function spendRemainingBudget(
   bossRoomId: string | null,
   /** What `allocateCombat` handed out, and so what the floor is owed. */
   budget: number,
+  /** The same allocation, so a room's fight SHAPE is the one it was given. Rolling
+   *  a fresh archetype here shaped a hall's overflow bodies by a coin instead of by
+   *  the hall, and flattened the span gradient at the top band. */
+  fights: ReadonlyMap<string, RoomFight>,
 ): void {
-  let live = spawns.filter((s) => !s.dormant).length;
+  // ── A DORMANT AMBUSHER IS STILL A BODY ON THE FLOOR ────────────────────────
+  //
+  // This counted only NON-dormant spawns, and `furnish` marks an ambush room's whole
+  // pack dormant on purpose — that is what an ambush is. So an ambush room read as
+  // having placed nothing, and the floor was filled a second time somewhere else.
+  // The old COMBAT_MIN repair had the same flaw and it was bounded at five bodies;
+  // spending the whole budget amplified it to 43% OF EVERY ENEMY ON THE FLOOR being
+  // placed here rather than by the room it was allocated to — with a fixed 'medium'
+  // intensity, into the largest rooms first, which flattened the span gradient
+  // encounter-shape.ts exists to create (hall/middle ranged share 1.29x -> 1.11x).
+  //
+  // The boss is the one real exclusion: its hall gets no pack, so its own spawn must
+  // not count as the floor's fight being spent.
+  let live = spawns.filter((s) => s.roomId !== bossRoomId).length;
   if (live >= budget) return;
 
   const eligible = [...rooms]
@@ -2417,7 +2527,8 @@ function spendRemainingBudget(
     if (!open.length) continue;
     const taken = spawns.filter((s) => s.roomId === r.id);
     const want = budget - live;
-    const ids = rollFloorEnemies(depth, want, 'medium', rand, archetypeForSpan(roomSpan(r.poly), rand));
+    const ids = rollFloorEnemies(depth, want, 'medium', rand,
+                                 fights.get(r.id)?.archetype ?? archetypeForSpan(roomSpan(r.poly), rand));
     // Spread from the bodies already standing, so a top-up does not double a
     // pack up in one corner of a room that is mostly empty.
     const anchor = taken.length ? taken[taken.length - 1] : null;
@@ -2452,10 +2563,11 @@ function furnish(
    * which is not the fight, and on a sealed arena it is not survivable either.
    */
   boss?: BossSpec,
-  /** How many bodies this room was allocated by `allocateCombat`. The floor
-   *  decides the total and hands out shares, so a room no longer budgets its own
-   *  pack and the floor's minimum is arithmetic rather than an afterthought. */
-  pack = 0,
+  /** This room's share of the floor's fight — how many bodies and what shape —
+   *  decided by `allocateCombat` before anything was placed. The floor does the
+   *  arithmetic, so its minimum is arithmetic too, and a room's fight shape is
+   *  decided exactly once. */
+  fight: RoomFight | null = null,
 ): boolean {
   // ── THE WAY DOWN IS CLAIMED BEFORE ANYTHING ELSE IS PLACED ─────────
   //
@@ -2644,7 +2756,7 @@ function furnish(
     : open;
   const picks = hidden.length ? hidden : open;
   // The floor's allocation, not this room's own arithmetic — see allocateCombat.
-  const count = pack;
+  const count = fight?.pack ?? 0;
   // Intensity rides the room's ROLE: an ambush is a hard beat, a passage is a
   // speed bump. The pack roller keeps the group coherent so a room reads as a
   // designed fight rather than a grab-bag.
@@ -2656,7 +2768,9 @@ function furnish(
   // area does not. encounter-shape.ts owns the rule and the reason; the short
   // version is that a hall used to be the same encounter as a chamber with more
   // bodies in it, so its space was doing nothing.
-  const archetype = archetypeForSpan(roomSpan(r.poly), rand);
+  // Decided in `allocateCombat` — see the note there on why rolling it twice
+  // flattened the very gradient this exists to create.
+  const archetype = fight?.archetype ?? archetypeForSpan(roomSpan(r.poly), rand);
   // THE HALL BELONGS TO ONE THING. A boss arena takes no pack: the act's boss
   // stands in it alone, at the room's own focal point, and everything the
   // ordinary roller would have put there is simply not rolled — so the enemy
@@ -3000,7 +3114,7 @@ function spawnYawToward(
   corridors: ReadonlyArray<{ id: string; rect: Box }>,
   mainline: ReadonlySet<string>,
 ): number {
-  const portals = planPortals(entrance.id, entrance.poly, corridors);
+  const portals = planPortals(entrance.id, entrance.poly, portalInputs(entrance.id, corridors));
   // A ROOM CAN HAVE NO PORTAL. Measured: 18 of 411 poly rooms, 4 of 72
   // entrances. `planPortals` refuses a span under 1.2m as a corridor grazing a
   // corner, but the wall ring cuts its opening from the rects directly — so

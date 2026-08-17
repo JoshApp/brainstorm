@@ -123,6 +123,8 @@ function smallestAdmitting(radius: number): number {
 }
 export const MIN_WALKABLE_WIDTH = smallestAdmitting(WIDEST_ROAMER_RADIUS);
 
+
+
 export const CORRIDOR_TYPES: Readonly<Record<CorridorTypeId, CorridorType>> = {
   // Single file. No sidestep, no room for a swing arc, and nothing can get past
   // you — which cuts both ways, and that is the point. Short runs only: this is
@@ -224,6 +226,61 @@ export function corridorTypeForSpace(affordable: number, rand: () => number): Co
   let roll = rand() * total;
   for (const t of open) { roll -= t.weight; if (roll <= 0) return t; }
   return open[open.length - 1];
+}
+
+/**
+ * The narrowest thing the vocabulary can describe.
+ *
+ * A corridor's WORD carries its ceiling, its props and its authoring width, and
+ * `sectionForWidth` labels a passage by the widest section it reaches. So a passage
+ * narrower than the narrowest section has no honest word: it gets labelled `squeeze`
+ * and the label then OVERSTATES it. Measured: the router floored its mouths at
+ * MIN_WALKABLE_WIDTH (1.30m) while a squeeze is 1.55m, so a 2.13m declared opening
+ * could sit in a rect stamped 2.20m — a cobweb spun to the word's width hung 7cm wide
+ * of the hole it was in.
+ *
+ * A corridor is therefore at least a squeeze. Narrower openings are not a defect and
+ * are not gone — a CRAWL is a deliberate feature (level/anchors.ts: an opening the
+ * widest roamer cannot follow you through) — but a crawl is authored as a crawl, not
+ * discovered by a corridor coming out too thin.
+ */
+export const NARROWEST_SECTION = ALL_CORRIDOR_TYPES.reduce(
+  (m, t) => Math.min(m, t.width), Infinity);
+
+/**
+ * The WORD for a width that has already been decided.
+ *
+ * ── WHY THE LABEL FOLLOWS THE GEOMETRY AND NOT THE OTHER WAY ROUND ───────────
+ *
+ * docs/LINKS-V3.md rule 2: width has ONE owner, the link. A link negotiates each
+ * mouth against its own wall, so the width it ends up with is whatever BOTH walls
+ * could actually give — a continuous quantity, not one of three numbers. Meanwhile
+ * `corridorTypeFor*` picks a section BEFORE routing, because the router needs a
+ * width to ask for.
+ *
+ * Those two facts cannot both be respected by stamping the requested section on the
+ * result. Measured with space-based selection on: 477 of 1569 corridors were built
+ * to a different width than their word claimed, worst case 2.10m out — a corridor
+ * stamped `gallery` and built at 1.50m would get a 4.60m ceiling over a slot.
+ *
+ * So the word is a BAND, applied afterwards: the widest section whose width the
+ * passage actually reaches. The label then cannot lie, and it errs downward —
+ * `understating` a 1.94m passage as a squeeze gives it a 2.30m ceiling rather than
+ * a 3.00m one, and a prop authored for a squeeze fits in something wider. Erring
+ * upward would put daylight over a doorway, the same reason DEFAULT_PASSAGE_H takes
+ * the low end.
+ *
+ * Nothing narrower than the narrowest section should reach here — the router floors
+ * every mouth at MIN_WALKABLE_WIDTH — but if one does it gets the narrowest word
+ * rather than no word, because a corridor with no section has no ceiling and no
+ * props.
+ */
+export function sectionForWidth(width: number): CorridorType {
+  let best: CorridorType | null = null;
+  for (const t of ALL_CORRIDOR_TYPES) {
+    if (t.width <= width + 1e-6 && (!best || t.width > best.width)) best = t;
+  }
+  return best ?? ALL_CORRIDOR_TYPES.reduce((m, t) => (t.width < m.width ? t : m), ALL_CORRIDOR_TYPES[0]);
 }
 
 /** Look-up by id, for a spec that stored the word rather than the numbers. */

@@ -45,29 +45,39 @@ function lcg(seed: number): () => number {
 
 const B = CONFIG.CONTENT_BUDGET;
 
-/** Live (non-dormant) enemies on real generated floors. A dormant spawn is a boss
- *  behind a fog gate or a sleeping ambusher — the floor's fight is what stands up. */
-function liveCounts(depth: number, n = 40): number[] {
+/**
+ * Bodies the floor's fight is made of, on real generated floors.
+ *
+ * NOT "non-dormant". A dormant spawn is a sleeping ambusher — it is the floor's fight,
+ * it just has not noticed you yet — and counting only the awake ones is the exact
+ * mistake that made the leftover pass place 43% of every enemy in the game (see the
+ * dormant-ambusher note in poly-floor's `spendRemainingBudget`). The boss is excluded
+ * because its hall takes no pack, so its own spawn is not the budget being spent.
+ */
+function bodyCounts(depth: number, n = 40): number[] {
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
     try {
       const spec = generatePolyFloor(depth, 5000 + i * 7919) as unknown as
-        { spawns?: Array<{ dormant?: boolean }> };
-      out.push((spec.spawns ?? []).filter((x) => !x.dormant).length);
+        { spawns?: Array<{ roomId?: string; enemyId: string }>; bossRoomId?: string };
+      const boss = new Set((spec.spawns ?? [])
+        .filter((x) => (x as { dormant?: boolean }).dormant && (x as { boss?: boolean }).boss)
+        .map((x) => x.roomId));
+      out.push((spec.spawns ?? []).filter((x) => !boss.has(x.roomId)).length);
     } catch { /* a floor that fails its own soundness checks rerolls in play */ }
   }
   return out;
 }
 
-test('a floor is NEVER empty — live enemies >= COMBAT_MIN at every depth', () => {
+test('a floor is NEVER empty — bodies >= COMBAT_MIN at every depth', () => {
   // THE BUG THIS SYSTEM EXISTS TO KILL. Shallow floors could roll a walk with no
   // fight in it. Asserted on the floor the player actually gets.
   for (const depth of [1, 2, 3, 6, 9]) {
-    const counts = liveCounts(depth);
+    const counts = bodyCounts(depth);
     assert.ok(counts.length > 30, `only ${counts.length} floors generated at d${depth}`);
     const min = Math.min(...counts);
     assert.ok(min >= B.COMBAT_MIN,
-      `depth ${depth}: a floor shipped with ${min} live enemies, under COMBAT_MIN ${B.COMBAT_MIN}`);
+      `depth ${depth}: a floor shipped with ${min} bodies, under COMBAT_MIN ${B.COMBAT_MIN}`);
   }
 });
 
@@ -76,19 +86,19 @@ test('the ceiling holds — no floor becomes soup', () => {
   // as long as nothing summed the rooms, and no test noticed because the test was
   // reading a formula instead of a floor.
   for (const depth of [6, 9, 14]) {
-    const counts = liveCounts(depth);
+    const counts = bodyCounts(depth);
     const max = Math.max(...counts);
     assert.ok(max <= B.COMBAT_MAX,
-      `depth ${depth}: a floor shipped with ${max} live enemies, over COMBAT_MAX ${B.COMBAT_MAX}`);
+      `depth ${depth}: a floor shipped with ${max} bodies, over COMBAT_MAX ${B.COMBAT_MAX}`);
   }
 });
 
 test('combat scales up with depth (deep floors are tougher on average)', () => {
   const mean = (xs: number[]) => xs.reduce((m, n) => m + n, 0) / xs.length;
-  const shallow = mean(liveCounts(1));
-  const mid = mean(liveCounts(6));
+  const shallow = mean(bodyCounts(1));
+  const mid = mean(bodyCounts(6));
   assert.ok(mid > shallow + 2,
-    `depth 6 averages ${mid.toFixed(1)} live enemies against depth 1's ${shallow.toFixed(1)} `
+    `depth 6 averages ${mid.toFixed(1)} bodies against depth 1's ${shallow.toFixed(1)} `
     + '— a descent that does not get heavier');
 });
 

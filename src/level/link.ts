@@ -110,8 +110,20 @@ export interface WallCut {
   t1: number;
 }
 
-/** Adopt a solved route as a link. The route already IS this shape. */
-export function linkFromRoute(fromRoom: string, toRoom: string, r: LinkRoute): Link {
+/**
+ * Adopt a solved route as a link. The route already IS this shape.
+ *
+ * `width` is the width the corridor will actually be BUILT to, which is not always
+ * the width the router negotiated: the section word is chosen afterwards and quantises
+ * it (see `sectionForWidth`). The declared cut has to be derived from the built width
+ * or the hole and the passage disagree by up to a section step — a 2.13m cut in a
+ * 2.20m rect, which is a cobweb spun 7cm wider than the opening it hangs in. One
+ * width, both derivations. Omitted → the negotiated width, for callers with no
+ * section.
+ */
+export function linkFromRoute(
+  fromRoom: string, toRoom: string, r: LinkRoute, width?: number,
+): Link {
   return {
     fromRoom,
     toRoom,
@@ -120,8 +132,8 @@ export function linkFromRoute(fromRoom: string, toRoom: string, r: LinkRoute): L
     bAt: r.bAt,
     aWidth: r.aWidth,
     bWidth: r.bWidth,
-    aCut: cutFor(r.a, r.aAt, r.aWidth),
-    bCut: cutFor(r.b, r.bAt, r.bWidth),
+    aCut: cutFor(r.a, r.aAt, Math.min(width ?? r.aWidth, r.aWidth)),
+    bCut: cutFor(r.b, r.bAt, Math.min(width ?? r.bWidth, r.bWidth)),
   };
 }
 
@@ -206,6 +218,14 @@ export function rectsFromLink(link: Link, opts: DeriveOpts): DerivedRects | null
     // boundary case. Stopping at the centre puts that end half a width INSIDE its
     // neighbour with no epsilon to argue about, and the departing leg's own
     // half-width covers the corner square by itself.
+    //
+    // WHAT THIS COSTS, AND WHERE IT IS PAID: the arriving leg's last half-width is
+    // inside its neighbour, and a corridor builds side walls along its whole length,
+    // so that half-width of wall crosses the passage it just joined. At 2.20m it left
+    // 1.10m clear and nobody noticed; at squeeze width it leaves 0.77m. The wall is
+    // the thing that is wrong, not the rect — see the sibling-leg subtraction in
+    // builder.ts. Pulling the rect back instead orphans the joint (measured: it
+    // traded d5/s4242 for cor-l0-1 "ending in nothing").
     if (i > 0) t0 -= dir * width / 2;
 
     const lo = Math.min(t0, t1), hi = Math.max(t0, t1);

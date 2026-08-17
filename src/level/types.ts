@@ -10,6 +10,7 @@ import type { CorridorTypeId } from './corridor-types';
 import type { WallProfileName } from './wall-profile';
 import type { FloorGraph } from './floor-graph';
 import type { Link } from './link';
+import type { EncounterArchetype } from '../content/encounters';
 
 export type Vec2 = { x: number; z: number };
 
@@ -131,6 +132,30 @@ export type RoomSpec = {
    * front of a broken doorway, it is the first thing worth knowing.
    */
   servedBy?: 'route' | 'guess' | 'placement' | 'chord';
+  /**
+   * The shape of fight this room was allocated — see `allocateCombat`.
+   *
+   * Recorded because the room's SPAN decides it (encounter-shape.ts) and nothing
+   * downstream could see the decision: the only evidence was the roster that came
+   * out of it, and a roster is a sample. tests/encounter-shape spent three
+   * revisions asserting a gradient through that sample — at 96 floors the
+   * hall/middle ranged ratio has a standard error of ±0.15, so a 1.2 bar on a 1.22
+   * mechanism fires about half the time. The decision itself has no such noise.
+   *
+   * Also the seam a content or narration layer would read to say what a room IS.
+   */
+  encounter?: EncounterArchetype;
+  /**
+   * CLEAR WIDTH of this corridor, metres — corridor RoomSpecs only.
+   *
+   * Stated rather than inferred. Every consumer used to take `min(rect.w, rect.d)`,
+   * which is the width only while the leg is longer than it is wide: a 3.60m gallery
+   * leg 2.00m long measures "2.00m wide", and with space-driven sections short wide
+   * legs are common. The link negotiated this number against both walls (rule 2 of
+   * docs/LINKS-V3.md — width has one owner), so it is carried, not re-derived from a
+   * bounding box that cannot tell width from length.
+   */
+  clearWidth?: number;
   /**
    * THE POLYLINE THIS CORRIDOR IS A VIEW OF — corridor RoomSpecs only.
    *

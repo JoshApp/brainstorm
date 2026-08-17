@@ -152,6 +152,18 @@ export type OpeningRect = {
    *  one per leg — see `oneDoorPerConnection` in portals.ts. Absent on the
    *  vault path, where a rect is its own link. */
   link?: string;
+  /**
+   * THE HOLE THIS OPENING NEEDS, as declared by the link that owns it.
+   *
+   * Stage 3 of docs/LINKS-V3.md. When present, `wallCutsFor` uses it verbatim and
+   * does not intersect anything: the router knew which edge and how far along when
+   * it negotiated the width, and recovering that from the rect's shadow on the wall
+   * is what made a doorway 2.20m of rect and 1.03m of frame at the same time.
+   *
+   * Absent on the paths that genuinely have no link — a stairwell hole, a void
+   * edge, the vault path — and those still get the rect intersection.
+   */
+  cut?: { edge: number; t0: number; t1: number };
 };
 
 /**

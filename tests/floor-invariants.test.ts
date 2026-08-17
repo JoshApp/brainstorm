@@ -102,17 +102,28 @@ test('generation never throws', () => {
   assert.equal(corpus().length, DEPTHS.length * SEEDS.length);
 });
 
-// The empty-early-floors bug: a floor could roll zero combat when few combat
-// vaults were eligible at shallow depth. v3's content budget makes that
-// impossible — every floor carries at least COMBAT_MIN live (non-dormant)
-// enemies, seeded into open cells of any room. This is the regression lock.
+// The empty-early-floors bug: a floor could roll zero combat when few combat vaults
+// were eligible at shallow depth. `allocateCombat` makes that impossible — the floor
+// totals what its rooms are shaped to hold and clamps it up to COMBAT_MIN before a
+// single body is placed, so the minimum is arithmetic. This is the regression lock.
+//
+// COUNTED AS BODIES, NOT AS "AWAKE". This filtered out dormant spawns, and a dormant
+// spawn is a sleeping AMBUSHER — it is the floor's fight, it just has not noticed you
+// yet. An ambush-heavy floor with four awake enemies and three waiting is not the
+// empty floor this test exists to catch. The same conflation, in the generator, made
+// the leftover pass believe ambush rooms had placed nothing and refill the floor a
+// second time — 43% of every enemy in the game (see `spendRemainingBudget`). The boss
+// is the one exclusion: its hall takes no pack, so its own spawn is not the budget.
 test('every floor meets the combat budget minimum (never empty)', () => {
   const MIN = CONFIG.CONTENT_BUDGET.COMBAT_MIN;
   for (const { d, s, spec } of corpus()) {
-    const live = (spec.spawns ?? []).filter(
-      (sp) => !(sp as { dormant?: boolean }).dormant,
+    const bossRooms = new Set((spec.spawns ?? [])
+      .filter((sp) => (sp as { boss?: boolean }).boss)
+      .map((sp) => (sp as { roomId?: string }).roomId));
+    const bodies = (spec.spawns ?? []).filter(
+      (sp) => !bossRooms.has((sp as { roomId?: string }).roomId),
     ).length;
-    assert.ok(live >= MIN, `depth ${d} seed ${s}: only ${live} live enemies (< MIN ${MIN})`);
+    assert.ok(bodies >= MIN, `depth ${d} seed ${s}: only ${bodies} bodies (< MIN ${MIN})`);
   }
 });
 

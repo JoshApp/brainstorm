@@ -1487,7 +1487,16 @@ export function buildLevel(
           // at the same height the archway's crown lands (poly-room-shell.ts).
           // Without it the wall guesses, and the window between "blocks the way
           // through" and "leaves daylight over it" is 0.31m wide.
-          spec.corridors.map((c) => ({ ...c.rect, link: c.linkId, passageH: c.height })),
+          // `cut` is the DECLARED hole (stage 3): the link states which edge of
+          // THIS room it enters and how far along, so the ring stops intersecting
+          // a deliberately-overshooting rect with the polygon to guess it back.
+          // Which end of the link this room is decides which of the two cuts.
+          spec.corridors.map((c) => ({
+            ...c.rect, link: c.linkId, passageH: c.height,
+            cut: c.link?.fromRoom === r.id ? c.link.aCut
+              : c.link?.toRoom === r.id ? c.link.bCut
+              : undefined,
+          })),
           holes,
         );
       } else {

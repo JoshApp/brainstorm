@@ -32,7 +32,7 @@ import assert from 'node:assert/strict';
 import { generatePolyFloor, RESERVE_W, MARGIN } from '../src/level/poly-floor';
 import {
   ALL_CORRIDOR_TYPES, CORRIDOR_TYPES, MIN_WALKABLE_WIDTH, WIDEST_ROAMER_RADIUS,
-  corridorType, corridorTypeFor, type CorridorTypeId,
+  corridorType, corridorTypeFor, sectionForWidth, type CorridorTypeId,
 } from '../src/level/corridor-types';
 import { gateAdmits } from '../src/level/nav-grid';
 import { ceilingForLink } from '../src/level/corridor-ceiling';
@@ -51,7 +51,11 @@ const SEEDS = [7, 4242, 90210, 31337, 11, 222, 3333, 44444, 555, 66, 777, 8888];
 const DEPTHS = [1, 2, 5, 6, 8, 11];
 
 /** A corridor's clear width is its SHORT side — the rect runs along its length. */
-const widthOf = (c: RoomSpec) => Math.min(c.rect.w, c.rect.d);
+// THE CORRIDOR'S OWN STATED WIDTH, not min(w, d) of its box. That inference is only
+// the width while a leg is longer than it is wide, and a 3.60m gallery leg 2.00m long
+// measures "2.00m wide" — which read as 123 corridors disagreeing with their own word
+// when nothing was wrong with any of them. `clearWidth` is what the link negotiated.
+const widthOf = (c: RoomSpec) => c.clearWidth ?? Math.min(c.rect.w, c.rect.d);
 
 /**
  * The corridors of a floor, grouped into LINKS.
@@ -154,8 +158,20 @@ test('EVERY CORRIDOR IS THE WIDTH AND HEIGHT ITS WORD SAYS IT IS', () => {
         n++;
         assert.ok(c.corridorType,
           `d${depth}/s${seed} ${c.id} has no corridorType — the word did not survive addLink`);
-        assert.ok(Math.abs(widthOf(c) - t.width) < 0.01,
-          `d${depth}/s${seed} ${c.id} is stamped ${t.id} (${t.width}m) but measures ${widthOf(c).toFixed(2)}m`);
+        // THE WORD MAY NOT OVERSTATE THE PASSAGE. It used to be an equality, back
+        // when the section was chosen first and the geometry built to it. Sections now
+        // come from the SPACE the two walls afford (rule 2: width has one owner), so
+        // the width is continuous and the word is a BAND applied afterwards by
+        // `sectionForWidth`. What has to hold is that the label never claims more than
+        // was built — a prop authored for a squeeze must fit what it is placed in, and
+        // the ceiling must not float over a slot.
+        assert.ok(widthOf(c) >= t.width - 0.01,
+          `d${depth}/s${seed} ${c.id} is stamped ${t.id} (${t.width}m) but measures only ${widthOf(c).toFixed(2)}m`);
+        // ...and it is the BEST-fitting word, not merely a safe one. Without this the
+        // invariant above is satisfied by calling everything a squeeze.
+        assert.ok(sectionForWidth(widthOf(c)).id === t.id,
+          `d${depth}/s${seed} ${c.id} measures ${widthOf(c).toFixed(2)}m, which is a `
+          + `${sectionForWidth(widthOf(c)).id}, but it is stamped ${t.id}`);
         assert.ok(Math.abs(c.height - allowed) < 0.01,
           `d${depth}/s${seed} ${c.id} is stamped ${t.id} and should stand ${allowed.toFixed(2)}m `
           + `(section ${t.height}m, clamped to the rooms it meets) but is ${c.height.toFixed(2)}m`);

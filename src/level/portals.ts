@@ -129,13 +129,111 @@ const MIN_WIDTH = 1.2;
  * edge it covers MOST, because that is the one it comes through. Taking all of
  * them would punch a second doorway in the wall around the corner.
  */
+/**
+ * The portal input for ONE room, built from the floor's corridor specs.
+ *
+ * Every caller of `planPortals` and `wallCutsFor` needs the same three things per
+ * corridor — its rect, its link id, and the hole its link declared in THIS room's
+ * wall — and five of them were building that expression by hand. The declared cut is
+ * the part that is easy to get wrong: a link states TWO cuts and which one applies
+ * depends on which end this room is, so a copy that picks `aCut` unconditionally
+ * puts every doorway in the wrong room and still typechecks.
+ */
+export function portalInputs(
+  roomId: string,
+  corridors: ReadonlyArray<{
+    id: string; rect: Rect; linkId?: string; clearWidth?: number;
+    link?: { fromRoom: string; toRoom: string;
+             aCut: { edge: number; t0: number; t1: number };
+             bCut: { edge: number; t0: number; t1: number } };
+  }>,
+): Array<{ id: string; rect: Rect; link?: string; clearWidth?: number;
+           cut?: { edge: number; t0: number; t1: number } }> {
+  return corridors.map((c) => ({
+    id: c.id,
+    rect: c.rect,
+    link: c.linkId,
+    clearWidth: c.clearWidth,
+    cut: c.link?.fromRoom === roomId ? c.link.aCut
+      : c.link?.toRoom === roomId ? c.link.bCut
+      : undefined,
+  }));
+}
+
 export function planPortals(
   roomId: string,
   poly: Ring,
-  corridors: ReadonlyArray<{ id: string; rect: Rect; link?: string }>,
+  corridors: ReadonlyArray<{
+    id: string; rect: Rect; link?: string;
+    /** The DECLARED hole this corridor needs in THIS room's wall, when its link
+     *  stated one. Present → the rect is never intersected with the polygon. */
+    cut?: { edge: number; t0: number; t1: number };
+    /** The corridor's stated clear width, for capping the frame. */
+    clearWidth?: number;
+  }>,
 ): Portal[] {
   const n = poly.length;
   const out: Portal[] = [];
+
+  /**
+   * A portal from a DECLARED cut — stage 3 of docs/LINKS-V3.md, and the short path.
+   *
+   * Everything below this is machinery for recovering a hole from a rect that was
+   * deliberately pushed through the wall so it could be found. A declared cut needs
+   * none of it, and the reasons are worth stating because each one is a bug that was
+   * fixed the hard way:
+   *
+   *   - ONE EDGE, NEVER A CORNER. `deriveAnchors` guarantees the span keeps clear of
+   *     every vertex of the outline, so a declared cut cannot straddle a chamfer.
+   *     The adjacent-run grouping, the "cut every edge the corridor crosses" rule and
+   *     the arc-vs-chord split all exist for a case that cannot arise here.
+   *   - NO PLATE, NO SOCKET, NO FALLBACK. Those clip against a grown approximation of
+   *     where the corridor really stops, then fall back to the raw rect for the 0.9%
+   *     the approximation seals. The declaration IS where it stops.
+   *   - NO MIN_WIDTH. That floor rejects a corridor GRAZING a corner, which is a
+   *     rect artefact. Applying it to a declaration would refuse the crawl on
+   *     purpose — an opening deliberately too tight for the widest roamer is a
+   *     designed feature (level/anchors.ts), not build noise.
+   */
+  const fromCut = (
+    c: { id: string; rect: Rect; clearWidth?: number },
+    cut: { edge: number; t0: number; t1: number },
+    /** Every OTHER edge this corridor's rect covers. The declared cut is the DOOR
+     *  and sits on one edge; the ring still has to lose any wall that stands inside
+     *  the passage, which is the same rule `insidePolyRanges` applies from the
+     *  corridor's side: A WALL SEGMENT INSIDE A CORRIDOR IS NOT A WALL.
+     *
+     *  Without this the door opened and a neighbouring chamfer's wall stayed
+     *  standing across the corridor behind it. Measured on d5/s4242: poly-1's ring
+     *  had its 1.55m hole and the wall of the adjacent edge closed cor-2-0, and the
+     *  flood stopped at z=18.6 with four rooms and the stair behind it. */
+    alsoInside: ReadonlyArray<{ edge: number; t0: number; t1: number }>,
+  ): Portal | null => {
+    const a = poly[cut.edge], b = poly[(cut.edge + 1) % n];
+    const dx = b[0] - a[0], dz = b[1] - a[1];
+    const edgeLen = Math.hypot(dx, dz);
+    if (edgeLen < 1e-4 || cut.t1 <= cut.t0) return null;
+    const pa: V2 = [a[0] + dx * cut.t0, a[1] + dz * cut.t0];
+    const pb: V2 = [a[0] + dx * cut.t1, a[1] + dz * cut.t1];
+    const nrm = edgeNormal(poly, cut.edge);
+    // What the wall loses. On one edge the arc IS the chord, so the two numbers the
+    // rect path had to keep apart are the same number here — except that the frame
+    // is still capped by the passage: a 2.2m corridor crossing a diagonal wall cuts
+    // a longer hole than it is wide, and a door is as wide as what walks through it.
+    const width = (cut.t1 - cut.t0) * edgeLen;
+    return {
+      roomId, corridorId: c.id, edge: cut.edge,
+      a: pa, b: pb,
+      mid: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2],
+      normal: nrm,
+      rotY: Math.atan2(nrm[0], nrm[1]),
+      width,
+      clearWidth: Math.min(width, c.clearWidth ?? Math.min(c.rect.w, c.rect.d)),
+      t0: cut.t0, t1: cut.t1,
+      cuts: [cut, ...alsoInside],
+    };
+  };
+
   for (const c of corridors) {
     // Every edge this corridor reaches, with the length it covers.
     const gather = (rect: Rect): Hit[] => {
@@ -153,6 +251,14 @@ export function planPortals(
       }
       return hits;
     };
+
+    // The DECLARED path. Everything below is the rect round trip, kept for the
+    // openings that genuinely have no link (a stairwell hole, the vault path).
+    if (c.cut) {
+      const p = fromCut(c, c.cut, gather(c.rect).filter((h) => h.edge !== c.cut!.edge));
+      if (p) out.push(p);
+      continue;
+    }
 
     // ── CUT AGAINST WHAT IS BUILT, NOT AGAINST THE BOOKKEEPING ─────────────
     //
@@ -408,13 +514,39 @@ export function wallCutsFor(
    *  the same function the frame emitter calls, the ring cannot open a hole the
    *  emitter then declines to fill. Optional: the vault path passes bare rects
    *  and each is its own link. */
-  rects: ReadonlyArray<Rect & { link?: string }>,
+  rects: ReadonlyArray<Rect & { link?: string; cut?: { edge: number; t0: number; t1: number } }>,
 ): Array<{ edge: number; t0: number; t1: number }> {
+  // ── A DECLARED CUT IS USED, NOT RECOMPUTED ─────────────────────────────────
+  //
+  // Stage 3 of docs/LINKS-V3.md, rule 3. An opening that carries a `cut` was given
+  // one by the link that owns it: the router knew the edge and the span at the
+  // moment it negotiated the width against that wall. Intersecting the rect with
+  // the polygon to get it back is the round trip the whole stage exists to delete,
+  // and it does not return the same answer — the rect's shadow on the wall is the
+  // SECTION's width, which is why a 2.20m rect and a 1.03m frame could describe one
+  // doorway (rule 2: width has one owner).
+  //
+  // Deduped per link + edge. A dogleg's legs all carry the same link and therefore
+  // the same pair of declared cuts, and a room wants ONE hole for the way through.
+  const declared: Array<{ edge: number; t0: number; t1: number }> = [];
+  const seen = new Set<string>();
+  const rediscover: Array<Rect & { link?: string }> = [];
+  for (const rect of rects) {
+    if (!rect.cut) { rediscover.push(rect); continue; }
+    const key = `${rect.link ?? ''}|${rect.cut.edge}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    declared.push({ edge: rect.cut.edge, t0: rect.cut.t0, t1: rect.cut.t1 });
+  }
+
   // EVERY cut, not just the leading edge's. A corridor arriving across a
   // chamfered corner opens two edges, and returning one of them leaves the
   // other as stone across half the doorway — see the note in planPortals.
-  return planPortals('shell', poly, rects.map((rect, i) => ({ id: `o${i}`, rect, link: rect.link })))
-    .flatMap((p) => p.cuts.map((c) => ({ edge: c.edge, t0: c.t0, t1: c.t1 })));
+  const found = rediscover.length
+    ? planPortals('shell', poly, rediscover.map((rect, i) => ({ id: `o${i}`, rect, link: rect.link })))
+        .flatMap((p) => p.cuts.map((c) => ({ edge: c.edge, t0: c.t0, t1: c.t1 })))
+    : [];
+  return [...declared, ...found];
 }
 
 /**

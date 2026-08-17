@@ -1,5 +1,5 @@
 import type { LevelSpec, PropSpec } from './types';
-import { planPortals } from './portals';
+import { planPortals, portalInputs } from './portals';
 import { chooseFrameModel } from './frame';
 import { archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
 import { doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
@@ -51,7 +51,7 @@ export function emitFramesForPortals(spec: LevelSpec): void {
   // Corridors first — see level/dressing.ts 'archway'. With this off a doorway is
   // the raw cut, which is the thing being fixed.
   if (!dressing('archway')) return;
-  const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }));
+  const corridors = spec.corridors ?? [];
   if (!corridors.length) return;
 
   for (const room of spec.rooms ?? []) {
@@ -65,7 +65,7 @@ export function emitFramesForPortals(spec: LevelSpec): void {
       Math.abs(st.x - room.rect.x) <= room.rect.w / 2
       && Math.abs(st.z - room.rect.z) <= room.rect.d / 2);
 
-    for (const p of planPortals(room.id, room.poly, corridors)) {
+    for (const p of planPortals(room.id, room.poly, portalInputs(room.id, corridors))) {
       if (p.clearWidth < MIN_WIDTH) continue;
       const corridor = (spec.corridors ?? []).find((c) => c.id === p.corridorId);
       if (!corridor) continue;

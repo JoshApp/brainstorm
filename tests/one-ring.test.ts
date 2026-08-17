@@ -81,29 +81,56 @@ test('THE WALL YOU MOUNT ON IS THE WALL THAT GETS BUILT', () => {
   assert.ok(checked > 400, `only ${checked} spans compared — this measured nothing`);
 });
 
-test('AND DROPPING THE CUTS IS A CHANGE YOU CAN SEE', () => {
-  // The control. If describing WITHOUT the cuts happened to give the same answer,
-  // the test above would pass for free and would not be protecting anything —
-  // which is exactly how the bug survived: the rect-only ring was never absurd,
-  // just wrong, and nothing compared them.
+test('AND THE CUTS PARAMETER IS ACTUALLY HONOURED', () => {
+  // The control. If describing WITHOUT the cuts happened to give the same answer, the
+  // test above would pass for free and protect nothing — which is exactly how the bug
+  // survived: the rect-only ring was never absurd, just wrong, and nothing compared
+  // them. (Measured when that was written: the rect-only plan was missing 216m of
+  // wall across 144 floors.)
   //
-  // Measured when this was written: the rect-only plan was missing 216m of wall
-  // across 144 floors. Here we only need it to differ SOMEWHERE.
-  let differed = 0;
+  // ── THIS USED TO ASK REAL DATA TO DISAGREE, AND THAT WAS THE WRONG QUESTION ──
+  //
+  // It counted rooms where passing the cuts changed the output, and needed more than
+  // five. That worked while the cuts came from `planPortals` and the openings came
+  // from rects, because the two disagreed often. Stage 3 of docs/LINKS-V3.md made the
+  // cut DECLARED by the link that chose it, and declared cuts agree with the rect
+  // clipping almost everywhere — 100% same edge over 628 of them. So the control
+  // started failing on "the cuts changed nothing on 2 rooms", reporting the fix as
+  // the fault. A guard that needs the data to still be broken is not a guard.
+  //
+  // Asked by CONSTRUCTION instead: hand the ring a cut it could not possibly have
+  // derived from any opening — a hole in the middle of an edge nothing touches — and
+  // require the wall to actually lose that much stone. This cannot pass by accident
+  // and it cannot rot as the generator gets better.
+  let checked = 0;
+  const len = (ds: ReadonlyArray<{ a: V2; b: V2 }>) =>
+    ds.reduce((m, d) => m + Math.hypot(d.b[0] - d.a[0], d.b[1] - d.a[1]), 0);
   for (const spec of floors()) {
-    const openings = openingsOf(spec);
     for (const r of spec.rooms) {
       if (!r.poly || r.poly.length < 3) continue;
-      const cuts = wallCutsFor(r.poly, openings);
-      const withCuts = describeWalls({ poly: r.poly, height: r.height, thickness: WALL_T, openings, cuts });
-      const without = describeWalls({ poly: r.poly, height: r.height, thickness: WALL_T, openings });
-      if (withCuts.length !== without.length) { differed++; continue; }
-      if (withCuts.some((d, i) => Math.hypot(d.a[0] - without[i].a[0], d.a[1] - without[i].a[1]) > 1e-6)) differed++;
+      const poly = r.poly;
+      // The longest edge, so the synthetic hole comfortably clears both corners.
+      let edge = 0, longest = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const p = poly[i], q = poly[(i + 1) % poly.length];
+        const l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (l > longest) { longest = l; edge = i; }
+      }
+      if (longest < 2) continue;
+      checked++;
+      const bare = describeWalls({ poly, height: r.height, thickness: WALL_T, openings: [] });
+      const holed = describeWalls({
+        poly, height: r.height, thickness: WALL_T, openings: [],
+        cuts: [{ edge, t0: 0.4, t1: 0.6 }],
+      });
+      const removed = len(bare) - len(holed);
+      assert.ok(Math.abs(removed - longest * 0.2) < 0.05,
+        `${r.id}: a declared cut across 20% of a ${longest.toFixed(2)}m edge should remove `
+        + `${(longest * 0.2).toFixed(2)}m of wall, and removed ${removed.toFixed(2)}m — `
+        + 'describeWalls is not honouring its `cuts` parameter');
     }
   }
-  assert.ok(differed > 5,
-    `the cuts changed nothing on ${differed} rooms — either they stopped mattering, or `
-    + 'describeWalls is ignoring the parameter and the test above is vacuous');
+  assert.ok(checked > 100, `only ${checked} rooms tested — this measured nothing`);
 });
 
 test('ONE CONNECTION OPENS ONE DOORWAY', () => {

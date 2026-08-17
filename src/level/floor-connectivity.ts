@@ -18,20 +18,31 @@
 // REROLLED rather than repaired, because a floor that cannot be crossed has
 // nothing worth salvaging and rerolling is microseconds.
 //
-// The walkability model is deliberately the coarsest one that is still sound:
-// two boxes that share actual floor AREA are walkable between each other. That
-// is exactly the contract the polygon corridor router works to — a corridor's
-// mouth is placed to overlap the room it serves — so it produces no false
-// alarms there, and anything it flags is a floor whose pieces never touch.
+// ── IT FLOODS THE DECLARED HOLES, NOT THE BOUNDING BOXES ─────────────────────
 //
-// SCOPE: polygon floors only. The ASCII vault composer lays its rooms and
-// corridors on a tile grid where they ABUT exactly (a room ending at z=2.5 and
-// its corridor starting at z=2.5) rather than overlap, so every vault floor
-// reads as disconnected here. That is this model not fitting that generator, not
-// a fault in it — `tests/floor-invariants.test.ts` covers the vault path with a
-// grid flood, which is the right shape for a grid. Loosening this to count
-// touching edges would fit both and check neither: two polygon rooms that merely
-// graze past each other with a wall between would start passing.
+// It used to flood on box overlap: two rects sharing floor AREA were walkable
+// between each other. The justification written here was that this "is exactly the
+// contract the polygon corridor router works to — a corridor's mouth is placed to
+// overlap the room it serves" — and that contract was the 0.9m OVERLAP, a rect
+// deliberately pushed through a wall so a later pass could find the hole.
+//
+// Which means the check could not see a wall. Two boxes overlap whether or not there
+// is a doorway between them, so the gate passed floors whose pieces touched and whose
+// stone did not open — a false NEGATIVE, the direction that ships. Found from the
+// other side: tests/poly-floor's flood builds the real wall geometry and reported
+// rooms nobody could walk to on floors this function had just called crossable.
+//
+// Stage 3 of docs/LINKS-V3.md gives the exact answer instead. A link DECLARES the
+// hole it needs in each end's wall, so two spaces are connected when a link joins
+// them and its cut is wide enough to walk through — no geometry to intersect, no
+// overlap to depend on, and it keeps working once the overlap is deleted.
+//
+// SCOPE: polygon floors only. Rects with no link — the ASCII vault composer's grid,
+// where a room ending at z=2.5 abuts its corridor starting at z=2.5 — keep the old
+// overlap rule, which is why that path is covered by `tests/floor-invariants.test.ts`
+// with a grid flood instead. Loosening this to count touching edges would fit both and
+// check neither: two polygon rooms that merely graze past each other with a wall
+// between them would start passing.
 
 import type { LevelSpec } from './types';
 
@@ -67,25 +78,82 @@ export interface Connectivity {
  * other (docs/DESIGN-METHOD.md: every audit tool imports the real function).
  */
 export function floorConnectivity(spec: LevelSpec): Connectivity {
-  const boxes: Box[] = [
-    ...spec.rooms.filter((r) => !(r as { logicalOnly?: boolean }).logicalOnly).map((r) => r.rect),
-    ...spec.corridors.map((c) => c.rect),
+  const spaces = [
+    ...spec.rooms.filter((r) => !(r as { logicalOnly?: boolean }).logicalOnly),
+    ...spec.corridors,
   ];
+  const boxes = spaces.map((x) => x.rect);
+  const index = new Map(spaces.map((x, i) => [x.id, i]));
   const start = boxes.findIndex((b) => holds(b, spec.startPos.x, spec.startPos.z));
   if (start < 0) return { stairsReachable: false, orphaned: boxes.length, spawnOffFloor: true };
+
+  const adj: Set<number>[] = spaces.map(() => new Set<number>());
+  const join = (i: number, j: number): void => {
+    if (i < 0 || j < 0 || i === j) return;
+    adj[i].add(j); adj[j].add(i);
+  };
+
+  // Legs of one link are one passage. A dogleg is three rects sharing a linkId, and
+  // they are joined by construction rather than by their boxes happening to overlap
+  // at the corner.
+  const legsOf = new Map<string, number[]>();
+  for (const c of spec.corridors) {
+    const at = index.get(c.id);
+    if (at === undefined) continue;
+    const key = c.linkId ?? c.id;
+    const list = legsOf.get(key) ?? [];
+    for (const other of list) join(at, other);
+    list.push(at);
+    legsOf.set(key, list);
+  }
+
+  const unlinked: number[] = [];
+  for (const c of spec.corridors) {
+    const at = index.get(c.id);
+    if (at === undefined) continue;
+    if (!c.link) { unlinked.push(at); continue; }
+    // THE HOLE HAS TO ADMIT A BODY. A cut narrower than the player is a wall with a
+    // slot in it, and counting it as a way through is the false negative this
+    // rewrite exists to remove. Crawls are deliberately tight (level/anchors.ts),
+    // but a crawl the PLAYER cannot enter serves nobody.
+    if (cutAdmits(spec, c.link.fromRoom, c.link.aCut)) join(at, index.get(c.link.fromRoom) ?? -1);
+    if (cutAdmits(spec, c.link.toRoom, c.link.bCut)) join(at, index.get(c.link.toRoom) ?? -1);
+  }
+  // Rects with no declared cut keep the old rule — see SCOPE in the header.
+  for (const at of unlinked) {
+    for (let j = 0; j < boxes.length; j++) if (overlaps(boxes[at], boxes[j])) join(at, j);
+  }
 
   const seen = new Set<number>([start]);
   const queue = [start];
   while (queue.length) {
     const i = queue.pop()!;
-    for (let j = 0; j < boxes.length; j++) {
-      if (!seen.has(j) && overlaps(boxes[i], boxes[j])) { seen.add(j); queue.push(j); }
-    }
+    for (const j of adj[i]) if (!seen.has(j)) { seen.add(j); queue.push(j); }
   }
 
   const reached = [...seen].map((i) => boxes[i]);
-  const stairsReachable = (spec.stairs ?? []).every((s) => reached.some((b) => holds(b, s.x, s.z)));
+  const stairsReachable = (spec.stairs ?? []).every((st) => reached.some((b) => holds(b, st.x, st.z)));
   return { stairsReachable, orphaned: boxes.length - seen.size, spawnOffFloor: false };
+}
+
+/** The player's collision diameter, and nothing on top. A hole this wide is
+ *  walkable; a hole narrower than this is a slot. */
+const PLAYER_CLEARANCE = 0.6;
+
+/**
+ * Is this declared hole wide enough for the player to walk through?
+ *
+ * Measured on the room's own outline, because a cut is an edge-local SPAN and how
+ * many metres that is depends on the edge it was cut in.
+ */
+function cutAdmits(
+  spec: LevelSpec, roomId: string, cut: { edge: number; t0: number; t1: number },
+): boolean {
+  const poly = spec.rooms.find((r) => r.id === roomId)?.poly;
+  if (!poly || poly.length < 3) return true;   // no outline to measure against
+  const a = poly[cut.edge % poly.length], b = poly[(cut.edge + 1) % poly.length];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return (cut.t1 - cut.t0) * len >= PLAYER_CLEARANCE;
 }
 
 /** The connectivity faults, phrased for the generator's reroll log. Empty when

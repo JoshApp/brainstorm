@@ -31,7 +31,7 @@ import { wallCutsFor, insidePolyRanges } from '../src/level/portals';
 import { WalkableRegion, type WallSegment } from '../src/level/walkable';
 import { buildRoomGraph } from '../src/level/room-graph';
 import { plateExtentFor, WALL_SEAT, LAP } from '../src/level/corridor-trim';
-import { planPortals } from '../src/level/portals';
+import { planPortals, portalInputs } from '../src/level/portals';
 import { pointInPoly, polyArea } from '../src/level/room-shape';
 import { candidateSpots } from '../src/level/floor-region';
 import { roomType } from '../src/level/room-types';
@@ -99,9 +99,24 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
   //
   // docs/DESIGN-METHOD.md: every audit tool imports the real function. It is
   // not enough to import it — it has to be CALLED the way the game calls it.
+  // ── AND THE OPENINGS IT PASSES CARRY THEIR DECLARED CUTS ───────────────────
+  //
+  // Same lesson, second time. Correcting the call above to five arguments fixed one
+  // half of it; the fifth argument was still computed from BARE RECTS — no link, no
+  // cut — while builder.ts hands the shell `{ ...c.rect, link, passageH, cut }`. So
+  // the ring here clipped rects to find its holes and the ring in the game used the
+  // holes the links DECLARED (stage 3, docs/LINKS-V3.md), and the two do not agree:
+  // the declared cut is the negotiated width, the clip is the rect's shadow on the
+  // wall. This flood was reporting rooms as unreachable on floors whose stone opens
+  // perfectly well, and it would equally have hidden a real seal.
+  //
+  // `portalInputs` is the same helper the builder and the frame emitter go through,
+  // so there is one expression of "what openings does this room have" and this cannot
+  // drift from it a third time.
   for (const r of spec.rooms) {
     if (!r.poly || r.poly.length < 3) continue;
-    for (const s of planWallRing(r.poly, WALL_T, openings, undefined, wallCutsFor(r.poly, openings))) {
+    const mine = portalInputs(r.id, spec.corridors).map((o) => ({ ...o.rect, link: o.link, cut: o.cut }));
+    for (const s of planWallRing(r.poly, WALL_T, mine, undefined, wallCutsFor(r.poly, mine))) {
       segs.push({ ax: s.a[0], az: s.a[1], bx: s.b[0], bz: s.b[1] });
     }
   }
@@ -143,27 +158,53 @@ function walkableFor(spec: LevelSpec): WalkableRegion {
   return new WalkableRegion(allRects.map((r) => r.rect), obstacles, segs);
 }
 
-/** Cells the player can stand on, flooded from the spawn. */
+/**
+ * Cells the player can stand on, flooded from the spawn.
+ *
+ * ── THE LATTICE IS INTEGER, AND THAT IS NOT A STYLE CHOICE ───────────────────
+ *
+ * This used to walk world coordinates and key each cell with
+ * `Math.round(x / CELL)`. Every cell it ever visits is the spawn plus a whole
+ * number of CELL steps, so `x / CELL` is `spawn/CELL + k` — and with a spawn like
+ * (0.375, 0.117) that lands every single key EXACTLY on Math.round's tie boundary.
+ * A tie is decided by the last bit of accumulated floating-point drift, so the same
+ * physical cell could take two different keys by two different routes, and two
+ * different cells could take the same one. Cells then get marked already-seen
+ * without ever being visited and the flood stops in open floor.
+ *
+ * It did. Measured on d5/s4242: the flood halted at x = -0.375 with its west
+ * neighbour reporting `contains = true`, leaving four rooms and the stair
+ * "unreachable" on a floor with no wall between them and no rift on it at all —
+ * while 71 of 72 floors passed, because whether the drift bites depends on the
+ * route taken to each cell. An audit that fails intermittently on correct geometry
+ * is worse than no audit; it sent this session hunting a wall that was not there.
+ *
+ * So the walk is over integer indices and the world position is DERIVED from them.
+ * There is no rounding, no tie, and a cell has exactly one name.
+ */
 function flood(spec: LevelSpec): Set<string> {
   const W = walkableFor(spec);
   const CELL = 0.25, R = 0.3;
   const rects = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
   const mnX = Math.min(...rects.map((r) => r.x - r.w / 2)), mxX = Math.max(...rects.map((r) => r.x + r.w / 2));
   const mnZ = Math.min(...rects.map((r) => r.z - r.d / 2)), mxZ = Math.max(...rects.map((r) => r.z + r.d / 2));
-  const key = (x: number, z: number) => `${Math.round(x / CELL)},${Math.round(z / CELL)}`;
   const sp = spec.startPos!;
-  const seen = new Set([key(sp.x, sp.z)]);
-  const q: Array<[number, number]> = [[sp.x, sp.z]];
+  const at = (i: number, j: number): [number, number] => [sp.x + i * CELL, sp.z + j * CELL];
+  const seen = new Set(['0,0']);
+  const q: Array<[number, number]> = [[0, 0]];
   while (q.length) {
-    const [x, z] = q.pop()!;
-    for (const [dx, dz] of [[CELL, 0], [-CELL, 0], [0, CELL], [0, -CELL]] as const) {
-      const nx = x + dx, nz = z + dz;
-      if (nx < mnX || nx > mxX || nz < mnZ || nz > mxZ) continue;
-      const k = key(nx, nz);
+    const [i, j] = q.pop()!;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const ni = i + di, nj = j + dj;
+      const k = `${ni},${nj}`;
       if (seen.has(k)) continue;
-      if (W.contains(nx, nz, R, { ignoreOpenable: true })) { seen.add(k); q.push([nx, nz]); }
+      const [nx, nz] = at(ni, nj);
+      if (nx < mnX || nx > mxX || nz < mnZ || nz > mxZ) continue;
+      if (W.contains(nx, nz, R, { ignoreOpenable: true })) { seen.add(k); q.push([ni, nj]); }
     }
   }
+  // Keyed by INDEX now, so `reached` has to speak the same language — it converts
+  // a world point to the nearest index rather than to a rounded world key.
   return seen;
 }
 
@@ -206,9 +247,15 @@ function lightPoints(
 }
 
 const CELL = 0.25;
-const reached = (seen: Set<string>, x: number, z: number, slack = 1.0): boolean => {
+/** `flood` keys cells by lattice INDEX from the spawn, so a world point has to be
+ *  converted into that lattice — see the note on flood for why it is not keyed by a
+ *  rounded world coordinate. */
+const reached = (
+  seen: Set<string>, spec: LevelSpec, x: number, z: number, slack = 1.0,
+): boolean => {
+  const sp = spec.startPos!;
   const n = Math.ceil(slack / CELL);
-  const cx = Math.round(x / CELL), cz = Math.round(z / CELL);
+  const cx = Math.round((x - sp.x) / CELL), cz = Math.round((z - sp.z) / CELL);
   for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) if (seen.has(`${cx + i},${cz + j}`)) return true;
   return false;
 };
@@ -220,7 +267,7 @@ test('EVERY ROOM IS REACHABLE FROM THE SPAWN', () => {
     const seen = flood(spec);
     for (const r of spec.rooms) {
       const c = r.rect;
-      assert.ok(reached(seen, c.x, c.z, 3.0),
+      assert.ok(reached(seen, spec, c.x, c.z, 3.0),
         `${spec.id}: room ${r.id} at (${c.x.toFixed(1)}, ${c.z.toFixed(1)}) cannot be walked to`);
     }
   }
@@ -287,7 +334,7 @@ test('THE STAIR CAN BE TAKEN', () => {
     assert.ok((spec.stairs ?? []).length > 0, `${spec.id}: no way down`);
     const seen = flood(spec);
     for (const st of spec.stairs!) {
-      assert.ok(reached(seen, st.x, st.z, 1.6),
+      assert.ok(reached(seen, spec, st.x, st.z, 1.6),
         `${spec.id}: stair '${st.id}' at (${st.x.toFixed(1)}, ${st.z.toFixed(1)}) is unreachable`);
     }
   }
@@ -803,11 +850,16 @@ test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
   // ask `planPortals`, so this checks the web against that same answer.
   let webs = 0;
   for (const spec of floors()) {
-    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
+    // THROUGH `portalInputs`, which is the point of the test. Stripping the
+    // corridors down to `{ id, rect }` asks planPortals the OLD question — recover
+    // the hole by intersecting the rect with the polygon — while the web is placed
+    // from the DECLARED cut. The two answers differ by up to a section step (caught
+    // here as "a 1.55m web across a 1.48m opening"), and a test that asks a
+    // different question than the producer is not checking the producer.
     const portals: Array<{ mid: readonly [number, number]; rotY: number; clearWidth: number }> = [];
     for (const room of spec.rooms ?? []) {
       if (!room.poly || room.poly.length < 3) continue;
-      portals.push(...planPortals(room.id, room.poly, corridors));
+      portals.push(...planPortals(room.id, room.poly, portalInputs(room.id, spec.corridors ?? [])));
     }
     for (const p of (spec.props ?? []) as PropSpec[]) {
       if (p.kind !== 'cobweb') continue;
