@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CONFIG } from '../config';
 import { buildRng } from '../engine/rng';
 import { reinstallSurfaceDetail } from '../style/surface-detail';
+import { dressing } from './dressing';
 
 // Pure procedural-geometry factories for level assembly. Extracted from
 // builder.ts — these take plain dimensions and return THREE geometry/material
@@ -101,7 +102,42 @@ export function makeJitteredPlane(
   // Per-plane random phase so neighbouring walls don't share
   // the same wave pattern — every wall slab gets its own
   // unique warp.
-  const wavy = !!opts.wavy;
+  // ── `wavy` MEANT TWO THINGS, AND ONLY ONE OF THEM IS BEING TURNED OFF ──────
+  //
+  // It selected the smooth WAVE displacement *and* the wall AO profile (the
+  // floor/ceiling/corner occlusion bake further down). Those are unrelated
+  // decisions that happened to have the same caller, so the flag is split here:
+  // `isWall` keeps the AO, `wave` alone answers to the manifest.
+  //
+  // WHY THE WAVE IS OFF, AND WHAT IT IS *NOT* CLAIMED TO FIX.
+  //
+  // The rooms had already stopped being wavy: their walls come from
+  // makeCoursedWall, which builds a dead-flat face since 'shell-coursing' went
+  // off. CORRIDOR walls are the rect path and still called this, so the dungeon
+  // had flat walls in its rooms and undulating ones in its corridors — one idea,
+  // two producers, one of them switched. That inconsistency is reason enough on
+  // its own and is the whole justification for this line.
+  //
+  // It was ALSO my first guess at Josh's report — *"the corridor two faces inside
+  // dont use the pom raymarch there or they do but its broken, also their texture
+  // is distorted"* — on the theory that the stone's projection frame is derived
+  // per fragment from the interpolated normal (the along-wall direction is
+  // cross(up, N)), so displacing the face swings the texture axis across it.
+  //
+  // THE MEASUREMENT DID NOT SUPPORT THAT, and the guess is recorded because the
+  // number is useful: I estimated ~27 degrees of normal tilt from the amplitude
+  // and the wavelength; tests/wall-plane-flatness.test.ts measures the real
+  // geometry and reports 6.2. Six degrees of axis swing is not nothing on a 4m
+  // wall — about a third of a stone's width of coordinate error — but it is not
+  // an explanation for "broken", and I have not reproduced the view. Two further
+  // guesses died the same way: Three already negates the normal on back faces for
+  // smooth-shaded materials (Normal.js, negateOnBackSide), and the static batcher
+  // is not eating the shell's shader (the shell meshes are still loose and still
+  // carry their colorNode — measured, not assumed).
+  //
+  // So: this line stands on the consistency argument. The report is still open.
+  const isWall = !!opts.wavy;
+  const wave = isWall && dressing('shell-coursing');
   const flat = !!opts.flat;
   const wavePhaseA = buildRng() * 100;
   const wavePhaseB = buildRng() * 100;
@@ -119,7 +155,7 @@ export function makeJitteredPlane(
     if (onEdgeX || onEdgeY) continue;
     if (flat) continue;   // dead-flat surface; colour tint below still applies
     let z = (buildRng() - 0.5) * 2 * jitter;
-    if (wavy) {
+    if (wave) {
       // Two superimposed waves — a slow primary undulation +
       // a faster overlay — give a non-repeating warp pattern.
       const waveLow  = Math.sin(x / WAVE_SCALE_X + wavePhaseA)
@@ -159,7 +195,7 @@ export function makeJitteredPlane(
     rgb[0] = base * (0.96 + buildRng() * 0.04);
     rgb[1] = base * (0.96 + buildRng() * 0.04);
     rgb[2] = base * (0.96 + buildRng() * 0.04);
-    if (wavy) {            // WALL — combine the three edge occlusions (take max)
+    if (isWall) {          // WALL — combine the three edge occlusions (take max)
       const py = pos.getY(i), px = pos.getX(i);
       // Height of this vertex within the WHOLE wall, and its distance below the
       // wall top. With no span these collapse to the old plane-local values, so
