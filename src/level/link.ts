@@ -201,6 +201,16 @@ export function linkRun(link: Link): number {
 
 export interface DerivedRects {
   rects: Box[];
+  /**
+   * Which rects are LANDINGS rather than legs — the square at a bend.
+   *
+   * A landing is a different thing from a leg and several passes care which they are
+   * looking at: elevation keeps it level while the legs fall, the decor pass has no
+   * business dressing a 2.2m turning square, and a sightline check counts legs to
+   * decide whether a bend is an L or a Z. They used to be told by rect COUNT, which
+   * only worked while exactly one producer emitted them.
+   */
+  isLanding: boolean[];
   /** Travel axis per rect, for consumers that cannot derive it. Stage 5 removes
    *  the need: a leg states its own axis and its own heights. */
   legAxis: Array<{ alongX: boolean; fromIsLo: boolean }>;
@@ -232,7 +242,34 @@ export function rectsFromLink(link: Link, opts: DeriveOpts): DerivedRects | null
   const { width, overlap } = opts;
   const rects: Box[] = [];
   const legAxis: Array<{ alongX: boolean; fromIsLo: boolean }> = [];
+  const isLanding: boolean[] = [];
   const n = link.legs.length;
+
+  // ── A LEG, THEN A LANDING, THEN A LEG ──────────────────────────────────────
+  //
+  // A joint used to be covered by the DEPARTING leg extending back half a width
+  // through it, with the arriving leg stopping dead on the corner's centre. Two things
+  // were wrong with that, and they are the same thing seen from two sides:
+  //
+  //   THE WALL. A corridor builds side walls along its whole length, so the arriving
+  //   leg's last half-width of wall stood across the passage it had just joined. At
+  //   2.20m that left 1.10m clear and nobody noticed; sections now come from the space
+  //   the walls afford, so squeezes are common, and at 1.55m it leaves 0.77m.
+  //
+  //   THE FALL. A bend is where a player's footing is least predictable, so the
+  //   architecture is leg-landing-leg: the cross piece is LEVEL and the fall lives on
+  //   the legs. That needs the corner to be its own rect. Only `connectL` — the
+  //   pre-anchor router — emitted one, so `poly-elevation` recognised a dogleg as
+  //   "three rects, the middle is the landing" and a routed L, being two rects, could
+  //   not carry a fall at all. That is why the chord router was gated to flat floors,
+  //   and why connectL was still alive to serve the elevated ones.
+  //
+  // So the corner is stated. Legs stop at the landing's edge (plus a lap, because a
+  // joint that meets exactly is one rounding away from a hairline of void), and the
+  // landing is a square of the passage's own width centred on the joint — which covers
+  // the corner completely, by construction, for any number of legs.
+  const JOINT_LAP = 0.05;
+  const half = width / 2;
   for (let i = 0; i < n; i++) {
     const leg = link.legs[i];
     const alongX = Math.abs(leg.to[0] - leg.from[0]) > Math.abs(leg.to[1] - leg.from[1]);
@@ -240,32 +277,33 @@ export function rectsFromLink(link: Link, opts: DeriveOpts): DerivedRects | null
     let t1 = alongX ? leg.to[0] : leg.to[1];
     const lat = alongX ? leg.from[1] : leg.from[0];
     const dir = Math.sign(t1 - t0) || 1;
+    // The ends of the whole polyline reach into their rooms by `overlap`; the ends that
+    // meet a landing stop at its edge, lapped.
     if (i === 0) t0 -= dir * overlap;
+    else t0 += dir * (half - JOINT_LAP);
     if (i === n - 1) t1 += dir * overlap;
-    // ── WHO COVERS THE CORNER ─────────────────────────────────────────────────
-    // Only the leg LEAVING a joint extends back through it; the leg arriving stops
-    // dead on the corner's centre. Extending both was the obvious symmetric thing
-    // and it is wrong — the arriving leg's far end then lands exactly ON the
-    // departing leg's outer edge, and the orphaned-end check ends up deciding a
-    // boundary case. Stopping at the centre puts that end half a width INSIDE its
-    // neighbour with no epsilon to argue about, and the departing leg's own
-    // half-width covers the corner square by itself.
-    //
-    // WHAT THIS COSTS, AND WHERE IT IS PAID: the arriving leg's last half-width is
-    // inside its neighbour, and a corridor builds side walls along its whole length,
-    // so that half-width of wall crosses the passage it just joined. At 2.20m it left
-    // 1.10m clear and nobody noticed; at squeeze width it leaves 0.77m. The wall is
-    // the thing that is wrong, not the rect — see the sibling-leg subtraction in
-    // builder.ts. Pulling the rect back instead orphans the joint (measured: it
-    // traded d5/s4242 for cor-l0-1 "ending in nothing").
-    if (i > 0) t0 -= dir * width / 2;
+    else t1 -= dir * (half - JOINT_LAP);
 
     const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+    // A leg swallowed entirely by its own landings is not a leg. Refusing the link
+    // lets the caller try another pair or the floor reroll, where building it would
+    // put a sliver of geometry in the world that every later pass special-cases.
     if (hi - lo < 0.1) return null;
     rects.push(alongX
       ? { x: (lo + hi) / 2, z: lat, w: hi - lo, d: width }
       : { z: (lo + hi) / 2, x: lat, d: hi - lo, w: width });
     legAxis.push({ alongX, fromIsLo: t0 <= t1 });
+    isLanding.push(false);
+
+    // THE LANDING between this leg and the next.
+    if (i < n - 1) {
+      rects.push({ x: leg.to[0], z: leg.to[1], w: width, d: width });
+      isLanding.push(true);
+      // A landing turns; it has no travel axis of its own. Recorded as this leg's so
+      // the array stays index-aligned with `rects`, and so a consumer that reads it
+      // anyway gets the axis the player arrives on rather than undefined.
+      legAxis.push({ alongX, fromIsLo: t0 <= t1 });
+    }
   }
-  return { rects, legAxis };
+  return { rects, legAxis, isLanding };
 }

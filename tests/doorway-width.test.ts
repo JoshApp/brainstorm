@@ -42,10 +42,9 @@ function doorways(): Doorway[] {
   const out: Doorway[] = [];
   for (const seed of SEEDS) for (const depth of DEPTHS) {
     const spec = generatePolyFloor(depth, seed);
-    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      for (const p of planPortals(r.id, r.poly, corridors)) {
+      for (const p of planPortals(r.id, r.poly, spec.corridors)) {
         const corridor = spec.corridors.find((c) => c.id === p.corridorId)!;
         const { kind } = chooseFrameModel({
           width: p.width,

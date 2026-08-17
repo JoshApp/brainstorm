@@ -53,21 +53,47 @@ test('overlap 0 stops the corridor exactly at its thresholds', () => {
   assert.ok(Math.abs(d.rects[0].d - 10) < 1e-9, 'the corridor still overshoots');
 });
 
-test('an L covers its own corner exactly once', () => {
-  // Only the leg LEAVING the joint extends back through it. Extending both puts
-  // the arriving leg's end exactly ON the departing leg's edge, and the
-  // orphaned-end check then decides a boundary case. This is the rule that
-  // stopped "corridor cor-2-0 ends at (-7.4, 16.4) — in nothing".
+test('an L is leg, LANDING, leg — and the landing covers the corner', () => {
+  // ── THIS PINNED THE OLD RULE ON PURPOSE, AND THE OLD RULE IS GONE ──────────
+  //
+  // It asserted two rects: the departing leg extended back half a width through the
+  // joint and covered the corner by itself, while the arriving leg stopped dead on the
+  // corner's centre. Two things were wrong with that. The arriving leg's last
+  // half-width of WALL stood across the passage it had just joined — 0.77m clear of a
+  // 1.55m squeeze. And a bend is supposed to be LEVEL, which needs the corner to be
+  // its own rect; only `connectL` emitted one, so `poly-elevation` recognised a dogleg
+  // as "three rects, the middle is the landing" and a routed L could not fall at all.
+  // That is what gated the chord router to flat floors.
+  //
+  // The polyline states the landing now: legs stop at its edge, lapped, and the landing
+  // is a square of the passage's own width centred on the joint.
   const d = rectsFromLink(ell(), { width: 2.2, overlap: 0.9 })!;
-  assert.equal(d.rects.length, 2);
-  const [first, second] = d.rects;
-  // First leg: 0 -> 6 in Z, with 0.9 back into room A and nothing added forward.
-  assert.ok(Math.abs(first.d - 6.9) < 1e-9, `first leg ${first.d}, want 6.9`);
-  // Second leg: 0 -> 8 in X, pulled back half a width THROUGH the joint, plus
-  // 0.9 into room B at the far end.
-  assert.ok(Math.abs(second.w - (8 + 1.1 + 0.9)) < 1e-9, `second leg ${second.w}, want 10.0`);
+  assert.equal(d.rects.length, 3, 'an L is leg, landing, leg');
+  const [first, landing, second] = d.rects;
+
+  // Leg 1: 0 -> 6 in Z, 0.9 back into room A, stopping a lapped half-width short of
+  // the landing at z = 6.
+  assert.ok(Math.abs(first.d - (6 + 0.9 - (1.1 - 0.05))) < 1e-9, `first leg ${first.d}`);
+  // The landing: square, on the joint.
+  assert.ok(Math.abs(landing.w - 2.2) < 1e-9 && Math.abs(landing.d - 2.2) < 1e-9,
+    'the landing is not a square of the passage width');
+  assert.ok(Math.abs(landing.x - 0) < 1e-9 && Math.abs(landing.z - 6) < 1e-9,
+    'the landing is not centred on the joint');
+  // Leg 2: 0 -> 8 in X, starting a lapped half-width past the landing, 0.9 into room B.
+  assert.ok(Math.abs(second.w - (8 - (1.1 - 0.05) + 0.9)) < 1e-9, `second leg ${second.w}`);
+
+  // AND THE CORNER IS COVERED. Each leg overlaps the landing by the lap, so no
+  // rounding can open a hairline of void between them, and neither leg reaches through
+  // it to lay a wall across the other.
+  const legEnd = first.z + first.d / 2;
+  assert.ok(legEnd > landing.z - landing.d / 2 && legEnd < landing.z + landing.d / 2,
+    'the first leg does not lap into the landing');
+  const legStart = second.x - second.w / 2;
+  assert.ok(legStart < landing.x + landing.w / 2 && legStart > landing.x - landing.w / 2,
+    'the second leg does not lap into the landing');
+
   assert.equal(d.legAxis[0].alongX, false);
-  assert.equal(d.legAxis[1].alongX, true);
+  assert.equal(d.legAxis[2].alongX, true);
 });
 
 test('a degenerate leg is refused, not built', () => {

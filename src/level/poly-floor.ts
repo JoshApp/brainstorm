@@ -30,7 +30,7 @@ import { linkFromRoute, rectsFromLink, type Link } from './link';
 import { ceilingForLink } from './corridor-ceiling';
 import { dressCorridors } from './corridor-decor';
 import { planRoomLight, type Fixture, type Mount } from './light-plan';
-import { planElevation, linkRectsMisplaced, chordSkipFits, flatFloors } from './poly-elevation';
+import { planElevation, linkRectsMisplaced, chordSkipFits } from './poly-elevation';
 import { corridorRampRun } from './elevation';
 import { plateExtentFor } from './corridor-trim';
 import { connectivityFaults } from './floor-connectivity';
@@ -258,28 +258,30 @@ const DESCENT_CLEAR = 2.2;
 /** How far a corridor pushes past a room's wall, so the opening rect straddles
  *  the wall it is meant to cut instead of stopping at it. */
 /**
- * How far each end rect pushes PAST its threshold, into the room.
+ * How far each end rect pushes PAST its threshold, into the room. ZERO.
  *
- * ── STILL 0.9, AND THE REASON IS NOW EXACTLY ONE THING ────────────────────────
+ * ── THE THING STAGE 3 EXISTED TO DELETE ──────────────────────────────────────
  *
- * Stage 3 of docs/LINKS-V3.md set out to delete this. Every consumer that used to
- * rediscover a doorway from the overshoot has been moved onto the link's DECLARED
- * cut — the wall ring, the frames, the portal planner, the floor's connectivity gate,
- * the room graph — and with the overlap set to 0 all of them still work.
+ * It was 0.9m, and it was not geometry — it was a LOOKUP KEY. A doorway was found by
+ * intersecting a corridor rect with a room's wall line, so a corridor that stopped
+ * where it actually stops got no doorway at all and the floor sealed. Every corridor
+ * defect chased on 2026-08-17 came off that round trip: the corridor's floor and
+ * ceiling slabs standing inside rooms (a ledge underfoot, a soffit overhead, the room
+ * culling flickering as you crossed), the 138 lines of `corridor-trim` sampling
+ * `pointInPoly` every 5cm to find the wall again, and doorways recovered from a bounding
+ * box landing wrapped around corners.
  *
- * What does not is `connectL`, the pre-anchor L-router that still serves the loop
- * chord on ELEVATED floors (the routed chord is flat-gated; see the note on
- * `routedChord`). It produces rects and no link, so it declares no cut, and with
- * nothing to declare and no overlap to be found by it becomes invisible: measured at
- * overlap 0, floors carrying a loop fell from 66/72 to 38/72 and a loop's chord
- * contributed no graph edge at all.
+ * Josh: *"wait i still dont get why we need that? couldnt we make it all fit snuggly
+ * together? seamless?"* It could, and it does. The link DECLARES its cut — which edge,
+ * how far along, how wide, how tall — and every consumer reads the declaration: the wall
+ * ring, the frames, the portal planner, the floor's connectivity gate, the room graph,
+ * the void planner, the elevation seam. A corridor now stops on its threshold.
  *
- * So the overlap's last dependency is the elevation router, which is stage 5 of the
- * charter — legs carry their own heights, `connectL` and `flatFloors` both retire, and
- * this constant goes to 0 in the same change. It is not a number to tune; it is a
- * migration marker, and it now marks exactly one thing.
+ * Kept as a named constant at 0 rather than deleted, because `rectsFromLink` still takes
+ * it and a future authored link (a hand-placed vault passage) may want a mouth that
+ * reaches in. What it must never again be is the mechanism by which a doorway is found.
  */
-const OVERLAP = 0.9;
+const OVERLAP = 0;
 /**
  * Per ELIGIBLE room — a plain, non-bookend room with no centrepiece.
  *
@@ -604,6 +606,9 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     from: string; to: string; rects: Box[]; ids: string[];
     spur?: boolean; chord?: boolean;
     legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+    isLanding?: boolean[];
+    /** The polyline, whose declared cuts say where this link's doorways are. */
+    link?: Link;
     /** Router or blind fallback — see RoomSpec.servedBy. */
     servedBy?: 'route' | 'guess' | 'placement' | 'chord';
   }> = [];
@@ -627,10 +632,15 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       corridors.push({
         id: ids[k], rect, height: type.height, corridorType: type.id, linkId: id,
         servedBy: conn.servedBy, link: conn.link, clearWidth: type.width,
+        landing: conn.isLanding?.[k] || undefined,
+        // Which way this leg RUNS. Stated because `w > d` is only the travel axis while
+        // a leg is longer than it is wide, and the middle leg of a Z often is not.
+        alongX: conn.legAxis?.[k]?.alongX,
       });
       occupiedBoxes.push(rect);
     });
-    links.push({ from, to, rects, ids, legAxis: conn.legAxis, servedBy: conn.servedBy, ...kind });
+    links.push({ from, to, rects, ids, legAxis: conn.legAxis, isLanding: conn.isLanding,
+                 link: conn.link, servedBy: conn.servedBy, ...kind });
   };
   for (let i = 1; i < rooms.length; i++) {
     const c = connect(rooms[i - 1], rooms[i], rand,
@@ -795,91 +805,34 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   }
   pairs.sort((p, q) => p.d - q.d);
   for (const { a, b } of pairs) {
-    // ── THE CHORD ASKS THE ROUTER, ON FLAT FLOORS ──────────────────────────
+    // ── THE CHORD ASKS THE ROUTER. THERE IS NO OTHER PRODUCER ────────────────
     //
-    // The chord was 216 corridors and 100% connectL — not as a fallback, as its
-    // only path — while the spine, which does ask, is 100% routed. A quarter of
-    // the dungeon's corridors were never offered to the careful producer, and
-    // connectL is the least careful one in the file: its own comment says it "has
-    // no self-room check", and once placement was freed it put 3.84m of corridor
-    // floor inside a room.
+    // The chord was 216 corridors and 100% `connectL` — not as a fallback, as its only
+    // path — while the spine, which does ask, was 100% routed. A quarter of the
+    // dungeon's corridors were never offered to the careful producer, and connectL is
+    // the least careful one in the file: its own comment said it "has no self-room
+    // check", and once placement was freed it put 3.84m of corridor floor inside a room.
     //
-    // WHY THE FLAT CONDITION, and why it is a statement rather than a hack. The
-    // ramp model wants THREE rects — leg, LANDING, leg — because it pins the two
-    // ends to their rooms' plateaus and slopes the middle. Measured: routed chords
-    // come out as 2 rects, connectL's L as 3. With two rects there is no middle,
-    // the fall has nowhere to go, and the seam steps 1.2m.
+    // IT WAS GATED TO FLAT FLOORS, and that gate is now gone with the thing it was
+    // protecting. The ramp model wanted THREE rects — leg, LANDING, leg — and inferred
+    // which was which from `rects.length === 3`, so a routed chord's two rects had
+    // nowhere to put the fall and the seam stepped 1.2m. That was never a fact about
+    // routing; it was a fact about a producer's output being read as a shape. The
+    // polyline states its landings now (level/link.ts), an L is leg-landing-leg
+    // whoever built it, and the elevation pass reads the statement instead of counting.
     //
-    // But that is a fact about ELEVATION, which is off (level/poly-elevation.ts,
-    // flatFloors) precisely so the connection work can proceed without it. Josh:
-    // *"we disabled elevation for a reason, cant we make it so we first solve this
-    // all on flat corridors?"* Correct, and I had been letting a disabled system
-    // veto a working improvement — the exact legacy-patching he called out. On a
-    // flat floor there is no fall, chordSkipFits is vacuous, and a 2-rect chord is
-    // simply a shorter corridor.
-    //
-    // The condition IS the migration marker: it disappears the day the ramp model
-    // takes its legs from the route (which states them, with endpoints and widths)
-    // instead of inferring a landing from `rects.length === 3`.
-    const routedChord = flatFloors()
-      ? routeConnection(a, b, loopType, rooms, occupiedBoxes, false)
-      : null;
-    // ── STAGE 2: NO connectL. A REFUSED PAIR TRIES THE NEXT PAIR ─────────────
-    //
-    // It used to fall to connectL for THIS pair, which is why the chord was 30%
-    // blind. But the loop below already walks every candidate pair in
-    // nearest-first order — so a pair the router declines does not need rescuing,
-    // it needs skipping. The old code rescued pair 1 badly instead of asking
-    // pair 2 whether it worked.
-    //
-    // That is the whole argument for deleting a fallback rather than improving it:
-    // the fallback was answering a question the surrounding loop had already
-    // answered better.
-    //
-    // And if NO pair routes, the floor gets no loop. That is the right degradation
-    // and it is a gameplay judgement, not a technical one: a loop is a detour, and
-    // a floor without one reads as linear. A floor WITH a corridor that clips a
-    // room's interior reads as broken. tests/floor-loop holds the rate above 60%,
-    // so if this costs too many loops the test says so rather than a player.
-    // ── AND connectL SURVIVES ON THE ELEVATION PATH ONLY ─────────────────────
-    //
-    // Deleting it outright took loops from most floors to ZERO of 72, because
-    // tests/floor-loop forces elevation ON and the chord's router is gated to flat
-    // floors — so with elevation on there was suddenly no chord producer at all.
-    // Caught immediately, which is what that gate is for.
-    //
-    // So the state is explicit rather than tidy: on FLAT floors, which is what
-    // ships today, the chord is 100% routed and connectL is dead code. With
-    // elevation on it is still the only producer that gives the ramp pass the
-    // three rects it wants. Stage 5 retires the flat gate and this line with it.
-    const conn = routedChord
-      ? { ...routedChord, servedBy: 'route' as const }
-      : (flatFloors() ? null : connectL(a, b, loopType.width, occupiedBoxes));
-    if (!conn) continue;
-    // ── THE RAMP MODEL WANTS THREE RECTS, AND A ROUTE GIVES TWO ────────────
-    //
-    // Verified, after getting it wrong twice. connectL always builds an L: leg,
-    // LANDING, leg. The elevation pass pins the two END rects to their rooms'
-    // plateaus and ramps the middle one. Measured across the elevation suite's
-    // corpus: `route` chords come out as 2 rects (50 of them), `chord` chords as
-    // 3 (12). With two rects there IS no middle — both are ends — so the fall has
-    // nowhere to go, one end stops being level with its room, and the seam steps
-    // 1.2m.
-    //
-    // I told Josh this was blocked on the ramp model, then corrected myself that
-    // chordSkipFits "wants one number and a route knows its length" and there was
-    // no blocker. The correction was wrong. The run was never the problem; the
-    // TOPOLOGY is. His general point stands and is the reason this is only a
-    // comment: the ramp model is shaped like a rect count, and it should take its
-    // legs from the route — which states them explicitly, with widths and
-    // endpoints — instead of inferring a landing from `rects.length === 3`.
-    //
-    // Until it does, the chord keeps connectL. That is 29% of chords blind, and it
-    // is the price of not shipping a doorway you fall through.
-    const run = 'route' in conn && conn.route
-      ? corridorRampRun(routeLength(conn.route))
-      : conn.rects.reduce((t, rc, k) => (k === 1 ? t
-        : t + corridorRampRun(conn.legAxis![k].alongX ? rc.w : rc.d)), 0);
+    // A REFUSED PAIR TRIES THE NEXT PAIR. It used to fall to connectL for THIS pair,
+    // which is why the chord was 30% blind — the loop below already walks every
+    // candidate pair in nearest-first order, so a pair the router declines does not
+    // need rescuing, it needs skipping. And if no pair routes, the floor gets no loop:
+    // a floor without a detour reads as linear, a floor with a corridor clipping a
+    // room's interior reads as broken, and tests/floor-loop holds the rate above 60%
+    // so a real loss is reported by a test rather than by a player.
+    const routed = routeConnection(a, b, loopType, rooms, occupiedBoxes, false);
+    if (!routed) continue;
+    const conn = { ...routed, servedBy: 'route' as const };
+    // The route states its own length, so there is nothing to reconstruct from rects.
+    const run = corridorRampRun(routeLength(conn.route!));
     // The pocket sits one link off its parent, so the fall this has to carry is
     // bounded by that link plus the spine span from the parent to the target.
     const span = Math.abs(spineOf(loopPocket!.parent) - spineOf(b.id)) + 1;
@@ -1042,9 +995,25 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     if (def.centrepiece !== 'none' || def.clean) continue;         // the floor is a stage
     if (r === rooms[0] || r === last) continue;                     // never the bookends
     if (rand() >= VOID_CHANCE) continue;
+    // ── AND THE ROOM'S OWN FLOOR HAS TO SURVIVE, NOT JUST ITS DOORS ──────────
+    //
+    // `mustReach` was the doorways, and circulation floods FROM the first doorway — so
+    // for a room with one doorway the check was "is this doorway reachable from itself",
+    // which is vacuous. A rift could isolate a pocket's entire interior and pass.
+    //
+    // It stayed hidden because a corridor rect overshot 0.9m into the room, so the
+    // player could stand past a rift laid across a threshold. Dropping the overlap
+    // exposed it: 8 of 72 floors had an unreachable room and every one had a rift
+    // (fixing `doorwaysOf` to read the declared cut took that to 1, this takes it to 0).
+    //
+    // So the room's own centre of open floor joins the list. A rift is allowed to cost
+    // floor — up to MAX_AREA_LOSS — but it is not allowed to cut the room in two and
+    // leave the half you arrive in.
+    const doors = doorwaysOf(r, links);
+    const heart = roomCenter(r.poly);
     const rift = planVoids(r.poly, {
-      doorways: doorwaysOf(r, links),
-      mustReach: doorwaysOf(r, links),
+      doorways: doors,
+      mustReach: [...doors, heart],
       rand,
     });
     if (!rift) continue;
@@ -1107,8 +1076,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
   // hangs in cannot disagree.
   if (boss) {
     const mouth = mouthOf(last, links);
-    const ports = planPortals(last.id, last.poly,
-      portalInputs(last.id, corridors));
+    const ports = planPortals(last.id, last.poly, corridors);
     // The one you come in by. Nearest the mouth — a boss hall is a leaf, so
     // there is normally exactly one, and picking the nearest is only doing work
     // on the floors where the loop pass gave it a second way in.
@@ -1173,7 +1141,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     // the RoomSpecs raw compiles (linkId is not `link`) and quietly reinstates a
     // doorway per leg here alone, which is how a standoff rule ends up measuring
     // a door nobody can walk through.
-    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly, portalInputs(r.id, corridors))
+    doorwaysByRoom.set(r.id, planPortals(r.id, r.poly, corridors)
       .map((p) => ({ x: p.mid[0], z: p.mid[1] })));
   }
   /**
@@ -1373,7 +1341,7 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
       mouth: mouthOf(r, links),
       // THE SAME CALL THE FRAMES MAKE. A web and the stone doorway it hangs in
       // have to agree, and the only way to guarantee that is to ask once.
-      doorways: planPortals(r.id, r.poly, portalInputs(r.id, corridors)).map((p) => ({
+      doorways: planPortals(r.id, r.poly, corridors).map((p) => ({
         x: p.mid[0], z: p.mid[1], rotY: p.rotY, width: p.clearWidth,
       })),   // yaw + width too, which the clearance pass above does not need
       exits: links.filter((l) => l.from === r.id || l.to === r.id).length,
@@ -1782,6 +1750,8 @@ interface Connection {
   /** Set when the legs do not share a travel axis (an L). Handed straight to
    *  the elevation pass, which cannot derive it — see ElevLink.legAxis. */
   legAxis?: Array<{ alongX: boolean; fromIsLo: boolean }>;
+  /** Which rects are LANDINGS rather than legs — see DerivedRects.isLanding. */
+  isLanding?: boolean[];
   /**
    * THE ROUTE, WHERE THERE WAS ONE — the source of truth, not a note.
    *
@@ -1905,7 +1875,7 @@ function routeConnection(
   const link = linkFromRoute(a.id, b.id, route, width, built.height);
   const derived = rectsFromLink(link, { width, overlap: OVERLAP });
   if (!derived) return null;
-  const { rects, legAxis } = derived;
+  const { rects, legAxis, isLanding } = derived;
   const n = route.legs.length;
 
   // Nothing already placed may be in the way. The two rooms being joined are
@@ -1914,7 +1884,7 @@ function routeConnection(
     o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
   if (clash) return null;
 
-  return { rects, type: built, legAxis: n > 1 ? legAxis : undefined, route, link };
+  return { rects, type: built, legAxis: n > 1 ? legAxis : undefined, isLanding, route, link };
 }
 
 function connect(
@@ -2169,77 +2139,6 @@ function plateInsideRoom(rect: Box, rooms: readonly Placed[]): boolean {
   return false;
 }
 
-function connectL(
-  a: Placed, b: Placed, width: number, occupied: readonly Box[],
-): Pick<Connection, 'rects' | 'legAxis'> | null {
-  const dx = b.rect.x - a.rect.x, dz = b.rect.z - a.rect.z;
-  // Needs a real offset on BOTH axes, or this is a job for connect().
-  if (Math.abs(dx) < width || Math.abs(dz) < width) return null;
-
-  // Two corners to try: leave A along Z and enter B along X, or the reverse.
-  for (const aFirstAlongZ of [true, false]) {
-    const cornerX = aFirstAlongZ ? a.rect.x : b.rect.x;
-    const cornerZ = aFirstAlongZ ? b.rect.z : a.rect.z;
-
-    // Leg out of A, travelling on its own axis at the corner's lateral.
-    const aAlongZ = aFirstAlongZ;
-    const aSign = Math.sign(aAlongZ ? cornerZ - a.rect.z : cornerX - a.rect.x);
-    const exitA = exitPoint(a, aAlongZ, aSign, aAlongZ ? cornerX : cornerZ);
-    // Leg into B, on the other axis.
-    const bAlongZ = !aFirstAlongZ;
-    const bSign = Math.sign(bAlongZ ? cornerZ - b.rect.z : cornerX - b.rect.x);
-    const exitB = exitPoint(b, bAlongZ, bSign, bAlongZ ? cornerX : cornerZ);
-    if (!exitA || !exitB) continue;
-
-    // The landing, square and centred on the turn.
-    const corner: Box = { x: cornerX, z: cornerZ, w: width, d: width };
-
-    // Each leg spans from its room's wall (pushed OVERLAP inside, so the
-    // opening straddles the stone) to the landing's near face.
-    //
-    // BOTH LEGS RUN TO THE CORNER'S CENTRE, not to its near face. Stopping half
-    // a width short leaves the landing square poking out past both of them, and
-    // its two far ends then sit in open space — which is exactly what the
-    // orphaned-end check catches ("corridor cor-loop-1 ends at (17.1, 50.7) —
-    // in nothing"). Running through means every rect's ends land inside another
-    // rect of the same link, the way a dogleg's do.
-    const legFor = (alongZ: boolean, at: number, toward: number, lat: number): Box => {
-      const stop = toward;
-      const t0 = Math.min(at, stop) - (at < stop ? OVERLAP : 0);
-      const t1 = Math.max(at, stop) + (at > stop ? OVERLAP : 0);
-      return alongZ
-        ? { x: lat, z: (t0 + t1) / 2, w: width, d: Math.max(0.1, t1 - t0) }
-        : { z: lat, x: (t0 + t1) / 2, d: width, w: Math.max(0.1, t1 - t0) };
-    };
-    const legA = legFor(aAlongZ, exitA.at, aAlongZ ? cornerZ : cornerX, aAlongZ ? cornerX : cornerZ);
-    const legB = legFor(bAlongZ, exitB.at, bAlongZ ? cornerZ : cornerX, bAlongZ ? cornerX : cornerZ);
-    // A leg shorter than the landing it meets is not a leg — the corner has
-    // already swallowed it, and the "corridor" is a single square room.
-    if (Math.max(legA.w, legA.d) < width || Math.max(legB.w, legB.d) < width) continue;
-
-    // The corner is pinned to neither room, so it may not stand in one.
-    if (landsInsideRoom(corner, [a, b])) continue;
-
-    const rects = [legA, corner, legB];
-    // Nothing already placed may be in the way. The two rooms this joins are
-    // expected to overlap their own leg's end, so they are excused.
-    const clash = rects.some((rc) => occupied.some((o) =>
-      o !== a.rect && o !== b.rect && overlaps(o, rc, 0)));
-    if (clash) continue;
-
-    return {
-      rects,
-      legAxis: [
-        // `fromIsLo`: is the A end of this leg at the lower world coordinate?
-        { alongX: !aAlongZ, fromIsLo: exitA.at <= (aAlongZ ? cornerZ : cornerX) },
-        { alongX: !aAlongZ, fromIsLo: true },   // the landing carries no ramp
-        // Leg B runs from the landing INTO B, so its `from` end is the corner.
-        { alongX: !bAlongZ, fromIsLo: (bAlongZ ? cornerZ : cornerX) <= exitB.at },
-      ],
-    };
-  }
-  return null;
-}
 
 /**
  * Three rects: a leg out of A, a cross piece, a leg into B — offset so you
@@ -2319,13 +2218,44 @@ function overlaps(a: Box, b: Box, pad: number): boolean {
  * inside this polygon, which is the point circulation has to be judged from.
  */
 function doorwaysOf(
-  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[] }>,
+  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[]; link?: Link }>,
 ): Array<{ x: number; z: number }> {
   const out: Array<{ x: number; z: number }> = [];
   for (const l of links) {
     if (l.from !== r.id && l.to !== r.id) continue;
-    // Only the ends that land INSIDE this room are doorways. On a dogleg most
-    // ends are joints between two corridor rects, which are not doors.
+    // ── THE LINK SAYS WHERE ITS DOORWAY IS ──────────────────────────────────
+    //
+    // This walked the link's rects, took the ends of each, and kept the ones that were
+    // `pointInPoly` of this room. Two faults in four lines, and between them they are
+    // why a rift could strand a doorway:
+    //
+    //   `c.w > c.d` is the travel axis only while a leg is longer than it is wide. The
+    //   middle leg of a Z routinely is not, and a LANDING is square, so the "ends" came
+    //   out as the piece's own sides.
+    //
+    //   `pointInPoly` on the end requires the rect to reach INSIDE the room — which it
+    //   only did because of the 0.9m overlap. With the overlap dropped the end sits
+    //   exactly ON the outline, `pointInPoly` is false, and this returned NO DOORWAYS
+    //   AT ALL. Everything downstream then reasoned about a room with no doors: the
+    //   rift planner is handed these as the cells it must keep reachable, so it flooded
+    //   to nothing and cut thresholds off. Measured at overlap 0 — 8 of 72 floors had
+    //   an unreachable room, and every single one of them had a rift on it; with rifts
+    //   excluded, zero.
+    //
+    // The cut states the edge and the span, so the threshold is the midpoint of the
+    // hole on this room's own outline. Exact, and it does not care how far any rect
+    // reaches.
+    const cut = l.link?.fromRoom === r.id ? l.link.aCut
+      : l.link?.toRoom === r.id ? l.link.bCut
+      : null;
+    if (cut) {
+      const n = r.poly.length;
+      const a = r.poly[cut.edge % n], b = r.poly[(cut.edge + 1) % n];
+      const t = (cut.t0 + cut.t1) / 2;
+      out.push({ x: a[0] + (b[0] - a[0]) * t, z: a[1] + (b[1] - a[1]) * t });
+      continue;
+    }
+    // No link to ask — the vault path. Keep the old probe for it.
     for (const c of l.rects) {
       const ends = c.w > c.d
         ? [{ x: c.x - c.w / 2, z: c.z }, { x: c.x + c.w / 2, z: c.z }]
@@ -2340,7 +2270,7 @@ function doorwaysOf(
  *  DOORWAY, not the corridor's midpoint: on a dogleg the midpoint is round a
  *  bend and metres outside the room. */
 function mouthOf(
-  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[] }>,
+  r: Placed, links: ReadonlyArray<{ from: string; to: string; rects: Box[]; link?: Link }>,
 ): { x: number; z: number } | null {
   const doors = doorwaysOf(r, links);
   if (doors.length) return doors[0];
@@ -3136,7 +3066,7 @@ function spawnYawToward(
   corridors: ReadonlyArray<{ id: string; rect: Box }>,
   mainline: ReadonlySet<string>,
 ): number {
-  const portals = planPortals(entrance.id, entrance.poly, portalInputs(entrance.id, corridors));
+  const portals = planPortals(entrance.id, entrance.poly, corridors);
   // A ROOM CAN HAVE NO PORTAL. Measured: 18 of 411 poly rooms, 4 of 72
   // entrances. `planPortals` refuses a span under 1.2m as a corridor grazing a
   // corner, but the wall ring cuts its opening from the rects directly — so

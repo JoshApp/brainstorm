@@ -82,6 +82,10 @@ export interface ElevLink {
    * finish. Omit for the ordinary case and the old derivation applies unchanged.
    */
   legAxis?: ReadonlyArray<{ alongX: boolean; fromIsLo: boolean }>;
+  /** Which rects are LANDINGS rather than legs — see DerivedRects.isLanding. A
+   *  landing turns and stays LEVEL; the legs carry the fall. Absent → every rect is a
+   *  leg, which is what a straight run and the vault path both are. */
+  isLanding?: ReadonlyArray<boolean>;
 }
 
 /** What to stamp on one corridor RoomSpec. A ramping rect gets the axis and its
@@ -122,57 +126,27 @@ function weightedPick<T extends { weight: number }>(pool: readonly T[], rand: ()
  * @param roomRect  roomId → its bounding rect. Only the centre is read, to work
  *                  out which end of a corridor each room is on.
  */
-// ── FLAT FLOORS — A DEVELOPMENT STAGE, NOT A DESIGN DECISION ─────────────────
+// ── ELEVATION IS ON, AND THE SWITCH THAT TURNED IT OFF IS GONE ───────────────
 //
-// Josh, 2026-08-17, sequencing the corridor rebuild: *"elevation and corridor
-// steps is a system we should redo while we are at it ... how about we start by
-// connecting rooms flat surface level and then tackle displacing them up and
-// down?"*
+// There was a `flat` flag here, defaulting to TRUE, so the shipping dungeon was dead
+// level. Josh, sequencing the corridor rebuild: *"how about we start by connecting rooms
+// flat surface level and then tackle displacing them up and down?"* — the right order,
+// because a void at a threshold could be a bad cut OR a ramp landing in the wrong place
+// and there was no telling from a screenshot.
 //
-// That is the right order and it is worth saying why rather than just doing it.
-// Connecting two rooms is a 2D problem: which wall, how wide, what path. Making
-// one room sit 1.4m below another is a 3D one: ramps, plate elevations, where the
-// step lands, what a corridor's floor does across a change of level. Today they
-// are solved together, and every seam defect reported this week has had to be
-// judged with both in play — so a void at a threshold could be a bad cut OR a
-// ramp landing in the wrong place, and there was no way to tell from a screenshot.
-//
-// Flat first makes the connection work MEASURABLE. Then elevation goes back on
-// against a seam that is known good, and anything that breaks is elevation's.
-//
-// THIS IS TEMPORARY. A flat dungeon loses the descent-bias signal ("downhill is
-// forward"), the stair corridors, and the sunken rooms — real losses, all of them
-// deliberate features. The switch exists so they can be judged separately, not
-// because a flat floor is better.
-//
-// The isolated `elevRand` stream is what makes it free: poly-floor draws elevation
-// from its own generator precisely so a change here cannot move a sconce, and its
-// comment records the day that was learned. Turning elevation off therefore
-// changes elevation and nothing else.
-let flat = true;
+// It was always temporary, and its own note said what it cost: the descent-bias signal
+// ("downhill is forward"), the stair corridors, the sunken rooms. It is retired because
+// the thing it was waiting for landed — a link states its legs and its landings, so the
+// fall is spent along the polyline instead of being inferred from a rect count, and the
+// chord router no longer has to be gated to flat ground to avoid a producer that could
+// not fall. `connectL`, the pre-anchor router it kept alive, is deleted.
 
-/** Are floors being built dead level? See the note above. */
-export function flatFloors(): boolean { return flat; }
-/** Turn the elevation pass on or off. Used by the audits that measure the
- *  connection work with and without it. */
-export function setFlatFloors(on: boolean): void { flat = on; }
 
 export function planElevation(
   links: readonly ElevLink[],
   roomRect: ReadonlyMap<string, Box>,
   rand: () => number,
 ): ElevationPlan {
-  if (flat) {
-    // A WELL-FORMED plan, not an empty one. Every room in the link graph must
-    // appear or downstream lookups fall back to their own defaults and the floor
-    // ends up level in some places and undefined in others — which would look
-    // exactly like the elevation bugs this is meant to take off the table.
-    const room = new Map<string, number>();
-    for (const l of links) { room.set(l.from, 0); room.set(l.to, 0); }
-    const corridor = new Map<string, CorridorStamp>();
-    for (const l of links) for (const id of l.ids) corridor.set(id, { elevation: 0 });
-    return { room, corridor, totalDrop: 0 };
-  }
   const room = new Map<string, number>();
   const corridor = new Map<string, CorridorStamp>();
   // The first link's `from` is the spawn room, and it is the datum.
@@ -236,8 +210,27 @@ export function planElevation(
     const legFromIsLo = (i: number): boolean => link.legAxis?.[i]?.fromIsLo ?? linkFromIsLo;
     const travel = (r: Box, i: number): number => (legAlongX(i) ? r.w : r.d);
 
-    // Which rects can carry slope: the single rect, or a dogleg's two legs.
-    const legs = link.rects.length === 3 ? [0, 2] : link.rects.length === 1 ? [0] : [];
+    // ── EVERY LEG CAN CARRY SLOPE ──────────────────────────────────────────
+    //
+    // This read `rects.length === 3 ? [0, 2] : rects.length === 1 ? [0] : []` — "a
+    // dogleg is three rects and the middle one is the landing". That describes exactly
+    // one producer, `connectL`, which lays an L as leg + cross piece + leg. A ROUTED
+    // link is one rect per leg of its polyline, so an L arrives as TWO rects and fell
+    // into the `[]` branch: no rect could carry slope, so the link could not fall at
+    // all. That is the whole reason the chord router was gated to flat floors, and the
+    // reason `connectL` was still alive to serve elevated ones.
+    //
+    // A polyline states which of its rects are LANDINGS (level/link.ts), so the legs
+    // are simply the ones that are not. This used to be
+    // `rects.length === 3 ? [0, 2] : rects.length === 1 ? [0] : []` — "a dogleg is
+    // three rects and the middle is the landing" — which describes the output of one
+    // producer, `connectL`. A ROUTED link emitted one rect per leg, so an L arrived as
+    // two rects, matched neither case, and could carry NO fall at all. That is what
+    // gated the chord router to flat floors and kept connectL alive to serve the rest.
+    //
+    // The bend stays LEVEL, which is the architecture: it is where a player's footing
+    // is least predictable, so the fall lives on the legs and the cross piece turns.
+    const legs = link.rects.map((_, i) => i).filter((i) => !link.isLanding?.[i]);
     const runs = legs.map((i) => corridorRampRun(travel(link.rects[i], i)));
     const runTotal = runs.reduce((t, r) => t + r, 0);
 
@@ -293,30 +286,29 @@ export function planElevation(
       continue;
     }
 
-    if (legs.length === 1) {
-      corridor.set(link.ids[0], {
-        rampAlongX: legAlongX(0),
-        rampLoElev: legFromIsLo(0) ? eFrom : eTo,
-        rampHiElev: legFromIsLo(0) ? eTo : eFrom,
-      });
-      continue;
+    // Walk the polyline, spending the fall leg by leg. The elevation at each corner
+    // is whatever the legs before it have already fallen, so consecutive legs agree at
+    // the joint by construction rather than by a shared "landing" rect.
+    let eAt = eFrom;
+    for (const [k, i] of legs.entries()) {
+      const share = runTotal > 0 ? runs[k] / runTotal : 1 / legs.length;
+      const eNext = k === legs.length - 1 ? eTo : eAt - fall * share;
+      // The landing this leg arrives at sits where the leg left off.
+      if (link.isLanding?.[i + 1]) corridor.set(link.ids[i + 1], { elevation: eNext });
+      if (Math.abs(eNext - eAt) < 1e-9) {
+        // A leg with no fall to carry is level ground — a landing, arrived at rather
+        // than declared. Stamped explicitly: the field's fallback probes for the
+        // nearest room by 2D distance, which is what put ramps in mid-air.
+        corridor.set(link.ids[i], { elevation: eAt });
+      } else {
+        corridor.set(link.ids[i], {
+          rampAlongX: legAlongX(i),
+          rampLoElev: legFromIsLo(i) ? eAt : eNext,
+          rampHiElev: legFromIsLo(i) ? eNext : eAt,
+        });
+      }
+      eAt = eNext;
     }
-
-    // Dogleg. The landing sits at whatever fraction of the fall the first leg
-    // carried, so a long leg and a short one each get the grade they can hold
-    // instead of both getting half.
-    const eMid = eFrom - fall * (runs[0] / runTotal);
-    corridor.set(link.ids[0], {
-      rampAlongX: legAlongX(0),
-      rampLoElev: legFromIsLo(0) ? eFrom : eMid,
-      rampHiElev: legFromIsLo(0) ? eMid : eFrom,
-    });
-    corridor.set(link.ids[1], { elevation: eMid });   // the landing
-    corridor.set(link.ids[2], {
-      rampAlongX: legAlongX(2),
-      rampLoElev: legFromIsLo(2) ? eMid : eTo,
-      rampHiElev: legFromIsLo(2) ? eTo : eMid,
-    });
   }
 
   let lowest = 0;

@@ -21,7 +21,6 @@ import { planElevation, type ElevLink } from '../src/level/poly-elevation';
 import { pointInPoly } from '../src/level/room-shape';
 import { CONFIG } from '../src/config';
 import type { LevelSpec } from '../src/level/types';
-import { setFlatFloors } from '../src/level/poly-elevation';
 // ELEVATION IS TEMPORARILY OFF (2026-08-17): floors build dead level while the
 // corridor CONNECTION work is done, so a seam defect cannot be a bad cut and a
 // misplaced ramp at the same time. See level/poly-elevation.ts, flatFloors.
@@ -31,7 +30,7 @@ import { setFlatFloors } from '../src/level/poly-elevation';
 // meaning "not yet" must not also mean "stop checking", because the entire plan is
 // that elevation comes back once the seam is known good, and it should come back
 // to a suite that never stopped holding it.
-setFlatFloors(false);
+
 
 
 let passed = 0, failed = 0;
@@ -59,18 +58,42 @@ test('NO STEP WHERE A CORRIDOR MEETS A ROOM', () => {
   // room's shape can reach past the point the corridor measured, and then a
   // ramp ends inside a room at a different height. Measured before the fix:
   // 40 of these across 240 floors, the worst a 0.61m drop in a doorway.
+  // ── SAMPLED AT THE DECLARED THRESHOLD, JUST INSIDE THE ROOM ────────────────
+  //
+  // This probed a point 0.15m in from each end of the corridor rect and kept it when it
+  // was `pointInPoly` of a room — which only ever found anything because the rect
+  // overshot 0.9m INTO the room. With the overlap dropped the rect stops on the wall
+  // line, the probe lands outside every polygon, and this sampled ZERO seams: the guard
+  // fired, correctly, as "not measuring the rule".
+  //
+  // The seam is at the doorway, and the link states exactly where that is. So the probe
+  // steps a hand's breadth INTO the room from the declared threshold, along the wall's
+  // own inward normal — which is the point a player's foot actually lands on crossing.
   let checked = 0, worst = 0;
   for (const spec of floors()) {
     const field = buildElevationField(spec.rooms, spec.corridors);
+    const byId = new Map(spec.rooms.map((r) => [r.id, r]));
     for (const c of spec.corridors) {
-      const alongX = c.rampAlongX ?? (c.rect.w >= c.rect.d);
-      for (const end of [-1, 1] as const) {
-        const px = alongX ? c.rect.x + end * (c.rect.w / 2 - 0.15) : c.rect.x;
-        const pz = alongX ? c.rect.z : c.rect.z + end * (c.rect.d / 2 - 0.15);
-        for (const r of spec.rooms) {
-          if (!r.poly || !pointInPoly(r.poly, px, pz)) continue;
+      const link = c.link;
+      if (!link) continue;
+      for (const [roomId, cut] of [
+        [link.fromRoom, link.aCut] as const, [link.toRoom, link.bCut] as const,
+      ]) {
+        const r = byId.get(roomId);
+        if (!r?.poly) continue;
+        const n = r.poly.length;
+        const a = r.poly[cut.edge % n], b = r.poly[(cut.edge + 1) % n];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        // Inward normal: the room's interior is to the LEFT of a counter-clockwise edge.
+        const inx = -(b[1] - a[1]) / len, inz = (b[0] - a[0]) / len;
+        const t = (cut.t0 + cut.t1) / 2;
+        const mx = a[0] + (b[0] - a[0]) * t, mz = a[1] + (b[1] - a[1]) * t;
+        for (const sign of [1, -1]) {
+          const px = mx + inx * 0.15 * sign, pz = mz + inz * 0.15 * sign;
+          if (!pointInPoly(r.poly, px, pz)) continue;
           checked++;
           worst = Math.max(worst, Math.abs(field.groundY(px, pz) - (r.elevation ?? 0)));
+          break;
         }
       }
     }
@@ -168,6 +191,11 @@ test('A DOGLEG DESCENDS ON ITS LEGS AND TURNS ON A LANDING', () => {
     from: 'A', to: 'B',
     rects: [box(-2, 6, 2, 8), box(0, 11, 6, 2), box(2, 18, 2, 10)],
     ids: ['c-0', 'c-1', 'c-2'],
+    // WHICH RECT IS THE LANDING, stated. The planner used to infer it from the rect
+    // COUNT — "three rects, so the middle one is the cross piece" — which described the
+    // output of exactly one producer and left a routed two-rect L unable to fall at
+    // all. The polyline says it now (level/link.ts, DerivedRects.isLanding).
+    isLanding: [false, true, false],
   };
   const plan = planElevation([link], rooms, () => 0.99);   // always the biggest drop
   const eA = plan.room.get('A')!, eB = plan.room.get('B')!;

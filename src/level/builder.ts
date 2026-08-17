@@ -1506,7 +1506,7 @@ export function buildLevel(
         // standing inside a room that has its own. Rooms pass their own rect,
         // so nothing but a corridor is affected.
         const plate = isCorridor.has(r)
-          ? plateExtentFor(r.rect, roomPolys)
+          ? plateExtentFor(r.rect, roomPolys, undefined, r.alongX)
           : r.rect;
         buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles, plate);
       }

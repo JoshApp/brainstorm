@@ -142,35 +142,64 @@ const MIN_WIDTH = 1.2;
 export function portalInputs(
   roomId: string,
   corridors: ReadonlyArray<{
-    id: string; rect: Rect; linkId?: string; clearWidth?: number;
+    id: string; rect: Rect; linkId?: string; clearWidth?: number; alongX?: boolean;
     link?: { fromRoom: string; toRoom: string;
              aCut: { edge: number; t0: number; t1: number };
              bCut: { edge: number; t0: number; t1: number } };
   }>,
-): Array<{ id: string; rect: Rect; link?: string; clearWidth?: number;
-           cut?: { edge: number; t0: number; t1: number } }> {
+): Array<{ id: string; rect: Rect; link?: string; clearWidth?: number; alongX?: boolean;
+           cut?: { edge: number; t0: number; t1: number; height?: number } }> {
   return corridors.map((c) => ({
     id: c.id,
     rect: c.rect,
     link: c.linkId,
     clearWidth: c.clearWidth,
+    alongX: c.alongX,
     cut: c.link?.fromRoom === roomId ? c.link.aCut
       : c.link?.toRoom === roomId ? c.link.bCut
       : undefined,
   }));
 }
 
+/** A link, as much of one as this file needs. */
+export interface PortalLink {
+  fromRoom: string;
+  toRoom: string;
+  aCut: { edge: number; t0: number; t1: number; height?: number };
+  bCut: { edge: number; t0: number; t1: number; height?: number };
+}
+
+/**
+ * One corridor, as this file wants to hear about it.
+ *
+ * Accepts a corridor RoomSpec directly. `link` is the POLYLINE, whose `aCut`/`bCut`
+ * state the hole in each end's wall, and which of the two applies depends on which end
+ * `roomId` is — so planPortals works that out itself rather than trusting a caller to.
+ *
+ * That is not tidiness. Ten call sites across the tests were mapping the corridor list
+ * to `{ id, rect }` by hand, which drops the declaration and silently asks the OLD
+ * question: recover the hole by intersecting the rect with the polygon. Each one then
+ * measured a dungeon nobody plays — a cobweb 7cm wider than its opening, a flood
+ * reporting sealed rooms on a floor with no wall in it, a bargain 2.3m from a doorway
+ * that is not where the doorway is. Deriving it in here makes the mistake unavailable.
+ */
+export interface PortalCorridor {
+  id: string;
+  rect: Rect;
+  /** The CONNECTION these legs share (RoomSpec.linkId). A dogleg cuts one doorway. */
+  linkId?: string;
+  /** The polyline, when this corridor was routed. */
+  link?: PortalLink;
+  /** Stated clear width, for capping the frame — see RoomSpec.clearWidth. */
+  clearWidth?: number;
+  /** Which way it RUNS — see RoomSpec.alongX. */
+  alongX?: boolean;
+}
+
 export function planPortals(
   roomId: string,
   poly: Ring,
-  corridors: ReadonlyArray<{
-    id: string; rect: Rect; link?: string;
-    /** The DECLARED hole this corridor needs in THIS room's wall, when its link
-     *  stated one. Present → the rect is never intersected with the polygon. */
-    cut?: { edge: number; t0: number; t1: number; height?: number };
-    /** The corridor's stated clear width, for capping the frame. */
-    clearWidth?: number;
-  }>,
+  corridors: ReadonlyArray<PortalCorridor>,
 ): Portal[] {
   const n = poly.length;
   const out: Portal[] = [];
@@ -221,6 +250,13 @@ export function planPortals(
     // is still capped by the passage: a 2.2m corridor crossing a diagonal wall cuts
     // a longer hole than it is wide, and a door is as wide as what walks through it.
     const width = (cut.t1 - cut.t0) * edgeLen;
+    // ...AND IT STANDS PROUD OF THE CORRIDOR'S SIDE WALLS. Sizing the frame to exactly
+    // the passage puts its jambs on the corridor's own wall planes, and two coplanar
+    // surfaces claiming the same depth shimmer down both sides of every doorway. Josh:
+    // "the doorframes are stuck inside the corridor's walls so it's z-fighting ... it's
+    // the same as a pipe and the pipe's connector." The rect path took this off in
+    // `clearSpan`; the declared path has to as well, or the frame is flush again.
+    const passage = c.clearWidth ?? Math.min(c.rect.w, c.rect.d);
     return {
       roomId, corridorId: c.id, edge: cut.edge,
       a: pa, b: pb,
@@ -228,13 +264,19 @@ export function planPortals(
       normal: nrm,
       rotY: Math.atan2(nrm[0], nrm[1]),
       width,
-      clearWidth: Math.min(width, c.clearWidth ?? Math.min(c.rect.w, c.rect.d)),
+      clearWidth: Math.max(0.6, Math.min(width, passage) - JAMB_REVEAL),
       t0: cut.t0, t1: cut.t1,
       cuts: [cut, ...alsoInside],
     };
   };
 
   for (const c of corridors) {
+    // WHICH of the link's two cuts is this room's. The link names both ends; asking it
+    // here is what stops a caller from having to know.
+    const cut = c.link?.fromRoom === roomId ? c.link.aCut
+      : c.link?.toRoom === roomId ? c.link.bCut
+      : undefined;
+
     // Every edge this corridor reaches, with the length it covers.
     const gather = (rect: Rect): Hit[] => {
       const hits: Hit[] = [];
@@ -254,8 +296,8 @@ export function planPortals(
 
     // The DECLARED path. Everything below is the rect round trip, kept for the
     // openings that genuinely have no link (a stairwell hole, the vault path).
-    if (c.cut) {
-      const p = fromCut(c, c.cut, gather(c.rect).filter((h) => h.edge !== c.cut!.edge));
+    if (cut) {
+      const p = fromCut(c, cut, gather(c.rect).filter((h) => h.edge !== cut.edge));
       if (p) out.push(p);
       continue;
     }
@@ -280,7 +322,7 @@ export function planPortals(
     // wall band it has to cross to reach the room at all. Not grown laterally:
     // sideways is the passage's own width, and widening that is the opposite of
     // the question being asked.
-    const plate = plateExtentFor(c.rect, [poly]);
+    const plate = plateExtentFor(c.rect, [poly], undefined, c.alongX);
     const alongX = plate.w >= plate.d;
     const socket: Rect = {
       x: plate.x, z: plate.z,
@@ -422,10 +464,10 @@ export function planPortals(
  */
 function oneDoorPerConnection(
   portals: Portal[],
-  corridors: ReadonlyArray<{ id: string; link?: string }>,
+  corridors: ReadonlyArray<{ id: string; linkId?: string }>,
 ): Portal[] {
   if (portals.length < 2) return portals;
-  const linkOf = new Map(corridors.map((c) => [c.id, c.link ?? c.id]));
+  const linkOf = new Map(corridors.map((c) => [c.id, c.linkId ?? c.id]));
   const best = new Map<string, Portal>();
   for (const p of portals) {
     const key = linkOf.get(p.corridorId) ?? p.corridorId;
@@ -551,7 +593,7 @@ export function wallCutsFor(
   // chamfered corner opens two edges, and returning one of them leaves the
   // other as stone across half the doorway — see the note in planPortals.
   const found = rediscover.length
-    ? planPortals('shell', poly, rediscover.map((rect, i) => ({ id: `o${i}`, rect, link: rect.link })))
+    ? planPortals('shell', poly, rediscover.map((rect, i) => ({ id: `o${i}`, rect, linkId: rect.link })))
         .flatMap((p) => p.cuts.map((c) => ({ edge: c.edge, t0: c.t0, t1: c.t1 })))
     : [];
   return [...declared, ...found];

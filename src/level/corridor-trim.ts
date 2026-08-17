@@ -89,11 +89,21 @@ export function plateExtentFor(
   rect: { x: number; z: number; w: number; d: number },
   roomPolys: ReadonlyArray<Poly>,
   overlap = OVERLAP,
+  /**
+   * Which way the corridor RUNS, when the caller knows (RoomSpec.alongX).
+   *
+   * Inferred from `w >= d` otherwise, and that inference is the travel axis only while
+   * the leg is longer than it is wide. The middle leg of a Z routinely is not —
+   * measured on d6/s4242, cor-p0-2 is 1.55m wide and 1.38m long — and trimming such a
+   * leg along the wrong axis walks its WIDTH looking for the room, finds the room at
+   * both ends, and hands back a plate cut down the middle of a passage.
+   */
+  alongXHint?: boolean,
 ): PlateExtent {
   const untrimmed: PlateExtent = { w: rect.w, d: rect.d, x: rect.x, z: rect.z, trimmedLo: 0, trimmedHi: 0 };
   if (roomPolys.length === 0) return untrimmed;
 
-  const alongX = rect.w >= rect.d;
+  const alongX = alongXHint ?? rect.w >= rect.d;
   const lat = alongX ? rect.z : rect.x;
   const len = alongX ? rect.w : rect.d;
   const lo = (alongX ? rect.x : rect.z) - len / 2;

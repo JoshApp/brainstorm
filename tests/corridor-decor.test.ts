@@ -68,24 +68,41 @@ const runLen = (c: RoomSpec) => Math.max(c.rect.w, c.rect.d);
 
 /** Every doorway on a floor, from the same call the frames and the placer make. */
 function doorwaysOf(spec: { rooms: RoomSpec[]; corridors: RoomSpec[] }): Array<{ x: number; z: number }> {
-  const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
   const out: Array<{ x: number; z: number }> = [];
   for (const r of spec.rooms) {
     if (!r.poly) continue;
-    for (const p of planPortals(r.id, r.poly, cors)) out.push({ x: p.mid[0], z: p.mid[1] });
+    for (const p of planPortals(r.id, r.poly, spec.corridors)) out.push({ x: p.mid[0], z: p.mid[1] });
   }
   return out;
 }
 
 test('A CORRIDOR IS NO LONGER EMPTY, AND IS NOT A JUNK SHOP EITHER', () => {
-  let beats = 0, metres = 0, legs = 0, bare = 0;
+  // ── COUNTED PER LINK, WHICH IS WHAT THE PLAYER WALKS ───────────────────────
+  //
+  // This counted bare RECTS. A link is leg, LANDING, leg (level/link.ts) — the turning
+  // square at a bend is its own rect and there is nothing to dress in it — so landings
+  // read as empty legs the moment they existed: 371 of 950. Excluding them left 141 of
+  // 717, because legs are also SHORTER now (they stop at the landing's edge rather than
+  // running through the corner), and a short leg legitimately holds no beat.
+  //
+  // Neither number is the claim. "A corridor is no longer empty" is about the passage
+  // you walk from one room to the next, and a dogleg with a brazier on its first leg is
+  // not an empty corridor because its second leg is bare. So the unit is the LINK.
+  let beats = 0, metres = 0, links = 0, bare = 0;
   for (const { spec } of FLOORS) {
     const placed = beatsIn(spec.props ?? []);
     beats += placed.length;
+    const byLink = new Map<string, RoomSpec[]>();
     for (const c of spec.corridors) {
-      legs++; metres += runLen(c);
-      const any = placed.some((p) =>
-        Math.abs(p.x - c.rect.x) <= c.rect.w / 2 && Math.abs(p.z - c.rect.z) <= c.rect.d / 2);
+      if (c.landing) continue;                       // no run to dress
+      metres += runLen(c);
+      const k = c.linkId ?? c.id;
+      (byLink.get(k) ?? byLink.set(k, []).get(k)!).push(c);
+    }
+    for (const legs of byLink.values()) {
+      links++;
+      const any = legs.some((c) => placed.some((p) =>
+        Math.abs(p.x - c.rect.x) <= c.rect.w / 2 && Math.abs(p.z - c.rect.z) <= c.rect.d / 2));
       if (!any) bare++;
     }
   }
@@ -94,8 +111,8 @@ test('A CORRIDOR IS NO LONGER EMPTY, AND IS NOT A JUNK SHOP EITHER', () => {
   // Both ends, and the low end is the one that actually caught a bug.
   assert.ok(every < 8, `one beat every ${every.toFixed(1)}m — that is still an empty corridor`);
   assert.ok(every > 2.0, `one beat every ${every.toFixed(1)}m — a corridor is not a junk shop`);
-  assert.ok(bare / legs < 0.15,
-    `${bare}/${legs} corridor legs have nothing in them at all`);
+  assert.ok(bare / links < 0.15,
+    `${bare}/${links} corridors have nothing in them at all`);
 });
 
 test('NOTHING A CORRIDOR CARRIES STANDS WHERE YOU WALK', () => {

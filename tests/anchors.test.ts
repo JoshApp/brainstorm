@@ -206,8 +206,7 @@ test('THE DOORS THIS CANNOT ACCOUNT FOR ARE THE ONES IN CORNERS', () => {
   const withA: number[] = [], without: number[] = [];
   for (const { spec, room, anchors } of walled()) {
     const P = room.poly as Poly;
-    const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
-    for (const p of planPortals(room.id, P, cors)) {
+    for (const p of planPortals(room.id, P, spec.corridors)) {
       let nearest = Infinity;
       for (const v of P) nearest = Math.min(nearest, Math.hypot(v[0] - p.mid[0], v[1] - p.mid[1]));
       const gap = nearest - p.width / 2;

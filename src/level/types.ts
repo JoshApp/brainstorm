@@ -146,6 +146,29 @@ export type RoomSpec = {
    */
   encounter?: EncounterArchetype;
   /**
+   * Which way this corridor rect RUNS — true if along X — corridor RoomSpecs only.
+   *
+   * Stated, because it cannot be inferred. Every consumer took `w > d`, which is only
+   * the travel axis while the leg is longer than it is wide. The middle leg of a Z is
+   * routinely not: measured on d6/s4242, cor-p0-2 is 1.55m wide and 1.38m long, so
+   * `w > d` reported it as running along X and its "ends" came out as its own SIDES —
+   * which is how a perfectly well-jointed leg was reported as ending in nothing.
+   * `plateExtentFor` in the shipping builder makes the same inference.
+   *
+   * A landing has no travel axis; the value there is the axis the player arrives on.
+   */
+  alongX?: boolean;
+  /**
+   * This corridor rect is a LANDING — the level square at a bend — not a leg.
+   *
+   * A dogleg is leg, landing, leg (level/link.ts). Several passes need to know which
+   * they are looking at: the elevation pass keeps a landing level while the legs
+   * carry the fall, the decor pass has no business dressing a 2.2m turning square,
+   * and a sightline check counts LEGS to decide whether a bend is an L or a Z. They
+   * used to be told by rect count, which only described one producer's output.
+   */
+  landing?: boolean;
+  /**
    * CLEAR WIDTH of this corridor, metres — corridor RoomSpecs only.
    *
    * Stated rather than inferred. Every consumer used to take `min(rect.w, rect.d)`,

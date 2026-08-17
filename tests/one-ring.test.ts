@@ -142,12 +142,11 @@ test('ONE CONNECTION OPENS ONE DOORWAY', () => {
   // Josh found the result on a phone: *"the corridor has two doors, one inside a
   // wall where a potential exit could have been."* 23 of them across 240 floors.
   for (const spec of floors()) {
-    const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect, link: c.linkId }));
-    const linkOf = new Map(cors.map((c) => [c.id, c.link ?? c.id]));
+    const linkOf = new Map(spec.corridors.map((c) => [c.id, c.linkId ?? c.id]));
     for (const r of spec.rooms) {
       if (!r.poly || r.poly.length < 3) continue;
       const seen = new Map<string, string[]>();
-      for (const p of planPortals(r.id, r.poly, cors)) {
+      for (const p of planPortals(r.id, r.poly, spec.corridors)) {
         const k = linkOf.get(p.corridorId) ?? p.corridorId;
         seen.set(k, [...(seen.get(k) ?? []), p.corridorId]);
       }

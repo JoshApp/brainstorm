@@ -146,10 +146,9 @@ test('every portal is wide enough to be a way through', () => {
   // A sliver where a corridor grazes a corner is build noise, not a doorway, and
   // shipping one means a frame mounted in a 20cm gap.
   for (const spec of floors()) {
-    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      for (const p of planPortals(r.id, r.poly, corridors)) {
+      for (const p of planPortals(r.id, r.poly, spec.corridors)) {
         assert.ok(p.width >= 0.7, `${r.id}: a ${p.width.toFixed(2)}m portal is a crack, not a door`);
       }
     }
@@ -161,11 +160,10 @@ test('A CORRIDOR GRAZING A CORNER GETS ONE DOORWAY, NOT TWO', () => {
   // hit were taken. The portal is the edge it covers MOST — the one it comes
   // through — and the other is left as wall.
   for (const spec of floors()) {
-    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const r of spec.rooms) {
       if (!r.poly) continue;
       const byCorridor = new Map<string, number>();
-      for (const p of planPortals(r.id, r.poly, corridors)) {
+      for (const p of planPortals(r.id, r.poly, spec.corridors)) {
         byCorridor.set(p.corridorId, (byCorridor.get(p.corridorId) ?? 0) + 1);
       }
       for (const [cid, n] of byCorridor) {
@@ -183,10 +181,9 @@ test('A FRAME IN AN AXIS-ALIGNED WALL IS SQUARE TO THE WORLD', () => {
   // wall is then free to be anything, which is the whole point of portal rotY.
   let axisAligned = 0, offAxis = 0;
   for (const spec of floors()) {
-    const corridors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const r of spec.rooms) {
       if (!r.poly) continue;
-      for (const p of planPortals(r.id, r.poly, corridors)) {
+      for (const p of planPortals(r.id, r.poly, spec.corridors)) {
         const nx = Math.abs(p.normal[0]), nz = Math.abs(p.normal[1]);
         const isAxis = nx < 1e-6 || nz < 1e-6;
         if (!isAxis) { offAxis++; continue; }
@@ -289,14 +286,15 @@ test('A FRAME IS AS WIDE AS THE WAY THROUGH, NOT AS LONG AS THE CUT', () => {
   let checked = 0, chamfered = 0;
   for (const spec of floors()) {
     const byId = new Map(spec.corridors.map((c) => [c.id, c]));
-    const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const room of spec.rooms) {
       if (!room.poly || room.poly.length < 3) continue;
-      for (const p of planPortals(room.id, room.poly, cors)) {
+      for (const p of planPortals(room.id, room.poly, spec.corridors)) {
         const c = byId.get(p.corridorId);
         if (!c) continue;
         checked++;
-        const clear = Math.min(c.rect.w, c.rect.d);
+        // THE CORRIDOR'S STATED WIDTH. `min(w, d)` is its clear width only while the
+        // leg is longer than it is wide, which the middle leg of a Z often is not.
+        const clear = c.clearWidth ?? Math.min(c.rect.w, c.rect.d);
         // ── AND IT STANDS PROUD OF THE CORRIDOR'S WALLS ────────────────────
         //
         // Josh: "the doorframes are stuck inside the corridor's walls so it's

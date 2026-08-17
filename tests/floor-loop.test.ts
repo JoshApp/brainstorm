@@ -37,7 +37,6 @@
 import assert from 'node:assert/strict';
 import { generatePolyFloor } from '../src/level/poly-floor';
 import type { LevelSpec, RoomSpec } from '../src/level/types';
-import { setFlatFloors } from '../src/level/poly-elevation';
 // ELEVATION IS TEMPORARILY OFF (2026-08-17): floors build dead level while the
 // corridor CONNECTION work is done, so a seam defect cannot be a bad cut and a
 // misplaced ramp at the same time. See level/poly-elevation.ts, flatFloors.
@@ -47,7 +46,7 @@ import { setFlatFloors } from '../src/level/poly-elevation';
 // meaning "not yet" must not also mean "stop checking", because the entire plan is
 // that elevation comes back once the seam is known good, and it should come back
 // to a suite that never stopped holding it.
-setFlatFloors(false);
+
 
 
 let passed = 0, failed = 0;

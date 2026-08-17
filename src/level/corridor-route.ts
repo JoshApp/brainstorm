@@ -69,6 +69,11 @@ export interface LinkRoute {
  */
 export const MIN_LEG_FACTOR = 1.2;
 
+/** How far a leg laps into the landing at a bend — level/link.ts's JOINT_LAP. Kept in
+ *  step with it because the router's leg minimum has to predict the BUILT length, and a
+ *  lap this file did not know about is half a bend's worth of leg it cannot see. */
+const JOINT_LAP = 0.05;
+
 /** Lateral agreement tolerance for calling two opposed anchors collinear. */
 const COLLINEAR_EPS = 0.05;
 
@@ -124,7 +129,19 @@ export function routeBetween(
     return legClear(l, selfRooms, i === 0 ? MOUTH_DEPTH : 0,
       i === legs.length - 1 ? MOUTH_DEPTH : 0);
   });
-  const minLeg = section * MIN_LEG_FACTOR;
+  // ── A LEG'S MINIMUM IS ABOUT WHAT GETS BUILT, NOT WHAT IS PLANNED ──────────
+  //
+  // `MIN_LEG_FACTOR` bounds the POLYLINE leg, and the geometry is shorter than the
+  // polyline: a landing is laid at every joint and each leg stops at its edge, giving up
+  // half a passage width per bend it meets (level/link.ts). So a leg this validated at
+  // 1.2 widths was BUILT at 0.7 with one bend, and a Z's middle leg — two bends — at
+  // 0.2. Measured over 718 legs: 10.2% came out under 1.2 widths and eight under half a
+  // width, which is a nub between two landings rather than a run.
+  //
+  // So the check adds back what the landings will take. `joints` is how many bends this
+  // leg meets: one for an L's legs and a Z's outer legs, two for a Z's crossing.
+  const minLeg = (joints: number): number =>
+    section * MIN_LEG_FACTOR + joints * (section / 2 - JOINT_LAP);
 
   const aAxisX = Math.abs(a.normal[0]) > 0.5;   // A exits along X
   const bAxisX = Math.abs(b.normal[0]) > 0.5;
@@ -159,7 +176,7 @@ export function routeBetween(
       // Both legs must run FORWARD out of their own wall, or the route doubles
       // back through the room it just left.
       if (!forward(from, corner, a.normal) || !forward(to, corner, b.normal)) continue;
-      if (len(from, corner) < minLeg || len(to, corner) < minLeg) continue;
+      if (len(from, corner) < minLeg(1) || len(to, corner) < minLeg(1)) continue;
       const legs = [
         { from, to: corner, width: section },
         { from: corner, to, width: section },
@@ -177,12 +194,12 @@ export function routeBetween(
       const from = onWall(sa, la, aAxisX), to = onWall(sb, lb, bAxisX);
       const t0 = aAxisX ? from[0] : from[1], t1 = aAxisX ? to[0] : to[1];
       const gap = Math.abs(t1 - t0);
-      if (gap < 2 * minLeg) continue;
+      if (gap < 2 * minLeg(1)) continue;
       for (const f of [0.5, 0.35, 0.65]) {
         const cross = t0 + (t1 - t0) * f;
         const c1: [number, number] = aAxisX ? [cross, from[1]] : [from[0], cross];
         const c2: [number, number] = aAxisX ? [cross, to[1]] : [to[0], cross];
-        if (len(c1, c2) < minLeg) continue;
+        if (len(c1, c2) < minLeg(2)) continue;
         const legs = [
           { from, to: c1, width: section },
           { from: c1, to: c2, width: section },

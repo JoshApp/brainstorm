@@ -70,11 +70,10 @@ test('...and it agrees with the answer the shipping pipeline finds', () => {
   // reproduce its answers, it is not ready to replace it.
   let checked = 0, matched = 0;
   for (const { spec } of FLOORS) {
-    const cors = spec.corridors.map((c) => ({ id: c.id, rect: c.rect }));
     for (const room of spec.rooms) {
       if (!room.poly || room.poly.length < 3) continue;
       const c = roomCenter(room.poly);
-      for (const p of planPortals(room.id, room.poly, cors)) {
+      for (const p of planPortals(room.id, room.poly, spec.corridors)) {
         checked++;
         // March from the room's centre toward the portal and see where the
         // solver says the wall is.

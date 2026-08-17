@@ -358,21 +358,48 @@ test('NO CORRIDOR END IS ORPHANED', () => {
   // the corridor was "connected" to a room it never touched.
   //
   // "In a room OR in another corridor", because a connection is not always one
-  // rect. A dogleg is three — a leg, a cross piece, a leg — and its two interior
+  // rect. A dogleg is three — a leg, a LANDING, a leg — and its two interior
   // joints are corridor-to-corridor by design. Asserting every end lands in a
   // ROOM was right until bends existed and would now forbid them.
+  //
+  // LEGS ONLY. A landing is a SQUARE the width of the passage, so `w > d` is false and
+  // this took its Z extremes — one of which is the corner of the square that neither
+  // leg reaches into. That corner is solid floor you can stand on; it is simply not an
+  // "end", because a landing is not a passage with two ends. It is the place two
+  // passages meet, and what has to be true is that every LEG's ends land somewhere,
+  // which is what this now says.
   for (const spec of floors()) {
     for (const c of spec.corridors) {
+      if (c.landing) continue;
       const r = c.rect;
-      const ends: Array<[number, number]> = r.w > r.d
+      // THE LEG'S OWN AXIS, not `w > d`. That inference is the travel axis only while
+      // the leg is longer than it is wide, and the middle leg of a Z routinely is not —
+      // d6/s4242's cor-p0-2 is 1.55m wide and 1.38m long, so `w > d` took its SIDES as
+      // its ends and reported a properly jointed leg as ending in nothing.
+      const alongX = c.alongX ?? r.w > r.d;
+      const ends: Array<[number, number]> = alongX
         ? [[r.x - r.w / 2, r.z], [r.x + r.w / 2, r.z]]
         : [[r.x, r.z - r.d / 2], [r.x, r.z + r.d / 2]];
+      // ── OR AT ITS OWN DECLARED THRESHOLD ────────────────────────────────
+      //
+      // `pointInPoly` was true only because the rect overshot 0.9m INTO the room. With
+      // the overlap dropped a leg stops exactly ON the wall line, which is the boundary,
+      // where `pointInPoly` is false — so every outer end in the dungeon read as "in
+      // nothing" on a floor where every one of them is exactly where it should be.
+      //
+      // The link states both thresholds, so an end that coincides with one is not
+      // orphaned, it is ARRIVED. This is the strongest form of the check: the end is not
+      // merely somewhere plausible, it is on the spot the router negotiated.
+      const thresholds: Array<[number, number]> = c.link
+        ? [[c.link.aAt[0], c.link.aAt[1]], [c.link.bAt[0], c.link.bAt[1]]]
+        : [];
       for (const [x, z] of ends) {
         const inRoom = spec.rooms.some((rm) => rm.poly && pointInPoly(rm.poly, x, z));
         const inJoint = spec.corridors.some((o) => o !== c
           && Math.abs(x - o.rect.x) <= o.rect.w / 2 + 0.01
           && Math.abs(z - o.rect.z) <= o.rect.d / 2 + 0.01);
-        assert.ok(inRoom || inJoint,
+        const atThreshold = thresholds.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 0.05);
+        assert.ok(inRoom || inJoint || atThreshold,
           `${spec.id}: corridor ${c.id} ends at (${x.toFixed(1)}, ${z.toFixed(1)}) — in nothing`);
       }
     }
@@ -456,8 +483,12 @@ test('A CORRIDOR STOPS AT THE WALL, AND THE FRAME FLOORS THE THRESHOLD', () => {
   for (const spec of floors()) {
     const polys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
     for (const c of spec.corridors) {
-      const p = plateExtentFor(c.rect, polys);
-      const alongX = p.w >= p.d;
+      // WITH THE CORRIDOR'S STATED AXIS, the same way the builder calls it. Letting the
+      // trim guess from `w >= d` walks a short wide leg along its WIDTH, finds the room
+      // at both ends, and hands back a plate cut down the middle of a passage — and a
+      // landing is square, so the guess is a coin toss there.
+      const p = plateExtentFor(c.rect, polys, undefined, c.alongX);
+      const alongX = c.alongX ?? p.w >= p.d;
       const lat = alongX ? p.z : p.x;
       const lo = (alongX ? p.x : p.z) - (alongX ? p.w : p.d) / 2;
       const len = alongX ? p.w : p.d;
@@ -509,16 +540,27 @@ test('A BEND ACTUALLY BREAKS THE SIGHTLINE', () => {
       if (!m) continue;
       byLink.set(m[1], [...(byLink.get(m[1]) ?? []), c]);
     }
-    for (const [id, parts] of byLink) {
-      // TWO pieces or three. The old dogleg was always three (leg, cross, leg)
-      // and this asserted the shape; the router also produces an L, which is
-      // two perpendicular legs and breaks the sightline just as completely. The
-      // shape was never the point — assert the PROPERTY.
+    for (const [id, all] of byLink) {
+      // ── COUNT LEGS, NOT PIECES ─────────────────────────────────────────────
+      //
+      // A link is leg, LANDING, leg (level/link.ts): the turning square at each bend is
+      // its own rect, so an L is three pieces and a Z is five. This asserted piece
+      // COUNT, which was a statement about which producer built the corridor rather
+      // than about the corridor — the same mistake `poly-elevation` was making with
+      // "three rects, so the middle is the landing". Legs are what break a sightline;
+      // a landing is where you turn.
+      const parts = all.filter((p) => !p.landing);
       assert.ok(parts.length === 2 || parts.length === 3,
-        `${spec.id}: bend ${id} has ${parts.length} pieces, expected 2 (an L) or 3 (a Z)`);
+        `${spec.id}: bend ${id} has ${parts.length} legs, expected 2 (an L) or 3 (a Z)`);
       bends++;
-      const alongZ = parts.filter((p) => p.rect.d > p.rect.w);
-      const alongX = parts.filter((p) => p.rect.w > p.rect.d);
+      // BY THE LEG'S STATED AXIS. `d > w` is the travel axis only while a leg is longer
+      // than it is wide — the cross leg of a Z is routinely not — so this grouped a leg
+      // with the wrong pair and then measured the spread between two legs that are not
+      // parallel at all, reporting "1.3m apart, you can see straight through" about a
+      // bend that turns perfectly well.
+      const axis = (p: typeof parts[number]) => p.alongX ?? p.rect.w > p.rect.d;
+      const alongZ = parts.filter((p) => !axis(p));
+      const alongX = parts.filter((p) => axis(p));
       if (alongZ.length >= 2 || alongX.length >= 2) {
         // Two legs on the SAME axis: a Z. They must sit at different laterals
         // or it is a straight corridor in three pieces — more geometry, same
@@ -871,7 +913,7 @@ test('A COBWEB HANGS IN A DOORWAY, NOT NEAR ONE', () => {
     const portals: Array<{ mid: readonly [number, number]; rotY: number; clearWidth: number }> = [];
     for (const room of spec.rooms ?? []) {
       if (!room.poly || room.poly.length < 3) continue;
-      portals.push(...planPortals(room.id, room.poly, portalInputs(room.id, spec.corridors ?? [])));
+      portals.push(...planPortals(room.id, room.poly, spec.corridors ?? []));
     }
     for (const p of (spec.props ?? []) as PropSpec[]) {
       if (p.kind !== 'cobweb') continue;
@@ -914,7 +956,6 @@ test('A DESCENT PUTS THE WAY ONWARD IN FRONT OF YOU', () => {
   for (const spec of floors()) {
     const start = spec.startPos;
     if (!start) continue;
-    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
     const room = (spec.rooms ?? []).find((r) => r.poly && pointInPoly(r.poly, start.x, start.z));
     if (!room?.poly) continue;
     // Where the player is LOOKING.
@@ -922,7 +963,7 @@ test('A DESCENT PUTS THE WAY ONWARD IN FRONT OF YOU', () => {
     // Every way out of this room. Portals when it has them; the corridor rects
     // that reach into it otherwise (4.4% of poly rooms have no portal — see the
     // note in spawnYawToward).
-    const outs = planPortals(room.id, room.poly, corridors).map((p) => p.mid as readonly [number, number]);
+    const outs = planPortals(room.id, room.poly, spec.corridors ?? []).map((p) => p.mid as readonly [number, number]);
     if (!outs.length) {
       noExit++;
       for (const c of corridors) {
@@ -964,13 +1005,12 @@ test('A BARGAIN IS NOT REACHABLE FROM THE THRESHOLD', () => {
   let deals = 0, tooClose = 0;
   const worstBySize: Array<{ scale: number; d: number; kind: string }> = [];
   for (const spec of floors()) {
-    const corridors = (spec.corridors ?? []).map((c) => ({ id: c.id, rect: c.rect }));
     for (const p of (spec.props ?? []) as PropSpec[]) {
       const q = p as { kind: string; x: number; z: number };
       if (!DEALS.has(q.kind)) continue;
       const room = (spec.rooms ?? []).find((r) => r.poly && pointInPoly(r.poly, q.x, q.z));
       if (!room?.poly) continue;
-      const ports = planPortals(room.id, room.poly, corridors);
+      const ports = planPortals(room.id, room.poly, spec.corridors ?? []);
       if (!ports.length) continue;
       deals++;
       const d = Math.min(...ports.map((t) => Math.hypot(t.mid[0] - q.x, t.mid[1] - q.z)));
