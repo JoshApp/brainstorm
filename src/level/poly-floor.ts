@@ -756,9 +756,37 @@ function buildPolyFloor(depth: number, seed: number, attempt: number, nextLevelI
     const routedChord = flatFloors()
       ? routeConnection(a, b, loopType, rooms, occupiedBoxes, false)
       : null;
+    // ── STAGE 2: NO connectL. A REFUSED PAIR TRIES THE NEXT PAIR ─────────────
+    //
+    // It used to fall to connectL for THIS pair, which is why the chord was 30%
+    // blind. But the loop below already walks every candidate pair in
+    // nearest-first order — so a pair the router declines does not need rescuing,
+    // it needs skipping. The old code rescued pair 1 badly instead of asking
+    // pair 2 whether it worked.
+    //
+    // That is the whole argument for deleting a fallback rather than improving it:
+    // the fallback was answering a question the surrounding loop had already
+    // answered better.
+    //
+    // And if NO pair routes, the floor gets no loop. That is the right degradation
+    // and it is a gameplay judgement, not a technical one: a loop is a detour, and
+    // a floor without one reads as linear. A floor WITH a corridor that clips a
+    // room's interior reads as broken. tests/floor-loop holds the rate above 60%,
+    // so if this costs too many loops the test says so rather than a player.
+    // ── AND connectL SURVIVES ON THE ELEVATION PATH ONLY ─────────────────────
+    //
+    // Deleting it outright took loops from most floors to ZERO of 72, because
+    // tests/floor-loop forces elevation ON and the chord's router is gated to flat
+    // floors — so with elevation on there was suddenly no chord producer at all.
+    // Caught immediately, which is what that gate is for.
+    //
+    // So the state is explicit rather than tidy: on FLAT floors, which is what
+    // ships today, the chord is 100% routed and connectL is dead code. With
+    // elevation on it is still the only producer that gives the ramp pass the
+    // three rects it wants. Stage 5 retires the flat gate and this line with it.
     const conn = routedChord
       ? { ...routedChord, servedBy: 'route' as const }
-      : connectL(a, b, loopType.width, occupiedBoxes);
+      : (flatFloors() ? null : connectL(a, b, loopType.width, occupiedBoxes));
     if (!conn) continue;
     // ── THE RAMP MODEL WANTS THREE RECTS, AND A ROUTE GIVES TWO ────────────
     //
