@@ -1086,6 +1086,40 @@ function bakeFloorWallContacts(root: THREE.Object3D, segs: WallSegment[]): void 
   });
 }
 
+/**
+ * Hang a veil of dark in every doorway.
+ *
+ * ── WHY THIS IS ITS OWN PASS AND NOT PART OF THE FRAME EMITTER ───────────────
+ *
+ * It iterates exactly what portal-frames.ts iterates and computes the same midpoint, so
+ * the temptation is to fold it in. It must not be: frames are DRESSING and are currently
+ * switched off (level/dressing.ts, "can we just get rid of the archways and do corridor
+ * cutting geometry first"), and the veil is the game's visibility model. A thing that
+ * decides how far you can see cannot live behind a decoration's flag.
+ *
+ * One veil per opening, and an opening belongs to exactly one room's wall — a corridor
+ * between two rooms therefore gets two, one at each end, which is what makes a corridor a
+ * space you are IN rather than a tube you look down.
+ */
+function placeThresholdVeils(root: THREE.Object3D, spec: LevelSpec) {
+  const corridors = spec.corridors ?? [];
+  if (!corridors.length) return;
+  for (const room of spec.rooms) {
+    if (room.logicalOnly || !room.poly || room.poly.length < 3) continue;
+    for (const p of planPortals(room.id, room.poly, corridors)) {
+      const corridor = corridors.find((c) => c.id === p.corridorId);
+      if (!corridor) continue;
+      // THE CLEAR SPAN AND THE PASSAGE'S OWN HEIGHT — the aperture you walk through, not
+      // the arc of outline the hole eats. Same distinction the frame emitter makes, and
+      // the same reason: around a chamfer the outline is longer than the way through.
+      spawnThresholdVeil(
+        root, p.mid, p.normal, p.rotY,
+        p.clearWidth, corridor.height, room.elevation ?? 0,
+      );
+    }
+  }
+}
+
 function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: RoomSpec[]) {
   const doors = spec.doors ?? [];
   const seen = new Set<string>();
@@ -1130,7 +1164,8 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
-import { insidePolyRanges } from './portals';
+import { insidePolyRanges, planPortals } from './portals';
+import { spawnThresholdVeil } from '../scene/threshold-veil';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
 // Scatter a few lamp-revealed wall-runes across a floor's rooms so the dungeon
@@ -1551,6 +1586,7 @@ export function buildLevel(
   // (passages with no door), so an onward passage reads as a way through —
   // diffuse + in-motion, not a placed marker. Doored passages already signal.
   placeThresholdDrafts(root, spec, allRects);
+  placeThresholdVeils(root, spec);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   // `obstacles` was hoisted above so stair AABBs land in the same list.

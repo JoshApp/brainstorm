@@ -61,7 +61,15 @@ const AUTHORITY = [
 /** Materials that are genuinely per-instance because something animates their
  *  own uniforms per object. These still cost a pipeline, but sharing them would
  *  be wrong, not merely different. Add with a reason or don't add. */
-const ANIMATED_EXEMPT: string[] = [];
+const ANIMATED_EXEMPT: string[] = [
+  // scene/threshold-veil.ts — one veil per doorway, and its OPACITY IS THE MECHANISM:
+  // each lifts independently by how near the player is to that particular opening. A
+  // pooled material hands back one shared instance, so sharing would not be a different
+  // look, it would be every doorway on the floor lifting together the moment you
+  // approached any one of them. They all share the one texture, which is where the real
+  // cost would have been.
+  'src/scene/threshold-veil.ts',
+];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

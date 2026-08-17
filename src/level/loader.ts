@@ -46,6 +46,7 @@ import { tagPerfEvent } from '../debug/perf-recorder';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
+import { clearThresholdVeils } from '../scene/threshold-veil';
 import { resetExploredMap } from './explored-map';
 import { fadeOut, showDescentTitle, revealWhenReady } from '../ui/descent-fade';
 import { showSafeRoomTransition } from '../ui/safe-room-transition';
@@ -189,6 +190,7 @@ export function tickPendingLoad() {
     clearAllOutlines();
     resetDarkAdaptation();
     clearThresholdDrafts();
+    clearThresholdVeils();
     resetExploredMap();   // drop the old floor's nav graph + visited set
     resetSpriteBatch();   // drop the old floor's batched flame instances
     resetFlameMeshBatch();// …and its batched flame BLOBS (same lifecycle)

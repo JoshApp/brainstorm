@@ -23,6 +23,7 @@ import {
 import './tuning-view';
 // The darkness tab — see tuning-dark.ts for why these four systems belong together.
 import './tuning-dark';
+import './tuning-veil';
 import './tuning-grade';
 import { allPresets, applyPreset, savePreset } from './tuning-presets';
 

@@ -40,6 +40,7 @@ import { tickDarkAdaptation, darkAdaptBrightness, sampleLitSignal } from '../sce
 import { updateDarkAdaptReadout } from '../debug/dark-adapt-readout';
 import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
+import { tickThresholdVeils } from '../scene/threshold-veil';
 import { isAnyScreenOpen } from '../ui/screen-manager';
 import { isDescendTransition } from '../ui/descent-fade';
 import { tickAllBuffs } from '../ecs/buffs';
@@ -303,6 +304,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // Threshold dust + proximity haze. realDt so the drift doesn't stutter in
       // slow-mo; haze blooms by player proximity.
       tickThresholdDrafts(ctx.realDt, camera.position);
+      // The dark in the doorways lifts by proximity — see scene/threshold-veil.ts. On the
+      // REAL clock like the drafts: a veil that eased in bullet-time would turn the
+      // deflect window into a lighting event.
+      tickThresholdVeils(camera.position);
     } },
 
     // Effective torchlight at the player — torches within earshot AND with a
