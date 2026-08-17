@@ -204,6 +204,30 @@ export function chamfer(poly: Poly, amount: number, pick: (i: number) => boolean
     if (cross <= 0 || !pick(i)) { out.push(b); continue; }
     const lenAB = Math.hypot(b[0] - a[0], b[1] - a[1]);
     const lenBC = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    // ── A NOTE ON STUB FACES, FROM A CHANGE THAT WAS REVERTED ──────────────
+    //
+    // `k < 0.2` is the only floor here, and a chamfer FACE is k x sqrt(2), so a
+    // 0.28m face is admissible. Measured over 124 generated floors: wall faces
+    // run p10 0.67m, median 1.89m, against a median doorway clear width of
+    // 2.13m. The median wall in a polygon room is narrower than the median door.
+    //
+    // That is one cause with two symptoms — 12% of doorways cut across a bend
+    // because no single edge could hold them, and Josh's *"many short wall
+    // segments ... almost a patchwork quilt"* on the art side.
+    //
+    // TWO FIXES WERE TRIED AND BOTH REVERTED, which is why this is a comment and
+    // not code. Refusing any corner under a minimum face: median 1.89 -> 2.36m,
+    // straddles 11.9% -> 9.3%, and rooms with NO diagonal 1.0% -> 27.6%. Raising
+    // the cut instead of refusing it: median 2.12m, straddles 10.0%, blocky 4.9%
+    // — a better trade, and it still broke `AN ANCHOR IS NEVER IN A CORNER` in
+    // tests/anchors.test.ts, putting a door within 0.10m of a corner against the
+    // 0.35m a pilaster needs.
+    //
+    // Whatever fixes this has to be designed against level/anchors.ts —
+    // CORNER_CLEAR, MIN_HOSTING_EDGE, MIN_DOOR_EDGE — and docs/SPACES-AND-THRESHOLDS.md,
+    // which already own the question of what a wall can afford. Tuning this
+    // constant against a metric of its own invention is how the reverted attempts
+    // got it wrong.
     const k = Math.min(amount, lenAB / 3, lenBC / 3);
     if (k < 0.2) { out.push(b); continue; }
     out.push([b[0] + (a[0] - b[0]) / lenAB * k, b[1] + (a[1] - b[1]) / lenAB * k]);
