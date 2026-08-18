@@ -414,7 +414,13 @@ export function tickCullMap(): void {
   // while failing the signal policy. Both are self-consistency: the system contradicting
   // itself, which is the only thing a map can honestly call a bug.
   const lightPolicy = { maxGates: maxLightGates };
-  const lightBad = (l: LightMapRow) => l.why === '' && !passes(lightPolicy, { gates: l.gates });
+  // TWO ways a light can be wrong, and they look identical from inside the game.
+  //   · It holds a slot it should not — it broke its own policy.
+  //   · It holds a slot and emits NOTHING — Josh: *"why did lights stop drawing even though
+  //     the map shows them as active?"* That is the gap between winning a slot and putting
+  //     out light, and it is invisible to any count of binds.
+  const lightBad = (l: LightMapRow) =>
+    l.why === '' && (!passes(lightPolicy, { gates: l.gates }) || l.emit < 0.01);
   const signalBad = (m: SignalMapRow) =>
     m.visible && !passes({ maxGates: maxSignalGates }, { gates: m.gates });
   const spaceBad = (sp: CullSnapshotSpace) => sp.drawn && !Number.isFinite(sp.gates);
@@ -548,6 +554,10 @@ export function tickCullMap(): void {
       // Your own lantern. Drawn as a wide ring because it is centred on you and a disc here
       // would just sit under the player triangle.
       ring(g, x, z, 5 * dpr, col, 1 * dpr);
+    } else if (on && l.emit < 0.01) {
+      // Bound and emitting nothing: drawn as a hollow RED disc so it cannot be mistaken for
+      // either a lit torch or a culled one.
+      ring(g, x, z, 3 * dpr, C.bad, 1.4 * dpr);
     } else if (on) {
       disc(g, x, z, 3 * dpr, col);
     } else {
@@ -588,11 +598,13 @@ export function tickCullMap(): void {
   // ── HEADER ────────────────────────────────────────────────────────────────
   const drawnCount = spaces.filter((s) => s.drawn).length;
   const boundCount = lights.filter((l) => l.why === '').length;
+  const darkCount = lights.filter((l) => l.why === '' && l.emit < 0.01).length;
   const shownSignals = signals.filter((m) => m.visible).length;
   const unwarmed = veils.filter((v) => !v.warm).length;
   g.fillStyle = anomalies > 0 ? C.bad : C.text;
   g.fillText(
     `${drawnCount}/${spaces.length} drawn · ${boundCount}/${lights.length} lit`
+    + (darkCount ? ` (${darkCount} DARK)` : '')
     + ` · ${shownSignals}/${signals.length} sig · gate≤${maxLightGates}`
     + (anomalies ? `  ⚠ ${anomalies}` : ''),
     8 * dpr, 12 * dpr,
@@ -633,6 +645,7 @@ export function tickCullMap(): void {
     g.beginPath(); g.moveTo(x, y - 4 * dpr); g.lineTo(x + 3 * dpr, y + 3 * dpr);
     g.lineTo(x - 3 * dpr, y + 3 * dpr); g.closePath(); g.fill();
   }, 'you');
+  row((x, y) => ring(g, x, y, 3 * dpr, C.bad, 1.4 * dpr), 'lit but DARK');
   row((x, y) => ring(g, x, y, 3.5 * dpr, C.bad, 1.5 * dpr), 'ANOMALY');
 
   // ── WHAT IS ACTUALLY IN FORCE ─────────────────────────────────────────────

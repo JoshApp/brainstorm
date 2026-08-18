@@ -237,13 +237,29 @@ const MOUNT_MARGIN = 0.6;
  * state, and if it did not state it we do not invent it: the OTHER spaces this thing touches
  * decide, and if none of them were reached either, it shows.
  */
+/**
+ * The nearest of several spaces, in thresholds — the generous reading, see the header.
+ *
+ * ── AND "NOT IN THE MAP" IS NOT "UNKNOWN" ONCE THE WALK HAS RUN ─────────────
+ *
+ * This used to fail open to 0 whenever none of a thing's spaces had a gate count, which
+ * quietly exempted the entire far half of every floor: the walk stops at MAX_GATES, so
+ * anything beyond it has no entry, and every torch out there came back gate 0 and passed a
+ * horizon-0 policy. Measured on depth 1: torches thirty to sixty metres away reporting gate
+ * 0 while the room next door reported 2.
+ *
+ * A POPULATED map that lacks a space is the walk saying it could not get there. Only a map
+ * with nothing in it at all is silence, and only silence fails open — the rule from the
+ * title-screen bonfire, which is a real "we have not decided" and must show.
+ */
 function nearestGate(spaces: string[]): number {
   let nearest = Infinity;
   for (const id of spaces) {
     const g = gates.get(id);
     if (g !== undefined && g < nearest) nearest = g;
   }
-  return nearest === Infinity ? 0 : nearest;
+  if (nearest !== Infinity) return nearest;
+  return gates.size === 0 ? 0 : Infinity;
 }
 
 function resolve(x: number, z: number): string[] {

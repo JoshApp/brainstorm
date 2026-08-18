@@ -397,6 +397,20 @@ export interface LightMapRow {
   /** '' = bound. Otherwise the test that dropped it. */
   why: '' | 'range' | 'gates' | 'offscreen' | 'outranked';
   gates: number;
+  /** ── THE GAP BETWEEN "WON A SLOT" AND "EMITS LIGHT" ────────────────────────
+   *
+   * Josh, and this is the observation that stopped me guessing: *"why did lights stop
+   * drawing even though the map shows them as active?"* A light can pass every cull, hold a
+   * slot, and still put out nothing — the eased visibility (`vis`) climbs from 0 on a fresh
+   * bind and is multiplied into the intensity, so a source that is dropped and re-bound
+   * every other frame never gets above a fraction, and a `dt` of zero pins it at nothing.
+   *
+   * The tally cannot see that: it counts binds. These two numbers are what the map needed to
+   * tell "culled" from "lit but dark", which are the same picture from inside the game and
+   * completely different bugs.
+   */
+  vis: number;
+  emit: number;
 }
 let lightRows: LightMapRow[] = [];
 const rowById = new Map<string, LightMapRow>();
@@ -557,7 +571,6 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       const slot = slots[i];
       if (i < n) {
         tally.bound++;
-        if (DEV) { const r = rowById.get(scratch[i].src.id); if (r) r.why = ''; }
         const { src, losBlocked } = scratch[i];
         // POSITIONAL FLICKER — torches/candles dance: jitter the light ORIGIN with
         // smooth, per-source, non-repeating noise so the floor pool wavers and the
@@ -590,6 +603,10 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
           * (src.category === 'lamp' && lampSpotActive ? LAMP_OMNI_SHARE : 1);
         slot.distance = src.distance * (isEnv ? envRangeMul : 1);
         slot.decay = src.decay;
+        if (DEV) {
+          const r = rowById.get(src.id);
+          if (r) { r.why = ''; r.vis = +vis.toFixed(3); r.emit = +slot.intensity.toFixed(2); }
+        }
         if (src.getColor) {
           src.getColor(tmpColor);
           slot.color.copy(tmpColor);
@@ -631,7 +648,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
 function note(src: LightSource, why: LightMapRow['why'], gates: number): void {
   const row: LightMapRow = {
     id: src.id, x: src.position.x, z: src.position.z, category: src.category,
-    priority: src.priority, why, gates,
+    priority: src.priority, why, gates, vis: 0, emit: 0,
   };
   lightRows.push(row);
   rowById.set(src.id, row);

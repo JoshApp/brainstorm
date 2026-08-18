@@ -108,8 +108,20 @@ const T_KEEP = T_INVISIBLE * 0.4;
 /** How far the gate walk bothers to count. Nothing asks about the far side of the floor,
  *  and a bound is what keeps a relaxation over a cyclic graph obviously terminating. */
 const MAX_GATES = 4;
-/** Below this a veil has visibly lifted — matches threshold-veil's own draw cutoff. */
-const VEIL_OPEN_EPS = 0.004;
+/**
+ * A threshold counts as CLOSED while it is more shut than open.
+ *
+ * The first version of this used 0.004 — threshold-veil's "not worth drawing" cutoff — on
+ * the reasoning that below it the veil has visibly lifted. True, but far too late to be the
+ * rule: a veil only eases that low within `veil · clear by` (1.6m), so a room's light joined
+ * you only once you were standing IN its doorway, and everything else on the floor sat at
+ * gate 1 or worse. Josh: *"lights are broken, now they don't render."*
+ *
+ * Half is the honest reading of "shut". With the shipped easing (clear by 1.6m, full by 5m,
+ * strength 0.9) a doorway crosses it about 3.4m out — you see the next space light up as you
+ * commit to it, rather than at arm's length.
+ */
+const VEIL_SHUT_ALPHA = 0.5;
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -699,13 +711,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         const here = portalDepth.get(id) ?? 0;
         if (here >= MAX_GATES) continue;
         for (const nb of nodes.get(id)?.neighbors ?? []) {
-          // OPEN OR SHUT, and the epsilon is the whole rule. A veil eases, so its alpha is
-        // almost never exactly zero — testing `> 0` made every threshold in the dungeon
-        // count as closed forever, which is why the gate horizon had to be loosened to 1 to
-        // be usable at all, which in turn let a whole chain of rooms stay lit. The veil's own
-        // "not worth drawing" cutoff is 0.004; a veil below it has visibly lifted and is a
-        // doorway you can see through, so it costs nothing to cross.
-        const step = veilAlphaBetween(id, nb.id) > VEIL_OPEN_EPS ? 1 : 0;
+          // OPEN OR SHUT, and where that line sits is the whole rule. A veil eases, so its
+        // alpha is almost never exactly zero — testing `> 0` made every threshold in the
+        // dungeon count as closed forever, which is why the horizon had to be loosened to 1
+        // to be usable, which in turn let a whole chain of rooms stay lit.
+        const step = veilAlphaBetween(id, nb.id) > VEIL_SHUT_ALPHA ? 1 : 0;
           const d = here + step;
           const prev = portalDepth.get(nb.id);
           if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
