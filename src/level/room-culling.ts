@@ -162,9 +162,21 @@ export interface CullAudit {
 const portalDepth = new Map<string, number>();
 let depthNodes: Map<string, RectNode> | null = null;
 
-/** Thresholds between the player's space and this one. 0 = you are in it. Infinity when it
- *  is not reachable at all this frame — which includes "the culler is off". */
+/**
+ * Thresholds between the player's space and this one. 0 = you are in it.
+ *
+ * FAILS OPEN WHEN THERE IS NOTHING TO SAY. An empty map means the walk found no seed —
+ * the camera is not standing inside any space at all — and that is not the same as "every
+ * space is unreachable". It happens on the title screen, whose vignette camera looks at its
+ * one room from outside it, and it happened there: the bonfire's whole flame stack came
+ * back `hidden by gates` with the markers correctly resolved to the room they are in. It
+ * also covers the first frames of a floor and any level with no culler at all.
+ *
+ * Infinity is reserved for the case we can actually argue: a populated map that does not
+ * contain this space, which means genuinely too far or genuinely disconnected.
+ */
 export function portalDepthOf(id: string): number {
+  if (portalDepth.size === 0) return 0;
   return portalDepth.get(id) ?? Infinity;
 }
 

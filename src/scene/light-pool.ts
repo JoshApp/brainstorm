@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
+import { portalDepthOf, spaceIdAt } from '../level/room-culling';
 
 // THE LIGHT DIRECTOR — decides, each frame, which of the level's many logical
 // light sources actually LIGHT the frame, and how strongly. Selection
@@ -288,6 +289,10 @@ export function unregisterLight(id: string): void {
 /** Clear all NON-persistent sources. Called at the start of buildLevel. */
 export function clearLightPool(): void {
   visById.clear();
+  // Space ids are per FLOOR and light ids repeat across them ('torch-3' exists on every
+  // level), so a cached lookup that outlived its floor would price this floor's torches by
+  // the last one's layout.
+  gateSpace.clear();
   for (const [id, src] of sources) {
     if (!src.persistent) sources.delete(id);
   }
@@ -346,7 +351,25 @@ let wickFillMul = 1;
 export function setWickFillMul(v: number): void { wickFillMul = v; }
 const LOS_DIM = 0.3;          // blocked sources glow at this fraction
 const LOS_SORT_PENALTY = 90;  // dist²-space penalty: blocked ≈ 9.5m farther
-const LOW_PRIORITY_PENALTY = 40;   // ambience fill yields to real sources
+const LOW_PRIORITY_PENALTY = 40;
+
+// ── AND A LIGHT BEHIND A CLOSED THRESHOLD RANKS BELOW ONE IN YOUR OWN ROOM ───
+//
+// The ranking was raw distance with a line-of-sight penalty, which cannot tell "through an
+// open doorway" from "through a doorway the dark is still sitting in". So a torch five
+// metres off behind a closed veil outranked one eight metres away in the room the player is
+// standing in — it won a slot, contributed nothing anyone could see, and cost the visible
+// one its place.
+//
+// Priced per THRESHOLD, at the same weight as being blocked outright, so a light one gate
+// away is a fallback rather than a competitor. It is a penalty and not a cull on purpose:
+// step toward the doorway, the veil opens, the gate count drops and the light rises through
+// the ranking on its own instead of appearing.
+//
+// Cached per source id — a sconce does not move, and this runs over every registered light
+// every frame. The lamp is exempt: it is the camera.
+const GATE_SORT_PENALTY = 90;
+const gateSpace = new Map<string, string | null>();   // ambience fill yields to real sources
 let lastTickMs = 0;
 
 export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void {
@@ -418,7 +441,23 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     if (losCheck && src.category !== 'lamp') {
       losBlocked = !losCheck(cx, cz, src.position.x, src.position.z);
     }
-    let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0) + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
+    // How many thresholds away this light's own space is — see GATE_SORT_PENALTY. Resolved
+    // once per source and kept, because a sconce does not move.
+    let gates = 0;
+    if (src.category !== 'lamp') {
+      let space = gateSpace.get(src.id);
+      if (space === undefined) {
+        space = spaceIdAt(src.position.x, src.position.z);
+        // Only remember an ANSWER: before the culler's first tick every lookup is null, and
+        // latching that would price every light on the floor as if it were in your own room
+        // for the rest of the run.
+        if (space !== null) gateSpace.set(src.id, space);
+      }
+      if (space) gates = Math.min(3, portalDepthOf(space));
+    }
+    let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
+      + gates * GATE_SORT_PENALTY
+      + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
     scratchByCategory[src.category].push({ src, sortKey, losBlocked });
   }
