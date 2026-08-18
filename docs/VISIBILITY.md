@@ -92,19 +92,26 @@ Do not reintroduce it without a use gates genuinely cannot serve.
 - One attribution rule for position-placed things, applied as an OR over the spaces they
   touch — shells keep their single build-time owner.
 - Doorway sampled at 0.92 of its clear span, eye sampled across a head's width.
+- **One traversal.** `floodOne` carries sight (frustum + LOS + fog + transmittance, chained)
+  and the per-channel gate depths together, because they are two properties of the same
+  crossing. Stone is drawn when sight reached it AND its geometry depth is inside the
+  horizon, so rooms are a policy rather than a separate mechanism.
+- **Gates are typed** (`level/gate-kinds.ts`). A kind states how it seals — proximity, state,
+  never — and which of three channels may cross while it is shut, at a cost of one gate.
+  `door` passes nothing, which is what makes a shut door remove a wing rather than merely
+  push it further away. Adding a kind is a row; adding a kind of thing is a policy naming a
+  channel.
 - `debug/cull-map.ts` draws all of it, and flags a paused world, because an `'unpaused'`
   system that is not running makes every gate on the map stale.
 
 ## Remaining
 
-1. **One traversal.** The flood (transmittance + fog + frustum + LOS) and the gate walk are
-   still two passes over the same graph. Merge them into one that emits `SpaceVis`.
-2. **Ember emitters** still ask `canSeeSignalAt` rather than declaring a policy.
-3. **Enemies and interactables** are still resolved per frame by `rectAt` — the single-owner
+1. **Ember emitters** still ask `canSeeSignalAt` rather than declaring a policy.
+5. **Enemies and interactables** are still resolved per frame by `rectAt` — the single-owner
    rule this document says not to use for placed things. They move, so they need the
    membership lookup live rather than cached, but it should be the *same* lookup.
-4. **Static batches** toggle per rect id. Fine for shells; check nothing placed rides on it.
-5. **The `'unpaused'` phase.** A posed scenario freezes the world, so the veil tick never
+6. **Static batches** toggle per rect id. Fine for shells; check nothing placed rides on it.
+7. **The `'unpaused'` phase.** A posed scenario freezes the world, so the veil tick never
    runs and every scenario measurement of gates is a lie. Either scenarios should tick the
    veils, or the freeze should be visible everywhere it matters — the map does it now, but
    the map is not the only thing that reads them.

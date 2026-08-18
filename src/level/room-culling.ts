@@ -695,43 +695,82 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   }
 
   /**
-   * Spread transmittance across the portal graph from where the player stands.
+   * THE SINGLE WALK. Fills `visible` + `trans` (what can be SEEN) and `portalDepth` (how far
+   * each channel CARRIES) in one pass over the portal graph.
    *
-   * This is the DRAW rule and only the draw rule.
+   * Josh: *"I want one system governing all aspects of this, and then we can decide when we
+   * cull and draw rooms — but it will be based on the gates and LOS and other things, as
+   * everything else."*
+   *
+   * Two questions were being asked about every edge here, by two walks running one after the
+   * other over the same nodes:
+   *
+   *   CAN IT BE SEEN — is the opening in the view cone, is the sightline clear, is it inside
+   *   the fog. CHAINED, because seeing a third room means seeing through the two openings in
+   *   front of it, which is why it cannot simply be a per-space test.
+   *
+   *   HOW FAR DOES IT CARRY — how many shut gates, per channel. Frustum-free, because a
+   *   torch behind you still lights the wall in front of you.
+   *
+   * They are two properties of the same crossing, so they travel together. `sight` advances
+   * only through openings that are genuinely visible; the gate depths advance through every
+   * edge. A consumer then says which it needs — stone needs both, a light needs only the
+   * second — and rooms stop being a separate mechanism and become the policy that happens to
+   * ask for everything.
    */
-  function flood(seeds: string[], cx: number, cz: number, eyeY: number,
-                 prev: ReadonlySet<string>, outSet: Set<string>, outTrans: Map<string, number>): void {
+  function floodOne(seeds: string[], cx: number, cz: number, eyeY: number): void {
     const queue: string[] = [];
     for (const id of seeds) {
       if (!nodes.has(id)) continue;
-      outSet.add(id);
-      outTrans.set(id, 1);
+      visible.add(id);
+      trans.set(id, 1);
+      portalDepth.set(id, AT_PLAYER);
       queue.push(id);
     }
     while (queue.length) {
-      const node = nodes.get(queue.pop()!)!;
-      const tHere = outTrans.get(node.id) ?? 1;
+      const id = queue.pop()!;
+      const node = nodes.get(id);
+      if (!node) continue;
+      const tHere = trans.get(id) ?? 0;
+      const dHere = portalDepth.get(id) ?? AT_PLAYER;
+      // A node the gate walk reached but sight did not has no transmittance to carry
+      // onward, and sight stops there — which is what "you cannot see into it" means.
+      const seenHere = visible.has(id);
+
       for (const nb of node.neighbors) {
-        if (outSet.has(nb.id)) continue;
-        // Past the fog wall? The doorway (hence everything through it) is fully fog-black —
+        const kind = gateKindBetween(id, nb.id);
+        const shut = gateIsShut(kind, id, nb, cx, cz);
+
+        // ── HOW FAR IT CARRIES ─────────────────────────────────────────────
+        const next = acrossGate(dHere, kind, shut);
+        const prevD = portalDepth.get(nb.id);
+        let queued = false;
+        if (improves(next, prevD)) {
+          portalDepth.set(nb.id, prevD ? bestOf(next, prevD) : next);
+          if (!exhausted(next, MAX_GATES)) { queue.push(nb.id); queued = true; }
+        }
+
+        // ── AND WHETHER IT CAN BE SEEN ─────────────────────────────────────
+        if (!seenHere || visible.has(nb.id)) continue;
+        // Past the fog wall? The opening, and everything through it, is fully fog-black —
         // a cheap reject before the frustum and sightline tests.
         const ddx = nb.ox - cx, ddz = nb.oz - cz;
         if (ddx * ddx + ddz * ddz > cullDist2()) continue;
-        // ...and past the VEIL? See T_INVISIBLE. A closed threshold means what is behind it
-        // is below one output level, which is a stronger statement than "far away" and does
+        // Past the VEIL? See T_INVISIBLE. A closed threshold means what is behind it is
+        // below one output level, which is a stronger statement than "far away" and does
         // not move when the fog does.
-        const t = tHere * (1 - veilAlphaBetween(node.id, nb.id));
-        if (t <= (prev.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
-        // Sampled at the CAMERA'S eye height, not a fixed world-1.2, so a sunken or raised
-        // room is tested at the height you are actually at.
-        if (canSeeThrough(nb, cx, cz, eyeY)) {
-          outSet.add(nb.id);
-          outTrans.set(nb.id, t);
-          queue.push(nb.id);
-        }
+        const t = tHere * (1 - veilAlphaBetween(id, nb.id));
+        if (t <= (wasVisible.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
+        // Sampled at the CAMERA'S eye height, so a sunken or raised room is tested at the
+        // height you are actually at.
+        if (!canSeeThrough(nb, cx, cz, eyeY)) continue;
+        visible.add(nb.id);
+        trans.set(nb.id, t);
+        if (!queued) queue.push(nb.id);
       }
     }
   }
+
 
   function showAll() {
     for (const node of nodes.values()) {
@@ -836,68 +875,31 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         if (queue.includes(node.id)) continue;
         queue.push(node.id);
       }
-      flood(queue, cx, cz, camera.position.y, wasVisible, visible, trans);
+      floodOne(queue, cx, cz, camera.position.y);
     } else {
       // Player not resolvable to any rect — fail safe (render everything).
       showAll();
       return;
     }
 
-    // ── AND SEPARATELY, HOW MANY GATES AWAY EVERYTHING IS ───────────────────
+    // ── AND STONE ANSWERS TO GATES, LIKE EVERYTHING ELSE ─────────────────────
     //
-    // DEPTH IS NOT VISIBILITY, and conflating them was a real bug. This used to be counted
-    // inside the flood above, which is frustum- and sightline-gated — so the moment you
-    // stepped into a room, the corridor BEHIND you dropped out of the flood and its depth
-    // became Infinity. A torch sconce sits in the wall band between two spaces, so plenty of
-    // them resolve to that corridor, and every one of their flames went out on the threshold.
-    // Josh found it in one go: *"it happens exactly when I step into the room ... probably
-    // because of the gate check."*
+    // DEPTH IS NOT VISIBILITY — a space behind you is still one gate away, it is simply not
+    // being drawn — and conflating them was a real bug: depth used to be counted inside the
+    // sight pass, so stepping into a room dropped the corridor behind you to Infinity and
+    // every sconce that resolved to it went dark on the threshold. Josh found that one in a
+    // sentence: *"it happens exactly when I step into the room … probably because of the
+    // gate check."*
     //
-    // A space behind you is still one gate away. It is simply not being drawn. So this is a
-    // pure walk of the portal graph — every doorway crossed, no frustum, no line of sight,
-    // no transmittance — answering only "how many thresholds is this from me".
+    // They stay distinct, and floodOne now carries both. What is left here is the JOIN: a
+    // space is drawn when sight reached it AND its geometry depth is inside the horizon.
+    // Before that line existed, stone read only the sight pass and everything else read only
+    // the depths, so a room could be culled by one and lit by the other — and a gate kind
+    // that blocks geometry, which is what a closed door is, would have changed nothing about
+    // what draws.
     //
-    // A dogleg's own joint is not a gate: the legs are one passage, and a bent corridor must
-    // not read as further off than a straight one of the same length. Bounded, because
-    // nothing asks about the far side of the floor and an unbounded relaxation on a cyclic
-    // graph is a loop waiting to be written wrong.
-    {
-      // ── ONE WALK, THREE CHANNELS ──────────────────────────────────────────
-      //
-      // Geometry, light and signal all ask "how far is that space", and a gate answers each
-      // of them differently — a veil hides stone and light but lets a fire read through, a
-      // shut door lets nothing past at all. So the depths travel together and each relaxes
-      // on its own, which is one traversal instead of the two this file used to run and the
-      // three it would have needed.
-      for (const id of depthSeeds) portalDepth.set(id, AT_PLAYER);
-      const dq = [...depthSeeds];
-      while (dq.length) {
-        const id = dq.pop()!;
-        const here = portalDepth.get(id) ?? AT_PLAYER;
-        if (exhausted(here, MAX_GATES)) continue;
-        for (const nb of nodes.get(id)?.neighbors ?? []) {
-          const kind = gateKindBetween(id, nb.id);
-          const next = acrossGate(here, kind, gateIsShut(kind, id, nb, cx, cz));
-          const prev = portalDepth.get(nb.id);
-          if (improves(next, prev)) {
-            portalDepth.set(nb.id, prev ? bestOf(next, prev) : next);
-            dq.push(nb.id);
-          }
-        }
-      }
-    }
-
-    // ── AND STONE ANSWERS TO GATES TOO ────────────────────────────────────────
-    //
-    // The flood decides what can be SEEN — frustum, sightlines, fog. The gate walk decides
-    // how far through the architecture a channel carries. Until now stone read only the
-    // first and lights, signals and props only the second, so a room could be culled by one
-    // and lit by the other, and a gate kind that blocks geometry — a closed door — would
-    // have changed nothing about what draws.
-    //
-    // One language now: a space is drawn if the flood reached it AND its geometry depth is
-    // within the horizon. Force-visible rooms (an active arena) are exempt, because that is
-    // an encounter overriding visibility on purpose and not a question about sight.
+    // Force-visible rooms (an active arena) are exempt: that is an encounter overriding
+    // visibility on purpose, not a question about sight.
     {
       const horizon = signalKnobs.geoGates();
       for (const id of [...visible]) {
