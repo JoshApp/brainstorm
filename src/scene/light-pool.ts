@@ -504,22 +504,6 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // them, and it is a handful of dot products. The environment budget is 22 and the tiled
     // node shades at most eight per tile, so binding a few more costs selection time, not
     // fragments.
-    // Frustum cull: if the light's reach sphere doesn't intersect
-    // the camera frustum, nothing the camera renders can be lit by
-    // it. Lamp is exempt — its world pos sits a few cm in front of
-    // the camera and the sphere can technically miss the frustum
-    // bound on certain FOVs; for the lamp we always want a slot.
-    if (src.category !== 'lamp') {
-      tmpSphere.center.copy(src.position);
-      // The BOUND range again — a sphere cut to the authored one would drop a light whose
-      // reach still crosses the frustum, which is the same pop from a different angle.
-      tmpSphere.radius = bound;
-      if (!tmpFrustum.intersectsSphere(tmpSphere)) {
-        tally.offScreen++;
-        if (DEV) note(src, 'offscreen', -1);
-        continue;
-      }
-    }
     // LOS: a wall between source and camera DIMS the light instead of
     // killing it (see the soft-visibility note above). Lamp bypasses
     // LOS (it IS the camera; its world pos can sit just inside a wall).
@@ -565,6 +549,27 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       + gates * GATE_SORT_PENALTY
       + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
+    // ── FRUSTUM LAST, SO THE TALLY MEANS SOMETHING ───────────────────────────
+    //
+    // This ran before the gate test, so `offScreen` counted every distant light on the floor
+    // and told you nothing about what the frustum was actually costing you — the gates were
+    // going to remove those anyway. Ordered after, the number is the real one: lights in a
+    // space you have opened that are not on screen.
+    //
+    // The test itself: if the light's reach sphere does not intersect the camera frustum,
+    // nothing the camera renders can be lit by it. Exact for direct lighting. The lamp is
+    // exempt — its world position sits a few centimetres in front of the camera and the
+    // sphere can miss the frustum bound at some FOVs.
+    if (src.category !== 'lamp') {
+      tmpSphere.center.copy(src.position);
+      tmpSphere.radius = bound;
+      if (!tmpFrustum.intersectsSphere(tmpSphere)) {
+        tally.offScreen++;
+        if (DEV) note(src, 'offscreen', gates);
+        continue;
+      }
+    }
+
     tally.candidates++;
     // A candidate that never gets a slot was OUTRANKED — corrected below when it binds.
     if (DEV) note(src, 'outranked', gates);
