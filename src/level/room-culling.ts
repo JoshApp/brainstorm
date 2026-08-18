@@ -122,6 +122,8 @@ const MAX_GATES = 4;
  * commit to it, rather than at arm's length.
  */
 const VEIL_SHUT_ALPHA = 0.5;
+/** Half a head, roughly — how far off the view axis an eye can be while peeking. */
+const EYE_APERTURE_M = 0.28;
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -306,6 +308,41 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   // A framed opening is not IN a room, it is BETWEEN two — see the note at the
   // assignment below. Held apart from `node.objects` because its visibility is
   // an OR of two rooms, and the per-node loop can only write one answer.
+  // ── THINGS PLACED BY POSITION BELONG TO EVERY SPACE THEY TOUCH ────────────
+  //
+  // Josh: *"lights vanishing in rooms I am actively standing in based on how I move,
+  // without looking away, so they couldn't be frustum culled — there are inconsistencies."*
+  //
+  // Anything attributed by a POINT was attributed by `rectAt`, which must answer with one
+  // id, and does it by smallest-box-wins. On a polygon floor that is a coin toss at every
+  // boundary: a corridor rect deliberately reaches INSIDE the room it serves, so a prop or
+  // a sconce standing in the overlap belongs, by the tie-break, to whichever rect happens
+  // to be smaller. Cull that rect and the object goes dark while the player stands in the
+  // room it is physically in.
+  //
+  // Worse, three systems each ran their OWN version of that lookup with their own tie-break
+  // — the culler by smallest box, the light pool and the signal layer by the index's
+  // generous overlap — so one torch's stone, its light and its flame could disagree about
+  // which room they were in. That is the flicker.
+  //
+  // One rule now: a thing placed by position belongs to EVERY space whose footprint it
+  // touches, and it is drawn while ANY of them is. Shells keep their exact single owner —
+  // a wall is stamped with its rect id at build time and there is nothing to guess.
+  const placed: Array<{ o: THREE.Object3D; spaces: string[] }> = [];
+
+  /** The margin is the masonry band plus slack, so a sconce set into the stone still finds
+   *  the room it faces. Same number and same reason as the space index's own lookup. */
+  const MOUNT_MARGIN = 0.6;
+  function spacesTouching(x: number, z: number): string[] {
+    const out: string[] = [];
+    for (const n of nodes.values()) {
+      if (x < n.cx - n.hw - MOUNT_MARGIN || x > n.cx + n.hw + MOUNT_MARGIN
+        || z < n.cz - n.hd - MOUNT_MARGIN || z > n.cz + n.hd + MOUNT_MARGIN) continue;
+      out.push(n.id);
+    }
+    return out;
+  }
+
   const boundary: Array<{ o: THREE.Object3D; a: string | null; b: string | null }> = [];
   /** Every framed opening that joins two tracked rects — the floor's REAL
    *  doorway list, harvested from what was actually built. */
@@ -335,8 +372,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // visible inside a culled room (the player would see floor decoration
     // through a wall the culler had hidden).
     if (child.userData?.dbgKind === 'prop') {
-      const node = rectAt(nodes, child.position.x, child.position.z);
-      if (node) node.objects.push(child);
+      placed.push({ o: child, spaces: spacesTouching(child.position.x, child.position.z) });
       continue;
     }
     // ── A FRAMED OPENING BELONGS TO BOTH SIDES ────────────────────────────
@@ -466,10 +502,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   //    Torches by position (their group is a direct root child not tagged above).
   for (const torch of level.torches) {
     const node = rectAt(nodes, torch.group.position.x, torch.group.position.z);
-    if (node) node.objects.push(torch.group);
+    placed.push({ o: torch.group, spaces: spacesTouching(torch.group.position.x, torch.group.position.z) });
   }
 
   let enabled = true;
+  const eyeFwd = new THREE.Vector3();
+  let eyeRightX = 1, eyeRightZ = 0;
   const visible = new Set<string>();
   /** Thresholds from the player, per space, for THIS culler. Per-instance now rather than
    *  module-level: two cullers computing into one map was half of what the index fixed. */
@@ -530,15 +568,43 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
    * what to draw depends on where you are looking, and every other consumer's question does
    * not. They ask the gate walk below instead.
    */
+  /**
+   * ── AN EYE IS NOT A POINT, AND A DOORWAY IS NOT ITS CENTRE ─────────────────
+   *
+   * Josh: *"line of sight is calculated from the middle of the camera even though I can
+   * peek around corners — is there a good solution for this?"*
+   *
+   * There is, and it is the standard one for portal culling: visibility through an opening
+   * is a question about two SPANS, not two points. A ray from the centre of your head to the
+   * centre of the doorway is blocked by a corner long after you can plainly see past it,
+   * because leaning or strafing moves your eye off that centre line — and the room pops in
+   * only once the middle ray finally clears.
+   *
+   * So both ends are sampled. The doorway across nearly its whole clear span (0.92 rather
+   * than 0.7, which was leaving an eighth of the opening unreachable at each edge), and the
+   * EYE across a head's width to either side, perpendicular to the view. Any unobstructed
+   * pair means visible.
+   *
+   * Ordered cheapest-first and early-outs on the first hit, so the common case — standing in
+   * a room looking straight at a doorway — still costs one sightline. The 3x3 worst case is
+   * only paid at a corner you are actually peeking around, which is exactly when you want it
+   * paid.
+   */
   function canSeeThrough(nb: Neighbour, cx: number, cz: number, eyeY: number): boolean {
-    const sx = nb.hx * 0.7, sz = nb.hz * 0.7;
+    const sx = nb.hx * 0.92, sz = nb.hz * 0.92;
     const wide = sx !== 0 || sz !== 0;
-    const samples: Array<readonly [number, number]> = wide
+    const gate: Array<readonly [number, number]> = wide
       ? [[nb.ox, nb.oz], [nb.ox + sx, nb.oz + sz], [nb.ox - sx, nb.oz - sz]]
       : [[nb.ox, nb.oz]];
-    for (const [px, pz] of samples) {
+    // Head width, perpendicular to the view direction in the floor plane.
+    const ex = -eyeRightZ * EYE_APERTURE_M, ez = eyeRightX * EYE_APERTURE_M;
+    const eyes: Array<readonly [number, number]> = [
+      [cx, cz], [cx + ex, cz + ez], [cx - ex, cz - ez],
+    ];
+    for (const [px, pz] of gate) {
       sphere.center.set(px, eyeY, pz);
-      if (frustum.intersectsSphere(sphere) && los(cx, cz, px, pz)) return true;
+      if (!frustum.intersectsSphere(sphere)) continue;
+      for (const [ex0, ez0] of eyes) if (los(ex0, ez0, px, pz)) return true;
     }
     return false;
   }
@@ -587,6 +653,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const o of node.objects) o.visible = true;
       setStaticBatchRectVisible(node.id, true);
     }
+    for (const p of placed) p.o.visible = true;
     for (const f of boundary) f.o.visible = true;
     showAllStaticBatches();   // instances in rects the culler doesn't track
     for (const e of level.enemies) e.group.visible = true;
@@ -627,6 +694,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
 
     const cx = camera.position.x;
     const cz = camera.position.z;
+    // View direction flattened to the floor, and the right vector from it — the axis a head
+    // leans along. Recomputed once per tick rather than per doorway.
+    camera.getWorldDirection(eyeFwd);
+    const fl = Math.hypot(eyeFwd.x, eyeFwd.z) || 1;
+    eyeRightX = -eyeFwd.z / fl;
+    eyeRightZ = eyeFwd.x / fl;
     const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
 
     const publishes = worldIsCurrent(myWorld);
@@ -766,6 +839,15 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // Static-world BatchedMesh instances belonging to this rect toggle with
       // it (scene/static-batch.ts) — same occlusion granularity, one draw.
       setStaticBatchRectVisible(node.id, vis);
+    }
+
+    // ...and the position-attributed things, ONCE each, as an OR over every space they
+    // touch. Per object rather than per node: a thing standing in the overlap of a drawn
+    // room and a culled corridor belongs to both, and iterating nodes would let whichever
+    // came last decide. An object that touches nothing the culler tracks always draws.
+    for (const p of placed) {
+      const want = p.spaces.length === 0 || isSignal(p.o) || p.spaces.some((id) => visible.has(id));
+      if (p.o.visible !== want) p.o.visible = want;
     }
 
     // Framed openings — visible while EITHER of the rooms they join is. A frame
