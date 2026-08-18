@@ -308,7 +308,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // The dark in the doorways lifts by proximity — see scene/threshold-veil.ts. On the
       // REAL clock like the drafts: a veil that eased in bullet-time would turn the
       // deflect window into a lighting event.
-      tickThresholdVeils(camera.position);
+      tickThresholdVeils(camera.position, ctx.realDt);
     } },
 
     // Effective torchlight at the player — torches within earshot AND with a

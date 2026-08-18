@@ -102,6 +102,10 @@ const T_INVISIBLE = 1 / 64;
 // area bonus. Enter late, leave later.
 const T_KEEP = T_INVISIBLE * 0.4;
 
+/** How far the gate walk bothers to count. Nothing asks about the far side of the floor,
+ *  and a bound is what keeps a relaxation over a cyclic graph obviously terminating. */
+const MAX_GATES = 4;
+
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
   tick(camera: THREE.Camera): void;
@@ -431,6 +435,8 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   const visible = new Set<string>();
   /** Transmittance per space for THIS frame — see T_INVISIBLE. */
   const trans = new Map<string, number>();
+  /** Spaces the player is standing in — the seeds for BOTH walks. */
+  const depthSeeds: string[] = [];
   /** What was drawn LAST frame, for the hysteresis on that threshold. */
   const wasVisible = new Set<string>();
   // Rooms forced to render every frame regardless of frustum / LOS — counted
@@ -535,6 +541,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     visible.clear();
     trans.clear();
     portalDepth.clear();
+    depthSeeds.length = 0;
     // Force-visible rooms (active arenas etc.) always render — PLUS every
     // direct neighbour, so the alcove on the other side of an arena gate is
     // also rendered while the arena is active even though the gate's wall
@@ -565,8 +572,8 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         if (Math.abs(node.cx - cx) <= node.hw + EPS && Math.abs(node.cz - cz) <= node.hd + EPS) {
           visible.add(node.id);
           trans.set(node.id, 1);   // you are standing in it
-          portalDepth.set(node.id, 0);
           queue.push(node.id);
+          depthSeeds.push(node.id);
         }
       }
       while (queue.length) {
@@ -593,13 +600,6 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
           if (canSeeThrough(nb, cx, cz, camera.position.y)) {
             visible.add(nb.id);
             trans.set(nb.id, t);
-            // A dogleg's own joint is not a gate — the legs are one passage — so depth
-            // only advances where a veil actually stands. Otherwise a bent corridor would
-            // read as further away than a straight one of the same length.
-            const gate = veilAlphaBetween(node.id, nb.id) > 0 ? 1 : 0;
-            const d = (portalDepth.get(node.id) ?? 0) + gate;
-            const prevD = portalDepth.get(nb.id);
-            if (prevD === undefined || d < prevD) portalDepth.set(nb.id, d);
             queue.push(nb.id);
           }
         }
@@ -608,6 +608,38 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // Player not resolvable to any rect — fail safe (render everything).
       showAll();
       return;
+    }
+
+    // ── AND SEPARATELY, HOW MANY GATES AWAY EVERYTHING IS ───────────────────
+    //
+    // DEPTH IS NOT VISIBILITY, and conflating them was a real bug. This used to be counted
+    // inside the flood above, which is frustum- and sightline-gated — so the moment you
+    // stepped into a room, the corridor BEHIND you dropped out of the flood and its depth
+    // became Infinity. A torch sconce sits in the wall band between two spaces, so plenty of
+    // them resolve to that corridor, and every one of their flames went out on the threshold.
+    // Josh found it in one go: *"it happens exactly when I step into the room ... probably
+    // because of the gate check."*
+    //
+    // A space behind you is still one gate away. It is simply not being drawn. So this is a
+    // pure walk of the portal graph — every doorway crossed, no frustum, no line of sight,
+    // no transmittance — answering only "how many thresholds is this from me".
+    //
+    // A dogleg's own joint is not a gate: the legs are one passage, and a bent corridor must
+    // not read as further off than a straight one of the same length. Bounded, because
+    // nothing asks about the far side of the floor and an unbounded relaxation on a cyclic
+    // graph is a loop waiting to be written wrong.
+    for (const id of depthSeeds) portalDepth.set(id, 0);
+    const dq = [...depthSeeds];
+    while (dq.length) {
+      const id = dq.pop()!;
+      const here = portalDepth.get(id) ?? 0;
+      if (here >= MAX_GATES) continue;
+      for (const nb of nodes.get(id)?.neighbors ?? []) {
+        const step = veilAlphaBetween(id, nb.id) > 0 ? 1 : 0;
+        const d = here + step;
+        const prev = portalDepth.get(nb.id);
+        if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
+      }
     }
 
     // Anything standing inside a drawn rect's floor is drawn with it.

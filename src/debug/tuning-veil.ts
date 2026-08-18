@@ -39,4 +39,23 @@ const signalThrough = tuneNumber({
   hint: '1 = flames, runes and glints punch through a veiled doorway · 0 = the veil eats them too',
 });
 
-export const veilKnobs = { liftNear, liftFar, strength, signalThrough };
+// ── HOW LONG THE DARK TAKES TO GIVE, AND TO TAKE BACK ───────────────────────
+//
+// Time constants, not durations: each is how long the veil takes to close ~63% of the gap
+// to where distance says it should be, so the tail is long and the motion has no end-stop.
+//
+// Opening slower than closing is the authored asymmetry — the dungeon concedes reluctantly
+// and reclaims fast, which is the same shape dark-adaptation uses. Both at a very small
+// value gives back the old instant behaviour if the lag turns out to read as lag.
+const openTime = tuneNumber({
+  id: 'veilopen', group: GROUP, label: 'veil · open time',
+  min: 0.01, max: 2, step: 0.01, value: 0.42, apply: 'live',
+  hint: 'seconds for the dark to give way as you approach · the reluctance',
+});
+const closeTime = tuneNumber({
+  id: 'veilclose', group: GROUP, label: 'veil · close time',
+  min: 0.01, max: 2, step: 0.01, value: 0.22, apply: 'live',
+  hint: 'seconds for it to take the ground back · faster than opening, on purpose',
+});
+
+export const veilKnobs = { liftNear, liftFar, strength, signalThrough, openTime, closeTime };

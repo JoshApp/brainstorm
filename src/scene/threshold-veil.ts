@@ -57,6 +57,8 @@ interface Veil {
   a: string;
   b: string;
   alpha: number;
+  /** False until its first tick — see the snap in tickThresholdVeils. */
+  warm: boolean;
 }
 
 const veils: Veil[] = [];
@@ -150,7 +152,7 @@ export function spawnThresholdVeil(scene: THREE.Object3D, o: {
   mesh.renderOrder = VEIL_ORDER;
   mesh.name = 'threshold-veil';
   scene.add(mesh);
-  const veil: Veil = { mesh, mat, x, z, y, a: o.a, b: o.b, alpha: 0 };
+  const veil: Veil = { mesh, mat, x, z, y, a: o.a, b: o.b, alpha: 0, warm: false };
   veils.push(veil);
   // Last one wins if two openings somehow share a pair; they cannot today, and a wrong
   // answer here fails toward MORE drawing, which is the safe direction.
@@ -158,25 +160,55 @@ export function spawnThresholdVeil(scene: THREE.Object3D, o: {
 }
 
 /**
- * Lift each veil by how near the player is to it.
+ * Lift each veil by how near the player is to it — and let it MOVE.
  *
- * Measured to the opening's middle in 3D, so being directly under a doorway on a lower
- * plateau still counts as being at it. Eased rather than linear: a linear ramp reads as
- * the veil sliding, and what it should read as is the dark giving way.
+ * ── DISTANCE SETS THE TARGET; THE DARK TAKES ITS OWN TIME GETTING THERE ──────
+ *
+ * Josh: *"can we make it so the big reveal of the veil isn't instant, but rather a
+ * transition — the darkness giving way, you know, veiling and unveiling."*
+ *
+ * It used to be a pure function of position: alpha WAS smoothstep(distance), so the veil did
+ * not open, it tracked. Two things gave that away. It jittered with head bob and strafing,
+ * because a value bolted to the camera inherits every twitch of the camera. And walking at a
+ * doorway threw it open at exactly your walking speed, which reads as a property of the
+ * player rather than as anything the dungeon did.
+ *
+ * So distance sets a TARGET and the alpha eases toward it. The lag IS the effect: the dark
+ * has to be pushed back, and it takes a moment to go.
+ *
+ * ASYMMETRIC, AND THE SLOW DIRECTION IS OPENING. It gives way reluctantly and takes the
+ * ground back quickly — the same shape dark-adaptation already uses (four seconds to lift,
+ * a tenth of one to re-blind you), and the same idea: the dungeon concedes slowly and
+ * reclaims fast.
+ *
+ * On the REAL clock, so a veil cannot ease open in bullet-time and turn a deflect into a
+ * lighting event.
  */
-export function tickThresholdVeils(playerPos: THREE.Vector3): void {
+export function tickThresholdVeils(playerPos: THREE.Vector3, dt: number): void {
   if (!veils.length) return;
   const near = veilKnobs.liftNear();
   const far = veilKnobs.liftFar();
   const strength = veilKnobs.strength();
   const span = Math.max(0.01, far - near);
   const through = veilKnobs.signalThrough() > 0.5;
+  const openTau = Math.max(0.001, veilKnobs.openTime());
+  const closeTau = Math.max(0.001, veilKnobs.closeTime());
   for (const v of veils) {
     const dx = playerPos.x - v.x, dy = playerPos.y - v.y, dz = playerPos.z - v.z;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const t = Math.min(1, Math.max(0, (d - near) / span));
     const eased = t * t * (3 - 2 * t);
-    const a = eased * strength;
+    const target = eased * strength;
+
+    // A FALLING alpha is the veil opening (less dark); rising is it closing back in.
+    const tau = target < v.alpha ? openTau : closeTau;
+    // 1 - e^(-dt/tau) closes the same FRACTION of the remaining gap per unit time whatever
+    // the frame rate. A plain lerp by a constant would open twice as fast at 120fps.
+    const k = 1 - Math.exp(-Math.max(0, dt) / tau);
+    // SNAP ON THE FIRST TICK. Easing up from the spawn value would fade every veil in from
+    // clear at the start of a floor, which reads as the whole dungeon lighting up.
+    const a = v.warm ? v.alpha + (target - v.alpha) * k : target;
+    v.warm = true;
     v.alpha = a;
     v.mat.opacity = a;
     // Above the signal layer means the veil eats it too — the pre-split behaviour, kept as

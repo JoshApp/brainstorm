@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Stand before a fire and it burns for you. The sconce it hangs on no longer hides it.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Sparks keep to the fires you can actually see, and no longer double up over the ones that remain.",
         "area": [
           "atmosphere"
@@ -394,14 +401,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The stone finally has colour in it, rather than a shine where its colour should be.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "There is something packed between the stones now, and it is not the same stone.",
         "area": [
           "atmosphere",
           "level"
