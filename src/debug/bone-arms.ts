@@ -214,6 +214,45 @@ export function attachBoneHand(wrist: THREE.Object3D, authored: THREE.Object3D[]
   );
 }
 
+// ── THE LOOK-AT-IT LOOP ──────────────────────────────────────────────────────
+//
+// Josh: *"cant you bench the thing until it looks right or something?"* — right, and that is
+// what the bench is for. It cannot take this one: it resolves static ModelSpecs and this
+// arrives asynchronously from a file.
+//
+// So this is the equivalent, and it exists because iterating through the GAME was the slow
+// part — the composed hand only exists once a weapon is equipped, so every look cost a
+// descent and an equip. `?boneview=1` hangs the fitted hand and the authored hand side by
+// side at a fixed distance in front of the camera, present from the first frame, weapon or
+// no weapon. Adjust the fit, reload, look. That is the whole loop.
+//
+// Authored on the LEFT, fitted on the RIGHT, both at the same scale and the same origin
+// offset, because the only honest way to judge a fit is against the thing it claims to match
+// — the same reason `keep authored hand` exists for the in-game view.
+export function mountBoneView(camera: THREE.Object3D): void {
+  if (!DEV) return;
+  const stage = new THREE.Group();
+  stage.position.set(0, -0.06, -0.42);
+  camera.add(stage);
+
+  const authoredBuilt = buildModel(HAND_RIGHT);
+  authoredBuilt.group.position.x = -0.09;
+  stage.add(authoredBuilt.group);
+
+  const slotHost = new THREE.Group();
+  slotHost.position.x = 0.09;
+  stage.add(slotHost);
+
+  const authoredMeshes: THREE.Object3D[] = [];
+  attachBoneHand(slotHost, authoredMeshes);   // no authored meshes to hide on this side
+}
+
+/** Is the side-by-side view on? */
+export function boneViewWanted(): boolean {
+  return DEV && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('boneview') === '1';
+}
+
 /** Is the trial on? Read by the viewmodel, so nothing else has to know about the flag. */
 export function boneArmsWanted(): boolean {
   return DEV && typeof window !== 'undefined'
