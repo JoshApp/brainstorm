@@ -47,11 +47,26 @@ import { fitBoneHand } from './bone-fit';
 
 const GROUP = 'Bone';
 
-/** The one thing the fit cannot decide. Palm toward the camera or toward the floor is taste,
- *  not geometry. */
+/** ── THE SIXTH AXIS IS SOLVED NOW; THIS IS A NUDGE ──────────────────────────
+ *
+ * Josh: *"with 0 palm roll it faces forward … I don't know how the thing in general is
+ * posed."* Correct, and my fault: aligning the arm to +Y pins ONE axis and leaves the whole
+ * rotation about it free, so a slider was the only way back from wherever the exporter left
+ * the palm.
+ *
+ * The palm normal is measurable — a hand is thinnest through the palm — so it is measured now
+ * (bone-fit.ts) and aligned to the authored hand's own `palm_up`. Zero should be right. This
+ * stays for the case where it is not.
+ */
 const roll = tuneNumber({
   id: 'boneroll', group: GROUP, label: 'palm roll', min: -3.2, max: 3.2, step: 0.02, value: 0,
-  apply: 'live', hint: 'the only pose value measurement cannot give — spin about the arm',
+  apply: 'live', hint: 'nudge — the fit aligns the palm to the authored hand’s palm_up',
+});
+/** A plane has TWO normals and nothing in the geometry says which side the back of the hand
+ *  is on. One binary choice, rather than a continuous fight with the roll slider. */
+const flipPalm = tuneNumber({
+  id: 'boneflip', group: GROUP, label: 'flip palm', min: 0, max: 1, step: 1, value: 0,
+  apply: 'live', hint: 'the palm normal’s sign is ambiguous by construction — flip if inside-out',
 });
 /** Everything else is fitted. These stay as NUDGES for when the fit is close but not right,
  *  and each defaults to "change nothing" so the fit is what you see first. */
@@ -86,16 +101,62 @@ function authoredHandLength(): number {
   return authoredLen;
 }
 
+/**
+ * The authored hand's palm normal, expressed in WRIST space.
+ *
+ * `palm_up`'s +Y is the live palm normal (content/hand.ts says so in as many words), and it
+ * is a child of palm_anchor, so its orientation carries the wrist's authored twist. Read from
+ * the built model rather than copied out of the spec, so it tracks whatever that file does
+ * next.
+ */
+let authoredPalm: THREE.Vector3 | null = null;
+function authoredPalmNormal(): THREE.Vector3 {
+  if (authoredPalm) return authoredPalm;
+  const built = buildModel(HAND_RIGHT);
+  built.group.updateMatrixWorld(true);
+  const wrist = built.slots.get('wrist') ?? built.group;
+  const up = built.slots.get('palm_up');
+  authoredPalm = new THREE.Vector3(0, 1, 0);
+  if (up) {
+    const m = new THREE.Matrix4().copy(wrist.matrixWorld).invert().multiply(up.matrixWorld);
+    authoredPalm.set(0, 1, 0).transformDirection(m).normalize();
+  }
+  return authoredPalm;
+}
+
 function rebuild(): void {
   if (!sourceMesh) return;
   for (const m of mounted) {
     m.bone.removeFromParent();
     const fitted = fitBoneHand(sourceMesh, true, handOnly() > 0.5, authoredHandLength() * sizeNudge());
     if (!fitted) continue;
+
+    // ── SOLVE THE ROTATION ABOUT THE ARM ──────────────────────────────────
+    //
+    // Two correspondences make a full rotation: the fingers already run up +Y after the fit,
+    // and the measured palm normal goes onto the authored `palm_up`. Both are orthogonalised
+    // against the finger axis first, so the finger alignment the fit already earned is not
+    // disturbed by a palm normal that is a degree or two off perpendicular.
+    const fingers = new THREE.Vector3(0, 1, 0);
+    const srcPalm = new THREE.Vector3().fromArray(fitted.report.palmNormal)
+      .projectOnPlane(fingers).normalize();
+    if (flipPalm() > 0.5) srcPalm.negate();
+    const dstPalm = authoredPalmNormal().clone().projectOnPlane(fingers).normalize();
+    if (srcPalm.lengthSq() > 0.1 && dstPalm.lengthSq() > 0.1) {
+      // Rotate about the finger axis by the signed angle between the two palm normals.
+      const angle = Math.atan2(
+        new THREE.Vector3().crossVectors(srcPalm, dstPalm).dot(fingers),
+        srcPalm.dot(dstPalm),
+      );
+      fitted.group.rotateOnAxis(fingers, angle);
+      fitted.group.userData.solvedRoll = angle;
+    }
+
     m.bone = fitted.group;
     m.wrist.add(fitted.group);
     // eslint-disable-next-line no-console
-    console.log('[bone-arms] fit', fitted.report);
+    console.log('[bone-arms] fit', fitted.report,
+      'solvedRoll', (fitted.group.userData.solvedRoll ?? 0).toFixed(3));
   }
   applyLive();
 }
@@ -103,14 +164,17 @@ function rebuild(): void {
 function applyLive(): void {
   const keepOld = showAuthored() > 0.5;
   for (const m of mounted) {
-    m.bone.rotation.y = roll();
+    // The solved rotation lives on the group's quaternion; the nudge rides on a child-free
+    // extra spin about the same axis, so dragging it cannot destroy what the fit worked out.
+    const solved = (m.bone.userData.solvedRoll as number | undefined) ?? 0;
+    m.bone.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), solved + roll());
     for (const o of m.authored) o.visible = keepOld;
   }
 }
 
 onKnobChange((k) => {
   if (k.spec.group !== GROUP) return;
-  if (k.spec.id === 'bonehandonly' || k.spec.id === 'bonesize') rebuild();
+  if (k.spec.id === 'bonehandonly' || k.spec.id === 'bonesize' || k.spec.id === 'boneflip') rebuild();
   else applyLive();
 });
 

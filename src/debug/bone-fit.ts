@@ -50,6 +50,8 @@ export interface FittedHand {
     handShells: number;
     scale: number;
     wristToTip: number;
+    /** The measured palm normal, in the FITTED frame (fingers already up +Y). */
+    palmNormal: [number, number, number];
   };
 }
 
@@ -184,6 +186,53 @@ export function fitBoneHand(
   group.add(mesh);
   mesh.quaternion.copy(q);
 
+  // ── PALM NORMAL: the direction a hand is THINNEST ───────────────────────
+  //
+  // Josh, on the first fit: *"with 0 palm roll it faces forward … I don't know how the thing
+  // in general is posed."* Fair — aligning the arm to +Y pins one axis and leaves the whole
+  // rotation ABOUT it free, so the palm landed wherever the exporter happened to leave it and
+  // a slider was the only way back.
+  //
+  // But it is measurable. A hand is long down the fingers, wide across the knuckles and THIN
+  // through the palm, and those are three different numbers — so the thinnest direction
+  // perpendicular to the fingers IS the palm normal. Projecting the vertices onto the plane
+  // across the fingers turns that into a 2x2 covariance with a closed-form minor axis; no
+  // eigensolver, no iteration.
+  //
+  // The SIGN is genuinely ambiguous — a plane has two normals and nothing in the geometry
+  // says which side the back of the hand is on. That is what `flip palm` is for: one binary
+  // choice rather than a continuous fight with a slider.
+  const fingerDir = new THREE.Vector3(0, 0, 0);
+  fingerDir.setComponent(axis, handAtPositiveEnd ? 1 : -1);
+  // Two axes spanning the plane across the fingers.
+  const e1 = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(fingerDir.dot(e1)) > 0.9) e1.set(0, 1, 0);
+  e1.projectOnPlane(fingerDir).normalize();
+  const e2 = new THREE.Vector3().crossVectors(fingerDir, e1).normalize();
+
+  const posAttr = geo.getAttribute('position');
+  const pv = new THREE.Vector3();
+  let mA = 0, mB = 0, n = 0;
+  for (const sh of keep) for (const vi of sh.tris) {
+    pv.set(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
+    mA += pv.dot(e1); mB += pv.dot(e2); n++;
+  }
+  mA /= Math.max(1, n); mB /= Math.max(1, n);
+  let caa = 0, cbb = 0, cab = 0;
+  for (const sh of keep) for (const vi of sh.tris) {
+    pv.set(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
+    const a = pv.dot(e1) - mA, b = pv.dot(e2) - mB;
+    caa += a * a; cbb += b * b; cab += a * b;
+  }
+  // Minor axis of a 2x2 symmetric covariance, closed form.
+  const theta = 0.5 * Math.atan2(2 * cab, caa - cbb);
+  // atan2 gives the MAJOR axis; the minor is a quarter turn from it.
+  const minor = theta + Math.PI / 2;
+  const palmNormal = new THREE.Vector3()
+    .addScaledVector(e1, Math.cos(minor))
+    .addScaledVector(e2, Math.sin(minor))
+    .normalize();
+
   // ── SCALE + TRANSLATE: wrist to the origin, tip to targetLen ────────────
   mesh.updateMatrixWorld(true);
   const orientedBox = new THREE.Box3().setFromObject(mesh);
@@ -210,6 +259,7 @@ export function fitBoneHand(
       handShells: keep.length,
       scale: s,
       wristToTip,
+      palmNormal: palmNormal.clone().applyQuaternion(q).toArray() as [number, number, number],
     },
   };
 }
