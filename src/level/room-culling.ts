@@ -124,6 +124,15 @@ const MAX_GATES = 4;
  * commit to it, rather than at arm's length.
  */
 const VEIL_SHUT_ALPHA = 0.5;
+/**
+ * How near you must be for a BARE portal — one with no veil to ease — to count as given.
+ *
+ * Matched to where a veil crosses VEIL_SHUT_ALPHA under the shipped easing (clear by 1.6m,
+ * full by 5m), so a corner and a doorway hand you the next space at about the same distance
+ * and there is one rule to learn rather than two.
+ */
+const BARE_PORTAL_OPEN_M = 3.5;
+const BARE_PORTAL_OPEN_M2 = BARE_PORTAL_OPEN_M * BARE_PORTAL_OPEN_M;
 /** Half a head, roughly — how far off the view axis an eye can be while peeking. */
 const EYE_APERTURE_M = 0.28;
 
@@ -826,7 +835,34 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         // alpha is almost never exactly zero — testing `> 0` made every threshold in the
         // dungeon count as closed forever, which is why the horizon had to be loosened to 1
         // to be usable, which in turn let a whole chain of rooms stay lit.
-        const step = veilAlphaBetween(id, nb.id) > VEIL_SHUT_ALPHA ? 1 : 0;
+          // ── A THRESHOLD IS A PORTAL, AND A VEIL IS ONLY ONE WAY TO SKIN ONE ──
+          //
+          // Two ways a doorway can be shut, and only one of them draws anything.
+          //
+          // A VEILED portal — every room↔corridor opening — is sealed by the dark quad
+          // hanging in it, and its alpha says how far it has given.
+          //
+          // A BARE portal is every other edge in the graph, and the biggest population is
+          // the joints of a dogleg. Those were free, so a five-leg chain collapsed to one
+          // gate level and a third of the floor read as gate 0 — measured, and the reason
+          // the detail tier had nothing to bite on.
+          //
+          // They cannot be given veils: a black plane across the middle of a corridor with
+          // no doorframe reads as a wall, which is the annoying version of this idea. They
+          // do not need one. At a bend the STONE does the masking — you cannot see round a
+          // corner — so the pop that a veil exists to hide is already hidden by the
+          // architecture. The portal seals; nothing is drawn to say so.
+          //
+          // Openness by proximity, the same rule the veil eases on, so both kinds of
+          // threshold give at about the same distance and the player learns ONE rule.
+          const veil = veilAlphaBetween(id, nb.id);
+          let step: number;
+          if (veil > 0) {
+            step = veil > VEIL_SHUT_ALPHA ? 1 : 0;
+          } else {
+            const bdx = nb.ox - cx, bdz = nb.oz - cz;
+            step = bdx * bdx + bdz * bdz > BARE_PORTAL_OPEN_M2 ? 1 : 0;
+          }
           const d = here + step;
           const prev = portalDepth.get(nb.id);
           if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
