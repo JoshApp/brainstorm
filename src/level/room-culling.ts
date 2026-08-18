@@ -18,6 +18,7 @@ import {
   type GateDepths, type GateKindId,
 } from './gate-kinds';
 import type { PropClass } from '../ecs/model-types';
+import type { GateChannel } from './gate-kinds';
 import { claimWorld, worldIsCurrent, publishFrame, retireWorld } from './space-index';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
@@ -138,6 +139,25 @@ const VEIL_SHUT_ALPHA = 0.5;
  */
 const BARE_PORTAL_OPEN_M = 3.5;
 const BARE_PORTAL_OPEN_M2 = BARE_PORTAL_OPEN_M * BARE_PORTAL_OPEN_M;
+
+// ── STONE UNSEALS EARLY, PERCEPTION UNSEALS LATE ─────────────────────────────
+//
+// The same threshold, two answers, and the gap between them is deliberate.
+//
+// GEOMETRY has to be ready BEFORE you can see it. A veil at 0.9 is ninety percent opaque, so
+// the room behind it is invisible whether or not it is drawn — but if it is only drawn once
+// the veil is half gone, it arrives into a doorway you are already looking through. Josh:
+// *"the moment a gate is engaged slightly, that should be okay, yeah, we need that."* So the
+// stone comes back the instant the veil starts to give, and the veil hides its arrival.
+//
+// LIGHT AND SIGNAL are what you actually perceive, and they should land when the dark gives
+// them up, not before. They keep the half-open line.
+//
+// Bare portals get the same split in metres: geometry starts loading further out than the
+// distance at which the corner hands you the space.
+const VEIL_GEOMETRY_SHUT = 0.85;
+const BARE_GEOMETRY_OPEN_M = 7;
+const BARE_GEOMETRY_OPEN_M2 = BARE_GEOMETRY_OPEN_M * BARE_GEOMETRY_OPEN_M;
 /** Half a head, roughly — how far off the view axis an eye can be while peeking. */
 const EYE_APERTURE_M = 0.28;
 
@@ -381,15 +401,28 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
    * A STATE gate is somebody else's answer and is shut until they say otherwise; until doors
    * register, nothing produces one.
    */
-  function gateIsShut(kind: GateKindId, a: string, nb: Neighbour, cx: number, cz: number): boolean {
+  function gateIsShut(
+    kind: GateKindId, a: string, nb: Neighbour, cx: number, cz: number,
+  ): Record<GateChannel, boolean> {
     const seal = GATE_KINDS[kind].seal;
-    if (seal === 'never') return false;
-    if (seal === 'proximity') {
-      if (kind === 'veil') return veilAlphaBetween(a, nb.id) > VEIL_SHUT_ALPHA;
-      const dx = nb.ox - cx, dz = nb.oz - cz;
-      return dx * dx + dz * dz > BARE_PORTAL_OPEN_M2;
+    if (seal === 'never') return { geometry: false, light: false, signal: false };
+    if (seal === 'state') return { geometry: true, light: true, signal: true };
+    // PROXIMITY, and the two thresholds are the whole rule — see acrossGate.
+    if (kind === 'veil') {
+      const alpha = veilAlphaBetween(a, nb.id);
+      return {
+        geometry: alpha > VEIL_GEOMETRY_SHUT,
+        light: alpha > VEIL_SHUT_ALPHA,
+        signal: alpha > VEIL_SHUT_ALPHA,
+      };
     }
-    return true;
+    const dx = nb.ox - cx, dz = nb.oz - cz;
+    const d2 = dx * dx + dz * dz;
+    return {
+      geometry: d2 > BARE_GEOMETRY_OPEN_M2,
+      light: d2 > BARE_PORTAL_OPEN_M2,
+      signal: d2 > BARE_PORTAL_OPEN_M2,
+    };
   }
 
   /** Every mesh under this object that the model author allowed to cast, captured once at
@@ -756,9 +789,22 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         // a cheap reject before the frustum and sightline tests.
         const ddx = nb.ox - cx, ddz = nb.oz - cz;
         if (ddx * ddx + ddz * ddz > cullDist2()) continue;
-        // Past the VEIL? See T_INVISIBLE. A closed threshold means what is behind it is
-        // below one output level, which is a stronger statement than "far away" and does
-        // not move when the fog does.
+        // ── AND SIGHT FOLLOWS THE GATE ─────────────────────────────────────
+        //
+        // The last place two mechanisms were still answering one question. Sight used to
+        // cross on a TRANSMITTANCE product — keep going while more than 1/64 of the light
+        // survives — while the gate said shut or open. At the shipped veil strength of 0.9
+        // a single closed threshold still passes a tenth, which is six times the
+        // invisibility floor, so the flood called a room visible that the gate had sealed.
+        //
+        // Measured standing in poly-0: twelve of 144 rays hit cor-1 at 5.1m, a corridor the
+        // gate had shut. Eight percent of the screen where the two disagreed.
+        //
+        // The gate wins, because it is the rule the player is being taught and the one the
+        // veil is drawn to express. Transmittance stays, but only as what it always
+        // physically was — how much light arrives, carried for the map to show and for the
+        // hysteresis below — not as a second opinion on whether you can see.
+        if (shut.geometry) continue;
         const t = tHere * (1 - veilAlphaBetween(id, nb.id));
         if (t <= (wasVisible.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
         // Sampled at the CAMERA'S eye height, so a sunken or raised room is tested at the
@@ -900,7 +946,17 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     //
     // Force-visible rooms (an active arena) are exempt: that is an encounter overriding
     // visibility on purpose, not a question about sight.
+    // Anything standing inside a drawn rect's floor is drawn with it. BEFORE the gate
+    // filter, never after: this used to run last and re-added rects the horizon had just
+    // culled, which is why two corridors rendered from the middle of a room no matter where
+    // Josh looked, at gate 1, with their veils reading fully shut. A pass that can undo the
+    // rule is not an exception to the rule, it is a second rule.
+    for (const id of [...visible]) {
+      for (const other of spill.get(id) ?? []) visible.add(other);
+    }
+
     {
+      // THE LAST WORD ON WHAT DRAWS. Nothing may add to `visible` after this.
       const horizon = signalKnobs.geoGates();
       for (const id of [...visible]) {
         if (forceVisibleCounts.has(id)) continue;
@@ -909,10 +965,6 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       }
     }
 
-    // Anything standing inside a drawn rect's floor is drawn with it.
-    for (const id of [...visible]) {
-      for (const other of spill.get(id) ?? []) visible.add(other);
-    }
 
     // Hand the FRUSTUM-FREE half to the index. `visible` deliberately does not go with it:
     // it is the draw list and it depends on where the camera points, which is right for

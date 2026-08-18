@@ -107,18 +107,27 @@ export const UNREACHABLE: GateDepths = {
 /**
  * Crossing one edge: what the depths become on the far side.
  *
- * Open costs nothing on every channel. Shut costs one to the channels the kind passes, and
- * ends the path for the channels it does not — which is how a closed door removes a wing
- * rather than merely pushing it further away.
+ * Open costs nothing. Shut costs one to the channels the kind passes and ends the path for
+ * the channels it does not — which is how a closed door removes a wing rather than merely
+ * pushing it further away.
+ *
+ * SHUT IS PER CHANNEL, and that is not a detail. A threshold does not stop being shut for
+ * everything at the same instant: stone has to be READY before you can see it, or it pops
+ * into a doorway you are already looking through, while light and a fire's glow are the
+ * things you actually perceive and should arrive exactly when the dark gives them up. So
+ * geometry unseals early and perception unseals late, on the same easing veil. Josh: *"a
+ * veil gate shouldn't do the rendering when below 50 — the moment a gate is engaged
+ * slightly, that should be okay, yeah, we need that."*
  */
-export function acrossGate(here: GateDepths, kind: GateKindId, shut: boolean): GateDepths {
-  if (!shut) return here;
+export function acrossGate(
+  here: GateDepths, kind: GateKindId, shut: Record<GateChannel, boolean>,
+): GateDepths {
   const p = GATE_KINDS[kind].passes;
-  return {
-    geometry: p.geometry ? here.geometry + 1 : Infinity,
-    light: p.light ? here.light + 1 : Infinity,
-    signal: p.signal ? here.signal + 1 : Infinity,
+  const step = (c: GateChannel): number => {
+    if (!shut[c]) return here[c];
+    return p[c] ? here[c] + 1 : Infinity;
   };
+  return { geometry: step('geometry'), light: step('light'), signal: step('signal') };
 }
 
 /** True when no channel can get any further — the walk can stop expanding here. */
