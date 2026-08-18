@@ -59,6 +59,7 @@
 // far has been the opposite choice made silently.
 
 import { type RectLike } from './rect-at';
+import { AT_PLAYER, UNREACHABLE, bestOf, type GateChannel, type GateDepths } from './gate-kinds';
 
 /** What the index needs from a space. The culler's RectNode satisfies it. */
 export interface SpaceNode extends RectLike {
@@ -103,14 +104,20 @@ export interface SpaceNode extends RectLike {
 // light you does not. Offering it as an option is offering the bug — a light culled by the
 // view cone guttered every time Josh turned his head, and it took a day to find.
 export interface CullPolicy {
-  /** Most closed thresholds allowed. Infinity = this axis does not bind. */
+  /** Which question this thing is asking — see GateChannel. A gate kind decides what
+   *  crosses it per channel, so naming the channel is how a consumer opts in without ever
+   *  learning what kind of gate stopped it. */
+  readonly channel: GateChannel;
+  /** Most SHUT gates allowed between the player and it. Infinity = distance in gates does
+   *  not bind, though an impassable gate still does — a closed door is not "far", it is a
+   *  wall, and it ends the path on every channel it does not pass. */
   readonly maxGates: number;
 }
 
 /** Does this thing survive its own rule? Fails OPEN on an unplaceable thing, like everything
  *  else here — see the header. */
 export function passes(policy: CullPolicy, at: Located): boolean {
-  return at.gates <= policy.maxGates;
+  return at.gates[policy.channel] <= policy.maxGates;
 }
 
 export interface Located {
@@ -137,12 +144,12 @@ export interface Located {
    * So the drawn set does not leave the culler. Geometry culling is allowed to depend on
    * where the camera points; nothing else is.
    */
-  readonly gates: number;
+  readonly gates: GateDepths;
 }
 
 /** The answer when we have nothing to say. Shared, because it is immutable and returned a
  *  lot: every binding on every frame before the first world publishes. */
-const UNKNOWN: Located = { gates: 0 };
+const UNKNOWN: Located = { gates: AT_PLAYER };
 
 interface Binding {
   x: number;
@@ -172,8 +179,8 @@ let publishedWorld = 0;
 
 /** Nodes of the world currently speaking. Null between worlds. */
 let nodes: SpaceNode[] | null = null;
-/** Thresholds from the player, per space. */
-const gates = new Map<string, number>();
+/** Depth per channel from the player, per space. */
+const gates = new Map<string, GateDepths>();
 
 /**
  * Claim a world number. Called when a culler is built, BEFORE it can say anything.
@@ -203,7 +210,7 @@ export function worldIsCurrent(world: number): boolean {
 export function publishFrame(
   world: number,
   worldNodes: SpaceNode[],
-  gatesById: ReadonlyMap<string, number>,
+  gatesById: ReadonlyMap<string, GateDepths>,
 ): void {
   if (!worldIsCurrent(world)) return;
   publishedWorld = world;
@@ -252,14 +259,18 @@ const MOUNT_MARGIN = 0.6;
  * with nothing in it at all is silence, and only silence fails open — the rule from the
  * title-screen bonfire, which is a real "we have not decided" and must show.
  */
-function nearestGate(spaces: string[]): number {
-  let nearest = Infinity;
+function nearestGate(spaces: string[]): GateDepths {
+  let best: GateDepths | null = null;
   for (const id of spaces) {
     const g = gates.get(id);
-    if (g !== undefined && g < nearest) nearest = g;
+    if (!g) continue;
+    best = best ? bestOf(best, g) : g;
   }
-  if (nearest !== Infinity) return nearest;
-  return gates.size === 0 ? 0 : Infinity;
+  if (best) return best;
+  // Nothing published for any of them. An EMPTY map is silence — no walk has run — and
+  // fails open. A populated map that lacks every one of these spaces is the walk saying it
+  // could not get there, on any channel.
+  return gates.size === 0 ? AT_PLAYER : UNREACHABLE;
 }
 
 function resolve(x: number, z: number): string[] {
@@ -320,6 +331,8 @@ export function spaceIndexState(): {
     spaces: nodes?.length ?? 0,
     reachable: gates.size,
     bindings: bindings.size,
-    gates: Object.fromEntries(gates),
+    // The GEOMETRY channel, for a readout that has to fit on a map label. The other two
+    // are visible through locate() where a caller actually needs them.
+    gates: Object.fromEntries([...gates].map(([k, v]) => [k, v.geometry])),
   };
 }

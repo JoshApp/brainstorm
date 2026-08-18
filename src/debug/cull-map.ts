@@ -420,16 +420,19 @@ export function tickCullMap(): void {
   // anomalous when it holds a slot while failing the light policy; a signal when it is drawn
   // while failing the signal policy. Both are self-consistency: the system contradicting
   // itself, which is the only thing a map can honestly call a bug.
-  const lightPolicy = { maxGates: maxLightGates };
+  const lightPolicy = { channel: 'light' as const, maxGates: maxLightGates };
   // TWO ways a light can be wrong, and they look identical from inside the game.
   //   · It holds a slot it should not — it broke its own policy.
   //   · It holds a slot and emits NOTHING — Josh: *"why did lights stop drawing even though
   //     the map shows them as active?"* That is the gap between winning a slot and putting
   //     out light, and it is invisible to any count of binds.
   const lightBad = (l: LightMapRow) =>
-    l.why === '' && (!passes(lightPolicy, { gates: l.gates }) || l.emit < 0.01);
+    l.why === ''
+    && (!passes(lightPolicy, { gates: { geometry: l.gates, light: l.gates, signal: l.gates } })
+      || l.emit < 0.01);
   const signalBad = (m: SignalMapRow) =>
-    m.visible && !passes({ maxGates: maxSignalGates }, { gates: m.gates });
+    m.visible && !passes({ channel: 'signal', maxGates: maxSignalGates },
+      { gates: { geometry: m.gates, light: m.gates, signal: m.gates } });
   const spaceBad = (sp: CullSnapshotSpace) => sp.drawn && !Number.isFinite(sp.gates);
   for (const l of lights) if (lightBad(l)) anomalies++;
   for (const m of signals) if (signalBad(m)) anomalies++;

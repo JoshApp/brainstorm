@@ -541,12 +541,12 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       // you are looking, and culling one by the view cone made torches gutter on every turn
       // of the head.
       const where = locate(`light:${src.id}`, src.position.x, src.position.z);
-      if (!passes({ maxGates: signalKnobs.lightGates() }, where)) {
+      if (!passes({ channel: 'light', maxGates: signalKnobs.lightGates() }, where)) {
         tally.culledByRoom++;
-        if (DEV) { culledIds.push(src.id); note(src, 'gates', where.gates); }
+        if (DEV) { culledIds.push(src.id); note(src, 'gates', where.gates.light); }
         continue;
       }
-      gates = Math.min(3, where.gates);
+      gates = Math.min(3, where.gates.light);
     }
     let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
       + gates * GATE_SORT_PENALTY

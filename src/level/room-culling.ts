@@ -12,6 +12,10 @@ import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
 import { propClassGateLimit } from '../ecs/build-model';
+import {
+  AT_PLAYER, GATE_KINDS, acrossGate, bestOf, exhausted, improves,
+  type GateDepths, type GateKindId,
+} from './gate-kinds';
 import type { PropClass } from '../ecs/model-types';
 import { claimWorld, worldIsCurrent, publishFrame, retireWorld } from './space-index';
 
@@ -354,6 +358,39 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     casters: THREE.Mesh[];
   }> = [];
 
+  /**
+   * What KIND of gate joins these two spaces.
+   *
+   * Today: a veil where one hangs, bare everywhere else. Doors and wards slot in here as
+   * they learn to register, and nothing else in the walk changes when they do — which is
+   * the point of the kind being data (level/gate-kinds.ts).
+   */
+  function gateKindBetween(a: string, b: string): GateKindId {
+    return veilAlphaBetween(a, b) > 0 ? 'veil' : 'bare';
+  }
+
+  /**
+   * Is it shut right now?
+   *
+   * A PROXIMITY gate gives as the player commits to it. A veil says so with its own alpha;
+   * a bare one has no alpha to read, so it uses distance directly, on a radius matched to
+   * where a veil crosses shut — so a corner and a doorway hand you the next space at about
+   * the same distance and there is one rule to learn rather than two.
+   *
+   * A STATE gate is somebody else's answer and is shut until they say otherwise; until doors
+   * register, nothing produces one.
+   */
+  function gateIsShut(kind: GateKindId, a: string, nb: Neighbour, cx: number, cz: number): boolean {
+    const seal = GATE_KINDS[kind].seal;
+    if (seal === 'never') return false;
+    if (seal === 'proximity') {
+      if (kind === 'veil') return veilAlphaBetween(a, nb.id) > VEIL_SHUT_ALPHA;
+      const dx = nb.ox - cx, dz = nb.oz - cz;
+      return dx * dx + dz * dz > BARE_PORTAL_OPEN_M2;
+    }
+    return true;
+  }
+
   /** Every mesh under this object that the model author allowed to cast, captured once at
    *  build. The gate tier turns casting off and on, and it must restore exactly what was
    *  AUTHORED rather than promote something the class policy deliberately excluded. */
@@ -558,7 +595,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   const visible = new Set<string>();
   /** Thresholds from the player, per space, for THIS culler. Per-instance now rather than
    *  module-level: two cullers computing into one map was half of what the index fixed. */
-  const portalDepth = new Map<string, number>();
+  const portalDepth = new Map<string, GateDepths>();
   /** Transmittance per space for THIS frame — see T_INVISIBLE. */
   const trans = new Map<string, number>();
   /** Spaces the player is standing in — the seeds for BOTH walks. */
@@ -824,48 +861,27 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // nothing asks about the far side of the floor and an unbounded relaxation on a cyclic
     // graph is a loop waiting to be written wrong.
     {
-      for (const id of depthSeeds) portalDepth.set(id, 0);
+      // ── ONE WALK, THREE CHANNELS ──────────────────────────────────────────
+      //
+      // Geometry, light and signal all ask "how far is that space", and a gate answers each
+      // of them differently — a veil hides stone and light but lets a fire read through, a
+      // shut door lets nothing past at all. So the depths travel together and each relaxes
+      // on its own, which is one traversal instead of the two this file used to run and the
+      // three it would have needed.
+      for (const id of depthSeeds) portalDepth.set(id, AT_PLAYER);
       const dq = [...depthSeeds];
       while (dq.length) {
         const id = dq.pop()!;
-        const here = portalDepth.get(id) ?? 0;
-        if (here >= MAX_GATES) continue;
+        const here = portalDepth.get(id) ?? AT_PLAYER;
+        if (exhausted(here, MAX_GATES)) continue;
         for (const nb of nodes.get(id)?.neighbors ?? []) {
-          // OPEN OR SHUT, and where that line sits is the whole rule. A veil eases, so its
-        // alpha is almost never exactly zero — testing `> 0` made every threshold in the
-        // dungeon count as closed forever, which is why the horizon had to be loosened to 1
-        // to be usable, which in turn let a whole chain of rooms stay lit.
-          // ── A THRESHOLD IS A PORTAL, AND A VEIL IS ONLY ONE WAY TO SKIN ONE ──
-          //
-          // Two ways a doorway can be shut, and only one of them draws anything.
-          //
-          // A VEILED portal — every room↔corridor opening — is sealed by the dark quad
-          // hanging in it, and its alpha says how far it has given.
-          //
-          // A BARE portal is every other edge in the graph, and the biggest population is
-          // the joints of a dogleg. Those were free, so a five-leg chain collapsed to one
-          // gate level and a third of the floor read as gate 0 — measured, and the reason
-          // the detail tier had nothing to bite on.
-          //
-          // They cannot be given veils: a black plane across the middle of a corridor with
-          // no doorframe reads as a wall, which is the annoying version of this idea. They
-          // do not need one. At a bend the STONE does the masking — you cannot see round a
-          // corner — so the pop that a veil exists to hide is already hidden by the
-          // architecture. The portal seals; nothing is drawn to say so.
-          //
-          // Openness by proximity, the same rule the veil eases on, so both kinds of
-          // threshold give at about the same distance and the player learns ONE rule.
-          const veil = veilAlphaBetween(id, nb.id);
-          let step: number;
-          if (veil > 0) {
-            step = veil > VEIL_SHUT_ALPHA ? 1 : 0;
-          } else {
-            const bdx = nb.ox - cx, bdz = nb.oz - cz;
-            step = bdx * bdx + bdz * bdz > BARE_PORTAL_OPEN_M2 ? 1 : 0;
-          }
-          const d = here + step;
+          const kind = gateKindBetween(id, nb.id);
+          const next = acrossGate(here, kind, gateIsShut(kind, id, nb, cx, cz));
           const prev = portalDepth.get(nb.id);
-          if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
+          if (improves(next, prev)) {
+            portalDepth.set(nb.id, prev ? bestOf(next, prev) : next);
+            dq.push(nb.id);
+          }
         }
       }
     }
@@ -885,7 +901,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       cullSnapshot = [...nodes.values()].map((n) => ({
         id: n.id, cx: n.cx, cz: n.cz, hw: n.hw, hd: n.hd, poly: n.poly,
         drawn: visible.has(n.id),
-        gates: portalDepth.get(n.id) ?? Infinity,
+        gates: portalDepth.get(n.id)?.geometry ?? Infinity,
         trans: trans.get(n.id) ?? 0,
         standing: seeds.has(n.id),
         openings: n.neighbors.map((nb) => ({ to: nb.id, x: nb.ox, z: nb.oz })),
@@ -922,10 +938,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     for (const p of placed) {
       // Gate depth is the NEAREST of the spaces it touches — the generous reading, the same
       // one attribution uses. A thing standing in a doorway is as close as its closer side.
+      // GEOMETRY is the channel a prop asks on — it is stone, not a signal.
       let gate = Infinity;
       for (const id of p.spaces) {
         const g = portalDepth.get(id);
-        if (g !== undefined && g < gate) gate = g;
+        if (g !== undefined && g.geometry < gate) gate = g.geometry;
       }
       if (p.spaces.length === 0) gate = 0;   // untracked ground: show it
 
