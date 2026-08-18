@@ -50,6 +50,44 @@ export interface Preset {
 // any more — applying one changes the wall and leaves the floor alone.
 const BUILT_IN: Preset[] = [
   {
+    // ── HOW FAR YOU CAN SEE, 2026-08-18 ──────────────────────────────────────
+    //
+    // Josh, handing over the set: *"make a new light config profile toggle like the other
+    // profiles, and these settings."*
+    //
+    // The first profile about VISIBILITY rather than about stone. Every other preset here
+    // tunes a surface; this one moves the wall the player is looking at, and it moves it by
+    // taking three of the four systems that darken distance and standing them down so the
+    // fourth can do the work alone.
+    //
+    // What it is doing, in the order it matters:
+    //   · FOG FAR 9 -> 30.46. Fog was the range limit AND the render gate. At 9m a wide
+    //     poly room was black before its far wall — the room got bigger when the floors went
+    //     polygonal and the sight distance did not follow.
+    //   · CRUSH END 12 -> 15, so what fog stops doing is not immediately re-done by the
+    //     crush at a slightly longer range.
+    //   · LAMP REACH 5.5 -> 20. There is no point seeing 30m by fog if the lantern dies at
+    //     five: raising the range without raising the light only reveals more black.
+    //   · EYE ADAPTATION off. It exists to lift the near-black you no longer have, and
+    //     while it is on you cannot tell which of the two is doing the lifting.
+    //   · VEIL STRENGTH 0.92 -> 0.9. THE THRESHOLDS ARE THE GATE NOW. This is the trade the
+    //     whole profile is: distance stops being what hides the next room, and the doorway
+    //     starts being it — which is a rule the player can read and walk through, where fog
+    //     was a rule they could only bump into.
+    //   · STONE ROUGHNESS 1 -> 0.904, a touch of highlight back on the wall, because a
+    //     surface lit at 20m by a lamp needs something for the light to catch.
+    //
+    // `showvm` came over with the set and is deliberately NOT in it: hiding the hands is an
+    // inspection affordance, and a lighting profile that disarms you when you pick it is a
+    // profile nobody can use in play.
+    name: 'long sight',
+    blurb: 'fog out to 30m, lamp to 20m, no adaptation — the doorway gates the view, not the distance',
+    values: {
+      fogfar: 30.46, crushend: 15, lampdist: 20, adaptmul: 0,
+      veilstr: 0.9, wallrough: 0.904,
+    },
+  },
+  {
     // ── THE SHIPPED LOOK, 2026-08-17 ─────────────────────────────────────────
     // Josh: *"new default profile, add it as new profile ... this is the new
     // profile i want."*

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
-import { portalDepthOf, spaceIdAt } from '../level/room-culling';
+import { DEV } from '../debug/dev';
+import { portalDepthOf, spaceIdAt, isSpaceDrawn } from '../level/room-culling';
 
 // THE LIGHT DIRECTOR — decides, each frame, which of the level's many logical
 // light sources actually LIGHT the frame, and how strongly. Selection
@@ -369,7 +370,19 @@ const LOW_PRIORITY_PENALTY = 40;
 // Cached per source id — a sconce does not move, and this runs over every registered light
 // every frame. The lamp is exempt: it is the camera.
 const GATE_SORT_PENALTY = 90;
-const gateSpace = new Map<string, string | null>();   // ambience fill yields to real sources
+const gateSpace = new Map<string, string | null>();
+
+// ── WHAT THE POOL ACTUALLY DID THIS FRAME ────────────────────────────────────
+//
+// "Only a few active for real" is a claim about a number, and the pool published none. The
+// only measurement available from outside was counting PointLights in the scene graph —
+// which counts SLOTS, so it reads the same whether the pool culled well or never had much
+// to cull. These counters sit where the decisions are, so the room cull can be shown to be
+// doing something rather than asserted to be. DEV-only; four integer writes per source.
+const tally = { sources: 0, outOfRange: 0, culledByRoom: 0, offScreen: 0, candidates: 0, bound: 0 };
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __lights?: unknown }).__lights = () => ({ ...tally });
+}   // ambience fill yields to real sources
 let lastTickMs = 0;
 
 export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void {
@@ -400,6 +413,8 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
 
   // Bucket sources by category + compute sort keys (dist² with
   // hysteresis bonus for previously-bound sources).
+  tally.sources = sources.size;
+  tally.outOfRange = tally.culledByRoom = tally.offScreen = tally.candidates = tally.bound = 0;
   for (const src of sources.values()) {
     const dx = src.position.x - cx;
     const dy = src.position.y - cy;
@@ -421,7 +436,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // extends the cull with it.
     const bound = src.distance * (src.category === 'environment' ? envRangeMul : 1);
     const reach = bound + 2;
-    if (dist2 > reach * reach) continue;
+    if (dist2 > reach * reach) { tally.outOfRange++; continue; }
     // Frustum cull: if the light's reach sphere doesn't intersect
     // the camera frustum, nothing the camera renders can be lit by
     // it. Lamp is exempt — its world pos sits a few cm in front of
@@ -432,7 +447,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       // The BOUND range again — a sphere cut to the authored one would drop a light whose
       // reach still crosses the frustum, which is the same pop from a different angle.
       tmpSphere.radius = bound;
-      if (!tmpFrustum.intersectsSphere(tmpSphere)) continue;
+      if (!tmpFrustum.intersectsSphere(tmpSphere)) { tally.offScreen++; continue; }
     }
     // LOS: a wall between source and camera DIMS the light instead of
     // killing it (see the soft-visibility note above). Lamp bypasses
@@ -441,8 +456,21 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     if (losCheck && src.category !== 'lamp') {
       losBlocked = !losCheck(cx, cz, src.position.x, src.position.z);
     }
-    // How many thresholds away this light's own space is — see GATE_SORT_PENALTY. Resolved
-    // once per source and kept, because a sconce does not move.
+    // ── AND THE ROOM CULLER HAS THE LAST WORD ────────────────────────────────
+    //
+    // Josh: *"when a room is culled, lights are culled the same way — that way we will only
+    // ever have a few active for real. You leave a room, lights are gone."*
+    //
+    // The pool used to decide reach for itself, out of distance and a sightline, while the
+    // culler decided the same thing about the same room out of the portal graph. Two
+    // answers to one question, and the pool's was the weaker one: it kept a slot alive for
+    // a torch in a room whose floor, walls and torch MODEL were not being drawn. Now the
+    // culler answers and the pool obeys — which is also the only version where the veil
+    // reads honestly, because a sealed threshold means the room behind it is not rendered
+    // and its light has nothing left to fall on.
+    //
+    // Space resolved once per source and kept: a sconce does not move, and this runs over
+    // every registered light every frame.
     let gates = 0;
     if (src.category !== 'lamp') {
       let space = gateSpace.get(src.id);
@@ -453,12 +481,19 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         // for the rest of the run.
         if (space !== null) gateSpace.set(src.id, space);
       }
-      if (space) gates = Math.min(3, portalDepthOf(space));
+      if (space) {
+        if (!isSpaceDrawn(space)) { tally.culledByRoom++; continue; }
+        // Still ranked by thresholds WITHIN what is drawn: you can see through an open
+        // doorway, so that room's torch is a real candidate — just a worse one than the
+        // torch beside you. See GATE_SORT_PENALTY.
+        gates = Math.min(3, portalDepthOf(space));
+      }
     }
     let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
       + gates * GATE_SORT_PENALTY
       + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
+    tally.candidates++;
     scratchByCategory[src.category].push({ src, sortKey, losBlocked });
   }
 
@@ -474,6 +509,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
       if (i < n) {
+        tally.bound++;
         const { src, losBlocked } = scratch[i];
         // POSITIONAL FLICKER — torches/candles dance: jitter the light ORIGIN with
         // smooth, per-source, non-repeating noise so the floor pool wavers and the

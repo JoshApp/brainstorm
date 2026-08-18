@@ -35,8 +35,9 @@
 // the same corridor is a knob nobody tunes — which is how three baked constants ended up
 // deciding the game's whole visibility budget with no way to compare them.
 import { CONFIG } from '../config';
-import { setWebGPUDarkness, webGPUDarknessAuthored } from '../style/render-webgpu';
+import { setWebGPUDarkness, webGPUDarknessAuthored, webGPUDarknessLive } from '../style/render-webgpu';
 import { tuneNumber, onKnobChange } from './tuning';
+import { DEV } from './dev';
 
 /** The tab these all land in. Fog's two knobs join it from scene/sight-distance.ts. */
 export const DARK_GROUP = 'Dark';
@@ -127,6 +128,28 @@ onKnobChange((k) => {
   if (k.spec.group === DARK_GROUP) apply();
 });
 
-// And once at startup, so a URL- or save-seeded value is in the pipeline before the first
-// frame rather than waiting for someone to touch a slider.
-apply();
+// ── THE PROBE THAT SETTLED IT ────────────────────────────────────────────────
+//
+// Knob value beside uniform value. Three readings of "the slider does nothing" are
+// indistinguishable from the game — the knob never got the URL value, the knob got it and
+// never pushed it, or it pushed it and something else overwrote it — and only the third
+// column tells them apart.
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __dark?: unknown }).__dark = () => {
+    const live = webGPUDarknessLive();
+    const rows: Record<string, unknown> = {};
+    const pair = (name: string, knob: () => number) => {
+      rows[name] = { knob: knob(), uniform: live[name], agrees: Math.abs(knob() - live[name]) < 1e-6 };
+    };
+    pair('crushFloor', crushFloor); pair('crushStart', crushStart); pair('crushEnd', crushEnd);
+    pair('legFloor', legFloor); pair('legGamma', legGamma);
+    // eslint-disable-next-line no-console
+    console.table(rows);
+    return rows;
+  };
+}
+
+// No hand-rolled startup push here any more. It was the same line in three modules, each
+// running at whatever moment its own import happened to land, and it is tuning.ts's
+// reapplyKnobs() — called once from main at boot, after the renderer exists — that gets a
+// URL- or save-seeded value into the pipeline. The change hook above is the only path.

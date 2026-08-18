@@ -162,6 +162,33 @@ export interface CullAudit {
 const portalDepth = new Map<string, number>();
 let depthNodes: Map<string, RectNode> | null = null;
 
+// ── AND WHICH SPACES ARE ACTUALLY BEING DRAWN ────────────────────────────────
+//
+// Josh: *"let's change how lights are culled — when a room is culled, lights are culled the
+// same way. That way we will only ever have a few active for real. You leave a room, lights
+// are gone."*
+//
+// The culler already decides this every frame for geometry; the light pool was deciding it
+// again from scratch, out of distance and a sightline, and getting a different answer. Two
+// systems answering one question is the fault this codebase keeps paying for, so there is
+// one answer now and the light pool reads it.
+//
+// Published as ids rather than handed over as an object for the same reason as the gate
+// counts: the light pool should not have to be given the culler to ask.
+const drawnSpaces = new Set<string>();
+
+/**
+ * Is this space being rendered this frame?
+ *
+ * FAILS OPEN ON AN EMPTY SET, exactly like portalDepthOf — no culler, a level that does not
+ * use one, or the frames before the first tick all mean "nothing has been decided", and a
+ * decision nobody made must not put out the lights.
+ */
+export function isSpaceDrawn(id: string): boolean {
+  if (drawnSpaces.size === 0) return true;
+  return drawnSpaces.has(id);
+}
+
 /**
  * Thresholds between the player's space and this one. 0 = you are in it.
  *
@@ -571,7 +598,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // A culler that is not running must not keep ANSWERING. Its node map and gate counts
       // describe a floor nobody is standing on, and stale answers here hide things rather
       // than show them — see the note on the nearest-rect fallback in spaceIdAt.
-      if (depthNodes === nodes) { depthNodes = null; portalDepth.clear(); }
+      if (depthNodes === nodes) { depthNodes = null; portalDepth.clear(); drawnSpaces.clear(); }
       return;
     }
 
@@ -709,6 +736,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     for (const id of [...visible]) {
       for (const other of spill.get(id) ?? []) visible.add(other);
     }
+
+    // The frame's answer is final here — publish it for the light pool. After the spill,
+    // because a rect drawn only because it shares floor with you is still a rect you can
+    // see, and its sconce should burn.
+    drawnSpaces.clear();
+    for (const id of visible) drawnSpaces.add(id);
 
     for (const node of nodes.values()) {
       const vis = visible.has(node.id);

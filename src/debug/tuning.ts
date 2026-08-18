@@ -157,6 +157,7 @@ function register(spec: KnobSpec, apply: ApplyCost, get: () => number, set: (v: 
   // Saved values are in `mine` already; slider drags and __tune.set persist.
   if (Math.abs(initial - spec.value) > 1e-6) mine[spec.id] = initial;
   knobs.set(spec.id, knob);
+  reseedLater();
   return knob;
 }
 
@@ -180,6 +181,55 @@ export function tuneNumber(spec: KnobSpec): () => number {
   let v = spec.value;
   register(spec, spec.apply ?? 'rebake', () => v, (n) => { v = n; });
   return () => v;
+}
+
+// ── SEEDING A VALUE IS NOT APPLYING IT ───────────────────────────────────────
+//
+// Josh: *"some of the dark parameters, like crush start and crush end, are only read when I
+// nudge the sliders again even though they are set. Same with the viewmodel."*
+//
+// `register()` stores the seeded value and returns. Nothing is notified — the change hooks
+// fire on a CHANGE, and arriving from a URL or a saved set is not one. So every consumer
+// that has to PUSH its value somewhere (a TSL uniform, a visibility flag, a camera angle)
+// had to hand-roll its own boot-time apply, and each hand-rolled apply runs at whatever
+// moment its module happens to be imported — which is either too early, before the thing it
+// configures exists, or fine today and wrong after the next import moves.
+//
+// The evidence that this was a class and not a bug: tuning-view.ts had grown a 250ms poll,
+// forty times, to keep re-asserting `showvm` at anything that might have been built since.
+//
+// One call, at one stated moment, that tells every knob's listeners what the knob says. A
+// module then only needs a change hook — the path it already has — and gets its seeded
+// value through the same path, which means there is one way a knob reaches a system instead
+// of two.
+//
+// REBAKE HOOKS ARE DELIBERATELY NOT FIRED. A rebake knob is read by the bake when the bake
+// runs, and the bakes happen after boot anyway; firing them here would regenerate every CPU
+// texture on a value that is already correct.
+let seeded = false;
+let reseedQueued = false;
+
+export function reapplyKnobs(): void {
+  seeded = true;
+  for (const k of knobs.values()) for (const h of changeHooks) h(k);
+}
+
+/**
+ * A tab imported AFTER boot gets the same treatment.
+ *
+ * Half the knob modules are pulled in by the game (the dark tab is imported by the systems
+ * loop); the rest arrive when the panel is first opened, which is long after main has called
+ * reapplyKnobs. Those would be back where they started — seeded and unapplied.
+ *
+ * On a MICROTASK, and this is the whole reason it can be automatic: a module registers its
+ * knobs and only then registers its change hook, so firing at registration would shout into
+ * an empty room. A microtask runs after the module body finishes, when the hook is there.
+ * Deduped, so importing a tab with nine knobs costs one pass.
+ */
+function reseedLater(): void {
+  if (!seeded || reseedQueued) return;
+  reseedQueued = true;
+  queueMicrotask(() => { reseedQueued = false; reapplyKnobs(); });
 }
 
 /** Run whenever a 'rebake' knob moves — regenerate the CPU textures here. */

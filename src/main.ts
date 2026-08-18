@@ -186,6 +186,7 @@ import { mountLuxButtonIfEnabled } from './debug/lux-button';
 import { initProfilerWiring, applyProfilerEnabled } from './debug/profiler-wiring';
 import { applyFakeStateFlags, handleDebugScreenFlags } from './debug/boot-url-screens';
 import { reapplyViewKnobs } from './debug/tuning-view';
+import { reapplyKnobs } from './debug/tuning';
 
 // The entry module executed — tell the stale-shell watchdog in index.html the app booted,
 // so it won't self-heal (reload). If a deploy had left a stale cached shell pointing at
@@ -272,6 +273,15 @@ setAdaptiveWallClockFallback(!!(renderer.backend as unknown as { isWebGLBackend?
 // DPR cap + canvas size — owned by scene/video-settings.ts (one module applies
 // the render-scale/bloom/DPR settings identically at boot and on change).
 initVideoSettings(renderer);
+// ── AND NOW TELL EVERY DEV KNOB TO SAY WHAT IT SAYS ─────────────────────────
+//
+// Josh: *"some of the dark parameters, like crush start and crush end, are only read when I
+// nudge the sliders again even though they are set."* Registration seeds a knob from the
+// URL or the saved set but notifies nobody — see reapplyKnobs in debug/tuning.ts. This is
+// the one moment that is late enough for the answer to stick: the renderer and its post
+// chain exist, so a value pushed into a TSL uniform lands in a pipeline that is already
+// built, and early enough to be true for the first frame anyone sees.
+if (import.meta.env.DEV) reapplyKnobs();
 // (The WebGPU low-res fill win now comes from the RenderPipeline's PassNode
 // setResolutionScale — see style/render-webgpu.ts — so no pixel-ratio stopgap.)
 // WEBGPU SPIKE EXPERIMENT: point-light cube shadows redraw the scene 6× per

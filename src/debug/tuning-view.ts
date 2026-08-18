@@ -14,7 +14,7 @@
 // visibility flag it flips is the one Three already honours; nothing about the
 // viewmodel's update loop changes, so toggling it back leaves everything where
 // it was.
-import { getViewmodelRoots } from '../style/render-frame';
+import { getViewmodelRoots, onViewmodelRegistered } from '../style/render-frame';
 import { setCameraPitch, setCameraYaw } from '../controls/camera';
 import { tuneNumber, onKnobChange, getKnob } from './tuning';
 
@@ -80,19 +80,23 @@ function apply(): void {
 // The first version only listened for CHANGES, so ?showvm=0 registered the knob
 // at 0 and then never did anything with it — the hands stayed up and the URL
 // looked broken. Registration seeds a value; something still has to act on it.
+// tuning.ts owns that now (reapplyKnobs, called once from main at boot), so the
+// change hook above is the only path a value takes to get here.
 //
-// It also cannot act immediately: this module is imported when the panel opens,
-// which may be before the viewmodel exists, and a root created later defaults
-// to visible. So re-apply on a short poll for the first few seconds, then rely
-// on the change hook and reapplyViewKnobs().
-if (typeof window !== 'undefined') {
-  let tries = 0;
-  const t = window.setInterval(() => { apply(); if (++tries > 40) window.clearInterval(t); }, 250);
-  // Pitch is NOT polled. It is a camera angle, and re-asserting it every 250ms
-  // would yank the view out from under anyone who looked somewhere else. It is
-  // applied at the one moment that clobbers it instead — main.ts calls
-  // reapplyViewKnobs() right after its level-entry setCameraPitch(0).
-}
+// What that cannot cover is geometry built LATER: a weapon swap replaces the
+// roots and a fresh root defaults to visible. This used to be a 250ms poll,
+// forty times — which fixed the first ten seconds and let every swap after that
+// put the hands back up. The roots announce themselves instead, so a new one is
+// told what the knob says at the moment it is registered, forever.
+//
+// Pitch and yaw are NOT re-asserted here. They are camera angles, and a
+// viewmodel swap is no reason to move the view; main.ts calls
+// reapplyViewKnobs() at the one moment that clobbers them, its level-entry
+// setCameraPitch(0).
+onViewmodelRegistered((root) => {
+  const k = getKnob(SHOW_VM);
+  if (k) root.visible = k.get() > 0.5;
+});
 
 /** Re-apply after anything that rebuilds the viewmodel or resets the camera —
  *  a weapon swap replaces the roots (and a fresh root defaults to visible), and

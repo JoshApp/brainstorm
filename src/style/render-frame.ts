@@ -29,8 +29,18 @@ let rendererRef: DelveRenderer | null = null;
 // classify their meshes as dynamic. Under WebGPU opaque parts use NORMAL depth.
 const viewmodelRoots: THREE.Object3D[] = [];
 /** Register a held-viewmodel root. Idempotent. */
+/** Notified when a root joins — so an inspection knob can assert itself on geometry that
+ *  did not exist when it was set. A weapon swap REPLACES the roots and a fresh root defaults
+ *  to visible, which is what the DEV `showvm` knob was polling every 250ms to catch. The
+ *  owner of the roots announcing them is cheaper and cannot go stale. */
+const registerHooks = new Set<(root: THREE.Object3D) => void>();
+export function onViewmodelRegistered(fn: (root: THREE.Object3D) => void): void {
+  registerHooks.add(fn);
+}
+
 export function registerViewmodel(root: THREE.Object3D): void {
   if (!viewmodelRoots.includes(root)) viewmodelRoots.push(root);
+  for (const h of registerHooks) h(root);
   // WEBGPU — the elegant path: drop the WebGL depth pre-pass + depthTest:false +
   // renderOrder juggling entirely. Opaque viewmodel parts just use NORMAL depth.
   // They sort correctly among themselves (the hand writes depth and occludes the

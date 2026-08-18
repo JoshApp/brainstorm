@@ -300,6 +300,21 @@ export function setWebGPUDarkness(v: {
   if (v.legGamma !== undefined) (legGammaNode as any).value = v.legGamma;
 }
 
+/**
+ * What the uniforms ACTUALLY hold right now — not what the knobs say they should.
+ *
+ * The gap between those two is the whole bug this exists to settle: a knob can read 15 in
+ * the panel while the pipeline is still running 12, and from inside the game there is no way
+ * to tell that apart from "the knob does nothing". DEV-only, and read by `window.__dark()`.
+ */
+export function webGPUDarknessLive(): Record<string, number> {
+  return {
+    crushFloor: (crushFloorNode as any).value, crushStart: (crushStartNode as any).value,
+    crushEnd: (crushEndNode as any).value,
+    legFloor: (legFloorNode as any).value, legGamma: (legGammaNode as any).value,
+  };
+}
+
 /** What the authored look says, for a panel that wants to show the default. */
 export function webGPUDarknessAuthored(): {
   crushFloor: number; crushStart: number; crushEnd: number; legFloor: number; legGamma: number;
