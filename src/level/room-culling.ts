@@ -189,13 +189,32 @@ export function spaceIdAt(x: number, z: number): string | null {
   if (!depthNodes) return null;
   const hit = rectAt(depthNodes, x, z);
   if (hit?.poly && hit.poly.length >= 3 && pointInPoly(hit.poly, x, z)) return hit.id;
-  const near = hit ?? nearestRect(depthNodes, x, z);
-  if (!near) return null;
-  const dx = near.cx - x, dz = near.cz - z;
-  const len = Math.hypot(dx, dz);
-  if (len < 1e-4) return near.id;
-  const IN = 0.5;
-  return rectAt(depthNodes, x + (dx / len) * IN, z + (dz / len) * IN)?.id ?? near.id;
+
+  // Off every polygon — either in the masonry band, or genuinely nowhere this culler
+  // knows about. Nudge toward the containing BOX's centre (inward, onto real floor) and
+  // ask again; a wall-mounted marker lands on its own room in one step.
+  if (hit) {
+    const dx = hit.cx - x, dz = hit.cz - z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) return hit.id;
+    const IN = 0.5;
+    return rectAt(depthNodes, x + (dx / len) * IN, z + (dz / len) * IN)?.id ?? hit.id;
+  }
+
+  // ── AND NO NEAREST-RECT FALLBACK. "I DON'T KNOW" MUST MEAN "SHOW IT" ────────
+  //
+  // This used to fall back to `nearestRect`, which returns the closest rect at ANY
+  // distance. That is not a guess, it is a fabrication — and it fabricated confidently.
+  // The title screen builds its own one-room vignette (`title-vignette.ts`, id 'tv'), and
+  // because the published node map is module-level while a culler is per LEVEL, every
+  // marker on the dungeon floor behind it resolved to `tv` — a 9m room sixty metres away.
+  // `portalDepth` then had no entry for it, so gates came back Infinity, so every flame in
+  // the dungeon went out. Josh's probe named it in one line: every marker, space `tv`,
+  // hidden by gates.
+  //
+  // Null means the caller treats it as gate 0 and shows it. A marker whose space cannot be
+  // established is a marker we have no argument for hiding.
+  return null;
 }
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
@@ -536,7 +555,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   }
 
   function tick(camera: THREE.Camera) {
-    if (!enabled) return;
+    if (!enabled) {
+      // A culler that is not running must not keep ANSWERING. Its node map and gate counts
+      // describe a floor nobody is standing on, and stale answers here hide things rather
+      // than show them — see the note on the nearest-rect fallback in spaceIdAt.
+      if (depthNodes === nodes) { depthNodes = null; portalDepth.clear(); }
+      return;
+    }
 
     camera.updateMatrixWorld();
     // YAW-ONLY cull frustum: camera forward flattened to the floor plane, so

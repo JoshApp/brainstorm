@@ -384,7 +384,20 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     const dist2 = dx * dx + dy * dy + dz * dz;
     // RAW dist² for the cull check — sources truly out of range can't
     // sneak in via hysteresis.
-    const reach = src.distance + 2;
+    //
+    // ── THE CULL USES THE RANGE THE LIGHT IS ACTUALLY BOUND WITH ─────────────
+    //
+    // This read `src.distance + 2`, the AUTHORED range — while the slot below binds
+    // `src.distance * envRangeMul`. So with TORCH RANGE above 1.00 a torch lit further
+    // than the cull would let it live: it was dropped at 13m while still throwing light at
+    // 16m, and walking in past the threshold made it appear. Josh: *"lights pop into view
+    // when I approach them and I can already see the room."*
+    //
+    // Two readings of one number, which is the same fault as the corridor that was 2.20m
+    // of rect and 1.03m of frame. The cull asks the bound range now, so raising the slider
+    // extends the cull with it.
+    const bound = src.distance * (src.category === 'environment' ? envRangeMul : 1);
+    const reach = bound + 2;
     if (dist2 > reach * reach) continue;
     // Frustum cull: if the light's reach sphere doesn't intersect
     // the camera frustum, nothing the camera renders can be lit by
@@ -393,7 +406,9 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // bound on certain FOVs; for the lamp we always want a slot.
     if (src.category !== 'lamp') {
       tmpSphere.center.copy(src.position);
-      tmpSphere.radius = src.distance;
+      // The BOUND range again — a sphere cut to the authored one would drop a light whose
+      // reach still crosses the frustum, which is the same pop from a different angle.
+      tmpSphere.radius = bound;
       if (!tmpFrustum.intersectsSphere(tmpSphere)) continue;
     }
     // LOS: a wall between source and camera DIMS the light instead of
