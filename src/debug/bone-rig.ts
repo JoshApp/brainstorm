@@ -1,61 +1,63 @@
-// ── RIGGING BY PROXIMITY, NOT BY ANATOMY ─────────────────────────────────────
+// ── RIGGING BY CHAIN ORDER, NOT BY DISTANCE OR BY NAME ───────────────────────
 //
 // Josh: *"if we have the joint mapping we could kinda have the hand grab a thing … at least
 // the hand kinda tries to grab the weapon."*
 //
-// The obvious way to rig 27 anonymous bone shells is to NAME them — this is the index
-// proximal phalanx, that is the third carpal — by reasoning about position and size. I
-// started down that road and it is a bad road: every rule is a heuristic, the failure mode is
-// a mangled hand, and a wrong name is invisible until something animates.
+// Three ways to rig 27 anonymous bone shells onto a hand. This file has now been through all
+// of them, so the reasoning is worth keeping.
 //
-// There is a much better target sitting right there. The authored hand (content/hand.ts)
-// ALREADY has a joint at every knuckle, anatomically placed and hand-tuned:
-// finger_{thumb,index,middle,ring,pinky} for the MCPs, plus _pip and _dip for each. And the
-// fit has already put the bone mesh in that same frame — wrist at the origin, fingers up +Y,
-// real metres.
+// BY NAME — decide that this shell is the index proximal phalanx, from its size and position.
+// Every such rule is a heuristic, the failure mode is a mangled hand, and a wrong name is
+// invisible until something animates. Not attempted, on purpose.
 //
-// So: give each shell to the joint it is NEAREST. No anatomy, no naming, no heuristics about
-// what a carpal looks like. The rig's own geometry is the ground truth, and it is a better
-// authority than any rule I could write about bone shapes.
+// BY DISTANCE — give each shell to the nearest joint of the authored rig. Elegant, needs no
+// anatomy, and it MEASURABLY DOES NOT WORK: four joints of sixteen received bones, with whole
+// fingers collapsing onto their MCP. An anatomical skeleton and a stylised authored hand do
+// not agree dimensionally — the rig's PIP and DIP sit within two centimetres of each other,
+// while a real phalanx chain is longer and differently proportioned, so its distal bones land
+// past the end of the rig and snap to whatever happens to be nearest. Borrowing the rig's
+// joint POSITIONS was the mistake.
 //
-// Three things fall out of that for free:
+// BY CHAIN ORDER — what this does. The rig is used for the one thing it is reliable about:
 //
-//   · A misassignment is LOCAL. One bone on the wrong knuckle, not a systematically wrong
-//     hand. It is also visible immediately, because it will bend at the wrong place.
-//   · The carpals and metacarpals sort themselves out. They sit nearest the wrist and the
-//     MCPs, which is exactly where they should be parented, without anything knowing the
-//     word "carpal".
-//   · THE GRIP JUST WORKS. adjustFingersForGrip rotates those same joints, so a bone
-//     parented to finger_index_pip curls with the authored finger it replaced. The hand
-//     grabs the weapon because it is driven by the rig that already knew how.
+//   WHICH FINGER — decided LATERALLY, by which chain's base a shell sits nearest in the plane
+//   across the hand. Fingers are far apart sideways, and that separation is unambiguous in
+//   any hand, stylised or anatomical.
+//
+//   HOW FAR OUT — decided by ORDER, never by distance. Sort a finger's shells outward from
+//   the wrist, hand them to that finger's joints outward in the same order, furthest bone to
+//   furthest joint. Whatever is left over at the base is metacarpal and carpal — bones a
+//   finger sits ON rather than bones that bend — and goes to the wrist.
+//
+// So the two hands never have to agree about lengths, only about which finger is which and
+// which way is out. That is why this survives a skeleton whose proportions are nothing like
+// the rig's, where matching by distance could not.
+//
+// The grip still comes free: these are the joints adjustFingersForGrip rotates, so a bone
+// given to finger_index_pip curls with the finger it replaced.
 
 import * as THREE from 'three';
 import type { FittedShell } from './bone-fit';
 
-/** Joints a bone may be attached to. Deliberately NOT palm_anchor, palm_up, blade_emerge or
- *  the contact_* points — those are intent anchors that mark meaning, not bones, and hanging
- *  geometry on them would move it when a weapon changes rather than when a finger does. */
-function isBoneJoint(name: string): boolean {
-  return name === 'wrist' || (name.startsWith('finger_') && !name.includes('contact'));
+/** Which finger a slot belongs to, or null if it is not a bendable joint. Deliberately
+ *  excludes palm_anchor, palm_up, blade_emerge and the contact_* points — those mark intent,
+ *  not bone, and geometry hung on them would move when a WEAPON changes rather than when a
+ *  finger does. */
+function fingerOf(name: string): string | null {
+  if (!name.startsWith('finger_') || name.includes('contact')) return null;
+  // finger_index_pip → index · finger_thumb_ip → thumb · finger_ring → ring
+  return name.slice('finger_'.length).split('_')[0] || null;
 }
 
 export interface RigResult {
-  /** joint name → how many shells landed on it. The check that the mapping is sane. */
+  /** joint name → how many shells landed there. The check that the mapping is sane. */
   assigned: Record<string, number>;
-  /** Shells that found no joint at all. Should be zero. */
+  /** Shells that found no chain at all. Should be zero. */
   orphans: number;
 }
 
-/**
- * Parent each fitted shell to the nearest joint of an already-built hand.
- *
- * `slots` is the built hand's slot map; the shells' centroids are in the wrist frame, so the
- * joints are measured there too. Geometry is built in the wrist frame and reparented with
- * `attach`, which preserves world placement — so a bone does not jump when it changes hands.
- *
- * Shells that land on the same joint are MERGED into one mesh, so twenty-seven bones cost
- * about sixteen draws rather than twenty-seven, and a curl still moves each group as a unit.
- */
+interface Joint { name: string; node: THREE.Object3D; pos: THREE.Vector3 }
+
 export function rigShellsToJoints(
   source: THREE.BufferGeometry,
   material: THREE.Material | THREE.Material[],
@@ -64,79 +66,106 @@ export function rigShellsToJoints(
   slots: Map<string, THREE.Object3D>,
   wrist: THREE.Object3D,
 ): RigResult {
-  // ── ASSIGN AGAINST A STRAIGHT HAND, NOT A CURLED ONE ────────────────────
+  // ── STRAIGHTEN FIRST ────────────────────────────────────────────────────
   //
-  // The authored hand's REST pose is already a relaxed curl — its DIP sits at y=0.121, below
-  // the MCP at 0.128 — because it is a hand shaped to hold something. The bone mesh is a
-  // splayed open hand. Matching one against the other put nearly every bone on a knuckle:
-  // measured, five joints out of sixteen, with whole fingers collapsing onto their MCP.
-  //
-  // The two only correspond when both are STRAIGHT, so the finger joints are zeroed for the
-  // duration of the assignment and restored immediately after. Nothing renders in between —
-  // this runs inside one call — and the bones keep the placement they were given because
-  // `attach` bakes world position at the moment of reparenting, in the straight pose. Curling
-  // afterwards then moves them exactly as it moves the fingers they replaced.
+  // The authored rest pose is already a relaxed curl — its DIP sits BELOW its MCP, because it
+  // is a hand shaped to hold something — while the bone mesh is splayed open. "Outward" only
+  // means the same thing on both when the rig is straight. Restored immediately: nothing
+  // renders in between, and `attach` bakes world placement at this moment, so a later curl
+  // moves the bones exactly as it moves the fingers they replaced.
   const posed: Array<{ node: THREE.Object3D; q: THREE.Quaternion }> = [];
   for (const [name, node] of slots) {
-    if (!name.startsWith('finger_') || name.includes('contact')) continue;
+    if (!fingerOf(name)) continue;
     posed.push({ node, q: node.quaternion.clone() });
     node.quaternion.identity();
   }
+  const restore = () => {
+    for (const p of posed) p.node.quaternion.copy(p.q);
+    wrist.updateMatrixWorld(true);
+  };
 
-  // Joint positions in WRIST space — the frame the fit put the shells in.
   wrist.updateMatrixWorld(true);
   const wristInv = new THREE.Matrix4().copy(wrist.matrixWorld).invert();
-  const joints: Array<{ name: string; node: THREE.Object3D; pos: THREE.Vector3 }> = [];
-  for (const [name, node] of slots) {
-    if (!isBoneJoint(name)) continue;
+  const jointPos = (node: THREE.Object3D): THREE.Vector3 => {
     node.updateMatrixWorld(true);
-    const pos = new THREE.Vector3().setFromMatrixPosition(
+    return new THREE.Vector3().setFromMatrixPosition(
       new THREE.Matrix4().multiplyMatrices(wristInv, node.matrixWorld),
     );
-    joints.push({ name, node, pos });
-  }
-  if (joints.length === 0) return { assigned: {}, orphans: shells.length };
-  if (typeof console !== 'undefined') {
-    const sc = shells.slice(0, 4).map((s2) => s2.centroid.toArray().map((n) => +n.toFixed(3)));
-    const jj = joints.slice(0, 4).map((j) => [j.name, j.pos.toArray().map((n) => +n.toFixed(3))]);
-    // eslint-disable-next-line no-console
-    console.log('[bone-rig] shell centroids', JSON.stringify(sc), 'joints', JSON.stringify(jj));
-  }
+  };
 
-  // ── NEAREST JOINT PER SHELL ─────────────────────────────────────────────
+  // ── THE FINGER CHAINS, ORDERED OUTWARD ──────────────────────────────────
+  const chains = new Map<string, Joint[]>();
+  for (const [name, node] of slots) {
+    const f = fingerOf(name);
+    if (!f) continue;
+    const list = chains.get(f) ?? [];
+    list.push({ name, node, pos: jointPos(node) });
+    chains.set(f, list);
+  }
+  // Outward = furthest from the wrist. MEASURED, not read off the _pip/_dip suffix, so a rig
+  // that adds a joint or renames one still orders correctly.
+  for (const list of chains.values()) list.sort((a, b) => b.pos.lengthSq() - a.pos.lengthSq());
+
+  if (chains.size === 0) { restore(); return { assigned: {}, orphans: shells.length }; }
+
+  const wristNode = slots.get('wrist') ?? wrist;
   const byJoint = new Map<string, { node: THREE.Object3D; tris: number[] }>();
   const assigned: Record<string, number> = {};
-  let orphans = 0;
+  const give = (name: string, node: THREE.Object3D, tris: number[]) => {
+    let g = byJoint.get(name);
+    if (!g) { g = { node, tris: [] }; byJoint.set(name, g); }
+    g.tris.push(...tris);
+    assigned[name] = (assigned[name] ?? 0) + 1;
+  };
+
+  // ── WHICH FINGER: laterally only ────────────────────────────────────────
+  //
+  // Only the across-hand components are compared. Radial distance is precisely what the two
+  // hands disagree about, so including it is what broke the previous attempt.
+  const flat = (v: THREE.Vector3) => new THREE.Vector3(v.x, 0, v.z);
+  const bases = [...chains.entries()].map(([f, list]) => ({ f, at: flat(list[list.length - 1].pos) }));
+  const columns = new Map<string, FittedShell[]>();
   for (const sh of shells) {
-    let best: typeof joints[0] | null = null;
+    const c = flat(sh.centroid);
+    let bestF: string | null = null;
     let bestD = Infinity;
-    for (const j of joints) {
-      const d = j.pos.distanceToSquared(sh.centroid);
-      if (d < bestD) { bestD = d; best = j; }
+    for (const b of bases) {
+      const d = b.at.distanceToSquared(c);
+      if (d < bestD) { bestD = d; bestF = b.f; }
     }
-    if (!best) { orphans++; continue; }
-    let g = byJoint.get(best.name);
-    if (!g) { g = { node: best.node, tris: [] }; byJoint.set(best.name, g); }
-    g.tris.push(...sh.tris);
-    assigned[best.name] = (assigned[best.name] ?? 0) + 1;
+    if (!bestF) continue;
+    const list = columns.get(bestF) ?? [];
+    list.push(sh);
+    columns.set(bestF, list);
+  }
+
+  // ── HOW FAR OUT: by ORDER along the chain ───────────────────────────────
+  let orphans = 0;
+  for (const [f, list] of columns) {
+    const chain = chains.get(f);
+    if (!chain) { orphans += list.length; continue; }
+    const outward = [...list].sort((a, b) => b.centroid.y - a.centroid.y);
+    for (let i = 0; i < outward.length; i++) {
+      if (i < chain.length) give(chain[i].name, chain[i].node, outward[i].tris);
+      else give('wrist', wristNode, outward[i].tris);
+    }
   }
 
   // ── ONE MESH PER JOINT, BUILT IN WRIST SPACE, THEN REPARENTED ───────────
+  //
+  // Shells sharing a joint merge into one mesh, so twenty-seven bones cost about sixteen
+  // draws. `attach` preserves world placement across the reparent, so nothing shifts.
   for (const [, g] of byJoint) {
     const geo = source.clone();
     geo.setIndex(g.tris);
     const mesh = new THREE.Mesh(geo, material);
     mesh.applyMatrix4(toFitted);
     mesh.userData.dbgKind = 'bone-hand';
-    // Into the wrist frame first, then ATTACH — which preserves world placement across the
-    // reparent, so nothing shifts when it moves onto a knuckle.
     wrist.add(mesh);
     wrist.updateMatrixWorld(true);
     g.node.attach(mesh);
   }
 
-  for (const p of posed) p.node.quaternion.copy(p.q);
-  wrist.updateMatrixWorld(true);
-
+  restore();
   return { assigned, orphans };
 }
