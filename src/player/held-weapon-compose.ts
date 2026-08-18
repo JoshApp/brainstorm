@@ -113,7 +113,7 @@ export function composeHeldWeapon(
     const wrist = hand.slots.get('wrist') ?? hand.group;
     const authored: THREE.Object3D[] = [];
     hand.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) authored.push(o); });
-    attachBoneHand(wrist, authored);
+    attachBoneHand(wrist, authored, hand.slots);
   }
   return { group, hand, weapon };
 }

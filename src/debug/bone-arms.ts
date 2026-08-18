@@ -44,6 +44,7 @@ import { tuneNumber, onKnobChange } from './tuning';
 import { buildModel } from '../ecs/build-model';
 import { HAND_RIGHT } from '../content/hand';
 import { fitBoneHand } from './bone-fit';
+import { rigShellsToJoints } from './bone-rig';
 
 const GROUP = 'Bone';
 
@@ -58,6 +59,13 @@ const GROUP = 'Bone';
  * (bone-fit.ts) and aligned to the authored hand's own `palm_up`. Zero should be right. This
  * stays for the case where it is not.
  */
+/** 0 = rig the bones onto the hand's joints so they curl with the grip. 1 = one rigid lump
+ *  hung off the wrist, which is what the trial did first — kept as the A/B, because "does the
+ *  rigging actually do anything" is a question worth being able to answer by eye. */
+const rigid = tuneNumber({
+  id: 'bonerigid', group: GROUP, label: 'rigid lump', min: 0, max: 1, step: 1, value: 0,
+  apply: 'live', hint: '1 = unrigged, as it was before the joints were mapped',
+});
 const roll = tuneNumber({
   id: 'boneroll', group: GROUP, label: 'palm roll', min: -3.2, max: 3.2, step: 0.02, value: 0,
   apply: 'live', hint: 'nudge — the fit aligns the palm to the authored hand’s palm_up',
@@ -83,7 +91,17 @@ const showAuthored = tuneNumber({
   apply: 'live', hint: 'both at once, to compare the fit against the hand it is matching',
 });
 
-interface Mounted { wrist: THREE.Object3D; bone: THREE.Group; authored: THREE.Object3D[] }
+interface Mounted {
+  wrist: THREE.Object3D;
+  bone: THREE.Group;
+  authored: THREE.Object3D[];
+  /** The built hand's slots, when the caller had them — without these the bones can only be
+   *  hung off the wrist as one rigid lump, which is what the trial did first and why the
+   *  hand could not close around a weapon. */
+  slots?: Map<string, THREE.Object3D>;
+  /** Bones parented onto joints, so they can be cleared on a rebuild. */
+  rigged: THREE.Object3D[];
+}
 const mounted: Mounted[] = [];
 let sourceMesh: THREE.Mesh | null = null;
 let loading = false;
@@ -152,8 +170,30 @@ function rebuild(): void {
       fitted.group.userData.solvedRoll = angle;
     }
 
-    m.bone = fitted.group;
-    m.wrist.add(fitted.group);
+    // ── RIG IT, IF THE CALLER GAVE US JOINTS ──────────────────────────────
+    //
+    // Josh: *"at least the hand kinda tries to grab the weapon."* This is that. Each bone
+    // goes to the nearest joint of the authored rig (bone-rig.ts), and because those are the
+    // same joints adjustFingersForGrip rotates, the hand closes around a weapon by the rig
+    // that already knew how. No skinning, no weight painting, no bone naming.
+    for (const o of m.rigged) o.removeFromParent();
+    m.rigged = [];
+    if (m.slots && rigid() < 0.5) {
+      const result = rigShellsToJoints(
+        sourceMesh.geometry, sourceMesh.material,
+        fitted.shells, fitted.toFitted, m.slots, m.wrist,
+      );
+      for (const [, node] of m.slots) {
+        for (const child of node.children) {
+          if (child.userData?.dbgKind === 'bone-hand') m.rigged.push(child);
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.log('[bone-arms] rigged', result.assigned, 'orphans', result.orphans);
+    } else {
+      m.bone = fitted.group;
+      m.wrist.add(fitted.group);
+    }
     // eslint-disable-next-line no-console
     console.log('[bone-arms] fit', fitted.report,
       'solvedRoll', (fitted.group.userData.solvedRoll ?? 0).toFixed(3));
@@ -174,7 +214,7 @@ function applyLive(): void {
 
 onKnobChange((k) => {
   if (k.spec.group !== GROUP) return;
-  if (k.spec.id === 'bonehandonly' || k.spec.id === 'bonesize' || k.spec.id === 'boneflip') rebuild();
+  if (k.spec.id !== 'boneroll' && k.spec.id !== 'bonekeepold') rebuild();
   else applyLive();
 });
 
@@ -185,15 +225,21 @@ onKnobChange((k) => {
  * wrist are hidden rather than removed, so `keep authored hand` can show both at once — which
  * is the only honest way to check a fit: against the thing it claims to match.
  */
-export function attachBoneHand(wrist: THREE.Object3D, authored: THREE.Object3D[]): void {
+export function attachBoneHand(
+  wrist: THREE.Object3D, authored: THREE.Object3D[], slots?: Map<string, THREE.Object3D>,
+): void {
   if (!DEV) return;
   // The viewmodel recomposes on every weapon change, so without this the list grows and the
   // fit re-runs once per stale entry — twelve times after a couple of minutes, which is how
   // this was noticed. A wrist that has left the scene graph belongs to a hand that is gone.
   for (let i = mounted.length - 1; i >= 0; i--) {
-    if (!mounted[i].wrist.parent) { mounted[i].bone.removeFromParent(); mounted.splice(i, 1); }
+    if (!mounted[i].wrist.parent) {
+      mounted[i].bone.removeFromParent();
+      for (const o of mounted[i].rigged) o.removeFromParent();
+      mounted.splice(i, 1);
+    }
   }
-  const entry: Mounted = { wrist, bone: new THREE.Group(), authored };
+  const entry: Mounted = { wrist, bone: new THREE.Group(), authored, slots, rigged: [] };
   mounted.push(entry);
   wrist.add(entry.bone);
   applyLive();
@@ -243,8 +289,14 @@ export function mountBoneView(camera: THREE.Object3D): void {
   slotHost.position.x = 0.09;
   stage.add(slotHost);
 
-  const authoredMeshes: THREE.Object3D[] = [];
-  attachBoneHand(slotHost, authoredMeshes);   // no authored meshes to hide on this side
+  // A second authored hand on the right, whose MESHES are hidden and whose JOINTS the bones
+  // are rigged onto — so the right-hand side is the fitted bones driven by a real rig, not a
+  // free-floating lump. That is the whole thing being judged.
+  const rigHost = buildModel(HAND_RIGHT);
+  slotHost.add(rigHost.group);
+  const hidden: THREE.Object3D[] = [];
+  rigHost.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) hidden.push(o); });
+  attachBoneHand(rigHost.slots.get('wrist') ?? rigHost.group, hidden, rigHost.slots);
 }
 
 /** Is the side-by-side view on? */

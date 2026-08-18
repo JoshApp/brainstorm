@@ -38,8 +38,20 @@
 
 import * as THREE from 'three';
 
+/** One bone, with its triangles and where it ended up after the fit. */
+export interface FittedShell {
+  /** Vertex indices into the SOURCE geometry — the bone's own triangles. */
+  tris: number[];
+  /** Centroid in the FITTED frame: wrist at the origin, fingers up +Y, real metres. */
+  centroid: THREE.Vector3;
+}
+
 export interface FittedHand {
   group: THREE.Group;
+  /** The transform the fit worked out, so a caller can put anything else in the same frame. */
+  toFitted: THREE.Matrix4;
+  /** Every kept bone, for rigging. See rigShellsToJoints. */
+  shells: FittedShell[];
   /** For the readout: what the fit decided, so a wrong answer is legible rather than just
    *  wrong-looking. */
   report: {
@@ -236,8 +248,20 @@ export function fitBoneHand(
   // ── SCALE + TRANSLATE: wrist to the origin, tip to targetLen ────────────
   mesh.updateMatrixWorld(true);
   const orientedBox = new THREE.Box3().setFromObject(mesh);
-  // The wrist in the rotated frame: transform the plane point we found.
-  const wristPoint = new THREE.Vector3();
+  // ── THE WRIST IS A POINT, NOT A PLANE ───────────────────────────────────
+  //
+  // This used to build the wrist from ONLY its component along the arm axis, leaving the
+  // other two at zero — so the hand's lateral offset in the model was never corrected and
+  // the whole thing sat about 30cm off to one side of the joint it was meant to align with.
+  // The symptom was every bone choosing the same two joints, because they were all far away
+  // in the same direction and the nearest-joint test had nothing to discriminate with.
+  //
+  // Axially it IS the plane where the long bones stop. Laterally it is the centre of the
+  // hand itself, which is the only defensible answer: a wrist sits in the middle of the
+  // bones it carries.
+  const handBox = new THREE.Box3();
+  for (const sh of keep) handBox.union(sh.box);
+  const wristPoint = handBox.getCenter(new THREE.Vector3());
   wristPoint.setComponent(axis, wrist);
   wristPoint.applyQuaternion(q);
   const wristY = wristPoint.y;
@@ -249,8 +273,27 @@ export function fitBoneHand(
   mesh.position.x -= wristPoint.x * s;
   mesh.position.z -= wristPoint.z * s;
 
+  // The fitted frame in one matrix, COMPOSED from the mesh's own TRS rather than read off
+  // `mesh.matrix`. Reading it depends on Three having recomputed the matrix, which depends on
+  // update flags and call order, and it had not: the shell centroids came out at z≈0.29 while
+  // the joints they were being matched against sat at z≈0.007, so every bone chose the same
+  // two joints. Composing cannot be stale.
+  const toFitted = new THREE.Matrix4().compose(mesh.position, mesh.quaternion, mesh.scale);
+  const c = new THREE.Vector3();
+  const fittedShells: FittedShell[] = keep.map((sh) => {
+    c.set(0, 0, 0);
+    for (const vi of sh.tris) c.set(
+      c.x + posAttr.getX(vi) / sh.tris.length,
+      c.y + posAttr.getY(vi) / sh.tris.length,
+      c.z + posAttr.getZ(vi) / sh.tris.length,
+    );
+    return { tris: sh.tris, centroid: c.clone().applyMatrix4(toFitted) };
+  });
+
   return {
     group,
+    toFitted,
+    shells: fittedShells,
     report: {
       shells: all.length,
       sideShells: side.length,
