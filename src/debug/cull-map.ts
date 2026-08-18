@@ -83,10 +83,55 @@ const C = {
   ringLamp: 'rgba(255, 240, 180, 0.35)',
 };
 
+let wrap: HTMLDivElement | null = null;
 let canvas: HTMLCanvasElement | null = null;
 let ctx2d: CanvasRenderingContext2D | null = null;
 let enabled = false;
 let camera: THREE.Camera | null = null;
+
+// ── WHERE THE WINDOW SITS, REMEMBERED ────────────────────────────────────────
+//
+// A window position IS a preference — unlike a camera yaw, which is a verb and is
+// deliberately never saved (see markTransient in tuning.ts). Moving the map somewhere and
+// having it stay there across a reload is the whole point of moving it.
+const RECT_KEY = 'delve.cullmap.rect';
+interface WinRect { x: number; y: number; w: number; h: number }
+
+function loadRect(): WinRect {
+  const side = Math.round(Math.min(window.innerHeight, window.innerWidth) * 0.46);
+  const fallback: WinRect = { x: 10, y: window.innerHeight - side - 10, w: side, h: side };
+  try {
+    const raw = localStorage.getItem(RECT_KEY);
+    if (!raw) return fallback;
+    const r = JSON.parse(raw) as WinRect;
+    if (![r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && Number.isFinite(n))) return fallback;
+    return clampRect(r);
+  } catch { return fallback; }
+}
+
+/** Never let it be dragged somewhere it cannot be dragged back from. Keeps at least the
+ *  title strip on screen in both axes, which is the part you grab. */
+function clampRect(r: WinRect): WinRect {
+  const w = Math.max(160, Math.min(r.w, window.innerWidth));
+  const h = Math.max(140, Math.min(r.h, window.innerHeight));
+  return {
+    w, h,
+    x: Math.max(-w + 80, Math.min(r.x, window.innerWidth - 80)),
+    y: Math.max(0, Math.min(r.y, window.innerHeight - 24)),
+  };
+}
+
+function saveRect(r: WinRect): void {
+  try { localStorage.setItem(RECT_KEY, JSON.stringify(r)); } catch { /* private mode */ }
+}
+
+function applyRect(r: WinRect): void {
+  if (!wrap) return;
+  wrap.style.left = `${r.x}px`;
+  wrap.style.top = `${r.y}px`;
+  wrap.style.width = `${r.w}px`;
+  wrap.style.height = `${r.h}px`;
+}
 
 /** Wired once at boot so the overlay can read the player's pose. */
 export function initCullMap(cam: THREE.Camera): void {
@@ -99,49 +144,158 @@ export function cullMapEnabled(): boolean { return enabled; }
 export function setCullMap(on?: boolean): boolean {
   if (!DEV) return false;
   enabled = on ?? !enabled;
-  if (!enabled && canvas) { canvas.style.display = 'none'; }
+  if (!enabled && wrap) { wrap.style.display = 'none'; }
   if (enabled) mount();
   return enabled;
 }
 
+// ── DRAGGABLE AND RESIZABLE, WITHOUT GIVING UP THE ONE GUARANTEE ────────────
+//
+// Josh: *"make the map draggable and resizable."*
+//
+// The map has been `pointer-events: none` from the start and that is not incidental — a
+// debug view that swallows a look-drag makes the bug you are chasing harder to reproduce,
+// which is the opposite of the job. So the WINDOW stays transparent to input and exactly two
+// small targets are not: a title strip you grab to move it, and a corner grip you pull to
+// size it. Everything else, including the whole plan, still lets a drag through to the game
+// underneath.
+//
+// Pointer events with capture, so a drag that leaves the handle keeps tracking — on a phone
+// a resize drag crosses the map body constantly, and without capture the first crossing ends
+// the gesture.
 function mount(): void {
-  if (canvas) { canvas.style.display = 'block'; return; }
+  if (wrap) { wrap.style.display = 'flex'; return; }
+
+  const rect = loadRect();
+  wrap = document.createElement('div');
+  wrap.id = 'cull-map-window';
+  Object.assign(wrap.style, {
+    position: 'fixed',
+    left: `${rect.x}px`, top: `${rect.y}px`,
+    width: `${rect.w}px`, height: `${rect.h}px`,
+    display: 'flex', flexDirection: 'column',
+    border: '1px solid rgba(150, 180, 255, 0.35)',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    zIndex: '8050',
+    pointerEvents: 'none',
+  } as Partial<CSSStyleDeclaration>);
+
+  // The grab strip. Doubles as a label so the window says what it is.
+  const bar = document.createElement('div');
+  bar.textContent = '⠿ CULL MAP';
+  Object.assign(bar.style, {
+    flex: '0 0 auto',
+    padding: '3px 6px',
+    background: 'rgba(20, 26, 40, 0.95)',
+    borderBottom: '1px solid rgba(150, 180, 255, 0.25)',
+    color: 'rgba(190, 215, 255, 0.8)',
+    font: '600 10px ui-monospace, monospace',
+    letterSpacing: '0.12em',
+    cursor: 'move',
+    pointerEvents: 'auto',
+    touchAction: 'none',
+    userSelect: 'none',
+  } as Partial<CSSStyleDeclaration>);
+
   canvas = document.createElement('canvas');
   canvas.id = 'cull-map';
   Object.assign(canvas.style, {
-    position: 'fixed',
-    // Bottom-left: clear of the perf HUD (top-right), the toolbar (top-left) and the
-    // right-hand look zone. The flask sits here too, hence the lift.
-    left: 'calc(10px + env(safe-area-inset-left, 0px))',
-    bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
-    width: 'min(46vh, 46vw)',
-    height: 'min(46vh, 46vw)',
-    border: '1px solid rgba(150, 180, 255, 0.35)',
-    borderRadius: '4px',
-    zIndex: '8050',
-    // NEVER eats input. A debug view that steals a look-drag makes the thing it is
-    // debugging harder to reproduce.
+    flex: '1 1 auto',
+    width: '100%',
+    minHeight: '0',
+    display: 'block',
     pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
-  document.body.appendChild(canvas);
+
+  const grip = document.createElement('div');
+  Object.assign(grip.style, {
+    position: 'absolute',
+    right: '0', bottom: '0',
+    width: '22px', height: '22px',
+    background: 'linear-gradient(135deg, transparent 50%, rgba(150, 180, 255, 0.5) 50%)',
+    cursor: 'nwse-resize',
+    pointerEvents: 'auto',
+    touchAction: 'none',
+  } as Partial<CSSStyleDeclaration>);
+
+  wrap.append(bar, canvas, grip);
+  document.body.appendChild(wrap);
   ctx2d = canvas.getContext('2d');
+
+  let mode: 'move' | 'size' | null = null;
+  let startX = 0, startZ = 0;
+  let start: WinRect = rect;
+
+  const begin = (kind: 'move' | 'size') => (e: PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mode = kind;
+    startX = e.clientX; startZ = e.clientY;
+    start = { x: parseFloat(wrap!.style.left), y: parseFloat(wrap!.style.top),
+              w: wrap!.offsetWidth, h: wrap!.offsetHeight };
+    // Capture is an OPTIMISATION, not the mechanism: without it a drag that leaves the
+    // handle stops tracking, but a failure to acquire it must not abort the gesture — and
+    // it does fail for synthetic pointers, which is how the save below got skipped.
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* fine */ }
+  };
+  const move = (e: PointerEvent) => {
+    if (!mode) return;
+    e.preventDefault();
+    const dx = e.clientX - startX, dy = e.clientY - startZ;
+    const next = mode === 'move'
+      ? { ...start, x: start.x + dx, y: start.y + dy }
+      : { ...start, w: start.w + dx, h: start.h + dy };
+    applyRect(clampRect(next));
+  };
+  const end = (e: PointerEvent) => {
+    if (!mode) return;
+    mode = null;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* fine */ }
+    saveRect({ x: parseFloat(wrap!.style.left), y: parseFloat(wrap!.style.top),
+               w: wrap!.offsetWidth, h: wrap!.offsetHeight });
+  };
+  for (const [el, kind] of [[bar, 'move'], [grip, 'size']] as const) {
+    el.addEventListener('pointerdown', begin(kind));
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  // A resized viewport (phone rotation) can strand the window off-screen.
+  window.addEventListener('resize', () => {
+    if (!wrap) return;
+    applyRect(clampRect({ x: parseFloat(wrap.style.left), y: parseFloat(wrap.style.top),
+                          w: wrap.offsetWidth, h: wrap.offsetHeight }));
+  });
 }
 
 /** World→canvas fit, recomputed per frame: the floor does not change but the canvas can. */
 interface Fit { ox: number; oz: number; s: number; }
 
-function fitFor(spaces: CullSnapshotSpace[], w: number, h: number): Fit {
+/**
+ * Fit the plan into the space the CHROME leaves, not the whole canvas.
+ *
+ * The header, the legend column and the active readout are drawn over fixed corners, so a
+ * fit against the full rect puts the plan underneath them — invisible at exactly the window
+ * sizes where you most want it, because the chrome does not shrink.
+ */
+function fitFor(spaces: CullSnapshotSpace[], w: number, h: number,
+                inset: { top: number; right: number; bottom: number }): Fit {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const sp of spaces) {
     minX = Math.min(minX, sp.cx - sp.hw); maxX = Math.max(maxX, sp.cx + sp.hw);
     minZ = Math.min(minZ, sp.cz - sp.hd); maxZ = Math.max(maxZ, sp.cz + sp.hd);
   }
   if (!Number.isFinite(minX)) return { ox: 0, oz: 0, s: 1 };
-  const pad = 14;
-  const s = Math.min((w - pad * 2) / Math.max(1, maxX - minX), (h - pad * 2) / Math.max(1, maxZ - minZ));
-  // Centre the plan in the canvas.
-  const ox = pad + ((w - pad * 2) - (maxX - minX) * s) / 2 - minX * s;
-  const oz = pad + ((h - pad * 2) - (maxZ - minZ) * s) / 2 - minZ * s;
+  const pad = 8;
+  const left = pad, top = inset.top + pad;
+  const availW = Math.max(40, w - inset.right - left - pad);
+  const availH = Math.max(40, h - inset.bottom - top - pad);
+  const s = Math.min(availW / Math.max(1, maxX - minX), availH / Math.max(1, maxZ - minZ));
+  // Centre the plan in what is left.
+  const ox = left + (availW - (maxX - minX) * s) / 2 - minX * s;
+  const oz = top + (availH - (maxZ - minZ) * s) / 2 - minZ * s;
   return { ox, oz, s };
 }
 
@@ -221,7 +375,13 @@ export function tickCullMap(): void {
     return;
   }
 
-  const f = fitFor(spaces, w, h);
+  // Reserve what the chrome occupies: header rows on top, the legend column on the right,
+  // the in-force readout along the bottom.
+  const f = fitFor(spaces, w, h, {
+    top: 26 * dpr,
+    right: 118 * dpr,
+    bottom: 62 * dpr,
+  });
   const cam = camera.position;
   // Camera yaw in world terms: -Z is forward, so this is the angle of the view direction
   // projected onto the plan.
