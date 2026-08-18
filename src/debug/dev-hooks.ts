@@ -8,7 +8,6 @@ import { setSimTurbo } from '../engine/frame-loop';
 import { interpSync } from '../engine/render-interp';
 import { initNavOverlay, setNavOverlay } from './nav-overlay';
 import { initCullMap, setCullMap } from './cull-map';
-import { mountBoneArms } from './bone-arms';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
 import { setGoreDebugEnabled } from './gore-debug';
 import { bossEncounterDebug } from '../mobs/boss-encounter';
@@ -401,11 +400,6 @@ export function installDevHooks(deps: DevHookDeps): void {
     grantGold(500);
     openForgeSheetForDebug();
   };
-  // The bone-arm trial — ?bonearm=1 or window.__bonearm(). DEV-only, loads a GLB and puts
-  // its pose on sliders in the BONE tab so it can be sized against the real camera by eye.
-  w.__bonearm = () => mountBoneArms(camera);
-  if (new URLSearchParams(location.search).get('bonearm') === '1') mountBoneArms(camera);
-
   // The cull map — the MAP chip on the instrumentation toolbar, window.__cullMap(),
   // ?cullmap=1, or press M. Reads the camera for the player marker and the FOV wedge.
   initCullMap(camera);
