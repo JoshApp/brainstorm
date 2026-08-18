@@ -11,6 +11,8 @@ import { veilAlphaBetween } from '../scene/threshold-veil';
 import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
+import { propClassGateLimit } from '../ecs/build-model';
+import type { PropClass } from '../ecs/model-types';
 import { claimWorld, worldIsCurrent, publishFrame, retireWorld } from './space-index';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
@@ -328,7 +330,29 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   // One rule now: a thing placed by position belongs to EVERY space whose footprint it
   // touches, and it is drawn while ANY of them is. Shells keep their exact single owner —
   // a wall is stamped with its rect id at build time and there is nothing to guess.
-  const placed: Array<{ o: THREE.Object3D; spaces: string[] }> = [];
+  const placed: Array<{
+    o: THREE.Object3D;
+    spaces: string[];
+    /** Gate depth past which this thing stops being drawn — see PROP_CLASS_POLICY. */
+    gateLimit: number;
+    /** Last gate depth applied, so the shadow flags are only walked when it CHANGES.
+     *  Traversing every prop every frame to set a boolean that rarely moves is the kind of
+     *  cost this whole tier system exists to avoid. */
+    lastGate: number;
+    /** Meshes that were AUTHORED to cast, captured once. Gating shadows means turning these
+     *  off and back on — never turning on something the class policy said should not cast,
+     *  which is why the authored value is remembered rather than assumed. */
+    casters: THREE.Mesh[];
+  }> = [];
+
+  /** Every mesh under this object that the model author allowed to cast, captured once at
+   *  build. The gate tier turns casting off and on, and it must restore exactly what was
+   *  AUTHORED rather than promote something the class policy deliberately excluded. */
+  function castersOf(root: THREE.Object3D): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.castShadow) out.push(m); });
+    return out;
+  }
 
   /** The margin is the masonry band plus slack, so a sconce set into the stone still finds
    *  the room it faces. Same number and same reason as the space index's own lookup. */
@@ -372,7 +396,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // visible inside a culled room (the player would see floor decoration
     // through a wall the culler had hidden).
     if (child.userData?.dbgKind === 'prop') {
-      placed.push({ o: child, spaces: spacesTouching(child.position.x, child.position.z) });
+      placed.push({
+        o: child,
+        spaces: spacesTouching(child.position.x, child.position.z),
+        gateLimit: propClassGateLimit(child.userData?.propClass as PropClass | undefined),
+        lastGate: -1,
+        casters: castersOf(child),
+      });
       continue;
     }
     // ── A FRAMED OPENING BELONGS TO BOTH SIDES ────────────────────────────
@@ -502,7 +532,15 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   //    Torches by position (their group is a direct root child not tagged above).
   for (const torch of level.torches) {
     const node = rectAt(nodes, torch.group.position.x, torch.group.position.z);
-    placed.push({ o: torch.group, spaces: spacesTouching(torch.group.position.x, torch.group.position.z) });
+    // A torch is architecture that burns: its bracket is structural and its flame is a
+    // signal, and both want to survive a threshold. Never tiered out.
+    placed.push({
+      o: torch.group,
+      spaces: spacesTouching(torch.group.position.x, torch.group.position.z),
+      gateLimit: Infinity,
+      lastGate: -1,
+      casters: castersOf(torch.group),
+    });
   }
 
   let enabled = true;
@@ -846,8 +884,33 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // room and a culled corridor belongs to both, and iterating nodes would let whichever
     // came last decide. An object that touches nothing the culler tracks always draws.
     for (const p of placed) {
-      const want = p.spaces.length === 0 || isSignal(p.o) || p.spaces.some((id) => visible.has(id));
+      // Gate depth is the NEAREST of the spaces it touches — the generous reading, the same
+      // one attribution uses. A thing standing in a doorway is as close as its closer side.
+      let gate = Infinity;
+      for (const id of p.spaces) {
+        const g = portalDepth.get(id);
+        if (g !== undefined && g < gate) gate = g;
+      }
+      if (p.spaces.length === 0) gate = 0;   // untracked ground: show it
+
+      const inDrawnSpace = p.spaces.length === 0 || p.spaces.some((id) => visible.has(id));
+      const want = isSignal(p.o) || (inDrawnSpace && gate <= p.gateLimit);
       if (p.o.visible !== want) p.o.visible = want;
+
+      // ── SHADOWS ONLY IN THE ROOM YOU ARE IN ────────────────────────────────
+      //
+      // The expensive half of a light is its casters: the lamp re-renders every one into six
+      // cube faces every frame, and shadow encode was measured at ~44% of the CPU frame
+      // during fights. A prop seen THROUGH a doorway does not need to cast — you are looking
+      // at a room you have not committed to, and its shadows are the first thing the veil
+      // eats anyway.
+      //
+      // Only walked when the depth actually changes, which is when a threshold gives.
+      if (gate !== p.lastGate) {
+        p.lastGate = gate;
+        const cast = gate <= 0;
+        for (const m of p.casters) m.castShadow = cast;
+      }
     }
 
     // Framed openings — visible while EITHER of the rooms they join is. A frame

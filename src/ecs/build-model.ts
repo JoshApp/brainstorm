@@ -60,11 +60,36 @@ let webgpuMatSeq = 0;
 // through. Casting is the expensive half (the lamp re-renders every caster into
 // its 6 cube faces each frame), so the class declares what a prop IS and the
 // shadow role follows. See PropClass for the intent behind each row.
-const PROP_CLASS_POLICY: Record<PropClass, { shadow: ShadowRole }> = {
-  clutter:    { shadow: 'none' },      // flat dull scatter — casts nothing
-  structural: { shadow: 'both' },      // architectural mass — casts + receives
-  decor:      { shadow: 'receive' },   // material character, needn't cast
+//
+// ── AND HOW FAR IT CARRIES, IN GATES ─────────────────────────────────────────
+//
+// A GATE is how many closed thresholds stand between the player and a space
+// (level/room-culling.ts). It is a better detail axis than metres because it follows the
+// architecture instead of cutting through it: the room you are in is 0, the room past a
+// sealed doorway is 1, and no amount of standing near a wall changes either.
+//
+// `showToGate` is the depth past which this class stops being drawn at all. Clutter is
+// scatter you only read when you are standing among it; structural mass is what makes the
+// next room legible through a doorway and has to survive one threshold.
+//
+// THE REASON THIS DOES NOT POP: a gate count only changes when a threshold GIVES, and a
+// threshold that is giving is a doorway the player is looking at while it is still dark. So
+// the frame a prop appears is the frame that doorway is black. The gameplay mechanic and the
+// optimisation are the same mechanism, and the mechanic hides the optimisation for free.
+const PROP_CLASS_POLICY: Record<PropClass, { shadow: ShadowRole; showToGate: number }> = {
+  clutter:    { shadow: 'none',    showToGate: 0 },   // flat dull scatter — casts nothing
+  structural: { shadow: 'both',    showToGate: 1 },   // architectural mass — casts + receives
+  decor:      { shadow: 'receive', showToGate: 0 },   // material character, needn't cast
 };
+
+/**
+ * Gate depth past which a prop of this class is not drawn. Unclassified props keep the old
+ * behaviour — visible wherever their space is — because silently hiding something nobody
+ * classified is the wrong direction to fail in.
+ */
+export function propClassGateLimit(cls: PropClass | undefined): number {
+  return cls ? PROP_CLASS_POLICY[cls].showToGate : Infinity;
+}
 
 /** Effective shadow role for a model: class default, overridden by the raw
  *  `shadow` knob, falling back to legacy (cast+receive) when neither is set. */
@@ -92,6 +117,9 @@ export function buildModel(spec: ModelSpec, opts?: {
   }
 
   const group = new THREE.Group();
+  // The class travels with the built object, so the culler can apply the gate tier above
+  // without being handed the spec. One stamp at the one place every prop is built.
+  if (spec.class) group.userData.propClass = spec.class;
   const parts = new Map<string, THREE.Object3D>();
   const hitTargets: THREE.Object3D[] = [];
 
