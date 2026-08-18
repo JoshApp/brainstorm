@@ -390,6 +390,10 @@ const tally = { sources: 0, outOfRange: 0, culledByRoom: 0, offScreen: 0, candid
 // the gate horizon, which is useless when the question is "why is THAT one dark".
 export interface LightMapRow {
   id: string; x: number; z: number; category: string;
+  /** 'low' = an ambience FILL — a light with no emitter you can look at. The map draws
+   *  these differently on purpose: a circle floating in an empty room is only confusing
+   *  until you know it is a fill. */
+  priority?: 'low';
   /** '' = bound. Otherwise the test that dropped it. */
   why: '' | 'range' | 'gates' | 'offscreen' | 'outranked';
   gates: number;
@@ -620,7 +624,8 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
  *  bind pass corrects 'outranked' to '' for the ones that got a slot. */
 function note(src: LightSource, why: LightMapRow['why'], gates: number): void {
   const row: LightMapRow = {
-    id: src.id, x: src.position.x, z: src.position.z, category: src.category, why, gates,
+    id: src.id, x: src.position.x, z: src.position.z, category: src.category,
+    priority: src.priority, why, gates,
   };
   lightRows.push(row);
   rowById.set(src.id, row);

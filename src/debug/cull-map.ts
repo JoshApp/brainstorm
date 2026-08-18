@@ -33,6 +33,7 @@
 //   LIGHTS     — every source with the test that dropped it: range, gates, off-screen,
 //                outranked, or bound.
 //   SIGNALS    — flames, runes, markers, and whether each is drawn.
+//   LEGEND     — drawn with the same functions as the marks, so it cannot go stale.
 //   ANOMALIES  — the point of the whole thing. A light bound in a space that is not drawn, a
 //                signal drawn past the gate horizon, a drawn space the walk never reached.
 //                Ringed in red and counted in the header, so a bug announces itself instead
@@ -147,6 +148,53 @@ function fitFor(spaces: CullSnapshotSpace[], w: number, h: number): Fit {
 const px = (f: Fit, x: number) => f.ox + x * f.s;
 const pz = (f: Fit, z: number) => f.oz + z * f.s;
 
+// ── THE GRAMMAR ──────────────────────────────────────────────────────────────
+//
+// Josh: *"what are the yellow circles that aren't lights? Some are portals but some are in
+// the room. Can you vary the visual language so I know what objects are?"*
+//
+// They were all lights — but every kind of light was one amber dot, so a FILL source (an
+// ambience light with no emitter you can look at, floating in the middle of a room by
+// design) was indistinguishable from a torch on a wall. One glyph for five different things
+// is not a legend problem, it is a grammar problem.
+//
+// Three axes, each carrying exactly one meaning, so any mark can be read without looking
+// anything up:
+//
+//   SHAPE  = WHAT IT IS.     circle emitter · cross fill · square signal · ring portal mouth
+//                            · triangle you · segment veil
+//   FILL   = IS IT ON.       solid = bound / drawn / crossed. hollow = dropped / hidden.
+//   COLOUR = IS IT RIGHT.    amber live · grey inert · cyan portal · pink veil · RED wrong.
+//
+// Red is reserved for anomalies and never used for a normal state, so anything red on this
+// map is a bug and not a mood.
+
+/** A ring: the portal mouth, and the hollow form of anything that got dropped. */
+function ring(g: CanvasRenderingContext2D, x: number, z: number, r: number, col: string, lw: number): void {
+  g.beginPath();
+  g.arc(x, z, r, 0, Math.PI * 2);
+  g.strokeStyle = col;
+  g.lineWidth = lw;
+  g.stroke();
+}
+
+function disc(g: CanvasRenderingContext2D, x: number, z: number, r: number, col: string): void {
+  g.beginPath();
+  g.arc(x, z, r, 0, Math.PI * 2);
+  g.fillStyle = col;
+  g.fill();
+}
+
+/** A fill light — ambience with no emitter. A cross, because there is nothing there to see. */
+function cross(g: CanvasRenderingContext2D, x: number, z: number, r: number, col: string, lw: number): void {
+  g.beginPath();
+  g.moveTo(x - r, z - r); g.lineTo(x + r, z + r);
+  g.moveTo(x + r, z - r); g.lineTo(x - r, z + r);
+  g.strokeStyle = col;
+  g.lineWidth = lw;
+  g.stroke();
+}
+
 export function tickCullMap(): void {
   if (!DEV || !enabled || !canvas || !ctx2d || !camera) return;
 
@@ -236,10 +284,9 @@ export function tickCullMap(): void {
       g.strokeStyle = crossed ? C.portalOpen : C.portalShut;
       g.lineWidth = (crossed ? 1.2 : 0.8) * dpr;
       g.stroke();
-      g.beginPath();
-      g.arc(px(f, o.x), pz(f, o.z), 1.6 * dpr, 0, Math.PI * 2);
-      g.fillStyle = crossed ? C.portalMouth : C.portalShut;
-      g.fill();
+      // A RING, never a disc: a portal mouth is a hole, and the one thing it must not be
+      // confused with is a light. Filled when the flood came through it this frame.
+      ring(g, px(f, o.x), pz(f, o.z), 2.2 * dpr, crossed ? C.portalMouth : C.portalShut, 1.2 * dpr);
     }
   }
 
@@ -267,7 +314,7 @@ export function tickCullMap(): void {
 
   // ── RINGS: the four systems that darken distance, concentric ──────────────
   const cxp = px(f, cam.x), czp = pz(f, cam.z);
-  const ring = (metres: number, colour: string, dash: number[], label: string) => {
+  const distRing = (metres: number, colour: string, dash: number[], label: string) => {
     const r = metres * f.s;
     if (r < 3 || r > Math.max(w, h)) return;
     g.beginPath();
@@ -281,11 +328,11 @@ export function tickCullMap(): void {
     g.fillText(label, cxp + 2 * dpr, czp - r - 2 * dpr);
   };
   const dark = webGPUDarknessLive();
-  ring(sightNear(), C.ringFog, [2, 3], '');
-  ring(sightFar(), C.ringFog, [4, 3], 'fog');
-  ring(dark.crushStart, C.ringCrush, [2, 4], '');
-  ring(dark.crushEnd, C.ringCrush, [5, 4], 'crush');
-  ring(darkKnobs.lampDistance(), C.ringLamp, [1, 3], 'lamp');
+  distRing(sightNear(), C.ringFog, [2, 3], '');
+  distRing(sightFar(), C.ringFog, [4, 3], 'fog');
+  distRing(dark.crushStart, C.ringCrush, [2, 4], '');
+  distRing(dark.crushEnd, C.ringCrush, [5, 4], 'crush');
+  distRing(darkKnobs.lampDistance(), C.ringLamp, [1, 3], 'lamp');
 
   // ── FOV WEDGE — the reason the draw list is not a fact about the world ────
   const persp = camera as THREE.PerspectiveCamera;
@@ -326,25 +373,40 @@ export function tickCullMap(): void {
   for (const l of lights) {
     const x = px(f, l.x), z = pz(f, l.z);
     const bad = lightBad(l);
-    g.beginPath();
-    g.arc(x, z, (l.why === '' ? 3 : 2) * dpr, 0, Math.PI * 2);
-    g.fillStyle = bad ? C.bad : l.why === '' ? C.lightBound : C.lightDropped;
-    g.fill();
-    if (bad) {
-      g.beginPath();
-      g.arc(x, z, 6 * dpr, 0, Math.PI * 2);
-      g.strokeStyle = C.bad;
-      g.lineWidth = 1.5 * dpr;
-      g.stroke();
+    const on = l.why === '';
+    const col = bad ? C.bad : on ? C.lightBound : C.lightDropped;
+    // Kind from the source's own fields, not from its id: category and priority are what
+    // the pool actually decides on, and an id prefix is a naming convention that will drift.
+    if (l.priority === 'low') {
+      // A FILL. No emitter, nothing to look at — which is why it kept reading as a mystery
+      // circle in the middle of an empty room.
+      cross(g, x, z, 2.4 * dpr, col, 1.2 * dpr);
+    } else if (l.category === 'lamp') {
+      // Your own lantern. Drawn as a wide ring because it is centred on you and a disc here
+      // would just sit under the player triangle.
+      ring(g, x, z, 5 * dpr, col, 1 * dpr);
+    } else if (on) {
+      disc(g, x, z, 3 * dpr, col);
+    } else {
+      ring(g, x, z, 2.4 * dpr, col, 1 * dpr);
     }
+    if (bad) ring(g, x, z, 7 * dpr, C.bad, 1.5 * dpr);
   }
 
   // ── SIGNALS ───────────────────────────────────────────────────────────────
   for (const m of signals) {
     const x = px(f, m.x), z = pz(f, m.z);
     const bad = signalBad(m);
-    g.fillStyle = bad ? C.bad : m.visible ? C.signalOn : C.signalOff;
-    g.fillRect(x - 1.5 * dpr, z - 1.5 * dpr, 3 * dpr, 3 * dpr);
+    const col = bad ? C.bad : m.visible ? C.signalOn : C.signalOff;
+    const r = 1.8 * dpr;
+    if (m.visible || bad) {
+      g.fillStyle = col;
+      g.fillRect(x - r, z - r, r * 2, r * 2);
+    } else {
+      g.strokeStyle = col;
+      g.lineWidth = 1 * dpr;
+      g.strokeRect(x - r, z - r, r * 2, r * 2);
+    }
   }
 
   // ── PLAYER ────────────────────────────────────────────────────────────────
@@ -376,6 +438,39 @@ export function tickCullMap(): void {
     g.fillStyle = C.bad;
     g.fillText(`${unwarmed}/${veils.length} veils never ticked`, 8 * dpr, 24 * dpr);
   }
+
+  // ── THE LEGEND ────────────────────────────────────────────────────────────
+  //
+  // Josh: *"provide a small legend in the map."* Drawn with the SAME functions that draw the
+  // marks, so it cannot drift from what it describes — a legend maintained separately from
+  // its map is a legend that is wrong within a week.
+  //
+  // Right-aligned so it never collides with the plan, which grows leftward from the fit.
+  const lx = w - 8 * dpr;
+  let ly = 26 * dpr;
+  const row = (draw: (x: number, y: number) => void, label: string) => {
+    g.fillStyle = C.dim;
+    const tw = g.measureText(label).width;
+    g.fillText(label, lx - tw, ly + 3 * dpr);
+    draw(lx - tw - 8 * dpr, ly);
+    ly += 11 * dpr;
+  };
+  row((x, y) => disc(g, x, y, 3 * dpr, C.lightBound), 'torch · lit');
+  row((x, y) => ring(g, x, y, 2.4 * dpr, C.lightDropped, 1 * dpr), 'torch · dropped');
+  row((x, y) => cross(g, x, y, 2.4 * dpr, C.lightBound, 1.2 * dpr), 'fill · no emitter');
+  row((x, y) => { g.fillStyle = C.signalOn; g.fillRect(x - 1.8 * dpr, y - 1.8 * dpr, 3.6 * dpr, 3.6 * dpr); }, 'signal · shown');
+  row((x, y) => { g.strokeStyle = C.signalOff; g.lineWidth = dpr; g.strokeRect(x - 1.8 * dpr, y - 1.8 * dpr, 3.6 * dpr, 3.6 * dpr); }, 'signal · hidden');
+  row((x, y) => ring(g, x, y, 2.2 * dpr, C.portalMouth, 1.2 * dpr), 'portal mouth');
+  row((x, y) => {
+    g.strokeStyle = C.veil; g.lineWidth = 2.5 * dpr;
+    g.beginPath(); g.moveTo(x - 4 * dpr, y); g.lineTo(x + 4 * dpr, y); g.stroke();
+  }, 'veil · shut=solid');
+  row((x, y) => {
+    g.fillStyle = C.player;
+    g.beginPath(); g.moveTo(x, y - 4 * dpr); g.lineTo(x + 3 * dpr, y + 3 * dpr);
+    g.lineTo(x - 3 * dpr, y + 3 * dpr); g.closePath(); g.fill();
+  }, 'you');
+  row((x, y) => ring(g, x, y, 3.5 * dpr, C.bad, 1.5 * dpr), 'ANOMALY');
 
   // ── WHAT IS ACTUALLY IN FORCE ─────────────────────────────────────────────
   //
