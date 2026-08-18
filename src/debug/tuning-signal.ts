@@ -58,6 +58,28 @@ const geoGates = tuneNumber({
   hint: 'shut thresholds that stone is still drawn through · 0 = only what you have opened',
 });
 
+// ── THE AMBIENCE FILLS, ON A SWITCH ──────────────────────────────────────────
+//
+// Josh: *"can you give me a toggle to disable fill lights?"* — asked on finding out they
+// existed at all, which is fair. They are 1-4 INVISIBLE point lights per room
+// (level/builder.ts, `fill-*`), placed on a grid derived from the room's BOUNDING BOX and
+// coloured by the average tint of the torches in it. Their own comment calls them "the
+// NAVIGABILITY FLOOR, not a light you notice": the light that keeps a room walkable so
+// torches can be signal rather than illumination.
+//
+// Whether the dungeon still wants that floor, now that gates confine lighting to the space
+// you are standing in, is a real question — and it cannot be answered while they are welded
+// on. At 0 the game runs with no sourceless light at all, every lit surface traceable to
+// something you can point at, which is what the light doctrine says it wants.
+//
+// Live, and applied in the pool's SELECTION phase, so it is one drag rather than a rebuild.
+const fills = tuneNumber({
+  id: 'fills', group: 'Dark', label: 'fill lights',
+  min: 0, max: 1, step: 1, value: 1, apply: 'live',
+  hint: '0 = no sourceless ambience · every lit surface traced to a visible emitter',
+});
+
 export const signalKnobs = {
+  fills,
   geoGates,
   lightGates, gates };

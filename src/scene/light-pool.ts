@@ -406,9 +406,16 @@ function lightRange(src: LightSource): number {
 }
 
 /** '' = live. Otherwise the one rule that refused it. */
-function selectLight(src: LightSource): { refused: '' | 'gates' | 'offscreen'; gates: number } {
-  // The lamp IS the camera. It never answers to either question.
+function selectLight(src: LightSource): { refused: '' | 'fill' | 'gates' | 'offscreen'; gates: number } {
+  // The lamp IS the camera. It never answers to any of this.
   if (src.category === 'lamp') return { refused: '', gates: 0 };
+
+  // Ambience fills, switched off wholesale. `priority: 'low'` is what a fill IS to this
+  // module — the field the ranking already yields on — rather than an id prefix, which is a
+  // naming convention and drifts.
+  if (src.priority === 'low' && signalKnobs.fills() < 0.5) {
+    return { refused: 'fill', gates: 0 };
+  }
 
   const where = locate(`light:${src.id}`, src.position.x, src.position.z);
   if (!passes({ channel: 'light', maxGates: signalKnobs.lightGates() }, where)) {
@@ -425,7 +432,7 @@ function selectLight(src: LightSource): { refused: '' | 'gates' | 'offscreen'; g
 // Named after the PHASES, so a readout says which step refused a light rather than which
 // historical rule did. `outOfRange` went with the distance cull it counted — a tally field
 // pinned at zero is a lie waiting to be read.
-const tally = { sources: 0, refusedGates: 0, refusedOffScreen: 0, live: 0, bound: 0 };
+const tally = { sources: 0, refusedFill: 0, refusedGates: 0, refusedOffScreen: 0, live: 0, bound: 0 };
 
 // ── EVERY SOURCE AND WHAT HAPPENED TO IT, FOR THE MAP ───────────────────────
 //
@@ -438,7 +445,7 @@ export interface LightMapRow {
    *  until you know it is a fill. */
   priority?: 'low';
   /** '' = bound. Otherwise the test that dropped it. */
-  why: '' | 'gates' | 'offscreen' | 'outranked';
+  why: '' | 'fill' | 'gates' | 'offscreen' | 'outranked';
   gates: number;
   /** ── THE GAP BETWEEN "WON A SLOT" AND "EMITS LIGHT" ────────────────────────
    *
@@ -505,13 +512,15 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   // hysteresis bonus for previously-bound sources).
   tally.sources = sources.size;
   if (DEV) { lightRows = []; rowById.clear(); }
-  tally.refusedGates = tally.refusedOffScreen = tally.live = tally.bound = 0;
+  tally.refusedFill = tally.refusedGates = tally.refusedOffScreen = tally.live = tally.bound = 0;
   if (DEV) culledIds.length = 0;
   for (const src of sources.values()) {
     // ── PHASE 1: MAY IT BURN AT ALL? ───────────────────────────────────────
     const sel = selectLight(src);
     if (sel.refused) {
-      if (sel.refused === 'gates') tally.refusedGates++; else tally.refusedOffScreen++;
+      if (sel.refused === 'fill') tally.refusedFill++;
+      else if (sel.refused === 'gates') tally.refusedGates++;
+      else tally.refusedOffScreen++;
       if (DEV) {
         if (sel.refused === 'gates') culledIds.push(src.id);
         note(src, sel.refused, sel.gates);
