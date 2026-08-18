@@ -382,7 +382,50 @@ const GATE_SORT_PENALTY = 90;
 // which counts SLOTS, so it reads the same whether the pool culled well or never had much
 // to cull. These counters sit where the decisions are, so the room cull can be shown to be
 // doing something rather than asserted to be. DEV-only; four integer writes per source.
-const tally = { sources: 0, outOfRange: 0, culledByRoom: 0, offScreen: 0, candidates: 0, bound: 0 };
+// ── PHASE 1: SELECTION — WHICH LIGHTS MAY BURN AT ALL ────────────────────────
+//
+// Josh: *"can't we make this even simpler — lights inside a room that is drawn should light
+// up."* This is that statement, and it is the ONLY place a light is refused.
+//
+// It asks two things and nothing else:
+//
+//   GATES  — is this light in a space you have opened? A policy over the space index, the
+//            same one the signal layer and the props use, naming its channel.
+//   VIEW   — does its reach sphere touch the frustum? Exact for direct lighting: if the
+//            sphere misses, no surface it lights is on screen.
+//
+// What it deliberately does NOT ask: how far away it is. Distance was a cull for years and
+// it was the wrong question — it dropped a four-metre stairs glow eight metres off whose
+// pool of light was plainly in view. Distance is arbitration now (phase 2), which only
+// matters when more lights are live than the binder can take.
+//
+// Nor line of sight: a wall between you and a torch DIMS it (phase 3), it does not remove
+// it, because a torch round a corner still lights the corner.
+function lightRange(src: LightSource): number {
+  return src.distance * (src.category === 'environment' ? envRangeMul : 1);
+}
+
+/** '' = live. Otherwise the one rule that refused it. */
+function selectLight(src: LightSource): { refused: '' | 'gates' | 'offscreen'; gates: number } {
+  // The lamp IS the camera. It never answers to either question.
+  if (src.category === 'lamp') return { refused: '', gates: 0 };
+
+  const where = locate(`light:${src.id}`, src.position.x, src.position.z);
+  if (!passes({ channel: 'light', maxGates: signalKnobs.lightGates() }, where)) {
+    return { refused: 'gates', gates: where.gates.light };
+  }
+  tmpSphere.center.copy(src.position);
+  tmpSphere.radius = lightRange(src);
+  if (!tmpFrustum.intersectsSphere(tmpSphere)) {
+    return { refused: 'offscreen', gates: where.gates.light };
+  }
+  return { refused: '', gates: where.gates.light };
+}
+
+// Named after the PHASES, so a readout says which step refused a light rather than which
+// historical rule did. `outOfRange` went with the distance cull it counted — a tally field
+// pinned at zero is a lie waiting to be read.
+const tally = { sources: 0, refusedGates: 0, refusedOffScreen: 0, live: 0, bound: 0 };
 
 // ── EVERY SOURCE AND WHAT HAPPENED TO IT, FOR THE MAP ───────────────────────
 //
@@ -395,7 +438,7 @@ export interface LightMapRow {
    *  until you know it is a fill. */
   priority?: 'low';
   /** '' = bound. Otherwise the test that dropped it. */
-  why: '' | 'range' | 'gates' | 'offscreen' | 'outranked';
+  why: '' | 'gates' | 'offscreen' | 'outranked';
   gates: number;
   /** ── THE GAP BETWEEN "WON A SLOT" AND "EMITS LIGHT" ────────────────────────
    *
@@ -462,117 +505,44 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   // hysteresis bonus for previously-bound sources).
   tally.sources = sources.size;
   if (DEV) { lightRows = []; rowById.clear(); }
-  tally.outOfRange = tally.culledByRoom = tally.offScreen = tally.candidates = tally.bound = 0;
+  tally.refusedGates = tally.refusedOffScreen = tally.live = tally.bound = 0;
   if (DEV) culledIds.length = 0;
   for (const src of sources.values()) {
+    // ── PHASE 1: MAY IT BURN AT ALL? ───────────────────────────────────────
+    const sel = selectLight(src);
+    if (sel.refused) {
+      if (sel.refused === 'gates') tally.refusedGates++; else tally.refusedOffScreen++;
+      if (DEV) {
+        if (sel.refused === 'gates') culledIds.push(src.id);
+        note(src, sel.refused, sel.gates);
+      }
+      continue;
+    }
+    tally.live++;
+
+    // ── PHASE 2: WHAT IS ITS CLAIM ON A SLOT? ──────────────────────────────
+    //
+    // Everything from here is ARBITRATION — it only decides anything when more lights are
+    // live than the binder can take, which with the gate horizon confining them is rare
+    // (measured 4-11 live against a budget of 22). Nearer wins; a light round a corner or
+    // one more threshold out loses; an ambience fill yields before anything with an emitter;
+    // and whatever held the slot last frame gets a small stickiness so two contenders at the
+    // same distance cannot trade it every frame.
     const dx = src.position.x - cx;
     const dy = src.position.y - cy;
     const dz = src.position.z - cz;
     const dist2 = dx * dx + dy * dy + dz * dz;
-    // RAW dist² for the cull check — sources truly out of range can't
-    // sneak in via hysteresis.
-    //
-    // ── THE CULL USES THE RANGE THE LIGHT IS ACTUALLY BOUND WITH ─────────────
-    //
-    // This read `src.distance + 2`, the AUTHORED range — while the slot below binds
-    // `src.distance * envRangeMul`. So with TORCH RANGE above 1.00 a torch lit further
-    // than the cull would let it live: it was dropped at 13m while still throwing light at
-    // 16m, and walking in past the threshold made it appear. Josh: *"lights pop into view
-    // when I approach them and I can already see the room."*
-    //
-    // Two readings of one number, which is the same fault as the corridor that was 2.20m
-    // of rect and 1.03m of frame. The cull asks the bound range now, so raising the slider
-    // extends the cull with it.
-    const bound = src.distance * (src.category === 'environment' ? envRangeMul : 1);
-    // ── DISTANCE IS A RANKING, NOT A CULL ────────────────────────────────────
-    //
-    // This used to drop any source the camera stood outside the reach of. That is the wrong
-    // question, and it is wrong exactly for SMALL lights across a room: a stairs glow with a
-    // four-metre radius, eight metres away, still lights the stairs — and that pool of light
-    // is plainly on screen. Josh, standing in a 14.5m room: *"some lights are culled, one of
-    // the torches is only signal shown even though it's inside the room — is there another
-    // mechanism at play we haven't discovered?"* There was. Measured at that pose: the
-    // stairs glow at 8.6m and a corpse soul at 11m, both dropped for `range`, both visible.
-    //
-    // The right question is the one on the next line and it was already being asked: does
-    // this light's reach sphere intersect the view frustum? If it does, there are lit
-    // surfaces on screen. If it does not, there are none. Distance survives as the ranking
-    // term it always should have been — nearer wins when the budget is contended — and the
-    // gate horizon still removes anything in a space you have not opened.
-    //
-    // Cheap to give up: sphere-vs-frustum runs on every source now instead of a fifth of
-    // them, and it is a handful of dot products. The environment budget is 22 and the tiled
-    // node shades at most eight per tile, so binding a few more costs selection time, not
-    // fragments.
-    // LOS: a wall between source and camera DIMS the light instead of
-    // killing it (see the soft-visibility note above). Lamp bypasses
-    // LOS (it IS the camera; its world pos can sit just inside a wall).
+    // A wall between source and camera DIMS the light rather than killing it — a torch
+    // round a corner still lights the corner. Carried into phase 3, and priced here.
     let losBlocked = false;
     if (losCheck && src.category !== 'lamp') {
       losBlocked = !losCheck(cx, cz, src.position.x, src.position.z);
     }
-    // ── AND THE ROOM CULLER HAS THE LAST WORD ────────────────────────────────
-    //
-    // Josh: *"when a room is culled, lights are culled the same way — that way we will only
-    // ever have a few active for real. You leave a room, lights are gone."*
-    //
-    // The pool used to decide reach for itself, out of distance and a sightline, while the
-    // culler decided the same thing about the same room out of the portal graph. Two
-    // answers to one question, and the pool's was the weaker one: it kept a slot alive for
-    // a torch in a room whose floor, walls and torch MODEL were not being drawn. Now the
-    // culler answers and the pool obeys — which is also the only version where the veil
-    // reads honestly, because a sealed threshold means the room behind it is not rendered
-    // and its light has nothing left to fall on.
-    //
-    // Space resolved once per source and kept: a sconce does not move, and this runs over
-    // every registered light every frame.
-    let gates = 0;
-    if (src.category !== 'lamp') {
-      // ── THIS LIGHT'S RULE, STATED IN ONE PLACE ───────────────────────────
-      //
-      // GATES, at horizon 0 by default: a light burns only in the space you are standing in
-      // and in the spaces whose doorway has already lifted for you. Josh: *"why are lights
-      // lighting that are in other rooms or can't be visible because we have the veil?"*
-      //
-      // The frustum is not here and cannot be — see CullPolicy. A light does not care where
-      // you are looking, and culling one by the view cone made torches gutter on every turn
-      // of the head.
-      const where = locate(`light:${src.id}`, src.position.x, src.position.z);
-      if (!passes({ channel: 'light', maxGates: signalKnobs.lightGates() }, where)) {
-        tally.culledByRoom++;
-        if (DEV) { culledIds.push(src.id); note(src, 'gates', where.gates.light); }
-        continue;
-      }
-      gates = Math.min(3, where.gates.light);
-    }
     let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
-      + gates * GATE_SORT_PENALTY
+      + Math.min(3, sel.gates) * GATE_SORT_PENALTY
       + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
-    // ── FRUSTUM LAST, SO THE TALLY MEANS SOMETHING ───────────────────────────
-    //
-    // This ran before the gate test, so `offScreen` counted every distant light on the floor
-    // and told you nothing about what the frustum was actually costing you — the gates were
-    // going to remove those anyway. Ordered after, the number is the real one: lights in a
-    // space you have opened that are not on screen.
-    //
-    // The test itself: if the light's reach sphere does not intersect the camera frustum,
-    // nothing the camera renders can be lit by it. Exact for direct lighting. The lamp is
-    // exempt — its world position sits a few centimetres in front of the camera and the
-    // sphere can miss the frustum bound at some FOVs.
-    if (src.category !== 'lamp') {
-      tmpSphere.center.copy(src.position);
-      tmpSphere.radius = bound;
-      if (!tmpFrustum.intersectsSphere(tmpSphere)) {
-        tally.offScreen++;
-        if (DEV) note(src, 'offscreen', gates);
-        continue;
-      }
-    }
-
-    tally.candidates++;
-    // A candidate that never gets a slot was OUTRANKED — corrected below when it binds.
-    if (DEV) note(src, 'outranked', gates);
+    if (DEV) note(src, 'outranked', sel.gates);   // corrected to '' when it binds
     scratchByCategory[src.category].push({ src, sortKey, losBlocked });
   }
 
