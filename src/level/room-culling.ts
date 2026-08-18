@@ -5,6 +5,7 @@ import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
 import { sightFar } from '../scene/sight-distance';
+import { pointInPoly } from './room-shape';
 import { veilAlphaBetween } from '../scene/threshold-veil';
 import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
@@ -167,9 +168,34 @@ export function portalDepthOf(id: string): number {
   return portalDepth.get(id) ?? Infinity;
 }
 
-/** Which space contains this point, by the culler's own rule. Null off the floor. */
+/**
+ * Which space contains this point — for things MOUNTED on the architecture.
+ *
+ * ── A SCONCE IS IN THE WALL, AND THE WALL IS NOBODY'S FLOOR ──────────────────
+ *
+ * The raw position of a wall-mounted marker sits in the 0.25m masonry band, which is
+ * outside its room's polygon. `rectAt` then answers by bounding box, and a bounding box at
+ * that point may belong to the room, to the corridor on the far side, or to some third rect
+ * whose box happens to overlap — and a torch that resolves to a space two gates away is a
+ * torch whose flame is hidden while you stand in front of it.
+ *
+ * So a point that lands on no polygon is nudged toward the nearest space's CENTRE — i.e.
+ * inward, off the wall and onto real floor — and asked again. Half a metre clears the band
+ * with room to spare and is far short of anything that could reach a different room.
+ *
+ * Points already on open floor take the first branch and never move.
+ */
 export function spaceIdAt(x: number, z: number): string | null {
-  return depthNodes ? rectAt(depthNodes, x, z)?.id ?? null : null;
+  if (!depthNodes) return null;
+  const hit = rectAt(depthNodes, x, z);
+  if (hit?.poly && hit.poly.length >= 3 && pointInPoly(hit.poly, x, z)) return hit.id;
+  const near = hit ?? nearestRect(depthNodes, x, z);
+  if (!near) return null;
+  const dx = near.cx - x, dz = near.cz - z;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-4) return near.id;
+  const IN = 0.5;
+  return rectAt(depthNodes, x + (dx / len) * IN, z + (dz / len) * IN)?.id ?? near.id;
 }
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {

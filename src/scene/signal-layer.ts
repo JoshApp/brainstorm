@@ -42,6 +42,7 @@
 import * as THREE from 'three';
 import { portalDepthOf, spaceIdAt } from '../level/room-culling';
 import { signalKnobs } from '../debug/tuning-signal';
+import { DEV } from '../debug/dev';
 
 /** Reused per test — this runs over every marker, every frame. */
 const scratch = new THREE.Vector3();
@@ -121,6 +122,9 @@ interface Marker {
   /** The space it stands in. Resolved once and kept — markers do not move. */
   space: string | null;
   resolved: boolean;
+  /** Last frame's verdict, for the DEV probe. '' = shown. */
+  why: string;
+  gates: number;
 }
 
 const registry: Marker[] = [];
@@ -130,7 +134,7 @@ let lastLos: LOS | undefined;
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
 function track(o: THREE.Object3D): void {
   if (registry.some((m) => m.o === o)) return;
-  registry.push({ o, space: null, resolved: false });
+  registry.push({ o, space: null, resolved: false, why: '', gates: 0 });
 }
 
 /**
@@ -207,11 +211,14 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
     //
     // An unresolved marker counts as being in your own space, which fails toward visible.
     const gates = m.space ? portalDepthOf(m.space) : 0;
-    if (gates > maxGates) { m.o.visible = false; continue; }
+    m.gates = gates;
+    if (gates > maxGates) { m.why = 'gates'; m.o.visible = false; continue; }
 
     // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
     // MOUNT_CLEARANCE.
-    m.o.visible = seeable(scratch.x, scratch.z);
+    const lit = seeable(scratch.x, scratch.z);
+    m.why = lit ? '' : 'los';
+    m.o.visible = lit;
   }
 }
 
@@ -236,6 +243,37 @@ export function canSeeSignalAt(x: number, z: number): boolean {
 
 /** Drop the registry — called on level load. */
 export function clearSignals(): void { registry.length = 0; }
+
+// ── THE PROBE ────────────────────────────────────────────────────────────────
+//
+// `window.__signal()` — every marker, where it is, which space it resolved to, how many
+// gates that is, and which test hid it. Three plausible causes for "the flames are occluded
+// and I can see them" were each right about something and wrong about the whole, and every
+// round trip cost Josh a walk to a torch. This answers it in one line instead.
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __signal?: unknown }).__signal = () => {
+    const rows = registry.map((m) => {
+      m.o.getWorldPosition(scratch);
+      return {
+        name: m.o.name || m.o.type,
+        at: `${scratch.x.toFixed(1)},${scratch.z.toFixed(1)}`,
+        space: m.space ?? '(none)',
+        gates: m.gates,
+        hiddenBy: m.why || '—',
+        visible: m.o.visible,
+        parented: !!m.o.parent,
+      };
+    });
+    const by = (k: string) => rows.filter((r) => r.hiddenBy === k).length;
+    // eslint-disable-next-line no-console
+    console.log(`${rows.length} markers · shown ${rows.filter((r) => r.visible).length}`
+      + ` · hidden by gates ${by('gates')} · by line of sight ${by('los')}`
+      + ` · eye ${lastEyeX.toFixed(1)},${lastEyeZ.toFixed(1)} · gate limit ${signalKnobs.gates()}`);
+    // eslint-disable-next-line no-console
+    console.table(rows);
+    return rows;
+  };
+}
 
 /** How many markers are tracked, for a debug readout. */
 export function signalCount(): number { return registry.length; }

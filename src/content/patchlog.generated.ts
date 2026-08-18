@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The dark gives way slowly and takes the ground back fast — and the fires you have already walked past stop going out behind you.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Stand before a fire and it burns for you. The sconce it hangs on no longer hides it.",
         "area": [
           "atmosphere"
@@ -393,14 +400,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The stone answers the torch with its colour now, instead of a shine where its colour should be.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone finally has colour in it, rather than a shine where its colour should be.",
         "area": [
           "atmosphere",
           "level"
