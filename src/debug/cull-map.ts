@@ -54,6 +54,7 @@ import { sightNear, sightFar } from '../scene/sight-distance';
 import { webGPUDarknessLive } from '../style/render-webgpu';
 import { darkKnobs } from './tuning-dark';
 import { signalKnobs } from './tuning-signal';
+import { pausedReason } from '../world-paused';
 
 // ── PALETTE ─────────────────────────────────────────────────────────────────
 // Warm = being drawn, cold = not. Deliberately NOT the game's palette: this is an
@@ -61,19 +62,24 @@ import { signalKnobs } from './tuning-signal';
 const C = {
   bg: 'rgba(8, 10, 16, 0.88)',
   frame: 'rgba(150, 180, 255, 0.35)',
-  spaceDrawn: 'rgba(120, 170, 255, 0.20)',
-  spaceDrawnEdge: 'rgba(140, 190, 255, 0.75)',
-  spaceDark: 'rgba(90, 100, 130, 0.06)',
-  spaceDarkEdge: 'rgba(110, 130, 180, 0.30)',
+  // Drawn vs culled has to survive a glance on a phone, so they differ on THREE counts at
+  // once — fill, outline brightness, and solid-versus-dashed — rather than on two shades of
+  // the same blue, which is what Josh was squinting at: *"I see 3 levels of light blue and
+  // green, what are these?"* The portal graph is cyan and was reading as a third blue, so it
+  // moves further toward teal and away from the space colours.
+  spaceDrawn: 'rgba(120, 170, 255, 0.28)',
+  spaceDrawnEdge: 'rgba(150, 200, 255, 0.9)',
+  spaceDark: 'rgba(80, 90, 120, 0.05)',
+  spaceDarkEdge: 'rgba(105, 120, 160, 0.5)',
   standing: 'rgba(120, 255, 190, 0.85)',
   text: 'rgba(200, 225, 255, 0.85)',
   dim: 'rgba(160, 180, 220, 0.45)',
   player: 'rgba(255, 240, 200, 0.95)',
   fov: 'rgba(255, 240, 200, 0.10)',
   veil: 'rgba(255, 120, 200, 0.95)',
-  portalOpen: 'rgba(120, 255, 255, 0.55)',
-  portalShut: 'rgba(90, 110, 140, 0.30)',
-  portalMouth: 'rgba(120, 255, 255, 0.9)',
+  portalOpen: 'rgba(80, 230, 200, 0.55)',
+  portalShut: 'rgba(70, 110, 105, 0.35)',
+  portalMouth: 'rgba(80, 240, 205, 0.95)',
   lightBound: 'rgba(255, 200, 90, 0.95)',
   lightDropped: 'rgba(120, 130, 150, 0.55)',
   signalOn: 'rgba(150, 255, 200, 0.9)',
@@ -470,9 +476,13 @@ export function tickCullMap(): void {
     }
     g.fillStyle = sp.drawn ? C.spaceDrawn : C.spaceDark;
     g.fill();
-    g.lineWidth = (sp.standing ? 2 : 1) * dpr;
+    // DASHED means culled. A third channel beyond fill and brightness, because two shades of
+    // blue is not a distinction you can make at a glance on a phone in a dark room.
+    g.setLineDash(sp.drawn || sp.standing ? [] : [3 * dpr, 3 * dpr]);
+    g.lineWidth = (sp.standing ? 2.4 : 1) * dpr;
     g.strokeStyle = spaceBad(sp) ? C.bad : sp.standing ? C.standing : sp.drawn ? C.spaceDrawnEdge : C.spaceDarkEdge;
     g.stroke();
+    g.setLineDash([]);
 
     // Closed thresholds from you — the one axis anything outside the culler is bound by, so
     // a thing culled here can be read straight off the plan.
@@ -630,6 +640,21 @@ export function tickCullMap(): void {
     draw(lx - tw - 8 * dpr, ly);
     ly += 11 * dpr;
   };
+  // The space states come first: they are the frame everything else is read against, and
+  // the legend used to describe only the marks drawn ON them.
+  const swatch = (fill: string, edge: string, dash: boolean, lw: number) => (x: number, y: number) => {
+    const w2 = 5 * dpr, h2 = 3.5 * dpr;
+    g.fillStyle = fill;
+    g.fillRect(x - w2, y - h2, w2 * 2, h2 * 2);
+    g.setLineDash(dash ? [2 * dpr, 2 * dpr] : []);
+    g.strokeStyle = edge;
+    g.lineWidth = lw * dpr;
+    g.strokeRect(x - w2, y - h2, w2 * 2, h2 * 2);
+    g.setLineDash([]);
+  };
+  row(swatch(C.spaceDrawn, C.standing, false, 2.4), 'you are in it');
+  row(swatch(C.spaceDrawn, C.spaceDrawnEdge, false, 1), 'drawn');
+  row(swatch(C.spaceDark, C.spaceDarkEdge, true, 1), 'culled');
   row((x, y) => disc(g, x, y, 3 * dpr, C.lightBound), 'torch · lit');
   row((x, y) => ring(g, x, y, 2.4 * dpr, C.lightDropped, 1 * dpr), 'torch · dropped');
   row((x, y) => cross(g, x, y, 2.4 * dpr, C.lightBound, 1.2 * dpr), 'fill · no emitter');
@@ -655,15 +680,30 @@ export function tickCullMap(): void {
   // nobody can reproduce. They are also the four independent distance-darkening systems in
   // one column, which is the comparison the DARK tab exists to make possible — here it sits
   // beside the plan those metres are drawn on.
-  const lines = [
+  // ── IS THE WORLD EVEN RUNNING? ────────────────────────────────────────────
+  //
+  // Josh: *"why is every gate labeled g0 on the map?"* Because every threshold was reading
+  // as OPEN, because every veil alpha was zero, because the veil tick had never run — it
+  // lives in an 'unpaused' system, and the world was paused. Three separate sessions of mine
+  // measured gate counts against veils that had never opened or closed and drew the wrong
+  // conclusion each time.
+  //
+  // A paused world silently voids most of this map: no veil easing, so no gates; no torch
+  // flicker; no AI. That is not a footnote, so it goes at the top of the readout in red with
+  // the REASON attached — `pausedReason()` already names it, and 'transition' is the one that
+  // catches you, because a descent fade that never finished looks exactly like play.
+  const why = pausedReason();
+  const lines = [];
+  if (why) lines.push(`WORLD PAUSED · ${why} — gates and flicker are stale`);
+  lines.push(
     `fog    ${sightNear().toFixed(1)} → ${sightFar().toFixed(1)} m`,
     `crush  ${dark.crushStart.toFixed(1)} → ${dark.crushEnd.toFixed(1)} m  floor ${dark.crushFloor.toFixed(2)}`,
     `lamp   ${darkKnobs.lampDistance().toFixed(1)} m`,
     `veil   ${veils.length} · shut ${veils.filter((v) => v.alpha > 0.5).length}`,
     `gates  light ≤${maxLightGates} · signal ≤${maxSignalGates}`,
-  ];
-  g.fillStyle = C.dim;
+  );
   for (let i = 0; i < lines.length; i++) {
+    g.fillStyle = why && i === 0 ? C.bad : C.dim;
     g.fillText(lines[i], 8 * dpr, h - (lines.length - i) * 11 * dpr - 4 * dpr);
   }
 }
