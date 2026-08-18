@@ -420,13 +420,12 @@ if (DEV && typeof window !== 'undefined') {
   (window as unknown as { __lights?: unknown }).__lights = () => ({
     ...tally,
     culledIds: [...culledIds],
-    // Per-source, so "this torch is culled while I look at it" can be answered from the
-    // index's own answer rather than by re-deriving the rule here and laundering a guess as
-    // a measurement.
-    sourceRows: [...sources.values()].filter((s) => s.category === 'environment').map((s) => ({
-      id: s.id,
-      at: `${s.position.x.toFixed(1)},${s.position.z.toFixed(1)}`,
-      ...locate(`light:${s.id}`, s.position.x, s.position.z),
+    // THE ROWS THE MAP DRAWS — which carry `why`, the test that actually dropped each
+    // source. This used to build its own rows from locate(), so it reported where every
+    // light was and never which rule had refused it, and "is there another mechanism at
+    // play?" could not be answered from it. Two views of two different things again.
+    sourceRows: lightRows.map((r) => ({
+      ...r, at: `${r.x.toFixed(1)},${r.z.toFixed(1)}`,
     })),
     index: spaceIndexState(),
   });
@@ -485,12 +484,26 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // of rect and 1.03m of frame. The cull asks the bound range now, so raising the slider
     // extends the cull with it.
     const bound = src.distance * (src.category === 'environment' ? envRangeMul : 1);
-    const reach = bound + 2;
-    if (dist2 > reach * reach) {
-      tally.outOfRange++;
-      if (DEV) note(src, 'range', 0);
-      continue;
-    }
+    // ── DISTANCE IS A RANKING, NOT A CULL ────────────────────────────────────
+    //
+    // This used to drop any source the camera stood outside the reach of. That is the wrong
+    // question, and it is wrong exactly for SMALL lights across a room: a stairs glow with a
+    // four-metre radius, eight metres away, still lights the stairs — and that pool of light
+    // is plainly on screen. Josh, standing in a 14.5m room: *"some lights are culled, one of
+    // the torches is only signal shown even though it's inside the room — is there another
+    // mechanism at play we haven't discovered?"* There was. Measured at that pose: the
+    // stairs glow at 8.6m and a corpse soul at 11m, both dropped for `range`, both visible.
+    //
+    // The right question is the one on the next line and it was already being asked: does
+    // this light's reach sphere intersect the view frustum? If it does, there are lit
+    // surfaces on screen. If it does not, there are none. Distance survives as the ranking
+    // term it always should have been — nearer wins when the budget is contended — and the
+    // gate horizon still removes anything in a space you have not opened.
+    //
+    // Cheap to give up: sphere-vs-frustum runs on every source now instead of a fifth of
+    // them, and it is a handful of dot products. The environment budget is 22 and the tiled
+    // node shades at most eight per tile, so binding a few more costs selection time, not
+    // fragments.
     // Frustum cull: if the light's reach sphere doesn't intersect
     // the camera frustum, nothing the camera renders can be lit by
     // it. Lamp is exempt — its world pos sits a few cm in front of
@@ -503,7 +516,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       tmpSphere.radius = bound;
       if (!tmpFrustum.intersectsSphere(tmpSphere)) {
         tally.offScreen++;
-        if (DEV) note(src, 'offscreen', 0);
+        if (DEV) note(src, 'offscreen', -1);
         continue;
       }
     }
