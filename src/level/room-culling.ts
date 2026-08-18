@@ -10,6 +10,7 @@ import { veilAlphaBetween } from '../scene/threshold-veil';
 import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
+import { claimWorld, worldIsCurrent, publishFrame, retireWorld } from './space-index';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -147,116 +148,25 @@ export interface CullAudit {
   hits: number;
 }
 
-// ── HOW MANY THRESHOLDS AWAY IS THIS SPACE? ──────────────────────────────────
+// ── THE CULLER COMPUTES; THE INDEX ANSWERS ───────────────────────────────────
 //
-// The flood already walks doorways, so it already knows. Publishing it turns a number the
-// culler computes for itself into the one legible unit the rest of the game can reason
-// about: GATES. Josh: *"how about we make flames only visible if it's gated by one gate and
-// not more? So you can't see it across a room and a corridor, but you have to break the
-// corridor's seal."*
+// This file used to publish three module-level maps — the node map, the gate counts, the
+// drawn set — that three other systems read directly and cached privately. That is where the
+// title-screen 'tv' bug, the per-floor id-reuse bug and the two-live-cullers race all came
+// from, and I patched each of them separately before Josh stopped me: *"instead of
+// patchworking this, can't we make a proper system for culling?"*
 //
-// Module-level rather than on the culler instance, because the things that want to ask —
-// the signal layer, a future AI perception rule — should not have to be handed the culler
-// to do it. One floor is alive at a time and the map is rewritten every tick, so there is
-// nothing to get stale.
-const portalDepth = new Map<string, number>();
-let depthNodes: Map<string, RectNode> | null = null;
-
-// ── AND WHICH SPACES ARE ACTUALLY BEING DRAWN ────────────────────────────────
-//
-// Josh: *"let's change how lights are culled — when a room is culled, lights are culled the
-// same way. That way we will only ever have a few active for real. You leave a room, lights
-// are gone."*
-//
-// The culler already decides this every frame for geometry; the light pool was deciding it
-// again from scratch, out of distance and a sightline, and getting a different answer. Two
-// systems answering one question is the fault this codebase keeps paying for, so there is
-// one answer now and the light pool reads it.
-//
-// Published as ids rather than handed over as an object for the same reason as the gate
-// counts: the light pool should not have to be given the culler to ask.
-const drawnSpaces = new Set<string>();
-
-/**
- * Is this space being rendered this frame?
- *
- * FAILS OPEN ON AN EMPTY SET, exactly like portalDepthOf — no culler, a level that does not
- * use one, or the frames before the first tick all mean "nothing has been decided", and a
- * decision nobody made must not put out the lights.
- */
-export function isSpaceDrawn(id: string): boolean {
-  if (drawnSpaces.size === 0) return true;
-  return drawnSpaces.has(id);
-}
-
-/**
- * Thresholds between the player's space and this one. 0 = you are in it.
- *
- * FAILS OPEN WHEN THERE IS NOTHING TO SAY. An empty map means the walk found no seed —
- * the camera is not standing inside any space at all — and that is not the same as "every
- * space is unreachable". It happens on the title screen, whose vignette camera looks at its
- * one room from outside it, and it happened there: the bonfire's whole flame stack came
- * back `hidden by gates` with the markers correctly resolved to the room they are in. It
- * also covers the first frames of a floor and any level with no culler at all.
- *
- * Infinity is reserved for the case we can actually argue: a populated map that does not
- * contain this space, which means genuinely too far or genuinely disconnected.
- */
-export function portalDepthOf(id: string): number {
-  if (portalDepth.size === 0) return 0;
-  return portalDepth.get(id) ?? Infinity;
-}
-
-/**
- * Which space contains this point — for things MOUNTED on the architecture.
- *
- * ── A SCONCE IS IN THE WALL, AND THE WALL IS NOBODY'S FLOOR ──────────────────
- *
- * The raw position of a wall-mounted marker sits in the 0.25m masonry band, which is
- * outside its room's polygon. `rectAt` then answers by bounding box, and a bounding box at
- * that point may belong to the room, to the corridor on the far side, or to some third rect
- * whose box happens to overlap — and a torch that resolves to a space two gates away is a
- * torch whose flame is hidden while you stand in front of it.
- *
- * So a point that lands on no polygon is nudged toward the nearest space's CENTRE — i.e.
- * inward, off the wall and onto real floor — and asked again. Half a metre clears the band
- * with room to spare and is far short of anything that could reach a different room.
- *
- * Points already on open floor take the first branch and never move.
- */
-export function spaceIdAt(x: number, z: number): string | null {
-  if (!depthNodes) return null;
-  const hit = rectAt(depthNodes, x, z);
-  if (hit?.poly && hit.poly.length >= 3 && pointInPoly(hit.poly, x, z)) return hit.id;
-
-  // Off every polygon — either in the masonry band, or genuinely nowhere this culler
-  // knows about. Nudge toward the containing BOX's centre (inward, onto real floor) and
-  // ask again; a wall-mounted marker lands on its own room in one step.
-  if (hit) {
-    const dx = hit.cx - x, dz = hit.cz - z;
-    const len = Math.hypot(dx, dz);
-    if (len < 1e-4) return hit.id;
-    const IN = 0.5;
-    return rectAt(depthNodes, x + (dx / len) * IN, z + (dz / len) * IN)?.id ?? hit.id;
-  }
-
-  // ── AND NO NEAREST-RECT FALLBACK. "I DON'T KNOW" MUST MEAN "SHOW IT" ────────
-  //
-  // This used to fall back to `nearestRect`, which returns the closest rect at ANY
-  // distance. That is not a guess, it is a fabrication — and it fabricated confidently.
-  // The title screen builds its own one-room vignette (`title-vignette.ts`, id 'tv'), and
-  // because the published node map is module-level while a culler is per LEVEL, every
-  // marker on the dungeon floor behind it resolved to `tv` — a 9m room sixty metres away.
-  // `portalDepth` then had no entry for it, so gates came back Infinity, so every flame in
-  // the dungeon went out. Josh's probe named it in one line: every marker, space `tv`,
-  // hidden by gates.
-  //
-  // Null means the caller treats it as gate 0 and shows it. A marker whose space cannot be
-  // established is a marker we have no argument for hiding.
-  return null;
-}
+// So the split is now explicit. The culler decides WHAT IS VISIBLE — frustum, sightlines,
+// transmittance across the portal graph, gate counts — because that is the thing it is good
+// at and none of it moved. `level/space-index.ts` owns WHO MAY ANSWER and WHO IS ASKING: one
+// cache, one invalidation, one rule about worlds. Nothing outside this file reads a node map
+// or a space id any more; see the header there.
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
+  // Two cullers can be alive at once — the title vignette does not go away the instant a
+  // run starts — so a culler holds the world it was built for and the index ignores anything
+  // an older one says. It still culls its OWN geometry; it just stops speaking for the floor.
+  const myWorld = claimWorld();
   const nodes = new Map<string, RectNode>();
   // Occlusion comes from the walkable grid's line-of-sight (the same check the
   // light pool uses): a doorway with a wall between it and the camera fails LOS
@@ -517,6 +427,9 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
 
   let enabled = true;
   const visible = new Set<string>();
+  /** Thresholds from the player, per space, for THIS culler. Per-instance now rather than
+   *  module-level: two cullers computing into one map was half of what the index fixed. */
+  const portalDepth = new Map<string, number>();
   /** Transmittance per space for THIS frame — see T_INVISIBLE. */
   const trans = new Map<string, number>();
   /** Spaces the player is standing in — the seeds for BOTH walks. */
@@ -597,8 +510,11 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     if (!enabled) {
       // A culler that is not running must not keep ANSWERING. Its node map and gate counts
       // describe a floor nobody is standing on, and stale answers here hide things rather
-      // than show them — see the note on the nearest-rect fallback in spaceIdAt.
-      if (depthNodes === nodes) { depthNodes = null; portalDepth.clear(); drawnSpaces.clear(); }
+      // than show them.
+      // A culler that is not running must not keep ANSWERING: its gate counts describe a
+      // floor nobody is standing on, and a stale answer here hides things rather than
+      // showing them.
+      retireWorld(myWorld);
       return;
     }
 
@@ -623,7 +539,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     const cz = camera.position.z;
     const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
 
-    depthNodes = nodes;
+    const publishes = worldIsCurrent(myWorld);
     // Last frame's set, for the transmittance hysteresis. Copied rather than swapped —
     // it holds about five ids, and a swap here would be cleverness bought with confusion.
     wasVisible.clear();
@@ -649,6 +565,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // looking through two doorways). The current rect is always visible.
       visible.add(start.id);
       const queue = [start.id];
+      // The rect you are standing in seeds the GATE WALK too, and it has to be pushed here
+      // rather than in the loop below, which skips anything already visible — and the line
+      // above just made this one visible. So when the camera stood in exactly one rect,
+      // which is most of the time, `depthSeeds` came out EMPTY and the walk never ran. An
+      // empty gate map reads as "nothing to say", which fails open to gate 0, so every gate
+      // rule in the game silently did nothing and looked like it was working.
+      depthSeeds.push(start.id);
       // EVERY rect the camera stands in, not just the best one. rectAt has to
       // answer "which room am I in" with a single id — the flood has to start
       // from it, the nav graph needs one answer. But a corridor's rect reaches
@@ -658,13 +581,14 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       // mouth of could go dark until one more step forward flipped rectAt over
       // to it — Josh, twice: *"it's very tight"*.
       for (const node of nodes.values()) {
+        if (Math.abs(node.cx - cx) > node.hw + EPS || Math.abs(node.cz - cz) > node.hd + EPS) continue;
+        // Seeded whether or not it is newly visible — standing on the overlap of a room and
+        // the corridor reaching into it, you are honestly in both, and both are gate 0.
+        if (node.id !== start.id) depthSeeds.push(node.id);
         if (visible.has(node.id)) continue;
-        if (Math.abs(node.cx - cx) <= node.hw + EPS && Math.abs(node.cz - cz) <= node.hd + EPS) {
-          visible.add(node.id);
-          trans.set(node.id, 1);   // you are standing in it
-          queue.push(node.id);
-          depthSeeds.push(node.id);
-        }
+        visible.add(node.id);
+        trans.set(node.id, 1);   // you are standing in it
+        queue.push(node.id);
       }
       while (queue.length) {
         const node = nodes.get(queue.pop()!)!;
@@ -718,17 +642,19 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // not read as further off than a straight one of the same length. Bounded, because
     // nothing asks about the far side of the floor and an unbounded relaxation on a cyclic
     // graph is a loop waiting to be written wrong.
-    for (const id of depthSeeds) portalDepth.set(id, 0);
-    const dq = [...depthSeeds];
-    while (dq.length) {
-      const id = dq.pop()!;
-      const here = portalDepth.get(id) ?? 0;
-      if (here >= MAX_GATES) continue;
-      for (const nb of nodes.get(id)?.neighbors ?? []) {
-        const step = veilAlphaBetween(id, nb.id) > 0 ? 1 : 0;
-        const d = here + step;
-        const prev = portalDepth.get(nb.id);
-        if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
+    {
+      for (const id of depthSeeds) portalDepth.set(id, 0);
+      const dq = [...depthSeeds];
+      while (dq.length) {
+        const id = dq.pop()!;
+        const here = portalDepth.get(id) ?? 0;
+        if (here >= MAX_GATES) continue;
+        for (const nb of nodes.get(id)?.neighbors ?? []) {
+          const step = veilAlphaBetween(id, nb.id) > 0 ? 1 : 0;
+          const d = here + step;
+          const prev = portalDepth.get(nb.id);
+          if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }
+        }
       }
     }
 
@@ -737,11 +663,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const other of spill.get(id) ?? []) visible.add(other);
     }
 
-    // The frame's answer is final here — publish it for the light pool. After the spill,
-    // because a rect drawn only because it shares floor with you is still a rect you can
-    // see, and its sconce should burn.
-    drawnSpaces.clear();
-    for (const id of visible) drawnSpaces.add(id);
+    // Hand the FRUSTUM-FREE half to the index. `visible` deliberately does not go with it:
+    // it is the draw list and it depends on where the camera points, which is right for
+    // stone and wrong for everything else — see the note on Located.gates.
+    if (publishes) publishFrame(myWorld, [...nodes.values()], portalDepth);
 
     for (const node of nodes.values()) {
       const vis = visible.has(node.id);

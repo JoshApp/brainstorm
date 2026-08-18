@@ -21,4 +21,23 @@ const gates = tuneNumber({
   hint: '0 = only your own space · 1 = one threshold deep · you break the next seal by entering',
 });
 
-export const signalKnobs = { gates };
+// ── AND HOW FAR LIGHT CARRIES, IN THE SAME UNIT ──────────────────────────────
+//
+// Josh: *"when a room is culled, lights are culled the same way — you leave a room, lights
+// are gone."* The first version of that read the culler's DRAWN set, which includes the
+// frustum, so a torch blinked whenever strafing pushed its room off the edge of the screen.
+// Gates are the frustum-free unit: a closed threshold costs one, an open one costs nothing,
+// and only WALKING changes it.
+//
+// At 1 the room you just left keeps burning until its veil closes behind you, which is the
+// version that reads as the dark taking the room back rather than as a light switch. At 0
+// only the space you are standing in is lit — much harder, worth trying once the veil
+// timings are settled.
+const lightGates = tuneNumber({
+  id: 'lightgates', group: 'Dark', label: 'light · gates',
+  min: 0, max: 4, step: 1, value: 1, apply: 'live',
+  hint: 'thresholds a light carries across · 0 = only your own space is lit',
+});
+
+export const signalKnobs = {
+  lightGates, gates };

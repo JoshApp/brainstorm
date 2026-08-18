@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
 import { DEV } from '../debug/dev';
-import { portalDepthOf, spaceIdAt, isSpaceDrawn } from '../level/room-culling';
+import { locate, spaceIndexState } from '../level/space-index';
+import { signalKnobs } from '../debug/tuning-signal';
 
 // THE LIGHT DIRECTOR — decides, each frame, which of the level's many logical
 // light sources actually LIGHT the frame, and how strongly. Selection
@@ -290,10 +291,6 @@ export function unregisterLight(id: string): void {
 /** Clear all NON-persistent sources. Called at the start of buildLevel. */
 export function clearLightPool(): void {
   visById.clear();
-  // Space ids are per FLOOR and light ids repeat across them ('torch-3' exists on every
-  // level), so a cached lookup that outlived its floor would price this floor's torches by
-  // the last one's layout.
-  gateSpace.clear();
   for (const [id, src] of sources) {
     if (!src.persistent) sources.delete(id);
   }
@@ -336,6 +333,8 @@ export type LOSChecker = (ax: number, az: number, bx: number, bz: number) => boo
 // sort so they yield under budget pressure, and every bind change
 // EASES (~120ms in, ~200ms out of blockage) instead of stepping.
 const visById = new Map<string, number>();
+/** Ids that got a slot this frame, across all categories. Reused, never reallocated. */
+const boundNow = new Set<string>();
 
 // Live tuning multipliers (settings sliders) for environment lights —
 // applied at slot-write time so they touch every torch/sconce/
@@ -370,7 +369,11 @@ const LOW_PRIORITY_PENALTY = 40;
 // Cached per source id — a sconce does not move, and this runs over every registered light
 // every frame. The lamp is exempt: it is the camera.
 const GATE_SORT_PENALTY = 90;
-const gateSpace = new Map<string, string | null>();
+
+// No cache here any more, and that is the point. This module held its own map of light id ->
+// space, which had to know about worlds, floors and id reuse to be correct, and was wrong in
+// three different ways before the question moved to level/space-index.ts. Now the pool asks
+// where a light is and gets an answer; the index owns the caching and the invalidation.
 
 // ── WHAT THE POOL ACTUALLY DID THIS FRAME ────────────────────────────────────
 //
@@ -380,8 +383,21 @@ const gateSpace = new Map<string, string | null>();
 // to cull. These counters sit where the decisions are, so the room cull can be shown to be
 // doing something rather than asserted to be. DEV-only; four integer writes per source.
 const tally = { sources: 0, outOfRange: 0, culledByRoom: 0, offScreen: 0, candidates: 0, bound: 0 };
+const culledIds: string[] = [];
 if (DEV && typeof window !== 'undefined') {
-  (window as unknown as { __lights?: unknown }).__lights = () => ({ ...tally });
+  (window as unknown as { __lights?: unknown }).__lights = () => ({
+    ...tally,
+    culledIds: [...culledIds],
+    // Per-source, so "this torch is culled while I look at it" can be answered from the
+    // index's own answer rather than by re-deriving the rule here and laundering a guess as
+    // a measurement.
+    sourceRows: [...sources.values()].filter((s) => s.category === 'environment').map((s) => ({
+      id: s.id,
+      at: `${s.position.x.toFixed(1)},${s.position.z.toFixed(1)}`,
+      ...locate(`light:${s.id}`, s.position.x, s.position.z),
+    })),
+    index: spaceIndexState(),
+  });
 }   // ambience fill yields to real sources
 let lastTickMs = 0;
 
@@ -415,6 +431,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   // hysteresis bonus for previously-bound sources).
   tally.sources = sources.size;
   tally.outOfRange = tally.culledByRoom = tally.offScreen = tally.candidates = tally.bound = 0;
+  if (DEV) culledIds.length = 0;
   for (const src of sources.values()) {
     const dx = src.position.x - cx;
     const dy = src.position.y - cy;
@@ -473,21 +490,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // every registered light every frame.
     let gates = 0;
     if (src.category !== 'lamp') {
-      let space = gateSpace.get(src.id);
-      if (space === undefined) {
-        space = spaceIdAt(src.position.x, src.position.z);
-        // Only remember an ANSWER: before the culler's first tick every lookup is null, and
-        // latching that would price every light on the floor as if it were in your own room
-        // for the rest of the run.
-        if (space !== null) gateSpace.set(src.id, space);
+      gates = locate(`light:${src.id}`, src.position.x, src.position.z).gates;
+      // Beyond the horizon the light is gone, not dimmed — that is the "you leave a room,
+      // lights are gone" rule. Within it, still RANKED by thresholds: a torch through an
+      // open doorway is a real candidate, just a worse one than the torch beside you.
+      if (gates > signalKnobs.lightGates()) {
+        tally.culledByRoom++;
+        if (DEV) culledIds.push(src.id);
+        continue;
       }
-      if (space) {
-        if (!isSpaceDrawn(space)) { tally.culledByRoom++; continue; }
-        // Still ranked by thresholds WITHIN what is drawn: you can see through an open
-        // doorway, so that room's torch is a real candidate — just a worse one than the
-        // torch beside you. See GATE_SORT_PENALTY.
-        gates = Math.min(3, portalDepthOf(space));
-      }
+      gates = Math.min(3, gates);
     }
     let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
       + gates * GATE_SORT_PENALTY
@@ -554,14 +566,28 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         slot.position.set(0, PARK_Y, 0);
       }
     }
-    // Sources that lost their slot restart from black on re-entry.
-    for (const [id, _] of visById) {
-      if (!sources.has(id)) visById.delete(id);
-    }
-    for (const sc of scratch) {
-      if (!bound.has(sc.src.id)) visById.delete(sc.src.id);
-    }
+    for (const id of bound) boundNow.add(id);
   }
+
+  // ── A LIGHT THAT LOST ITS SLOT MUST RESTART FROM BLACK ──────────────────────
+  //
+  // Josh: *"on long rooms it jumps into position when I approach."*
+  //
+  // Binding eases in from whatever `visById` last held for that source, and this pruning
+  // used to walk `scratch` — the CANDIDATE list. A source that fell out of candidacy
+  // entirely never appeared in it, so its entry survived at 1. Which is precisely the long-
+  // room case: the torch sits past the range cull, is not a candidate at all, keeps its old
+  // full-brightness entry, and the moment you walk close enough to make it one it binds at
+  // full strength in a single frame. Not a fade — a light switch, at a position that was
+  // dark the frame before.
+  //
+  // Pruned against what was actually BOUND, across every category, so any source that did
+  // not get a slot this frame — out of range, past the gate horizon, or just outranked —
+  // fades up from black when it comes back.
+  for (const id of visById.keys()) {
+    if (!boundNow.has(id)) visById.delete(id);
+  }
+  boundNow.clear();
 }
 
 function bySortKey(a: { sortKey: number }, b: { sortKey: number }): number {

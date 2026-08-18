@@ -40,6 +40,7 @@
 // a plane across it; and its alpha falls off at the rim, so it meets the jambs as shadow
 // instead of as an edge. A 3.6m gallery opening is the case that tests both.
 import * as THREE from 'three';
+import { DEV } from '../debug/dev';
 import { WALL_T } from '../level/poly-shell-plan';
 import { veilKnobs } from '../debug/tuning-veil';
 import { VEIL_ORDER, SIGNAL_ORDER } from './signal-layer';
@@ -237,6 +238,23 @@ export function tickThresholdVeils(playerPos: THREE.Vector3, dt: number): void {
  */
 export function veilAlphaBetween(a: string, b: string): number {
   return byPair.get(pairKey(a, b))?.alpha ?? 0;
+}
+
+// Which thresholds exist and how closed each one is. The gate rule is built entirely on
+// this map, and a pair it does not contain fails open — so a keying mismatch here reads as
+// "the whole floor is one open space" with nothing anywhere reporting an error.
+//
+// `warm` is the load-bearing field: it flips on a veil's first tick, so warm 0 means the
+// tick has never run. That is how I found that this system sits in the 'unpaused' phase and
+// therefore does not run in a POSED SCENARIO — every gate measurement I took in one was
+// against veils that had never opened or closed, which is to say against no veils at all.
+if (DEV && typeof window !== 'undefined') {
+  (window as unknown as { __veils?: unknown }).__veils = () => ({
+    veils: veils.length,
+    pairs: byPair.size,
+    warm: veils.filter((v) => v.warm).length,
+    rows: [...byPair.entries()].map(([k, v]) => ({ pair: k, alpha: +v.alpha.toFixed(3) })),
+  });
 }
 
 /** Drop every veil — called on level load, like the drafts. */

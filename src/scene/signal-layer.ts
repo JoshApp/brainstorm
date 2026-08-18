@@ -40,7 +40,7 @@
 // belongs in this layer is an authoring decision about what the dungeon is willing to tell
 // you through the dark, so it is declared at the producer.
 import * as THREE from 'three';
-import { portalDepthOf, spaceIdAt } from '../level/room-culling';
+import { locate, locateMoving } from '../level/space-index';
 import { signalKnobs } from '../debug/tuning-signal';
 import { DEV } from '../debug/dev';
 
@@ -119,22 +119,24 @@ type LOS = (ax: number, az: number, bx: number, bz: number,
 
 interface Marker {
   o: THREE.Object3D;
-  /** The space it stands in. Resolved once and kept — markers do not move. */
-  space: string | null;
-  resolved: boolean;
+  /** Identity for the space index, stable for this marker's life. Never compared across
+   *  floors — that is the index's business, not ours. */
+  key: string;
   /** Last frame's verdict, for the DEV probe. '' = shown. */
   why: string;
   gates: number;
 }
 
 const registry: Marker[] = [];
+/** Monotonic, so a marker's key is unique for the session. */
+let nextMarkerKey = 0;
 let lastEyeX = 0, lastEyeZ = 0;
 let lastLos: LOS | undefined;
 
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
 function track(o: THREE.Object3D): void {
   if (registry.some((m) => m.o === o)) return;
-  registry.push({ o, space: null, resolved: false, why: '', gates: 0 });
+  registry.push({ o, key: `signal:${nextMarkerKey++}`, why: '', gates: 0 });
 }
 
 /**
@@ -189,14 +191,10 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
   for (const m of registry) {
     if (!m.o.parent) continue;                    // torn down; the batch drops it anyway
     m.o.getWorldPosition(scratch);
-    if (!m.resolved) {
-      m.space = spaceIdAt(scratch.x, scratch.z);
-      // ONLY LATCH ON AN ANSWER. The culler publishes its node map on its first tick, and a
-      // marker built before that would resolve to null — then, latched, be treated as "in
-      // your own space" and never gate again. Retrying until it answers costs one lookup
-      // per marker for the first frame or two of a floor.
-      m.resolved = m.space !== null;
-    }
+    // Where it is, and how far from you in thresholds. No resolve-and-latch here any more:
+    // this module used to cache the marker's space itself and had to know about the culler's
+    // worlds to keep that honest, which it did not. level/space-index.ts owns it.
+    const where = locate(m.key, scratch.x, scratch.z);
 
     // ── HOW MANY GATES DEEP ──────────────────────────────────────────────────
     //
@@ -209,10 +207,10 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
     // prevent. GATES are the unit the player feels: the corridor is one, the room past it is
     // two, and stepping into the corridor is what breaks the next seal.
     //
-    // An unresolved marker counts as being in your own space, which fails toward visible.
-    const gates = m.space ? portalDepthOf(m.space) : 0;
-    m.gates = gates;
-    if (gates > maxGates) { m.why = 'gates'; m.o.visible = false; continue; }
+    // A marker the index cannot place counts as being in your own space, which fails toward
+    // visible — the rule that whole module is built on.
+    m.gates = where.gates;
+    if (where.gates > maxGates) { m.why = 'gates'; m.o.visible = false; continue; }
 
     // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
     // MOUNT_CLEARANCE.
@@ -235,9 +233,10 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
  */
 export function canSeeSignalAt(x: number, z: number): boolean {
   if (!lastLos) return true;
-  const space = spaceIdAt(x, z);
-  const gates = space ? portalDepthOf(space) : 0;
-  if (gates > signalKnobs.gates()) return false;
+  // An emitter is a MOVING question from the index's point of view — the caller is a torch
+  // this frame and a different torch the next — so it takes the uncached path rather than
+  // filling the binding table with entries nobody reads twice.
+  if (locateMoving(x, z).gates > signalKnobs.gates()) return false;
   return seeable(x, z);
 }
 
@@ -257,7 +256,7 @@ if (DEV && typeof window !== 'undefined') {
       return {
         name: m.o.name || m.o.type,
         at: `${scratch.x.toFixed(1)},${scratch.z.toFixed(1)}`,
-        space: m.space ?? '(none)',
+        key: m.key,
         gates: m.gates,
         hiddenBy: m.why || '—',
         visible: m.o.visible,
