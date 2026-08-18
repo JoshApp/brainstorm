@@ -41,5 +41,23 @@ const lightGates = tuneNumber({
   hint: 'closed thresholds a light carries across · 0 = only rooms whose doorway has opened',
 });
 
+// ── AND HOW FAR STONE CARRIES ────────────────────────────────────────────────
+//
+// Josh, reading the map: *"it shows me that we don't cull rooms based on gates at all right
+// now."* He was right. The drawn set came entirely from the flood — frustum, sightlines and
+// a continuous transmittance product — while gates were computed beside it and read only by
+// lights, signals and props. Two encodings of "how far through the dungeon can you see",
+// and rooms answered to the one that could not hear a closed door.
+//
+// At 0 a room past a shut threshold is not drawn at all. The veil in that doorway is 90%
+// opaque anyway, so what is being dropped is the tenth of it that was still coming through —
+// and the pop is masked by the same veil that caused it.
+const geoGates = tuneNumber({
+  id: 'geogates', group: 'Dark', label: 'stone · gates',
+  min: 0, max: 3, step: 1, value: 0, apply: 'live',
+  hint: 'shut thresholds that stone is still drawn through · 0 = only what you have opened',
+});
+
 export const signalKnobs = {
+  geoGates,
   lightGates, gates };

@@ -12,6 +12,7 @@ import { isSignal } from '../scene/signal-layer';
 import { type Poly } from './room-shape';
 import { rectAtIn, RECT_EPS } from './rect-at';
 import { propClassGateLimit } from '../ecs/build-model';
+import { signalKnobs } from '../debug/tuning-signal';
 import {
   AT_PLAYER, GATE_KINDS, acrossGate, bestOf, exhausted, improves,
   type GateDepths, type GateKindId,
@@ -883,6 +884,26 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
             dq.push(nb.id);
           }
         }
+      }
+    }
+
+    // ── AND STONE ANSWERS TO GATES TOO ────────────────────────────────────────
+    //
+    // The flood decides what can be SEEN — frustum, sightlines, fog. The gate walk decides
+    // how far through the architecture a channel carries. Until now stone read only the
+    // first and lights, signals and props only the second, so a room could be culled by one
+    // and lit by the other, and a gate kind that blocks geometry — a closed door — would
+    // have changed nothing about what draws.
+    //
+    // One language now: a space is drawn if the flood reached it AND its geometry depth is
+    // within the horizon. Force-visible rooms (an active arena) are exempt, because that is
+    // an encounter overriding visibility on purpose and not a question about sight.
+    {
+      const horizon = signalKnobs.geoGates();
+      for (const id of [...visible]) {
+        if (forceVisibleCounts.has(id)) continue;
+        const d = portalDepth.get(id);
+        if (!d || d.geometry > horizon) visible.delete(id);
       }
     }
 
