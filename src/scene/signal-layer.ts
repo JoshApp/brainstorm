@@ -134,6 +134,38 @@ function track(o: THREE.Object3D): void {
 }
 
 /**
+ * How far short of a marker the sight test stops.
+ *
+ * ── A SCONCE IS ON THE WALL, AND THE WALL IS THE OCCLUDER ────────────────────
+ *
+ * Josh: *"the embers are properly culled, but also when I am actually in the room with the
+ * flames."* Standing in front of a torch, gates is 0 and the fire is right there — and the
+ * sight test still said no, because a torch is a WALL SCONCE. Its position sits on the wall
+ * plane, so the segment from the eye to it crosses the very wall it is mounted on, and
+ * `includeObstacles` adds its own bracket on top. Every marker in the game is fixed to
+ * something, so this was never about torches.
+ *
+ * Stopping a hand's breadth short puts the endpoint in open air in front of the mount. A
+ * wall genuinely BETWEEN you and the fire is still crossed, and crossed long before the last
+ * 35cm, so nothing that should be hidden is let through.
+ *
+ * Clamped to half the distance so walking right up to a marker cannot push the endpoint
+ * behind the eye and invert the test.
+ */
+const MOUNT_CLEARANCE = 0.35;
+
+/** Can the eye reach this point, ignoring whatever the marker itself is bolted to? */
+function seeable(x: number, z: number): boolean {
+  if (!lastLos) return true;
+  const dx = x - lastEyeX, dz = z - lastEyeZ;
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-3) return true;
+  const back = Math.min(MOUNT_CLEARANCE, d * 0.5);
+  return lastLos(lastEyeX, lastEyeZ, x - (dx / d) * back, z - (dz / d) * back,
+                 { includeObstacles: true });
+}
+
+/**
  * Hide every signal marker the player cannot actually see.
  *
  * Runs before the sprite batch folds its instances, so a hidden placeholder is a hidden
@@ -177,10 +209,9 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
     const gates = m.space ? portalDepthOf(m.space) : 0;
     if (gates > maxGates) { m.o.visible = false; continue; }
 
-    // ...and it still has to be SEEN. `includeObstacles` because a pillar between you and a
-    // flame occludes it in the picture; the default (walls only) is tuned for a mob's
-    // perception cone, where a pillar should not break a chase.
-    m.o.visible = los(eyeX, eyeZ, scratch.x, scratch.z, { includeObstacles: true });
+    // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
+    // MOUNT_CLEARANCE.
+    m.o.visible = seeable(scratch.x, scratch.z);
   }
 }
 
@@ -200,7 +231,7 @@ export function canSeeSignalAt(x: number, z: number): boolean {
   const space = spaceIdAt(x, z);
   const gates = space ? portalDepthOf(space) : 0;
   if (gates > signalKnobs.gates()) return false;
-  return lastLos(lastEyeX, lastEyeZ, x, z, { includeObstacles: true });
+  return seeable(x, z);
 }
 
 /** Drop the registry — called on level load. */

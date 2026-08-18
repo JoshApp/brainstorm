@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-08-18",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Sparks keep to the fires you can actually see, and no longer double up over the ones that remain.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The fires carry exactly one threshold. What burns beyond the next seal stays its own business until you break it.",
         "area": [
@@ -395,14 +402,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "There is something packed between the stones now, and it is not the same stone.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The stone has grain under your hand now, and what is packed between the blocks is no longer the same rock in shadow.",
         "area": [
           "atmosphere",
           "level"
