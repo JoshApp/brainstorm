@@ -59,24 +59,30 @@ or caches anything.
                                 │  one flood per frame
                                 ▼
                  ┌──────────────────────────────┐
-                 │  SpaceVis per space          │
-                 │    gates          (frustum-free)
-                 │    transmittance  (frustum-free)
-                 │    inView         (culler only)
+                 │  per space, one record       │
+                 │    gates{geometry,light,signal}
+                 │    sight  (frustum+LOS+fog)  │
                  └──────────────┬───────────────┘
                                 │  membership: point → spaces[]
               ┌─────────────────┼─────────────────┐
               ▼                 ▼                 ▼
-        geometry policy    light policy     signal policy
-        (inView + trans)   (maxGates 0)     (maxGates 1)
+        stone policy       light policy     signal policy
+        (sight + gates≤0)  (gates≤0)        (gates≤1)
 ```
 
 A policy is data, in one readable line at the consumer:
 
 ```ts
-const LIGHT  = { maxGates: signalKnobs.lightGates() };
-const SIGNAL = { maxGates: signalKnobs.gates() };
+const LIGHT  = { channel: 'light',  maxGates: signalKnobs.lightGates() };
+const SIGNAL = { channel: 'signal', maxGates: signalKnobs.gates() };
 ```
+
+A consumer names its channel and its horizon and never learns what kind of gate stopped it.
+A gate kind says which channels may cross it while shut — at a COST of one gate, not for
+free. That distinction is the one to protect: a channel that crosses at a cost is one gate
+further away and the horizon decides if that is too far; a channel that cannot cross is at
+Infinity. A veil charges. A door blocks. Getting it backwards collapsed every space past a
+threshold to Infinity and pinned every tier at gate 0.
 
 `gates` is the discrete, player-legible unit — a threshold is shut or it is not, decided by
 whether its veil has given. It is the right axis for anything the player is meant to *learn*
@@ -106,12 +112,21 @@ Do not reintroduce it without a use gates genuinely cannot serve.
 
 ## Remaining
 
-1. **Ember emitters** still ask `canSeeSignalAt` rather than declaring a policy.
-5. **Enemies and interactables** are still resolved per frame by `rectAt` — the single-owner
+The first two are what stand between the machinery and the payoff.
+
+1. **Doors do not register as gates.** The `door` kind exists and passes nothing, which is
+   the row that removes a wing rather than merely pushing it further away — but nothing
+   produces one. Doors already track open/closed for combat sealing; they need to resolve
+   their two spaces the way framed openings do, and report state.
+2. **Props are mostly unclassified,** so the gate detail tier reads a limit of Infinity for
+   them and barely bites. Classifying them is what turns the tier from a mechanism into a
+   saving. Measured: visible meshes stayed at 155-157 across five poses with the tier live.
+3. **Ember emitters** still ask `canSeeSignalAt` rather than declaring a policy.
+4. **Enemies and interactables** are still resolved per frame by `rectAt` — the single-owner
    rule this document says not to use for placed things. They move, so they need the
    membership lookup live rather than cached, but it should be the *same* lookup.
-6. **Static batches** toggle per rect id. Fine for shells; check nothing placed rides on it.
-7. **The `'unpaused'` phase.** A posed scenario freezes the world, so the veil tick never
+5. **Static batches** toggle per rect id. Fine for shells; check nothing placed rides on it.
+6. **The `'unpaused'` phase.** A posed scenario freezes the world, so the veil tick never
    runs and every scenario measurement of gates is a lie. Either scenarios should tick the
    veils, or the freeze should be visible everywhere it matters — the map does it now, but
    the map is not the only thing that reads them.
