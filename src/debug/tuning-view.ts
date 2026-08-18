@@ -16,7 +16,7 @@
 // it was.
 import { getViewmodelRoots, onViewmodelRegistered } from '../style/render-frame';
 import { setCameraPitch, setCameraYaw } from '../controls/camera';
-import { tuneNumber, onKnobChange, getKnob } from './tuning';
+import { tuneNumber, onKnobChange, getKnob, markTransient } from './tuning';
 
 const SHOW_VM = 'showvm';
 const PITCH = 'pitch';
@@ -63,10 +63,30 @@ tuneNumber({
   apply: 'live', hint: 'turn on the spot; positive turns left',
 });
 
+// Pitch and yaw are verbs, not settings — see markTransient. A drag still moves the camera
+// and `?yaw=-0.7` still poses a shot, but neither is saved, so nothing steers the camera on
+// a later boot. Josh: *"my camera position in the loading screen changed, I am no longer
+// looking at the bonfire"* — a yaw dragged once, remembered forever, re-asserted on the
+// title vignette's own level entry.
+markTransient(PITCH);
+markTransient(YAW);
+
 onKnobChange((k) => {
   if (k.spec.id === SHOW_VM) apply();
-  if (k.spec.id === PITCH) setCameraPitch(k.get());
-  if (k.spec.id === YAW) setCameraYaw(k.get());
+  // ── ZERO MEANS "WHEREVER THE GAME PUT YOU" ─────────────────────────────────
+  //
+  // These used to assert unconditionally, which was harmless while the only caller was a
+  // slider drag — you cannot drag to a value you did not want. Then reapplyKnobs() started
+  // firing every hook once at boot so URL- and save-seeded values would actually reach
+  // their systems, and this hook stamped pitch 0 / yaw 0 over the title vignette's authored
+  // camera. Josh: *"my camera position in the loading screen changed, I am no longer
+  // looking at the bonfire."*
+  //
+  // Same rule reapplyViewKnobs() already documents and for the same reason: the scenario's
+  // authored pose is a real decision, and a knob sitting at its default has no opinion to
+  // override it with. A non-zero value is someone actually asking.
+  if (k.spec.id === PITCH && Math.abs(k.get()) > 1e-4) setCameraPitch(k.get());
+  if (k.spec.id === YAW && Math.abs(k.get()) > 1e-4) setCameraYaw(k.get());
 });
 
 function apply(): void {

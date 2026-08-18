@@ -4,6 +4,7 @@ import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
 import { setStaticBatchRectVisible, showAllStaticBatches } from '../scene/static-batch';
 import { CONFIG } from '../config';
+import { DEV } from '../debug/dev';
 import { sightFar } from '../scene/sight-distance';
 import { pointInPoly } from './room-shape';
 import { veilAlphaBetween } from '../scene/threshold-veil';
@@ -161,6 +162,34 @@ export interface CullAudit {
 // at and none of it moved. `level/space-index.ts` owns WHO MAY ANSWER and WHO IS ASKING: one
 // cache, one invalidation, one rule about worlds. Nothing outside this file reads a node map
 // or a space id any more; see the header there.
+
+// ── WHAT THE ACTIVE CULLER DECIDED, FOR THE MAP TO DRAW ─────────────────────
+//
+// DEV ONLY, AND NOT A VISIBILITY ANSWER. This is the drawn set — the thing that was just
+// taken away from every consumer because it depends on where the camera points. It is
+// published again here for exactly one reader, `debug/cull-map.ts`, whose entire job is to
+// SHOW you that dependence. If anything else ever imports this, the bug it causes will be
+// the one this session spent six hours on.
+export interface CullSnapshotSpace {
+  id: string;
+  cx: number; cz: number; hw: number; hd: number;
+  poly?: Poly;
+  drawn: boolean;
+  /** Thresholds from the player. Infinity when the walk never reached it. */
+  gates: number;
+  /** Fraction of light getting here across the portal graph, 0..1. */
+  trans: number;
+  /** True while the player's own position is inside this rect. */
+  standing: boolean;
+  /** The portal graph out of this space — the thing the flood and the gate walk both run
+   *  on. Drawing it is the difference between seeing WHAT was culled and seeing WHY: a
+   *  missing edge and a sealed one look identical from inside the game. */
+  openings: Array<{ to: string; x: number; z: number }>;
+}
+let cullSnapshot: CullSnapshotSpace[] | null = null;
+export function debugCullSnapshot(): CullSnapshotSpace[] | null {
+  return DEV ? cullSnapshot : null;
+}
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
   // Two cullers can be alive at once — the title vignette does not go away the instant a
@@ -667,6 +696,18 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     // it is the draw list and it depends on where the camera points, which is right for
     // stone and wrong for everything else — see the note on Located.gates.
     if (publishes) publishFrame(myWorld, [...nodes.values()], portalDepth);
+
+    if (DEV && publishes) {
+      const seeds = new Set(depthSeeds);
+      cullSnapshot = [...nodes.values()].map((n) => ({
+        id: n.id, cx: n.cx, cz: n.cz, hw: n.hw, hd: n.hd, poly: n.poly,
+        drawn: visible.has(n.id),
+        gates: portalDepth.get(n.id) ?? Infinity,
+        trans: trans.get(n.id) ?? 0,
+        standing: seeds.has(n.id),
+        openings: n.neighbors.map((nb) => ({ to: nb.id, x: nb.ox, z: nb.oz })),
+      }));
+    }
 
     for (const node of nodes.values()) {
       const vis = visible.has(node.id);

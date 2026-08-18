@@ -111,7 +111,10 @@ function presetApi(): PresetApi {
 }
 
 function persist(): void {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(mine)); } catch { /* private mode */ }
+  // Transient knobs never reach the saved set — see markTransient.
+  const keep: Record<string, number> = {};
+  for (const [k, v] of Object.entries(mine)) if (!transient.has(k)) keep[k] = v;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(keep)); } catch { /* private mode */ }
 }
 
 /** Seed from the URL, then the saved set, then the authored default. */
@@ -209,9 +212,44 @@ export function tuneNumber(spec: KnobSpec): () => number {
 let seeded = false;
 let reseedQueued = false;
 
+// ── SOME KNOBS ARE AN ACTION, NOT A VALUE ────────────────────────────────────
+//
+// The replay below pushes every knob's value into whatever listens, which is right for a
+// knob a system HOLDS — a fog distance, a shader uniform, a visibility flag. It is wrong for
+// a knob that DOES something when you move it. Camera pitch and yaw are the case: they are
+// an inspection override for framing a shot, and replaying one at boot points the camera
+// somewhere nobody asked for.
+//
+// It cost the title screen. A yaw left at 2.36 rad in a saved set — mine, from a rotation
+// sweep an hour earlier, since `__tune.set` persists — was replayed at boot and turned the
+// vignette camera away from its bonfire. Josh: *"my camera position in the loading screen
+// changed, I am no longer looking at the bonfire."* The knob had been sitting there
+// harmlessly for as long as nothing replayed it.
+//
+// Declared by the module that owns the knob, because that module is the only one that knows
+// whether its knob is a value or a verb.
+// A verb is also not something to REMEMBER. Persisting one is what makes it fire forever:
+// a yaw dragged once to frame a screenshot went into localStorage, and from then on every
+// level entry — including the title screen's own vignette, which is a level like any other —
+// turned the camera to it. Excluding it from the boot replay was not enough, because the
+// level-entry re-assert is a second path to the same place. So: not replayed, not saved, and
+// any value already in the saved set is dropped the moment the knob registers, so a stale
+// one cures itself on the next boot rather than needing a console.
+//
+// A URL param still works — `?yaw=-0.7` is someone deliberately posing a shot, for that page
+// load only — and a drag still works for the session. Neither is remembered.
+const transient = new Set<string>();
+export function markTransient(id: string): void {
+  transient.add(id);
+  if (mine[id] !== undefined) { delete mine[id]; persist(); }
+}
+
 export function reapplyKnobs(): void {
   seeded = true;
-  for (const k of knobs.values()) for (const h of changeHooks) h(k);
+  for (const k of knobs.values()) {
+    if (transient.has(k.spec.id)) continue;
+    for (const h of changeHooks) h(k);
+  }
 }
 
 /**

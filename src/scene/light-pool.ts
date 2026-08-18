@@ -383,6 +383,20 @@ const GATE_SORT_PENALTY = 90;
 // to cull. These counters sit where the decisions are, so the room cull can be shown to be
 // doing something rather than asserted to be. DEV-only; four integer writes per source.
 const tally = { sources: 0, outOfRange: 0, culledByRoom: 0, offScreen: 0, candidates: 0, bound: 0 };
+
+// ── EVERY SOURCE AND WHAT HAPPENED TO IT, FOR THE MAP ───────────────────────
+//
+// The tally counts; this names. A count tells you two lights were dropped for being past
+// the gate horizon, which is useless when the question is "why is THAT one dark".
+export interface LightMapRow {
+  id: string; x: number; z: number; category: string;
+  /** '' = bound. Otherwise the test that dropped it. */
+  why: '' | 'range' | 'gates' | 'offscreen' | 'outranked';
+  gates: number;
+}
+let lightRows: LightMapRow[] = [];
+const rowById = new Map<string, LightMapRow>();
+export function debugLightMap(): LightMapRow[] { return DEV ? lightRows : []; }
 const culledIds: string[] = [];
 if (DEV && typeof window !== 'undefined') {
   (window as unknown as { __lights?: unknown }).__lights = () => ({
@@ -430,6 +444,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   // Bucket sources by category + compute sort keys (dist² with
   // hysteresis bonus for previously-bound sources).
   tally.sources = sources.size;
+  if (DEV) { lightRows = []; rowById.clear(); }
   tally.outOfRange = tally.culledByRoom = tally.offScreen = tally.candidates = tally.bound = 0;
   if (DEV) culledIds.length = 0;
   for (const src of sources.values()) {
@@ -453,7 +468,11 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // extends the cull with it.
     const bound = src.distance * (src.category === 'environment' ? envRangeMul : 1);
     const reach = bound + 2;
-    if (dist2 > reach * reach) { tally.outOfRange++; continue; }
+    if (dist2 > reach * reach) {
+      tally.outOfRange++;
+      if (DEV) note(src, 'range', 0);
+      continue;
+    }
     // Frustum cull: if the light's reach sphere doesn't intersect
     // the camera frustum, nothing the camera renders can be lit by
     // it. Lamp is exempt — its world pos sits a few cm in front of
@@ -464,7 +483,11 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       // The BOUND range again — a sphere cut to the authored one would drop a light whose
       // reach still crosses the frustum, which is the same pop from a different angle.
       tmpSphere.radius = bound;
-      if (!tmpFrustum.intersectsSphere(tmpSphere)) { tally.offScreen++; continue; }
+      if (!tmpFrustum.intersectsSphere(tmpSphere)) {
+        tally.offScreen++;
+        if (DEV) note(src, 'offscreen', 0);
+        continue;
+      }
     }
     // LOS: a wall between source and camera DIMS the light instead of
     // killing it (see the soft-visibility note above). Lamp bypasses
@@ -496,7 +519,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       // open doorway is a real candidate, just a worse one than the torch beside you.
       if (gates > signalKnobs.lightGates()) {
         tally.culledByRoom++;
-        if (DEV) culledIds.push(src.id);
+        if (DEV) { culledIds.push(src.id); note(src, 'gates', gates); }
         continue;
       }
       gates = Math.min(3, gates);
@@ -506,6 +529,8 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
     tally.candidates++;
+    // A candidate that never gets a slot was OUTRANKED — corrected below when it binds.
+    if (DEV) note(src, 'outranked', gates);
     scratchByCategory[src.category].push({ src, sortKey, losBlocked });
   }
 
@@ -522,6 +547,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       const slot = slots[i];
       if (i < n) {
         tally.bound++;
+        if (DEV) { const r = rowById.get(scratch[i].src.id); if (r) r.why = ''; }
         const { src, losBlocked } = scratch[i];
         // POSITIONAL FLICKER — torches/candles dance: jitter the light ORIGIN with
         // smooth, per-source, non-repeating noise so the floor pool wavers and the
@@ -588,6 +614,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     if (!boundNow.has(id)) visById.delete(id);
   }
   boundNow.clear();
+}
+
+/** Record one source's outcome for the map. Last write wins, which is what we want: the
+ *  bind pass corrects 'outranked' to '' for the ones that got a slot. */
+function note(src: LightSource, why: LightMapRow['why'], gates: number): void {
+  const row: LightMapRow = {
+    id: src.id, x: src.position.x, z: src.position.z, category: src.category, why, gates,
+  };
+  lightRows.push(row);
+  rowById.set(src.id, row);
 }
 
 function bySortKey(a: { sortKey: number }, b: { sortKey: number }): number {

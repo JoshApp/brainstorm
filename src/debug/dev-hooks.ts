@@ -7,6 +7,7 @@ import { loadLevel } from '../level/loader';
 import { setSimTurbo } from '../engine/frame-loop';
 import { interpSync } from '../engine/render-interp';
 import { initNavOverlay, setNavOverlay } from './nav-overlay';
+import { initCullMap, setCullMap } from './cull-map';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
 import { setGoreDebugEnabled } from './gore-debug';
 import { bossEncounterDebug } from '../mobs/boss-encounter';
@@ -399,6 +400,15 @@ export function installDevHooks(deps: DevHookDeps): void {
     grantGold(500);
     openForgeSheetForDebug();
   };
+  // The cull map — the MAP chip on the instrumentation toolbar, window.__cullMap(),
+  // ?cullmap=1, or press M. Reads the camera for the player marker and the FOV wedge.
+  initCullMap(camera);
+  w.__cullMap = (on?: boolean) => setCullMap(on);
+  if (new URLSearchParams(location.search).get('cullmap') === '1') setCullMap(true);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') setCullMap();
+  });
+
   // Nav-grid debug overlay — window.__navDebug() / ?navdebug=1 / press N.
   initNavOverlay(scene, () => getLevel() as never);
   w.__navDebug = (on?: boolean) => setNavOverlay(on);

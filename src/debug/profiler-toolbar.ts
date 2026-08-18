@@ -17,6 +17,7 @@ import { runGpuAttribution } from './gpu-attribution';
 import { launchSpector } from './spector-launch';
 import { toggleTuningPanel } from './tuning-panel';
 import { DEV } from './dev';
+import { setCullMap, cullMapEnabled } from './cull-map';
 
 let root: HTMLDivElement | null = null;
 let hudBtn: HTMLButtonElement | null = null;
@@ -92,6 +93,18 @@ function mount(): void {
     const tuneBtn = makeBtn('TUNE');
     tuneBtn.addEventListener('click', () => toggleTuningPanel());
     root.append(tuneBtn);
+
+    // MAP — the top-down cull map (debug/cull-map.ts). Same reasoning as TUNE for why it is
+    // DEV-only: it reads the culler's internals, and one of the things it draws is a set
+    // that was deliberately taken away from every shipping consumer.
+    const mapBtn = makeBtn('MAP');
+    const paintMap = () => {
+      mapBtn.style.borderColor = cullMapEnabled()
+        ? 'rgba(255, 200, 90, 0.9)' : 'rgba(150, 180, 255, 0.4)';
+    };
+    mapBtn.addEventListener('click', (e) => { e.stopPropagation(); setCullMap(); paintMap(); });
+    root.append(mapBtn);
+    paintMap();
   }
   document.body.appendChild(root);
 

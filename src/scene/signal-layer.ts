@@ -240,6 +240,23 @@ export function canSeeSignalAt(x: number, z: number): boolean {
   return seeable(x, z);
 }
 
+/** Every signal marker, where it is and which test decided it — for debug/cull-map.ts.
+ *  A flame drawn in a room you cannot see is the exact bug the map exists to catch, and it
+ *  is invisible from inside the game precisely because it is somewhere you are not. */
+export interface SignalMapRow {
+  x: number; z: number; visible: boolean; why: string; gates: number;
+}
+export function debugSignalMap(): SignalMapRow[] {
+  if (!DEV) return [];
+  const out: SignalMapRow[] = [];
+  for (const m of registry) {
+    if (!m.o.parent) continue;
+    m.o.getWorldPosition(scratch);
+    out.push({ x: scratch.x, z: scratch.z, visible: m.o.visible, why: m.why, gates: m.gates });
+  }
+  return out;
+}
+
 /** Drop the registry — called on level load. */
 export function clearSignals(): void { registry.length = 0; }
 

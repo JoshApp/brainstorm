@@ -236,6 +236,23 @@ export function tickThresholdVeils(playerPos: THREE.Vector3, dt: number): void {
  * FAILS OPEN. An unknown pair returns 0, meaning wide open, so anything this does not know
  * about is drawn. A veil that is missing should cost frames, never geometry.
  */
+/** Every threshold, where it stands and how closed it is — for debug/cull-map.ts. The map
+ *  draws these as the segments they are, because "which doorway is still sealed" is the
+ *  question the gate counts are downstream of. */
+export interface VeilMapRow {
+  x: number; z: number; rotY: number; alpha: number; a: string; b: string;
+  /** False until the veil has ticked once. A map full of unwarmed veils means the tick is
+   *  not running, which is not a thing any other readout would show you. */
+  warm: boolean;
+}
+export function debugVeilMap(): VeilMapRow[] {
+  if (!DEV) return [];
+  return veils.map((v) => ({
+    x: v.x, z: v.z, rotY: v.mesh.rotation.y,
+    alpha: v.alpha, a: v.a, b: v.b, warm: v.warm,
+  }));
+}
+
 export function veilAlphaBetween(a: string, b: string): number {
   return byPair.get(pairKey(a, b))?.alpha ?? 0;
 }

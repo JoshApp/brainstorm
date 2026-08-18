@@ -29,6 +29,8 @@ import { tickSurfaceSeep } from '../style/surface-detail';
 import { flushSplats } from '../scene/splat-map';
 import { tickGoreWebGPU } from '../scene/gore-webgpu';
 import { darkKnobs } from '../debug/tuning-dark';
+import { tickCullMap } from '../debug/cull-map';
+import { DEV } from '../debug/dev';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
@@ -745,6 +747,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // unless enabled). Runs AFTER camera movement, BEFORE light-pool + render
     // so the frustum it tests is this frame's.
     { name: 'room-culling', phase: 'always', tick() { getRoomCuller()?.tick(camera); } },
+
+    // The cull map draws what the line above just decided, so it ticks straight after it and
+    // on the SAME phase — a debug view of the culler that runs on a phase the culler does
+    // not would show you a frame that never existed. Inert unless toggled on; DEV-stripped.
+    { name: 'cull-map', phase: 'always', tick() { if (DEV) tickCullMap(); } },
 
     // Explored-map nav cue — set each archway warm/cold by whether the branch
     // beyond it is fully explored + cleared. AFTER enemies + interactables (so
