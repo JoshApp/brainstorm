@@ -77,6 +77,7 @@ const C = {
   player: 'rgba(255, 240, 200, 0.95)',
   fov: 'rgba(255, 240, 200, 0.10)',
   veil: 'rgba(255, 120, 200, 0.95)',
+  veilOpen: 'rgba(120, 255, 170, 0.95)',
   portalOpen: 'rgba(80, 230, 200, 0.55)',
   portalShut: 'rgba(70, 110, 105, 0.35)',
   portalMouth: 'rgba(80, 240, 205, 0.95)',
@@ -530,22 +531,46 @@ export function tickCullMap(): void {
   }
 
   // ── VEILS ─────────────────────────────────────────────────────────────────
+  // ── VEILS: HOW SHUT, AND THE MOMENT ONE GIVES ─────────────────────────────
+  //
+  // Josh: *"can you indicate when a veil opens and how much, so I can see when it gives?"*
+  //
+  // Three things at once, because the interesting event is not the alpha drifting, it is the
+  // instant it crosses the line where the gate stops counting:
+  //
+  //   COLOUR  ramps pink (shut) → green (open), so easing is visible as it happens.
+  //   WEIGHT  thins as it lifts, so a doorway that has given reads as a thinner mark.
+  //   DASH    is the EVENT. Solid means this threshold still costs a gate; dashed means it
+  //           has crossed VEIL_SHUT_ALPHA and is free to walk through. That flip is the exact
+  //           frame the room beyond joins your light, and it is the thing worth watching.
+  //
+  // The number is the alpha in percent, drawn beside it when there is room for it.
+  const showVeilNums = f.s > 3.5;
   for (const v of veils) {
     const half = 0.9 * f.s;
     // The veil's local X runs along the wall; rotY is how it was placed.
     const dx = Math.cos(v.rotY) * half, dz = -Math.sin(v.rotY) * half;
     const x = px(f, v.x), z = pz(f, v.z);
+    const shut = v.alpha > 0.5;      // must match VEIL_SHUT_ALPHA in room-culling.ts
     g.beginPath();
     g.moveTo(x - dx, z - dz);
     g.lineTo(x + dx, z + dz);
-    // Alpha IS the message: a pale segment is an open threshold, which is a gate that costs
-    // nothing. An unwarmed veil has never ticked and is drawn red — it is not open, it is
-    // unasked.
-    g.strokeStyle = v.warm ? C.veil : C.bad;
-    g.globalAlpha = v.warm ? 0.25 + v.alpha * 0.75 : 1;
-    g.lineWidth = 2.5 * dpr;
+    // An unwarmed veil has never ticked. It is not open, it is UNASKED — red, because a
+    // whole floor of them means the world is paused and every gate on this map is stale.
+    if (!v.warm) {
+      g.strokeStyle = C.bad;
+      g.lineWidth = 2.5 * dpr;
+    } else {
+      g.strokeStyle = shut ? C.veil : C.veilOpen;
+      g.lineWidth = (1 + v.alpha * 2) * dpr;
+      g.setLineDash(shut ? [] : [2.5 * dpr, 2.5 * dpr]);
+    }
     g.stroke();
-    g.globalAlpha = 1;
+    g.setLineDash([]);
+    if (showVeilNums && v.warm) {
+      g.fillStyle = shut ? C.veil : C.veilOpen;
+      g.fillText(String(Math.round(v.alpha * 100)), x + 4 * dpr, z - 3 * dpr);
+    }
   }
 
   // ── LIGHTS ────────────────────────────────────────────────────────────────
@@ -664,7 +689,13 @@ export function tickCullMap(): void {
   row((x, y) => {
     g.strokeStyle = C.veil; g.lineWidth = 2.5 * dpr;
     g.beginPath(); g.moveTo(x - 4 * dpr, y); g.lineTo(x + 4 * dpr, y); g.stroke();
-  }, 'veil · shut=solid');
+  }, 'veil shut · costs a gate');
+  row((x, y) => {
+    g.strokeStyle = C.veilOpen; g.lineWidth = 1.2 * dpr;
+    g.setLineDash([2.5 * dpr, 2.5 * dpr]);
+    g.beginPath(); g.moveTo(x - 4 * dpr, y); g.lineTo(x + 4 * dpr, y); g.stroke();
+    g.setLineDash([]);
+  }, 'veil given · free');
   row((x, y) => {
     g.fillStyle = C.player;
     g.beginPath(); g.moveTo(x, y - 4 * dpr); g.lineTo(x + 3 * dpr, y + 3 * dpr);
@@ -699,7 +730,10 @@ export function tickCullMap(): void {
     `fog    ${sightNear().toFixed(1)} → ${sightFar().toFixed(1)} m`,
     `crush  ${dark.crushStart.toFixed(1)} → ${dark.crushEnd.toFixed(1)} m  floor ${dark.crushFloor.toFixed(2)}`,
     `lamp   ${darkKnobs.lampDistance().toFixed(1)} m`,
-    `veil   ${veils.length} · shut ${veils.filter((v) => v.alpha > 0.5).length}`,
+    `veil   ${veils.length} · shut ${veils.filter((v) => v.alpha > 0.5).length}`
+      // The MOST OPEN one, which is the one about to give — not the nearest, which is a
+      // different question and would need the player position to answer.
+      + ` · most open ${veils.length ? Math.round(Math.min(...veils.map((v) => v.alpha)) * 100) : 0}%`,
     `gates  light ≤${maxLightGates} · signal ≤${maxSignalGates}`,
   );
   for (let i = 0; i < lines.length; i++) {

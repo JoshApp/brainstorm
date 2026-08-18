@@ -270,7 +270,10 @@ if (DEV && typeof window !== 'undefined') {
     veils: veils.length,
     pairs: byPair.size,
     warm: veils.filter((v) => v.warm).length,
-    rows: [...byPair.entries()].map(([k, v]) => ({ pair: k, alpha: +v.alpha.toFixed(3) })),
+    // The SAME rows the map draws — this used to return a reduced shape of its own, so the
+    // console and the overlay were two views of two different things, which is the fault
+    // this whole session has been about.
+    rows: debugVeilMap().map((r) => ({ ...r, alpha: +r.alpha.toFixed(3) })),
   });
 }
 
