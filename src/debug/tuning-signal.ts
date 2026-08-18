@@ -29,14 +29,16 @@ const gates = tuneNumber({
 // Gates are the frustum-free unit: a closed threshold costs one, an open one costs nothing,
 // and only WALKING changes it.
 //
-// At 1 the room you just left keeps burning until its veil closes behind you, which is the
-// version that reads as the dark taking the room back rather than as a light switch. At 0
-// only the space you are standing in is lit — much harder, worth trying once the veil
-// timings are settled.
+// AT 0 BY DEFAULT, which is the rule as Josh stated it: *"you leave a room, lights are
+// gone."* A doorway that has visibly lifted costs nothing, so the room you are walking into
+// lights up as its veil opens, and the one behind you goes dark as its veil closes — the
+// darkness taking the room back rather than a light switch. Higher values let light carry
+// across thresholds that are still shut, which is the old behaviour and an A/B, not a
+// default.
 const lightGates = tuneNumber({
   id: 'lightgates', group: 'Dark', label: 'light · gates',
-  min: 0, max: 4, step: 1, value: 1, apply: 'live',
-  hint: 'thresholds a light carries across · 0 = only your own space is lit',
+  min: 0, max: 4, step: 1, value: 0, apply: 'live',
+  hint: 'closed thresholds a light carries across · 0 = only rooms whose doorway has opened',
 });
 
 export const signalKnobs = {

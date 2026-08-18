@@ -69,6 +69,50 @@ export interface SpaceNode extends RectLike {
  * What a caller actually wants to know. No ids, no world number, no nodes — those are this
  * module's business, and every time they leaked out a consumer grew a cache and a bug.
  */
+// ── CULLING IS COMPOSABLE: A CONSUMER DECLARES WHAT BINDS IT ─────────────────
+//
+// Josh: *"shouldn't we make it composable, so things can opt in to certain culling things?
+// Make this proper."*
+//
+// Three consumers, three different questions, and they were three hardcoded rules scattered
+// across three files: geometry took the flood, lights took the gate count, signals took the
+// gate count plus their own sightline. Nothing named the axes, so nobody could see that
+// lights had been handed the SIGNAL rule — which is how a torch two rooms away kept its slot
+// because an open veil costs zero gates.
+//
+// So: name the axes, and let each consumer state which ones bind it, in one line you can
+// read without opening the culler.
+//
+//   maxGates  — how many CLOSED thresholds may stand between you and it.
+//
+// A threshold is closed or it is not — the veil's own draw cutoff decides, so a veil that
+// has visibly lifted costs nothing to cross and any other costs one. At 0 a thing is bound
+// to the space you are standing in and the spaces whose doorways have already opened for
+// you, which is Josh's rule stated exactly: *"you leave a room, lights are gone."*
+//
+// I briefly added a second, continuous axis here — a minimum fraction of light surviving the
+// veils — and Josh threw it out: *"what the heck is reach, that is total nonsense. Why are
+// lights lighting that are in other rooms or can't be visible because we have the veil?"* He
+// was right. The rule he wanted already existed; what was broken was that the gate step
+// tested `veilAlpha > 0` on a value that eases and is therefore almost never exactly zero,
+// so every threshold read as permanently shut, so the horizon had to be loosened to 1 to be
+// usable, which let a whole chain of rooms stay lit. One epsilon, not one more concept.
+//
+// THE FRUSTUM IS DELIBERATELY NOT AN AXIS, and that absence is load-bearing. It belongs to
+// the draw list and nothing else: what to render depends on where you are looking, what can
+// light you does not. Offering it as an option is offering the bug — a light culled by the
+// view cone guttered every time Josh turned his head, and it took a day to find.
+export interface CullPolicy {
+  /** Most closed thresholds allowed. Infinity = this axis does not bind. */
+  readonly maxGates: number;
+}
+
+/** Does this thing survive its own rule? Fails OPEN on an unplaceable thing, like everything
+ *  else here — see the header. */
+export function passes(policy: CullPolicy, at: Located): boolean {
+  return at.gates <= policy.maxGates;
+}
+
 export interface Located {
   /**
    * Thresholds to the nearest space this thing touches. 0 = you are standing in it. Fails

@@ -108,6 +108,8 @@ const T_KEEP = T_INVISIBLE * 0.4;
 /** How far the gate walk bothers to count. Nothing asks about the far side of the floor,
  *  and a bound is what keeps a relaxation over a cyclic graph obviously terminating. */
 const MAX_GATES = 4;
+/** Below this a veil has visibly lifted — matches threshold-veil's own draw cutoff. */
+const VEIL_OPEN_EPS = 0.004;
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -177,7 +179,8 @@ export interface CullSnapshotSpace {
   drawn: boolean;
   /** Thresholds from the player. Infinity when the walk never reached it. */
   gates: number;
-  /** Fraction of light getting here across the portal graph, 0..1. */
+  /** Fraction of light getting here across the portal graph, 0..1. The DRAW rule's number,
+   *  frustum included — shown on the map, used for nothing else. */
   trans: number;
   /** True while the player's own position is inside this rect. */
   standing: boolean;
@@ -508,6 +511,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
    * open floor where the arithmetic is not ambiguous.
    */
   const THROUGH_STEP = 0;   // measured: stepping off the wall plane made it worse
+  /**
+   * Can this doorway be crossed from where the camera stands?
+   *
+   * The frustum is part of it, and that is why NOTHING outside this file may use the result:
+   * what to draw depends on where you are looking, and every other consumer's question does
+   * not. They ask the gate walk below instead.
+   */
   function canSeeThrough(nb: Neighbour, cx: number, cz: number, eyeY: number): boolean {
     const sx = nb.hx * 0.7, sz = nb.hz * 0.7;
     const wide = sx !== 0 || sz !== 0;
@@ -519,6 +529,45 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       if (frustum.intersectsSphere(sphere) && los(cx, cz, px, pz)) return true;
     }
     return false;
+  }
+
+  /**
+   * Spread transmittance across the portal graph from where the player stands.
+   *
+   * This is the DRAW rule and only the draw rule.
+   */
+  function flood(seeds: string[], cx: number, cz: number, eyeY: number,
+                 prev: ReadonlySet<string>, outSet: Set<string>, outTrans: Map<string, number>): void {
+    const queue: string[] = [];
+    for (const id of seeds) {
+      if (!nodes.has(id)) continue;
+      outSet.add(id);
+      outTrans.set(id, 1);
+      queue.push(id);
+    }
+    while (queue.length) {
+      const node = nodes.get(queue.pop()!)!;
+      const tHere = outTrans.get(node.id) ?? 1;
+      for (const nb of node.neighbors) {
+        if (outSet.has(nb.id)) continue;
+        // Past the fog wall? The doorway (hence everything through it) is fully fog-black —
+        // a cheap reject before the frustum and sightline tests.
+        const ddx = nb.ox - cx, ddz = nb.oz - cz;
+        if (ddx * ddx + ddz * ddz > cullDist2()) continue;
+        // ...and past the VEIL? See T_INVISIBLE. A closed threshold means what is behind it
+        // is below one output level, which is a stronger statement than "far away" and does
+        // not move when the fog does.
+        const t = tHere * (1 - veilAlphaBetween(node.id, nb.id));
+        if (t <= (prev.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
+        // Sampled at the CAMERA'S eye height, not a fixed world-1.2, so a sunken or raised
+        // room is tested at the height you are actually at.
+        if (canSeeThrough(nb, cx, cz, eyeY)) {
+          outSet.add(nb.id);
+          outTrans.set(nb.id, t);
+          queue.push(nb.id);
+        }
+      }
+    }
   }
 
   function showAll() {
@@ -614,39 +663,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         // Seeded whether or not it is newly visible — standing on the overlap of a room and
         // the corridor reaching into it, you are honestly in both, and both are gate 0.
         if (node.id !== start.id) depthSeeds.push(node.id);
-        if (visible.has(node.id)) continue;
-        visible.add(node.id);
-        trans.set(node.id, 1);   // you are standing in it
+        if (queue.includes(node.id)) continue;
         queue.push(node.id);
       }
-      while (queue.length) {
-        const node = nodes.get(queue.pop()!)!;
-        const tHere = trans.get(node.id) ?? 1;
-        for (const nb of node.neighbors) {
-          if (visible.has(nb.id)) continue;
-          // Past the fog wall? The doorway (hence everything through it) is
-          // fully fog-black — don't cross it. Cheap reject before the frustum
-          // and LOS tests. Measured from the camera in the floor plane, like
-          // the rest of the cull.
-          const ddx = nb.ox - cx, ddz = nb.oz - cz;
-          if (ddx * ddx + ddz * ddz > cullDist2()) continue;
-          // ...and past the VEIL? See T_INVISIBLE. A closed threshold means what is
-          // behind it is below one output level, which is a stronger statement than
-          // "far away" and does not move when the fog does.
-          const t = tHere * (1 - veilAlphaBetween(node.id, nb.id));
-          if (t <= (wasVisible.has(nb.id) ? T_KEEP : T_INVISIBLE)) continue;
-          // In the view cone (yaw frustum, with reveal margin) AND not occluded
-          // by a wall (line-of-sight). Sample the doorway at the CAMERA'S eye
-          // height, not a fixed world-1.2 — so a sunken/raised room (the stair-
-          // corridor Y-levels) is tested at the height you're actually at, not a
-          // plane that may sit above/below its real opening.
-          if (canSeeThrough(nb, cx, cz, camera.position.y)) {
-            visible.add(nb.id);
-            trans.set(nb.id, t);
-            queue.push(nb.id);
-          }
-        }
-      }
+      flood(queue, cx, cz, camera.position.y, wasVisible, visible, trans);
     } else {
       // Player not resolvable to any rect — fail safe (render everything).
       showAll();
@@ -679,7 +699,13 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         const here = portalDepth.get(id) ?? 0;
         if (here >= MAX_GATES) continue;
         for (const nb of nodes.get(id)?.neighbors ?? []) {
-          const step = veilAlphaBetween(id, nb.id) > 0 ? 1 : 0;
+          // OPEN OR SHUT, and the epsilon is the whole rule. A veil eases, so its alpha is
+        // almost never exactly zero — testing `> 0` made every threshold in the dungeon
+        // count as closed forever, which is why the gate horizon had to be loosened to 1 to
+        // be usable at all, which in turn let a whole chain of rooms stay lit. The veil's own
+        // "not worth drawing" cutoff is 0.004; a veil below it has visibly lifted and is a
+        // doorway you can see through, so it costs nothing to cross.
+        const step = veilAlphaBetween(id, nb.id) > VEIL_OPEN_EPS ? 1 : 0;
           const d = here + step;
           const prev = portalDepth.get(nb.id);
           if (prev === undefined || d < prev) { portalDepth.set(nb.id, d); dq.push(nb.id); }

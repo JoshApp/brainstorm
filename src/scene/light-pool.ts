@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
 import { DEV } from '../debug/dev';
-import { locate, spaceIndexState } from '../level/space-index';
+import { locate, passes, spaceIndexState } from '../level/space-index';
 import { signalKnobs } from '../debug/tuning-signal';
 
 // THE LIGHT DIRECTOR — decides, each frame, which of the level's many logical
@@ -517,16 +517,22 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // every registered light every frame.
     let gates = 0;
     if (src.category !== 'lamp') {
-      gates = locate(`light:${src.id}`, src.position.x, src.position.z).gates;
-      // Beyond the horizon the light is gone, not dimmed — that is the "you leave a room,
-      // lights are gone" rule. Within it, still RANKED by thresholds: a torch through an
-      // open doorway is a real candidate, just a worse one than the torch beside you.
-      if (gates > signalKnobs.lightGates()) {
+      // ── THIS LIGHT'S RULE, STATED IN ONE PLACE ───────────────────────────
+      //
+      // GATES, at horizon 0 by default: a light burns only in the space you are standing in
+      // and in the spaces whose doorway has already lifted for you. Josh: *"why are lights
+      // lighting that are in other rooms or can't be visible because we have the veil?"*
+      //
+      // The frustum is not here and cannot be — see CullPolicy. A light does not care where
+      // you are looking, and culling one by the view cone made torches gutter on every turn
+      // of the head.
+      const where = locate(`light:${src.id}`, src.position.x, src.position.z);
+      if (!passes({ maxGates: signalKnobs.lightGates() }, where)) {
         tally.culledByRoom++;
-        if (DEV) { culledIds.push(src.id); note(src, 'gates', gates); }
+        if (DEV) { culledIds.push(src.id); note(src, 'gates', where.gates); }
         continue;
       }
-      gates = Math.min(3, gates);
+      gates = Math.min(3, where.gates);
     }
     let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0)
       + gates * GATE_SORT_PENALTY

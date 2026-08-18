@@ -46,6 +46,7 @@
 import * as THREE from 'three';
 import { DEV } from './dev';
 import { debugCullSnapshot, type CullSnapshotSpace } from '../level/room-culling';
+import { passes } from '../level/space-index';
 import { debugLightMap, type LightMapRow } from '../scene/light-pool';
 import { debugVeilMap, type VeilMapRow } from '../scene/threshold-veil';
 import { debugSignalMap, type SignalMapRow } from '../scene/signal-layer';
@@ -399,22 +400,23 @@ export function tickCullMap(): void {
   // Computed before drawing so the header can count them, and so each layer can ring its
   // own offenders. These are the questions that have no answer from inside the game.
   const drawnById = new Map(spaces.map((s) => [s.id, s]));
-  const spaceAt = (x: number, z: number): CullSnapshotSpace | null => {
-    let best: CullSnapshotSpace | null = null;
-    for (const sp of spaces) {
-      if (Math.abs(sp.cx - x) > sp.hw + 0.6 || Math.abs(sp.cz - z) > sp.hd + 0.6) continue;
-      if (!best || sp.hw * sp.hd < best.hw * best.hd) best = sp;
-    }
-    return best;
-  };
   let anomalies = 0;
-  const lightBad = (l: LightMapRow) => {
-    if (l.why !== '') return false;
-    const sp = spaceAt(l.x, l.z);
-    // Bound, but standing in a space nobody is drawing: it is lighting nothing.
-    return !!sp && !sp.drawn;
-  };
-  const signalBad = (m: SignalMapRow) => m.visible && m.gates > maxSignalGates;
+  // ── AN ANOMALY IS A THING BREAKING ITS OWN RULE ───────────────────────────
+  //
+  // This used to flag any light bound in a space that was not being DRAWN, which was right
+  // while lights were culled by the draw list and became wrong the moment they stopped
+  // being: a room behind you is not drawn, and its torch legitimately lights the corridor
+  // you are standing in. A check against the wrong rule reports honest behaviour as a bug,
+  // which is worse than no check — it trains you to ignore the red.
+  //
+  // So each thing is checked against the policy that actually governs it. A light is
+  // anomalous when it holds a slot while failing the light policy; a signal when it is drawn
+  // while failing the signal policy. Both are self-consistency: the system contradicting
+  // itself, which is the only thing a map can honestly call a bug.
+  const lightPolicy = { maxGates: maxLightGates };
+  const lightBad = (l: LightMapRow) => l.why === '' && !passes(lightPolicy, { gates: l.gates });
+  const signalBad = (m: SignalMapRow) =>
+    m.visible && !passes({ maxGates: maxSignalGates }, { gates: m.gates });
   const spaceBad = (sp: CullSnapshotSpace) => sp.drawn && !Number.isFinite(sp.gates);
   for (const l of lights) if (lightBad(l)) anomalies++;
   for (const m of signals) if (signalBad(m)) anomalies++;
@@ -466,10 +468,11 @@ export function tickCullMap(): void {
     g.strokeStyle = spaceBad(sp) ? C.bad : sp.standing ? C.standing : sp.drawn ? C.spaceDrawnEdge : C.spaceDarkEdge;
     g.stroke();
 
-    // Gate count at the centre — the unit everything downstream is priced in.
+    // Closed thresholds from you — the one axis anything outside the culler is bound by, so
+    // a thing culled here can be read straight off the plan.
     g.fillStyle = sp.drawn ? C.text : C.dim;
-    const label = Number.isFinite(sp.gates) ? String(sp.gates) : '∞';
-    g.fillText(label, px(f, sp.cx) - 3 * dpr, pz(f, sp.cz) + 3 * dpr);
+    const label = Number.isFinite(sp.gates) ? `g${sp.gates}` : 'g∞';
+    g.fillText(label, px(f, sp.cx) - 5 * dpr, pz(f, sp.cz) + 3 * dpr);
   }
 
   // ── RINGS: the four systems that darken distance, concentric ──────────────

@@ -40,7 +40,7 @@
 // belongs in this layer is an authoring decision about what the dungeon is willing to tell
 // you through the dark, so it is declared at the producer.
 import * as THREE from 'three';
-import { locate, locateMoving } from '../level/space-index';
+import { locate, locateMoving, passes } from '../level/space-index';
 import { signalKnobs } from '../debug/tuning-signal';
 import { DEV } from '../debug/dev';
 
@@ -207,10 +207,14 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
     // prevent. GATES are the unit the player feels: the corridor is one, the room past it is
     // two, and stepping into the corridor is what breaks the next seal.
     //
-    // A marker the index cannot place counts as being in your own space, which fails toward
-    // visible — the rule that whole module is built on.
+    // ── A SIGNAL'S RULE ──────────────────────────────────────────────────────
+    //
+    // Same axis as a light, LOOSER horizon, and that difference is the whole design. A
+    // light is confined to the space you are in; a signal is allowed one sealed threshold
+    // further, so a fire in the next room reaches you as a promise while its room stays
+    // dark. Josh asked for exactly that: break the corridor's seal to see what is past it.
     m.gates = where.gates;
-    if (where.gates > maxGates) { m.why = 'gates'; m.o.visible = false; continue; }
+    if (!passes({ maxGates }, where)) { m.why = 'gates'; m.o.visible = false; continue; }
 
     // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
     // MOUNT_CLEARANCE.
@@ -236,7 +240,7 @@ export function canSeeSignalAt(x: number, z: number): boolean {
   // An emitter is a MOVING question from the index's point of view — the caller is a torch
   // this frame and a different torch the next — so it takes the uncached path rather than
   // filling the binding table with entries nobody reads twice.
-  if (locateMoving(x, z).gates > signalKnobs.gates()) return false;
+  if (!passes({ maxGates: signalKnobs.gates() }, locateMoving(x, z))) return false;
   return seeable(x, z);
 }
 
