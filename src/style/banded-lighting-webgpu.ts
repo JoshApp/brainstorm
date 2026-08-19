@@ -264,10 +264,27 @@ const uDarkAboveStart = tuneUniform({
   min: 0, max: 1, value: 0.55, step: 0.01,
   hint: 'below this fraction of the room height, nothing is touched',
 });
-const uDarkAboveFull = tuneUniform({
-  id: 'darkabovefull', group: 'Dark above', label: 'Full (frac of room H)',
-  min: 0, max: 1.5, value: 1.0, step: 0.01,
-  hint: 'by this fraction only the keep amount remains; 1.0 = the ceiling itself',
+// ── THE DARK IS A LAYER, NOT A GRADIENT ──────────────────────────────────────
+//
+// Josh: *"i think it really has to swallow light like act as a small barrier towards the ceiling
+// otherwhise if it starts too early in small rooms it feels awefully opressive dark."*
+//
+// That is the right model and the previous one was wrong in a way tuning could not reach. The
+// fade ran from its start all the way to the ceiling, so its DEPTH scaled with the room: a tall
+// hall absorbed light over four metres, which is atmosphere, and a low corridor absorbed it over
+// half a metre of the little headroom it had, which is a lid coming down on you. Same numbers,
+// opposite feelings, and no single fraction fixes that because the fraction is the thing causing
+// it.
+//
+// So absorption has its own thickness IN METRES, independent of the room. Light passes freely
+// below the layer, is eaten within it, and above it there is nothing — a membrane under the vault
+// rather than a slope down the walls. A small room gets a thin skin of dark under its ceiling and
+// keeps its headroom; a tall room gets the same thin skin and a great deal of black volume above
+// it, because the ceiling is simply further away.
+const uDarkAbsorbM = tuneUniform({
+  id: 'darkabsorb', group: 'Dark above', label: 'Absorb over (m)',
+  min: 0.05, max: 3, value: 0.55, step: 0.05,
+  hint: 'the thickness of the layer that eats the light; thin = a membrane, thick = a haze',
 });
 const uDarkAboveKeep = tuneUniform({
   id: 'darkabovekeep', group: 'Dark above', label: 'Keep at full',
@@ -276,9 +293,9 @@ const uDarkAboveKeep = tuneUniform({
 });
 
 const uDarkEdgeAmount = tuneUniform({
-  id: 'darkedge', group: 'Dark above', label: 'Edge irregularity',
-  min: 0, max: 0.35, value: 0.08, step: 0.01,
-  hint: 'how far the boundary wanders up and down; 0 = a dead level line',
+  id: 'darkedge', group: 'Dark above', label: 'Edge irregularity (m)',
+  min: 0, max: 1.2, value: 0.22, step: 0.02,
+  hint: 'how far the layer wanders up and down; 0 = a dead level line',
 });
 const uDarkEdgeScale = tuneUniform({
   id: 'darkedgescale', group: 'Dark above', label: 'Edge scale',
@@ -339,25 +356,25 @@ const uDarkAboveCap = tuneUniform({
 function darkAboveTerms(): { factor: any; t: any } {
   const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
   const span: any = roomY.y.sub(roomY.x);
-  const frac: any = (positionWorld as any).y.sub(roomY.x).div(span.max(0.001));
-  // ── A FRACTION, WITH A FLOOR IN METRES ────────────────────────────────────
-  //
-  // A pure fraction is what makes tall rooms read tall, and it is also what breaks short ones:
-  // Josh, tuning it — *"if i tune for higher rooms its good but doenst work on smaller ones."*
-  // At 0.55 a two-and-a-half metre corridor starts going dark at 1.4m, which is below eye level,
-  // so the space is crushed rather than made mysterious and the lower walls stop being readable.
-  //
-  // So the fraction is a MINIMUM height, not the only rule: whichever is higher wins between the
-  // fraction and a fixed clearance off the floor. Tall rooms are governed by the fraction (the
-  // clearance is far below it and does nothing); short rooms are governed by the clearance, keep
-  // their lower walls lit, and still lose their ceiling. One tuning then suits both, which is
-  // exactly what a single fraction could not do.
-  const minFrac: any = (uDarkAboveMinM as any).div(span.max(0.001));
-  const base: any = (uDarkAboveStart as any).max(minFrac);
-  // The boundary wanders. Only the START moves — the top of the fade stays pinned at the ceiling,
-  // so a wobbling edge can never leave a lit band above it.
-  const start: any = base.add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
-  const t: any = (smoothstep as any)(start, uDarkAboveFull as any, frac);
+  // METRES above this surface's own floor. The whole rule is expressed here rather than in
+  // fractions, because the two things being decided — how much headroom stays clear, and how
+  // thick the absorbing layer is — are both physical distances, and only one of them has any
+  // business scaling with the room.
+  const above: any = (positionWorld as any).y.sub(roomY.x);
+
+  // WHERE THE LAYER SITS. A fraction of the room height makes a tall room read tall; a fixed
+  // clearance keeps a low room's walls readable. Whichever is higher wins, so tall rooms are
+  // governed by the fraction and short ones by the clearance, and one tuning suits both.
+  const fracStart: any = (uDarkAboveStart as any).mul(span);
+  const startM: any = fracStart.max(uDarkAboveMinM as any)
+    .add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
+
+  // HOW THICK IT IS — a distance, not a proportion. Clamped to sit under the ceiling rather than
+  // through it, so a thick setting in a low room becomes a thin layer instead of reaching the
+  // floor and blacking the room out.
+  const endM: any = startM.add(uDarkAbsorbM as any).min(span);
+  const t: any = (smoothstep as any)(startM, endM.max(startM.add(0.01)), above);
+
   const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
   const inRoom: any = span.greaterThan(0.01);
   return {
