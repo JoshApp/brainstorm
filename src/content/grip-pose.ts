@@ -80,6 +80,29 @@ export const FIST: FistPose = {
  */
 export const THUMB_OPPOSE = deg(52);
 
+/**
+ * How much the four fingers CONVERGE as they close, 0..1.
+ *
+ * Josh, on the coordinated fist: *"the four fingers that arent the thumb are still spread like a
+ * claw instead of a gripped fist."*
+ *
+ * Curling alone cannot fix that. Every joint bends about the grip axis, which keeps each finger
+ * in its own plane across the hilt — so all four stay at exactly the spacing their knuckles have,
+ * and the knuckle line is the widest part of a hand. Fingers leaving a spread knuckle row and
+ * travelling in parallel is a rake, not a fist.
+ *
+ * A real hand ADDUCTS: the knuckles stay put and the fingers angle inward so the tips close side
+ * by side. This is that, as a fraction of the spread removed — 0 leaves the rake, 1 would stack
+ * every fingertip on one line.
+ *
+ * MODEST on purpose. The four knuckles span ~35mm on this hand and a finger is ~14mm wide, so
+ * they are already closer than side-by-side; the claw is the fingers' DIRECTIONS fanning, not
+ * their bases being far apart. At 0.55 the tips packed into an 18mm span — three fingers deep,
+ * which reads as a small clenched knot rather than a fist. A yaw about the palm normal, which is perpendicular to everything
+ * the curl touches, so it composes without disturbing the wrap.
+ */
+export const CONVERGE = 0.3;
+
 /** Bounds for the runtime curl scale. Below the first the hand is open, above the second it
  *  folds through itself; a grip that needs more than this is the wrong grip for the hand. */
 export const CURL_RANGE: [number, number] = [0.25, 1.60];

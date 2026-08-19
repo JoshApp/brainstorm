@@ -294,7 +294,13 @@ bone_mid = pivot('middle_1')
 B = ortho(bone_mid - bone_wrist, pivot('thumb_1') - bone_wrist)
 A = ortho(Vector(frame['fingers']), Vector(frame['across']))
 
-scale = frame['len'] / (bone_mid - bone_wrist).length
+# Josh: "can you reduce the hand size its too big." Matching wrist->knuckle to the authored hand
+# exactly still reads large, because the scan is broader through the palm and longer in the
+# fingers for that same length. Trimmed here rather than at runtime: scaling the hand group would
+# scale the WEAPON too, since the weapon takes its whole transform from palm_anchor.
+HAND_SCALE = 0.86
+
+scale = HAND_SCALE * frame['len'] / (bone_mid - bone_wrist).length
 M = ((A @ B.transposed()).to_4x4()
      @ Matrix.Scale(scale, 4)
      @ Matrix.Translation(-bone_wrist))

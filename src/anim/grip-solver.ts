@@ -34,7 +34,8 @@
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { ResolvedGrip } from '../content/grip';
-import { FIST, THUMB_OPPOSE, CURL_RANGE, type FistPose } from '../content/grip-pose';
+import { FIST, THUMB_OPPOSE, CURL_RANGE, CONVERGE, type FistPose }
+  from '../content/grip-pose';
 
 /** The JOINTS of each finger, knuckle first. The fingertip is an anchor, not a joint — it is the
  *  far end of the last bone, and the hollow is measured from it. */
@@ -69,6 +70,7 @@ const _p = new THREE.Vector3();
 const _r = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
+const _reach = new THREE.Vector3();
 let warned = false;
 
 /** Perpendicular offset of `p` from the line (c, a). `a` must be unit. */
@@ -199,15 +201,60 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     root.updateMatrixWorld(true);
   }
 
+  // ── ADDUCTION, MEASURED WHILE THE HAND IS STILL OPEN ──────────────────────
+  //
+  // Josh: *"the four fingers that arent the thumb are still spread like a claw instead of a
+  // gripped fist."* Curling cannot fix that on its own — every joint bends about the grip axis,
+  // which keeps each finger in its own plane, so all four stay at the spacing of the knuckle row
+  // and the knuckle row is the widest part of a hand.
+  //
+  // The yaw is worked out HERE, with the fingers extended, and applied BEFORE the curl. Doing it
+  // afterwards does almost nothing: measured, sensible-looking yaws of 16°/2°/-6°/-14° moved the
+  // fingertip span 39mm to 35mm, because a curled fingertip is tucked in toward the palm and a
+  // yaw about the palm normal can no longer carry it sideways. A hand adducts AS it closes.
+  const yawOf = new Map<keyof FistPose, number>();
+  {
+    const four = chains.filter((c) => c.finger !== 'thumb');
+    const axialOf = (o: THREE.Object3D): number =>
+      _p.setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv).sub(C).dot(A);
+    const knuckle = four.map((c) => axialOf(c.nodes[0]));
+    const mean = knuckle.reduce((a, b) => a + b, 0) / (knuckle.length || 1);
+    for (let i = 0; i < four.length; i++) {
+      const c = four[i];
+      const len = _p.setFromMatrixPosition(c.tip.matrixWorld)
+        .distanceTo(_reach.setFromMatrixPosition(c.nodes[0].matrixWorld));
+      if (len < 1e-6) continue;
+      const shift = -CONVERGE * (knuckle[i] - mean);
+      let yaw = Math.asin(THREE.MathUtils.clamp(shift / len, -1, 1));
+      // Resolve the sign by trying it: which way a yaw about the palm normal carries a finger
+      // depends on how that knuckle's frame sits, and every sign I have derived this session has
+      // been wrong at least once.
+      const axis = localAxis(c.nodes[0], worldN);
+      const before = axialOf(c.tip);
+      c.nodes[0].quaternion.setFromAxisAngle(axis, yaw);
+      c.nodes[0].updateMatrixWorld(true);
+      if (Math.abs(axialOf(c.tip) - (before + shift)) > Math.abs(shift)) yaw = -yaw;
+      c.nodes[0].quaternion.identity();
+      c.nodes[0].updateMatrixWorld(true);
+      yawOf.set(c.finger, yaw);
+    }
+    root.updateMatrixWorld(true);
+  }
+
   const pose = (curl: number): void => {
     for (const c of chains) {
       const angles = FIST[c.finger].joints;
       for (let i = 0; i < c.nodes.length; i++) {
         const joint = c.nodes[i];
         joint.quaternion.setFromAxisAngle(localAxis(joint, worldA), sign * angles[i] * curl);
-        if (i === 0 && c.finger === 'thumb') {
-          joint.quaternion.multiply(
-            _q.setFromAxisAngle(localAxis(joint, worldN), sign * THUMB_OPPOSE));
+        if (i === 0) {
+          // `multiply`, not `premultiply`: this composes as curl-after-yaw, so the finger swings
+          // together first and the curl then carries it round. Premultiplying would apply the
+          // yaw to an already-curled finger, which is the version that did nothing.
+          const yaw = c.finger === 'thumb'
+            ? sign * THUMB_OPPOSE
+            : yawOf.get(c.finger) ?? 0;
+          if (yaw) joint.quaternion.multiply(_q.setFromAxisAngle(localAxis(joint, worldN), yaw));
         }
         joint.updateMatrixWorld(true);
       }
