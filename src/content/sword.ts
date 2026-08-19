@@ -61,8 +61,10 @@ export const SWORD_RUSTED: ModelSpec = {
   // CHOKED UP against the cross-guard. Centred on the grip cylinder (the `along: 0.5` default)
   // the fist's top edge sits 47mm below the guard, leaving a long bare stretch of hilt above
   // the hand — which is what reads as the grip being "a bit too spread vertically". A sabre is
-  // held with the index knuckle up against the guard.
-  grip: { along: 0.85 },
+  // held with the index knuckle up against the guard — but not THROUGH it: at 0.85 the index
+  // rode over the cross-guard once the fist became a coordinated pose rather than a per-joint
+  // solve, because the whole hand sits differently now.
+  grip: { along: 0.72 },
   id: 'sword-rusted',
   materials: {
     // SHINE = WORTH (docs/VISUAL-LANGUAGE.md): a mundane blade EATS

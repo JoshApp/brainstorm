@@ -141,13 +141,8 @@ export function composeHeldWeapon(
     group.add(weapon.group);
     if (solve && import.meta.env.DEV) {
       // eslint-disable-next-line no-console
-      // Joined into the message rather than logged as an object: a console object preview
-      // truncates its properties, and a contact report that silently drops half the fingers is
-      // exactly the kind of "measurement" that launders a guess.
-      const rows = Object.entries(solve.errors).map(([k, v]) => `${k}=${v}`).join(' ');
-      console.log(`[grip] ${resolved.style} r=${solve.radius.toFixed(3)} `
-        + `off=${resolved.offset.map((v) => v.toFixed(3)).join(',')} thumb=${resolved.thumb} `
-        + `worst=${solve.worst}mm · ${rows}`);
+      console.log(`[grip] ${resolved.style} `
+        + `off=${resolved.offset.map((v) => v.toFixed(3)).join(',')} thumb=${resolved.thumb}`);
     }
   }
   return { group, hand, weapon, grip: resolved };
