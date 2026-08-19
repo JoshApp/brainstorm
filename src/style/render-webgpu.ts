@@ -21,6 +21,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { isWarmIgnored } from '../scene/warm-visibility';
 import { setBundleMainCamera } from '../scene/bundle-pass-order';
 import { getActiveGrade, setActiveGrade, setGradeOverrides, gradeNames, activeGradeName } from './grade-presets';
 
@@ -128,6 +129,34 @@ let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.4;   // scene-render scale (the adaptive scaler nudges this via setWebGPUResolutionScale)
 let tsInFlight = false;   // throttle the async GPU-timestamp resolve
+// How often the GPU timestamp readback may run. See the long note at its call
+// site: each resolve is an extra command submit + mapAsync round-trip, and its
+// only consumer is the adaptive-resolution scaler.
+const TS_RESOLVE_INTERVAL_MS = 250;
+let lastTsResolveAt = 0;
+
+// ...AND WHETHER TO PAY FOR IT AT ALL.
+//
+// `trackTimestamp` is decided once, at renderer construction, from
+// `!isDesktopLike()` (create-renderer.ts). It never asks whether anything
+// actually READS a GPU time. Its only real consumer is the adaptive-resolution
+// scaler, which is a SETTING — so a player with adaptive resolution switched
+// off was still paying, every frame, on the one platform where the flag is
+// enabled and the CPU is the bottleneck. Reported by Josh, who had it off on
+// mobile for months.
+//
+// So it is demand-driven now: video-settings pushes what the current settings
+// actually need. When nothing does, we stop resolving AND clear the backend
+// flag so the queries are never written (WebGPUBackend.initTimestampQuery
+// checks it per pass, so this works at runtime). The existing submit-to-
+// completion wall-clock fallback below then supplies the coarse signal for
+// free, which is all an idle scaler would do with it anyway.
+let gpuTimingWanted = true;   // until the first applyVideoSettings says otherwise
+/** Whether the adapter ever had the timestamp feature, latched before we touch
+ *  the flag. null = not yet observed. */
+let timestampCapable: boolean | null = null;
+/** Tell the renderer whether any consumer needs real GPU frame times. */
+export function setWebGPUGpuTimingWanted(on: boolean): void { gpuTimingWanted = on; }
 // Latest resolved GPU frame ms (native timestamp). The adaptive-resolution scaler
 // (scene/adaptive-resolution.ts) reads this on WebGPU because its usual frame-time
 // signal is BLIND here: MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync
@@ -1087,8 +1116,47 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
     // ADAPTIVE-RES SIGNAL: stash the REAL GPU frame ms from native timestamps.
     // Wall-clock at submit would read CPU encode time, not the GPU cost — only
     // the timestamp is the true bottleneck signal. The shared adaptive scaler
-    // reads it via lastWebGPUGpuMs(). Self-throttled.
-    if (!tsInFlight) {
+    // reads it via lastWebGPUGpuMs().
+    //
+    // THROTTLED, BECAUSE IT IS NOT FREE AND IT RAN EVERY FRAME. Three's
+    // resolveTimestampsAsync builds a command encoder, resolves the query set,
+    // copies it to a readback buffer, SUBMITS THAT AS ITS OWN COMMAND BUFFER,
+    // and awaits a mapAsync round-trip — a whole extra submit + GPU readback,
+    // per frame, to service a number nothing reads at frame rate.
+    //
+    // Measured on a real floor: the resolve and the allocations it makes were
+    // ~17% of all busy main-thread time, and 40% of allocation churn. That is
+    // instrumentation overhead, and it lands hardest exactly where it hurts —
+    // trackTimestamp is enabled for phones (create-renderer.ts gates it on
+    // !isDesktopLike), which is the CPU-bound platform.
+    //
+    // The consumer is the adaptive-resolution scaler, which nudges a render
+    // scale; four readings a second is far more than it can act on. The pool
+    // holds 2048 queries and a frame spends ~4-6, so a quarter-second gap is
+    // nowhere near the "Maximum number of queries exceeded" ceiling that
+    // draining exists to avoid.
+    // Keep the backend flag in step with demand, so an unwanted timer costs
+    // nothing per PASS either, not just nothing per resolve.
+    //
+    // BOTH WAYS, AND ONLY IF THE DEVICE CAN. The first cut of this only ever
+    // cleared the flag, which meant turning PROFILER TOOLS on could not bring
+    // GPU timing back: the HUD read "n/a gpu", the per-pass breakdown vanished,
+    // and a recording carried gpuSupported:false on a phone that supports
+    // timestamps perfectly well. Reported from the phone the same day.
+    //
+    // Capability has to be remembered too. Three resolves trackTimestamp once
+    // at init against hasFeature('timestamp-query'), so clobbering it destroys
+    // the only record of whether the adapter ever had the feature — restore it
+    // blindly and an unsupported device gets asked for timers forever. Latch
+    // what we saw BEFORE the first flip, and never promise more than that.
+    if (backend?.isWebGPUBackend) {
+      if (timestampCapable === null) timestampCapable = backend.trackTimestamp === true;
+      const want = gpuTimingWanted && timestampCapable;
+      if (backend.trackTimestamp !== want) backend.trackTimestamp = want;
+    }
+    const nowMs = performance.now();
+    if (gpuTimingWanted && !tsInFlight && nowMs - lastTsResolveAt >= TS_RESOLVE_INTERVAL_MS) {
+      lastTsResolveAt = nowMs;
       tsInFlight = true;
       const r = renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> };
       r.resolveTimestampsAsync?.('render')
@@ -1382,6 +1450,12 @@ export async function warmSceneCompile(
     // found") and can reject, aborting the rest of the warm (leaving later objects, e.g. enemies,
     // un-warmed). Don't expose it; leave its culling as-is.
     if (isLeafMesh && !m.geometry?.attributes?.position) return;
+    // Pools park their idle slots in the scene and use `visible` as SYSTEM
+    // STATE (scene/warm-visibility.ts). Forcing one on for the compile and
+    // restoring it later strands it — an idle projectile slot left visible is
+    // a full-size unlit sphere at the world origin. Their materials are warmed
+    // by the pool's own spawn hook instead, through the real code path.
+    if (isWarmIgnored(o)) return;
     if (o.visible === false) { o.visible = true; forcedVis.push(o); }
     if (isLeafMesh && m.frustumCulled === true) { m.frustumCulled = false; forcedFrustum.push(m); }
   });

@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform, materialColor } from 'three/tsl';
+import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform, materialColor, frameGroup } from 'three/tsl';
 
 // Live control of the baked surface AO (the wall/floor vertex colours, which
 // carry the corner/base darkening from geometry-prims.ts). The wall/floor AO is
@@ -8,7 +8,10 @@ import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix,
 // slider so it can be tuned live:
 //   0   = off, 1 = as baked, >1 = amplified contrast (art-direction).
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-const uAOStrengthNode = (tslUniform as any)(1.0);
+// frameGroup — a global strength read by many materials. In the default
+// objectGroup, changing the AO slider would re-upload every object that reads
+// it; shared, it is one buffer. (See style/surface-detail.ts.)
+const uAOStrengthNode = (tslUniform as any)(1.0).setGroup(frameGroup);
 
 export function setSurfaceAOStrength(v: number): void {
   uAOStrengthNode.value = v;

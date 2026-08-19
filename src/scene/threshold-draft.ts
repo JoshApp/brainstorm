@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { createBatchedSprite, isSpriteBatchingEnabled, type BatchedSprite } from './sprite-batch';
-import { type ArchwayEye } from './archway-eye';
-import { isDrawn } from './animation-gate';
+import { disposeEyePool, type ArchwayEye } from './archway-eye';
 
 // Threshold draft — the diegetic "a way through here" cue at an open archway,
 // replacing the old floor ember (which read as a placed object). Two parts:
@@ -270,13 +269,11 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
   // TARGET blooms by proximity (the gaze kindles as you near it, not across the
   // whole floor); the eye owns the easing + flicker + blink + player-tracking.
   for (const lure of lures) {
-    // OFF-SCREEN EYES DO NOT ANIMATE (scene/animation-gate.ts). Each eye runs an
-    // ease, a flicker, a blink and a quaternion gaze-solve; a floor carries ~14
-    // of them and most are in rooms the culler has hidden. Nothing below is
-    // simulation — it is all presentation the player cannot see — so skipping it
-    // is free. It resumes on the first frame the eye is drawn again; `lit` eases
-    // from wherever it was, which is invisible because it was not on screen.
-    if (!isDrawn(lure.eye.group)) continue;
+    // The off-screen gate MOVED INTO the eye (archway-eye.ts). It owns a slot in
+    // the shared stone batch, so being culled is not just "skip the animation"
+    // any more — it has to fold its instances away too, exactly once. Only the
+    // thing holding the slot can do that, so it early-outs internally and this
+    // loop calls it unconditionally.
     const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
     // OPEN FIRST, BLOOM SECOND. The kindle used to be a pure proximity ramp
     // (8m → 2m), which meant a qualifying eye was SHUT until you were almost
@@ -345,6 +342,8 @@ export function clearThresholdDrafts(): void {
     }
   }
   for (const lure of lures) lure.eye.dispose();
+  // The eyes share one batch of stone per floor; it goes with them.
+  disposeEyePool();
   drafts.length = 0;
   lures.length = 0;
 }

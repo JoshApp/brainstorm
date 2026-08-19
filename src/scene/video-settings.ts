@@ -2,9 +2,9 @@ import { CONFIG } from '../config';
 import { getSettings, type Settings } from '../settings/settings';
 import { isDesktopLike } from '../controls/platform';
 import { setPS1Scale, setBloomEnabled } from '../style/render-frame';
-import { setWebGPULeanBloom } from '../style/render-webgpu';
+import { setWebGPULeanBloom, setWebGPUGpuTimingWanted } from '../style/render-webgpu';
 import { setAdaptiveCeiling, setAdaptiveResolution } from './adaptive-resolution';
-import type { DelveRenderer } from './create-renderer';
+import { profilerToolsWanted, type DelveRenderer } from './create-renderer';
 
 // Video settings application — render scale (the adaptive ceiling + fixed value
 // when adaptive is off), adaptive resolution (phones only), bloom, and the DPR
@@ -34,6 +34,12 @@ export function applyVideoSettings(s: Settings = getSettings()): void {
   if (!adaptiveOn) setPS1Scale(s.renderScale);
   setBloomEnabled(s.bloom);
   setWebGPULeanBloom(s.leanBloom);   // WebGPU-only; no-op on WebGL
+  // Only pay for GPU timestamps when something reads them. The adaptive scaler
+  // is the one real consumer, and it is a setting the player can switch off —
+  // which used to change nothing, because the flag that enables the timer is
+  // decided at renderer construction from the platform alone. See
+  // setWebGPUGpuTimingWanted.
+  setWebGPUGpuTimingWanted(adaptiveOn || profilerToolsWanted());
   scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
 }
 

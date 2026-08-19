@@ -1,7 +1,7 @@
 import { Vector2, Vector3, Vector4, Lighting, LightsNode, NodeUpdateType } from 'three/webgpu';
 import {
   nodeProxy, int, uniform, uniformArray, positionView,
-  Fn, If, screenCoordinate, directPointLight,
+  Fn, If, screenCoordinate, directPointLight, frameGroup,
 } from 'three/tsl';
 
 // Tiled (Forward+-lite) lighting for DELVE's custom PSX RenderPipeline —
@@ -75,22 +75,27 @@ class DelveTiledLightsNode extends (LightsNode as any) {
     super();
     this.tiledLights = [];
     this.materialLights = [];
-    this._lightsCount = (uniform as any)(0, 'int');
-    this._tilesX = (uniform as any)(1, 'int');
-    this._tileSizeU = (uniform as any)(BASE_TILE_SIZE);
+    // frameGroup, not the default objectGroup: these describe the FRAME's
+    // lighting, identically for every object that reads them. Left in the
+    // object group they are packed into each render object's own uniform
+    // buffer, so one light going active re-uploads every lit object in the
+    // scene (see style/surface-detail.ts for the measurement that found this).
+    this._lightsCount = (uniform as any)(0, 'int').setGroup(frameGroup);
+    this._tilesX = (uniform as any)(1, 'int').setGroup(frameGroup);
+    this._tileSizeU = (uniform as any)(BASE_TILE_SIZE).setGroup(frameGroup);
     this.updateBeforeType = (NodeUpdateType as any).RENDER;
 
     // Light data in VIEW space (xyz + range / premultiplied rgb + decay) —
     // lean-lights' proven structure.
     this._pos = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
     this._col = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
-    this._posArr = (uniformArray as any)(this._pos, 'vec4');
-    this._colArr = (uniformArray as any)(this._col, 'vec4');
+    this._posArr = (uniformArray as any)(this._pos, 'vec4').setGroup(frameGroup);
+    this._colArr = (uniformArray as any)(this._col, 'vec4').setGroup(frameGroup);
 
     // Tile slots as float vec4 pairs (indices ≤64 are exact in f32). 0 = empty,
     // else lightIndex+1 — same sentinel scheme as Three's tiled node.
     this._tiles = Array.from({ length: MAX_TILES * 2 }, () => new Vector4());
-    this._tilesArr = (uniformArray as any)(this._tiles, 'vec4');
+    this._tilesArr = (uniformArray as any)(this._tiles, 'vec4').setGroup(frameGroup);   // per-object by default; see scene/gore-webgpu.ts
   }
 
   // Routing — identical policy to lean-lights: lamp (noTile) + shadow casters

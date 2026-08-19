@@ -14,6 +14,18 @@ export type DelveRenderer = WebGPURenderer;
 
 let activeBackend: 'webgpu' | 'webgl2' | 'unknown' = 'unknown';
 
+/** Is the profiler suite wanted — by the SETTING or by a session URL flag?
+ *
+ *  One definition, because two disagreeing ones is how GPU timing broke: the
+ *  renderer enabled timestamps for `?profiler=1`, while the demand gate that
+ *  decides whether to USE them only looked at the setting, so a profiler
+ *  session got its timers switched off underneath it. */
+export function profilerToolsWanted(): boolean {
+  return getSettings().profilerTools
+    || ['profiler', 'profile', 'record', 'marks', 'stream']
+      .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
+}
+
 /** The backend the renderer actually came up on — 'unknown' before boot
  *  finishes. Set once, in createRenderer. */
 export function activeGraphicsBackend(): 'webgpu' | 'webgl2' | 'unknown' { return activeBackend; }
@@ -59,9 +71,7 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // (adaptive resolution's GPU-load signal), or the shipped profiler suite
   // (constructor-time flag, so flipping PROFILER TOOLS on needs a reload —
   // the suite's session URL flags always relaunch anyway).
-  const profilerWanted = getSettings().profilerTools ||
-    ['profiler', 'profile', 'record', 'marks', 'stream']
-      .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
+  const profilerWanted = profilerToolsWanted();
   // ?timestamps=0 — A/B the timestamp-query tax (2026-07-05): on mobile,
   // trackTimestamp is on to feed adaptive resolution's GPU-load signal, but
   // with adaptive res OFF the per-pass-per-frame query sets + resolve-buffer

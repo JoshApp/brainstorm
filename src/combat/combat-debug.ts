@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tagOrigin } from '../scene/provenance';
 import { disposeGpu } from '../scene/gpu-dispose';
 import { getSettings } from '../settings/settings';
 import { CONFIG } from '../config';
@@ -86,6 +87,10 @@ function makeCapsulePool(color: number): CapsulePool {
     m.frustumCulled = false;
     m.renderOrder = 9000;
     m.visible = false;
+    // DEV-only, but it still has to say what it is: sixteen of these showed up
+    // as anonymous `40d0ff·0v` / `ff3040·0v` rows and made every DEV audit read
+    // dirtier than the shipped scene actually is (see scene/provenance.ts).
+    tagOrigin(m, 'fx', { detail: 'hitbox-debug' });
     meshes.push(m);
   }
   return {

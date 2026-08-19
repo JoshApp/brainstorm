@@ -23,7 +23,7 @@
 // carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, getCompiledProgramKeys, type FrameSample } from './frame-timing';
-import { getCameraYaw, getCameraPitch } from '../controls/camera';
+import { getCameraYaw, getCameraPitch, getCameraGroundPos, getCameraPoseSerial } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-frame';
 import type { SceneAudit } from './scene-audit';
 import { censusForRecording, type PipelineCensus } from './pipeline-census';
@@ -35,6 +35,7 @@ let sceneAuditProvider: (() => SceneAudit) | null = null;
 export function setSceneAuditProvider(fn: () => SceneAudit): void { sceneAuditProvider = fn; }
 import { getSettings } from '../settings/settings';
 import { armCensus, tickCensus, takeCensus, resetCensus, CENSUS_PERIOD_MS, type CensusResult } from './upload-census';
+import { armMatrixCensus, tickMatrixCensus, takeMatrixCensus, resetMatrixCensus, type MatrixCensusResult } from './matrix-census';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -63,11 +64,25 @@ interface RecFrame {
   ub: number;
   ubKB: number;
   sys: number[];        // per-system ms, aligned to sysNames
-  /** Camera orientation this frame: [yaw, pitch] in radians. Lets a recording
+  /** Camera this frame: [yaw, pitch, x, z]. Orientation lets a recording
    *  correlate a GPU/fill spike with WHERE the player was looking — pitch-down
    *  fills the screen with the near floor (peak per-pixel lighting), which a
-   *  raw frame-time trace can't explain on its own. */
-  cam: [number, number];
+   *  raw frame-time trace can't explain on its own.
+   *
+   *  POSITION is here because its absence cost a wrong conclusion. Analysing a
+   *  phone capture, "the camera was still" was read off yaw+pitch alone and used
+   *  to argue that ~400 uniform uploads a frame were unconditional — when the
+   *  player may simply have been walking in a straight line. Standing still and
+   *  moving are the first two states any per-frame cost has to be split by, and
+   *  the recording could not tell them apart. The two extra numbers are
+   *  appended, so anything reading cam[0]/cam[1] is unaffected. */
+  cam: [number, number, number, number];
+  /** Full-precision camera-pose serial (controls/camera). Unchanged between two
+   *  frames means the camera was BIT-still — which `cam` cannot say, being
+   *  rounded to 1cm. Added because 45% of a frame's uploads turned out to be
+   *  per-object matrix buffers, and whether the camera truly moved is the
+   *  difference between "inherent" and "a bug". */
+  camSerial: number;
   /** Per-render-pass GPU ms aligned to gpuPhaseNames (prepass/scene/bloom/
    *  blit). Present only while per-pass GPU timing is armed — which the ring
    *  does itself on timer-query devices, where the spans are free. */
@@ -113,6 +128,9 @@ export interface Recording {
      *  Present only on the WebGPU backend — see debug/upload-census.ts for why
      *  it rides along with a recording rather than being a console command. */
     uploadCensus?: CensusResult;
+  /** WHAT MOVED. The upload census says per-object matrix buffers dominate;
+   *  this says whose matrices actually changed, and whether the camera did. */
+  matrixCensus?: MatrixCensusResult;
     /** Warm-vs-live pipeline coverage: how many pipelines the warm produced, how
      *  many of those it has since LOST, and every post-warm compile classified by
      *  why the warm missed it. `compiledKeys` above says THAT something compiled;
@@ -192,6 +210,12 @@ function snapshotGph(phases: Map<string, number>): number[] {
   }
   return arr;
 }
+/** [yaw, pitch, x, z] — see FrameSample.cam for why position is in here. */
+function camSample(): [number, number, number, number] {
+  const g = getCameraGroundPos();
+  return [r2(getCameraYaw()), r2(getCameraPitch()), r2(g.x), r2(g.z)];
+}
+
 function r2(n: number): number { return Math.round(n * 100) / 100; }
 
 function snapshotSys(systems: Map<string, number>): number[] {
@@ -232,9 +256,11 @@ function onRingFrame(s: FrameSample): void {
   // pressed, so arming on start attributes nothing (measured: the first
   // recording on the census build came back with no census at all).
   tickCensus(censusFrame++);
+  tickMatrixCensus();
   if (now - lastCensusAt > CENSUS_PERIOD_MS) {
     lastCensusAt = now;
     armCensus(censusRenderer, censusFrame);
+    armMatrixCensus();
   }
   const evList = pendingEvents.length ? pendingEvents.slice() : [];
   pendingEvents.length = 0;
@@ -257,7 +283,8 @@ function onRingFrame(s: FrameSample): void {
     ub: s.uploads,
     ubKB: Math.round(s.uploadKB),
     sys: snapshotSys(s.systems),
-    cam: [r2(getCameraYaw()), r2(getCameraPitch())],
+    cam: camSample(),
+    camSerial: getCameraPoseSerial(),
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
     ev,
   });
@@ -304,6 +331,7 @@ export function setRollingEnabled(on: boolean): void {
     autoSpikeCount = 0;
     lastCensusAt = -Infinity;   // census promptly once the ring comes up
     resetCensus();
+  resetMatrixCensus();
     addFrameListener(onRingFrame);
     // Per-pass GPU spans (render/compute split) are passive WebGPU timestamp
     // queries — always on, so every recording carries them automatically.
@@ -382,6 +410,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       graphics: graphicsSnapshot(),
       sceneAudit: sceneAuditProvider ? sceneAuditProvider() : undefined,
       uploadCensus: takeCensus() ?? undefined,
+      matrixCensus: takeMatrixCensus() ?? undefined,
       compiledKeys: getCompiledProgramKeys().slice(),   // full cacheKeys of in-session compiles
       pipelineCensus: censusForRecording() ?? undefined,
       label,

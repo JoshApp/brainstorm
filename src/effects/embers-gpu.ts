@@ -3,7 +3,7 @@ import { forEachLight } from '../scene/light-pool';
 import { canSeeSignalAt, signalDrawOrder } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
-  vertexIndex, time, hash, float, vec3, uniform, uniformArray,
+  vertexIndex, time, hash, float, vec3, uniform, uniformArray, frameGroup,
 } from 'three/tsl';
 
 // GPU EMBERS — glowing sparks rising off the torches, the first WebGPU-era
@@ -25,8 +25,8 @@ const LIFE_MIN = 2.4, LIFE_MAX = 4.8;   // longer life = slower rise + drift
 let inited = false;
 let points: THREE.Points | null = null;
 
-const torchArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3()));
-const torchColArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3(1, 0.5, 0.16)));
+const torchArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3())).setGroup(frameGroup);
+const torchColArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3(1, 0.5, 0.16))).setGroup(frameGroup);   // see scene/gore-webgpu.ts
 const torchCount = (uniform as any)(0);
 /** Embers per emitter — held constant as torches come and go. See tickEmbersGPU. */
 const PER_TORCH = COUNT / MAX_TORCHES;

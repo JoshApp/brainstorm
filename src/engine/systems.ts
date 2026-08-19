@@ -44,6 +44,7 @@ import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
 import { tickThresholdVeils } from '../scene/threshold-veil';
 import { tickSignalOcclusion } from '../scene/signal-layer';
+import { flushEncodeBreakdown } from '../debug/encode-breakdown';
 import { isAnyScreenOpen } from '../ui/screen-manager';
 import { isDescendTransition } from '../ui/descent-fade';
 import { tickAllBuffs } from '../ecs/buffs';
@@ -781,6 +782,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       flushSplats(renderer);   // drain due bleed-out pulses into the gore buffer
       tickGoreWebGPU();        // dry/evict + repack the per-fragment gore buffer
       renderWithStyle(renderer, scene, camera);
+      flushEncodeBreakdown();   // per-object encode buckets → this frame's systems map
       // LUX measurement — async render-to-target capture through the real
       // pipeline. Cheap no-op unless a measurement was requested.
       if (luxPending()) flushLux(renderer, scene, camera);

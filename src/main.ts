@@ -29,9 +29,11 @@ import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { runWarmupPassWebGPU } from './content/warmup-pass';
 import { warmRealRoster } from './content/warm-real-roster';
+import { withWarmLock } from './content/warm-lock';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
 import { absorbWarmPipelines, installPipelineCensusHook } from './debug/pipeline-census';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
+import { installEncodeBreakdown } from './debug/encode-breakdown';
 import { installUploadCounter } from './debug/upload-counter';
 import type { DelveRenderer } from './scene/create-renderer';
 import { initStatusVfxPool } from './effects/status-vfx';
@@ -259,6 +261,8 @@ resolveCrashGpu();   // adapter/context exists now — fill the crash report's G
 // rest of the profiler chain — phone recordings are how we attribute CPU cost.
 // Idle cost: one boolean per render pass.
 installRenderPassCpu(renderer);
+// …and what render·scene is MADE of (enc· rows). See debug/encode-breakdown.ts.
+installEncodeBreakdown(renderer);
 // Per-frame GPU-upload counters (writeBuffer count + KB) for the recorder's
 // ub/ubKB columns — distinguishes an upload-burst "encode storm" from a GC
 // pause landing mid-encode. Same prod-shipping policy as the pass buckets.
@@ -609,12 +613,17 @@ initLevelLoader({
       // Returning to the menu MID-RUN gets no such budget, which is why the menu
       // visibly loads things that "should" be cached — they were never warmed,
       // only hidden. compileAsync cannot flash anything, so it is safe here.
-      prewarm = (async () => {
+      // Under the warm lock (content/warm-lock.ts): leaving the menu starts a
+      // run's warm chain immediately, and this one may still be inside
+      // warmSceneCompile's restore. Two chains over one set of `visible` flags
+      // is what stranded a white sphere at the origin and blanked the starter
+      // chamber's floor.
+      prewarm = withWarmLock('title-vignette', async () => {
         await yieldToCover();
         try { await warmSceneCompile(renderer, scene, camera); } catch { /* best-effort */ }
         absorbWarmPipelines(renderer as unknown as DelveRenderer);
         installPipelineCensusHook(renderer as unknown as DelveRenderer);
-      })();
+      });
     } else {
       // WebGPU real floor — warm behind the descent cover, GATED on the reveal so the floor
       // compiles before the player sees it. Two parts:
@@ -627,7 +636,13 @@ initLevelLoader({
       //      descent hitch AND the "chunk when moving" hitch. Fast because the bounded boot-warmed
       //      set (decor/roster/static interactables) is already compiled — descent only does the
       //      floor's residue.
-      prewarm = (async () => {
+      // The whole chain runs under the warm lock (content/warm-lock.ts) — it is
+      // three whole-scene passes plus a culler-off prepare pass, and every one
+      // of them snapshots and restores global `visible` state. A concurrent
+      // chain (the title vignette's, or the previous floor's if a descent is
+      // fast) makes those restores write each other's temporary state back as
+      // truth. Lock the CHAIN, never the individual passes: they nest.
+      prewarm = withWarmLock(`floor:${level.spec.id}`, async () => {
         // Let the descent cover paint + its fade animate BEFORE we block on the warm — otherwise the
         // compile freezes the frame the instant DESCEND is clicked, before the transition can show.
         await yieldToCover();
@@ -699,7 +714,7 @@ initLevelLoader({
         // each descent's warm widens the set.
         absorbWarmPipelines(renderer as unknown as DelveRenderer);
         installPipelineCensusHook(renderer as unknown as DelveRenderer);
-      })();
+      });
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
@@ -1756,7 +1771,7 @@ setPerfOverlayVisible(getSettings().perfMeter);
 // Profiling suite wiring (HUD / recorder / draw report / GPU attribution /
 // hotkeys / window.__* handles) — debug/profiler-wiring.ts. Ships in prod
 // behind the PROFILER TOOLS setting; zero footprint until enabled.
-initProfilerWiring({ renderer, scene, getLevel: () => currentLevel });
+initProfilerWiring({ renderer, scene, camera, getLevel: () => currentLevel });
 
 // Fake persisted state for snaps (?fakemeta=1 / ?fakesave=1) — debug/boot-url-screens.ts.
 applyFakeStateFlags();
@@ -2108,7 +2123,14 @@ if (handleDebugScreenFlags()) {
     bootPhase('roster-warm');
     enterBootPhase('roster-warm');
     if (!skipWarm) {
-      try { await runWarmupPassWebGPU(renderer, scene, camera, bootPhaseProgress); } catch { /* best-effort */ }
+      // Under the warm lock — the title vignette's own prewarm chain is already
+      // in flight by now, and this pass rewrites the same scene-wide `visible`
+      // flags its restore is about to read back. See content/warm-lock.ts.
+      try {
+        await withWarmLock('boot-roster', async () => {
+          await runWarmupPassWebGPU(renderer, scene, camera, bootPhaseProgress);
+        });
+      } catch { /* best-effort */ }
     }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
     // CLEAN FRAME before the veil drops — two layers, because the artifact

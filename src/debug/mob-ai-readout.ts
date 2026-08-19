@@ -15,11 +15,22 @@ let prevYaw = 0, prevDyaw = 0, prevNow = 0, haveYaw = false;
 const flips: number[] = [];   // ms timestamps of recent yaw-direction reversals
 let peakRate = 0, peakAt = 0;
 
-/** Is the readout requested (?aidebug=1, or the AI lab)? DEV only. */
+/** Is the readout requested (?aidebug=1, or the AI lab)? DEV only.
+ *
+ *  Answered ONCE. The frame loop asks every frame, and this used to parse the
+ *  query string each time — a fresh URLSearchParams per frame, which showed up
+ *  by name in a CPU profile. It cannot change without a reload, so it is
+ *  resolved on first ask and remembered. DEV-only either way, but a debug hook
+ *  that distorts the profiles we take to find real costs is worth not having. */
+let enabled: boolean | null = null;
 export function mobAiReadoutEnabled(): boolean {
-  if (!DEV || typeof location === 'undefined') return false;
-  const q = new URLSearchParams(location.search);
-  return q.get('aidebug') === '1' || q.get('scenario') === 'ai-lab';
+  if (enabled === null) {
+    if (!DEV || typeof location === 'undefined') { enabled = false; } else {
+      const q = new URLSearchParams(location.search);
+      enabled = q.get('aidebug') === '1' || q.get('scenario') === 'ai-lab';
+    }
+  }
+  return enabled;
 }
 
 function ensurePanel(): HTMLDivElement {

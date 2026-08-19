@@ -15,6 +15,7 @@
 // Tunable via CONFIG.EXHAUSTION.BREATH_PUFF_*. Browser-only (canvas texture).
 
 import * as THREE from 'three';
+import { tagOrigin } from '../scene/provenance';
 import { CONFIG } from '../config';
 import { registerWarmup } from '../content/warmup-registry';
 
@@ -80,6 +81,10 @@ export function initBreath(camera: THREE.Camera): void {
     const sprite = new THREE.Sprite(mat);
     sprite.visible = false;
     sprite.renderOrder = 12;    // over the weapon viewmodel
+    // Say what made it. An untagged drawable is invisible to the batcher gate
+    // and uncountable in every audit (see scene/provenance.ts) — this pool was
+    // eight anonymous `dfe6ea·4v` rows in the draw report.
+    tagOrigin(sprite, 'fx', { detail: 'breath' });
     camera.add(sprite);
     puffs.push({
       sprite, mat, active: false, delay: 0, life: 0, ttl: 0, peak: 0,

@@ -12,6 +12,8 @@ import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
 import { registerWarmup } from '../content/warmup-registry';
+import { markWarmIgnored } from '../scene/warm-visibility';
+import { basicMat } from '../style/material-registry';
 import { CONFIG } from '../config';
 
 // Scratch vector for the projectile impact point (zone resolution). Module-level
@@ -75,8 +77,25 @@ export function isProjectileRegistered(id: string): boolean {
 }
 
 // Default shared sphere geometry — cheap, low-poly, used by spell bolts
-// + spits where shape isn't important.
+// + spits where shape isn't important. UNIT radius: spawnProjectile scales it
+// by the type's radius, so an unscaled slot is a 2m sphere. That matters
+// below.
 const SHARED_GEOM = new THREE.SphereGeometry(1, 10, 8);
+
+// What a PARKED slot wears. `visible: false` on the MATERIAL is a second,
+// independent gate from `visible: false` on the object — Renderer.js checks
+// both (`_projectObject` skips the object; the render-list build skips the
+// material), so a parked slot that something else switches on still draws
+// nothing. It never renders, so it never compiles a pipeline.
+//
+// It exists because the parked state used to be `new THREE.Mesh(geom,
+// undefined)`, and passing `undefined` for a DEFAULTED parameter triggers the
+// default — and Mesh's second parameter defaults to a fresh basic material.
+// Every idle slot was quietly wearing an opaque WHITE unlit material at scale
+// 1, so the cost of anything switching one on was a 2m white sphere parked at
+// the world origin. That is exactly what shipped for months. A slot's idle
+// look should be nothing, and it should be nothing ON PURPOSE.
+const IDLE_MAT = basicMat({ visible: false });
 
 // Soft radial glow texture for the trail sprite. Without a map a
 // SpriteMaterial renders as a hard SQUARE quad — under additive blending
@@ -203,8 +222,15 @@ export function initProjectilePool(sc: THREE.Scene): void {
   scene = sc;
   for (let i = 0; i < POOL_SIZE; i++) {
     // Mesh — unit sphere scaled per-projectile via the type's radius.
-    const mesh = new THREE.Mesh(SHARED_GEOM, undefined as unknown as THREE.Material);
+    const mesh = new THREE.Mesh(SHARED_GEOM, IDLE_MAT);
     mesh.visible = false;
+    // The pool parks its slots on the SCENE (not on level.root — they outlive
+    // every floor), and `visible` here means "not in use", not "off screen".
+    // Tell the warm passes to keep their hands off it: they snapshot and
+    // restore visibility scene-wide, which strands a parked slot on or off.
+    // The type materials are warmed by the registerWarmup hook at the bottom
+    // of this file, which fires real projectiles through the real path.
+    markWarmIgnored(mesh);
     sc.add(mesh);
     // Trail — additive sprite, scales with travel direction below.
     const trailMat = new THREE.SpriteMaterial({
@@ -218,6 +244,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
     });
     const trail = new THREE.Sprite(trailMat);
     trail.visible = false;
+    markWarmIgnored(trail);
     sc.add(trail);
     pool.push({
       inUse: false,
@@ -300,6 +327,11 @@ export function spawnProjectile(args: SpawnArgs): void {
 function retire(slot: Slot): void {
   slot.inUse = false;
   slot.mesh.visible = false;
+  // Put the parked look back on. A retired slot keeps its last type's emissive
+  // material otherwise, which is a live, drawable material sitting on a mesh
+  // whose only defence is one boolean — and the geometry is still whatever the
+  // last shot used, at whatever scale. Parked means parked.
+  slot.mesh.material = IDLE_MAT;
   slot.trail.visible = false;
   slot.onHits = null;
   slot.position.set(0, -1000, 0);

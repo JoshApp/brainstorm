@@ -67,6 +67,16 @@ export interface CensusSite {
    *  the two need different fixes, so the report keeps them apart. */
   buffers: number;
 }
+/** WHICH SLOT of a binding's buffer actually moved. `backend.updateBinding` is
+ *  only reached when Three's own value-compare decided something changed, so a
+ *  binding arriving here with NO changed bytes would mean the compare and the
+ *  upload disagree — worth knowing, hence the explicit bucket for it. */
+export interface CensusChange {
+  /** e.g. "object · floats[0..15] 16/32" — group, span, and how much of it. */
+  where: string;
+  hits: number;
+}
+
 export interface CensusResult {
   frames: number;
   totalCalls: number;
@@ -77,6 +87,8 @@ export interface CensusResult {
   /** Per binding-owner attribution. Only the binding path appears here; the
    *  attribute/texture uploads have no uniform group and stay in `sites`. */
   owners?: CensusOwner[];
+  /** Which float span of a binding's buffer actually moved. */
+  changes?: CensusChange[];
 }
 
 interface QueueLike {
@@ -89,6 +101,8 @@ let framesLeft = 0;
 let startFrame = 0;
 let frameIndex = 0;
 const byCall = new Map<string, { calls: number; bytes: number; buffers: Set<unknown> }>();
+const byChange = new Map<string, number>();
+const prevBuf = new WeakMap<object, Float32Array>();
 const byOwner = new Map<string, { calls: number; bytes: number; buffers: Set<unknown>; shared: boolean }>();
 let result: CensusResult | null = null;
 let restore: (() => void) | null = null;
@@ -137,6 +151,33 @@ function ownerOf(binding: unknown): { key: string; shared: boolean; bytes: numbe
     shared: !!g?.shared,
     bytes: b.byteLength ?? b.buffer?.byteLength ?? 0,
   };
+}
+
+/** Diff a binding's CPU-side buffer against the copy kept from last time, and
+ *  bucket by which float span moved. This is the attribution the stack-based
+ *  view cannot give: every per-object write shares one call stack, so the only
+ *  way to tell a matrix from a material scalar is to look at what changed. */
+function recordChange(binding: unknown): void {
+  const b = binding as { buffer?: ArrayLike<number>; groupNode?: { name?: string } } | undefined;
+  const buf = b?.buffer;
+  if (!buf || typeof buf.length !== 'number') return;
+  const obj = binding as object;
+  const last = prevBuf.get(obj);
+  if (!last || last.length !== buf.length) {
+    const copy = new Float32Array(buf.length);
+    for (let i = 0; i < buf.length; i++) copy[i] = buf[i];
+    prevBuf.set(obj, copy);
+    return;
+  }
+  let first = -1, lastIdx = -1, n = 0;
+  for (let i = 0; i < buf.length; i++) {
+    if (last[i] !== buf[i]) { if (first < 0) first = i; lastIdx = i; n++; last[i] = buf[i]; }
+  }
+  const g = b?.groupNode?.name ?? '?';
+  const where = n === 0
+    ? `${g} · NO BYTES CHANGED (uploaded anyway)`
+    : `${g} · floats[${first}..${lastIdx}] ${n}/${buf.length}`;
+  byChange.set(where, (byChange.get(where) ?? 0) + 1);
 }
 
 function byteLen(data: unknown): number {
@@ -198,6 +239,7 @@ export function armCensus(renderer: unknown, atFrame: number): void {
   const origUB = backend?.updateBinding as ((b: unknown) => void) | undefined;
   if (backend && typeof origUB === 'function') {
     backend.updateBinding = function (this: unknown, binding: unknown) {
+      recordChange(binding);
       const { key, shared, bytes } = ownerOf(binding);
       let e = byOwner.get(key);
       if (!e) { e = { calls: 0, bytes: 0, buffers: new Set(), shared }; byOwner.set(key, e); }
@@ -248,9 +290,14 @@ export function tickCensus(atFrame: number): void {
     // rides in a file someone has to upload from a phone.
     sites: sites.slice(0, 25),
     owners: owners.slice(0, 25),
+    changes: [...byChange.entries()]
+      .map(([where, hits]) => ({ where, hits }))
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 20),
   };
   byCall.clear();
   byOwner.clear();
+  byChange.clear();
 }
 
 /** The aggregate, or null if the census never ran (WebGL2, or not armed). */

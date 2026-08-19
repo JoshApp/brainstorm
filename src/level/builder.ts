@@ -32,6 +32,7 @@ import { threatensPlayer } from '../content/factions';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { isPooledGeometry } from '../scene/geometry-pool';
+import { markStatic } from '../scene/animation-gate';
 import { deferGpuDispose } from '../style/render-webgpu';
 import { spawnChest } from '../interactables/chest';
 import { spawnGateOffering } from '../interactables/gate-offering';
@@ -683,6 +684,7 @@ function buildRoomShell(
       const walls = new THREE.Mesh(merged, materials.wall);
       walls.receiveShadow = true;
       walls.name = 'walls-merged';
+      markStatic(walls);   // built once, never touched — see scene/animation-gate.ts
       walls.userData.dbgKind = 'wall';
       walls.userData.dbgSource = `walls · ${room.id}`;
       scene.add(walls);
@@ -742,6 +744,7 @@ function buildRoomShell(
       trim.receiveShadow = true;
       trim.castShadow = false;
       trim.name = 'trim-merged';
+      markStatic(trim);
       trim.userData.dbgKind = 'wall';
       trim.userData.dbgSource = `trim · ${room.id}`;
       scene.add(trim);

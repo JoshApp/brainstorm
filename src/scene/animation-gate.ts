@@ -75,3 +75,34 @@ export function freezeTransform(...objects: readonly THREE.Object3D[]): void {
     o.matrixAutoUpdate = false;
   }
 }
+
+/**
+ * Opt an object into three's per-object STATIC fast path.
+ *
+ * `NodeMaterialObserver.needsRefresh()` decides, per object per frame, whether
+ * to re-run the node updates, the geometry update and the binding walk. On a
+ * phone that block is ~25µs of the ~40µs an object costs, and it is the largest
+ * single item in the frame. Marking an object static makes it return false.
+ *
+ * TWO CONDITIONS, both real:
+ *
+ * 1. The material must carry NO node property. `hasNode` short-circuits ahead
+ *    of the static check (NodeMaterialObserver.js:719), so one `colorNode` or
+ *    `emissiveNode` anywhere on the material silently voids this. Measured on a
+ *    floor: 70 of 94 drawn objects are already node-free, so most geometry
+ *    qualifies — but anything with a rim, a dissolve, surface detail or an
+ *    outline does not.
+ *
+ * 2. NOTHING ABOUT IT MAY CHANGE. Not its transform, not its material, not its
+ *    geometry attributes. A static object stops having its uniforms pushed, so
+ *    a later change is simply not reflected — the same class of footgun as
+ *    freezeTransform, one level up. Visibility is safe (the culler toggles it
+ *    outside this path), and so is being drawn in a different pass.
+ *
+ * Reserve it for geometry built once and never touched again: merged room
+ * shells, merged fixtures. NOT batched meshes whose instances retire, NOT
+ * doors, NOT anything whose material is written per frame.
+ */
+export function markStatic(...objects: readonly THREE.Object3D[]): void {
+  for (const o of objects) o.static = true;
+}
