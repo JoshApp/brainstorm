@@ -201,12 +201,25 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
 
   /** Close every finger onto a cylinder lying on the palm side `N`, and score the result. */
   const attempt = (N: THREE.Vector3): Attempt => {
-    // The hilt lies across the METACARPAL HEADS — the ridge just under the knuckles — not down
-    // at the heel of the palm where palm_anchor sits. That anchor was authored for v2, where
-    // the weapon was buried in the hand and its exact depth did not matter; resting a cylinder
-    // on it put the axis 58mm from a knuckle whose proximal phalanx is 56mm long. Unreachable,
-    // so every finger curled to its limit and stopped — "kinda a bit crippled".
-    const C = K.clone().addScaledVector(N, gripRadius + half);
+    // ── WHERE THE HILT LIES: THE KNUCKLES SAY WHEN, THE PALM SAYS HOW DEEP ──
+    //
+    // Two anchors, each used for the one thing it actually knows:
+    //
+    //   K (the metacarpal-head line) fixes the LEVEL along the hand. A hilt crosses the palm
+    //     just under the knuckles, not down at the heel — resting it on palm_anchor put the
+    //     axis 58mm from a knuckle whose proximal phalanx is 56mm, so no finger could reach and
+    //     every one curled to its limit. That was "kinda a bit crippled".
+    //
+    //   palm_anchor fixes the DEPTH through the hand. Offsetting from the knuckles by a
+    //     phalanx's own thickness instead put the axis 28mm out on a 22mm hilt — the knuckles
+    //     pressed flat against it, so each finger had to wrap almost the whole way round and the
+    //     bones tangled into a cage. A held hilt rests against the PALM, and the knuckles sit a
+    //     palm-thickness behind it.
+    //
+    // So the depth is measured, not guessed: how far palm_anchor sits from the knuckle plane
+    // along the palm normal is exactly the thickness of the hand through the metacarpals.
+    const depth = Math.max(0, _p.subVectors(P, K).dot(N));
+    const C = K.clone().addScaledVector(N, depth + gripRadius);
 
     for (const chain of Object.values(CHAINS)) {
       for (const name of chain) hand.slots.get(name)?.quaternion.identity();
@@ -301,6 +314,27 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   const N = first.worst <= second.worst ? up : down;
   const { C, solved, errors, worst } = attempt(N);
 
+  // ── DOES THE THUMB OPPOSE? ────────────────────────────────────────────────
+  //
+  // "0.0mm from the axis" is satisfied ANYWHERE around the cylinder, so the contact report alone
+  // cannot tell a grip from a hand with every digit draped down one side. A grip is fingers on
+  // one side and the thumb on the other; measure the angle between them about the grip axis.
+  let opposition = 0;
+  {
+    const tip = hand.slots.get('finger_thumb_tip');
+    const mid = hand.slots.get('finger_middle_tip');
+    if (tip && mid) {
+      const a = _p.setFromMatrixPosition(tip.matrixWorld).applyMatrix4(inv).sub(C);
+      a.addScaledVector(A, -a.dot(A));
+      const b = new THREE.Vector3().setFromMatrixPosition(mid.matrixWorld)
+        .applyMatrix4(inv).sub(C);
+      b.addScaledVector(A, -b.dot(A));
+      if (a.lengthSq() > 1e-9 && b.lengthSq() > 1e-9) {
+        opposition = a.angleTo(b) * 57.2958;
+      }
+    }
+  }
+
   if (import.meta.env.DEV) {
     const f3 = (v: THREE.Vector3): string =>
       `[${v.toArray().map((n: number) => n.toFixed(2)).join(',')}]`;
@@ -308,7 +342,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
       .map(([k, t]) => `${k.replace('finger_', '')}=${(t * 57.2958).toFixed(0)}`).join(' ');
     console.log(`[grip] A=${f3(A)} N=${f3(N)} C=${f3(C)} `
       + `(palm side ${first.worst <= second.worst ? '+' : '-'}: `
-      + `${first.worst.toFixed(1)} vs ${second.worst.toFixed(1)}mm) · ${deg}`);
+      + `${first.worst.toFixed(1)} vs ${second.worst.toFixed(1)}mm) `
+      + `thumb-opposition=${opposition.toFixed(0)}° · ${deg}`);
   }
 
   // The caller places the weapon in the composition ROOT's frame, so hand the centre back there.
