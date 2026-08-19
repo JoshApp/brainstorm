@@ -218,6 +218,26 @@ export function attachLampArm(camera: THREE.Camera): void {
     if (wristAnchor) {
       floatingHandRot = aimHand(hand, wristAnchor, LAMP_FINGERS_TO, LAMP_PALM_TO)
         ?? floatingHandRot;
+      // ── ?lamproll=N — ROLL THE HAND ABOUT ITS OWN FINGER AXIS ───────
+      //
+      // Josh, on the third wrong orientation: "the hand is still 90 degree wrong why is this so
+      // hard?" It is hard because the thing being judged is forty pixels across and "90 degrees"
+      // has four answers, so every round trip is a guess costing a snap and a look.
+      //
+      // This makes the four answers renderable side by side instead. N degrees about the
+      // FINGER axis — the only axis a "rolled wrong" hand can be wrong about once the fingers
+      // already point the right way — so a contact sheet of 0/90/180/270 settles it in one pass.
+      // DEV-only and flag-gated; the value that wins gets folded into LAMP_PALM_TO and the flag
+      // goes back to doing nothing.
+      if (import.meta.env.DEV && floatingHandRot) {
+        const roll = Number(new URLSearchParams(location.search).get('lamproll') ?? '0');
+        if (Number.isFinite(roll) && roll !== 0) {
+          const axis = LAMP_FINGERS_TO.clone().normalize();
+          floatingHandRot = new THREE.Quaternion()
+            .setFromAxisAngle(axis, (roll * Math.PI) / 180)
+            .multiply(floatingHandRot);
+        }
+      }
       // ── AND THE SAME MEASUREMENT, TAKEN IN THE GAME ────────────────
       //
       // Josh: "last time we positioned in the bench the real position was different ... so it

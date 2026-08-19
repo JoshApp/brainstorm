@@ -1,3 +1,4 @@
+import { FAST_BOOT } from '../debug/fast-boot';
 import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
@@ -97,9 +98,11 @@ export function fadeOut(): Promise<void> {
   document.body.classList.add('descending');
   const el = ensureOverlay();
   return new Promise((resolve) => {
-    el.style.transition = 'opacity 220ms ease-out';
+    // ?fast=1 collapses the transition — the black still goes up (the level swap must not be
+    // visible), it just does not take a quarter second about it.
+    el.style.transition = FAST_BOOT ? 'opacity 0ms' : 'opacity 220ms ease-out';
     el.style.opacity = '1';
-    window.setTimeout(resolve, 230);
+    window.setTimeout(resolve, FAST_BOOT ? 0 : 230);
   });
 }
 
@@ -112,13 +115,16 @@ export function fadeIn(): void {
   // ticks alone don't prove a present (the frame cap skips draws). Gate on the
   // renderer's presented-frame counter, with a timeout so a hidden tab can't
   // strand the cover.
-  void waitForPresentedFrames(2, 1500).then(() => {
-    el.style.transition = 'opacity 320ms ease-out';
+  // ?fast=1 skips the presented-frame gate as well as the fade. The gate is there so the reveal
+  // cannot land on the last covered warm frame — with nothing warming there is no such frame,
+  // and waiting for two presents is a third of a second per descent.
+  void (FAST_BOOT ? Promise.resolve() : waitForPresentedFrames(2, 1500)).then(() => {
+    el.style.transition = FAST_BOOT ? 'opacity 0ms' : 'opacity 320ms ease-out';
     el.style.opacity = '0';
     window.setTimeout(() => {
       transitioning = false;
       document.body.classList.remove('descending');   // HUD returns with the world
-    }, 340);   // after the fade finishes
+    }, FAST_BOOT ? 0 : 340);   // after the fade finishes
   });
 }
 

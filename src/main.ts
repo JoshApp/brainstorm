@@ -134,6 +134,7 @@ import { setupPwaAutoUpdate, maybeApplyUpdateSilently, awaitBootUpdate, setBefor
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible } from './ui/perf-overlay';
 import { markWarmupComplete } from './debug/frame-timing';
+import { FAST_BOOT, skipWarming } from './debug/fast-boot';
 import { createChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -588,11 +589,11 @@ initLevelLoader({
     // on the title vignette (combat effects must never flash on the title).
     const isTitleVignette = level.spec.id === 'title-vignette';
     let prewarm: Promise<void> | undefined;
-    if (new URLSearchParams(location.search).get('nowarm') === '1') {
-      // ?nowarm=1 — skip ALL pipeline warming: the roster warm AND the per-floor
-      // compileAsync below. Pipelines compile lazily — first-use stutter is
-      // EXPECTED here; the only point is to A/B whether warming is behind the
-      // 'output' texture hazard. prewarm stays undefined.
+    if (skipWarming()) {
+      // ?nowarm=1 / ?fast=1 — skip ALL pipeline warming: the roster warm AND the
+      // per-floor compileAsync below. Pipelines compile lazily — first-use stutter
+      // is EXPECTED here; nowarm's point is to A/B whether warming is behind the
+      // 'output' texture hazard, fast's is iteration speed. prewarm stays undefined.
     } else if (isTitleVignette) {
       // THE TITLE COMPILES ITSELF, and used to do it in live frames. Every warm
       // below was gated off the title because the ROSTER warm renders its
@@ -2078,6 +2079,13 @@ if (handleDebugScreenFlags()) {
   // match the in-game render state. Held here so the menu only appears once warm: the
   // first DESCEND is then instant (the floor warmup's `done` guard makes it a no-op).
   async function bootWarm(): Promise<void> {
+    // ?fast=1 — straight to the menu. Not just the warm: the compile-settle budget and the
+    // presented-frame gates below are most of the wall clock, and they exist to guarantee a
+    // clean first frame, which is exactly the guarantee an iteration flag is willing to lose.
+    if (FAST_BOOT) {
+      endBootProgress();
+      return;
+    }
     // The bar spans ALL THREE phases now, revealed at zero from the first beat —
     // see ui/boot-progress.ts for why it used to cover only the middle one and
     // therefore appeared to start most of the way along.
@@ -2096,7 +2104,7 @@ if (handleDebugScreenFlags()) {
     // headless swiftshader fallback — ~44s — which stalled menu/title snaps past
     // the reveal timeout). Pipelines compile lazily instead; only used for
     // headless self-verify snaps, never a normal boot.
-    const skipWarm = new URLSearchParams(location.search).get('nowarm') === '1';
+    const skipWarm = skipWarming();
     bootPhase('roster-warm');
     enterBootPhase('roster-warm');
     if (!skipWarm) {
