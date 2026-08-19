@@ -297,6 +297,19 @@ export function createWeaponViewmodel(
       // On a skeleton it reads as a third bone, so it goes.
       armSinewMesh?.removeFromParent();
       armSinewMesh = undefined;
+        // The arm spec also builds SPHERES at the shoulder and elbow — filler that covered the
+          // seams between primitive bones. A scanned humerus has its own joint ends, so they read as
+          // a ball stuck to the skeleton; raising the shoulder brought the elbow one into frame,
+          // which is what Josh spotted. They are unnamed parts, so they are found structurally: the
+          // mesh children of the joint slots.
+        for (const slotName of ['shoulder', 'elbow']) {
+          const slot = armBuilt.slots.get(slotName);
+          if (!slot) continue;
+          for (const c of [...slot.children]) {
+            if ((c as THREE.Mesh).isMesh) { c.removeFromParent(); disposeGpuTree(c); }
+          }
+        }
+
       // New meshes missed the pass that ran at construction — depth trick, render order.
       applyViewmodelRender(armGroup, 997, false);
       // eslint-disable-next-line no-console
