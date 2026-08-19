@@ -18,13 +18,15 @@
 import assert from 'node:assert/strict';
 import { resolveGrip } from '../src/content/grip';
 import { FOREARM_EXIT_DESIRED } from '../src/content/hand';
-import { SPEAR, IRON_MAUL } from '../src/content/weapons';
+import { SPEAR, IRON_MAUL, HEARTBURN } from '../src/content/weapons';
 import { PILGRIMS_PIKE } from '../src/content/new-weapons';
 import { SWORD_RUSTED } from '../src/content/sword';
 
 // ── THE DEFAULT IS THE OLD BEHAVIOUR ────────────────────────────────────────
+// HEARTBURN declares no grip at all, which is the case this guards: ten of the thirteen weapons
+// are in that position and nothing but this test would notice the default drifting under them.
 {
-  const g = resolveGrip(SWORD_RUSTED);
+  const g = resolveGrip(HEARTBURN);
   assert.equal(g.style, 'saber', 'a weapon that declares nothing is a sabre');
   assert.deepEqual(g.offset, [0, 0, 0], 'no declared `along` means no shift along the haft');
   assert.equal(g.roll, 0, 'no declared roll');
@@ -70,6 +72,18 @@ import { SWORD_RUSTED } from '../src/content/sword';
   assert.equal(Math.hypot(...g.offset), 0, 'an explicit `along` overrides the style default');
   assert.equal(g.radius, 0.03, 'an explicit radius overrides the sniffed cylinder');
   assert.equal(g.thumb, 'along', 'and the rest of the style still applies');
+}
+
+// ── THE STARTER SWORD IS CHOKED UP AGAINST ITS GUARD ────────────────────────
+// Centred on the grip cylinder, the fist's top edge sat 47mm below the cross-guard, leaving a
+// long bare stretch of hilt above the hand — Josh: "the grips is a bit too spread vertically".
+{
+  const g = resolveGrip(SWORD_RUSTED);
+  assert.ok(g.offset[1] > 0.02,
+    `the sword must ride UP its hilt toward the guard, got ${g.offset[1].toFixed(3)}m`);
+  // Its hilt is authored along +Y, so the shift belongs there and nowhere else.
+  assert.equal(g.offset[0], 0);
+  assert.equal(g.offset[2], 0);
 }
 
 // ── A WEAPON WITH NO GRIP CYLINDER STILL RESOLVES ───────────────────────────

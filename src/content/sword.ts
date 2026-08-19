@@ -58,6 +58,11 @@ const RUSTED_EDGE_L_SHAPE: [number, number][] =
   RUSTED_EDGE_R_SHAPE.map(([x, y]) => [-x, y]);
 
 export const SWORD_RUSTED: ModelSpec = {
+  // CHOKED UP against the cross-guard. Centred on the grip cylinder (the `along: 0.5` default)
+  // the fist's top edge sits 47mm below the guard, leaving a long bare stretch of hilt above
+  // the hand — which is what reads as the grip being "a bit too spread vertically". A sabre is
+  // held with the index knuckle up against the guard.
+  grip: { along: 0.85 },
   id: 'sword-rusted',
   materials: {
     // SHINE = WORTH (docs/VISUAL-LANGUAGE.md): a mundane blade EATS

@@ -129,6 +129,7 @@ const _r = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 let warnedNoSolve = false;
+let loggedAxial = false;
 
 /** Perpendicular offset of `p` from the line (c, a). `a` must be unit. */
 function radial(p: THREE.Vector3, c: THREE.Vector3, a: THREE.Vector3, out: THREE.Vector3): number {
@@ -224,6 +225,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   frame.getWorldQuaternion(frameQ);
   const worldA = A.clone().applyQuaternion(frameQ).normalize();
   const _pq = new THREE.Quaternion();
+  const _q3 = new THREE.Quaternion();
+  const _q2 = new THREE.Vector3();
 
   /** The grip axis expressed in a joint's PARENT frame — the axis it should bend about. */
   const bendAxis = (joint: THREE.Object3D): THREE.Vector3 => {
@@ -238,10 +241,13 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     worst: number;
     /** Worst error over the FOUR FINGERS only — what the palm side is judged on. */
     fingersWorst: number;
+    /** Fingertip span along the hilt BEFORE adduction, millimetres. */
+    spreadBefore: number;
   }
 
   /** Close every finger onto a cylinder lying on the palm side `N`, and score the result. */
   const attempt = (N: THREE.Vector3): Attempt => {
+    const worldN = N.clone().applyQuaternion(frameQ).normalize();
     // ── WHERE THE HILT LIES: THE KNUCKLES SAY WHEN, THE PALM SAYS HOW DEEP ──
     //
     // Two anchors, each used for the one thing it actually knows:
@@ -328,6 +334,77 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     root.updateMatrixWorld(true);
     const errors: Record<string, number> = {};
     let worst = 0;
+    // ── FINGERS CLOSE TOGETHER, NOT JUST AROUND ─────────────────────────
+    //
+    // Josh, on the first clear look at it in game: "the grips is a bit too spread vertically."
+    //
+    // Exactly right, and nothing above could have fixed it. Every joint here bends ABOUT the
+    // grip axis, which keeps each finger in its own plane perpendicular to the hilt — so all
+    // four stay at whatever spacing their knuckles have. On this hand the knuckle line spans
+    // ~100mm and the sword's usable grip is ~118mm, so the fist covers the entire hilt, index
+    // at the guard and pinky at the pommel.
+    //
+    // Real fingers ADDUCT as they close: the knuckles stay put and the fingers converge, so a
+    // closed fist is four fingers side by side, not four fingers spread across a span. That is
+    // a yaw at each knuckle about the PALM NORMAL, perpendicular to everything the wrap solve
+    // touches — which is why it composes cleanly on top rather than needing a re-solve.
+    //
+    // The target spacing is measured, not chosen: one finger's own thickness apart, packed and
+    // centred on the fist.
+    let spreadBefore = 0;
+    {
+      const others = chains.filter((c) => c.finger !== 'thumb');
+      const axial = (n: THREE.Object3D): number =>
+        _p.setFromMatrixPosition(n.matrixWorld).applyMatrix4(inv).sub(C).dot(A);
+      // What the wrap alone leaves, so the adduction's effect is reported rather than asserted.
+      const pre = others.map((c) => axial(c.nodes.at(-1) as THREE.Object3D));
+      spreadBefore = (Math.max(...pre) - Math.min(...pre)) * 1000;
+      if (import.meta.env.DEV && !loggedAxial) {
+        loggedAxial = true;
+        console.log('[grip] axial mm — knuckles',
+          others.map((c) => (axial(c.nodes[0]) * 1000).toFixed(0)).join(','),
+          '· tips', pre.map((v) => (v * 1000).toFixed(0)).join(','),
+          '· finger width', (2 * half * 1000).toFixed(1));
+      }
+      const ranked = others
+        .map((c) => ({ c, s: axial(c.nodes.at(-1) as THREE.Object3D) }))
+        .sort((a, b) => a.s - b.s);
+      const mid = ranked.reduce((acc, r) => acc + r.s, 0) / (ranked.length || 1);
+      const width = 2 * half;
+      // ADDUCTION ONLY EVER CLOSES A HAND. If the wrap has already left the fingertips closer
+      // together than one finger-width apart, packing them "to" that width would SPREAD them —
+      // which is what the first version did, measured, 39mm out to 45mm while claiming to be
+      // fixing exactly that. On this hand the tips land 13mm apart with 16mm-wide fingers: they
+      // are touching already, and the right amount of adduction is none.
+      const packedMm = width * (ranked.length - 1) * 1000;
+      if (spreadBefore > packedMm)
+      for (let i = 0; i < ranked.length; i++) {
+        const { c } = ranked[i];
+        const mcp = c.nodes[0];
+        const tip = c.nodes.at(-1) as THREE.Object3D;
+        const want = mid + (i - (ranked.length - 1) / 2) * width;
+        const reach = _p.setFromMatrixPosition(tip.matrixWorld)
+          .distanceTo(_q2.setFromMatrixPosition(mcp.matrixWorld));
+        if (reach < 1e-6) continue;
+        const need = want - axial(tip);
+        const yaw = Math.asin(THREE.MathUtils.clamp(need / reach, -1, 1));
+        // Which sign of the yaw carries the tip the way we want depends on how this knuckle's
+        // frame sits against the palm normal. Try one, keep it only if it helped — cheaper and
+        // more honest than deriving a sign that has been wrong every time I have derived one.
+        (mcp.parent ?? frame).getWorldQuaternion(_pq).invert();
+        const nLocal = worldN.clone().applyQuaternion(_pq).normalize();
+        const before = Math.abs(need);
+        const before2 = mcp.quaternion.clone();
+        mcp.quaternion.premultiply(_q3.setFromAxisAngle(nLocal, yaw));
+        mcp.updateMatrixWorld(true);
+        if (Math.abs(want - axial(tip)) > before) {
+          mcp.quaternion.copy(before2).premultiply(_q3.setFromAxisAngle(nLocal, -yaw));
+          mcp.updateMatrixWorld(true);
+        }
+      }
+      root.updateMatrixWorld(true);
+    }
+
     let fingersWorst = 0;
     for (const c of chains) {
       const target = c.finger === 'thumb' ? wrapR + 2 * half : wrapR;
@@ -341,7 +418,7 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
         if (c.finger !== 'thumb') fingersWorst = Math.max(fingersWorst, err);
       }
     }
-    return { C, solved, errors, worst, fingersWorst };
+    return { C, solved, errors, worst, fingersWorst, spreadBefore };
   };
 
   // ── WHICH SIDE IS THE PALM? MEASURE IT ────────────────────────────────────
@@ -350,12 +427,42 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // is the back of the hand, and every attempt to settle it from an authored sign has been wrong
   // at least once this session. So close the hand both ways and keep whichever actually reaches
   // the hilt. Three cheap solves, and a whole class of sign bug stops being possible.
-  const up = N0.clone();
-  const down = N0.clone().negate();
-  const first = attempt(up);
-  const second = attempt(down);
-  const N = first.fingersWorst <= second.fingersWorst ? up : down;
-  const { C, solved, errors, worst } = attempt(N);
+  // F x A gives the normal's LINE; which end is the palm and which the back of the hand is a
+  // separate question, and it has a direct answer: `palm_anchor` is authored as a point IN THE
+  // PALM, so the palm side is simply whichever way it lies off the knuckle line.
+  //
+  // This replaces closing the hand both ways and keeping the lower contact error. That worked
+  // until adduction, which improved both sides equally and left the comparison at 5.9 vs 5.8mm
+  // — a coin flip deciding which side of a hand the palm is on. A projection of a few
+  // centimetres is not a coin flip. The both-ways search stays as the fallback for a hand whose
+  // palm anchor sits on the knuckle plane, where the projection genuinely says nothing.
+  const lean = _p.subVectors(P, K).dot(N0) * 1000;      // mm off the knuckle plane
+  let N: THREE.Vector3;
+  let decided: string;
+  if (Math.abs(lean) > 3) {
+    N = lean >= 0 ? N0.clone() : N0.clone().negate();
+    decided = `palm_anchor leans ${lean.toFixed(0)}mm`;
+  } else {
+    const up = N0.clone();
+    const down = N0.clone().negate();
+    const a = attempt(up);
+    const b = attempt(down);
+    N = a.fingersWorst <= b.fingersWorst ? up : down;
+    decided = `contact ${a.fingersWorst.toFixed(1)} vs ${b.fingersWorst.toFixed(1)}mm`;
+  }
+  const { C, solved, errors, worst, spreadBefore } = attempt(N);
+
+  // ── HOW FAR DOES THE FIST SPREAD ALONG THE HILT? ──────────────────────────
+  //
+  // The measurement for "the grip is a bit too spread vertically". Contact error cannot see it:
+  // four fingers can each be 0.0mm off the cylinder while strung out along the whole grip.
+  let span = 0;
+  {
+    const tips = chains.filter((c) => c.finger !== 'thumb')
+      .map((c) => _p.setFromMatrixPosition((c.nodes.at(-1) as THREE.Object3D).matrixWorld)
+        .applyMatrix4(inv).sub(C).dot(A));
+    if (tips.length) span = (Math.max(...tips) - Math.min(...tips)) * 1000;
+  }
 
   // ── DOES THE THUMB OPPOSE? ────────────────────────────────────────────────
   //
@@ -384,9 +491,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     const deg = Object.entries(solved)
       .map(([k, t]) => `${k}=${(t * 57.2958).toFixed(0)}`).join(' ');
     console.log(`[grip] A=${f3(A)} N=${f3(N)} C=${f3(C)} `
-      + `(palm side ${first.fingersWorst <= second.fingersWorst ? '+' : '-'}: `
-      + `${first.fingersWorst.toFixed(1)} vs ${second.fingersWorst.toFixed(1)}mm fingers) `
-      + `thumb-opposition=${opposition.toFixed(0)}° · ${deg}`);
+      + `(palm side by ${decided}) `
+      + `thumb-opposition=${opposition.toFixed(0)}° span=${span.toFixed(0)}mm (wrap alone ${spreadBefore.toFixed(0)}mm) · ${deg}`);
   }
 
   // The caller places the weapon in the composition ROOT's frame, so hand the centre back there.
