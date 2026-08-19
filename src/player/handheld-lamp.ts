@@ -241,15 +241,51 @@ export function attachLamp(camera: THREE.Camera) {
       shell.position.copy(ring.position);
       body.add(shell);
       installed = shell;
-      // REMOVED, not hidden. Josh: "remove the legacy lamp and only have both bone arms and the
-      // new lamp and the current weapon." An invisible cage is still geometry that gets walked,
-      // disposed and reasoned about, and leaving it there is how two versions of a thing end up
-      // both half-alive. The ring anchor, the flame stack and the light stay: those are not the
-      // shell.
+
+      // ── REMOVE THE OLD SHELL, INCLUDING THE MERGED COPY ─────────────
+      //
+      // Josh: "the old lamp is still drawn." It was, and removing the parts I built was not
+      // enough: mergeRigidViewmodel collapses this body into a single `lamp-merged` mesh at
+      // BUILD time and DETACHES the originals. This swap runs later, off a file load, so it was
+      // dutifully removing meshes that had already been detached and left the merged copy — the
+      // actual cage — untouched. Exactly the trap the weapon hand hit: a merge that hands you
+      // back one mesh and quietly orphans the ones you were holding.
+      //
+      // So the merged mesh is removed by name too, and either order is safe.
       for (const m of iron) { m.removeFromParent(); disposeGpuTree(m); }
       iron.length = 0;
-      // eslint-disable-next-line no-console
-      console.log('[lantern] scanned shell installed');
+      for (const c of [...body.children]) {
+        if (c.name === 'lamp-merged') { c.removeFromParent(); disposeGpuTree(c); }
+      }
+
+      // The viewmodel render pass ran at build time, before this shell existed, so it gets the
+      // same treatment here: depth-test on, depth-write off, drawn under the weapon.
+      shell.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material])) {
+          if (!m) continue;
+          m.depthTest = true;
+          m.depthWrite = false;
+          m.transparent = false;
+          m.needsUpdate = true;
+          applyViewmodelDepthWebGPU(m);
+        }
+        mesh.renderOrder = 998;
+      });
+      if (import.meta.env.DEV) {
+        // What is LEFT under the lamp, by name. This is how the merged copy was caught: the
+        // count said the cage was gone and one nameless mesh remained, and the name said
+        // `lamp-merged`. A swap that reports only what it added cannot see what it missed.
+        const left: string[] = [];
+        body.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh && !shell.getObjectById(o.id)) left.push(o.name || '(unnamed)');
+        });
+        // eslint-disable-next-line no-console
+        console.log(`[lantern] shell installed · ${left.length} old meshes remain`,
+          left.length ? `: ${left.join(',')}` : '');
+      }
     };
     onLanternLoaded(swap);
     void preloadLantern().then(swap);

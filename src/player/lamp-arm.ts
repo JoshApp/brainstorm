@@ -6,6 +6,8 @@ import {
 import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-poses';
 import { boneArmsWanted, buildBoneHand, buildBoneArmParts, onBoneHandLoaded }
   from '../debug/bone-hand';
+import { bailBarRadius } from '../debug/bone-lantern';
+import { solveGrip } from '../anim/grip-solver';
 import type { BuiltModel } from '../ecs/build-model';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { WristAim } from '../anim/wrist-solver';
@@ -129,6 +131,7 @@ export function attachLampArm(camera: THREE.Camera): void {
   // Captured so the closure keeps the non-null narrowing these module refs have right here.
   const anchor = wristAnchor;
   const arm = armGroup;
+  let gripCentre: THREE.Vector3 | null = null;
   let hand!: BuiltModel;
   const installHand = (): void => {
     const bone = import.meta.env.DEV && boneArmsWanted()
@@ -147,6 +150,35 @@ export function attachLampArm(camera: THREE.Camera): void {
     if (lanternWrist) {
       wristAim.setDesiredFromWristFrame(RING_FOREARM_EXIT_DESIRED, lanternWrist.quaternion);
     }
+
+    // ── THE LAMP HAND CLOSES ON THE BAIL BAR ────────────────────────
+    //
+    // Josh: "can you make the grip nicer for the lamp." The authored ring-carry pose was tuned
+    // for the old torus — a 20mm ring in a fixed place — so against the scanned lantern's bail
+    // the fingers sat beside the handle rather than over it.
+    //
+    // The same solver the weapon hand uses, on a much thinner cylinder: 9.6mm of bail bar
+    // against a sword's 22mm hilt, so the fist closes far harder. The model is originned on that
+    // bar, so the point the hand grips and the point the lantern hangs from are the same point
+    // and there is nothing to reconcile.
+    const solved = bone
+      ? solveGrip(hand, {
+        style: 'saber',
+        radius: bailBarRadius(),
+        offset: [0, 0, 0],
+        roll: 0,
+        thumb: 'wrap',
+        forearmExit: RING_FOREARM_EXIT_DESIRED,
+      })
+      : null;
+    gripCentre = solved?.center.clone() ?? null;
+    if (import.meta.env.DEV && solved) {
+      // eslint-disable-next-line no-console
+      console.log(`[lamp-arm] bail grip centre=[${solved.center.toArray()
+        .map((v) => v.toFixed(3)).join(',')}] r=${(solved.radius * 1000).toFixed(1)}mm `
+        + `curl=${solved.curl.toFixed(2)}`);
+    }
+
     finishHand();
     if (import.meta.env.DEV) {
       // Which hand, by part count — the same label the right hand carries. Two hands that are
@@ -185,11 +217,38 @@ export function attachLampArm(camera: THREE.Camera): void {
   // local). The composed offset in arm-group-local depends on
   // NEW_WRIST_ROT, but it's CONSTANT (doesn't change at runtime), so
   // we just measure it once via Three's matrix utilities.
-  const palmAnchorSlot = hand.slots.get('palm_anchor');
-  if (palmAnchorSlot) {
-    arm.updateMatrixWorld(true);
-    palmAnchorSlot.getWorldPosition(_palmOffsetInArm);
-    arm.worldToLocal(_palmOffsetInArm);
+  // Where the hand actually holds the lantern. With a solved grip that is the bail bar, not
+  // palm_anchor — pinning the anchor instead slides the hand off by the offset between them
+  // every frame, which is exactly what it did to the weapon hand.
+  // WORLD MATRICES FIRST. `localToWorld` reads matrixWorld as it stands and does NOT refresh it,
+  // unlike getWorldPosition which quietly updates itself — so computing the hold point before
+  // this line used the hand's matrix from before it was parented, and the offset came out wildly
+  // wrong. The IK then aimed the wrist to compensate and put the hand in the camera's face.
+  arm.updateMatrixWorld(true);
+  const holdPoint = gripCentre
+    ? hand.group.localToWorld(gripCentre.clone())
+    : hand.slots.get('palm_anchor')?.getWorldPosition(new THREE.Vector3()) ?? null;
+  if (holdPoint) {
+    // MEASURED RELATIVE TO THE WRIST ANCHOR, not to the arm group.
+    //
+    // These are the same thing only while the anchor still sits at the arm's origin, which was
+    // true when this ran once at build time. It runs again now when the bone hand lands, by
+    // which point tickLampArm has moved the anchor out to the IK wrist — so measuring in arm
+    // space folded that whole displacement into the offset: 743mm instead of 93mm, and the IK
+    // dutifully drove the hand into the camera to satisfy it.
+    //
+    // The offset from the anchor to the held point is what the solver actually wants, and taken
+    // in the anchor's own frame it does not care when it is measured.
+    _palmOffsetInArm.copy(holdPoint);
+    anchor.worldToLocal(_palmOffsetInArm);
+    if (import.meta.env.DEV) {
+      // The offset from the IK wrist target to the point the hand holds. A hand's wrist and its
+      // grip are a few centimetres apart; anything larger means the measurement was taken in the
+      // wrong frame, and the IK will compensate by putting the hand somewhere absurd.
+      // eslint-disable-next-line no-console
+      console.log(`[lamp-arm] hold offset ${(_palmOffsetInArm.length() * 1000).toFixed(0)}mm`,
+        gripCentre ? '(bail grip)' : '(palm anchor)');
+    }
     // _palmOffsetInArm is now palm_anchor's position in arm-group-
     // local with wristAnchor at the arm-group origin — i.e. exactly
     // the offset from wristAnchor to palm_anchor.

@@ -38,9 +38,9 @@ OUT = (r'\\wsl.localhost\Ubuntu-24.04\home\josh\brainstorm\.claude\worktrees'
        r'\viewmodel-v3\public\models\lantern.glb')
 
 # How tall the lantern's BODY should be, metres — the part below the bail. The procedural lamp it
-# replaces is a 0.10m cage between two plates, about 0.13 overall; this is a touch larger because
-# it is a nicer object and can afford the room.
-BODY_HEIGHT = 0.15
+# replaces is a 0.10m cage between two plates, about 0.13 overall. Josh, on the first pass at
+# 0.15: "can you make the lamp slightly bigger its a bit small".
+BODY_HEIGHT = 0.19
 
 # -- WIPE + IMPORT --------------------------------------------------------
 bpy.ops.object.select_all(action='SELECT')
@@ -101,7 +101,22 @@ for i in range(N - 1, -1, -1):
 assert bail_floor < zhi, 'no bail found: the silhouette never narrows at the top'
 
 bail = [p for p in pts if p.z >= bail_floor]
-centre = sum(bail, Vector()) / len(bail)
+
+# ── THE ORIGIN IS THE BAIL'S TOP BAR, NOT THE LOOP'S CENTRE ──────────────
+#
+# You do not carry a lantern by the middle of its handle's hole — you hook your fingers over the
+# BAR at the top of it. Origin the model there and the hand's grip point and the thing it grips
+# are the same point, so the grip solver closes the fingers on the bar with nothing to reconcile.
+# The loop's centre put the palm in mid-air inside the hole, which is what left the fingers
+# sitting beside the handle instead of over it.
+bar_floor = max(p.z for p in bail) - (max(p.z for p in bail) - bail_floor) * 0.25
+bar = [p for p in bail if p.z >= bar_floor]
+centre = sum(bar, Vector()) / len(bar)
+
+# The bar's own thickness — what the fingers actually close around. Measured as the smaller
+# horizontal spread of the bar's vertices, halved, because a handle is a wire and not a hilt.
+bar_x = max(p.x for p in bar) - min(p.x for p in bar)
+bar_y = max(p.y for p in bar) - min(p.y for p in bar)
 
 # -- SCALE + RE-ORIGIN ----------------------------------------------------
 scale = BODY_HEIGHT / (bail_floor - zlo)
@@ -128,4 +143,6 @@ result = {
     'span_below_origin_m': round(min(p.z for p in after), 4),
     'span_above_origin_m': round(max(p.z for p in after), 4),
     'width_m': round(max(p.x for p in after) - min(p.x for p in after), 4),
+    # What the hand closes on. lamp-arm.ts needs this to solve the lantern grip.
+    'bar_radius_m': round(min(bar_x, bar_y) * scale / 2, 4),
 }
