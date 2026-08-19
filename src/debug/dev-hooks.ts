@@ -8,7 +8,8 @@ import { setSimTurbo } from '../engine/frame-loop';
 import { interpSync } from '../engine/render-interp';
 import { initNavOverlay, setNavOverlay } from './nav-overlay';
 import { initCullMap, setCullMap } from './cull-map';
-import { mountBoneView, boneViewWanted } from './bone-arms';
+import { mountBoneView, boneViewWanted, boneArmsWanted, preloadBoneHand }
+  from './bone-hand';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
 import { setGoreDebugEnabled } from './gore-debug';
 import { bossEncounterDebug } from '../mobs/boss-encounter';
@@ -401,9 +402,13 @@ export function installDevHooks(deps: DevHookDeps): void {
     grantGold(500);
     openForgeSheetForDebug();
   };
-  // The bone-hand look-at-it loop — ?boneview=1 shows the fitted hand beside the authored
-  // one at a fixed distance, so iterating on the fit costs a reload rather than a descent.
+  // The bone-hand look-at-it loop — ?boneview=1 shows the bone hand beside the authored one
+  // at a fixed distance, so iterating costs a reload rather than a descent.
   if (boneViewWanted()) mountBoneView(camera);
+  // Start the asset early. composeHeldWeapon is synchronous and falls back to the authored
+  // hand if the file has not landed, so the load wants every second it can get between boot
+  // and the first equip; a late arrival is picked up on the next weapon swap.
+  if (boneArmsWanted()) void preloadBoneHand();
 
   // The cull map — the MAP chip on the instrumentation toolbar, window.__cullMap(),
   // ?cullmap=1, or press M. Reads the camera for the player marker and the FOV wedge.

@@ -1,0 +1,194 @@
+// ── THE BONE HAND ────────────────────────────────────────────────────────────
+//
+// Josh generated skeletal forearms in Tripo3D and wants them as the viewmodel. The first
+// attempt hung the bones off the AUTHORED hand and tried to match one to the other at runtime,
+// which he called correctly: *"its like the whole idea to fit it to what we have is weird cant
+// we just start a new with this new bone hand?"*
+//
+// Right. The fitting only ever existed because the model arrived as 62 anonymous shells with
+// no skeleton, so something had to reconstruct one. It has a skeleton now. So the bone hand is
+// not fitted to a hand — it IS the hand, and this file is a loader.
+//
+// ── WHY THERE IS NO MATH HERE ───────────────────────────────────────────────
+//
+// scripts/blender/rig-bone-hand.py bakes the asset into content/hand.ts's OWN convention:
+// wrist at the origin, fingers up +Y, every joint carrying its position with an identity
+// rotation, scaled so the middle knuckle lands exactly on the authored one. It reads that
+// convention from scripts/blender/hand-frame.json, which scripts/hand-frame.ts MEASURES off
+// the real HAND_RIGHT — so the target can never quietly drift from the code that defines it.
+//
+// The nodes are named for the slots they are: `wrist`, `palm_anchor`, `finger_index`,
+// `finger_index_pip`, … So this module loads the file and hands back a BuiltModel. Everything
+// downstream — the weapon grip alignment, adjustFingersForGrip, the arm IK, the wrist solver —
+// works because it is looking at the same slot names it always was.
+//
+// ── AND THE CHARTER ─────────────────────────────────────────────────────────
+//
+// Pillar 6 says no model files, no texture pipelines. This is the trial of whether that should
+// move, and it is DEV-only and flag-gated (`?bonearm=1`) until it is decided. What an imported
+// mesh does not get, and would be owed: the lamp-reveal shader, the mood tint, the prop-class
+// shadow policy — all keyed off ModelSpec. If it survives, the end state is a conversion that
+// emits these shells as a ModelSpec, not a runtime GLTF load. The asset ships either way while
+// the flag exists: public/ is copied wholesale.
+
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { buildModel, type BuiltModel } from '../ecs/build-model';
+import { HAND_RIGHT } from '../content/hand';
+import { DEV } from './dev';
+
+/** Slot names the rest of the game asks this hand for. Anything in the GLB matching one of
+ *  these becomes a slot; everything else is a part. Kept as a list rather than inferred from
+ *  the node names so a typo'd export FAILS a check instead of quietly losing a joint. */
+const SLOT_NAMES: readonly string[] = [
+  'wrist', 'palm_anchor', 'palm_up', 'grip_axis',
+  'finger_thumb', 'finger_thumb_ip',
+  ...['index', 'middle', 'ring', 'pinky'].flatMap((f) => [
+    `finger_${f}`, `finger_${f}_pip`, `finger_${f}_dip`,
+  ]),
+];
+
+let source: THREE.Object3D | null = null;
+let loading: Promise<void> | null = null;
+
+/**
+ * Start loading. Safe to call repeatedly — the load happens once.
+ *
+ * Kicked off at boot rather than on first compose: composeHeldWeapon is synchronous, so a hand
+ * asked for before the file lands has to fall back to the authored one, and every frame spent
+ * waiting is a frame of the wrong hand.
+ */
+export function preloadBoneHand(): Promise<void> {
+  if (!DEV) return Promise.resolve();
+  if (loading) return loading;
+  loading = new Promise<void>((resolve) => {
+    new GLTFLoader().load(
+      `${import.meta.env.BASE_URL}models/bone-hand-right.glb`,
+      (gltf) => {
+        source = gltf.scene;
+        source.updateMatrixWorld(true);
+        const missing = SLOT_NAMES.filter((n) => !source?.getObjectByName(n));
+        if (missing.length) {
+          console.warn('[bone-hand] the glb is missing slots', missing,
+            '— re-run scripts/blender/rig-bone-hand.py');
+        }
+        resolve();
+      },
+      undefined,
+      (err) => { console.warn('[bone-hand] load failed', err); resolve(); },
+    );
+  });
+  return loading;
+}
+
+/**
+ * A fresh bone hand, shaped like anything `buildModel` returns.
+ *
+ * Null until the asset has loaded, in which case callers fall back to the authored hand; a late
+ * arrival is picked up on the next weapon swap, which recomposes anyway.
+ */
+export function buildBoneHand(): BuiltModel | null {
+  if (!DEV || !source) return null;
+
+  // The GLB's root IS the wrist, and the bake left it at the origin with an identity
+  // transform, so the clone can be used as the group directly — no wrapper, no offset.
+  const group = source.clone(true) as THREE.Group;
+  const parts = new Map<string, THREE.Object3D>();
+  const slots = new Map<string, THREE.Object3D>();
+  const hitTargets: THREE.Object3D[] = [];
+  const materials = new Map<string, THREE.Material>();
+
+  const wanted = new Set(SLOT_NAMES);
+  group.traverse((o) => {
+    if (!o.name) return;
+    if (wanted.has(o.name)) slots.set(o.name, o);
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    parts.set(o.name, o);
+    hitTargets.push(o);
+    const mat = mesh.material as THREE.Material;
+    if (mat) materials.set(mat.uuid, mat);
+  });
+  // The root is the wrist itself; `traverse` visits it, but only if the export named it.
+  if (!slots.has('wrist')) slots.set('wrist', group);
+
+  // ── THE REST POSE COMES FROM content/hand.ts ──────────────────────────────
+  //
+  // The asset is exported FLAT — every joint identity — because a flat hand is the honest bind
+  // pose for a skeleton, and baking a grip into the file would freeze one weapon's pose into
+  // the geometry. The curl is authored, not modelled: HAND_RIGHT's slots carry the MCP/PIP/DIP
+  // rest rotations that make a fist, and adjustFingersForGrip nudges from there per grip
+  // radius. Reading them off the live spec means the bone hand tracks any repose of the
+  // authored one for free, and there is still exactly one place a finger curl is decided.
+  const authored = HAND_RIGHT.slots ?? {};
+  for (const [name, node] of slots) {
+    const rot = authored[name]?.rot;
+    if (rot) node.rotation.set(rot[0], rot[1], rot[2]);
+  }
+
+  return { group, parts, slots, materials, hitTargets };
+}
+
+/** Is the trial on? Read by the composition, so nothing else has to know about the flag. */
+export function boneArmsWanted(): boolean {
+  return DEV && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('bonearm') === '1';
+}
+
+/** Is the side-by-side view on? */
+export function boneViewWanted(): boolean {
+  return DEV && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('boneview') === '1';
+}
+
+// ── THE LOOK-AT-IT LOOP ──────────────────────────────────────────────────────
+//
+// Josh: *"cant you bench the thing until it looks right or something?"* — right, and that is
+// what the bench is for. It cannot take this one: it resolves static ModelSpecs and this
+// arrives asynchronously from a file.
+//
+// So this is the equivalent, and it exists because iterating through the GAME was the slow
+// part — the composed hand only exists once a weapon is equipped, so every look cost a descent
+// and an equip. `?boneview=1` hangs the bone hand and the authored hand side by side in front
+// of the camera, present from the first frame, weapon or no weapon. Re-bake, reload, look.
+//
+// Both at the same scale and the same origin, because the only honest way to judge a hand that
+// claims to be a drop-in replacement is against the thing it is replacing.
+export function mountBoneView(camera: THREE.Object3D): void {
+  if (!DEV) return;
+  // Close and scaled up until the two hands FILL the frame. At the viewmodel's own distance
+  // both are a centimetre of pixels and every difference that matters is invisible.
+  const stage = new THREE.Group();
+  stage.position.set(0, -0.02, -0.30);
+  stage.scale.setScalar(1.8);
+  camera.add(stage);
+
+  const authoredHand = buildModel(HAND_RIGHT);
+  authoredHand.group.position.x = -0.075;
+  stage.add(authoredHand.group);
+
+  const slotHost = new THREE.Group();
+  slotHost.position.x = 0.075;
+  stage.add(slotHost);
+
+  const show = (): void => {
+    slotHost.clear();
+    const bone = buildBoneHand();
+    if (!bone) return;
+    slotHost.add(bone.group);
+    // Compare what the bake actually guarantees: wrist → middle knuckle. A bounding box does
+    // NOT measure size here — it measures POSE, and an open hand reads three times a fist. That
+    // cost a round of chasing a scale bug that was never there.
+    const reach = (m: BuiltModel): string => {
+      m.group.updateMatrixWorld(true);
+      const w = m.slots.get('wrist') ?? m.group;
+      const k = m.slots.get('finger_middle');
+      if (!k) return 'n/a';
+      const local = w.matrixWorld.clone().invert().multiply(k.matrixWorld);
+      return new THREE.Vector3().setFromMatrixPosition(local).length().toFixed(4);
+    };
+    // eslint-disable-next-line no-console
+    console.log('[bone-hand] wrist→knuckle  bone', reach(bone), ' authored', reach(authoredHand));
+  };
+  void preloadBoneHand().then(show);
+}

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import type { ModelSpec } from '../ecs/model-types';
 import { HAND_RIGHT } from '../content/hand';
-import { attachBoneHand, boneArmsWanted } from '../debug/bone-arms';
+import { boneArmsWanted, buildBoneHand } from '../debug/bone-hand';
 
 // Shared composition: BUILD a hand, BUILD a weapon (if any), ALIGN the
 // weapon's grip_anchor to the hand's palm_anchor, ADJUST the hand's
@@ -84,7 +84,14 @@ export function composeHeldWeapon(
   weaponSpec: ModelSpec | null,
   handSpec: ModelSpec = HAND_RIGHT,
 ): HeldWeaponCompose {
-  const hand = buildModel(handSpec);
+  // ── THE BONE-HAND TRIAL SUBSTITUTES THE HAND ITSELF ─────────────────────
+  //
+  // DEV-only and flag-gated. Not a mesh hung off the authored hand's wrist — the asset is
+  // baked into content/hand.ts's own convention (wrist at origin, fingers +Y, matching slot
+  // names), so it drops in as the hand and everything below this line is unchanged: the grip
+  // alignment, the finger curl, the arm IK, the wrist solver. See debug/bone-hand.ts.
+  // Dead-code-eliminated in production.
+  const hand = (import.meta.env.DEV && boneArmsWanted() && buildBoneHand()) || buildModel(handSpec);
   const group = new THREE.Group();
   group.add(hand.group);
   let weapon: BuiltModel | null = null;
@@ -102,18 +109,6 @@ export function composeHeldWeapon(
     m.decompose(weapon.group.position, weapon.group.quaternion, weapon.group.scale);
     group.add(weapon.group);
     adjustFingersForGrip(hand.slots, inferGripRadius(weaponSpec));
-  }
-  // ── THE BONE-HAND TRIAL HANGS OFF THIS WRIST ────────────────────────────
-  //
-  // DEV-only and flag-gated, and it attaches HERE rather than to the camera on purpose: a
-  // hand mounted at the wrist slot inherits the viewmodel placement, the weapon-grip
-  // composition and the arm IK, so a foreign mesh needs no pose of its own. See
-  // debug/bone-arms.ts. Dead-code-eliminated in production.
-  if (import.meta.env.DEV && boneArmsWanted()) {
-    const wrist = hand.slots.get('wrist') ?? hand.group;
-    const authored: THREE.Object3D[] = [];
-    hand.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) authored.push(o); });
-    attachBoneHand(wrist, authored, hand.slots);
   }
   return { group, hand, weapon };
 }
