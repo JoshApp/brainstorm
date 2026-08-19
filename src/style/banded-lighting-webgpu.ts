@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -222,6 +222,63 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// ── THE DARK ABOVE — LIGHT IS EATEN AS IT RISES ──────────────────────────────
+//
+// Josh: *"can we make it so the game eats light vertically? so it looks like a darkness upon
+// there."* The dungeon's baseline is darkness and every uncommon light is a signal
+// (docs/VISUAL-LANGUAGE.md), but the CEILING was quietly breaking that rule: a torch throws just
+// enough onto the vault to describe the whole room's volume, so the space reads as a lit box
+// with dark corners rather than as a pool of light with nothing above it.
+//
+// So light is consumed with height. Below the threshold nothing changes at all — the floor, the
+// props, everything at eye level is untouched. Above it the surface keeps a shrinking fraction
+// of what struck it, until near the top it keeps almost nothing and the vault is simply gone.
+//
+// ── MEASURED FROM THE EYE, NOT FROM THE WORLD ────────────────────────────────
+//
+// `positionWorld.y` is the wrong ruler. The dungeon has real verticality — stair corridors, a
+// descent bias, sunken rooms — so one absolute height is a different distance off the floor in
+// every room, and a band authored for one would sit at knee height in the next.
+//
+// Height above the CAMERA is the right one, and it costs nothing: `cameraPosition` is already in
+// this graph for the reveal rim, so there is no uniform to upload and nothing to keep in sync.
+// It is also what the effect actually means — the dark presses down on the VIEWER. Walk up a
+// stair and it climbs with you, which is correct rather than convenient.
+//
+// ── APPLIED TO EVERYTHING, NOT ONLY TO CEILINGS ──────────────────────────────
+//
+// A ceiling-only version draws a seam: the wall stays lit to its very top and then the vault
+// cuts to black at the join, which reads as a missing texture rather than as darkness. Eating
+// the light by height instead takes the TOPS OF THE WALLS with it, and the room loses its lid
+// gradually, the way an unlit space actually does.
+const uDarkAboveStart = tuneUniform({
+  id: 'darkabovestart', group: 'Dark above', label: 'Start (m above eye)',
+  min: -1, max: 4, value: 1.30, step: 0.05,
+  hint: 'below this nothing is touched',
+});
+const uDarkAboveFull = tuneUniform({
+  id: 'darkabovefull', group: 'Dark above', label: 'Full (m above eye)',
+  min: 0, max: 6, value: 2.60, step: 0.05,
+  hint: 'by this height only the floor remains',
+});
+const uDarkAboveKeep = tuneUniform({
+  id: 'darkabovekeep', group: 'Dark above', label: 'Keep at full',
+  min: 0, max: 1, value: 0.06, step: 0.01,
+  hint: '0 = pure black overhead; a little keeps a hint of vault',
+});
+
+/**
+ * How much of a fragment's light survives at its height. 1 at and below the threshold.
+ *
+ * `smoothstep` rather than a linear ramp so the transition has no edge in it — a hard boundary
+ * across a vault reads as a plane, which is exactly the thing being removed.
+ */
+function darkAboveFactor(): any {
+  const h: any = (positionWorld as any).y.sub((cameraPosition as any).y);
+  const t: any = (smoothstep as any)(uDarkAboveStart as any, uDarkAboveFull as any, h);
+  return (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
+}
+
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
   // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
@@ -360,6 +417,11 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
     // count 0). See scene/gore-webgpu.ts.
     out = applyGoreWebGPU(out);
+    // ── AND THE DARK ABOVE EATS WHAT IS LEFT ──────────────────────────────────
+    // Last, and on the TOTAL: after the gore, after the rim, after the chroma. Anything applied
+    // before this would be re-lighting a surface the dark has already taken, and the rim in
+    // particular would keep burning a silhouette into a ceiling that is meant to be absent.
+    out = out.mul(darkAboveFactor());
     context.outgoingLight.assign(out);
     super.finish(builder);
   }
