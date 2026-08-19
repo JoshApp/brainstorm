@@ -313,6 +313,11 @@ function darkEdgeNoise(): any {
   return a.mul(0.5).add(b.mul(0.33)).add(c.mul(0.17));      // ≈ [-1, 1]
 }
 
+const uDarkAboveMinM = tuneUniform({
+  id: 'darkabovemin', group: 'Dark above', label: 'Clear headroom (m)',
+  min: 0, max: 4, value: 1.75, step: 0.05,
+  hint: 'never darken below this many metres off the floor, however low the room',
+});
 const uDarkAboveCap = tuneUniform({
   id: 'darkabovecap', group: 'Dark above', label: 'Brightness ceiling',
   min: 0, max: 0.5, value: 0.035, step: 0.005,
@@ -335,9 +340,23 @@ function darkAboveTerms(): { factor: any; t: any } {
   const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
   const span: any = roomY.y.sub(roomY.x);
   const frac: any = (positionWorld as any).y.sub(roomY.x).div(span.max(0.001));
+  // ── A FRACTION, WITH A FLOOR IN METRES ────────────────────────────────────
+  //
+  // A pure fraction is what makes tall rooms read tall, and it is also what breaks short ones:
+  // Josh, tuning it — *"if i tune for higher rooms its good but doenst work on smaller ones."*
+  // At 0.55 a two-and-a-half metre corridor starts going dark at 1.4m, which is below eye level,
+  // so the space is crushed rather than made mysterious and the lower walls stop being readable.
+  //
+  // So the fraction is a MINIMUM height, not the only rule: whichever is higher wins between the
+  // fraction and a fixed clearance off the floor. Tall rooms are governed by the fraction (the
+  // clearance is far below it and does nothing); short rooms are governed by the clearance, keep
+  // their lower walls lit, and still lose their ceiling. One tuning then suits both, which is
+  // exactly what a single fraction could not do.
+  const minFrac: any = (uDarkAboveMinM as any).div(span.max(0.001));
+  const base: any = (uDarkAboveStart as any).max(minFrac);
   // The boundary wanders. Only the START moves — the top of the fade stays pinned at the ceiling,
   // so a wobbling edge can never leave a lit band above it.
-  const start: any = (uDarkAboveStart as any).add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
+  const start: any = base.add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
   const t: any = (smoothstep as any)(start, uDarkAboveFull as any, frac);
   const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
   const inRoom: any = span.greaterThan(0.01);
@@ -369,8 +388,18 @@ function darkAboveTerms(): { factor: any; t: any } {
  */
 function darkAboveCap(out: any, t: any): any {
   const lum: any = (luminance as any)(out).max(1e-4);
-  // No cap below the threshold: a huge ceiling eased down to the real one by t.
-  const capLum: any = (mix as any)((float as any)(1e3), uDarkAboveCap as any, t);
+  // ── THE UNCAPPED END IS A REAL BRIGHTNESS, NOT INFINITY ───────────────────
+  //
+  // This lerped from 1e3, which sounds like "no cap" and behaves like "no cap almost all the
+  // way": at t = 0.5 the ceiling was still 500, so nothing was limited until t was within a few
+  // percent of 1. The upper WALLS therefore stayed uncapped, and in a small room they are close
+  // to the lamp and very brightly lit — which is precisely Josh's report, that the lamp pushes
+  // through in small rooms while the tuning that suits tall ones looks right.
+  //
+  // 4.0 is a genuinely bright surface in this scene's range, so the cap is inert on anything
+  // normally lit and starts limiting as soon as the fade does. The two now bite together
+  // instead of the cap waiting for the very top.
+  const capLum: any = (mix as any)((float as any)(4), uDarkAboveCap as any, t);
   return out.mul(capLum.div(lum).min(1.0));
 }
 

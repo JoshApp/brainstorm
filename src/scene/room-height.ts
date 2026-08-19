@@ -64,6 +64,47 @@ export function tagRoomHeight(mesh: THREE.Mesh | null | undefined, floorY: numbe
   if (DEV) tagged++;
 }
 
+const _v = new THREE.Vector3();
+
+/**
+ * Tag a shell mesh whose FLOOR IS NOT LEVEL — a ramped corridor, a stair run.
+ *
+ * Josh: *"it doesnt properly work with corridors that have angled stair ceilings."* Right, and
+ * one pair of numbers cannot describe a ramp. A stair corridor's ceiling tracks its floor's grade
+ * so headroom stays constant down the slope, and tagging the whole run with the floor height at
+ * its centre puts the fraction badly wrong at both ends — too high at the bottom of the run, too
+ * low at the top. The dark then cuts across the stair at an angle that belongs to nothing.
+ *
+ * So the floor is sampled PER VERTEX from the elevation field, and the ceiling rides `height`
+ * above it. A ramp is then described exactly, and a level room sampled this way just gets the
+ * same answer at every vertex.
+ *
+ * The mesh's own local matrix is applied first: this geometry is authored in the mesh's frame
+ * (the sloped ceiling is displaced in local Z and then rotated flat), so its raw vertex positions
+ * are not world XZ and sampling them directly would read the elevation field in the wrong place.
+ */
+export function tagRoomHeightSloped(
+  mesh: THREE.Mesh | null | undefined,
+  height: number,
+  floorAt: (x: number, z: number) => number,
+): void {
+  const geo = mesh?.geometry;
+  const pos = geo?.getAttribute('position');
+  if (!mesh || !geo || !pos) return;
+  if (geo.getAttribute(ROOM_Y_ATTR)) return;
+  mesh.updateMatrix();
+  const n = pos.count;
+  const arr = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    _v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrix);
+    const f = floorAt(_v.x, _v.z);
+    arr[i * 2] = f;
+    arr[i * 2 + 1] = f + height;
+  }
+  geo.setAttribute(ROOM_Y_ATTR, new THREE.BufferAttribute(arr, 2));
+  if (DEV) tagged++;
+}
+
 let tagged = 0;
 
 /** DEV: how many shell meshes were tagged, and how many survived to the drawn scene. */
