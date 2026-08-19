@@ -68,8 +68,19 @@ const wristAim = new WristAim({ desiredExitLocal: RING_FOREARM_EXIT_DESIRED, dam
  * Only used while the hand floats: with a forearm on screen the wrist solver has something real
  * to stay anatomical against, and this would fight it.
  */
-const LAMP_FINGERS_TO = new THREE.Vector3(0, -0.25, -1);
-const LAMP_PALM_TO = new THREE.Vector3(0, -1, 0);
+// ── AND WHY IT IS NOT SIMPLY "FORWARD" ──────────────────────────────────────
+//
+// Straight forward is what a hand carrying a lantern does, and it reads as nothing: the hand
+// sits in the lower-LEFT corner, so fingers aimed down the camera's axis present it end-on —
+// a foreshortened stump with the wrist hidden behind the knuckles. Measured (scripts/
+// aim-check.ts), that pose was landing exactly where it was asked to; the ask was wrong.
+//
+// So it points ACROSS the frame instead: mostly inboard, a little forward, a little down. The
+// hand then enters from the left edge and runs toward centre, showing its length and enough
+// depth to read as a hand, with the wrist end leaving frame into the dark rather than being
+// cut off mid-bone.
+export const LAMP_FINGERS_TO = new THREE.Vector3(0.75, -0.18, -0.64);
+export const LAMP_PALM_TO = new THREE.Vector3(0, -1, 0);
 /** Solved once per hand build — the hand does not change shape between frames. */
 let floatingHandRot: THREE.Quaternion | null = null;
 
@@ -207,6 +218,49 @@ export function attachLampArm(camera: THREE.Camera): void {
     if (wristAnchor) {
       floatingHandRot = aimHand(hand, wristAnchor, LAMP_FINGERS_TO, LAMP_PALM_TO)
         ?? floatingHandRot;
+      // ── AND THE SAME MEASUREMENT, TAKEN IN THE GAME ────────────────
+      //
+      // Josh: "last time we positioned in the bench the real position was different ... so it
+      // might be your thing is right but its wrong." Exactly the right doubt. scripts/
+      // aim-check.ts proves the SOLVE, standalone — but it uses the AUTHORED hand where the
+      // game may be running the scanned one, it does not run the grip solve first, and it
+      // assumes a parent whose rotation it never checks. A solve that is exact in a script and
+      // wrong on screen is a thing this codebase has produced before.
+      //
+      // So the same numbers are read back off the LIVE hand in the LIVE camera's frame. If
+      // these disagree with the script, the script is the thing that is wrong.
+      if (import.meta.env.DEV && floatingHandRot) {
+        wristAnchor.quaternion.copy(floatingHandRot);
+        camera.updateMatrixWorld(true);
+        const toCam = new THREE.Matrix4().copy(camera.matrixWorld).invert();
+        const at = (o: THREE.Object3D): THREE.Vector3 =>
+          new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(toCam);
+        const wristSlot = hand.slots.get('wrist');
+        const palmSlot = hand.slots.get('palm_anchor');
+        const K = new THREE.Vector3();
+        let n = 0;
+        for (const nm of ['finger_index', 'finger_middle', 'finger_ring', 'finger_pinky']) {
+          const slot = hand.slots.get(nm);
+          if (!slot) continue;
+          K.add(at(slot));
+          n++;
+        }
+        if (wristSlot && palmSlot && n) {
+          K.divideScalar(n);
+          const F = K.clone().sub(at(wristSlot)).normalize();
+          const N = at(palmSlot).sub(K);
+          N.addScaledVector(F, -N.dot(F)).normalize();
+          const want = LAMP_FINGERS_TO.clone().normalize();
+          const d = (v: THREE.Vector3): string => v.toArray().map((x) => x.toFixed(2)).join(',');
+          const q = armGroup?.quaternion;
+          // eslint-disable-next-line no-console
+          console.log(`[lamp-arm] AIM camera-space fingers=[${d(F)}] palm=[${d(N)}] `
+            + `· asked=[${d(want)}] `
+            + `· error=${((Math.acos(Math.min(1, F.dot(want))) * 180) / Math.PI).toFixed(1)}deg `
+            + `· knuckles=${n}/4 · hand=${hand.parts.size}p `
+            + `· armQuat=[${q ? [q.x, q.y, q.z, q.w].map((x) => x.toFixed(2)).join(',') : '-'}]`);
+        }
+      }
     }
     if (import.meta.env.DEV) {
       // Which hand, by part count — the same label the right hand carries. Two hands that are
