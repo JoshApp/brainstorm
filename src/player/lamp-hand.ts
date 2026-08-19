@@ -33,33 +33,45 @@ import { solveGrip } from '../anim/grip-solver';
 import { HOOK_GRIP } from '../content/grip-pose';
 import { HandRig, type HandRest } from './hand-rig';
 
+// ── HOW THE LAMP HAND IS HELD ────────────────────────────────────────────────
+//
+// Said as anatomy — where the fingers point, which way the palm faces — and solved against the
+// hand's own measured landmarks by `aimHand`. Not as Euler decimals, and not as the model's
+// local axes: a hand's axes are not its anatomy. Everything below the root hangs off the `wrist`
+// slot's authored bend, and +Z is the PALM on this hand where it is the back of the hand on the
+// right one, because HAND_LEFT is a mirrored spec. An early attempt at this pose authored
+// "back of the hand up" and pointed the palm at the ceiling for exactly that reason.
+//
+// Three knobs, each one number, each independent:
+//
+//   PITCH  LAMP_FINGERS_BASE.y   + tips the fingers up, - lets them droop
+//   ROLL   LAMP_PALM_BASE.x      + tips the palm toward the screen's right
+//   YAW    LAMP_YAW              + swings the fingers out to the left, - inboard
+//
+// The pose is Josh's, arrived at by naming a direction and looking, one axis at a time: the hand
+// held out ahead of the camera, palm down and rolled well over, angled out and pitched slightly
+// up so the fingers hook down onto the bail with the lantern hanging clear beneath them.
+
+/** Fingers ahead of the camera, tipped a little UP. */
+const LAMP_FINGERS_BASE = new THREE.Vector3(0, 0.10, -1);
+/** Palm down and rolled ~39 degrees toward the screen's right — a carried hand, not a level one. */
+const LAMP_PALM_BASE = new THREE.Vector3(0.80, -1, 0);
+
 /**
- * How the lamp hand is held, said as anatomy.
+ * Yaw, radians. ~19 degrees.
  *
- * Authored as DIRECTIONS rather than as the roll number that won a comparison sheet, because
- * `aimHand` orthogonalises the palm against the fingers — so "palm this way" survives a later
- * change to where the fingers point, and a baked-in roll would not.
- *
- * Exported for scripts/aim-check.ts, which imports the real constants rather than restating
- * them: a report that re-declares the numbers it checks launders a guess as a measurement.
+ * BOTH VECTORS TURN BY IT. Yawing only the fingers would drag the roll along, because the palm
+ * is orthogonalised against them — so the pair rotates as one and the roll survives any later
+ * change to the yaw. That is the whole reason these are authored as a base pair plus an angle
+ * rather than as two hand-tuned vectors.
  */
-// STRAIGHT OUT FROM THE CAMERA, PALM DOWN, FINGERS CURLING ONTO THE BAIL.
-//
-// Which is what Josh asked for at the start and has never once been rendered. The first attempt
-// authored exactly this and came out wrong — `upTo` aims a model's local +Z, and HAND_LEFT is a
-// mirrored spec whose +Z is the PALM, so the line meaning "back of the hand up" pointed the palm
-// at the ceiling. Fixing that bug and changing the target to "across the frame" happened in the
-// same commit, on my judgement that fingers-forward would read as a foreshortened stump. That
-// judgement was not mine to make against a stated instruction, and it cost four rounds of
-// sweeping orientations he had not asked for.
-//
-// So: fingers down the view axis with a little droop, palm at the floor. A hand held out in
-// front of you carrying a lamp.
-export const LAMP_FINGERS_TO = new THREE.Vector3(0, -0.15, -1);
-// ...with a slight roll to the LEFT — the palm tips outboard rather than sitting dead flat.
-// About 17 degrees off straight down. A hand carrying a lamp at your side never holds the palm
-// perfectly level, and dead flat read as a diagram of a hand rather than one in use.
-export const LAMP_PALM_TO = new THREE.Vector3(-0.30, -1, 0);
+const LAMP_YAW = 0.34;
+const _yawAxis = new THREE.Vector3(0, 1, 0);
+
+/** Which way the fingers point, camera-local. */
+export const LAMP_FINGERS_TO = LAMP_FINGERS_BASE.clone().applyAxisAngle(_yawAxis, LAMP_YAW);
+/** Which way the palm faces, camera-local. Orthogonalised against the fingers by `aimHand`. */
+export const LAMP_PALM_TO = LAMP_PALM_BASE.clone().applyAxisAngle(_yawAxis, LAMP_YAW);
 
 /**
  * The rest pose. `pos` is where the hand's GRIP sits when the lamp has nothing to say — it is
