@@ -150,7 +150,20 @@ for f in FINGERS:
         p['o'].name = '{}_{}'.format(f, k + 1)
 
 # -- ANCHORS WITH INTENT --------------------------------------------------
-wrist_pos = sum((p['c'] for p in carp), Vector()) / len(carp)
+# THE BASE OF THE CARPUS, not its centre.
+#
+# The arm IK targets this point's world position (viewmodel.ts: handWristSlot.getWorldPosition),
+# so it is where the forearm ENDS -- and a wrist at the centroid of the eight carpals buries
+# half the carpus inside the forearm, which reads as the arm reaching up into the hand. Josh,
+# looking at it: *"but it targets the middle of the wrist right? the anchor should be at the
+# base of the wrist bones."*
+#
+# Same rule as the bone pivots: average the proximal 20% of the carpal vertices, so the anchor
+# lands in the middle of the joint SURFACE rather than on whichever vertex sticks out furthest.
+# The authored hand agrees -- its carpus sphere sits at y=+0.010 above a wrist slot at zero.
+carp_pts = sorted((v for p in carp for v in verts(p['o'])),
+                  key=lambda v: (v - arm_c).dot(AXIS))
+wrist_pos = sum(carp_pts[:max(3, len(carp_pts) // 5)], Vector()) / max(3, len(carp_pts) // 5)
 meta_c = [chains[f][0]['c'] for f in FINGERS]
 palm_pos = sum(meta_c, Vector()) / len(meta_c)
 tip = chains['middle'][-1]['c']
