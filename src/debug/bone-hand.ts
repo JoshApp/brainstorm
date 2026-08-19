@@ -35,6 +35,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import { HAND_RIGHT } from '../content/hand';
+import type { ModelSpec } from '../ecs/model-types';
 import { DEV } from './dev';
 
 /** Slot names the rest of the game asks this hand for. Anything in the GLB matching one of
@@ -48,14 +49,16 @@ const SLOT_NAMES: readonly string[] = [
   ]),
 ];
 
-let source: THREE.Object3D | null = null;
+export type Side = 'right' | 'left';
+
+const source: Record<Side, THREE.Object3D | null> = { right: null, left: null };
 let loading: Promise<void> | null = null;
 const listeners: Array<() => void> = [];
 
 /** Run `fn` once the asset is in — immediately if it already is. The viewmodel builds its arm
  *  at construction, long before a GLB can land, so the bone meshes are swapped in on this. */
 export function onBoneHandLoaded(fn: () => void): void {
-  if (source) { fn(); return; }
+  if (source.right) { fn(); return; }
   listeners.push(fn);
 }
 
@@ -69,23 +72,26 @@ export function onBoneHandLoaded(fn: () => void): void {
 export function preloadBoneHand(): Promise<void> {
   if (!DEV) return Promise.resolve();
   if (loading) return loading;
-  loading = new Promise<void>((resolve) => {
-    new GLTFLoader().load(
-      `${import.meta.env.BASE_URL}models/bone-hand-right.glb`,
+  const loader = new GLTFLoader();
+  const one = (side: Side): Promise<void> => new Promise((resolve) => {
+    loader.load(
+      `${import.meta.env.BASE_URL}models/bone-hand-${side}.glb`,
       (gltf) => {
-        source = gltf.scene;
-        source.updateMatrixWorld(true);
-        const missing = SLOT_NAMES.filter((n) => !source?.getObjectByName(n));
+        source[side] = gltf.scene;
+        gltf.scene.updateMatrixWorld(true);
+        const missing = SLOT_NAMES.filter((n) => !gltf.scene.getObjectByName(n));
         if (missing.length) {
-          console.warn('[bone-hand] the glb is missing slots', missing,
+          console.warn(`[bone-hand] ${side} glb is missing slots`, missing,
             '— re-run scripts/blender/rig-bone-hand.py');
         }
-        for (const fn of listeners.splice(0)) fn();
         resolve();
       },
       undefined,
-      (err) => { console.warn('[bone-hand] load failed', err); resolve(); },
+      (err) => { console.warn(`[bone-hand] ${side} load failed`, err); resolve(); },
     );
+  });
+  loading = Promise.all([one('right'), one('left')]).then(() => {
+    for (const fn of listeners.splice(0)) fn();
   });
   return loading;
 }
@@ -96,12 +102,13 @@ export function preloadBoneHand(): Promise<void> {
  * Null until the asset has loaded, in which case callers fall back to the authored hand; a late
  * arrival is picked up on the next weapon swap, which recomposes anyway.
  */
-export function buildBoneHand(): BuiltModel | null {
-  if (!DEV || !source) return null;
+export function buildBoneHand(side: Side = 'right', pose: ModelSpec = HAND_RIGHT): BuiltModel | null {
+  const scene = DEV ? source[side] : null;
+  if (!scene) return null;
 
-  // The HAND is the `wrist` subtree specifically: the file also carries three loose arm bones,
-  // and cloning the whole scene would drag a floating forearm into the palm.
-  const wristNode = source.getObjectByName('wrist');
+  // The HAND is the `wrist` subtree specifically: the right file also carries three loose arm
+  // bones, and cloning the whole scene would drag a floating forearm into the palm.
+  const wristNode = scene.getObjectByName('wrist');
   if (!wristNode) { console.warn('[bone-hand] no `wrist` node in the glb'); return null; }
 
   // ── THE ROOT AND THE WRIST MUST BE TWO NODES ──────────────────────────────
@@ -142,7 +149,7 @@ export function buildBoneHand(): BuiltModel | null {
   // rest rotations that make a fist, and adjustFingersForGrip nudges from there per grip
   // radius. Reading them off the live spec means the bone hand tracks any repose of the
   // authored one for free, and there is still exactly one place a finger curl is decided.
-  const authored = HAND_RIGHT.slots ?? {};
+  const authored = pose.slots ?? {};
   for (const [name, node] of slots) {
     const rot = authored[name]?.rot;
     if (rot) node.rotation.set(rot[0], rot[1], rot[2]);
@@ -162,10 +169,10 @@ export function buildBoneHand(): BuiltModel | null {
  * Keyed by the same part names ARM_RIGHT uses, so the caller swaps by name.
  */
 export function buildBoneArmParts(): Map<string, THREE.Mesh> | null {
-  if (!DEV || !source) return null;
+  if (!DEV || !source.right) return null;
   const out = new Map<string, THREE.Mesh>();
   for (const part of ['humerus', 'radius', 'ulna']) {
-    const node = source.getObjectByName(`arm_${part}`);
+    const node = source.right?.getObjectByName(`arm_${part}`) ?? null;
     if (node && (node as THREE.Mesh).isMesh) out.set(part, (node as THREE.Mesh).clone());
   }
   return out.size ? out : null;

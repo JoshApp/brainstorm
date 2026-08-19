@@ -4,6 +4,9 @@ import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
 import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-poses';
+import { boneArmsWanted, buildBoneHand, onBoneHandLoaded } from '../debug/bone-hand';
+import type { BuiltModel } from '../ecs/build-model';
+import { disposeGpuTree } from '../scene/gpu-dispose';
 import { WristAim } from '../anim/wrist-solver';
 import { DEV } from '../debug/dev';
 import { ArmIK } from '../anim/arm-ik';
@@ -111,12 +114,48 @@ export function attachLampArm(camera: THREE.Camera): void {
   // through the O-ring, thumb at rest, wrist near neutral. Replaces
   // the old stopgap of mounting the RIGHT hand's saber grip here
   // (a raw mirror of the saber pose read as "bent outward").
-  const hand = buildModel(HAND_LEFT_LANTERN);
-  wristAnchor.add(hand.group);
-  // Map the pose's anatomy target (wrist frame) into the frame the
-  // solver rotates (the wristAnchor = hand root's parent-of-record).
-  const lanternWrist = hand.slots.get('wrist');
-  if (lanternWrist) wristAim.setDesiredFromWristFrame(RING_FOREARM_EXIT_DESIRED, lanternWrist.quaternion);
+  // ── THE BONE LEFT HAND, WHEN THE TRIAL IS ON ────────────────────────
+  //
+  // DEV-only and flag-gated. It wears HAND_LEFT_LANTERN's POSE — the authored ring-carry, fingers
+  // hooked down through the O-ring — rather than the grip solver's fist: this hand holds a
+  // lantern by a wire loop, which is a different thing from closing on a hilt. The pose is data
+  // either way, so the bone hand simply reads the same rows.
+  //
+  // It arrives from a file, and attachLampArm runs once at boot and early-returns forever after
+  // — so installing the hand is a function, called now with whatever is available and again if
+  // the bone hand turns up later. Without that the flag would be on and this arm would keep the
+  // authored hand for the whole run.
+  // Captured so the closure keeps the non-null narrowing these module refs have right here.
+  const anchor = wristAnchor;
+  const arm = armGroup;
+  let hand!: BuiltModel;
+  const installHand = (): void => {
+    const bone = import.meta.env.DEV && boneArmsWanted()
+      ? buildBoneHand('left', HAND_LEFT_LANTERN)
+      : null;
+    const next = bone ?? buildModel(HAND_LEFT_LANTERN);
+    if (hand) {
+      hand.group.removeFromParent();
+      disposeGpuTree(hand.group);
+    }
+    hand = next;
+    anchor.add(hand.group);
+    // Map the pose's anatomy target (wrist frame) into the frame the
+    // solver rotates (the wristAnchor = hand root's parent-of-record).
+    const lanternWrist = hand.slots.get('wrist');
+    if (lanternWrist) {
+      wristAim.setDesiredFromWristFrame(RING_FOREARM_EXIT_DESIRED, lanternWrist.quaternion);
+    }
+    finishHand();
+    if (import.meta.env.DEV) {
+      // Which hand, by part count — the same label the right hand carries. Two hands that are
+      // indistinguishable in the log is how a whole session went by fixing one while looking at
+      // the other.
+      // eslint-disable-next-line no-console
+      console.log(`[lamp-arm] left hand=${hand.parts.size}p${bone ? ' (bone)' : ' (authored)'}`);
+    }
+  };
+  function finishHand(): void {
   // The lantern hand is rigid (it just grips the ring); collapse its ~39 bone
   // meshes into one. Slots (palm_anchor, read below for the offset) survive.
   mergeRigidViewmodel(hand.group, null);
@@ -147,13 +186,19 @@ export function attachLampArm(camera: THREE.Camera): void {
   // we just measure it once via Three's matrix utilities.
   const palmAnchorSlot = hand.slots.get('palm_anchor');
   if (palmAnchorSlot) {
-    armGroup.updateMatrixWorld(true);
+    arm.updateMatrixWorld(true);
     palmAnchorSlot.getWorldPosition(_palmOffsetInArm);
-    armGroup.worldToLocal(_palmOffsetInArm);
+    arm.worldToLocal(_palmOffsetInArm);
     // _palmOffsetInArm is now palm_anchor's position in arm-group-
     // local with wristAnchor at the arm-group origin — i.e. exactly
     // the offset from wristAnchor to palm_anchor.
   }
+  }
+
+  installHand();
+  // The bone hand arrives asynchronously and this function never runs again, so the swap has to
+  // ride the load hook or the flag silently does nothing here.
+  if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(installHand);
 
   // Viewmodel render settings — match the rest of the viewmodel
   // layer (depth-test enabled, depth-write off, opaque) so the arm

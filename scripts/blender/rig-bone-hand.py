@@ -24,9 +24,22 @@ import bpy
 from mathutils import Vector, Matrix, Quaternion
 
 SRC = r'C:\Users\josho\Downloads\skeleton+forearms+3d+model+seperate.glb'
+
+# WHICH HAND. Set by the caller's namespace; defaults to the right. The scan has two complete
+# arms -- 31 bones each, independently meshed -- so each side is baked from its OWN geometry
+# rather than mirrored from the other. Mirroring would also mirror the scan's asymmetries, and
+# the whole reason this pipeline derives rather than assumes is that hands are not symmetric in
+# the ways one expects.
+try:
+    SIDE
+except NameError:
+    SIDE = 'right'
+assert SIDE in ('right', 'left'), SIDE
+SIDE_SIGN = 1 if SIDE == 'right' else -1
+
 # The share name is the DISTRO name, `Ubuntu-24.04` -- a bare `Ubuntu` resolves to nothing.
 OUT = (r'\\wsl.localhost\Ubuntu-24.04\home\josh\brainstorm\.claude\worktrees'
-       r'\viewmodel-v3\public\models\bone-hand-right.glb')
+       r'\viewmodel-v3\public\models\bone-hand-' + SIDE + '.glb')
 
 # The authored hand's frame, emitted from content/hand.ts by scripts/hand-frame.ts.
 FRAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hand-frame.json')
@@ -73,10 +86,27 @@ right = []
 for p in parts:
     if p['tris'] < MIN_TRIS:
         p['o'].name = 'scrap_' + p['o'].name
-    elif p['c'].x <= 0:
-        p['o'].name = 'LEFT_' + p['o'].name
+    elif p['c'].x * SIDE_SIGN <= 0:
+        p['o'].name = 'OTHER_' + p['o'].name
     else:
         right.append(p)
+
+# -- THE ROSTER IS KNOWN, SO TRIM TO IT -----------------------------------
+#
+# An arm and hand is 31 bones: humerus, elbow, radius, ulna, 8 carpals, 5 metacarpals, 14
+# phalanges. The right side arrives as exactly that; the LEFT arrives as 33, with two 10-triangle
+# fragments sitting right in the carpal band -- just over the scrap threshold and small enough to
+# be nothing. They shifted the band boundaries and the gap check failed, correctly.
+#
+# Trimming to the known count is better than nudging MIN_TRIS until it happens to work: the
+# number of bones in a hand is a fact, and the smallest parts are the ones that are not bones.
+EXPECTED = 4 + N_CARPAL + N_META + N_PHAL
+if len(right) > EXPECTED:
+    for p in sorted(right, key=lambda q: q['tris'])[:len(right) - EXPECTED]:
+        p['o'].name = 'scrap_' + p['o'].name
+        right.remove(p)
+assert len(right) == EXPECTED, '{} side has {} bones, expected {}'.format(
+    SIDE, len(right), EXPECTED)
 
 # -- THE LIMB AXIS, DERIVED -----------------------------------------------
 by_size = sorted(right, key=lambda p: p['tris'])
@@ -105,8 +135,8 @@ arm[0]['o'].name = 'humerus'
 rest = arm[1:]
 elbow = min(rest, key=lambda p: (p['hi'] - p['lo']).length)     # a cap, not a shaft
 elbow['o'].name = 'elbow'
-fore = sorted([p for p in rest if p is not elbow], key=lambda p: p['c'].x)
-fore[0]['o'].name = 'radius'                                     # thumb-side (low x)
+fore = sorted([p for p in rest if p is not elbow], key=lambda p: p['c'].x * SIDE_SIGN)
+fore[0]['o'].name = 'radius'                                     # thumb-side
 fore[1]['o'].name = 'ulna'
 
 for i, p in enumerate(carp):
@@ -117,7 +147,7 @@ for i, p in enumerate(carp):
 # mean instead scrambles ring and pinky, because fingers FAN outward -- a distal phalanx sits
 # nearest the WRONG column's average. Nothing here forces the thumb to be short; it comes out
 # with two bones because there are 14 phalanges for 15 slots, and that is the check below.
-meta = sorted(meta, key=lambda p: p['c'].x)                      # thumb -> pinky across the hand
+meta = sorted(meta, key=lambda p: p['c'].x * SIDE_SIGN)          # thumb -> pinky across the hand
 chains = {FINGERS[i]: [m] for i, m in enumerate(meta)}
 claimed = set()
 for _ in range(3):
@@ -258,7 +288,8 @@ assert worst[1] < 1e-5, 'geometry moved: {} by {:.4f}'.format(worst[0], worst[1]
 # The target frame is MEASURED from the real HAND_RIGHT by scripts/hand-frame.ts and read from
 # JSON -- never retyped. A bake aimed at copied constants would drift silently the first time
 # content/hand.ts moved, and nothing would fail.
-frame = json.load(open(FRAME, encoding='utf-8'))
+_frames = json.load(open(FRAME, encoding='utf-8'))
+frame = _frames[SIDE]          # this hand's target; `arm` is shared and sits at the top level
 
 
 def ortho(fingers, across):
@@ -434,9 +465,9 @@ result = {
 # from 0.85 to 0.71 -- below the 0.786 the arm is already being asked for -- and the hand would
 # come off the wrist. So each bone is STRETCHED ALONG ITS OWN AXIS to the IK length, and its
 # cross-section is left at the hand's scale so the wrist junction still lines up with the carpus.
-ARM_TARGET = {'humerus': frame['arm']['humerus'],
-              'radius': frame['arm']['forearm'],
-              'ulna': frame['arm']['forearm']}
+ARM_TARGET = {'humerus': _frames['arm']['humerus'],
+              'radius': _frames['arm']['forearm'],
+              'ulna': _frames['arm']['forearm']}
 
 
 def principal_axis(pts):
@@ -501,12 +532,14 @@ for name in ARM_TARGET:
 bpy.ops.object.select_all(action='DESELECT')
 for n in hand:
     bpy.data.objects[n].select_set(True)
-for name in ARM_TARGET:
-    bpy.data.objects['arm_' + name].select_set(True)
+if SIDE == 'right':
+    for name in ARM_TARGET:
+        bpy.data.objects['arm_' + name].select_set(True)
 bpy.context.view_layer.objects.active = bpy.data.objects['wrist']
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
                           export_yup=False)
 
 result['arm'] = arm_report
 result['arm_checks'] = arm_checks
-result['nodes'] = len(hand) + len(ARM_TARGET)
+result['side'] = SIDE
+result['nodes'] = len(hand) + (len(ARM_TARGET) if SIDE == 'right' else 0)

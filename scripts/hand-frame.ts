@@ -1,11 +1,14 @@
 /**
- * Emit the authored right hand's FRAME as data, for the Blender bake to target.
+ * Emit the authored hands' FRAMES as data, for the Blender bake to target.
  *
- * scripts/blender/rig-bone-hand.py needs to know what "a hand, in this game's convention"
- * means: where the wrist sits, which way the fingers run, which way the palm faces, how big it
- * is. Those facts live in content/hand.ts, and the one thing this must not do is restate them
- * — a bake aimed at a hand-copied constant would silently drift the first time that file moves.
- * So it BUILDS the real model and measures the result, and the Blender side reads the JSON.
+ * scripts/blender/rig-bone-hand.py needs to know what "a hand, in this game's convention" means:
+ * where the wrist sits, which way the fingers run, which way the palm faces, how big it is. Those
+ * facts live in content/hand.ts, and the one thing this must not do is restate them — a bake
+ * aimed at a hand-copied constant would silently drift the first time that file moved. So it
+ * BUILDS the real models and measures the results, and the Blender side reads the JSON.
+ *
+ * BOTH HANDS, because the scan has two and the left one is not simply the right one negated in
+ * whatever axis you first try: HAND_LEFT is a mirrored spec, so it is measured, not derived.
  *
  *   npx tsx scripts/hand-frame.ts        → writes scripts/blender/hand-frame.json
  */
@@ -13,78 +16,89 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as THREE from 'three';
 import { buildModel } from '../src/ecs/build-model';
-import { HAND_RIGHT } from '../src/content/hand';
+import { HAND_RIGHT, HAND_LEFT } from '../src/content/hand';
 import { ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../src/content/arm';
-
-const built = buildModel(HAND_RIGHT);
-built.group.updateMatrixWorld(true);
-
-const wrist = built.slots.get('wrist') ?? built.group;
-const toWrist = wrist.matrixWorld.clone().invert();
-
-function posOf(name: string): THREE.Vector3 {
-  const s = built.slots.get(name);
-  if (!s) throw new Error(`hand.ts has no slot "${name}"`);
-  return new THREE.Vector3().setFromMatrixPosition(s.matrixWorld).applyMatrix4(toWrist);
-}
-
-const middle = posOf('finger_middle');
-const index = posOf('finger_index');
-const pinky = posOf('finger_pinky');
-const thumb = posOf('finger_thumb');
-
-// The same facts the bone hand can measure about ITSELF, so the bake is one frame onto another
-// with no assumed signs.
-//
-// `across` points AT THE THUMB, and it must — not from pinky to index, which is the obvious
-// choice and is wrong here. This hand's knuckles run index(+0.025) → pinky(−0.023) with the
-// THUMB beyond the pinky at −0.040. The thumb side is right for a right hand seen from the
-// back; the index and pinky labels are the ones that disagree with anatomy. Keying off them
-// mirrors any real hand aligned to this one and throws its thumb across the palm. The thumb is
-// the one landmark that cannot be confused, so it is the one that defines the axis.
-const fingers = middle.clone().normalize();
-const across = thumb.clone().projectOnPlane(fingers).normalize();
-const palm = new THREE.Vector3().crossVectors(across, fingers).normalize();
+import type { ModelSpec } from '../src/ecs/model-types';
 
 const r = (v: THREE.Vector3): number[] => v.toArray().map((n) => +n.toFixed(6));
 
-/**
- * A slot's full wrist-local transform.
- *
- * `palm_anchor` is where a weapon's grip_anchor lands, so its ORIENTATION aims the blade. The
- * bone hand adopts the authored one verbatim rather than deriving its own from the mesh: the
- * weapon pipeline is already tuned against these numbers, and a palm anchor that is a few
- * degrees off points a sword somewhere visibly wrong.
- */
-function xform(name: string): { pos: number[]; quat: number[] } {
-  const s = built.slots.get(name);
-  if (!s) throw new Error(`hand.ts has no slot "${name}"`);
-  const m = toWrist.clone().multiply(s.matrixWorld);
-  const p = new THREE.Vector3();
-  const q = new THREE.Quaternion();
-  m.decompose(p, q, new THREE.Vector3());
-  return { pos: r(p), quat: q.toArray().map((n) => +n.toFixed(6)) };
+function frameOf(spec: ModelSpec): Record<string, unknown> {
+  const built = buildModel(spec);
+  built.group.updateMatrixWorld(true);
+
+  const wrist = built.slots.get('wrist') ?? built.group;
+  const toWrist = wrist.matrixWorld.clone().invert();
+
+  const posOf = (name: string): THREE.Vector3 => {
+    const s = built.slots.get(name);
+    if (!s) throw new Error(`${spec.id} has no slot "${name}"`);
+    return new THREE.Vector3().setFromMatrixPosition(s.matrixWorld).applyMatrix4(toWrist);
+  };
+
+  /**
+   * A slot's full wrist-local transform.
+   *
+   * `palm_anchor` is where a weapon's grip_anchor lands, so its ORIENTATION aims the blade. The
+   * bone hand adopts the authored one verbatim rather than deriving its own from the mesh: the
+   * weapon pipeline is already tuned against these numbers, and a palm anchor that is a few
+   * degrees off points a sword somewhere visibly wrong.
+   */
+  const xform = (name: string): { pos: number[]; quat: number[] } => {
+    const s = built.slots.get(name);
+    if (!s) throw new Error(`${spec.id} has no slot "${name}"`);
+    const m = toWrist.clone().multiply(s.matrixWorld);
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    m.decompose(p, q, new THREE.Vector3());
+    return { pos: r(p), quat: q.toArray().map((n) => +n.toFixed(6)) };
+  };
+
+  const middle = posOf('finger_middle');
+  const thumb = posOf('finger_thumb');
+
+  // The same facts the bone hand can measure about ITSELF, so the bake is one frame onto another
+  // with no assumed signs.
+  //
+  // `across` points AT THE THUMB, and it must — not from pinky to index, which is the obvious
+  // choice and is wrong here. The right hand's knuckles run index(+0.025) → pinky(−0.023) with
+  // the THUMB beyond the pinky at −0.040: the thumb side is right for a right hand seen from the
+  // back, and the index and pinky labels are the ones that disagree with anatomy. Keying off them
+  // mirrors any real hand aligned to this one and throws its thumb across the palm. The thumb is
+  // the one landmark that cannot be confused — and it is what makes the LEFT hand fall out of the
+  // same code with no sign flipped by hand.
+  const fingers = middle.clone().normalize();
+  const across = thumb.clone().projectOnPlane(fingers).normalize();
+  const palm = new THREE.Vector3().crossVectors(across, fingers).normalize();
+
+  return {
+    fingers: r(fingers),
+    across: r(across),
+    palm: r(palm),
+    len: +middle.length().toFixed(6),
+    knuckles: {
+      index: r(posOf('finger_index')),
+      middle: r(middle),
+      pinky: r(posOf('finger_pinky')),
+      thumb: r(thumb),
+    },
+    anchors: { palm_anchor: xform('palm_anchor'), palm_up: xform('palm_up') },
+  };
 }
 
 const out = {
   _comment: 'Generated by scripts/hand-frame.ts from content/hand.ts — do not edit by hand.',
-  // Wrist-local, metres. `len` is wrist → middle knuckle: the bone hand is scaled to match it.
-  fingers: r(fingers),
-  across: r(across),
-  palm: r(palm),
-  len: +middle.length().toFixed(6),
-  knuckles: { index: r(index), middle: r(middle), pinky: r(pinky), thumb: r(thumb) },
-  anchors: { palm_anchor: xform('palm_anchor'), palm_up: xform('palm_up') },
+  right: frameOf(HAND_RIGHT),
+  left: frameOf(HAND_LEFT),
   // The IK's segment lengths. viewmodel.ts's poseBone places a bone mesh at the MIDPOINT of two
   // IK endpoints and leaves its height alone, so a scanned bone has to be stretched to exactly
-  // these or it will not span the joints. The scan disagrees with them on purpose: a real
-  // humerus is LONGER than the forearm, and this viewmodel's is shorter because a long forearm
-  // is what reads in first person. Adopting the anatomical ratio would cut max reach from 0.85
-  // to 0.71, below what the arm is already asked for.
+  // these or it will not span the joints. The scan disagrees with them on purpose: a real humerus
+  // is LONGER than the forearm, and this viewmodel's is shorter because a long forearm is what
+  // reads in first person. Adopting the anatomical ratio would cut max reach from 0.85 to 0.71,
+  // below what the arm is already asked for.
   arm: { humerus: ARM_RIGHT_HUMERUS_LENGTH, forearm: ARM_RIGHT_FOREARM_LENGTH },
 };
 
 const dst = join(dirname(new URL(import.meta.url).pathname), 'blender', 'hand-frame.json');
 writeFileSync(dst, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`wrote ${dst}`);
-console.log(out);
+console.log('right across', out.right.across, '· left across', out.left.across);
