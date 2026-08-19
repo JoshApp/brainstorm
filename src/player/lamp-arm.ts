@@ -8,6 +8,8 @@ import { boneArmsWanted, buildBoneHand, buildBoneArmParts, onBoneHandLoaded }
   from '../debug/bone-hand';
 import { bailBarRadius } from '../debug/bone-lantern';
 import { solveGrip } from '../anim/grip-solver';
+import { HOOK_GRIP } from '../content/grip-pose';
+import { orient, tilt, DIR } from '../anim/orient';
 import type { BuiltModel } from '../ecs/build-model';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { WristAim } from '../anim/wrist-solver';
@@ -52,6 +54,17 @@ const _wristArmLocal = new THREE.Vector3();
 // actually is (lamp pendulum swing, stow ease, walk bob). Replaces a
 // baked orientation that could only be right for one elbow position.
 const wristAim = new WristAim({ desiredExitLocal: RING_FOREARM_EXIT_DESIRED, dampHalfLife: 0.06 });
+
+/**
+ * How the floating lamp hand is held — fingers FORWARD and slightly down, back of the hand UP.
+ *
+ * A hand laid over a horizontal bar with the lantern hanging beneath it. Only used while the
+ * hand floats: with a forearm on screen the wrist solver has something real to stay anatomical
+ * against, and this would fight it.
+ */
+const FLOATING_HAND_ROT = new THREE.Euler(
+  ...orient({ yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.25), upTo: DIR.UP }),
+);
 const _identityQuat = new THREE.Quaternion();
 const _palmOffsetLive = new THREE.Vector3();
 const _prevElbow = new THREE.Vector3();
@@ -170,7 +183,7 @@ export function attachLampArm(camera: THREE.Camera): void {
         roll: 0,
         thumb: 'wrap',
         forearmExit: RING_FOREARM_EXIT_DESIRED,
-      })
+      }, HOOK_GRIP)
       : null;
     gripCentre = solved?.center.clone() ?? null;
     if (import.meta.env.DEV && solved) {
@@ -263,23 +276,26 @@ export function attachLampArm(camera: THREE.Camera): void {
   // because poseBone places them from the IK's endpoints and never cared what they looked like.
   // There is no reason for one arm of one skeleton to be bone and the other primitives.
   const installArm = (): void => {
-    const bones = buildBoneArmParts('left');
-    if (!bones) return;
-    const swapBone = (
-      old: THREE.Mesh | undefined, name: string,
-    ): THREE.Mesh | undefined => {
-      const next = bones.get(name);
-      if (!next) return old;
-      old?.removeFromParent();
-      arm.add(next);
-      return next;
-    };
-    humerusMesh = swapBone(humerusMesh, 'humerus');
-    radiusMesh = swapBone(radiusMesh, 'radius');
-    ulnaMesh = swapBone(ulnaMesh, 'ulna');
-    // The sinew stands in for soft tissue between the forearm bones; on a skeleton it reads as a
-    // third bone, so it goes — same call as the right arm.
-    sinewMesh?.removeFromParent();
+    // ── A FLOATING HAND, NOT AN ARM ────────────────────────────────
+    //
+    // Josh: "having just a floating hand hold it but that hand be like horizontal holding the
+    // lamp." The lamp arm was the single biggest obstruction on screen — a pale forearm running
+    // diagonally from the bottom-left corner to the middle of the frame, across the darkest part
+    // of a game whose whole look is small lit things against black. The lantern was never the
+    // problem; the arm crossing the view was.
+    //
+    // Dropping it costs nothing the arm was earning: the left arm carries no weapon, plays no
+    // animation the player reads, and exists only to explain where the lamp comes from. A
+    // skeleton's hand appearing out of the dark explains it just as well, and the light then
+    // reads as originating low in the frame — which is the effect the dark-room lighting was
+    // already reaching for.
+    //
+    // The IK still runs. It positions the hand so the grip lands on the lantern's bail, and the
+    // arm it solves for is simply not drawn.
+    for (const m of [humerusMesh, radiusMesh, ulnaMesh, sinewMesh]) m?.removeFromParent();
+    humerusMesh = undefined;
+    radiusMesh = undefined;
+    ulnaMesh = undefined;
     sinewMesh = undefined;
       // The arm spec also builds SPHERES at the shoulder and elbow — filler that covered the
       // seams between primitive bones. A scanned humerus has its own joint ends, so they read as
@@ -342,8 +358,21 @@ export function tickLampArm(dt: number): void {
   // orientation; one frame of damped lag is invisible). The palm
   // offset rotates with the hand, so the IK target keeps landing the
   // PALM on the ring whatever the wrist orientation is.
-  if (havePrev && wristAnchor) {
-    wristAnchor.quaternion.copy(wristAim.solve(_identityQuat, _prevElbow, _prevWrist, dt));
+  if (wristAnchor) {
+    // ── A FIXED, HORIZONTAL CARRY ──────────────────────────────────
+    //
+    // With no forearm on screen there is nothing for the wrist solver to keep anatomical
+    // against — its whole job is making the hand agree with a limb the player can no longer
+    // see, and letting it run just makes the hand roll about for reasons nothing explains.
+    //
+    // So the hand is HELD: fingers forward and a little down, back of the hand up. That is a
+    // hand laid over a horizontal bar with the lantern hanging beneath it, which is how you
+    // actually carry one. Authored through orient() rather than as Euler decimals, per the
+    // charter — the numbers below say nothing, the intent does.
+    if (FLOATING_HAND_ROT) wristAnchor.quaternion.setFromEuler(FLOATING_HAND_ROT);
+    else if (havePrev) {
+      wristAnchor.quaternion.copy(wristAim.solve(_identityQuat, _prevElbow, _prevWrist, dt));
+    }
   }
   _palmOffsetLive.copy(_palmOffsetInArm);
   if (wristAnchor) _palmOffsetLive.applyQuaternion(wristAnchor.quaternion);

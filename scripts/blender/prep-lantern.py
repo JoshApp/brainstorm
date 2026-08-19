@@ -39,8 +39,9 @@ OUT = (r'\\wsl.localhost\Ubuntu-24.04\home\josh\brainstorm\.claude\worktrees'
 
 # How tall the lantern's BODY should be, metres — the part below the bail. The procedural lamp it
 # replaces is a 0.10m cage between two plates, about 0.13 overall. Josh, on the first pass at
-# 0.15: "can you make the lamp slightly bigger its a bit small".
-BODY_HEIGHT = 0.19
+# 0.15: "can you make the lamp slightly bigger its a bit small" — then back down once the
+# arm came off and the lantern sat lower in frame: "make the lamp a bit smaller again".
+BODY_HEIGHT = 0.15
 
 # -- WIPE + IMPORT --------------------------------------------------------
 bpy.ops.object.select_all(action='SELECT')

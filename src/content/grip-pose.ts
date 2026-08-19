@@ -106,3 +106,73 @@ export const CONVERGE = 1;
 /** Bounds for the runtime curl scale. Below the first the hand is open, above the second it
  *  folds through itself; a grip that needs more than this is the wrong grip for the hand. */
 export const CURL_RANGE: [number, number] = [0.25, 1.60];
+
+/**
+ * A whole way of holding something: the joint angles, how far the thumb opposes, and WHICH
+ * fingers the runtime curl solve drives onto the grip.
+ *
+ * That last field is what makes a hook possible. The solver closes the hand until the fingers it
+ * is measuring reach the grip; measure all four and you get a fist, measure only the index and
+ * middle and the others keep their authored slack while those two take the weight.
+ */
+export interface GripShape {
+  fingers: FistPose;
+  thumbOppose: number;
+  /** The fingers the curl is solved against. The rest follow the pose and touch nothing. */
+  contact: Array<keyof FistPose>;
+  /** How much of the needed convergence to apply (see CONVERGE). */
+  converge: number;
+  /**
+   * How far past the knuckle line the grip sits, metres, along the fingers.
+   *
+   * 0 is a fist: the thing is held in the palm. Positive walks the cylinder out into the
+   * fingers, which is where a hooked handle hangs — see the solver for why this has to be a
+   * placement and not just a deeper curl.
+   */
+  alongFingers: number;
+  /**
+   * Fingers exempt from the curl scale — they hold their authored angles whatever the solve
+   * lands on. A fist has none: every finger is holding the thing. A hook's loose fingers are
+   * posed, not solved.
+   */
+  slack: Array<keyof FistPose>;
+}
+
+/** The default: a closed fist on a hilt. */
+export const FIST_GRIP: GripShape = {
+  fingers: FIST,
+  thumbOppose: THUMB_OPPOSE,
+  contact: ['index', 'middle', 'ring', 'pinky'],
+  converge: CONVERGE,
+  alongFingers: 0,
+  slack: [],
+};
+
+/**
+ * DANGLING FROM THE FINGERS — the lantern hooked on two, not clutched in a fist.
+ *
+ * Josh: "i like the kinda dangling from fingers." It suits the thing carrying it: a skeleton has
+ * no reason to grip a lamp the way a living hand would, and two bones through a handle reads as
+ * carelessly dead in a way a proper fist does not. It also leaves the hand open enough to still
+ * read as a HAND at a glance, where a closed fist at this size is a knot of pale shapes.
+ *
+ * The index and middle take the weight; the ring and little finger hang with a little slack and
+ * the thumb barely opposes at all, because nothing is being clamped.
+ */
+export const HOOK_GRIP: GripShape = {
+  fingers: {
+    index: { joints: [deg(52), deg(84), deg(46)] },
+    middle: { joints: [deg(48), deg(78), deg(42)] },
+    // Slack, and trailing further the further from the load.
+    ring: { joints: [deg(26), deg(38), deg(20)] },
+    pinky: { joints: [deg(20), deg(30), deg(16)] },
+    // Along the handle rather than across it: there is nothing to clamp against.
+    thumb: { joints: [deg(18), deg(22), 0] },
+  },
+  thumbOppose: deg(18),
+  contact: ['index', 'middle'],
+  converge: 0.5,
+  // Roughly one proximal phalanx: the crook where a hooked finger folds, not the palm.
+  alongFingers: 0.024,
+  slack: ['ring', 'pinky', 'thumb'],
+};

@@ -113,7 +113,16 @@ let lampSource: LightSource | null = null;
 // the lantern's bottom off the frame. Josh: "make the lamp fully visible".
 //   Y  -0.13 → -0.06   the whole lantern clears the bottom edge again
 //   X  -0.38 → -0.36   2cm back in, so the wider body is not clipped at the left edge
-const LAMP_RAISED = new THREE.Vector3(-0.36, -0.06, -0.60);
+// ── LOWER AND FURTHER LEFT, FOR THE FLOATING HAND (2026-08-19) ───────
+// With the forearm gone the lantern no longer has to sit high enough to keep an elbow out of
+// shot, so it drops into the lower-left where it belongs: the light then reads as coming from
+// BELOW, lighting the hands and the near floor while the ceiling stays black.
+//
+// NOT as low as it first went (-0.17). A lantern DANGLING from two hooked fingers is a thing
+// that has to be seen swinging under them to read as dangling at all; cropped at the bottom
+// edge it is just a glow, and the pose above it stops meaning anything. The lantern is smaller
+// now (0.15m body), so it fits in the lower-left corner whole.
+const LAMP_RAISED = new THREE.Vector3(-0.38, -0.04, -0.54);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out

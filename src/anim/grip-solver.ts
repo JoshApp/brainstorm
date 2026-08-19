@@ -34,7 +34,7 @@
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { ResolvedGrip } from '../content/grip';
-import { FIST, THUMB_OPPOSE, CURL_RANGE, CONVERGE, type FistPose }
+import { FIST_GRIP, CURL_RANGE, type FistPose, type GripShape }
   from '../content/grip-pose';
 
 /** The JOINTS of each finger, knuckle first. The fingertip is an anchor, not a joint — it is the
@@ -111,7 +111,9 @@ function resolveChains(hand: BuiltModel): Chain[] {
  *
  * Mutates the finger joint rotations and returns where the weapon goes. Runs once per equip.
  */
-export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | null {
+export function solveGrip(
+  hand: BuiltModel, grip: ResolvedGrip, shape: GripShape = FIST_GRIP,
+): GripSolve | null {
   const root = hand.group;
   const palm = hand.slots.get('palm_anchor');
   const chains = palm ? resolveChains(hand) : [];
@@ -161,7 +163,18 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // The DEPTH through the hand: palm_anchor's lean off the knuckle plane. The hilt rests against
   // the palm with the knuckles a hand's-thickness behind it.
   const depth = Math.max(0, _p.subVectors(P, K).dot(N));
-  const C = K.clone().addScaledVector(N, depth + grip.radius);
+  // ── AND HOW FAR OUT ALONG THE FINGERS ────────────────────────────────────
+  //
+  // A fist holds the thing in the PALM, so the cylinder sits on the knuckle line and that is the
+  // end of it. A HOOK does not: the bar hangs in the crook of the middle phalanges with the palm
+  // nowhere near it, which is why the same solve run at `alongFingers: 0` could not close a hand
+  // on a 9.6mm bail — it was asking the fingertips to curl all the way back to the palm around a
+  // wire, and even fully curled they were still 9mm short. Moving the cylinder out to where a
+  // hooked finger actually is makes it reachable at an ordinary curl, and reads as hanging FROM
+  // the fingers rather than clenched.
+  const C = K.clone()
+    .addScaledVector(N, depth + grip.radius)
+    .addScaledVector(F, shape.alongFingers);
 
   const wrapR = grip.radius + phalanxHalfThickness(hand);
 
@@ -277,7 +290,7 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
       const len = _p.setFromMatrixPosition(c.tip.matrixWorld)
         .distanceTo(_reach.setFromMatrixPosition(c.nodes[0].matrixWorld));
       if (len < 1e-6) continue;
-      const shift = CONVERGE * (wants[i] - at[i]);
+      const shift = shape.converge * (wants[i] - at[i]);
       if (Math.abs(shift) < 1e-5) continue;
       let yaw = Math.asin(THREE.MathUtils.clamp(shift / len, -1, 1));
       // Resolve the sign by trying it: which way a yaw about the palm normal carries a finger
@@ -297,7 +310,16 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
 
   const pose = (curl: number): void => {
     for (const c of chains) {
-      const angles = FIST[c.finger].joints;
+      const angles = shape.fingers[c.finger].joints;
+      // ── SLACK FINGERS DO NOT CLOSE WITH THE REST ────────────────────────
+      //
+      // The curl is one number for the whole hand, which is right when the whole hand is holding
+      // something: a fist on a thin hilt closes harder than on a thick one, evenly. It is wrong
+      // for a hook. The bail is thin, so the solve lands at a low curl — and that low curl was
+      // also being applied to the two fingers that are supposed to be hanging loose, straightening
+      // them into a splayed claw. Their droop is authored, not derived; it should not move because
+      // the thing being carried changed thickness.
+      const t = shape.slack.includes(c.finger) ? 1 : curl;
       for (let i = 0; i < c.nodes.length; i++) {
         const joint = c.nodes[i];
         if (c.finger === 'thumb' && i > 0) {
@@ -326,18 +348,18 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
             // Into WORLD space first: everything above is measured in the wrist's frame, and
             // localAxis expects a world direction.
             inward.normalize().applyQuaternion(frameQ);
-            joint.quaternion.setFromAxisAngle(localAxis(joint, inward), angles[i] * curl);
+            joint.quaternion.setFromAxisAngle(localAxis(joint, inward), angles[i] * t);
           }
           joint.updateMatrixWorld(true);
           continue;
         }
-        joint.quaternion.setFromAxisAngle(localAxis(joint, worldA), sign * angles[i] * curl);
+        joint.quaternion.setFromAxisAngle(localAxis(joint, worldA), sign * angles[i] * t);
         if (i === 0) {
           // `multiply`, not `premultiply`: this composes as curl-after-yaw, so the finger swings
           // together first and the curl then carries it round. Premultiplying would apply the
           // yaw to an already-curled finger, which is the version that did nothing.
           const yaw = c.finger === 'thumb'
-            ? sign * THUMB_OPPOSE
+            ? sign * shape.thumbOppose
             : yawOf.get(c.finger) ?? 0;
           if (yaw) joint.quaternion.multiply(_q.setFromAxisAngle(localAxis(joint, worldN), yaw));
         }
@@ -370,7 +392,9 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     let sum = 0;
     let count = 0;
     for (const c of chains) {
-      if (c.finger === 'thumb' || c.nodes.length < 3) continue;
+      // Only the fingers this shape puts ON the grip. A fist measures all four; a hook measures
+      // the two taking the weight and lets the others keep their authored slack.
+      if (!shape.contact.includes(c.finger) || c.nodes.length < 3) continue;
       _p.setFromMatrixPosition(c.nodes[1].matrixWorld).applyMatrix4(inv);
       sum += radial(_p, C, A, _r) - wrapR;
       count++;
@@ -383,14 +407,36 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // Close the whole fist together until its hollow matches the hilt. Monotonic in curl, so a
   // plain bisection lands it — and because every finger scales as one, no amount of closing can
   // produce the index-up-the-guard, thumb-along-the-spine shapes the per-joint solver found.
-  let lo = CURL_RANGE[0];
-  let hi = CURL_RANGE[1];
-  pose(lo);
-  const openGap = gap();
-  pose(hi);
-  const shutGap = gap();
+  //
+  // ── AND WHY IT IS SCANNED FIRST ───────────────────────────────────────────
+  //
+  // Monotonic is true of a FIST, whose cylinder sits in the palm: closing can only bring the PIP
+  // nearer it. It is NOT true of a hook, whose cylinder sits out among the fingers — there the
+  // PIP swings past the axis and out the far side, so the gap falls to a minimum and rises
+  // again, positive at BOTH ends of the range. A bisection reads that as "the hand cannot close
+  // on this" and clamps to an endpoint, which is how the lantern hook came out as a flat hand
+  // with a bar under it: the solve reported curl 0.25 on a range whose answer was near 0.9.
+  //
+  // So the range is SCANNED before it is bisected. A sign change anywhere brackets the true
+  // contact and the bisection runs inside it; with no sign change the best sample is the answer
+  // and `contact` reports honestly how far short it is.
+  const N_SCAN = 24;
+  const sampled: number[] = [];
+  for (let i = 0; i <= N_SCAN; i++) {
+    const t = CURL_RANGE[0] + (CURL_RANGE[1] - CURL_RANGE[0]) * (i / N_SCAN);
+    pose(t);
+    sampled.push(gap());
+  }
+  const at = (i: number): number =>
+    CURL_RANGE[0] + (CURL_RANGE[1] - CURL_RANGE[0]) * (i / N_SCAN);
+  let bracket = -1;
+  for (let i = 0; i < N_SCAN; i++) {
+    if (sampled[i] > 0 && sampled[i + 1] <= 0) { bracket = i; break; }
+  }
   let curl: number;
-  if (openGap > 0 && shutGap < 0) {
+  if (bracket >= 0) {
+    let lo = at(bracket);
+    let hi = at(bracket + 1);
     for (let k = 0; k < STEPS; k++) {
       const mid = (lo + hi) / 2;
       pose(mid);
@@ -399,9 +445,13 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     }
     curl = (lo + hi) / 2;
   } else {
-    // The hilt is outside what this hand can close on. Take the nearer end and let the contact
-    // number say so, rather than clamping quietly and reporting a grip.
-    curl = Math.abs(openGap) <= Math.abs(shutGap) ? CURL_RANGE[0] : CURL_RANGE[1];
+    // Never reaches. Take the closest approach and let the contact number say so, rather than
+    // clamping quietly and reporting a grip.
+    let best = 0;
+    for (let i = 1; i <= N_SCAN; i++) {
+      if (Math.abs(sampled[i]) < Math.abs(sampled[best])) best = i;
+    }
+    curl = at(best);
   }
   pose(curl);
 
