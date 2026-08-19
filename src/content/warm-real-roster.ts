@@ -162,12 +162,15 @@ export async function warmRealRoster(
   // drawables (NEVER lights — the lighting context must stay identical to play,
   // see warmup-pass) and render tiny; restored in the finally below.
   setWarmLowRes(true);
+  // userData.warmIgnore is skipped entirely (scene/warm-visibility.ts) — a
+  // pool's parked slots own their own `visible` flag as system state, and a
+  // snapshot/restore around it strands them on or off.
   const hiddenLeaves: THREE.Object3D[] = [];
   liveScene.traverse((o) => {
     const any = o as THREE.Object3D & { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
     if (!(any.isMesh || any.isSprite || any.isPoints || any.isLine)) return;
     let par: THREE.Object3D | null = o;
-    while (par) { if (par === holder || par.userData.warmKeep) return; par = par.parent; }
+    while (par) { if (par === holder || par.userData.warmKeep || par.userData.warmIgnore) return; par = par.parent; }
     if (o.visible) hiddenLeaves.push(o);
   });
   for (const o of hiddenLeaves) o.visible = false;

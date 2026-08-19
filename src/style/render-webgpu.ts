@@ -21,6 +21,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import type { DelveRenderer } from '../scene/create-renderer';
+import { isWarmIgnored } from '../scene/warm-visibility';
 import { setBundleMainCamera } from '../scene/bundle-pass-order';
 import { getActiveGrade, setActiveGrade, setGradeOverrides, gradeNames, activeGradeName } from './grade-presets';
 
@@ -1380,6 +1381,12 @@ export async function warmSceneCompile(
     // found") and can reject, aborting the rest of the warm (leaving later objects, e.g. enemies,
     // un-warmed). Don't expose it; leave its culling as-is.
     if (isLeafMesh && !m.geometry?.attributes?.position) return;
+    // Pools park their idle slots in the scene and use `visible` as SYSTEM
+    // STATE (scene/warm-visibility.ts). Forcing one on for the compile and
+    // restoring it later strands it — an idle projectile slot left visible is
+    // a full-size unlit sphere at the world origin. Their materials are warmed
+    // by the pool's own spawn hook instead, through the real code path.
+    if (isWarmIgnored(o)) return;
     if (o.visible === false) { o.visible = true; forcedVis.push(o); }
     if (isLeafMesh && m.frustumCulled === true) { m.frustumCulled = false; forcedFrustum.push(m); }
   });

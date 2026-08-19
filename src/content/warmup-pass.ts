@@ -127,12 +127,16 @@ export async function runWarmupPassWebGPU(
     // since visibility is hierarchical) keeps the lighting context identical to play.
     // Objects flagged userData.warmKeep (e.g. the GPU embers Points) stay visible too —
     // those must render during the warm so their pipeline compiles here.
+    // Objects flagged userData.warmIgnore are skipped ENTIRELY (scene/warm-visibility.ts):
+    // a pool's parked slots use `visible` as system state, not as a culling
+    // decision, so snapshotting one mid-flight and restoring it later writes a
+    // stale lifetime back into the pool's own bookkeeping.
     const others: THREE.Object3D[] = [];
     scene.traverse((o) => {
       const any = o as THREE.Object3D & { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
       if (!(any.isMesh || any.isSprite || any.isPoints || any.isLine)) return;
       let p: THREE.Object3D | null = o;
-      while (p) { if (p === warmGroup || p.userData.warmKeep) return; p = p.parent; }
+      while (p) { if (p === warmGroup || p.userData.warmKeep || p.userData.warmIgnore) return; p = p.parent; }
       if (o.visible) others.push(o);
     });
     for (const c of others) c.visible = false;
