@@ -809,10 +809,27 @@ export function createWeaponViewmodel(
       // chain is group → composed.group(identity) → hand root, so the
       // parent orientation is just `group`'s). Then re-pin the palm
       // to the weapon grip so the fist stays closed on the hilt.
-      if (wristAimReady && currentComposed) {
+      if (wristAimReady && currentComposed && !FLOATING_HANDS) {
         const handRoot = currentComposed.hand.group;
         _parentQuat.copy(group.quaternion);
         handRoot.quaternion.copy(wristAim.solve(_parentQuat, r.elbowPos, r.wristPos, dt));
+        handRoot.position
+          .copy(_palmRestInGroup)
+          .sub(_aimScratch.copy(_palmInHandRoot).applyQuaternion(handRoot.quaternion));
+      } else if (currentComposed) {
+        // ── WELDED TO THE WEAPON ──────────────────────────────────────
+        //
+        // Josh: "so we stop fighting the goddamn animation." This was the fight. The solver
+        // above re-aims the hand every frame so an invisible forearm would leave the wrist at an
+        // anatomical angle — which means that during a swing the hand turns RELATIVE TO THE
+        // WEAPON it is supposed to be gripping. A grip is the one joint in the body that does
+        // not do that: close a fist on a hilt and the hand goes wherever the hilt goes.
+        //
+        // So with no arm drawn, the hand keeps the orientation composeHeldWeapon gave it (palm
+        // anchor aligned to the grip) and simply rides the weapon group. The pin below puts the
+        // palm back on the grip centre at that fixed rotation — constant now, but kept because
+        // it is what defines "the fist is closed on THIS hilt" for each weapon.
+        const handRoot = currentComposed.hand.group;
         handRoot.position
           .copy(_palmRestInGroup)
           .sub(_aimScratch.copy(_palmInHandRoot).applyQuaternion(handRoot.quaternion));

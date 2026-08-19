@@ -12,7 +12,7 @@ import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickAmbientLight, applyAmbientWick, applyDaylight } from '../settings/ambient-light';
 import { tickArrivalThreshold, endArrivalThreshold } from '../player/arrival';
-import { tickLampArm } from '../player/lamp-arm';
+import { tickLampHand } from '../player/lamp-hand';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { tickFlaskDrink } from '../player/flask-drink';
 import { tickFlaskViewmodel } from '../player/flask-viewmodel';
@@ -493,7 +493,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'ambient-light', phase: 'always', tick(ctx) { tickAmbientLight(ctx.realDt); applyAmbientWick(); applyDaylight(); } },
     // Left arm IK — must run AFTER 'lamp' so the hinge it targets has
     // its latest position from this frame's pendulum + stowed-ease.
-    { name: 'lamp-arm', phase: 'always', tick(ctx) { tickLampArm(ctx.realDt); } },
+    { name: 'lamp-hand', phase: 'always', tick(ctx) { tickLampHand(ctx.realDt); } },
 
     { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
 

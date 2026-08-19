@@ -18,7 +18,7 @@ import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './control
 import { bindSight } from './scene/sight-distance';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
-import { attachLampArm } from './player/lamp-arm';
+import { attachLampHand } from './player/lamp-hand';
 import { initBreath } from './effects/breath';
 import { initCardClaim } from './effects/card-claim';
 import { initDomainBind } from './effects/domain-bind';
@@ -872,7 +872,7 @@ attachLamp(camera);
 // Left arm holding the lantern's O-ring — IK-driven, mirrors the
 // right arm (which holds the weapon). Must attach AFTER attachLamp
 // so the hinge it targets exists.
-attachLampArm(camera);
+attachLampHand(camera);
 
 // Visible cold-breath puff pool, parented to the camera (winded exhale).
 initBreath(camera);

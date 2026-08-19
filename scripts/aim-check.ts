@@ -16,7 +16,7 @@ import { HAND_LEFT_LANTERN } from '../src/content/hand-poses';
 import { aimHand } from '../src/player/floating-hands';
 // The REAL constants, imported rather than restated — a report that re-declares the numbers
 // it is checking launders a guess as a measurement (docs/DESIGN-METHOD.md).
-import { LAMP_FINGERS_TO, LAMP_PALM_TO } from '../src/player/lamp-arm';
+import { LAMP_FINGERS_TO, LAMP_PALM_TO } from '../src/player/lamp-hand';
 
 const r = (v: THREE.Vector3): string =>
   `[${v.toArray().map((n) => n.toFixed(3)).join(', ')}]`;
