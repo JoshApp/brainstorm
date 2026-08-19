@@ -166,10 +166,14 @@ export const HOOK_GRIP: GripShape = {
     // Slack, and trailing further the further from the load.
     ring: { joints: [deg(26), deg(38), deg(20)] },
     pinky: { joints: [deg(20), deg(30), deg(16)] },
-    // Along the handle rather than across it: there is nothing to clamp against.
-    thumb: { joints: [deg(18), deg(22), 0] },
+    // Along the handle rather than across it: there is nothing to clamp against — but RELAXED,
+    // not straight. At 18/22/0 the thumb came off the hand as a single long spike pointing away
+    // from the lantern, the one part of the pose that read as a stick rather than a bone. A
+    // hanging hand's thumb rests bent; these are the angles it rests at, and being slack they
+    // are final rather than scaled by whatever curl the solve lands on.
+    thumb: { joints: [deg(38), deg(42), deg(22)] },
   },
-  thumbOppose: deg(18),
+  thumbOppose: deg(30),
   contact: ['index', 'middle'],
   converge: 0.5,
   // Roughly one proximal phalanx: the crook where a hooked finger folds, not the palm.
