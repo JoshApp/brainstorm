@@ -15,10 +15,12 @@
 // viewmodel's update loop changes, so toggling it back leaves everything where
 // it was.
 import { getViewmodelRoots, onViewmodelRegistered } from '../style/render-frame';
+import { setLampHandVisible } from '../player/lamp-hand';
 import { setCameraPitch, setCameraYaw } from '../controls/camera';
 import { tuneNumber, onKnobChange, getKnob, markTransient } from './tuning';
 
 const SHOW_VM = 'showvm';
+const LAMP_HAND = 'lamphand';
 const PITCH = 'pitch';
 const YAW = 'yaw';
 
@@ -47,6 +49,22 @@ tuneNumber({
 //
 // Not clamped tighter than the camera's own limit: looking straight down at
 // your boots is a legitimate way to inspect a floor texture.
+// ── THE LANTERN WITHOUT A BEARER ─────────────────────────────────────────────
+//
+// Josh: *"can we remove the left hand hlding the lamp and make the lamp just float on its own?
+// like give me a toggle for that in the view tab of tune."*
+//
+// The lantern belongs to handheld-lamp.ts and the hand merely follows it to the bail, so hiding
+// the hand leaves the light burning exactly where it was and carried by nothing. Separate from
+// 'Show viewmodel', which hides the whole viewmodel including the weapon: this is about what is
+// HOLDING the light, and a floating lamp is a real look for this game rather than only an
+// inspection view.
+tuneNumber({
+  id: LAMP_HAND, group: 'View', label: 'Lamp hand', min: 0, max: 1, value: 1, step: 1,
+  apply: 'live',
+  hint: '0 = the lantern floats on its own',
+});
+
 tuneNumber({
   id: PITCH, group: 'View', label: 'Look pitch', min: -1.5, max: 1.5, value: 0,
   apply: 'live', hint: 'negative looks down at the floor; a drag overrides it',
@@ -73,6 +91,7 @@ markTransient(YAW);
 
 onKnobChange((k) => {
   if (k.spec.id === SHOW_VM) apply();
+  if (k.spec.id === LAMP_HAND) setLampHandVisible(k.get() > 0.5);
   // ── ZERO MEANS "WHEREVER THE GAME PUT YOU" ─────────────────────────────────
   //
   // These used to assert unconditionally, which was harmless while the only caller was a

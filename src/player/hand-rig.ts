@@ -159,6 +159,17 @@ export class HandRig {
     this.vel.addScaledVector(temp, -w).multiplyScalar(decay);
   }
 
+  /**
+   * Show or hide the HAND itself, leaving the rig running.
+   *
+   * Separate from the anchor's visibility on purpose: the anchor is a registered viewmodel root
+   * and the 'Show viewmodel' knob owns that flag. Two knobs writing one `visible` means whichever
+   * ran last wins and the other looks broken. This one owns the hand.
+   */
+  setHandVisible(on: boolean): void {
+    if (this.hand) this.hand.group.visible = on;
+  }
+
   /** The grip point in WORLD space — what a held object follows. */
   getGripWorld(out: THREE.Vector3): THREE.Vector3 {
     this.anchor.updateWorldMatrix(true, false);

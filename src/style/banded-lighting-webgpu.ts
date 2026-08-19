@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, sin } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -275,6 +275,50 @@ const uDarkAboveKeep = tuneUniform({
   hint: '0 = pure black overhead; a little keeps a hint of vault',
 });
 
+const uDarkEdgeAmount = tuneUniform({
+  id: 'darkedge', group: 'Dark above', label: 'Edge irregularity',
+  min: 0, max: 0.35, value: 0.08, step: 0.01,
+  hint: 'how far the boundary wanders up and down; 0 = a dead level line',
+});
+const uDarkEdgeScale = tuneUniform({
+  id: 'darkedgescale', group: 'Dark above', label: 'Edge scale',
+  min: 0.05, max: 2, value: 0.95, step: 0.01,
+  hint: 'lower = long slow swells, higher = a ragged fringe',
+});
+
+/**
+ * A slow wander on the boundary, so the dark does not end in a spirit level.
+ *
+ * Josh: *"can we do it slight irregular so its not perfectly level when i push it back with
+ * light."* A constant threshold draws a perfectly horizontal line around every room — and it is
+ * most obvious exactly when a torch pushes the dark back, because that is when there is enough
+ * light either side of the boundary to see that it is a line at all. Darkness pooling under a
+ * vault has no straight edges in it.
+ *
+ * THREE SINES, NOT A NOISE TEXTURE. This is sampled per fragment on every lit surface in the
+ * scene, so it has to be nearly free — and what it is asked to do is wander, not look like
+ * anything. Incommensurable frequencies on a rotated pair of axes give a field that never
+ * repeats visibly at room scale, which is the entire requirement.
+ *
+ * Driven by world XZ, NOT by the fragment's own position on its wall: adjacent walls meeting at a
+ * corner then agree about where the dark starts, instead of each carrying its own edge and
+ * showing the seam.
+ */
+function darkEdgeNoise(): any {
+  const p: any = (vec2 as any)((positionWorld as any).x, (positionWorld as any).z)
+    .mul(uDarkEdgeScale as any);
+  const a: any = (sin as any)(p.x.add(p.y.mul(0.7)));
+  const b: any = (sin as any)(p.x.mul(-0.63).add(p.y.mul(1.31)).add(2.1));
+  const c: any = (sin as any)(p.x.mul(1.87).add(p.y.mul(-1.09)).add(4.7));
+  return a.mul(0.5).add(b.mul(0.33)).add(c.mul(0.17));      // ≈ [-1, 1]
+}
+
+const uDarkAboveCap = tuneUniform({
+  id: 'darkabovecap', group: 'Dark above', label: 'Brightness ceiling',
+  min: 0, max: 0.5, value: 0.035, step: 0.005,
+  hint: 'the most light the dark will ever let through, however hard you light it',
+});
+
 /**
  * How much of a fragment's light survives at its height within its room. 1 at and below the
  * threshold, `keep` at and above the top.
@@ -287,13 +331,47 @@ const uDarkAboveKeep = tuneUniform({
  * the deliberate fallback: adding this effect cannot dim something nobody tagged, and a prop
  * near a ceiling stays a signal rather than being quietly swallowed.
  */
-function darkAboveFactor(): any {
+function darkAboveTerms(): { factor: any; t: any } {
   const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
   const span: any = roomY.y.sub(roomY.x);
   const frac: any = (positionWorld as any).y.sub(roomY.x).div(span.max(0.001));
-  const t: any = (smoothstep as any)(uDarkAboveStart as any, uDarkAboveFull as any, frac);
+  // The boundary wanders. Only the START moves — the top of the fade stays pinned at the ceiling,
+  // so a wobbling edge can never leave a lit band above it.
+  const start: any = (uDarkAboveStart as any).add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
+  const t: any = (smoothstep as any)(start, uDarkAboveFull as any, frac);
   const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
-  return (span.greaterThan(0.01) as any).select(eaten, (float as any)(1));
+  const inRoom: any = span.greaterThan(0.01);
+  return {
+    factor: (inRoom as any).select(eaten, (float as any)(1)),
+    // Untagged surfaces get t = 0, so the cap is inert for them too.
+    t: (inRoom as any).select(t, (float as any)(0)),
+  };
+}
+
+/**
+ * The dark is not a filter you can out-shine.
+ *
+ * Scaling the light by a fraction is a MULTIPLIER, and a multiplier can always be beaten: point
+ * the lamp up, put a torch on the wall, and the ceiling comes back — dimmer, but plainly a
+ * ceiling, at a plainly measurable height. The moment that happens the whole illusion is spent,
+ * because the room stops being unknowably tall and becomes a box the player has now seen the lid
+ * of.
+ *
+ * So above the threshold the outgoing light is also CAPPED in absolute terms. However hard a
+ * fragment up there is lit, it can only ever reach `uDarkAboveCap` — enough for a vague
+ * suggestion of masonry, never enough to describe the vault. The cap eases in with the same `t`
+ * as the fade, so nothing changes at all below the threshold.
+ *
+ * Deliberately NOT zero, and deliberately not applied as a hard clamp at full strength: some hint
+ * of upper wall is what tells the player the room CONTINUES upward. Take it all and the sense of
+ * scale goes with it — a flat black band reads as a low ceiling, which is the opposite of the
+ * intent.
+ */
+function darkAboveCap(out: any, t: any): any {
+  const lum: any = (luminance as any)(out).max(1e-4);
+  // No cap below the threshold: a huge ceiling eased down to the real one by t.
+  const capLum: any = (mix as any)((float as any)(1e3), uDarkAboveCap as any, t);
+  return out.mul(capLum.div(lum).min(1.0));
 }
 
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
@@ -438,7 +516,10 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // Last, and on the TOTAL: after the gore, after the rim, after the chroma. Anything applied
     // before this would be re-lighting a surface the dark has already taken, and the rim in
     // particular would keep burning a silhouette into a ceiling that is meant to be absent.
-    out = out.mul(darkAboveFactor());
+    {
+      const d: any = darkAboveTerms();
+      out = darkAboveCap(out.mul(d.factor), d.t);
+    }
     context.outgoingLight.assign(out);
     super.finish(builder);
   }

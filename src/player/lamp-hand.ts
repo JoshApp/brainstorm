@@ -133,6 +133,7 @@ function install(): void {
       forearmExit: RING_FOREARM_EXIT_DESIRED,
     }, HOOK_GRIP)
     : null;
+  rig.setHandVisible(handVisible);
   rig.setGrip(solved?.center.clone() ?? hand.slots.get('palm_anchor')?.position.clone() ?? null);
 
   // ONE MESH, and the viewmodel's own depth rules. The hand is rigid — nothing below the
@@ -162,6 +163,20 @@ function install(): void {
     reportAim(hand);
   }
 }
+
+/**
+ * Show or hide the hand that carries the lantern — the lamp keeps burning either way.
+ *
+ * Josh: *"can we remove the left hand hlding the lamp and make the lamp just float on its own?"*
+ * The lantern is owned by handheld-lamp.ts and the hand merely follows it to the bail, so
+ * dropping the hand leaves the light exactly where it was, carried by nothing. Which is a real
+ * look for this game and not only a debug view — hence a knob rather than a comment-out.
+ */
+export function setLampHandVisible(on: boolean): void {
+  handVisible = on;
+  rig?.setHandVisible(on);
+}
+let handVisible = true;
 
 export function tickLampHand(dt: number): void {
   if (!rig) return;
