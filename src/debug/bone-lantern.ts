@@ -66,6 +66,45 @@ export function bailBarRadius(): number {
   return Math.max(0.003, Math.min(hi - lo, hiZ - loZ) / 2);
 }
 
+/**
+ * Where the flame belongs inside the lantern, metres below the model's origin.
+ *
+ * Josh: "the lamp on the flame isnt properly in place." The flame stack is authored at the old
+ * cage's centre, and the scanned lantern hangs from its BAIL — so its body sits well below that
+ * and the fire was burning up near the handle.
+ *
+ * Measured off the mesh, like the bar radius: the BODY is the wide part, the bail is a thin
+ * handle above it, so taking the mean height of everything wider than half the lantern's widest
+ * point finds the body and ignores the handle. A bounding-box centre would not — it splits the
+ * difference with the empty space inside the bail.
+ */
+export function lanternBodyCentreY(): number {
+  const FALLBACK = -0.10;
+  if (!source) return FALLBACK;
+  let widest = 0;
+  const rows: Array<[number, number]> = [];   // [y, horizontal radius]
+  source.traverse((o) => {
+    const pos = (o as THREE.Mesh).geometry?.getAttribute('position');
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const r = Math.hypot(x, z);
+      widest = Math.max(widest, r);
+      rows.push([pos.getY(i), r]);
+    }
+  });
+  if (!rows.length || widest <= 0) return FALLBACK;
+  let sum = 0;
+  let n = 0;
+  for (const [y, r] of rows) {
+    if (r < widest * 0.5) continue;           // thin = handle, not body
+    sum += y;
+    n++;
+  }
+  return n ? sum / n : FALLBACK;
+}
+
 let source: THREE.Object3D | null = null;
 let loading: Promise<void> | null = null;
 const listeners: Array<() => void> = [];

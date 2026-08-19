@@ -269,6 +269,33 @@ export const ARM_LEFT: ModelSpec = {
     //     giant near-camera slab — the bones should ENTER from the
     //     bottom-left edge, reading as "my arm", not block the view.
     //
+    // ── RAISED -0.80 → -0.55 (2026-08-19), AND WHY THE NOTE BELOW NO
+    //    LONGER HOLDS ─────────────────────────────────────────────
+    // Josh: "doesnt matter if the ellbow is there if the position looks
+    // better ... maybe we have to straighten out the hand holding the
+    // lamp so its like the arm is coming from a bit higher" — and, on
+    // the 2026-08-15 note: "dont trust old data like that easily".
+    //
+    // Right, and re-running scripts/elbow-probe.ts says the note is
+    // stale. The clearance it was protecting is now nearly FLAT in
+    // shoulder height, because the lamp and the arm have both moved
+    // since it was written:
+    //     shoulder y   bottom margin
+    //       -0.58        0.142 m
+    //       -0.70        0.138 m
+    //       -0.82        0.150 m
+    //       -0.88        0.161 m
+    // 8mm of margin out of ~150mm across the whole sweep, against the
+    // 0.065-vs-0.088 the note recorded. The drop is no longer buying
+    // anything, and it was costing the carry pose: at -0.80 the lamp
+    // sits 0.67m above the shoulder, so the arm locks near-straight
+    // (89% of reach) and carries the lantern at a steep angle. At -0.55
+    // it is 0.49m and the elbow keeps a real bend (~71%).
+    //
+    // The probe also hardcoded "-0.58 ← current" while this slot said
+    // -0.80; it reads the spec now, so it cannot mislabel itself again.
+    //
+    // ── the superseded note, kept for its reasoning ───────────────
     // ── DROPPED -0.58 → -0.80 (2026-08-15) ───────────────────────
     // The v3 presence pass raised the lantern 13cm and brought it 18cm
     // nearer, and the lamp wrist IS this arm's IK target — so the elbow
@@ -288,7 +315,7 @@ export const ARM_LEFT: ModelSpec = {
     // The elbow POLE is not the lever here and the sweep says so: biasing
     // it further down also pushes the elbow BACK, and the frustum widens
     // with depth, so the margin gets WORSE (-2.0 pole → 0.043 m).
-    shoulder: { pos: [-0.20, -0.80, -0.30], debug: 'axes' },
+    shoulder: { pos: [-0.20, -0.55, -0.30], debug: 'axes' },
     upper_arm_anchor: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH / 2, 0], debug: 'axes' },
     elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0], debug: 'axes' },
     lower_arm_anchor: { parent: 'elbow', pos: [0, FOREARM_LENGTH / 2, 0], debug: 'axes' },

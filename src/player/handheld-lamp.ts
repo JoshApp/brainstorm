@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { boneArmsWanted } from '../debug/bone-hand';
-import { buildLantern, preloadLantern, onLanternLoaded } from '../debug/bone-lantern';
+import { buildLantern, preloadLantern, onLanternLoaded, lanternBodyCentreY }
+  from '../debug/bone-lantern';
 import { disposeGpu, disposeGpuTree } from '../scene/gpu-dispose';
 
 // Worn hip lantern — a small lantern model parented to the player
@@ -106,7 +107,13 @@ let lampSource: LightSource | null = null;
 //                      near the old pre-trim -0.11 hinge without the old
 //                      scale-1.8 bulk on top of it.
 //   X  -0.36 → -0.38   2cm out, so the nearer body doesn't crowd centre-frame.
-const LAMP_RAISED = new THREE.Vector3(-0.38, -0.13, -0.60);
+// ── RAISED AND PULLED IN (2026-08-19) ────────────────────────────────
+// The scanned lantern hangs from its BAIL and is bigger than the cage it replaced, so its body
+// sits ~25cm below the hinge where the old one sat ~11cm below. At the old hinge height that put
+// the lantern's bottom off the frame. Josh: "make the lamp fully visible".
+//   Y  -0.13 → -0.06   the whole lantern clears the bottom edge again
+//   X  -0.38 → -0.36   2cm back in, so the wider body is not clipped at the left edge
+const LAMP_RAISED = new THREE.Vector3(-0.36, -0.06, -0.60);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out
@@ -256,6 +263,19 @@ export function attachLamp(camera: THREE.Camera) {
       iron.length = 0;
       for (const c of [...body.children]) {
         if (c.name === 'lamp-merged') { c.removeFromParent(); disposeGpuTree(c); }
+      }
+
+      // ── PUT THE FLAME INSIDE THE LANTERN ────────────────────────────
+      //
+      // Josh: "the lamp on the flame isnt properly in place." The flame stack is authored at the
+      // old cage's centre; the scanned lantern hangs from its BAIL, so its body sits well below
+      // that and the fire was burning up by the handle. Shift the whole stack — both the live
+      // position and the baseY the flicker bobs around, or the next tick would put it back.
+      const flameY = shell.position.y + lanternBodyCentreY();
+      for (const f of flameSprites) {
+        const drop = flameY - f.baseY;
+        f.baseY += drop;
+        f.sprite.position.y += drop;
       }
 
       // The viewmodel render pass ran at build time, before this shell existed, so it gets the

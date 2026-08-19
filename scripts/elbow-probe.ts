@@ -178,7 +178,10 @@ for (const shY of [-0.58, -0.64, -0.70, -0.76, -0.82, -0.88]) {
     const c = clearance(r.elbowPos, ELBOW_R, FOV_RUN, ASPECT);
     if (!worst || c.margin < worst.margin) worst = { margin: c.margin, y: r.elbowPos.y, z: r.elbowPos.z };
   }
-  const cur = shY === -0.58 ? '   ← current' : '';
+  // Read from the SPEC, not from a number typed here. This said "-0.58 ← current" for as long
+  // as the spec said -0.80, which is the one thing a probe must never do: a tool that misreports
+  // what is currently true launders a guess as a measurement.
+  const cur = Math.abs(shY - LEFT.shoulder[1]) < 0.005 ? '   ← current' : '';
   console.log(
     `   ${shY.toFixed(2).padStart(6)}       (${worst!.y.toFixed(3)}, ${worst!.z.toFixed(3)})` +
     `       ${worst!.margin.toFixed(3)}m${cur}`,
