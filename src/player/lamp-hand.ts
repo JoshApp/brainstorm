@@ -56,7 +56,10 @@ import { HandRig, type HandRest } from './hand-rig';
 // So: fingers down the view axis with a little droop, palm at the floor. A hand held out in
 // front of you carrying a lamp.
 export const LAMP_FINGERS_TO = new THREE.Vector3(0, -0.15, -1);
-export const LAMP_PALM_TO = new THREE.Vector3(0, -1, 0);
+// ...with a slight roll to the LEFT — the palm tips outboard rather than sitting dead flat.
+// About 17 degrees off straight down. A hand carrying a lamp at your side never holds the palm
+// perfectly level, and dead flat read as a diagram of a hand rather than one in use.
+export const LAMP_PALM_TO = new THREE.Vector3(-0.30, -1, 0);
 
 /**
  * The rest pose. `pos` is where the hand's GRIP sits when the lamp has nothing to say — it is
