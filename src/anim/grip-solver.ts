@@ -217,14 +217,37 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     const four = chains.filter((c) => c.finger !== 'thumb');
     const axialOf = (o: THREE.Object3D): number =>
       _p.setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv).sub(C).dot(A);
-    const knuckle = four.map((c) => axialOf(c.nodes[0]));
-    const mean = knuckle.reduce((a, b) => a + b, 0) / (knuckle.length || 1);
+    // Where the fingertips land with the hand OPEN. Curling cannot change these: every joint
+    // turns about an axis parallel to the grip axis, and such a rotation preserves the component
+    // along it. So the spread is settled here or not at all.
+    const at = four.map((c) => axialOf(c.tip));
+    const mean = at.reduce((a, b) => a + b, 0) / (at.length || 1);
+    const span0 = Math.max(...at) - Math.min(...at);
+
+    // FINGERS TOUCHING is a measurable target, not a taste call: four of them side by side
+    // occupy three finger-widths. Converge to that, and never past it — a hand whose tips are
+    // already closer than touching (the authored one, at 27mm) needs nothing doing to it.
+    // A finger's width, measured off the model. Preferably from the proximal phalanx's own mesh;
+    // failing that from the TIGHTEST gap between adjacent knuckles, because on a hand whose
+    // knuckles are not splayed that gap IS a finger. The authored hand has no `finger_index`
+    // PART (it is a slot there, not a mesh), so a hardcoded fallback quietly told it its fingers
+    // were 16mm wide and loosened a fist that was already closed: 27mm out to 39mm.
+    let width = 2 * phalanxHalfThickness(hand);
+    if (!hand.parts.get('finger_index')) {
+      const sorted = [...at].sort((x, y) => x - y);
+      let tightest = Infinity;
+      for (let i = 1; i < sorted.length; i++) tightest = Math.min(tightest, sorted[i] - sorted[i - 1]);
+      if (Number.isFinite(tightest) && tightest > 0) width = tightest;
+    }
+    const want = width * (four.length - 1);
+    const k = span0 > want ? CONVERGE * (1 - want / span0) : 0;
+
     for (let i = 0; i < four.length; i++) {
       const c = four[i];
       const len = _p.setFromMatrixPosition(c.tip.matrixWorld)
         .distanceTo(_reach.setFromMatrixPosition(c.nodes[0].matrixWorld));
-      if (len < 1e-6) continue;
-      const shift = -CONVERGE * (knuckle[i] - mean);
+      if (len < 1e-6 || k <= 0) continue;
+      const shift = -k * (at[i] - mean);
       let yaw = Math.asin(THREE.MathUtils.clamp(shift / len, -1, 1));
       // Resolve the sign by trying it: which way a yaw about the palm normal carries a finger
       // depends on how that knuckle's frame sits, and every sign I have derived this session has
@@ -327,7 +350,13 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
 
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[grip] fist curl=${curl.toFixed(2)} contact=${contact.toFixed(1)}mm `
+    // The part count identifies WHICH HAND this is — 6 = the authored one, 27 = the baked bone
+    // hand. Without it the two are indistinguishable in the log, and they behave very
+    // differently: the bone hand's palm is 1.7x broader across the knuckles. I spent a long
+    // while confirming fixes against renders of the authored hand while Josh was looking at the
+    // bone hand in game, and neither of us could tell.
+    console.log(`[grip] hand=${hand.parts.size}p `
+      + `curl=${curl.toFixed(2)} contact=${contact.toFixed(1)}mm `
       + `span=${span.toFixed(0)}mm r=${(grip.radius * 1000).toFixed(0)}mm`);
   }
 
