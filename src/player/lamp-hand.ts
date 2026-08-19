@@ -43,8 +43,20 @@ import { HandRig, type HandRest } from './hand-rig';
  * Exported for scripts/aim-check.ts, which imports the real constants rather than restating
  * them: a report that re-declares the numbers it checks launders a guess as a measurement.
  */
-export const LAMP_FINGERS_TO = new THREE.Vector3(0.75, -0.18, -0.64);
-export const LAMP_PALM_TO = new THREE.Vector3(0.65, 0, 0.76);
+// STRAIGHT OUT FROM THE CAMERA, PALM DOWN, FINGERS CURLING ONTO THE BAIL.
+//
+// Which is what Josh asked for at the start and has never once been rendered. The first attempt
+// authored exactly this and came out wrong — `upTo` aims a model's local +Z, and HAND_LEFT is a
+// mirrored spec whose +Z is the PALM, so the line meaning "back of the hand up" pointed the palm
+// at the ceiling. Fixing that bug and changing the target to "across the frame" happened in the
+// same commit, on my judgement that fingers-forward would read as a foreshortened stump. That
+// judgement was not mine to make against a stated instruction, and it cost four rounds of
+// sweeping orientations he had not asked for.
+//
+// So: fingers down the view axis with a little droop, palm at the floor. A hand held out in
+// front of you carrying a lamp.
+export const LAMP_FINGERS_TO = new THREE.Vector3(0, -0.15, -1);
+export const LAMP_PALM_TO = new THREE.Vector3(0, -1, 0);
 
 /**
  * The rest pose. `pos` is where the hand's GRIP sits when the lamp has nothing to say — it is
