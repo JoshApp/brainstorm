@@ -492,7 +492,11 @@ export function createWeaponViewmodel(
       composed.hand.group.worldToLocal(_palmInHandRoot);
       // The anatomy target is authored in the WRIST frame; the solver
       // rotates the hand ROOT — map it through the wrist slot's pose.
-      wristAim.setDesiredFromWristFrame(FOREARM_EXIT_DESIRED, wristSlot.quaternion);
+      // Where the forearm leaves the wrist belongs to the GRIP, not the hand: you do not hold a
+      // maul with a sabre's wrist. content/grip.ts keeps the sabre value as the baseline, so a
+      // weapon that declares no style is posed exactly as before.
+      wristAim.setDesiredFromWristFrame(
+        composed.grip?.forearmExit ?? FOREARM_EXIT_DESIRED, wristSlot.quaternion);
       wristAimReady = true;
     }
     // Track the live composed so the settings-change handler can flip

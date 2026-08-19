@@ -169,6 +169,8 @@ export const BENT_SICKLE: ModelSpec = {
 // read; it pokes from outside a rat's lunge. Mundane spear class.
 export const PILGRIMS_PIKE: ModelSpec = {
   id: 'pilgrims-pike',
+  // A polearm — same reasoning as the spear.
+  grip: { style: 'staff' },
   materials: {
     haft: { color: 0x40301f, roughness: 0.92, metalness: 0.05, flatShading: 'auto' },
     bind: { color: 0x24180e, roughness: 0.85, metalness: 0.1 },

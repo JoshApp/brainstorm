@@ -4,6 +4,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import { HAND_RIGHT } from '../content/hand';
 import { boneArmsWanted, buildBoneHand } from '../debug/bone-hand';
 import { solveGrip } from '../anim/grip-solver';
+import { resolveGrip, type ResolvedGrip } from '../content/grip';
 
 // Shared composition: BUILD a hand, BUILD a weapon (if any), ALIGN the
 // weapon's grip_anchor to the hand's palm_anchor, ADJUST the hand's
@@ -26,6 +27,9 @@ export interface HeldWeaponCompose {
   hand: BuiltModel;
   /** The built weapon model, or null if composing an unarmed fist. */
   weapon: BuiltModel | null;
+  /** How this weapon declared it should be held — null when unarmed. The viewmodel takes the
+   *  forearm-exit direction from here, because a hammer wrist and a sabre wrist differ. */
+  grip: ResolvedGrip | null;
 }
 
 // Empirical baseline for the authored finger curl. The bone hand's
@@ -96,6 +100,7 @@ export function composeHeldWeapon(
   const group = new THREE.Group();
   group.add(hand.group);
   let weapon: BuiltModel | null = null;
+  let resolved: ResolvedGrip | null = null;
   if (weaponSpec) {
     weapon = buildModel(weaponSpec);
     // Net transform of palm_anchor in the composition-root frame
@@ -114,22 +119,36 @@ export function composeHeldWeapon(
     // not where they thought it was. The solver moves the axis one radius out along the palm
     // normal, so the cylinder's surface touches palm_anchor, then closes each finger onto that
     // circle and reports how close it got. Orientation is untouched: only the offset was wrong.
-    // `grip.center` is in the hand ROOT's frame, and hand.group sits at identity inside this
+    // How this weapon is HELD, declared by the weapon (content/grip.ts) rather than sniffed
+    // from its parts. A weapon that declares nothing gets the sabre defaults and the grip
+    // cylinder it already had, so this changed no existing weapon's pose.
+    resolved = resolveGrip(weaponSpec);
+    // `solve.center` is in the hand ROOT's frame, and hand.group sits at identity inside this
     // composition root, so the two frames coincide and the centre drops straight in.
-    const grip = solveGrip(hand, inferGripRadius(weaponSpec));
-    if (grip) m.setPosition(grip.center);
-    else adjustFingersForGrip(hand.slots, inferGripRadius(weaponSpec));
-    m.multiply(new THREE.Matrix4().makeTranslation(-gripPos[0], -gripPos[1], -gripPos[2]));
+    const solve = solveGrip(hand, resolved);
+    if (solve) m.setPosition(solve.center);
+    else adjustFingersForGrip(hand.slots, resolved.radius);
+    // Roll the weapon about its own grip axis (weapon-local +Y) — turns a blade's flat over, or
+    // a dagger into a reverse grip, without a second authored anchor.
+    if (resolved.roll) m.multiply(new THREE.Matrix4().makeRotationY(resolved.roll));
+    // `offset` walks the hand along the haft: shifting the weapon along its own grip axis is the
+    // same thing as moving the hand the other way, and needs no second anchor. Weapon-local,
+    // because the grip does not run along +Y on every weapon.
+    const off = resolved.offset;
+    m.multiply(new THREE.Matrix4().makeTranslation(
+      -gripPos[0] - off[0], -gripPos[1] - off[1], -gripPos[2] - off[2]));
     m.decompose(weapon.group.position, weapon.group.quaternion, weapon.group.scale);
     group.add(weapon.group);
-    if (grip && import.meta.env.DEV) {
+    if (solve && import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       // Joined into the message rather than logged as an object: a console object preview
       // truncates its properties, and a contact report that silently drops half the fingers is
       // exactly the kind of "measurement" that launders a guess.
-      const rows = Object.entries(grip.errors).map(([k, v]) => `${k}=${v}`).join(' ');
-      console.log(`[grip] r=${grip.radius.toFixed(3)} worst=${grip.worst}mm · ${rows}`);
+      const rows = Object.entries(solve.errors).map(([k, v]) => `${k}=${v}`).join(' ');
+      console.log(`[grip] ${resolved.style} r=${solve.radius.toFixed(3)} `
+        + `off=${resolved.offset.map((v) => v.toFixed(3)).join(',')} thumb=${resolved.thumb} `
+        + `worst=${solve.worst}mm · ${rows}`);
     }
   }
-  return { group, hand, weapon };
+  return { group, hand, weapon, grip: resolved };
 }

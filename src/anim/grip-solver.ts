@@ -52,6 +52,7 @@
 
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
+import type { ResolvedGrip } from '../content/grip';
 
 /** Joint chains, tip last. The tip is an anchor rather than a joint — it is the far end of the
  *  last bone, and without it that bone has no length and never closes. */
@@ -103,7 +104,8 @@ function radial(p: THREE.Vector3, c: THREE.Vector3, a: THREE.Vector3, out: THREE
  * Mutates the hand's finger joint rotations and returns where the weapon should go. Runs once
  * per equip.
  */
-export function solveGrip(hand: BuiltModel, gripRadius: number): GripSolve | null {
+export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | null {
+  const gripRadius = grip.radius;
   const root = hand.group;
   const palm = hand.slots.get('palm_anchor');
   const palmUp = hand.slots.get('palm_up');
@@ -222,7 +224,14 @@ export function solveGrip(hand: BuiltModel, gripRadius: number): GripSolve | nul
     };
 
     const solved: Record<string, number> = {};
-    for (const chain of Object.values(CHAINS)) {
+    for (const [finger, chain] of Object.entries(CHAINS)) {
+      // A thumb riding ALONG the haft does not close onto it — that is the whole difference
+      // between a hammer's fist and a spear's thrust grip, and it is the one finger whose job
+      // changes between them. Left flat, it points down the weapon.
+      if (finger === 'thumb' && grip.thumb === 'along') {
+        for (const name of chain) solved[name] = 0;
+        continue;
+      }
       for (let i = 0; i < chain.length - 1; i++) {
         const joint = hand.slots.get(chain[i]);
         const child = hand.slots.get(chain[i + 1]);

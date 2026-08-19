@@ -396,6 +396,27 @@ export interface MountSpec {
   forward?: 'x' | '-x' | 'z' | '-z';
 }
 
+/** Which named bundle of grip behaviour a weapon is held with. See content/grip.ts. */
+export type GripStyle = 'saber' | 'hammer' | 'staff' | 'reverse';
+
+/**
+ * What a weapon declares about being held.
+ *
+ * Every field optional: a weapon that says nothing gets the sabre defaults and the grip cylinder
+ * it already has, so adding this changed no existing weapon.
+ */
+export interface GripSpec {
+  style?: GripStyle;
+  /** Override the grip cylinder's radius, when the sniffed part is not the thing being held. */
+  radius?: number;
+  /** 0..1 along the grip cylinder, 0 = pommel end, 1 = blade end. 0.5 = centred (the old
+   *  behaviour). The "choke up" knob, and the reason a spear can be held near its butt. */
+  along?: number;
+  /** Extra roll of the weapon about the grip axis, radians — flips a blade's flat, or turns a
+   *  dagger over for a reverse grip. */
+  roll?: number;
+}
+
 export interface ModelSpec {
   id: string;
   parts: PartSpec[];
@@ -413,6 +434,16 @@ export interface ModelSpec {
   mergeRigid?: boolean;
   /** Named anchor points for attaching other models / lights / effects. */
   slots?: Record<string, SlotSpec>;
+  /**
+   * HOW THIS WEAPON IS HELD — declared by the weapon, not guessed from its parts.
+   *
+   * The grip used to be sniffed: find a cylinder named `grip` or `haft`, take its radius, done.
+   * That knows nothing about WHERE along a haft the hand sits (the spear's 0.40m shaft was
+   * gripped at its exact centre) or WHAT KIND of grip it is. See content/grip.ts. Omit it and
+   * the weapon keeps the sabre defaults and the grip it already had.
+   */
+  grip?: GripSpec;
+
   /** Optional attached light (e.g. torch glow). */
   light?: LightSpec;
   /**

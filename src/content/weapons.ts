@@ -176,6 +176,9 @@ export const BONE_NEEDLE: ModelSpec = {
 // silhouette so the held weapon and the enemy don't read alike.
 export const IRON_MAUL: ModelSpec = {
   id: 'iron-maul',
+  // Hafted and heavy: the hand sits low toward the pommel for leverage, and the wrist runs
+  // straighter than a sabre's. You do not cock a maul, you drop it.
+  grip: { style: 'hammer' },
   materials: {
     head: {
       // Dark iron — slightly more metallic than the haft for contrast.
@@ -310,6 +313,9 @@ export const WAND: ModelSpec = {
 // reach. Kept thin so it doesn't fill the screen at the thrust pose.
 export const SPEAR: ModelSpec = {
   id: 'weapon-spear',
+  // A 0.40m haft, and before a weapon could say otherwise it was gripped at its exact
+  // CENTRE — the only place a radius sniff knows about. Held down the shaft, thumb along it.
+  grip: { style: 'staff' },
   materials: {
     haft: { color: 0x4a3322, roughness: 0.9, metalness: 0.05, fog: false, flatShading: 'auto' },
     head: { color: 0x9a948a, roughness: 0.5, metalness: 0.7, fog: false, flatShading: 'auto' },
@@ -318,8 +324,10 @@ export const SPEAR: ModelSpec = {
   parts: [
     // Shaft — long thin rod running forward along −Z.
     { kind: 'cylinder', pos: [0, 0, -0.16], radius: 0.012, height: 0.74, rot: [Math.PI / 2, 0, 0], mat: 'haft', jitter: 0.005 },
-    // Grip binding near the rear third.
-    { kind: 'cylinder', pos: [0, 0, 0.10], radius: 0.018, height: 0.10, rot: [Math.PI / 2, 0, 0], mat: 'bind' },
+    // Grip binding near the rear third. NAMED, because it is the thing the hand actually holds:
+    // content/grip.ts reads its radius, length and AXIS off this part, and an unnamed grip falls
+    // back to a generic hilt (which is what every spear pose was silently doing before).
+    { name: 'grip', kind: 'cylinder', pos: [0, 0, 0.10], radius: 0.018, height: 0.10, rot: [Math.PI / 2, 0, 0], mat: 'bind' },
     // Socket binding just behind the head.
     { kind: 'cylinder', pos: [0, 0, -0.46], radius: 0.016, height: 0.04, rot: [Math.PI / 2, 0, 0], mat: 'bind' },
     // Leaf head — a cone pointing forward (−Z) at the tip.
