@@ -3,6 +3,7 @@ import { buildModel, type BuiltModel } from '../ecs/build-model';
 import type { ModelSpec } from '../ecs/model-types';
 import { HAND_RIGHT } from '../content/hand';
 import { boneArmsWanted, buildBoneHand } from '../debug/bone-hand';
+import { solveGrip } from '../anim/grip-solver';
 
 // Shared composition: BUILD a hand, BUILD a weapon (if any), ALIGN the
 // weapon's grip_anchor to the hand's palm_anchor, ADJUST the hand's
@@ -105,10 +106,30 @@ export function composeHeldWeapon(
     const palm = hand.slots.get('palm_anchor');
     group.updateMatrixWorld(true);
     const m = (palm ?? hand.group).matrixWorld.clone();
+
+    // ── V3 GRIP: THE HILT RESTS ON THE PALM, THE FINGERS WRAP IT ──────────
+    //
+    // v2 parked the weapon's grip_anchor AT palm_anchor, which is a point INSIDE the hand — so
+    // a hilt of radius r sat r deep in the bone and the fingers curled at a cylinder that was
+    // not where they thought it was. The solver moves the axis one radius out along the palm
+    // normal, so the cylinder's surface touches palm_anchor, then closes each finger onto that
+    // circle and reports how close it got. Orientation is untouched: only the offset was wrong.
+    // `grip.center` is in the hand ROOT's frame, and hand.group sits at identity inside this
+    // composition root, so the two frames coincide and the centre drops straight in.
+    const grip = solveGrip(hand, inferGripRadius(weaponSpec));
+    if (grip) m.setPosition(grip.center);
+    else adjustFingersForGrip(hand.slots, inferGripRadius(weaponSpec));
     m.multiply(new THREE.Matrix4().makeTranslation(-gripPos[0], -gripPos[1], -gripPos[2]));
     m.decompose(weapon.group.position, weapon.group.quaternion, weapon.group.scale);
     group.add(weapon.group);
-    adjustFingersForGrip(hand.slots, inferGripRadius(weaponSpec));
+    if (grip && import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      // Joined into the message rather than logged as an object: a console object preview
+      // truncates its properties, and a contact report that silently drops half the fingers is
+      // exactly the kind of "measurement" that launders a guess.
+      const rows = Object.entries(grip.errors).map(([k, v]) => `${k}=${v}`).join(' ');
+      console.log(`[grip] r=${grip.radius.toFixed(3)} worst=${grip.worst}mm · ${rows}`);
+    }
   }
   return { group, hand, weapon };
 }

@@ -306,6 +306,8 @@ export function createWeaponViewmodel(
     });
   }
   // Reusable scratch.
+  /** What is currently equipped, so an asynchronously-arriving hand can recompose it. */
+  let currentWeaponSpec: ModelSpec | null = null;
   const _wristWorld    = new THREE.Vector3();
   const _wristArmLocal = new THREE.Vector3();
   const _midpoint      = new THREE.Vector3();
@@ -426,6 +428,7 @@ export function createWeaponViewmodel(
   }
 
   function mount(spec: ModelSpec | null) {
+    currentWeaponSpec = spec;
     unmount();
     flashMats.length = 0;
     gleaming = false;
@@ -831,6 +834,12 @@ export function createWeaponViewmodel(
   // even before the starter altar runs its first equip(). An empty
   // weapon slot reads as "fists raised", not "nothing on screen."
   mount(null);
+  // The bone hand arrives from a file, and composeHeldWeapon is synchronous — so the first
+  // compose almost always gets the authored hand and never hears about the replacement. The arm
+  // swap already rides this hook; the hand needs it too, or the flag is on and nothing changes.
+  if (import.meta.env.DEV && boneArmsWanted()) {
+    onBoneHandLoaded(() => { mount(currentWeaponSpec); });
+  }
 
   function setDebugPhase(p: SwingPhase, t: number) {
     swing.setDebugPhase(p, t);

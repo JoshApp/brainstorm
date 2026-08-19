@@ -185,10 +185,29 @@ def empty(name, pos, direction=None):
     return e
 
 
+# FINGERTIP ANCHORS -- the distal end of each distal phalanx.
+#
+# The grip solver wraps a finger around a cylinder by treating its phalanges as chords of the
+# grip circle, so it needs each segment's LENGTH. Two come free from the joint positions; the
+# last one needs the tip, and estimating it off a mesh bounding box would include the knuckle
+# blob. Measured here instead: the 20% of the distal phalanx's vertices furthest from its own
+# joint, averaged -- the same rule the joints themselves use, pointed the other way.
+tip_anchors = []
+for f in FINGERS:
+    distal = chains[f][-1]
+    # Sorted along the LIMB AXIS, not by distance from the mesh centre — "furthest from the
+    # middle" is satisfied by both ends of a bone, and picking the wrong one puts the fingertip
+    # back at the knuckle.
+    pts = sorted(verts(distal['o']), key=lambda v: -(v - arm_c).dot(AXIS))
+    take = max(3, len(pts) // 5)
+    tip_anchors.append(('finger_{}_tip'.format(f),
+                        sum(pts[:take], Vector()) / take))
+
 anchors = [empty('wrist', wrist_pos),
            empty('palm_anchor', palm_pos),
            empty('palm_up', palm_pos, N),      # local +Y = palm outward normal
            empty('grip_axis', palm_pos, G)]    # local +Y = along a held grip
+anchors += [empty(n, p) for n, p in tip_anchors]
 bpy.context.view_layer.update()
 
 # -- PIVOTS AT THE JOINTS -------------------------------------------------
@@ -197,6 +216,7 @@ parent_of = {'radius': 'humerus', 'ulna': 'radius', 'elbow': 'radius', 'wrist': 
 for i in range(len(carp)):
     parent_of['palm_carpal_{}'.format(i + 1)] = 'wrist'
 for f in FINGERS:
+    parent_of['finger_{}_tip'.format(f)] = '{}_{}'.format(f, LEN[f])
     parent_of['palm_meta_' + f] = 'wrist'
     for k in range(1, LEN[f] + 1):
         parent_of['{}_{}'.format(f, k)] = 'palm_meta_' + f if k == 1 else '{}_{}'.format(f, k - 1)
@@ -280,6 +300,7 @@ M = ((A @ B.transposed()).to_4x4()
      @ Matrix.Translation(-bone_wrist))
 
 KEEP = (['humerus', 'radius', 'ulna', 'elbow', 'wrist', 'palm_anchor', 'palm_up', 'grip_axis']
+        + ['finger_{}_tip'.format(f) for f in FINGERS]
         + ['palm_carpal_{}'.format(i + 1) for i in range(len(carp))]
         + ['palm_meta_' + f for f in FINGERS]
         + ['{}_{}'.format(f, k) for f in FINGERS for k in range(1, LEN[f] + 1)])

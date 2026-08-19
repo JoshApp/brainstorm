@@ -42,9 +42,9 @@ import { DEV } from './dev';
  *  the node names so a typo'd export FAILS a check instead of quietly losing a joint. */
 const SLOT_NAMES: readonly string[] = [
   'wrist', 'palm_anchor', 'palm_up', 'grip_axis',
-  'finger_thumb', 'finger_thumb_ip',
+  'finger_thumb', 'finger_thumb_ip', 'finger_thumb_tip',
   ...['index', 'middle', 'ring', 'pinky'].flatMap((f) => [
-    `finger_${f}`, `finger_${f}_pip`, `finger_${f}_dip`,
+    `finger_${f}`, `finger_${f}_pip`, `finger_${f}_dip`, `finger_${f}_tip`,
   ]),
 ];
 
