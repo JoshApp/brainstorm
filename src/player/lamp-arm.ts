@@ -8,9 +8,8 @@ import { boneArmsWanted, buildBoneHand, onBoneHandLoaded }
   from '../debug/bone-hand';
 import { bailBarRadius } from '../debug/bone-lantern';
 import { solveGrip } from '../anim/grip-solver';
-import { FLOATING_HANDS, stripArmGeometry } from './floating-hands';
+import { FLOATING_HANDS, stripArmGeometry, aimHand } from './floating-hands';
 import { HOOK_GRIP } from '../content/grip-pose';
-import { orient, tilt, DIR } from '../anim/orient';
 import type { BuiltModel } from '../ecs/build-model';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { WristAim } from '../anim/wrist-solver';
@@ -57,27 +56,23 @@ const _wristArmLocal = new THREE.Vector3();
 const wristAim = new WristAim({ desiredExitLocal: RING_FOREARM_EXIT_DESIRED, dampHalfLife: 0.06 });
 
 /**
- * How the floating lamp hand is held — fingers FORWARD and slightly down, PALM down.
+ * How the floating lamp hand is held, said as anatomy rather than as axes.
  *
- * A hand laid over a horizontal bar with the lantern hanging beneath it. Only used while the
- * hand floats: with a forearm on screen the wrist solver has something real to stay anatomical
- * against, and this would fight it.
+ * Fingers forward and a little down, palm DOWN — a hand laid over a horizontal bar with the
+ * lantern hanging beneath it, which is how you actually carry one. Solved against the hand's own
+ * measured frame by `aimHand`, because a hand's local axes are not its anatomy: everything below
+ * the root hangs off the `wrist` slot's authored bend, and +Z is the palm on one hand and the
+ * back of it on the other. Two passes at authoring this through `orient()` landed the palm
+ * facing the camera with the fingers pointing up, and both read as plausible in the source.
  *
- * ── WHY `upTo` IS *DOWN* AND NOT UP ──────────────────────────────────────────
- *
- * `upTo` aims the model's local +Z, and this is the LEFT hand. Measured off the real specs in
- * the wrist's own frame (scripts/hand-frame.ts): the right hand's palm normal is
- * (0.39, 0.02, −0.92) and the left hand's is (0.39, −0.02, +0.92). HAND_LEFT is a mirrored
- * spec, so its +Z is the PALM where the right hand's +Z is the back of the hand.
- *
- * So "back of the hand up" — the thing you would write — aimed the PALM at the ceiling and
- * hooked the fingers upward, away from the lantern hanging under them. The mirror is the whole
- * bug, and it is invisible in the authored line: both hands read `upTo: DIR.UP` as if it meant
- * the same thing on each.
+ * Only used while the hand floats: with a forearm on screen the wrist solver has something real
+ * to stay anatomical against, and this would fight it.
  */
-const FLOATING_HAND_ROT = new THREE.Euler(
-  ...orient({ yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.25), upTo: DIR.DOWN }),
-);
+const LAMP_FINGERS_TO = new THREE.Vector3(0, -0.25, -1);
+const LAMP_PALM_TO = new THREE.Vector3(0, -1, 0);
+/** Solved once per hand build — the hand does not change shape between frames. */
+let floatingHandRot: THREE.Quaternion | null = null;
+
 const _identityQuat = new THREE.Quaternion();
 const _palmOffsetLive = new THREE.Vector3();
 const _prevElbow = new THREE.Vector3();
@@ -207,6 +202,12 @@ export function attachLampArm(camera: THREE.Camera): void {
     }
 
     finishHand();
+    // AFTER finishHand, so the hand is parented and its matrices are current — aimHand measures
+    // the live nodes rather than the spec.
+    if (wristAnchor) {
+      floatingHandRot = aimHand(hand, wristAnchor, LAMP_FINGERS_TO, LAMP_PALM_TO)
+        ?? floatingHandRot;
+    }
     if (import.meta.env.DEV) {
       // Which hand, by part count — the same label the right hand carries. Two hands that are
       // indistinguishable in the log is how a whole session went by fixing one while looking at
@@ -348,11 +349,9 @@ export function tickLampArm(dt: number): void {
     // against — its whole job is making the hand agree with a limb the player can no longer
     // see, and letting it run just makes the hand roll about for reasons nothing explains.
     //
-    // So the hand is HELD: fingers forward and a little down, back of the hand up. That is a
-    // hand laid over a horizontal bar with the lantern hanging beneath it, which is how you
-    // actually carry one. Authored through orient() rather than as Euler decimals, per the
-    // charter — the numbers below say nothing, the intent does.
-    if (FLOATING_HAND_ROT) wristAnchor.quaternion.setFromEuler(FLOATING_HAND_ROT);
+    // So the hand is HELD, at an orientation solved from the hand's own anatomy — see
+    // LAMP_FINGERS_TO above and aimHand in floating-hands.ts.
+    if (floatingHandRot) wristAnchor.quaternion.copy(floatingHandRot);
     else if (havePrev) {
       wristAnchor.quaternion.copy(wristAim.solve(_identityQuat, _prevElbow, _prevWrist, dt));
     }
