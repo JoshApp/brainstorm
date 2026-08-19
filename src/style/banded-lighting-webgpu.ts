@@ -36,6 +36,7 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 //             a MOVING lamp crawls. This is the knob for that trade, and it is
 //             a trade rather than a bug to fix.
 import { tuneUniform } from '../debug/tuning';
+import { ROOM_Y_ATTR } from '../scene/room-height';
 
 const uBands = tuneUniform({
   id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 5, step: 1,
@@ -234,32 +235,39 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 // props, everything at eye level is untouched. Above it the surface keeps a shrinking fraction
 // of what struck it, until near the top it keeps almost nothing and the vault is simply gone.
 //
-// ── MEASURED FROM THE EYE, NOT FROM THE WORLD ────────────────────────────────
+// ── MEASURED AGAINST THE ROOM, NOT AGAINST THE EYE ───────────────────────────
 //
-// `positionWorld.y` is the wrong ruler. The dungeon has real verticality — stair corridors, a
-// descent bias, sunken rooms — so one absolute height is a different distance off the floor in
-// every room, and a band authored for one would sit at knee height in the next.
+// The first version measured height above the CAMERA. Josh: *"it shouldnt be above eye it should
+// be ceiling dependant otherwhise cieling height collapses."* Right, and the failure is specific:
+// a camera-relative band sits at the same apparent height in EVERY room, so a six-metre vaulted
+// hall and a two-and-a-half-metre corridor go dark at the same place in the frame. Ceiling height
+// stops being information — in a game whose rooms are read by their volume, that throws away one
+// of the few spatial cues darkness leaves intact.
 //
-// Height above the CAMERA is the right one, and it costs nothing: `cameraPosition` is already in
-// this graph for the reveal rim, so there is no uniform to upload and nothing to keep in sync.
-// It is also what the effect actually means — the dark presses down on the VIEWER. Walk up a
-// stair and it climbs with you, which is correct rather than convenient.
+// So the fade is a FRACTION of the room's own height, and each shell surface carries its room's
+// floor and ceiling Y on a vertex attribute (scene/room-height.ts). A tall room keeps its walls
+// lit far higher in absolute metres than a low one, and both lose their vault.
 //
-// ── APPLIED TO EVERYTHING, NOT ONLY TO CEILINGS ──────────────────────────────
+// A uniform would not do. The moment that matters most is looking THROUGH a doorway from a
+// corridor into a hall, and a player's-room uniform would darken the hall to the corridor's
+// ceiling — killing the one reveal the effect exists to make. Rooms differ per surface, so the
+// data lives on the surface.
 //
-// A ceiling-only version draws a seam: the wall stays lit to its very top and then the vault
-// cuts to black at the join, which reads as a missing texture rather than as darkness. Eating
-// the light by height instead takes the TOPS OF THE WALLS with it, and the room loses its lid
-// gradually, the way an unlit space actually does.
+// ── APPLIED BY HEIGHT, NOT TO CEILING MATERIALS ──────────────────────────────
+//
+// A ceiling-only version draws a seam: the wall stays lit to its very top and then the vault cuts
+// to black at the join, which reads as a missing texture rather than as darkness. Fading by
+// height takes the TOPS OF THE WALLS with it, and the room loses its lid gradually, the way an
+// unlit space actually does.
 const uDarkAboveStart = tuneUniform({
-  id: 'darkabovestart', group: 'Dark above', label: 'Start (m above eye)',
-  min: -1, max: 4, value: 1.30, step: 0.05,
-  hint: 'below this nothing is touched',
+  id: 'darkabovestart', group: 'Dark above', label: 'Start (frac of room H)',
+  min: 0, max: 1, value: 0.55, step: 0.01,
+  hint: 'below this fraction of the room height, nothing is touched',
 });
 const uDarkAboveFull = tuneUniform({
-  id: 'darkabovefull', group: 'Dark above', label: 'Full (m above eye)',
-  min: 0, max: 6, value: 2.60, step: 0.05,
-  hint: 'by this height only the floor remains',
+  id: 'darkabovefull', group: 'Dark above', label: 'Full (frac of room H)',
+  min: 0, max: 1.5, value: 1.0, step: 0.01,
+  hint: 'by this fraction only the keep amount remains; 1.0 = the ceiling itself',
 });
 const uDarkAboveKeep = tuneUniform({
   id: 'darkabovekeep', group: 'Dark above', label: 'Keep at full',
@@ -268,15 +276,24 @@ const uDarkAboveKeep = tuneUniform({
 });
 
 /**
- * How much of a fragment's light survives at its height. 1 at and below the threshold.
+ * How much of a fragment's light survives at its height within its room. 1 at and below the
+ * threshold, `keep` at and above the top.
  *
- * `smoothstep` rather than a linear ramp so the transition has no edge in it — a hard boundary
+ * `smoothstep` rather than a linear ramp so the transition carries no edge — a hard boundary
  * across a vault reads as a plane, which is exactly the thing being removed.
+ *
+ * UNTAGGED SURFACES ARE LEFT ALONE. Anything that never went through the room build — props,
+ * enemies, doors, the viewmodel — reads (0, 0) for its room and is returned untouched. That is
+ * the deliberate fallback: adding this effect cannot dim something nobody tagged, and a prop
+ * near a ceiling stays a signal rather than being quietly swallowed.
  */
 function darkAboveFactor(): any {
-  const h: any = (positionWorld as any).y.sub((cameraPosition as any).y);
-  const t: any = (smoothstep as any)(uDarkAboveStart as any, uDarkAboveFull as any, h);
-  return (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
+  const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
+  const span: any = roomY.y.sub(roomY.x);
+  const frac: any = (positionWorld as any).y.sub(roomY.x).div(span.max(0.001));
+  const t: any = (smoothstep as any)(uDarkAboveStart as any, uDarkAboveFull as any, frac);
+  const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
+  return (span.greaterThan(0.01) as any).select(eaten, (float as any)(1));
 }
 
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
