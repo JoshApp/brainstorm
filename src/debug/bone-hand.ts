@@ -103,16 +103,26 @@ export function buildBoneHand(): BuiltModel | null {
   // and cloning the whole scene would drag a floating forearm into the palm.
   const wristNode = source.getObjectByName('wrist');
   if (!wristNode) { console.warn('[bone-hand] no `wrist` node in the glb'); return null; }
-  // The bake left the wrist at the origin with an identity transform, so its clone can be used
-  // as the group directly — no wrapper, no offset.
-  const group = wristNode.clone(true) as THREE.Group;
+
+  // ── THE ROOT AND THE WRIST MUST BE TWO NODES ──────────────────────────────
+  //
+  // Tempting to return the wrist clone as the group — the bake put it at the origin with an
+  // identity transform, so it would work. It does not: viewmodel.ts writes the wrist solver's
+  // output onto hand.group's quaternion EVERY FRAME, and the authored hand only survives that
+  // because its root and its wrist are different objects. Collapse them and the wrist's own
+  // NEW_WRIST_ROT is overwritten on the first frame, and `_palmInHandRoot` gets measured in the
+  // wrist frame instead of the root frame — the hand turns and the grip slides off the hilt.
+  const group = new THREE.Group();
+  group.name = 'bone-hand';
+  const wrist = wristNode.clone(true);
+  group.add(wrist);
   const parts = new Map<string, THREE.Object3D>();
   const slots = new Map<string, THREE.Object3D>();
   const hitTargets: THREE.Object3D[] = [];
   const materials = new Map<string, THREE.Material>();
 
   const wanted = new Set(SLOT_NAMES);
-  group.traverse((o) => {
+  wrist.traverse((o) => {
     if (!o.name) return;
     if (wanted.has(o.name)) slots.set(o.name, o);
     const mesh = o as THREE.Mesh;
@@ -122,8 +132,7 @@ export function buildBoneHand(): BuiltModel | null {
     const mat = mesh.material as THREE.Material;
     if (mat) materials.set(mat.uuid, mat);
   });
-  // The root is the wrist itself; `traverse` visits it, but only if the export named it.
-  if (!slots.has('wrist')) slots.set('wrist', group);
+  if (!slots.has('wrist')) slots.set('wrist', wrist);
 
   // ── THE REST POSE COMES FROM content/hand.ts ──────────────────────────────
   //
