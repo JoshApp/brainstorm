@@ -9,6 +9,92 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "A fire you can see is a fire that lights the room.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "A sealed doorway keeps its room, and the passage behind you stops following you around.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dungeon draws only what you have opened your way into.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Turn a corner and the passage behind you belongs to the dark again.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Lean past a corner and the room is there, and a torch on a threshold stops picking a side.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Step away from a door and the dark takes the room back, torches and all.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The fire on the title screen stays where it was put, however you left the dials.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "A torch no longer gutters because you turned your head, and a light you walk up to arrives instead of appearing.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dark obeys the dials the moment you set them, and a room you have left takes its torches with it.",
+        "area": [
+          "atmosphere",
+          "level",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The fire on the title screen burns again, and a torch behind a sealed threshold no longer steals the light from the one beside you.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The fires stay lit where you can see them, and stop appearing out of nothing as you walk up.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The dark gives way slowly and takes the ground back fast — and the fires you have already walked past stop going out behind you.",
         "area": [
           "atmosphere"
@@ -313,93 +399,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Corners come off the blocks again, and the edges of the light break into grain instead of drawing lines.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The light steps down in fewer, better-placed stages, and the stone loses pieces in shapes it has not used before.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "Corners have come away from the blocks, and the joints stopped flickering between pale and black.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The joints go black and their edges take the fire — the same stone, darker and brighter, not a different one.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "Corners have come off the stone, and what is underneath was never weathered.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The deep settles on its colour — colder underfoot, warmer at the wall, and the light steps down in fives.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone along the top of a course carries on from the stone below it, on every wall rather than one.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone along the top of a course lines up with the stone below it now.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stone stops glowing like something you should not stand near.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The cracks go black and their edges catch the fire, and the stone breaks along a line now instead of denting.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "There is grit in the pointing now, not just patches of a different colour.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The stone answers the torch with its colour now, instead of a shine where its colour should be.",
         "area": [
           "atmosphere",
           "level"

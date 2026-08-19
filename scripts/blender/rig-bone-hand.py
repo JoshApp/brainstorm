@@ -389,3 +389,97 @@ result = {
     'scale_applied': round(scale, 4),
     'checks': checks,
 }
+
+# -- THE ARM BONES, SHAPED FOR poseBone ----------------------------------
+#
+# viewmodel.ts drives the arm by placing each bone MESH at the midpoint of two IK endpoints and
+# aiming its local +Y along them (poseBone), leaving the height alone -- "the mesh was built at
+# the right length". So an arm bone is not rigged like the hand is. It needs geometry CENTRED on
+# its own origin, its long axis on +Y, and a length equal to the IK segment it spans.
+#
+# The scan and the IK disagree about proportion, and deliberately so:
+#
+#     scan (at hand scale)   humerus 0.443   forearm 0.361
+#     game IK                humerus 0.350   forearm 0.500
+#
+# A real humerus is LONGER than the forearm; this viewmodel's is shorter, because a long forearm
+# is what you actually see in first person. Adopting the anatomical ratio would drop max reach
+# from 0.85 to 0.71 -- below the 0.786 the arm is already being asked for -- and the hand would
+# come off the wrist. So each bone is STRETCHED ALONG ITS OWN AXIS to the IK length, and its
+# cross-section is left at the hand's scale so the wrist junction still lines up with the carpus.
+ARM_TARGET = {'humerus': frame['arm']['humerus'],
+              'radius': frame['arm']['forearm'],
+              'ulna': frame['arm']['forearm']}
+
+
+def principal_axis(pts):
+    """The bone's own long direction, from the covariance of its vertices.
+
+    A bounding-box axis would answer 'which of X/Y/Z is longest', which is not the same question
+    once a bone lies at an angle -- and after the hand bake every one of these does.
+    """
+    c = sum(pts, Vector()) / len(pts)
+    xx = xy = xz = yy = yz = zz = 0.0
+    for p in pts:
+        d = p - c
+        xx += d.x * d.x; xy += d.x * d.y; xz += d.x * d.z
+        yy += d.y * d.y; yz += d.y * d.z; zz += d.z * d.z
+    cov = Matrix(((xx, xy, xz), (xy, yy, yz), (xz, yz, zz)))
+    v = Vector((1, 1, 1)).normalized()          # power iteration; the gap here is large
+    for _ in range(64):
+        v = (cov @ v).normalized()
+    return c, v
+
+
+arm_report = {}
+for name, target in ARM_TARGET.items():
+    o = bpy.data.objects[name]
+    pts = [o.matrix_world @ vv.co for vv in o.data.vertices]
+    c, axis = principal_axis(pts)
+
+    # Rotate the bone's axis onto +Y. `to_track_quat('Y', 'Z')` maps +Y ONTO the vector, so the
+    # inverse is the one that brings the vector to +Y.
+    rot = axis.to_track_quat('Y', 'Z').to_matrix().to_4x4().inverted()
+    local = [(rot @ (p - c)) for p in pts]
+    length = max(p.y for p in local) - min(p.y for p in local)
+    mid_y = (max(p.y for p in local) + min(p.y for p in local)) / 2
+
+    # Stretch on Y ONLY. A uniform scale would thicken the forearm by 39% where it meets a hand
+    # scaled at 0.851, and a fat wrist on a slim carpus is exactly the seam we just closed.
+    stretch = Matrix.Diagonal((1.0, target / length, 1.0, 1.0))
+    M_bone = stretch @ Matrix.Translation(Vector((0, -mid_y, 0))) @ rot @ Matrix.Translation(-c)
+
+    # Compose with matrix_world: M_bone was derived from WORLD-space vertices, but `data`
+    # holds LOCAL ones, and these objects still carry the translation the hand bake left on
+    # them. Transforming local data by a world-space matrix centres the bone on that stale
+    # offset instead of on its own middle -- measured at 0.49m off.
+    o.data.transform(M_bone @ o.matrix_world)
+    o.matrix_world = Matrix.Identity(4)          # poseBone overwrites this every frame anyway
+    o.name = 'arm_' + name
+    arm_report[name] = {'scan_len': round(length, 4), 'target': target,
+                        'stretch': round(target / length, 3)}
+
+bpy.context.view_layer.update()
+
+# Verify: centred on the origin, and spanning exactly the IK length on Y.
+arm_checks = {}
+for name in ARM_TARGET:
+    o = bpy.data.objects['arm_' + name]
+    ys = [(o.matrix_world @ vv.co).y for vv in o.data.vertices]
+    arm_checks[name] = {'y_span': [round(min(ys), 4), round(max(ys), 4)],
+                        'length': round(max(ys) - min(ys), 4),
+                        'centre_err': round(abs(max(ys) + min(ys)) / 2, 5)}
+
+# -- RE-EXPORT WITH THE ARM ----------------------------------------------
+bpy.ops.object.select_all(action='DESELECT')
+for n in hand:
+    bpy.data.objects[n].select_set(True)
+for name in ARM_TARGET:
+    bpy.data.objects['arm_' + name].select_set(True)
+bpy.context.view_layer.objects.active = bpy.data.objects['wrist']
+bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
+                          export_yup=False)
+
+result['arm'] = arm_report
+result['arm_checks'] = arm_checks
+result['nodes'] = len(hand) + len(ARM_TARGET)

@@ -50,6 +50,14 @@ const SLOT_NAMES: readonly string[] = [
 
 let source: THREE.Object3D | null = null;
 let loading: Promise<void> | null = null;
+const listeners: Array<() => void> = [];
+
+/** Run `fn` once the asset is in — immediately if it already is. The viewmodel builds its arm
+ *  at construction, long before a GLB can land, so the bone meshes are swapped in on this. */
+export function onBoneHandLoaded(fn: () => void): void {
+  if (source) { fn(); return; }
+  listeners.push(fn);
+}
 
 /**
  * Start loading. Safe to call repeatedly — the load happens once.
@@ -72,6 +80,7 @@ export function preloadBoneHand(): Promise<void> {
           console.warn('[bone-hand] the glb is missing slots', missing,
             '— re-run scripts/blender/rig-bone-hand.py');
         }
+        for (const fn of listeners.splice(0)) fn();
         resolve();
       },
       undefined,
@@ -90,9 +99,13 @@ export function preloadBoneHand(): Promise<void> {
 export function buildBoneHand(): BuiltModel | null {
   if (!DEV || !source) return null;
 
-  // The GLB's root IS the wrist, and the bake left it at the origin with an identity
-  // transform, so the clone can be used as the group directly — no wrapper, no offset.
-  const group = source.clone(true) as THREE.Group;
+  // The HAND is the `wrist` subtree specifically: the file also carries three loose arm bones,
+  // and cloning the whole scene would drag a floating forearm into the palm.
+  const wristNode = source.getObjectByName('wrist');
+  if (!wristNode) { console.warn('[bone-hand] no `wrist` node in the glb'); return null; }
+  // The bake left the wrist at the origin with an identity transform, so its clone can be used
+  // as the group directly — no wrapper, no offset.
+  const group = wristNode.clone(true) as THREE.Group;
   const parts = new Map<string, THREE.Object3D>();
   const slots = new Map<string, THREE.Object3D>();
   const hitTargets: THREE.Object3D[] = [];
@@ -127,6 +140,26 @@ export function buildBoneHand(): BuiltModel | null {
   }
 
   return { group, parts, slots, materials, hitTargets };
+}
+
+/**
+ * The three arm bones, ready for viewmodel.ts's `poseBone`.
+ *
+ * These are NOT rigged like the hand. `poseBone` puts a bone mesh at the midpoint of two IK
+ * endpoints, aims its local +Y along them and leaves the height alone — so the bake centres each
+ * bone on its own origin, lays its long axis on +Y, and stretches it to the IK segment length.
+ * Nothing here needs a transform; the viewmodel overwrites position and quaternion every frame.
+ *
+ * Keyed by the same part names ARM_RIGHT uses, so the caller swaps by name.
+ */
+export function buildBoneArmParts(): Map<string, THREE.Mesh> | null {
+  if (!DEV || !source) return null;
+  const out = new Map<string, THREE.Mesh>();
+  for (const part of ['humerus', 'radius', 'ulna']) {
+    const node = source.getObjectByName(`arm_${part}`);
+    if (node && (node as THREE.Mesh).isMesh) out.set(part, (node as THREE.Mesh).clone());
+  }
+  return out.size ? out : null;
 }
 
 /** Is the trial on? Read by the composition, so nothing else has to know about the flag. */

@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import * as THREE from 'three';
 import { buildModel } from '../src/ecs/build-model';
 import { HAND_RIGHT } from '../src/content/hand';
+import { ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../src/content/arm';
 
 const built = buildModel(HAND_RIGHT);
 built.group.updateMatrixWorld(true);
@@ -74,6 +75,13 @@ const out = {
   len: +middle.length().toFixed(6),
   knuckles: { index: r(index), middle: r(middle), pinky: r(pinky), thumb: r(thumb) },
   anchors: { palm_anchor: xform('palm_anchor'), palm_up: xform('palm_up') },
+  // The IK's segment lengths. viewmodel.ts's poseBone places a bone mesh at the MIDPOINT of two
+  // IK endpoints and leaves its height alone, so a scanned bone has to be stretched to exactly
+  // these or it will not span the joints. The scan disagrees with them on purpose: a real
+  // humerus is LONGER than the forearm, and this viewmodel's is shorter because a long forearm
+  // is what reads in first person. Adopting the anatomical ratio would cut max reach from 0.85
+  // to 0.71, below what the arm is already asked for.
+  arm: { humerus: ARM_RIGHT_HUMERUS_LENGTH, forearm: ARM_RIGHT_FOREARM_LENGTH },
 };
 
 const dst = join(dirname(new URL(import.meta.url).pathname), 'blender', 'hand-frame.json');

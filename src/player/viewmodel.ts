@@ -18,6 +18,7 @@ import { WristAim } from '../anim/wrist-solver';
 import { FOREARM_EXIT_DESIRED } from '../content/hand';
 import { buildModel } from '../ecs/build-model';
 import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
+import { boneArmsWanted, buildBoneArmParts, onBoneHandLoaded } from '../debug/bone-hand';
 import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
@@ -259,15 +260,50 @@ export function createWeaponViewmodel(
   // IK's POSITION output each frame — guaranteed: humerus spans
   // shoulderPos→elbowPos, forearm spans elbowPos→wristPos. The mesh
   // tips touch the joints by construction.
-  const armHumerusMesh = armBuilt.parts.get('humerus') as THREE.Mesh | undefined;
-  const armRadiusMesh  = armBuilt.parts.get('radius')  as THREE.Mesh | undefined;
-  const armUlnaMesh    = armBuilt.parts.get('ulna')    as THREE.Mesh | undefined;
-  const armSinewMesh   = armBuilt.parts.get('sinew')   as THREE.Mesh | undefined;
+  let armHumerusMesh = armBuilt.parts.get('humerus') as THREE.Mesh | undefined;
+  let armRadiusMesh  = armBuilt.parts.get('radius')  as THREE.Mesh | undefined;
+  let armUlnaMesh    = armBuilt.parts.get('ulna')    as THREE.Mesh | undefined;
+  let armSinewMesh   = armBuilt.parts.get('sinew')   as THREE.Mesh | undefined;
   // Reparent the dynamic meshes to the arm group's root so we can
   // write their positions in arm-local space directly each frame
   // (without their original from-slot parent's transform mixing in).
   for (const m of [armHumerusMesh, armRadiusMesh, armUlnaMesh, armSinewMesh]) {
     if (m) armGroup.add(m);
+  }
+  // ── THE BONE-ARM TRIAL SWAPS THESE THREE MESHES ─────────────────
+  //
+  // DEV-only and flag-gated. The RIG stays exactly as authored — the shoulder rest, the IK
+  // lengths, the elbow bias, every tuned number — and only the geometry is replaced, because
+  // Josh's complaint was that a procedural forearm meeting a scanned hand is two vocabularies
+  // colliding at the wrist, not that the arm moves wrong. The bones arrive asynchronously, so
+  // the swap rides a load hook rather than construction order. Stripped in production.
+  if (import.meta.env.DEV && boneArmsWanted()) {
+    onBoneHandLoaded(() => {
+      const bones = buildBoneArmParts();
+      if (!bones) return;
+      const swap = (
+        old: THREE.Mesh | undefined, name: string,
+      ): THREE.Mesh | undefined => {
+        const next = bones.get(name);
+        if (!next) return old;
+        old?.removeFromParent();
+        armGroup.add(next);
+        return next;
+      };
+      armHumerusMesh = swap(armHumerusMesh, 'humerus');
+      armRadiusMesh  = swap(armRadiusMesh,  'radius');
+      armUlnaMesh    = swap(armUlnaMesh,    'ulna');
+      // The sinew is a smooth cylinder standing in for soft tissue between the forearm bones.
+      // On a skeleton it reads as a third bone, so it goes.
+      armSinewMesh?.removeFromParent();
+      armSinewMesh = undefined;
+      // New meshes missed the pass that ran at construction — depth trick, render order.
+      applyViewmodelRender(armGroup, 997, false);
+      // eslint-disable-next-line no-console
+      console.log('[bone-arm] swapped', [...bones.keys()].join(', '),
+        '· sinew removed · IK lengths unchanged',
+        ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH);
+    });
   }
   // Reusable scratch.
   const _wristWorld    = new THREE.Vector3();
