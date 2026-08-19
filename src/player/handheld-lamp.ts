@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { boneArmsWanted } from '../debug/bone-hand';
+import { buildLantern, preloadLantern, onLanternLoaded } from '../debug/bone-lantern';
 import { disposeGpu, disposeGpuTree } from '../scene/gpu-dispose';
 
 // Worn hip lantern — a small lantern model parented to the player
@@ -216,6 +218,36 @@ export function attachLamp(camera: THREE.Camera) {
   const ringAnchor = new THREE.Object3D();
   ringAnchor.position.copy(ring.position);
   body.add(ringAnchor);
+
+  // ── THE SCANNED LANTERN, WHEN THE TRIAL IS ON ─────────────────────────
+  //
+  // DEV-only and flag-gated. It replaces the SHELL only — the bars, plates, post and ring that
+  // read as iron — and leaves the flame stack, the light and the ring anchor untouched: the fire
+  // inside is a separate concern the atmosphere work already tuned, and swapping the shell
+  // should not disturb it.
+  //
+  // Placing it is one assignment, because prep-lantern.py origins the model on its BAIL: put it
+  // where the ring is and it hangs from the hook. It arrives from a file long after this runs,
+  // so the swap rides the load hook.
+  if (import.meta.env.DEV && boneArmsWanted()) {
+    const iron = [top, bottom, post, ring, ...body.children.filter(
+      (c) => (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry instanceof THREE.BoxGeometry,
+    )];
+    let installed: THREE.Object3D | null = null;
+    const swap = (): void => {
+      const shell = buildLantern();
+      if (!shell) return;
+      if (installed) { installed.removeFromParent(); disposeGpuTree(installed); }
+      shell.position.copy(ring.position);
+      body.add(shell);
+      installed = shell;
+      for (const m of iron) m.visible = false;
+      // eslint-disable-next-line no-console
+      console.log('[lantern] scanned shell installed');
+    };
+    onLanternLoaded(swap);
+    void preloadLantern().then(swap);
+  }
 
   // ── Flame stack ───────────────────────────────────────────────────
   // Same pattern as the bonfire / candle flame stacks but scaled to
