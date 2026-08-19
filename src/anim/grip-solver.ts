@@ -54,15 +54,54 @@ import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { ResolvedGrip } from '../content/grip';
 
-/** Joint chains, tip last. The tip is an anchor rather than a joint — it is the far end of the
- *  last bone, and without it that bone has no length and never closes. */
+/** The JOINTS of each finger, knuckle first. The fingertip is not a joint and is resolved
+ *  separately — it is the far end of the last bone, and without it that bone has no length and
+ *  never closes. */
 const CHAINS: Record<string, string[]> = {
-  thumb: ['finger_thumb', 'finger_thumb_ip', 'finger_thumb_tip'],
-  index: ['finger_index', 'finger_index_pip', 'finger_index_dip', 'finger_index_tip'],
-  middle: ['finger_middle', 'finger_middle_pip', 'finger_middle_dip', 'finger_middle_tip'],
-  ring: ['finger_ring', 'finger_ring_pip', 'finger_ring_dip', 'finger_ring_tip'],
-  pinky: ['finger_pinky', 'finger_pinky_pip', 'finger_pinky_dip', 'finger_pinky_tip'],
+  thumb: ['finger_thumb', 'finger_thumb_ip'],
+  index: ['finger_index', 'finger_index_pip', 'finger_index_dip'],
+  middle: ['finger_middle', 'finger_middle_pip', 'finger_middle_dip'],
+  ring: ['finger_ring', 'finger_ring_pip', 'finger_ring_dip'],
+  pinky: ['finger_pinky', 'finger_pinky_pip', 'finger_pinky_dip'],
 };
+
+/** A finger, resolved against whichever hand is being posed. */
+interface Chain {
+  finger: string;
+  /** Joints, then the fingertip anchor. Length = joints + 1. */
+  nodes: THREE.Object3D[];
+  /** Report labels, one per node after the first. */
+  labels: string[];
+}
+
+/**
+ * Resolve the finger chains for THIS hand.
+ *
+ * The fingertip anchor is looked up under both conventions on purpose: the baked bone hand
+ * exports `finger_index_tip`, content/hand.ts authors `fingertip_index`. Same anchor, two
+ * spellings, and a solver that only knew one silently refused to pose the other — which is how
+ * the whole contact system ran for a session without ever touching the hand the game ships.
+ */
+function resolveChains(hand: BuiltModel): Chain[] {
+  const out: Chain[] = [];
+  for (const [finger, joints] of Object.entries(CHAINS)) {
+    const nodes: THREE.Object3D[] = [];
+    const labels: string[] = [];
+    for (const name of joints) {
+      const node = hand.slots.get(name);
+      if (!node) break;
+      nodes.push(node);
+      if (nodes.length > 1) labels.push(name.replace('finger_', ''));
+    }
+    if (nodes.length !== joints.length) continue;
+    const tip = hand.slots.get(`finger_${finger}_tip`) ?? hand.slots.get(`fingertip_${finger}`);
+    if (!tip) continue;
+    nodes.push(tip);
+    labels.push(`${finger}_tip`);
+    out.push({ finger, nodes, labels });
+  }
+  return out;
+}
 
 /** Anatomical flexion limits, radians, knuckle first. A finger that cannot reach the grip stops
  *  here instead of bending through itself. */
@@ -107,17 +146,18 @@ function radial(p: THREE.Vector3, c: THREE.Vector3, a: THREE.Vector3, out: THREE
 export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | null {
   const gripRadius = grip.radius;
   const root = hand.group;
+  // Ask only for what the solve READS. The guard used to demand `palm_up` and `grip_axis` too,
+  // neither of which this function has touched since the axis moved to palm_anchor and the palm
+  // normal became derived — so it was refusing to pose the authored hand over two slots it did
+  // not need, and the whole contact solver only ever ran behind a DEV flag.
   const palm = hand.slots.get('palm_anchor');
-  const palmUp = hand.slots.get('palm_up');
-  const gripAxis = hand.slots.get('grip_axis');
-  if (!palm || !palmUp || !gripAxis) {
-    // Not an error — the AUTHORED hand has palm_anchor and palm_up but no grip_axis, so it
-    // falls back to the v2 curl. Say which is missing rather than failing silently.
+  const chains = palm ? resolveChains(hand) : [];
+  if (!palm || !chains.length) {
     if (import.meta.env.DEV && !warnedNoSolve) {
       warnedNoSolve = true;   // once: the viewmodel recomposes on every weapon change
-      const missing = [['palm_anchor', palm], ['palm_up', palmUp], ['grip_axis', gripAxis]]
-        .filter(([, v]) => !v).map(([k]) => k);
-      console.warn('[grip] no solve — hand is missing', missing.join(', '));
+      console.warn('[grip] no solve —',
+        palm ? 'no finger chain resolved (joints or fingertip anchors missing)'
+          : 'hand has no palm_anchor');
     }
     return null;
   }
@@ -125,8 +165,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // Flat pose first. The solve writes ABSOLUTE joint angles, so it must start from a known
   // zero — and starting flat is also what frees this from content/hand.ts's authored curl,
   // which was eyeballed for a hand that is no longer the one being posed.
-  for (const chain of Object.values(CHAINS)) {
-    for (const name of chain) hand.slots.get(name)?.rotation.set(0, 0, 0);
+  for (const c of chains) {
+    for (let i = 0; i < c.nodes.length - 1; i++) c.nodes[i].rotation.set(0, 0, 0);
   }
   root.updateMatrixWorld(true);
 
@@ -162,10 +202,9 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // Perpendicular to the grip axis and to the fingers is the only thing the palm normal can be.
   const K = new THREE.Vector3();
   let knuckles = 0;
-  for (const f of ['index', 'middle', 'ring', 'pinky']) {
-    const j = hand.slots.get(`finger_${f}`);
-    if (!j) continue;
-    K.add(_p.setFromMatrixPosition(j.matrixWorld).applyMatrix4(inv));
+  for (const c of chains) {
+    if (c.finger === 'thumb') continue;      // the thumb is not on the knuckle line
+    K.add(_p.setFromMatrixPosition(c.nodes[0].matrixWorld).applyMatrix4(inv));
     knuckles++;
   }
   if (knuckles) K.divideScalar(knuckles);
@@ -197,6 +236,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     solved: Record<string, number>;
     errors: Record<string, number>;
     worst: number;
+    /** Worst error over the FOUR FINGERS only — what the palm side is judged on. */
+    fingersWorst: number;
   }
 
   /** Close every finger onto a cylinder lying on the palm side `N`, and score the result. */
@@ -221,8 +262,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     const depth = Math.max(0, _p.subVectors(P, K).dot(N));
     const C = K.clone().addScaledVector(N, depth + gripRadius);
 
-    for (const chain of Object.values(CHAINS)) {
-      for (const name of chain) hand.slots.get(name)?.quaternion.identity();
+    for (const c of chains) {
+      for (let i = 0; i < c.nodes.length - 1; i++) c.nodes[i].quaternion.identity();
     }
     root.updateMatrixWorld(true);
 
@@ -237,18 +278,19 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     };
 
     const solved: Record<string, number> = {};
-    for (const [finger, chain] of Object.entries(CHAINS)) {
+    for (const c of chains) {
       // A thumb riding ALONG the haft does not close onto it — that is the whole difference
       // between a hammer's fist and a spear's thrust grip, and it is the one finger whose job
       // changes between them. Left flat, it points down the weapon.
-      if (finger === 'thumb' && grip.thumb === 'along') {
-        for (const name of chain) solved[name] = 0;
-        continue;
-      }
-      for (let i = 0; i < chain.length - 1; i++) {
-        const joint = hand.slots.get(chain[i]);
-        const child = hand.slots.get(chain[i + 1]);
-        if (!joint || !child) continue;
+      if (c.finger === 'thumb' && grip.thumb === 'along') continue;
+      // A wrapped thumb does not touch the HILT — it crosses over the backs of the fingers
+      // already wrapped around it, so it closes onto a circle one finger-thickness wider.
+      // Demanding it reach the hilt itself drove both its joints to their limits and left it
+      // 34mm out, which is the report politely describing a broken thumb.
+      const target = c.finger === 'thumb' ? wrapR + 2 * half : wrapR;
+      for (let i = 0; i < c.nodes.length - 1; i++) {
+        const joint = c.nodes[i];
+        const child = c.nodes[i + 1];
         const limit = LIMITS[Math.min(i, LIMITS.length - 1)];
         const axis = bendAxis(joint);
 
@@ -258,20 +300,20 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
         const dir = radialAt(joint, child, axis, 0.05) < radialAt(joint, child, axis, -0.05)
           ? 1 : -1;
 
-        if (radialAt(joint, child, axis, 0) <= wrapR) { solved[chain[i]] = 0; continue; }
+        if (radialAt(joint, child, axis, 0) <= target) { solved[c.labels[i]] = 0; continue; }
 
         let lo = 0;
         let hi = 0;
         let crossed = false;
         for (let k = 1; k <= MARCH; k++) {
           const t = dir * limit * (k / MARCH);
-          if (radialAt(joint, child, axis, t) <= wrapR) { hi = t; crossed = true; break; }
+          if (radialAt(joint, child, axis, t) <= target) { hi = t; crossed = true; break; }
           lo = t;
         }
         if (crossed) {
           for (let k = 0; k < BISECT; k++) {
             const mid = (lo + hi) / 2;
-            if (radialAt(joint, child, axis, mid) <= wrapR) hi = mid;
+            if (radialAt(joint, child, axis, mid) <= target) hi = mid;
             else lo = mid;
           }
           lo = (lo + hi) / 2;
@@ -279,26 +321,27 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
         // Not crossed = never reached the cylinder, so it closed as far as the joint allows.
         // Honest, and visible in the error report rather than hidden by a clamp.
         radialAt(joint, child, axis, lo);
-        solved[chain[i]] = lo;
+        solved[c.labels[i]] = lo;
       }
     }
 
     root.updateMatrixWorld(true);
     const errors: Record<string, number> = {};
     let worst = 0;
-    for (const chain of Object.values(CHAINS)) {
-      for (let i = 1; i < chain.length; i++) {
-        const node = hand.slots.get(chain[i]);
-        if (!node) continue;
-        _p.setFromMatrixPosition(node.matrixWorld).applyMatrix4(inv);
-        const err = Math.abs(radial(_p, C, A, _r) - wrapR) * 1000;
-        // Keyed off the node's own name, so the thumb's IP joint is not mislabelled a PIP and a
+    let fingersWorst = 0;
+    for (const c of chains) {
+      const target = c.finger === 'thumb' ? wrapR + 2 * half : wrapR;
+      for (let i = 1; i < c.nodes.length; i++) {
+        _p.setFromMatrixPosition(c.nodes[i].matrixWorld).applyMatrix4(inv);
+        const err = Math.abs(radial(_p, C, A, _r) - target) * 1000;
+        // Labelled from the chain, so the thumb's IP joint is not mislabelled a PIP and a
         // renamed slot shows up as a renamed row instead of silently vanishing.
-        errors[chain[i].replace('finger_', '')] = +err.toFixed(1);
+        errors[c.labels[i - 1]] = +err.toFixed(1);
         worst = Math.max(worst, err);
+        if (c.finger !== 'thumb') fingersWorst = Math.max(fingersWorst, err);
       }
     }
-    return { C, solved, errors, worst };
+    return { C, solved, errors, worst, fingersWorst };
   };
 
   // ── WHICH SIDE IS THE PALM? MEASURE IT ────────────────────────────────────
@@ -311,7 +354,7 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   const down = N0.clone().negate();
   const first = attempt(up);
   const second = attempt(down);
-  const N = first.worst <= second.worst ? up : down;
+  const N = first.fingersWorst <= second.fingersWorst ? up : down;
   const { C, solved, errors, worst } = attempt(N);
 
   // ── DOES THE THUMB OPPOSE? ────────────────────────────────────────────────
@@ -321,8 +364,8 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
   // one side and the thumb on the other; measure the angle between them about the grip axis.
   let opposition = 0;
   {
-    const tip = hand.slots.get('finger_thumb_tip');
-    const mid = hand.slots.get('finger_middle_tip');
+    const tip = chains.find((c) => c.finger === 'thumb')?.nodes.at(-1);
+    const mid = chains.find((c) => c.finger === 'middle')?.nodes.at(-1);
     if (tip && mid) {
       const a = _p.setFromMatrixPosition(tip.matrixWorld).applyMatrix4(inv).sub(C);
       a.addScaledVector(A, -a.dot(A));
@@ -339,10 +382,10 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     const f3 = (v: THREE.Vector3): string =>
       `[${v.toArray().map((n: number) => n.toFixed(2)).join(',')}]`;
     const deg = Object.entries(solved)
-      .map(([k, t]) => `${k.replace('finger_', '')}=${(t * 57.2958).toFixed(0)}`).join(' ');
+      .map(([k, t]) => `${k}=${(t * 57.2958).toFixed(0)}`).join(' ');
     console.log(`[grip] A=${f3(A)} N=${f3(N)} C=${f3(C)} `
-      + `(palm side ${first.worst <= second.worst ? '+' : '-'}: `
-      + `${first.worst.toFixed(1)} vs ${second.worst.toFixed(1)}mm) `
+      + `(palm side ${first.fingersWorst <= second.fingersWorst ? '+' : '-'}: `
+      + `${first.fingersWorst.toFixed(1)} vs ${second.fingersWorst.toFixed(1)}mm fingers) `
       + `thumb-opposition=${opposition.toFixed(0)}° · ${deg}`);
   }
 

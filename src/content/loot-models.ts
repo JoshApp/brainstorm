@@ -51,6 +51,10 @@ export const HEALING_POTION: ModelSpec = {
 // The `elixir` material is looked up by id at runtime (glow pulses at the sip),
 // so keep the material key stable.
 export const ESTUS_FLASK: ModelSpec = {
+  // Held by its BULB, which is far fatter than a hilt and has no `grip`-named part for the
+  // resolver to find. Declared, because the grip solver closes the fingers onto whatever radius
+  // it is given and a flask is not a sword: 48mm against a 22mm default.
+  grip: { radius: 0.048 },
   id: 'estus-flask',
   materials: {
     glass: {
