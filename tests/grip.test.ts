@@ -79,7 +79,11 @@ import { SWORD_RUSTED } from '../src/content/sword';
 // long bare stretch of hilt above the hand — Josh: "the grips is a bit too spread vertically".
 {
   const g = resolveGrip(SWORD_RUSTED);
-  assert.ok(g.offset[1] > 0.02,
+  // The claim is DIRECTIONAL — the hand rides up the hilt rather than sitting centred on it.
+  // Not a magnitude: `along` is a feel number that has moved 0.85 -> 0.72 -> 0.62 as the hand
+  // shrank and the fist gathered, and a test pinned to today's value would fail on every one of
+  // those without a thing being wrong.
+  assert.ok(g.offset[1] > 0.005,
     `the sword must ride UP its hilt toward the guard, got ${g.offset[1].toFixed(3)}m`);
   // Its hilt is authored along +Y, so the shift belongs there and nowhere else.
   assert.equal(g.offset[0], 0);

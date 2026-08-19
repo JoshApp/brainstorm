@@ -221,33 +221,64 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     // turns about an axis parallel to the grip axis, and such a rotation preserves the component
     // along it. So the spread is settled here or not at all.
     const at = four.map((c) => axialOf(c.tip));
-    const mean = at.reduce((a, b) => a + b, 0) / (at.length || 1);
-    const span0 = Math.max(...at) - Math.min(...at);
 
-    // FINGERS TOUCHING is a measurable target, not a taste call: four of them side by side
-    // occupy three finger-widths. Converge to that, and never past it — a hand whose tips are
-    // already closer than touching (the authored one, at 27mm) needs nothing doing to it.
     // A finger's width, measured off the model. Preferably from the proximal phalanx's own mesh;
     // failing that from the TIGHTEST gap between adjacent knuckles, because on a hand whose
     // knuckles are not splayed that gap IS a finger. The authored hand has no `finger_index`
     // PART (it is a slot there, not a mesh), so a hardcoded fallback quietly told it its fingers
-    // were 16mm wide and loosened a fist that was already closed: 27mm out to 39mm.
+    // were 16mm wide and loosened a fist that was already closed.
     let width = 2 * phalanxHalfThickness(hand);
     if (!hand.parts.get('finger_index')) {
       const sorted = [...at].sort((x, y) => x - y);
       let tightest = Infinity;
-      for (let i = 1; i < sorted.length; i++) tightest = Math.min(tightest, sorted[i] - sorted[i - 1]);
+      for (let i = 1; i < sorted.length; i++) {
+        tightest = Math.min(tightest, sorted[i] - sorted[i - 1]);
+      }
       if (Number.isFinite(tightest) && tightest > 0) width = tightest;
     }
-    const want = width * (four.length - 1);
-    const k = span0 > want ? CONVERGE * (1 - want / span0) : 0;
+
+    // ── TARGETS: EVENLY PACKED, AND STARTING AT THE THUMB ───────────────────
+    //
+    // Josh: *"its still not fully tight ... the index is closing almost above the thumb."* Two
+    // faults, and both were in how the targets were chosen rather than in how they are reached.
+    //
+    // NOT TIGHT, because shrinking the spread by a factor preserves whatever unevenness it had.
+    // Measured on the bone hand: gaps of 15/23/20mm against an 18.5mm finger. Fingers touching
+    // means EVENLY spaced at one width, so that is what they are assigned.
+    //
+    // INDEX ABOVE THE THUMB, because the block was centred on the fingers' own mean, which knows
+    // nothing about the thumb. Measured, the index landed 19mm above it and was the topmost
+    // thing on the hilt. In a fist the thumb crosses OVER the index, so the finger nearest the
+    // thumb starts level with it and the rest step away one width at a time.
+    const order = four.map((_, i) => i).sort((a, b) => at[a] - at[b]);
+    const span0 = at[order[order.length - 1]] - at[order[0]];
+    const packed = width * (four.length - 1);
+    const wants = at.slice();
+    if (packed < span0) {
+      const thumb = chains.find((c) => c.finger === 'thumb');
+      // The thumb's KNUCKLE, not its tip. Everything here is measured with the hand extended,
+      // and the thumb's tip then travels a long way once it opposes and curls — so anchoring to
+      // it used a stale position and picked the wrong end of the row entirely: the index came out
+      // at 100mm when the thumb finishes at 38mm. A metacarpal head does not move with the pose.
+      const anchorAx = thumb
+        ? axialOf(thumb.nodes[0])
+        : (at[order[0]] + at[order[order.length - 1]]) / 2;
+      // Which end of the row is the thumb side? Whichever finger sits closest to it.
+      const lastNearer = Math.abs(at[order[order.length - 1]] - anchorAx)
+        < Math.abs(at[order[0]] - anchorAx);
+      for (let r = 0; r < order.length; r++) {
+        const idx = lastNearer ? order[order.length - 1 - r] : order[r];
+        wants[idx] = anchorAx + (lastNearer ? -1 : 1) * r * width;
+      }
+    }
 
     for (let i = 0; i < four.length; i++) {
       const c = four[i];
       const len = _p.setFromMatrixPosition(c.tip.matrixWorld)
         .distanceTo(_reach.setFromMatrixPosition(c.nodes[0].matrixWorld));
-      if (len < 1e-6 || k <= 0) continue;
-      const shift = -k * (at[i] - mean);
+      if (len < 1e-6) continue;
+      const shift = CONVERGE * (wants[i] - at[i]);
+      if (Math.abs(shift) < 1e-5) continue;
       let yaw = Math.asin(THREE.MathUtils.clamp(shift / len, -1, 1));
       // Resolve the sign by trying it: which way a yaw about the palm normal carries a finger
       // depends on how that knuckle's frame sits, and every sign I have derived this session has
@@ -269,6 +300,37 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
       const angles = FIST[c.finger].joints;
       for (let i = 0; i < c.nodes.length; i++) {
         const joint = c.nodes[i];
+        if (c.finger === 'thumb' && i > 0) {
+          // ── THE THUMB'S LOWER JOINTS BEND TOWARD THE HILT, NOT ABOUT IT ──
+          //
+          // Josh: *"the thumbs last finger segment is angled away from the hand instead of
+          // curling around the grip."* The fingers all bend about the grip axis, which works
+          // because a finger lies across the hilt and that axis is square to it. The thumb does
+          // not: once it has OPPOSED, its length runs along the hilt rather than across it, and
+          // rotating about the grip axis then swings the last segment out sideways instead of
+          // closing it.
+          //
+          // So this joint turns about whatever axis actually carries its bone INWARD — the
+          // perpendicular to the bone and to its own offset from the hilt. Positive closes, by
+          // construction, so it needs none of the sign machinery the fingers do.
+          joint.quaternion.identity();
+          joint.updateMatrixWorld(true);
+          const jp = _p.setFromMatrixPosition(joint.matrixWorld).applyMatrix4(inv);
+          const cp = _reach.setFromMatrixPosition(c.nodes[i + 1] !== undefined
+            ? c.nodes[i + 1].matrixWorld : c.tip.matrixWorld).applyMatrix4(inv);
+          const bone = cp.clone().sub(jp);
+          const rad = jp.clone().sub(C);
+          rad.addScaledVector(A, -rad.dot(A));
+          const inward = new THREE.Vector3().crossVectors(rad, bone);
+          if (inward.lengthSq() > 1e-9) {
+            // Into WORLD space first: everything above is measured in the wrist's frame, and
+            // localAxis expects a world direction.
+            inward.normalize().applyQuaternion(frameQ);
+            joint.quaternion.setFromAxisAngle(localAxis(joint, inward), angles[i] * curl);
+          }
+          joint.updateMatrixWorld(true);
+          continue;
+        }
         joint.quaternion.setFromAxisAngle(localAxis(joint, worldA), sign * angles[i] * curl);
         if (i === 0) {
           // `multiply`, not `premultiply`: this composes as curl-after-yaw, so the finger swings
@@ -355,9 +417,19 @@ export function solveGrip(hand: BuiltModel, grip: ResolvedGrip): GripSolve | nul
     // differently: the bone hand's palm is 1.7x broader across the knuckles. I spent a long
     // while confirming fixes against renders of the authored hand while Josh was looking at the
     // bone hand in game, and neither of us could tell.
+    // The thumb's own contact, which the fingers' number cannot show. It rides OVER the wrapped
+    // fingers, so it should sit about one finger-thickness proud of the hilt — much more than
+    // that and it is waving in the air rather than closing on the grip.
+    const th = chains.find((c) => c.finger === 'thumb');
+    let thumbGap = 0;
+    if (th) {
+      _p.setFromMatrixPosition(th.tip.matrixWorld).applyMatrix4(inv);
+      thumbGap = (radial(_p, C, A, _r) - wrapR) * 1000;
+    }
     console.log(`[grip] hand=${hand.parts.size}p `
       + `curl=${curl.toFixed(2)} contact=${contact.toFixed(1)}mm `
-      + `span=${span.toFixed(0)}mm r=${(grip.radius * 1000).toFixed(0)}mm`);
+      + `span=${span.toFixed(0)}mm thumb=${thumbGap.toFixed(0)}mm `
+      + `r=${(grip.radius * 1000).toFixed(0)}mm`);
   }
 
   const center = C.clone().applyMatrix4(frame.matrixWorld)

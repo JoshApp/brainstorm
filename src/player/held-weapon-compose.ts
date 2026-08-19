@@ -27,6 +27,10 @@ export interface HeldWeaponCompose {
   hand: BuiltModel;
   /** The built weapon model, or null if composing an unarmed fist. */
   weapon: BuiltModel | null;
+  /** Where the hilt actually sits in the hand, hand-root space — the point the runtime must
+   *  re-pin to. NOT palm_anchor: the grip solver puts the weapon on the knuckle line a palm's
+   *  depth out, and pinning the anchor instead slides the hand off the weapon every frame. */
+  gripCenter: THREE.Vector3 | null;
   /** How this weapon declared it should be held — null when unarmed. The viewmodel takes the
    *  forearm-exit direction from here, because a hammer wrist and a sabre wrist differ. */
   grip: ResolvedGrip | null;
@@ -101,6 +105,7 @@ export function composeHeldWeapon(
   group.add(hand.group);
   let weapon: BuiltModel | null = null;
   let resolved: ResolvedGrip | null = null;
+  let gripCenter: THREE.Vector3 | null = null;
   if (weaponSpec) {
     weapon = buildModel(weaponSpec);
     // Net transform of palm_anchor in the composition-root frame
@@ -126,7 +131,7 @@ export function composeHeldWeapon(
     // `solve.center` is in the hand ROOT's frame, and hand.group sits at identity inside this
     // composition root, so the two frames coincide and the centre drops straight in.
     const solve = solveGrip(hand, resolved);
-    if (solve) m.setPosition(solve.center);
+    if (solve) { m.setPosition(solve.center); gripCenter = solve.center.clone(); }
     else adjustFingersForGrip(hand.slots, resolved.radius);
     // Roll the weapon about its own grip axis (weapon-local +Y) — turns a blade's flat over, or
     // a dagger into a reverse grip, without a second authored anchor.
@@ -145,5 +150,5 @@ export function composeHeldWeapon(
         + `off=${resolved.offset.map((v) => v.toFixed(3)).join(',')} thumb=${resolved.thumb}`);
     }
   }
-  return { group, hand, weapon, grip: resolved };
+  return { group, hand, weapon, grip: resolved, gripCenter };
 }

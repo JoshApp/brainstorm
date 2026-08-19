@@ -486,10 +486,24 @@ export function createWeaponViewmodel(
     const wristSlot = composed.hand.slots.get('wrist');
     if (palmSlot && wristSlot && composed.weapon) {
       composed.group.updateMatrixWorld(true);
-      palmSlot.getWorldPosition(_palmRestInGroup);
-      composed.group.worldToLocal(_palmRestInGroup);
-      palmSlot.getWorldPosition(_palmInHandRoot);
-      composed.hand.group.worldToLocal(_palmInHandRoot);
+      if (composed.gripCenter) {
+        // ── PIN THE HILT, NOT THE PALM ANCHOR ──────────────────────────
+        //
+        // This re-pin runs every frame to keep the fist closed on the weapon while the wrist
+        // solver re-aims the hand. It used to pin `palm_anchor`, which was right when the
+        // weapon sat exactly there — v2 buried the hilt in the palm. The v3 grip puts it on the
+        // KNUCKLE LINE, a palm's depth out, so pinning the old anchor slid the hand off the
+        // weapon by that offset every frame: on the bench the fist closed on the hilt, in game
+        // it sat beside it. hand.group is at identity inside the composition root at this
+        // point, so one vector serves both frames.
+        _palmRestInGroup.copy(composed.gripCenter);
+        _palmInHandRoot.copy(composed.gripCenter);
+      } else {
+        palmSlot.getWorldPosition(_palmRestInGroup);
+        composed.group.worldToLocal(_palmRestInGroup);
+        palmSlot.getWorldPosition(_palmInHandRoot);
+        composed.hand.group.worldToLocal(_palmInHandRoot);
+      }
       // The anatomy target is authored in the WRIST frame; the solver
       // rotates the hand ROOT — map it through the wrist slot's pose.
       // Where the forearm leaves the wrist belongs to the GRIP, not the hand: you do not hold a

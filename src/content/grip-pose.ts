@@ -68,7 +68,11 @@ export const FIST: FistPose = {
   // The thumb lies ACROSS the fingers rather than bracing along the spine — a fist, not a
   // paring-knife grip. Shallow angles, because the distance is made up by opposition (below)
   // and not by curling the thumb into its own palm.
-  thumb: { joints: [deg(28), deg(24), 0] },
+  // The IP closes hard. Josh: "the thumbs last finger segment is angled away from the hand
+  // instead of curling around the grip" — the thumb reaches the hilt at the right distance
+  // either way, so what was missing was not reach but the final hook that puts the pad on the
+  // grip instead of leaving the bone pointing off into the air.
+  thumb: { joints: [deg(30), deg(52), 0] },
 };
 
 /**
