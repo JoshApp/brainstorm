@@ -122,7 +122,7 @@ let lampSource: LightSource | null = null;
 // that has to be seen swinging under them to read as dangling at all; cropped at the bottom
 // edge it is just a glow, and the pose above it stops meaning anything. The lantern is smaller
 // now (0.15m body), so it fits in the lower-left corner whole.
-const LAMP_RAISED = new THREE.Vector3(-0.38, -0.04, -0.54);
+const LAMP_RAISED = new THREE.Vector3(-0.38, -0.09, -0.54);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out

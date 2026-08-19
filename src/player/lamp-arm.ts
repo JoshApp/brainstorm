@@ -56,14 +56,26 @@ const _wristArmLocal = new THREE.Vector3();
 const wristAim = new WristAim({ desiredExitLocal: RING_FOREARM_EXIT_DESIRED, dampHalfLife: 0.06 });
 
 /**
- * How the floating lamp hand is held — fingers FORWARD and slightly down, back of the hand UP.
+ * How the floating lamp hand is held — fingers FORWARD and slightly down, PALM down.
  *
  * A hand laid over a horizontal bar with the lantern hanging beneath it. Only used while the
  * hand floats: with a forearm on screen the wrist solver has something real to stay anatomical
  * against, and this would fight it.
+ *
+ * ── WHY `upTo` IS *DOWN* AND NOT UP ──────────────────────────────────────────
+ *
+ * `upTo` aims the model's local +Z, and this is the LEFT hand. Measured off the real specs in
+ * the wrist's own frame (scripts/hand-frame.ts): the right hand's palm normal is
+ * (0.39, 0.02, −0.92) and the left hand's is (0.39, −0.02, +0.92). HAND_LEFT is a mirrored
+ * spec, so its +Z is the PALM where the right hand's +Z is the back of the hand.
+ *
+ * So "back of the hand up" — the thing you would write — aimed the PALM at the ceiling and
+ * hooked the fingers upward, away from the lantern hanging under them. The mirror is the whole
+ * bug, and it is invisible in the authored line: both hands read `upTo: DIR.UP` as if it meant
+ * the same thing on each.
  */
 const FLOATING_HAND_ROT = new THREE.Euler(
-  ...orient({ yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.25), upTo: DIR.UP }),
+  ...orient({ yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.25), upTo: DIR.DOWN }),
 );
 const _identityQuat = new THREE.Quaternion();
 const _palmOffsetLive = new THREE.Vector3();
