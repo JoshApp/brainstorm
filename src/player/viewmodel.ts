@@ -19,6 +19,7 @@ import { FOREARM_EXIT_DESIRED } from '../content/hand';
 import { buildModel } from '../ecs/build-model';
 import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
 import { boneArmsWanted, buildBoneArmParts, onBoneHandLoaded } from '../debug/bone-hand';
+import { FLOATING_HANDS, stripArmGeometry } from './floating-hands';
 import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
@@ -270,6 +271,18 @@ export function createWeaponViewmodel(
   for (const m of [armHumerusMesh, armRadiusMesh, armUlnaMesh, armSinewMesh]) {
     if (m) armGroup.add(m);
   }
+  // ── OR TAKES THE WHOLE ARM OFF ──────────────────────────────────
+  //
+  // The VR viewmodel. The rig below is untouched — the shoulder spring still swings the hand and
+  // the IK still places it; only the limb stops being drawn. See floating-hands.ts.
+  if (FLOATING_HANDS) {
+    stripArmGeometry(armBuilt, [armHumerusMesh, armRadiusMesh, armUlnaMesh, armSinewMesh]);
+    armHumerusMesh = undefined;
+    armRadiusMesh = undefined;
+    armUlnaMesh = undefined;
+    armSinewMesh = undefined;
+  }
+
   // ── THE BONE-ARM TRIAL SWAPS THESE THREE MESHES ─────────────────
   //
   // DEV-only and flag-gated. The RIG stays exactly as authored — the shoulder rest, the IK
@@ -277,7 +290,7 @@ export function createWeaponViewmodel(
   // Josh's complaint was that a procedural forearm meeting a scanned hand is two vocabularies
   // colliding at the wrist, not that the arm moves wrong. The bones arrive asynchronously, so
   // the swap rides a load hook rather than construction order. Stripped in production.
-  if (import.meta.env.DEV && boneArmsWanted()) {
+  if (import.meta.env.DEV && boneArmsWanted() && !FLOATING_HANDS) {
     onBoneHandLoaded(() => {
       const bones = buildBoneArmParts();
       if (!bones) return;

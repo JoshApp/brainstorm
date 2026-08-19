@@ -4,10 +4,11 @@ import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
 import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-poses';
-import { boneArmsWanted, buildBoneHand, buildBoneArmParts, onBoneHandLoaded }
+import { boneArmsWanted, buildBoneHand, onBoneHandLoaded }
   from '../debug/bone-hand';
 import { bailBarRadius } from '../debug/bone-lantern';
 import { solveGrip } from '../anim/grip-solver';
+import { FLOATING_HANDS, stripArmGeometry } from './floating-hands';
 import { HOOK_GRIP } from '../content/grip-pose';
 import { orient, tilt, DIR } from '../anim/orient';
 import type { BuiltModel } from '../ecs/build-model';
@@ -281,56 +282,26 @@ export function attachLampArm(camera: THREE.Camera): void {
   }
   }
 
-  // ── AND THE LEFT ARM'S OWN BONES ──────────────────────────────────
+  // ── THE LEFT ARM IS NOT DRAWN ─────────────────────────────────────
   //
-  // The same swap the right arm gets in viewmodel.ts: the RIG is untouched — shoulder rest, IK
-  // lengths, elbow bias, every tuned number — and only the three bone meshes are replaced,
-  // because poseBone places them from the IK's endpoints and never cared what they looked like.
-  // There is no reason for one arm of one skeleton to be bone and the other primitives.
+  // The VR viewmodel — the same call the right arm makes. The rig is untouched: the IK still
+  // positions the hand so the grip lands on the lantern's bail, and the arm it solves for is
+  // simply not there. See floating-hands.ts for why, on both counts.
   const installArm = (): void => {
-    // ── A FLOATING HAND, NOT AN ARM ────────────────────────────────
-    //
-    // Josh: "having just a floating hand hold it but that hand be like horizontal holding the
-    // lamp." The lamp arm was the single biggest obstruction on screen — a pale forearm running
-    // diagonally from the bottom-left corner to the middle of the frame, across the darkest part
-    // of a game whose whole look is small lit things against black. The lantern was never the
-    // problem; the arm crossing the view was.
-    //
-    // Dropping it costs nothing the arm was earning: the left arm carries no weapon, plays no
-    // animation the player reads, and exists only to explain where the lamp comes from. A
-    // skeleton's hand appearing out of the dark explains it just as well, and the light then
-    // reads as originating low in the frame — which is the effect the dark-room lighting was
-    // already reaching for.
-    //
-    // The IK still runs. It positions the hand so the grip lands on the lantern's bail, and the
-    // arm it solves for is simply not drawn.
-    for (const m of [humerusMesh, radiusMesh, ulnaMesh, sinewMesh]) m?.removeFromParent();
+    stripArmGeometry(armBuilt, [humerusMesh, radiusMesh, ulnaMesh, sinewMesh]);
     humerusMesh = undefined;
     radiusMesh = undefined;
     ulnaMesh = undefined;
     sinewMesh = undefined;
-      // The arm spec also builds SPHERES at the shoulder and elbow — filler that covered the
-      // seams between primitive bones. A scanned humerus has its own joint ends, so they read as
-      // a ball stuck to the skeleton; raising the shoulder brought the elbow one into frame,
-      // which is what Josh spotted. They are unnamed parts, so they are found structurally: the
-      // mesh children of the joint slots.
-      for (const slotName of ['shoulder', 'elbow']) {
-        const slot = armBuilt?.slots.get(slotName);
-        if (!slot) continue;
-      // NOT disposed — only detached. buildModel's geometry comes from a global pool
-      // (scene/geometry-pool) and its materials from a shared `modelMatCache`, so disposing
-      // anything it produced destroys buffers that every other user of that primitive is still
-      // drawing with. disposeGpuTree has no reference counting; it frees whatever it walks.
-        for (const c of [...slot.children]) {
-          if ((c as THREE.Mesh).isMesh) c.removeFromParent();
-        }
-      }
     // eslint-disable-next-line no-console
-    console.log('[lamp-arm] left arm bones swapped');
+    console.log('[lamp-arm] left arm not drawn (floating hand)');
   };
 
   installHand();
-  if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(installArm);
+  // Unconditional, and not on the bone-hand hook: floating hands is a LOOK the whole viewmodel
+  // commits to, not part of the scanned-bone trial. Gating it on `?bonearm=1` would have meant
+  // the flag decided whether there was an arm at all.
+  if (FLOATING_HANDS) installArm();
   // The bone hand arrives asynchronously and this function never runs again, so the swap has to
   // ride the load hook or the flag silently does nothing here.
   if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(installHand);
