@@ -128,89 +128,184 @@ export function solveGrip(hand: BuiltModel, gripRadius: number): GripSolve | nul
   }
   root.updateMatrixWorld(true);
 
-  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  // ── MEASURE IN THE WRIST'S FRAME, NOT THE ROOT'S ──────────────────────────
+  //
+  // The hand carries the authored wrist bend (NEW_WRIST_ROT) on its `wrist` node, so everything
+  // below it — palm_anchor, palm_up, grip_axis, every knuckle — is rotated by that bend relative
+  // to the root. Measured in the root frame the grip axis came out as [0.344, -0.873, -0.346]:
+  // pointing DOWN THE FINGERS instead of across the palm, so the solver was closing fingers onto
+  // a cylinder lying the wrong way and adjacent fingers disagreed about which way to curl.
+  //
+  // The grip is a fact about the HAND, not about how the wrist is currently cocked.
+  const frame = hand.slots.get('wrist') ?? root;
+  const inv = new THREE.Matrix4().copy(frame.matrixWorld).invert();
   const P = new THREE.Vector3().setFromMatrixPosition(palm.matrixWorld).applyMatrix4(inv);
-  const N = new THREE.Vector3(0, 1, 0)
-    .transformDirection(_m.multiplyMatrices(inv, palmUp.matrixWorld)).normalize();
+
+  // ── THE AXIS IS THE ONE THE WEAPON IS ON ──────────────────────────────────
+  //
+  // `palm_anchor`'s +Y. composeHeldWeapon gives the weapon palm_anchor's whole rotation, so
+  // that direction IS the hilt — and the fingers must close on the SAME cylinder the weapon
+  // occupies, or the two are solving different problems. (The scan's own `grip_axis` agrees
+  // with it to a sign: [1, 0, 0.024] against [-0.914, 0.397, 0.079], both across the palm.)
   const A = new THREE.Vector3(0, 1, 0)
-    .transformDirection(_m.multiplyMatrices(inv, gripAxis.matrixWorld)).normalize();
-  // A grip lies ACROSS the palm, so the axis must be perpendicular to the palm normal. Both
-  // anchors are measured off a scan independently, so they arrive a couple of degrees out.
-  A.addScaledVector(N, -A.dot(N)).normalize();
+    .transformDirection(_m.multiplyMatrices(inv, palm.matrixWorld)).normalize();
 
-  // THE WHOLE POINT: one radius out from the palm surface, so the cylinder rests on it.
-  const C = P.clone().addScaledVector(N, gripRadius);
+  // ── THE PALM NORMAL IS DERIVED, NOT READ ──────────────────────────────────
+  //
+  // NOT from `palm_up`: content/hand.ts authors it as identity relative to palm_anchor, so its
+  // +Y is palm_anchor's +Y — the GRIP AXIS. Reading it as a normal fed the solver a cylinder
+  // lying along the fingers, which is why they closed to their limits and disagreed about which
+  // way to curl. The doc comment calls it "the palm's outward normal"; the data does not.
+  //
+  // Perpendicular to the grip axis and to the fingers is the only thing the palm normal can be.
+  const K = new THREE.Vector3();
+  let knuckles = 0;
+  for (const f of ['index', 'middle', 'ring', 'pinky']) {
+    const j = hand.slots.get(`finger_${f}`);
+    if (!j) continue;
+    K.add(_p.setFromMatrixPosition(j.matrixWorld).applyMatrix4(inv));
+    knuckles++;
+  }
+  if (knuckles) K.divideScalar(knuckles);
+  else K.copy(P);
+  const F = K.clone().sub(new THREE.Vector3()).normalize();     // wrist -> knuckle line
+  const N0 = new THREE.Vector3().crossVectors(F, A).normalize();
 
-  const wrapR = gripRadius + phalanxHalfThickness(hand);
+  const half = phalanxHalfThickness(hand);
+  const wrapR = gripRadius + half;
 
-  /** Signed gap between a joint's child and the cylinder surface, at joint angle `t`. */
-  const gapAt = (joint: THREE.Object3D, child: THREE.Object3D, t: number): number => {
-    joint.rotation.x = t;
-    joint.updateMatrixWorld(true);
-    _p.setFromMatrixPosition(child.matrixWorld).applyMatrix4(inv);
-    return radial(_p, C, A, _r) - wrapR;
+  // Bend every joint about the GRIP AXIS, not about its own local X.
+  //
+  // A finger wrapping a cylinder bends in the plane perpendicular to that cylinder's axis. A
+  // joint's local X is only approximately that axis — and for the thumb it is nowhere near,
+  // because opposition is the thumb turning about a different axis entirely.
+  const frameQ = new THREE.Quaternion();
+  frame.getWorldQuaternion(frameQ);
+  const worldA = A.clone().applyQuaternion(frameQ).normalize();
+  const _pq = new THREE.Quaternion();
+
+  /** The grip axis expressed in a joint's PARENT frame — the axis it should bend about. */
+  const bendAxis = (joint: THREE.Object3D): THREE.Vector3 => {
+    (joint.parent ?? frame).getWorldQuaternion(_pq).invert();
+    return worldA.clone().applyQuaternion(_pq).normalize();
   };
 
-  for (const chain of Object.values(CHAINS)) {
-    for (let i = 0; i < chain.length - 1; i++) {
-      const joint = hand.slots.get(chain[i]);
-      const child = hand.slots.get(chain[i + 1]);
-      if (!joint || !child) continue;
-      const limit = LIMITS[Math.min(i, LIMITS.length - 1)];
+  interface Attempt {
+    C: THREE.Vector3;
+    solved: Record<string, number>;
+    errors: Record<string, number>;
+    worst: number;
+  }
 
-      // Which way does THIS joint close? Whichever sign brings its child toward the cylinder.
-      // Read it rather than assume: the sign depends on how the joint's own X axis happens to
-      // sit against the grip axis, and for the thumb it is not the finger answer.
-      const flat = gapAt(joint, child, 0);
-      const dir = Math.abs(gapAt(joint, child, 0.05)) < Math.abs(gapAt(joint, child, -0.05))
-        ? 1 : -1;
+  /** Close every finger onto a cylinder lying on the palm side `N`, and score the result. */
+  const attempt = (N: THREE.Vector3): Attempt => {
+    // The hilt lies across the METACARPAL HEADS — the ridge just under the knuckles — not down
+    // at the heel of the palm where palm_anchor sits. That anchor was authored for v2, where
+    // the weapon was buried in the hand and its exact depth did not matter; resting a cylinder
+    // on it put the axis 58mm from a knuckle whose proximal phalanx is 56mm long. Unreachable,
+    // so every finger curled to its limit and stopped — "kinda a bit crippled".
+    const C = K.clone().addScaledVector(N, gripRadius + half);
 
-      // March out for a sign change — the child crossing the cylinder surface — then bisect.
-      let lo = 0;
-      let hi = 0;
-      let flo = flat;
-      let crossed = false;
-      for (let k = 1; k <= MARCH; k++) {
-        const t = dir * limit * (k / MARCH);
-        const f = gapAt(joint, child, t);
-        if (flo * f <= 0) { hi = t; crossed = true; break; }
-        lo = t;
-        flo = f;
-      }
-      if (crossed) {
-        for (let k = 0; k < BISECT; k++) {
-          const mid = (lo + hi) / 2;
-          const f = gapAt(joint, child, mid);
-          if (flo * f <= 0) hi = mid;
-          else { lo = mid; flo = f; }
+    for (const chain of Object.values(CHAINS)) {
+      for (const name of chain) hand.slots.get(name)?.quaternion.identity();
+    }
+    root.updateMatrixWorld(true);
+
+    /** Distance from a joint's child to the grip axis, with that joint bent by `t`. */
+    const radialAt = (
+      joint: THREE.Object3D, child: THREE.Object3D, axis: THREE.Vector3, t: number,
+    ): number => {
+      joint.quaternion.setFromAxisAngle(axis, t);
+      joint.updateMatrixWorld(true);
+      _p.setFromMatrixPosition(child.matrixWorld).applyMatrix4(inv);
+      return radial(_p, C, A, _r);
+    };
+
+    const solved: Record<string, number> = {};
+    for (const chain of Object.values(CHAINS)) {
+      for (let i = 0; i < chain.length - 1; i++) {
+        const joint = hand.slots.get(chain[i]);
+        const child = hand.slots.get(chain[i + 1]);
+        if (!joint || !child) continue;
+        const limit = LIMITS[Math.min(i, LIMITS.length - 1)];
+        const axis = bendAxis(joint);
+
+        // Which way does THIS joint CLOSE? The direction carrying its child toward the axis.
+        // Read, not assumed — and NOT chosen by whichever direction reduces |distance − radius|,
+        // because once a child starts inside the cylinder that rule picks hyperextension.
+        const dir = radialAt(joint, child, axis, 0.05) < radialAt(joint, child, axis, -0.05)
+          ? 1 : -1;
+
+        if (radialAt(joint, child, axis, 0) <= wrapR) { solved[chain[i]] = 0; continue; }
+
+        let lo = 0;
+        let hi = 0;
+        let crossed = false;
+        for (let k = 1; k <= MARCH; k++) {
+          const t = dir * limit * (k / MARCH);
+          if (radialAt(joint, child, axis, t) <= wrapR) { hi = t; crossed = true; break; }
+          lo = t;
         }
-        gapAt(joint, child, (lo + hi) / 2);
-      } else {
-        // Never reached the cylinder: closed as far as the joint allows. Honest, and visible in
-        // the error report rather than hidden.
-        gapAt(joint, child, lo);
+        if (crossed) {
+          for (let k = 0; k < BISECT; k++) {
+            const mid = (lo + hi) / 2;
+            if (radialAt(joint, child, axis, mid) <= wrapR) hi = mid;
+            else lo = mid;
+          }
+          lo = (lo + hi) / 2;
+        }
+        // Not crossed = never reached the cylinder, so it closed as far as the joint allows.
+        // Honest, and visible in the error report rather than hidden by a clamp.
+        radialAt(joint, child, axis, lo);
+        solved[chain[i]] = lo;
       }
     }
-  }
 
-  // Measure what we actually got — the acceptance test for the whole system.
-  root.updateMatrixWorld(true);
-  const errors: Record<string, number> = {};
-  let worst = 0;
-  for (const chain of Object.values(CHAINS)) {
-    for (let i = 1; i < chain.length; i++) {
-      const node = hand.slots.get(chain[i]);
-      if (!node) continue;
-      _p.setFromMatrixPosition(node.matrixWorld).applyMatrix4(inv);
-      const err = Math.abs(radial(_p, C, A, _r) - wrapR) * 1000;
-      // Keyed off the node's own name, so the thumb's IP joint is not mislabelled a PIP and a
-      // renamed slot shows up as a renamed row instead of silently vanishing.
-      errors[chain[i].replace('finger_', '')] = +err.toFixed(1);
-      worst = Math.max(worst, err);
+    root.updateMatrixWorld(true);
+    const errors: Record<string, number> = {};
+    let worst = 0;
+    for (const chain of Object.values(CHAINS)) {
+      for (let i = 1; i < chain.length; i++) {
+        const node = hand.slots.get(chain[i]);
+        if (!node) continue;
+        _p.setFromMatrixPosition(node.matrixWorld).applyMatrix4(inv);
+        const err = Math.abs(radial(_p, C, A, _r) - wrapR) * 1000;
+        // Keyed off the node's own name, so the thumb's IP joint is not mislabelled a PIP and a
+        // renamed slot shows up as a renamed row instead of silently vanishing.
+        errors[chain[i].replace('finger_', '')] = +err.toFixed(1);
+        worst = Math.max(worst, err);
+      }
     }
+    return { C, solved, errors, worst };
+  };
+
+  // ── WHICH SIDE IS THE PALM? MEASURE IT ────────────────────────────────────
+  //
+  // F x A gives the normal's LINE; nothing in the geometry says which end is the palm and which
+  // is the back of the hand, and every attempt to settle it from an authored sign has been wrong
+  // at least once this session. So close the hand both ways and keep whichever actually reaches
+  // the hilt. Three cheap solves, and a whole class of sign bug stops being possible.
+  const up = N0.clone();
+  const down = N0.clone().negate();
+  const first = attempt(up);
+  const second = attempt(down);
+  const N = first.worst <= second.worst ? up : down;
+  const { C, solved, errors, worst } = attempt(N);
+
+  if (import.meta.env.DEV) {
+    const f3 = (v: THREE.Vector3): string =>
+      `[${v.toArray().map((n: number) => n.toFixed(2)).join(',')}]`;
+    const deg = Object.entries(solved)
+      .map(([k, t]) => `${k.replace('finger_', '')}=${(t * 57.2958).toFixed(0)}`).join(' ');
+    console.log(`[grip] A=${f3(A)} N=${f3(N)} C=${f3(C)} `
+      + `(palm side ${first.worst <= second.worst ? '+' : '-'}: `
+      + `${first.worst.toFixed(1)} vs ${second.worst.toFixed(1)}mm) · ${deg}`);
   }
 
-  return { center: C, axis: A, radius: gripRadius, errors, worst: +worst.toFixed(1) };
+  // The caller places the weapon in the composition ROOT's frame, so hand the centre back there.
+  const center = C.clone().applyMatrix4(frame.matrixWorld)
+    .applyMatrix4(_m.copy(root.matrixWorld).invert());
+  return { center, axis: A, radius: gripRadius, errors, worst: +worst.toFixed(1) };
 }
 
 /** Half the cross-section of a proximal phalanx — the finger's own thickness, so a bone wraps
