@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { reportRoomHeightTags } from '../scene/room-height';
 import { DEV } from '../debug/dev';
 import { traceDescent } from '../debug/interact-trace';
 import { buildLevel, type LiveLevel } from './builder';
@@ -280,6 +281,7 @@ export function tickPendingLoad() {
   // bot hit this.
   interpSync([camera]);
 
+  reportRoomHeightTags(level.root);   // DEV-gated inside; warns only when a shell mesh is untagged
   const prewarm = onLoaded(level);
 
   // Title card: "Depth N" + act name. Safe rooms get the transition

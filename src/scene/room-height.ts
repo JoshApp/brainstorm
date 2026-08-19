@@ -27,6 +27,10 @@
 // ceiling of every room — keeps them in the same batches they were already in.
 
 import * as THREE from 'three';
+// `DEV`, not `import.meta.env.DEV`: this module is imported by the level builders, which the
+// test runner exercises under tsx where `import.meta.env` does not exist at all. The literal
+// threw on the first line that touched it and took six poly-shell assertions with it.
+import { DEV } from '../debug/dev';
 
 /** The attribute name the lighting graph reads. */
 export const ROOM_Y_ATTR = 'aRoomY';
@@ -57,4 +61,35 @@ export function tagRoomHeight(mesh: THREE.Mesh | null | undefined, floorY: numbe
     arr[i * 2 + 1] = ceilY;
   }
   geo.setAttribute(ROOM_Y_ATTR, new THREE.BufferAttribute(arr, 2));
+  if (DEV) tagged++;
+}
+
+let tagged = 0;
+
+/** DEV: how many shell meshes were tagged, and how many survived to the drawn scene. */
+export function reportRoomHeightTags(root: THREE.Object3D): void {
+  if (!DEV) return;
+  let withAttr = 0;
+  let without = 0;
+  const missing: string[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.geometry) return;
+    const k = String(m.userData?.dbgKind ?? '');
+    if (k !== 'wall' && k !== 'ceiling') return;
+    // A chasm drop hangs BELOW its room's floor, where the fade is already inert (the height
+    // fraction is negative there), so it needs no room and is not a gap.
+    if ((m.name || '').startsWith('chasm')) return;
+    if (m.geometry.getAttribute(ROOM_Y_ATTR)) withAttr++;
+    else { without++; if (missing.length < 8) missing.push(m.name || k); }
+  });
+  // SILENT WHEN EVERYTHING IS TAGGED. An untagged shell mesh does not fail loudly — it just
+  // reads (0, 0), takes the no-room fallback and stays lit, so the effect quietly does nothing
+  // for that room and looks like a broken slider instead of a missing attribute. That is exactly
+  // how this shipped once: the rect builder was tagged and the POLYGON generator, which builds
+  // the floors the game actually uses, was not. So the probe speaks only when there is a gap.
+  if (!without) return;
+  // eslint-disable-next-line no-console
+  console.warn(`[room-height] ${without} shell mesh(es) carry no room height and will NOT darken`
+    + ` (tagged=${tagged}, with=${withAttr}) · ${missing.join(', ')}`);
 }
