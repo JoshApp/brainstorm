@@ -306,7 +306,9 @@ export function createWeaponViewmodel(
           const slot = armBuilt.slots.get(slotName);
           if (!slot) continue;
           for (const c of [...slot.children]) {
-            if ((c as THREE.Mesh).isMesh) { c.removeFromParent(); disposeGpuTree(c); }
+            // Detach only — see lamp-arm.ts: buildModel geometry is pooled and its materials
+          // are shared, so disposing them frees buffers other models are still drawing with.
+          if ((c as THREE.Mesh).isMesh) c.removeFromParent();
           }
         }
 

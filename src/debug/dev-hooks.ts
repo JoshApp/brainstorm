@@ -11,6 +11,7 @@ import { initCullMap, setCullMap } from './cull-map';
 import { mountBoneView, boneViewWanted, boneArmsWanted, preloadBoneHand }
   from './bone-hand';
 import { mountGripBench, gripBenchWanted } from './grip-bench';
+import { runOriginProbe, originProbeWanted } from './origin-probe';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
 import { setGoreDebugEnabled } from './gore-debug';
 import { bossEncounterDebug } from '../mobs/boss-encounter';
@@ -413,6 +414,12 @@ export function installDevHooks(deps: DevHookDeps): void {
   // The grip bench — ?gripbench=1 puts the COMPOSED hand and weapon close and turning, because
   // in every scenario the viewmodel's hand sits at the bottom edge of the frame and a grip
   // cannot be judged from a millimetre report alone.
+  // ?originprobe=1 — report anything sizeable parked at the world origin, a few seconds in so
+  // the level and every persistent system have settled.
+  if (originProbeWanted()) {
+    setTimeout(() => runOriginProbe(scene), 4000);
+    setTimeout(() => runOriginProbe(scene), 9000);
+  }
   if (gripBenchWanted()) {
     if (boneArmsWanted()) void preloadBoneHand().then(() => mountGripBench(camera));
     else mountGripBench(camera);

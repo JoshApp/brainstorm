@@ -244,7 +244,10 @@ export function attachLamp(camera: THREE.Camera) {
     const swap = (): void => {
       const shell = buildLantern();
       if (!shell) return;
-      if (installed) { installed.removeFromParent(); disposeGpuTree(installed); }
+      // Detach only. `buildLantern` returns a clone(true) of the loaded GLTF scene, and a
+      // Three clone SHARES geometry and material with its source — disposing one would break
+      // every future clone, including the one this swap is about to install.
+      if (installed) installed.removeFromParent();
       shell.position.copy(ring.position);
       body.add(shell);
       installed = shell;

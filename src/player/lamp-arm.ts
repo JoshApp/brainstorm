@@ -139,8 +139,9 @@ export function attachLampArm(camera: THREE.Camera): void {
       : null;
     const next = bone ?? buildModel(HAND_LEFT_LANTERN);
     if (hand) {
+      // Detach only: the authored hand is buildModel output, and its geometry and materials are
+      // pooled and shared with every other model using the same primitives.
       hand.group.removeFromParent();
-      disposeGpuTree(hand.group);
     }
     hand = next;
     anchor.add(hand.group);
@@ -288,8 +289,12 @@ export function attachLampArm(camera: THREE.Camera): void {
       for (const slotName of ['shoulder', 'elbow']) {
         const slot = armBuilt?.slots.get(slotName);
         if (!slot) continue;
+      // NOT disposed — only detached. buildModel's geometry comes from a global pool
+      // (scene/geometry-pool) and its materials from a shared `modelMatCache`, so disposing
+      // anything it produced destroys buffers that every other user of that primitive is still
+      // drawing with. disposeGpuTree has no reference counting; it frees whatever it walks.
         for (const c of [...slot.children]) {
-          if ((c as THREE.Mesh).isMesh) { c.removeFromParent(); disposeGpuTree(c); }
+          if ((c as THREE.Mesh).isMesh) c.removeFromParent();
         }
       }
     // eslint-disable-next-line no-console

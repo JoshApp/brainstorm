@@ -168,6 +168,30 @@ export function tickFlameMeshBatch(): void {
   aCol.needsUpdate = true;
 }
 
+/**
+ * DEV: the instances actually being drawn this frame, as text.
+ *
+ * The batch's vertices are placed by a custom positionNode from `aFlamePos`/`aFlameScale`, so
+ * Three's bounding box only ever describes the unit sphere the geometry started as — every probe
+ * that walks the scene sees "2m sphere at the origin" whatever the batch is really drawing. The
+ * only honest answer comes from the attributes.
+ */
+export function flameBatchDebug(): string {
+  if (!geo || !aPos || !aScale) return 'flame batch: not built';
+  const rows: string[] = [];
+  for (let i = 0; i < geo.instanceCount; i++) {
+    const px = aPos.getX(i), py = aPos.getY(i), pz = aPos.getZ(i);
+    const sx = aScale.getX(i), sy = aScale.getY(i), sz = aScale.getZ(i);
+    const atOrigin = Math.hypot(px, py, pz) < 0.5;
+    const big = Math.max(sx, sy, sz) > 0.2;
+    rows.push(`${i}: pos[${px.toFixed(2)},${py.toFixed(2)},${pz.toFixed(2)}] `
+      + `scale[${sx.toFixed(3)},${sy.toFixed(3)},${sz.toFixed(3)}]`
+      + `${atOrigin ? ' ← AT ORIGIN' : ''}${big && atOrigin ? ' AND BIG' : ''}`);
+  }
+  return `flame batch: ${geo.instanceCount} instance(s), entries=${entries.length}, `
+    + `meshVisible=${mesh?.visible}\n  ${rows.join('\n  ')}`;
+}
+
 /** Drop every entry (level teardown — placeholders die with the level root;
  *  the batch mesh + pipeline stay resident for the next floor). */
 export function resetFlameMeshBatch(): void {

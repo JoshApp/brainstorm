@@ -287,6 +287,30 @@ export function tickSpriteBatch(): void {
   }
 }
 
+/**
+ * DEV: the sprite instances actually being drawn, as text.
+ *
+ * Same reason the flame batch has one: these are placed by a custom positionNode, so every
+ * scene-walking probe sees only the unit quad the geometry started as and reports "1m sprite at
+ * the origin" whatever is really on screen. The attributes are the only honest answer.
+ */
+export function spriteBatchDebug(): string {
+  const out: string[] = [];
+  for (const [key, b] of batches) {
+    if (!b.geo.instanceCount) continue;
+    for (let i = 0; i < b.geo.instanceCount; i++) {
+      const px = b.pos.getX(i), py = b.pos.getY(i), pz = b.pos.getZ(i);
+      const sx = b.scale.getX(i), sy = b.scale.getY(i);
+      if (Math.hypot(px, py, pz) > 1.5) continue;
+      out.push(`${key} #${i} pos[${px.toFixed(2)},${py.toFixed(2)},${pz.toFixed(2)}] `
+        + `size[${sx.toFixed(2)},${sy.toFixed(2)}] ← NEAR ORIGIN`);
+    }
+  }
+  const persistent = entries.filter((e) => e.persistent).length;
+  return `sprite batches: ${batches.size}, entries=${entries.length} `
+    + `(persistent ${persistent})` + (out.length ? `\n  ${out.join('\n  ')}` : ' · none near origin');
+}
+
 /** Drop every LEVEL-scoped entry (teardown/load — those placeholders die with
  *  the level root; the batch meshes + pipelines stay resident for the next
  *  floor). Entries marked `persistent` are kept: their owners are app-scoped
