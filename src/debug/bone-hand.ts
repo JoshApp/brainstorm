@@ -168,11 +168,12 @@ export function buildBoneHand(side: Side = 'right', pose: ModelSpec = HAND_RIGHT
  *
  * Keyed by the same part names ARM_RIGHT uses, so the caller swaps by name.
  */
-export function buildBoneArmParts(): Map<string, THREE.Mesh> | null {
-  if (!DEV || !source.right) return null;
+export function buildBoneArmParts(side: Side = 'right'): Map<string, THREE.Mesh> | null {
+  const scene = DEV ? source[side] : null;
+  if (!scene) return null;
   const out = new Map<string, THREE.Mesh>();
   for (const part of ['humerus', 'radius', 'ulna']) {
-    const node = source.right?.getObjectByName(`arm_${part}`) ?? null;
+    const node = scene.getObjectByName(`arm_${part}`);
     if (node && (node as THREE.Mesh).isMesh) out.set(part, (node as THREE.Mesh).clone());
   }
   return out.size ? out : null;

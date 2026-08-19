@@ -4,7 +4,8 @@ import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
 import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-poses';
-import { boneArmsWanted, buildBoneHand, onBoneHandLoaded } from '../debug/bone-hand';
+import { boneArmsWanted, buildBoneHand, buildBoneArmParts, onBoneHandLoaded }
+  from '../debug/bone-hand';
 import type { BuiltModel } from '../ecs/build-model';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { WristAim } from '../anim/wrist-solver';
@@ -195,7 +196,37 @@ export function attachLampArm(camera: THREE.Camera): void {
   }
   }
 
+  // ── AND THE LEFT ARM'S OWN BONES ──────────────────────────────────
+  //
+  // The same swap the right arm gets in viewmodel.ts: the RIG is untouched — shoulder rest, IK
+  // lengths, elbow bias, every tuned number — and only the three bone meshes are replaced,
+  // because poseBone places them from the IK's endpoints and never cared what they looked like.
+  // There is no reason for one arm of one skeleton to be bone and the other primitives.
+  const installArm = (): void => {
+    const bones = buildBoneArmParts('left');
+    if (!bones) return;
+    const swapBone = (
+      old: THREE.Mesh | undefined, name: string,
+    ): THREE.Mesh | undefined => {
+      const next = bones.get(name);
+      if (!next) return old;
+      old?.removeFromParent();
+      arm.add(next);
+      return next;
+    };
+    humerusMesh = swapBone(humerusMesh, 'humerus');
+    radiusMesh = swapBone(radiusMesh, 'radius');
+    ulnaMesh = swapBone(ulnaMesh, 'ulna');
+    // The sinew stands in for soft tissue between the forearm bones; on a skeleton it reads as a
+    // third bone, so it goes — same call as the right arm.
+    sinewMesh?.removeFromParent();
+    sinewMesh = undefined;
+    // eslint-disable-next-line no-console
+    console.log('[lamp-arm] left arm bones swapped');
+  };
+
   installHand();
+  if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(installArm);
   // The bone hand arrives asynchronously and this function never runs again, so the swap has to
   // ride the load hook or the flag silently does nothing here.
   if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(installHand);

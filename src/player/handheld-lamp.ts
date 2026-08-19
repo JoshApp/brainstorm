@@ -241,7 +241,13 @@ export function attachLamp(camera: THREE.Camera) {
       shell.position.copy(ring.position);
       body.add(shell);
       installed = shell;
-      for (const m of iron) m.visible = false;
+      // REMOVED, not hidden. Josh: "remove the legacy lamp and only have both bone arms and the
+      // new lamp and the current weapon." An invisible cage is still geometry that gets walked,
+      // disposed and reasoned about, and leaving it there is how two versions of a thing end up
+      // both half-alive. The ring anchor, the flame stack and the light stay: those are not the
+      // shell.
+      for (const m of iron) { m.removeFromParent(); disposeGpuTree(m); }
+      iron.length = 0;
       // eslint-disable-next-line no-console
       console.log('[lantern] scanned shell installed');
     };

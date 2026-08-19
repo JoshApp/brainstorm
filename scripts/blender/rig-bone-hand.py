@@ -406,8 +406,8 @@ for name, pname in parent_of.items():
 bpy.context.view_layer.update()
 
 # -- EXPORT THE HAND ------------------------------------------------------
-# The hand only: the viewmodel already draws an arm, and the forearm bones would need their own
-# pose decision. They stay named in the scene for when that question is asked.
+# Hand plus the three arm bones, both sides. viewmodel.ts drives the right arm and lamp-arm.ts
+# the left, and both place these meshes by the same poseBone contract.
 hand = [n for n in KEEP if n not in ('humerus', 'radius', 'ulna', 'elbow')]
 bpy.ops.object.select_all(action='DESELECT')
 for n in hand:
@@ -532,9 +532,11 @@ for name in ARM_TARGET:
 bpy.ops.object.select_all(action='DESELECT')
 for n in hand:
     bpy.data.objects[n].select_set(True)
-if SIDE == 'right':
-    for name in ARM_TARGET:
-        bpy.data.objects['arm_' + name].select_set(True)
+# BOTH sides export their arm bones now. The left arm used to be skipped because it was the
+# lamp arm and kept its procedural rig; it drives the same poseBone contract as the right, so
+# there is no reason for one arm of one skeleton to be bone and the other primitives.
+for name in ARM_TARGET:
+    bpy.data.objects['arm_' + name].select_set(True)
 bpy.context.view_layer.objects.active = bpy.data.objects['wrist']
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
                           export_yup=False)
@@ -542,4 +544,4 @@ bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
 result['arm'] = arm_report
 result['arm_checks'] = arm_checks
 result['side'] = SIDE
-result['nodes'] = len(hand) + (len(ARM_TARGET) if SIDE == 'right' else 0)
+result['nodes'] = len(hand) + len(ARM_TARGET)
