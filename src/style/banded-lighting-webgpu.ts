@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, vec4, sin, cameraViewMatrix } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec4, cameraViewMatrix } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -36,7 +36,6 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 //             a MOVING lamp crawls. This is the knob for that trade, and it is
 //             a trade rather than a bug to fix.
 import { tuneUniform } from '../debug/tuning';
-import { ROOM_Y_ATTR } from '../scene/room-height';
 
 const uBands = tuneUniform({
   id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 5, step: 1,
@@ -223,269 +222,54 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// ── THE DARK ABOVE — LIGHT IS EATEN AS IT RISES ──────────────────────────────
-//
-// Josh: *"can we make it so the game eats light vertically? so it looks like a darkness upon
-// there."* The dungeon's baseline is darkness and every uncommon light is a signal
-// (docs/VISUAL-LANGUAGE.md), but the CEILING was quietly breaking that rule: a torch throws just
-// enough onto the vault to describe the whole room's volume, so the space reads as a lit box
-// with dark corners rather than as a pool of light with nothing above it.
-//
-// So light is consumed with height. Below the threshold nothing changes at all — the floor, the
-// props, everything at eye level is untouched. Above it the surface keeps a shrinking fraction
-// of what struck it, until near the top it keeps almost nothing and the vault is simply gone.
-//
-// ── MEASURED AGAINST THE ROOM, NOT AGAINST THE EYE ───────────────────────────
-//
-// The first version measured height above the CAMERA. Josh: *"it shouldnt be above eye it should
-// be ceiling dependant otherwhise cieling height collapses."* Right, and the failure is specific:
-// a camera-relative band sits at the same apparent height in EVERY room, so a six-metre vaulted
-// hall and a two-and-a-half-metre corridor go dark at the same place in the frame. Ceiling height
-// stops being information — in a game whose rooms are read by their volume, that throws away one
-// of the few spatial cues darkness leaves intact.
-//
-// So the fade is a FRACTION of the room's own height, and each shell surface carries its room's
-// floor and ceiling Y on a vertex attribute (scene/room-height.ts). A tall room keeps its walls
-// lit far higher in absolute metres than a low one, and both lose their vault.
-//
-// A uniform would not do. The moment that matters most is looking THROUGH a doorway from a
-// corridor into a hall, and a player's-room uniform would darken the hall to the corridor's
-// ceiling — killing the one reveal the effect exists to make. Rooms differ per surface, so the
-// data lives on the surface.
-//
-// ── APPLIED BY HEIGHT, NOT TO CEILING MATERIALS ──────────────────────────────
-//
-// A ceiling-only version draws a seam: the wall stays lit to its very top and then the vault cuts
-// to black at the join, which reads as a missing texture rather than as darkness. Fading by
-// height takes the TOPS OF THE WALLS with it, and the room loses its lid gradually, the way an
-// unlit space actually does.
-const uDarkAboveStart = tuneUniform({
-  id: 'darkabovestart', group: 'Dark above', label: 'Start (frac of room H)',
-  min: 0, max: 1, value: 0.55, step: 0.01,
-  hint: 'below this fraction of the room height, nothing is touched',
-});
-// ── THE DARK IS A LAYER, NOT A GRADIENT ──────────────────────────────────────
-//
-// Josh: *"i think it really has to swallow light like act as a small barrier towards the ceiling
-// otherwhise if it starts too early in small rooms it feels awefully opressive dark."*
-//
-// That is the right model and the previous one was wrong in a way tuning could not reach. The
-// fade ran from its start all the way to the ceiling, so its DEPTH scaled with the room: a tall
-// hall absorbed light over four metres, which is atmosphere, and a low corridor absorbed it over
-// half a metre of the little headroom it had, which is a lid coming down on you. Same numbers,
-// opposite feelings, and no single fraction fixes that because the fraction is the thing causing
-// it.
-//
-// So absorption has its own thickness IN METRES, independent of the room. Light passes freely
-// below the layer, is eaten within it, and above it there is nothing — a membrane under the vault
-// rather than a slope down the walls. A small room gets a thin skin of dark under its ceiling and
-// keeps its headroom; a tall room gets the same thin skin and a great deal of black volume above
-// it, because the ceiling is simply further away.
-// ── A BUILDUP INTO A MEMBRANE ────────────────────────────────────────────────
-//
-// Josh: *"maybe a membrane but with a buildup ... it scales with room height so the issue is that
-// small rooms can only get like a small runup."*
-//
-// Both halves of that are load-bearing and they pull against each other. A layer of ONE fixed
-// thickness is honest but abrupt — the light is fine and then it is gone, which reads as a
-// surface rather than as depth. Scaling the thickness with the room gives a tall hall a long,
-// convincing run-up into the dark and leaves a low corridor with almost none, which is where this
-// started.
-//
-// So the absorbing distance is the LONGER of a fixed minimum and a share of the room: a small
-// room always gets a run-up worth having, and a tall one gets proportionally more. And the
-// absorption is not linear across it — it builds. Most of the run-up only dims a little, and the
-// last part of it takes nearly everything, so what the eye reads is a gathering and then a
-// membrane, rather than a ramp with a beginning and an end.
-const uDarkAbsorbM = tuneUniform({
-  id: 'darkabsorb', group: 'Dark above', label: 'Absorb min (m)',
-  min: 0.05, max: 3, value: 0.70, step: 0.05,
-  hint: 'the shortest run-up into the dark, however low the room',
-});
-const uDarkAbsorbFrac = tuneUniform({
-  id: 'darkabsorbfrac', group: 'Dark above', label: 'Absorb (frac of room H)',
-  min: 0, max: 1, value: 0.28, step: 0.01,
-  hint: 'the run-up also grows with the room; the longer of the two wins',
-});
-const uDarkBuildup = tuneUniform({
-  id: 'darkbuildup', group: 'Dark above', label: 'Buildup',
-  min: 0.5, max: 5, value: 2.4, step: 0.1,
-  hint: '1 = an even ramp; higher gathers slowly then closes hard, like a membrane',
-});
-const uDarkAboveKeep = tuneUniform({
-  id: 'darkabovekeep', group: 'Dark above', label: 'Height layer (keep)',
-  min: 0, max: 1, value: 1.0, step: 0.01,
-  hint: 'THE OLD HEIGHT PLANE. 1 = off, the directional model does the work; lower to mix it back',
-});
-
-const uDarkEdgeAmount = tuneUniform({
-  id: 'darkedge', group: 'Dark above', label: 'Edge irregularity (m)',
-  min: 0, max: 1.2, value: 0.22, step: 0.02,
-  hint: 'how far the layer wanders up and down; 0 = a dead level line',
-});
-const uDarkEdgeScale = tuneUniform({
-  id: 'darkedgescale', group: 'Dark above', label: 'Edge scale',
-  min: 0.05, max: 2, value: 0.95, step: 0.01,
-  hint: 'lower = long slow swells, higher = a ragged fringe',
-});
-
-/**
- * A slow wander on the boundary, so the dark does not end in a spirit level.
- *
- * Josh: *"can we do it slight irregular so its not perfectly level when i push it back with
- * light."* A constant threshold draws a perfectly horizontal line around every room — and it is
- * most obvious exactly when a torch pushes the dark back, because that is when there is enough
- * light either side of the boundary to see that it is a line at all. Darkness pooling under a
- * vault has no straight edges in it.
- *
- * THREE SINES, NOT A NOISE TEXTURE. This is sampled per fragment on every lit surface in the
- * scene, so it has to be nearly free — and what it is asked to do is wander, not look like
- * anything. Incommensurable frequencies on a rotated pair of axes give a field that never
- * repeats visibly at room scale, which is the entire requirement.
- *
- * Driven by world XZ, NOT by the fragment's own position on its wall: adjacent walls meeting at a
- * corner then agree about where the dark starts, instead of each carrying its own edge and
- * showing the seam.
- */
-function darkEdgeNoise(): any {
-  const p: any = (vec2 as any)((positionWorld as any).x, (positionWorld as any).z)
-    .mul(uDarkEdgeScale as any);
-  const a: any = (sin as any)(p.x.add(p.y.mul(0.7)));
-  const b: any = (sin as any)(p.x.mul(-0.63).add(p.y.mul(1.31)).add(2.1));
-  const c: any = (sin as any)(p.x.mul(1.87).add(p.y.mul(-1.09)).add(4.7));
-  return a.mul(0.5).add(b.mul(0.33)).add(c.mul(0.17));      // ≈ [-1, 1]
-}
-
-const uDarkAboveMinM = tuneUniform({
-  id: 'darkabovemin', group: 'Dark above', label: 'Clear headroom (m)',
-  min: 0, max: 4, value: 1.75, step: 0.05,
-  hint: 'never darken below this many metres off the floor, however low the room',
-});
-const uDarkAboveCap = tuneUniform({
-  id: 'darkabovecap', group: 'Dark above', label: 'Brightness ceiling',
-  min: 0, max: 0.5, value: 0.035, step: 0.005,
-  hint: 'the most light the dark will ever let through, however hard you light it',
-});
-
-/**
- * How much of a fragment's light survives at its height within its room. 1 at and below the
- * threshold, `keep` at and above the top.
- *
- * `smoothstep` rather than a linear ramp so the transition carries no edge — a hard boundary
- * across a vault reads as a plane, which is exactly the thing being removed.
- *
- * UNTAGGED SURFACES ARE LEFT ALONE. Anything that never went through the room build — props,
- * enemies, doors, the viewmodel — reads (0, 0) for its room and is returned untouched. That is
- * the deliberate fallback: adding this effect cannot dim something nobody tagged, and a prop
- * near a ceiling stays a signal rather than being quietly swallowed.
- */
-function darkAboveTerms(): { factor: any; t: any } {
-  const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
-  const span: any = roomY.y.sub(roomY.x);
-  // METRES above this surface's own floor. The whole rule is expressed here rather than in
-  // fractions, because the two things being decided — how much headroom stays clear, and how
-  // thick the absorbing layer is — are both physical distances, and only one of them has any
-  // business scaling with the room.
-  const above: any = (positionWorld as any).y.sub(roomY.x);
-
-  // WHERE THE LAYER SITS. A fraction of the room height makes a tall room read tall; a fixed
-  // clearance keeps a low room's walls readable. Whichever is higher wins, so tall rooms are
-  // governed by the fraction and short ones by the clearance, and one tuning suits both.
-  const fracStart: any = (uDarkAboveStart as any).mul(span);
-  const startM: any = fracStart.max(uDarkAboveMinM as any)
-    .add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
-
-  // HOW LONG THE RUN-UP IS — the longer of a fixed minimum and a share of the room, so a low
-  // corridor still gets a gathering rather than a wall of dark, and a tall hall gets more of one.
-  // Clamped to sit under the ceiling rather than through it, so a generous setting in a low room
-  // becomes a shorter run-up instead of reaching the floor and blacking the room out.
-  const absorbM: any = (uDarkAbsorbM as any).max((uDarkAbsorbFrac as any).mul(span));
-  const endM: any = startM.add(absorbM).min(span);
-  const ramp: any = (smoothstep as any)(startM, endM.max(startM.add(0.01)), above);
-  // AND IT BUILDS. A linear ramp spends half its length visibly dimming, which reads as a
-  // gradient painted on the wall. Weighted toward the end, most of the run-up only takes the
-  // edge off and the last stretch takes everything — a gathering, then a membrane.
-  const t: any = ramp.pow(uDarkBuildup as any);
-
-  const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
-  const inRoom: any = span.greaterThan(0.01);
-  return {
-    factor: (inRoom as any).select(eaten, (float as any)(1)),
-    // Untagged surfaces get t = 0, so the cap is inert for them too.
-    t: (inRoom as any).select(t, (float as any)(0)),
-  };
-}
-
-/**
- * The dark is not a filter you can out-shine.
- *
- * Scaling the light by a fraction is a MULTIPLIER, and a multiplier can always be beaten: point
- * the lamp up, put a torch on the wall, and the ceiling comes back — dimmer, but plainly a
- * ceiling, at a plainly measurable height. The moment that happens the whole illusion is spent,
- * because the room stops being unknowably tall and becomes a box the player has now seen the lid
- * of.
- *
- * So above the threshold the outgoing light is also CAPPED in absolute terms. However hard a
- * fragment up there is lit, it can only ever reach `uDarkAboveCap` — enough for a vague
- * suggestion of masonry, never enough to describe the vault. The cap eases in with the same `t`
- * as the fade, so nothing changes at all below the threshold.
- *
- * Deliberately NOT zero, and deliberately not applied as a hard clamp at full strength: some hint
- * of upper wall is what tells the player the room CONTINUES upward. Take it all and the sense of
- * scale goes with it — a flat black band reads as a low ceiling, which is the opposite of the
- * intent.
- */
-function darkAboveCap(out: any, t: any): any {
-  const lum: any = (luminance as any)(out).max(1e-4);
-  // ── THE UNCAPPED END IS A REAL BRIGHTNESS, NOT INFINITY ───────────────────
-  //
-  // This lerped from 1e3, which sounds like "no cap" and behaves like "no cap almost all the
-  // way": at t = 0.5 the ceiling was still 500, so nothing was limited until t was within a few
-  // percent of 1. The upper WALLS therefore stayed uncapped, and in a small room they are close
-  // to the lamp and very brightly lit — which is precisely Josh's report, that the lamp pushes
-  // through in small rooms while the tuning that suits tall ones looks right.
-  //
-  // 4.0 is a genuinely bright surface in this scene's range, so the cap is inert on anything
-  // normally lit and starts limiting as soon as the fade does. The two now bite together
-  // instead of the cap waiting for the very top.
-  const capLum: any = (mix as any)((float as any)(4), uDarkAboveCap as any, t);
-  return out.mul(capLum.div(lum).min(1.0));
-}
-
-// -- LIGHT DOES NOT TRAVEL UPWARD --------------------------------------------
+// ── LIGHT DOES NOT TRAVEL UPWARD ─────────────────────────────────────────────
 //
 // Josh, after tuning the height-based version across a hall, a small room and a corridor: *"its
 // hard to tune it for big and small rooms and corridors it looks even weirder ... the effect i am
 // looking for is kinda a creeping shadow and the ceiling isnt reachable if that makes sense
 // without being too oppressive ... maybe i am thinking about the wrong thing."*
 //
-// He is not thinking about the wrong thing; the IMPLEMENTATION was. Darkness expressed as a
-// function of HEIGHT can only ever produce a plane -- a horizontal cut across every wall, which
-// is exactly what all three of his screenshots show. No amount of tuning turns a plane into a
+// He was not thinking about the wrong thing; the IMPLEMENTATION was. Darkness expressed as a
+// function of HEIGHT can only ever produce a plane — a horizontal cut across every wall, which is
+// exactly what all three of his screenshots showed. No amount of tuning turns a plane into a
 // creeping shadow, because a shadow is not a height. A shadow is light FAILING TO ARRIVE.
+//
+// ── AND WHY THERE ARE ONLY TWO KNOBS ────────────────────────────────────────
+//
+// There were nine, and Josh: *"its too many sliders most of them doing nothing or almost nothing
+// can we do one clean approach."* He was right, and the panel was telling the truth about the
+// design: the height model needed a start fraction AND a clearance in metres AND an absorb
+// minimum AND an absorb fraction AND a buildup curve AND a keep AND a cap AND two edge-noise
+// knobs — and its rules were `max()` and `min()` of pairs, so at any given moment HALF of them
+// were provably inert. A knob that does nothing is not a harmless extra; it teaches you that the
+// panel lies, and then you stop trusting the ones that work.
+//
+// One mechanism, two numbers: how much a light loses going up, and how sharply that sets in past
+// level. The height model, its vertex attribute (scene/room-height.ts) and the tagging in both
+// level builders are deleted, not disabled.
 //
 // So this attenuates light by the direction it had to travel. A light below a surface is shining
 // UP at it, and up is the direction this dungeon does not let light go. What falls out:
 //
-//   - IT CREEPS. The boundary is the shape of the light's own reach, not a plane. A torch on a
+//   · IT CREEPS. The boundary is the shape of the light's own reach, not a plane. A torch on a
 //     wall keeps its own patch of ceiling faintly, the space between torches is black, and the
 //     line between them belongs to the lights rather than to a constant.
-//   - IT NEEDS NO ROOM DATA AT ALL. No floor height, no ceiling height, no vertex attribute, no
+//   · IT NEEDS NO ROOM DATA AT ALL. No floor height, no ceiling height, no vertex attribute, no
 //     fraction-versus-clearance rule with half its knobs inert at any moment. A corridor and a
 //     cathedral are handled by the same two numbers because neither is measured against its room.
-//   - THE CEILING IS UNREACHABLE BY CONSTRUCTION. Not by a cap a bright enough lamp can argue
+//   · THE CEILING IS UNREACHABLE BY CONSTRUCTION. Not by a cap a bright enough lamp can argue
 //     with -- the lamp is BELOW the ceiling, so raising it only feeds a term that is being
 //     attenuated. Pointing the light up cannot buy the vault back.
-//   - IT IS NOT OPPRESSIVE. Nothing at or below the height of a light changes at all, because
+//   · IT IS NOT OPPRESSIVE. Nothing at or below the height of a light changes at all, because
 //     that light is not travelling upward to reach it. The readable part of the room is untouched
 //     by definition rather than by a clearance knob.
 const uUpEat = tuneUniform({
-  id: 'upeat', group: 'Dark above', label: 'Upward light lost',
+  id: 'upeat', group: 'The dark', label: 'Upward light lost',
   min: 0, max: 1, value: 0.93, step: 0.01,
   hint: 'how much of a light is swallowed when it has to shine straight up',
 });
 const uUpSoft = tuneUniform({
-  id: 'upsoft', group: 'Dark above', label: 'Upward falloff',
+  id: 'upsoft', group: 'The dark', label: 'Upward falloff',
   min: 0.05, max: 1, value: 0.55, step: 0.05,
   hint: 'how steeply it sets in past level; low = only near-vertical light is eaten',
 });
@@ -656,14 +440,6 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
     // count 0). See scene/gore-webgpu.ts.
     out = applyGoreWebGPU(out);
-    // ── AND THE DARK ABOVE EATS WHAT IS LEFT ──────────────────────────────────
-    // Last, and on the TOTAL: after the gore, after the rim, after the chroma. Anything applied
-    // before this would be re-lighting a surface the dark has already taken, and the rim in
-    // particular would keep burning a silhouette into a ceiling that is meant to be absent.
-    {
-      const d: any = darkAboveTerms();
-      out = darkAboveCap(out.mul(d.factor), d.t);
-    }
     context.outgoingLight.assign(out);
     super.finish(builder);
   }

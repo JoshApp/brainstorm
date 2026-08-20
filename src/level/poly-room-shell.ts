@@ -5,7 +5,6 @@ import type { RoomSpec } from './types';
 import type { WallSegment } from './walkable';
 import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
-import { tagRoomHeight } from '../scene/room-height';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
 import { DEV } from '../debug/dev';
@@ -209,8 +208,6 @@ export function buildPolyRoomShell(
     ceiling.position.set(rect.x, elev, rect.z);   // geometry is already in world Y
   }
   ceiling.receiveShadow = true;
-  // The dark above fades as a fraction of THIS room's height — see scene/room-height.ts.
-  tagRoomHeight(ceiling, elev, elev + H);
   ceiling.name = `polyceil:${room.id}`;
   tagOrigin(ceiling, 'ceiling', { rect: room.id });
   root.add(ceiling);
@@ -326,7 +323,6 @@ export function buildPolyRoomShell(
       walls.castShadow = true;
       walls.receiveShadow = true;
       walls.name = `polywalls:${room.id}`;
-      tagRoomHeight(walls, elev, elev + H);
       tagOrigin(walls, 'wall', { rect: room.id });
       // WHICH span came down, as a fact on the mesh rather than a thing an
       // audit has to re-derive. A report that recomputes "did this room
