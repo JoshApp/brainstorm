@@ -119,6 +119,27 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // is a switch with no lamp.
   activeBackend = (renderer.backend as { isWebGPUBackend?: boolean })?.isWebGPUBackend ? 'webgpu' : 'webgl2';
 
+  // ── AND THE LIGHT LOOP HAS TO AGREE WITH THE BACKEND WE ACTUALLY GOT ──────
+  //
+  // The choice above is made BEFORE init(), from a REQUEST. `forceWebGL` catches the two cases
+  // it can see from here — the flag, the setting, and a browser with no `navigator.gpu` at all —
+  // but not the one that matters most on a phone: `navigator.gpu` EXISTS and `requestAdapter()`
+  // then refuses (a blocklisted driver, a lost adapter, a locked-down device). Three falls back
+  // to WebGL2 internally and says nothing, which is the case the line above exists to report.
+  //
+  // Clustered culls lights in a COMPUTE pass, and WebGL2 has no compute. So that device was
+  // being handed the one light loop its backend cannot run, chosen on evidence that arrived
+  // before the answer did. Re-checked here against what init() actually produced, which is the
+  // only authority on the question.
+  if (activeBackend === 'webgl2'
+    && !(renderer.lighting instanceof (DelveTiledLighting as unknown as new () => object))) {
+    renderer.lighting = new DelveTiledLighting() as unknown as WebGPURenderer['lighting'];
+    if (import.meta.env.DEV) {
+      console.warn('[webgpu] asked for WebGPU, got WebGL2 — swapping clustered lighting for tiled '
+        + '(clustered needs a compute pass this backend does not have)');
+    }
+  }
+
   // r185 executes render bundles AFTER transparents (end of pass), letting
   // bundled opaque walls paint over additive flames — this reorders the flush
   // to after-opaques/before-transparents. See bundle-pass-order.ts.
