@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, sin } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, vec4, sin, cameraViewMatrix } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -281,15 +281,41 @@ const uDarkAboveStart = tuneUniform({
 // rather than a slope down the walls. A small room gets a thin skin of dark under its ceiling and
 // keeps its headroom; a tall room gets the same thin skin and a great deal of black volume above
 // it, because the ceiling is simply further away.
+// ── A BUILDUP INTO A MEMBRANE ────────────────────────────────────────────────
+//
+// Josh: *"maybe a membrane but with a buildup ... it scales with room height so the issue is that
+// small rooms can only get like a small runup."*
+//
+// Both halves of that are load-bearing and they pull against each other. A layer of ONE fixed
+// thickness is honest but abrupt — the light is fine and then it is gone, which reads as a
+// surface rather than as depth. Scaling the thickness with the room gives a tall hall a long,
+// convincing run-up into the dark and leaves a low corridor with almost none, which is where this
+// started.
+//
+// So the absorbing distance is the LONGER of a fixed minimum and a share of the room: a small
+// room always gets a run-up worth having, and a tall one gets proportionally more. And the
+// absorption is not linear across it — it builds. Most of the run-up only dims a little, and the
+// last part of it takes nearly everything, so what the eye reads is a gathering and then a
+// membrane, rather than a ramp with a beginning and an end.
 const uDarkAbsorbM = tuneUniform({
-  id: 'darkabsorb', group: 'Dark above', label: 'Absorb over (m)',
-  min: 0.05, max: 3, value: 0.55, step: 0.05,
-  hint: 'the thickness of the layer that eats the light; thin = a membrane, thick = a haze',
+  id: 'darkabsorb', group: 'Dark above', label: 'Absorb min (m)',
+  min: 0.05, max: 3, value: 0.70, step: 0.05,
+  hint: 'the shortest run-up into the dark, however low the room',
+});
+const uDarkAbsorbFrac = tuneUniform({
+  id: 'darkabsorbfrac', group: 'Dark above', label: 'Absorb (frac of room H)',
+  min: 0, max: 1, value: 0.28, step: 0.01,
+  hint: 'the run-up also grows with the room; the longer of the two wins',
+});
+const uDarkBuildup = tuneUniform({
+  id: 'darkbuildup', group: 'Dark above', label: 'Buildup',
+  min: 0.5, max: 5, value: 2.4, step: 0.1,
+  hint: '1 = an even ramp; higher gathers slowly then closes hard, like a membrane',
 });
 const uDarkAboveKeep = tuneUniform({
-  id: 'darkabovekeep', group: 'Dark above', label: 'Keep at full',
-  min: 0, max: 1, value: 0.06, step: 0.01,
-  hint: '0 = pure black overhead; a little keeps a hint of vault',
+  id: 'darkabovekeep', group: 'Dark above', label: 'Height layer (keep)',
+  min: 0, max: 1, value: 1.0, step: 0.01,
+  hint: 'THE OLD HEIGHT PLANE. 1 = off, the directional model does the work; lower to mix it back',
 });
 
 const uDarkEdgeAmount = tuneUniform({
@@ -369,11 +395,17 @@ function darkAboveTerms(): { factor: any; t: any } {
   const startM: any = fracStart.max(uDarkAboveMinM as any)
     .add(darkEdgeNoise().mul(uDarkEdgeAmount as any));
 
-  // HOW THICK IT IS — a distance, not a proportion. Clamped to sit under the ceiling rather than
-  // through it, so a thick setting in a low room becomes a thin layer instead of reaching the
-  // floor and blacking the room out.
-  const endM: any = startM.add(uDarkAbsorbM as any).min(span);
-  const t: any = (smoothstep as any)(startM, endM.max(startM.add(0.01)), above);
+  // HOW LONG THE RUN-UP IS — the longer of a fixed minimum and a share of the room, so a low
+  // corridor still gets a gathering rather than a wall of dark, and a tall hall gets more of one.
+  // Clamped to sit under the ceiling rather than through it, so a generous setting in a low room
+  // becomes a shorter run-up instead of reaching the floor and blacking the room out.
+  const absorbM: any = (uDarkAbsorbM as any).max((uDarkAbsorbFrac as any).mul(span));
+  const endM: any = startM.add(absorbM).min(span);
+  const ramp: any = (smoothstep as any)(startM, endM.max(startM.add(0.01)), above);
+  // AND IT BUILDS. A linear ramp spends half its length visibly dimming, which reads as a
+  // gradient painted on the wall. Weighted toward the end, most of the run-up only takes the
+  // edge off and the last stretch takes everything — a gathering, then a membrane.
+  const t: any = ramp.pow(uDarkBuildup as any);
 
   const eaten: any = (mix as any)((float as any)(1), uDarkAboveKeep as any, t);
   const inRoom: any = span.greaterThan(0.01);
@@ -418,6 +450,69 @@ function darkAboveCap(out: any, t: any): any {
   // instead of the cap waiting for the very top.
   const capLum: any = (mix as any)((float as any)(4), uDarkAboveCap as any, t);
   return out.mul(capLum.div(lum).min(1.0));
+}
+
+// -- LIGHT DOES NOT TRAVEL UPWARD --------------------------------------------
+//
+// Josh, after tuning the height-based version across a hall, a small room and a corridor: *"its
+// hard to tune it for big and small rooms and corridors it looks even weirder ... the effect i am
+// looking for is kinda a creeping shadow and the ceiling isnt reachable if that makes sense
+// without being too oppressive ... maybe i am thinking about the wrong thing."*
+//
+// He is not thinking about the wrong thing; the IMPLEMENTATION was. Darkness expressed as a
+// function of HEIGHT can only ever produce a plane -- a horizontal cut across every wall, which
+// is exactly what all three of his screenshots show. No amount of tuning turns a plane into a
+// creeping shadow, because a shadow is not a height. A shadow is light FAILING TO ARRIVE.
+//
+// So this attenuates light by the direction it had to travel. A light below a surface is shining
+// UP at it, and up is the direction this dungeon does not let light go. What falls out:
+//
+//   - IT CREEPS. The boundary is the shape of the light's own reach, not a plane. A torch on a
+//     wall keeps its own patch of ceiling faintly, the space between torches is black, and the
+//     line between them belongs to the lights rather than to a constant.
+//   - IT NEEDS NO ROOM DATA AT ALL. No floor height, no ceiling height, no vertex attribute, no
+//     fraction-versus-clearance rule with half its knobs inert at any moment. A corridor and a
+//     cathedral are handled by the same two numbers because neither is measured against its room.
+//   - THE CEILING IS UNREACHABLE BY CONSTRUCTION. Not by a cap a bright enough lamp can argue
+//     with -- the lamp is BELOW the ceiling, so raising it only feeds a term that is being
+//     attenuated. Pointing the light up cannot buy the vault back.
+//   - IT IS NOT OPPRESSIVE. Nothing at or below the height of a light changes at all, because
+//     that light is not travelling upward to reach it. The readable part of the room is untouched
+//     by definition rather than by a clearance knob.
+const uUpEat = tuneUniform({
+  id: 'upeat', group: 'Dark above', label: 'Upward light lost',
+  min: 0, max: 1, value: 0.93, step: 0.01,
+  hint: 'how much of a light is swallowed when it has to shine straight up',
+});
+const uUpSoft = tuneUniform({
+  id: 'upsoft', group: 'Dark above', label: 'Upward falloff',
+  min: 0.05, max: 1, value: 0.55, step: 0.05,
+  hint: 'how steeply it sets in past level; low = only near-vertical light is eaten',
+});
+
+/**
+ * World UP expressed in VIEW space.
+ *
+ * `lightDirection` in a lighting model is a view-space direction, and the question being asked of
+ * it is a world one - "is this light below the surface it is lighting". Rotating world up into
+ * view space is the cheap way round: it is a per-frame constant, so the per-fragment cost is a
+ * single dot product rather than a matrix transform.
+ */
+function viewUp(): any {
+  return (cameraViewMatrix as any).mul((vec4 as any)(0, 1, 0, 0)).xyz;
+}
+
+/**
+ * How much of a light survives the trip to this fragment, given which way it had to go.
+ *
+ * `lightDirection` points from the surface TOWARD the light, so its vertical component is
+ * positive when the light is above the fragment and negative when it is below. Only the negative
+ * side is touched: a floor lit from above, or a wall lit from beside, is exactly as it was.
+ */
+function upwardLoss(lightDirection: any): any {
+  const up: any = lightDirection.dot(viewUp());
+  const below: any = (smoothstep as any)((float as any)(0), (uUpSoft as any).negate(), up);
+  return (mix as any)((float as any)(1), (uUpEat as any).oneMinus(), below);
 }
 
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
@@ -477,7 +572,10 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // cost. (finish() still bands the direct diffuse exactly as before.)
   direct({ lightDirection, lightColor, reflectedLight }: any): void {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
-    const irradiance: any = dotNL.mul(lightColor);
+    // PER LIGHT, before anything else touches it: a light shining upward arrives weakened, and
+    // every term derived from it - diffuse, specular, the banding in finish() - should be working
+    // from the weakened value rather than being dimmed after the fact.
+    const irradiance: any = dotNL.mul(lightColor).mul(upwardLoss(lightDirection));
     reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
     let spec: any = irradiance.mul((BRDF_GGX as any)({ lightDirection, f0: specularColor, f90: (float as any)(1), roughness }));
     if (this.specScale) spec = spec.mul(this.specScale);
@@ -581,7 +679,7 @@ class LeanBandedLightingModel extends BandedPhysicalLightingModel {
   constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0) { super(chroma, chromaNode, rimDarkReactive); }
   direct({ lightDirection, lightColor, reflectedLight }: any): void {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
-    const irradiance: any = dotNL.mul(lightColor);
+    const irradiance: any = dotNL.mul(lightColor).mul(upwardLoss(lightDirection));
     reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
   }
 }
