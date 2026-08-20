@@ -24,6 +24,9 @@ export interface EyePresenter {
   applyIdle(): void;
   /** Mid-brightness "alert but not committed" look for the search state. */
   applySearch(): void;
+  /** How veiled the creature is: 1 = revealed (no boost), higher = eyes carry further.
+   *  Written each frame from the creature's reveal — see mobs/enemy-reveal.ts. */
+  setVeilBoost(k: number): void;
   /** Fade the halo sprites' opacity (death dissolve). */
   setHaloOpacity(o: number): void;
   /** Reactive-defense telegraph: paint the eyes/halos a flat THREAT colour
@@ -53,6 +56,28 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
   const haloWindupColor = new THREE.Color(0xffffff);  // sprite goes white-hot
   const tmpEyeColor = new THREE.Color();
   const tmpHaloColor = new THREE.Color();
+
+  // ── EYES BURN BRIGHTEST WHEN YOU CANNOT SEE WHAT THEY BELONG TO ───────────
+  //
+  // Josh: *"can we make them actually glow from further away strong and then maybe that
+  // diminishes as the thing gets revealed?"*
+  //
+  // The right instinct, and it is a rule about INFORMATION rather than about brightness. While a
+  // creature is a silhouette its eyes are the only thing telling you it exists, how many there
+  // are and roughly where — so they have to carry at range. Once the light has resolved the body,
+  // that job is done: the shape itself is now the read, and eyes still blazing at silhouette
+  // strength would be a second, louder signal saying something the player can already see.
+  //
+  // So the boost is the INVERSE of reveal. Far and dark: bright pinpricks in the black. Under the
+  // lamp: eyes on a face, at the strength the presenter's own states intended.
+  //
+  // Applied INSIDE the presenter, not by the caller multiplying the sprites afterwards. Every
+  // state below repaints these colours from their base each tick, so an external multiply would
+  // be overwritten while the game runs — and, worse, would COMPOUND while it is paused, since the
+  // presenter stops repainting but the present-phase tick does not stop.
+  let veilBoost = 1;
+  /** 1 = revealed (no boost). Higher = more veiled, eyes carry further. */
+  function setVeilBoost(k: number) { veilBoost = Math.max(1, k); }
   // Reactive-defense threat flash — when set, overrides the flare with a flat,
   // bright, pulsing colour (white = deflect this, red = dodge this).
   let threatColor: THREE.Color | null = null;
@@ -67,11 +92,11 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
     const haloScale = 1.7 + 0.3 * pulse;
     if (eyeHaloL && haloMatL) {
       eyeHaloL.scale.set(haloBaseScaleL.x * haloScale, haloBaseScaleL.y * haloScale, 1);
-      haloMatL.color.copy(threatColor!).multiplyScalar(1.8 + pulse);
+      haloMatL.color.copy(threatColor!).multiplyScalar((1.8 + pulse) * veilBoost);
     }
     if (eyeHaloR && haloMatR) {
       eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
-      haloMatR.color.copy(threatColor!).multiplyScalar(1.8 + pulse);
+      haloMatR.color.copy(threatColor!).multiplyScalar((1.8 + pulse) * veilBoost);
     }
   }
 
@@ -92,13 +117,13 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
       tmpHaloColor.copy(haloBaseColorL).lerp(haloWindupColor, t * 0.75);
       // Boost overall brightness so additive blend cuts through even bright
       // background pixels (e.g. silhouetted in front of a torch).
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
+      tmpHaloColor.multiplyScalar((1 + 1.2 * t) * veilBoost);
       haloMatL.color.copy(tmpHaloColor);
     }
     if (eyeHaloR && haloMatR) {
       eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
       tmpHaloColor.copy(haloBaseColorR).lerp(haloWindupColor, t * 0.75);
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
+      tmpHaloColor.multiplyScalar((1 + 1.2 * t) * veilBoost);
       haloMatR.color.copy(tmpHaloColor);
     }
   }
@@ -110,20 +135,22 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
     // dim enough to read as unaware. Idle should be unsettling, not threatening.
     if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.18;
     if (eyeHaloL && haloMatL) {
-      eyeHaloL.scale.set(haloBaseScaleL.x * 0.55, haloBaseScaleL.y * 0.55, 1);
-      haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.15);
+      const s0 = 0.55 * (1 + 0.35 * (veilBoost - 1));
+      eyeHaloL.scale.set(haloBaseScaleL.x * s0, haloBaseScaleL.y * s0, 1);
+      haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.15 * veilBoost);
     }
     if (eyeHaloR && haloMatR) {
-      eyeHaloR.scale.set(haloBaseScaleR.x * 0.55, haloBaseScaleR.y * 0.55, 1);
-      haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.15);
+      const s1 = 0.55 * (1 + 0.35 * (veilBoost - 1));
+      eyeHaloR.scale.set(haloBaseScaleR.x * s1, haloBaseScaleR.y * s1, 1);
+      haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.15 * veilBoost);
     }
   }
 
   function applySearch() {
     // Dimmer eye flare during search — alert but not committed.
     if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.85;
-    if (haloMatL) haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.8);
-    if (haloMatR) haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.8);
+    if (haloMatL) haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.8 * veilBoost);
+    if (haloMatR) haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.8 * veilBoost);
   }
 
   function setHaloOpacity(o: number) {
@@ -131,7 +158,7 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
     if (haloMatR) haloMatR.opacity = o;
   }
 
-  return { setFlare, applyIdle, applySearch, setHaloOpacity, setThreatFlash };
+  return { setFlare, applyIdle, applySearch, setHaloOpacity, setThreatFlash, setVeilBoost };
 }
 
 export interface CoreReactor {

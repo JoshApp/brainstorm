@@ -97,7 +97,6 @@ export function tickEnemyReveal(enemies: readonly RevealTarget[], dt: number): v
   const step = Math.min(Math.max(dt, 0), 0.1);
   for (const e of enemies) {
     const g = e.group;
-    if (!g.visible) continue;                 // culled — nothing to drive, and nothing drawn
     const meshes = meshesOf(g);
     if (!meshes.length) continue;
     const p = g.position;
@@ -106,8 +105,13 @@ export function tickEnemyReveal(enemies: readonly RevealTarget[], dt: number): v
     // at when deciding whether they can see what it is.
     const target = Math.min(1, litAt(p.x, p.y + 0.9, p.z) / FULL_AT);
     const cur = typeof g.userData.reveal === 'number' ? g.userData.reveal : 0;
-    const rate = target > cur ? RISE : FALL;
-    const next = cur + (target - cur) * (1 - Math.exp(-rate * step));
+    // A CULLED CREATURE SNAPS. Easing something nobody can see only stores up a pop for the frame
+    // it becomes visible again — a mob culled while fully lit, wandering into a dark room and
+    // reappearing, would arrive at full material and then fade, which is exactly the artefact
+    // this system exists to remove. Off screen it is simply already correct.
+    const next = g.visible
+      ? cur + (target - cur) * (1 - Math.exp(-(target > cur ? RISE : FALL) * step))
+      : target;
     g.userData.reveal = next;
     for (const m of meshes) m.userData.reveal = next;
   }

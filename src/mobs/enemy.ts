@@ -173,6 +173,11 @@ export type EnemyState =
 // committing to chase. Sells the "I see you" moment — also gives the
 // player a reaction window.
 const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
+
+// How much brighter (and larger) an eye burns when its owner is a pure silhouette, over what the
+// presenter's own state asked for. Falls to nothing as the light resolves the body — see the
+// EyePresenter's setVeilBoost for why it is the INVERSE of reveal rather than a flat boost.
+const VEIL_EYE_BOOST = 3.2;
 // Joints the crumble cuts when a spec doesn't name its own — also the set the
 // debris-template warm bakes at spawn (keep the two in sync by definition).
 const DEFAULT_SEVERABLE = ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
@@ -2501,6 +2506,17 @@ export function createEnemy(
 
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
     lastPlayerXZ.copy(playerPos);
+    // ── EYES CARRY FURTHER THE LESS OF THE CREATURE YOU CAN SEE ───────────
+    //
+    // mobs/enemy-reveal.ts writes `reveal` in the present phase; every eye state below repaints
+    // from its base each tick, so the boost has to be in place BEFORE they run. Set once, here,
+    // rather than at each of the four painting sites — a state added later would silently miss it
+    // otherwise, and the failure mode is a species whose eyes never carry, which reads as the
+    // effect being broken rather than as a missing call.
+    {
+      const r = container.userData.reveal;
+      eyePresenter.setVeilBoost(1 + VEIL_EYE_BOOST * (1 - (typeof r === 'number' ? r : 0)));
+    }
     if (!aliveLocal) {
       // Dying branch — run the death animation; everything else (AI,
       // perception, movement) is gated off.
