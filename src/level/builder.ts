@@ -2697,7 +2697,9 @@ export function buildLevel(
     ? mixColors(spec.fogColor, 0x553322, 0.5)
     : 0x2a1a10;
   const corridorSet = new Set(spec.corridors);
-  for (const r of allRects) {
+  // Gated OFF — see CONFIG.FILL_LIGHTS for why. Skipped here rather than at
+  // registerLight so the whole pass, tint averaging included, costs nothing.
+  for (const r of CONFIG.FILL_LIGHTS ? allRects : []) {
     // Sub-rooms (logical-only) already live inside their parent's
     // rect — adding fill lights for them double-illuminates the
     // same volume.

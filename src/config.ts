@@ -517,6 +517,24 @@ export const CONFIG = {
   // judder worse than the cost it saved. If shadow encode ever walls again,
   // amortize FACES across frames, don't re-lump whole-map updates.)
 
+  // ── THE ROOM FILL WASH ──────────────────────────────────────────────────
+  // Up to four broad, dim point lights per room (intensity 4.5, distance 8)
+  // sitting at 1.4m as a "navigability floor" under the torch pools.
+  //
+  // OFF. Josh, testing a big room with four of them: *"fill lights i tested in
+  // a big room with 4 of them they dont do anything right now noteworthy."*
+  // The numbers agree — at 2m a fill contributes about 1.8 against a torch's
+  // 12, so it is roughly a seventh of the light it sits under, and the dark
+  // this game has been moving toward is exactly the thing a "floor of ambient"
+  // exists to prevent. A sourceless wash is also what the light doctrine
+  // (docs/VISUAL-LANGUAGE.md) says makes light feel undesigned.
+  //
+  // A flag, not a deletion: the placement logic is tuned (per-room tint
+  // averaged from that room's own torches, tier multipliers, low slot
+  // priority) and worth keeping intact if navigability turns out to need it
+  // back on some floors.
+  FILL_LIGHTS: false,
+
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
     // torches/candles/glows. Under the default TILED node
