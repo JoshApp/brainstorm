@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec4, cameraViewMatrix } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -222,81 +222,66 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// ── LIGHT DOES NOT TRAVEL UPWARD ─────────────────────────────────────────────
+// ── THE AIR ABOVE YOU DRINKS LIGHT ───────────────────────────────────────────
 //
-// Josh, after tuning the height-based version across a hall, a small room and a corridor: *"its
-// hard to tune it for big and small rooms and corridors it looks even weirder ... the effect i am
-// looking for is kinda a creeping shadow and the ceiling isnt reachable if that makes sense
-// without being too oppressive ... maybe i am thinking about the wrong thing."*
+// Josh has now rejected two versions of this, and each rejection named the real fault.
 //
-// He was not thinking about the wrong thing; the IMPLEMENTATION was. Darkness expressed as a
-// function of HEIGHT can only ever produce a plane — a horizontal cut across every wall, which is
-// exactly what all three of his screenshots showed. No amount of tuning turns a plane into a
-// creeping shadow, because a shadow is not a height. A shadow is light FAILING TO ARRIVE.
+//   A PLANE. The first cut light off above a height. "its hard to tune it for big and small
+//   rooms" — because a height is a plane, and a plane is a line across the wall, not a shadow.
 //
-// ── AND WHY THERE ARE ONLY TWO KNOBS ────────────────────────────────────────
+//   A DIRECTION. The second attenuated each light by whether it was shining upward. "it makes
+//   large rooms infinitely dark and almost dont do anything for small rooms." Both halves follow
+//   from what it was measuring. Direction is nearly binary — a ceiling is above its light in a
+//   broom cupboard exactly as much as in a cathedral — so it cannot say "further is darker". And
+//   it only touched DIRECT light, while a small room's ceiling is lit mostly by ambient, which
+//   went straight past it. A big room's far ceiling had little direct light to lose in the first
+//   place, so taking all of it left a void with no gradient in it at all.
 //
-// There were nine, and Josh: *"its too many sliders most of them doing nothing or almost nothing
-// can we do one clean approach."* He was right, and the panel was telling the truth about the
-// design: the height model needed a start fraction AND a clearance in metres AND an absorb
-// minimum AND an absorb fraction AND a buildup curve AND a keep AND a cap AND two edge-noise
-// knobs — and its rules were `max()` and `min()` of pairs, so at any given moment HALF of them
-// were provably inert. A knob that does nothing is not a harmless extra; it teaches you that the
-// panel lies, and then you stop trusting the ones that work.
+// The variable that does both jobs is VERTICAL DISTANCE, absorbed continuously — light climbing
+// through the air above you is eaten as it goes, the way it would be through smoke. Beer-Lambert:
+// transmission falls off exponentially with the height climbed.
 //
-// One mechanism, two numbers: how much a light loses going up, and how sharply that sets in past
-// level. The height model, its vertex attribute (scene/room-height.ts) and the tagging in both
-// level builders are deleted, not disabled.
+//   · A SMALL ROOM'S CEILING IS A METRE AND A HALF UP. It dims, visibly, but you can still read
+//     it. Nothing is oppressive, because there is not enough height for much to be absorbed.
+//   · A LARGE ROOM'S CEILING IS SIX METRES UP AND GONE — but its WALLS pass through every value
+//     on the way, so the room reads as tall rather than as a void with a black lid.
+//   · THE CEILING IS NEVER REACHABLE by lighting it harder: absorption is a multiplier on the
+//     total, so a brighter lamp is attenuated by exactly the same fraction.
+//   · NO ROOM DATA. No attribute, no floor height, no per-room rule. The only inputs are the
+//     fragment's height above the eye and one absorption length.
 //
-// So this attenuates light by the direction it had to travel. A light below a surface is shining
-// UP at it, and up is the direction this dungeon does not let light go. What falls out:
+// MEASURED FROM THE EYE, and this time that is not the mistake it was in version one. What broke
+// then was the THRESHOLD, which put every room's cut at the same place in the frame. An
+// exponential has no threshold: a ceiling three metres up and one six metres up transmit very
+// different amounts, so height stays legible. `cameraPosition` is already in this graph, so it
+// costs nothing.
 //
-//   · IT CREEPS. The boundary is the shape of the light's own reach, not a plane. A torch on a
-//     wall keeps its own patch of ceiling faintly, the space between torches is black, and the
-//     line between them belongs to the lights rather than to a constant.
-//   · IT NEEDS NO ROOM DATA AT ALL. No floor height, no ceiling height, no vertex attribute, no
-//     fraction-versus-clearance rule with half its knobs inert at any moment. A corridor and a
-//     cathedral are handled by the same two numbers because neither is measured against its room.
-//   · THE CEILING IS UNREACHABLE BY CONSTRUCTION. Not by a cap a bright enough lamp can argue
-//     with -- the lamp is BELOW the ceiling, so raising it only feeds a term that is being
-//     attenuated. Pointing the light up cannot buy the vault back.
-//   · IT IS NOT OPPRESSIVE. Nothing at or below the height of a light changes at all, because
-//     that light is not travelling upward to reach it. The readable part of the room is untouched
-//     by definition rather than by a clearance knob.
-const uUpEat = tuneUniform({
-  id: 'upeat', group: 'The dark', label: 'Upward light lost',
-  min: 0, max: 1, value: 0.93, step: 0.01,
-  hint: 'how much of a light is swallowed when it has to shine straight up',
+// APPLIED TO THE TOTAL in finish(), not per light — that is what makes it eat the ambient term
+// too, which is the half the previous version could not see.
+const uAbsorbM = tuneUniform({
+  id: 'absorb', group: 'The dark', label: 'Light absorbed over (m)',
+  min: 0.3, max: 12, value: 2.6, step: 0.1,
+  hint: 'the height light can climb before most of it is gone; lower = a heavier dark',
 });
-const uUpSoft = tuneUniform({
-  id: 'upsoft', group: 'The dark', label: 'Upward falloff',
-  min: 0.05, max: 1, value: 0.55, step: 0.05,
-  hint: 'how steeply it sets in past level; low = only near-vertical light is eaten',
+const uAbsorbClear = tuneUniform({
+  id: 'absorbclear', group: 'The dark', label: 'Clear above eye (m)',
+  min: 0, max: 3, value: 0.65, step: 0.05,
+  hint: 'headroom that stays untouched, so the space you move through is never dimmed',
 });
 
 /**
- * World UP expressed in VIEW space.
+ * How much light survives the climb to this fragment.
  *
- * `lightDirection` in a lighting model is a view-space direction, and the question being asked of
- * it is a world one - "is this light below the surface it is lighting". Rotating world up into
- * view space is the cheap way round: it is a per-frame constant, so the per-fragment cost is a
- * single dot product rather than a matrix transform.
+ * Exponential in the height above the eye, so it never reaches zero and never draws an edge — the
+ * two failures of the versions before it. Below the clearance it is exactly 1, so nothing at or
+ * near eye level is touched at all.
  */
-function viewUp(): any {
-  return (cameraViewMatrix as any).mul((vec4 as any)(0, 1, 0, 0)).xyz;
-}
-
-/**
- * How much of a light survives the trip to this fragment, given which way it had to go.
- *
- * `lightDirection` points from the surface TOWARD the light, so its vertical component is
- * positive when the light is above the fragment and negative when it is below. Only the negative
- * side is touched: a floor lit from above, or a wall lit from beside, is exactly as it was.
- */
-function upwardLoss(lightDirection: any): any {
-  const up: any = lightDirection.dot(viewUp());
-  const below: any = (smoothstep as any)((float as any)(0), (uUpSoft as any).negate(), up);
-  return (mix as any)((float as any)(1), (uUpEat as any).oneMinus(), below);
+function heightTransmission(): any {
+  const climb: any = (positionWorld as any).y
+    .sub((cameraPosition as any).y)
+    .sub(uAbsorbClear as any)
+    .max(0);
+  return climb.div(uAbsorbM as any).negate().exp();
 }
 
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
@@ -356,10 +341,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // cost. (finish() still bands the direct diffuse exactly as before.)
   direct({ lightDirection, lightColor, reflectedLight }: any): void {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
-    // PER LIGHT, before anything else touches it: a light shining upward arrives weakened, and
-    // every term derived from it - diffuse, specular, the banding in finish() - should be working
-    // from the weakened value rather than being dimmed after the fact.
-    const irradiance: any = dotNL.mul(lightColor).mul(upwardLoss(lightDirection));
+    const irradiance: any = dotNL.mul(lightColor);
     reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
     let spec: any = irradiance.mul((BRDF_GGX as any)({ lightDirection, f0: specularColor, f90: (float as any)(1), roughness }));
     if (this.specScale) spec = spec.mul(this.specScale);
@@ -440,6 +422,11 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
     // count 0). See scene/gore-webgpu.ts.
     out = applyGoreWebGPU(out);
+    // ── AND THE CLIMB EATS WHAT IS LEFT ───────────────────────────────────────
+    // Last, and on the TOTAL — direct, ambient, specular, rim and all. Applying it per light
+    // was the previous version's mistake: a small room's ceiling is lit mostly by the AMBIENT
+    // term, which a per-light attenuation never sees, so nothing visibly happened there.
+    out = out.mul(heightTransmission());
     context.outgoingLight.assign(out);
     super.finish(builder);
   }
@@ -455,7 +442,7 @@ class LeanBandedLightingModel extends BandedPhysicalLightingModel {
   constructor(chroma = 1, chromaNode: any = null, rimDarkReactive = 0) { super(chroma, chromaNode, rimDarkReactive); }
   direct({ lightDirection, lightColor, reflectedLight }: any): void {
     const dotNL: any = (normalView as any).dot(lightDirection).clamp();
-    const irradiance: any = dotNL.mul(lightColor).mul(upwardLoss(lightDirection));
+    const irradiance: any = dotNL.mul(lightColor);
     reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
   }
 }
