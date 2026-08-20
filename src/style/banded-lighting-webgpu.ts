@@ -258,17 +258,17 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 // reads (0, 0) and is left entirely alone.
 const uBlackBand = tuneUniform({
   id: 'blackband', group: 'The dark', label: 'Black band (frac of room H)',
-  min: 0.05, max: 0.9, value: 0.34, step: 0.01,
+  min: 0.05, max: 0.9, value: 0.37, step: 0.01,
   hint: "how much of the room's top is taken; scales with the room, so small rooms lose less",
 });
 const uBlackEdge = tuneUniform({
   id: 'blackedge', group: 'The dark', label: 'Edge irregularity (m)',
-  min: 0, max: 1.5, value: 0.35, step: 0.05,
+  min: 0, max: 1.5, value: 0.95, step: 0.05,
   hint: 'how far the boundary wanders; 0 is a dead level line and reads as a painted plane',
 });
 const uBlackBias = tuneUniform({
   id: 'blackbias', group: 'The dark', label: 'Vanish late',
-  min: 1, max: 6, value: 3.0, step: 0.1,
+  min: 1, max: 6, value: 1.8, step: 0.1,
   hint: '1 = an even ramp; higher holds the light, then drops it in the last few steps',
 });
 
