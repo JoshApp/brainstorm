@@ -64,7 +64,21 @@ export function isParrying(): boolean { return parryLeft > 0; }
 // action in progress.
 export function canStartAction(kind: 'attack' | 'dodge' | 'parry'): boolean {
   if (parryLeft > 0) return false;  // the parry commits until it ends
-  if (dodgeLeft > 0) return false;  // the roll commits until it ends
+  // ── A DASH NO LONGER REFUSES AN ATTACK — THAT PRESS IS THE DASH ATTACK ────
+  //
+  // Josh: *"can you allow attacking while dashing to also make it a dash attack? currently you
+  // cant attack i think."* He is right, and this line was the whole reason: the roll refused
+  // every action for its duration, so the one press that most wants to happen during a dash —
+  // the lunge out of it — was the one press the FSM would not take.
+  //
+  // Nothing else is needed to make it a dash attack. swing-state already reads
+  // `msSinceDash() < DASH_ATTACK_WINDOW_MS` and serves the opener's `dash` variant, and a press
+  // DURING the roll satisfies that trivially. The feature existed; the gate in front of it
+  // meant it could only ever be reached in the sliver after the roll ended.
+  //
+  // The dodge still commits against a PARRY, which is a different promise: a parry is a stance
+  // you hold, and holding a stance mid-roll is not a thing a body does.
+  if (dodgeLeft > 0 && kind !== 'attack') return false;
   const swinging = sources?.isSwinging() ?? false;
   const phase = sources?.swingPhase() ?? 'idle';
   switch (kind) {

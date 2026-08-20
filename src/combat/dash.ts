@@ -17,7 +17,8 @@ import { CONFIG } from '../config';
 import { gameNow } from '../engine/game-clock';
 import { registerSimReset } from '../engine/sim-state';
 import { spendStaminaSoft, stallRegen } from './stamina';
-import { suppressChargeUntilRelease } from '../controls/charge-input';
+import { releaseChargeIntoDash } from '../controls/charge-input';
+import { triggerAttack } from '../controls/attack-input';
 import { noteDashStarted } from './just-dodge';
 import { stumble } from './camera-stumble';
 import { applyPlayerKnockback } from '../player/knockback';
@@ -154,10 +155,17 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   const len = Math.hypot(dirX, dirZ);
   if (len === 0) return false;   // no resolvable direction
   if (gameNow() < cooldownUntil) return false;   // still in the post-dodge cooldown
-  // Dodge-cancel: drop any held heavy and REFUND its reservation FIRST, so that
-  // stamina is back in the pool to fund this escape (panic-cancel a big charge
-  // straight into a clean dodge). Suppresses re-charge until the finger lifts.
-  suppressChargeUntilRelease();
+  // ── A HELD HEAVY BECOMES THE DASH ATTACK ────────────────────────────────
+  //
+  // Josh: *"dashing while charging an attack makes it a dash attack ... dashing out of a heavy
+  // cancels it outright."* It did, deliberately — the old call refunded the charge so a
+  // panic-dodge out of a long wind-up was clean. Firing it instead does not cost the player that
+  // escape: the dash below still runs, iframes and all. They simply take the swing with them.
+  //
+  // Queued as a real attack PRESS so it travels the normal path — the swing sim reads
+  // `msSinceDash()` a few lines below this and serves the opener's `dash` variant, which is
+  // exactly the lunge being asked for, with no second code path to keep in step.
+  if (releaseChargeIntoDash()) triggerAttack();
   // Soft spend: true if we had a sliver (full dodge), false if empty (stumble).
   const full = spendStaminaSoft(CONFIG.STAMINA.DASH_COST);
   const speed = CONFIG.STAMINA.DASH_SPEED * (full ? 1 : CONFIG.STAMINA.DASH_STUMBLE_SPEED_MUL);

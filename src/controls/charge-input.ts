@@ -144,6 +144,29 @@ export function isChargePerfectWindow(): boolean {
 /** Dodge-cancel: drop an in-flight charge and REFUND its reservation (free), and
  *  keep it from rebuilding until the held attack touch is released. Call before
  *  the dodge spends, so the refunded stamina can fund the escape. */
+/**
+ * A dash fired while a heavy was charging — SWING it as the dash attack.
+ *
+ * Josh: *"dashing out of a heavy cancels it outright"* — and it did, by design: the old call
+ * here refunded the reservation and zeroed the charge so a panic-dodge out of a big wind-up was
+ * clean and free. That escape is NOT lost by firing instead, which is what makes this safe to
+ * change: the dash still happens, with its iframes and its knockback, so the player still gets
+ * out. They just take the swing with them, which is the whole idea of a dash attack.
+ *
+ * The stamina is COMMITTED rather than refunded, and that is the honest price: the heavy was
+ * paid for and is now being spent rather than taken back. A dash that both escapes and attacks
+ * for free would be strictly better than either.
+ *
+ * Re-charge stays suppressed until the finger lifts either way — the player is still holding the
+ * button, and starting a fresh charge inside the roll they just spent the last one on is not
+ * something anyone asked for.
+ */
+export function releaseChargeIntoDash(): boolean {
+  const fired = tryReleaseChargedAttack();
+  suppressed = true;
+  return fired;
+}
+
 export function suppressChargeUntilRelease(): void {
   refundReserved();
   suppressed = true;

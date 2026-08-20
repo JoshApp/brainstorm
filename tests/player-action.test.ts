@@ -64,11 +64,16 @@ test('nothing starts during a committed parry', () => {
   assert.equal(canStartAction('dodge'), false);
   assert.equal(canStartAction('parry'), false);
 });
-test('nothing starts during a committed dodge', () => {
+// CHANGED 2026-08-20: an ATTACK is now allowed during a dodge — that press IS the dash attack.
+// Josh: "can you allow attacking while dashing to also make it a dash attack? currently you cant
+// attack i think." The dash-attack variant already existed in swing-state (it serves the opener's
+// `dash` move when a press lands within DASH_ATTACK_WINDOW_MS of a roll); this gate in front of it
+// meant it could only ever be reached in the sliver AFTER the roll ended.
+test('a dodge commits against dodge and parry, but an attack out of it is the dash attack', () => {
   reset(); enterDodge(0.3);
-  assert.equal(canStartAction('attack'), false);
-  assert.equal(canStartAction('dodge'), false);
-  assert.equal(canStartAction('parry'), false);
+  assert.equal(canStartAction('attack'), true);   // the lunge out of the roll
+  assert.equal(canStartAction('dodge'), false);   // no re-rolling mid-roll
+  assert.equal(canStartAction('parry'), false);   // a stance is not a thing you hold mid-roll
 });
 test('cannot dodge/parry mid-strike, but a new swing (combo) is allowed', () => {
   reset(); s.swinging = true; s.phase = 'strike';
