@@ -49,7 +49,12 @@ export const CONFIG = {
   // SEE that there IS a far end (silhouettes, distant emissives).
   FOG_COLOR: 0x000000,
   FOG_NEAR: 1.5,
-  FOG_FAR: 9,
+  // 9 -> 30.46 (2026-08-20, Josh's profile). The dungeon now takes its darkness from the light
+  // itself — the room-top black band, no fill wash, creature reveal driven by what is lit — so
+  // fog no longer has to be the thing hiding the far end of a room. Pulling it back lets a large
+  // room read as large. COSTS DRAW DISTANCE: the room culler gates on this, so more rects are
+  // rendered per frame; if a phone profile regresses, this is the first number to look at.
+  FOG_FAR: 30.46,
   // Camera far clip plane. Kept JUST past FOG_FAR (not the old 50m) — fog is
   // 100% opaque by FOG_FAR, so anything beyond is invisible black, yet a large
   // far plane still SUBMITS all that geometry as draw calls (the dungeon has no
@@ -114,7 +119,10 @@ export const CONFIG = {
   // between torches aren't pitch-black. Warmer than torches so the
   // player's "personal halo" reads distinctly from the room's lighting.
   LAMP_INTENSITY: 90,
-  LAMP_DISTANCE: 5.5,
+  // 5.5 -> 20 (2026-08-20, Josh's profile). The lamp is the instrument the player aims and the
+  // thing that resolves a creature out of its silhouette (mobs/enemy-reveal.ts reads this as the
+  // reveal radius), so it wants real reach now that the dark it is cutting through is honest.
+  LAMP_DISTANCE: 20,
 
   // === PLAYER ===
   PLAYER_HEIGHT: 1.6,          // eye level

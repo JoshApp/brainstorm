@@ -75,7 +75,7 @@ const geoGates = tuneNumber({
 // Live, and applied in the pool's SELECTION phase, so it is one drag rather than a rebuild.
 const fills = tuneNumber({
   id: 'fills', group: 'Dark', label: 'fill lights',
-  min: 0, max: 1, step: 1, value: 1, apply: 'live',
+  min: 0, max: 1, step: 1, value: 0, apply: 'live',
   hint: '0 = no sourceless ambience · every lit surface traced to a visible emitter',
 });
 

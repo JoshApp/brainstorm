@@ -86,7 +86,7 @@ const lampIntensity = tuneNumber({
 });
 const lampDistance = tuneNumber({
   id: 'lampdist', group: DARK_GROUP, label: 'lamp reach',
-  min: 1, max: 20, step: 0.25, value: CONFIG.LAMP_DISTANCE, apply: 'live',
+  min: 1, max: 30, step: 0.25, value: CONFIG.LAMP_DISTANCE, apply: 'live',
   hint: 'metres the lantern carries · past this you are relying on the room’s own light',
 });
 
@@ -104,7 +104,7 @@ const lampDistance = tuneNumber({
 // runes brightening as your eyes adjusted, and the A/B would be dishonest.
 const adaptMul = tuneNumber({
   id: 'adaptmul', group: DARK_GROUP, label: 'eye adaptation',
-  min: 0, max: 1, step: 0.05, value: 1, apply: 'live',
+  min: 0, max: 1, step: 0.05, value: 0, apply: 'live',
   hint: '0 = off entirely · the whole feature, signal and shader lift and rune hint',
 });
 

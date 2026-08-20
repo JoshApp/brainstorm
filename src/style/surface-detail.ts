@@ -495,7 +495,7 @@ const wallBright = tuneNumber({
 // Wall roughness defaults to 0.95 — exactly what the material already carried —
 // so nothing moves until it is asked to.
 const uWallRough = tuneUniform({
-  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 1,
+  id: 'wallrough', group: 'Wall', label: 'Stone roughness', min: 0.2, max: 1.0, value: 0.904,
   hint: 'low = damp/polished sheen, high = dry matte stone',
 });
 const uWallPolish = tuneUniform({

@@ -60,7 +60,7 @@ tuneNumber({
 // HOLDING the light, and a floating lamp is a real look for this game rather than only an
 // inspection view.
 tuneNumber({
-  id: LAMP_HAND, group: 'View', label: 'Lamp hand', min: 0, max: 1, value: 1, step: 1,
+  id: LAMP_HAND, group: 'View', label: 'Lamp hand', min: 0, max: 1, value: 0, step: 1,
   apply: 'live',
   hint: '0 = the lantern floats on its own',
 });

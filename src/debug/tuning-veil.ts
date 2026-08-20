@@ -24,7 +24,7 @@ const liftFar = tuneNumber({
 });
 const strength = tuneNumber({
   id: 'veilstr', group: GROUP, label: 'veil · strength',
-  min: 0, max: 1, step: 0.02, value: 0.92, apply: 'live',
+  min: 0, max: 1, step: 0.02, value: 0.90, apply: 'live',
   hint: '0 = no veils at all · 1 = a doorway you have not approached is pure black',
 });
 

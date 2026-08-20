@@ -291,7 +291,7 @@ export function setWebGPULeanBloom(on: boolean): void {
 // walls stayed lit out to 28m, which was most of the "too bright" gap vs WebGL.
 // CRUSH_FLOOR is per-preset (truer blacks far away = the big value-separation
 // lever); the START/END distances stay global.
-const CRUSH_START_M = 6, CRUSH_END_M = 12;
+const CRUSH_START_M = 6, CRUSH_END_M = 15;
 
 // ── THE CRUSH IS ON LIVE UNIFORMS NOW, AND IT IS THE FIRST THING TO REACH FOR ──
 //
