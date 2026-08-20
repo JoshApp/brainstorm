@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, sin } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -36,6 +36,7 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 //             a MOVING lamp crawls. This is the knob for that trade, and it is
 //             a trade rather than a bug to fix.
 import { tuneUniform } from '../debug/tuning';
+import { ROOM_Y_ATTR } from '../scene/room-height';
 
 const uBands = tuneUniform({
   id: 'bands', group: 'Light', label: 'Light bands', min: 2, max: 24, value: 5, step: 1,
@@ -222,66 +223,84 @@ function posterise(tone: any, bands: any, curve: any, allowLadder = false, warp:
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// ── THE AIR ABOVE YOU DRINKS LIGHT ───────────────────────────────────────────
+// ── THE TOP OF EVERY ROOM IS NOTHING ─────────────────────────────
 //
-// Josh has now rejected two versions of this, and each rejection named the real fault.
+// Josh, after three attempts that each failed differently: *"i want a room height based effect,
+// basically i want the top of every room to be pitch black, but it not looking like i just
+// painted the ceiling black, instead i want it to feel like yes its pitchblack like infinite
+// there, and the painted black effect distorted by having it be irregular and kinda vanishing on
+// the last few steps for small rooms that needs to be small for large rooms it can be a bit
+// larger."*
 //
-//   A PLANE. The first cut light off above a height. "its hard to tune it for big and small
-//   rooms" — because a height is a plane, and a plane is a line across the wall, not a shadow.
+// That is a precise brief, and it names the three things that make it read as DEPTH rather than
+// as paint. All three matter; drop any one and an earlier failure comes back.
 //
-//   A DIRECTION. The second attenuated each light by whether it was shining upward. "it makes
-//   large rooms infinitely dark and almost dont do anything for small rooms." Both halves follow
-//   from what it was measuring. Direction is nearly binary — a ceiling is above its light in a
-//   broom cupboard exactly as much as in a cathedral — so it cannot say "further is darker". And
-//   it only touched DIRECT light, while a small room's ceiling is lit mostly by ambient, which
-//   went straight past it. A big room's far ceiling had little direct light to lose in the first
-//   place, so taking all of it left a void with no gradient in it at all.
+//   1. IT REACHES TRUE ZERO. Not a small fraction, not a cap — nothing. A surface at 4% still
+//      answers the light: it has shading, a specular sheen, a normal you can read, and the eye
+//      reconstructs a ceiling from those cues however dim they are. That IS what painted-black
+//      looks like. At exactly zero there are no cues left to reconstruct anything from, which is
+//      what makes it read as absence rather than as a dark surface.
 //
-// The variable that does both jobs is VERTICAL DISTANCE, absorbed continuously — light climbing
-// through the air above you is eaten as it goes, the way it would be through smoke. Beer-Lambert:
-// transmission falls off exponentially with the height climbed.
+//   2. THE BOUNDARY IS IRREGULAR. A level edge is a horizontal line, and a horizontal line across
+//      a wall is a plane — the first version's entire failure. Wandered by WORLD position, so two
+//      walls meeting at a corner agree about where the dark begins instead of showing a seam.
 //
-//   · A SMALL ROOM'S CEILING IS A METRE AND A HALF UP. It dims, visibly, but you can still read
-//     it. Nothing is oppressive, because there is not enough height for much to be absorbed.
-//   · A LARGE ROOM'S CEILING IS SIX METRES UP AND GONE — but its WALLS pass through every value
-//     on the way, so the room reads as tall rather than as a void with a black lid.
-//   · THE CEILING IS NEVER REACHABLE by lighting it harder: absorption is a multiplier on the
-//     total, so a brighter lamp is attenuated by exactly the same fraction.
-//   · NO ROOM DATA. No attribute, no floor height, no per-room rule. The only inputs are the
-//     fragment's height above the eye and one absorption length.
+//   3. IT VANISHES IN THE LAST FEW STEPS. The band is weighted toward its top: most of it only
+//      takes the edge off and the final stretch takes everything. A linear ramp spends its whole
+//      length visibly dimming, which reads as a gradient someone painted; a weighted one reads as
+//      light giving out.
 //
-// MEASURED FROM THE EYE, and this time that is not the mistake it was in version one. What broke
-// then was the THRESHOLD, which put every room's cut at the same place in the frame. An
-// exponential has no threshold: a ceiling three metres up and one six metres up transmit very
-// different amounts, so height stays legible. `cameraPosition` is already in this graph, so it
-// costs nothing.
-//
-// APPLIED TO THE TOTAL in finish(), not per light — that is what makes it eat the ambient term
-// too, which is the half the previous version could not see.
-const uAbsorbM = tuneUniform({
-  id: 'absorb', group: 'The dark', label: 'Light absorbed over (m)',
-  min: 0.3, max: 12, value: 2.6, step: 0.1,
-  hint: 'the height light can climb before most of it is gone; lower = a heavier dark',
+// SCALED TO THE ROOM, which is the part the eye-relative version could not do. The band is a
+// FRACTION of the room's own height, so a low corridor gets a shallow one and a hall a deeper one
+// — small for small, larger for large — and it is anchored to the room's CEILING rather than to
+// the camera, so it does not slide when the player climbs a stair. Each shell surface carries its
+// room's floor and ceiling Y on a vertex attribute (scene/room-height.ts); untagged geometry
+// reads (0, 0) and is left entirely alone.
+const uBlackBand = tuneUniform({
+  id: 'blackband', group: 'The dark', label: 'Black band (frac of room H)',
+  min: 0.05, max: 0.9, value: 0.34, step: 0.01,
+  hint: "how much of the room's top is taken; scales with the room, so small rooms lose less",
 });
-const uAbsorbClear = tuneUniform({
-  id: 'absorbclear', group: 'The dark', label: 'Clear above eye (m)',
-  min: 0, max: 3, value: 0.65, step: 0.05,
-  hint: 'headroom that stays untouched, so the space you move through is never dimmed',
+const uBlackEdge = tuneUniform({
+  id: 'blackedge', group: 'The dark', label: 'Edge irregularity (m)',
+  min: 0, max: 1.5, value: 0.35, step: 0.05,
+  hint: 'how far the boundary wanders; 0 is a dead level line and reads as a painted plane',
+});
+const uBlackBias = tuneUniform({
+  id: 'blackbias', group: 'The dark', label: 'Vanish late',
+  min: 1, max: 6, value: 3.0, step: 0.1,
+  hint: '1 = an even ramp; higher holds the light, then drops it in the last few steps',
 });
 
 /**
- * How much light survives the climb to this fragment.
+ * A slow wander on the boundary, so the dark does not end in a spirit level.
  *
- * Exponential in the height above the eye, so it never reaches zero and never draws an edge — the
- * two failures of the versions before it. Below the clearance it is exactly 1, so nothing at or
- * near eye level is touched at all.
+ * Three incommensurable sines on world XZ. This is sampled on every lit surface in the scene, so
+ * it has to be nearly free — and what it is asked to do is wander, not to look like anything.
+ * Driven by WORLD position rather than by each surface's own coordinates so that two walls meeting
+ * at a corner agree about where the dark starts.
  */
-function heightTransmission(): any {
-  const climb: any = (positionWorld as any).y
-    .sub((cameraPosition as any).y)
-    .sub(uAbsorbClear as any)
-    .max(0);
-  return climb.div(uAbsorbM as any).negate().exp();
+function blackEdgeNoise(): any {
+  const p: any = (vec2 as any)((positionWorld as any).x, (positionWorld as any).z).mul(0.85);
+  const a: any = (sin as any)(p.x.add(p.y.mul(0.7)));
+  const b: any = (sin as any)(p.x.mul(-0.63).add(p.y.mul(1.31)).add(2.1));
+  const c: any = (sin as any)(p.x.mul(1.87).add(p.y.mul(-1.09)).add(4.7));
+  return a.mul(0.5).add(b.mul(0.33)).add(c.mul(0.17));      // ~[-1, 1]
+}
+
+/** How much light survives here. Exactly 0 at the ceiling, exactly 1 below the band. */
+function roomTopTransmission(): any {
+  const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
+  const span: any = roomY.y.sub(roomY.x);
+  const below: any = roomY.y.sub((positionWorld as any).y);     // metres BELOW the ceiling
+  const band: any = span.mul(uBlackBand as any)
+    .add(blackEdgeNoise().mul(uBlackEdge as any))
+    .max(0.05);
+  // 1 at the ceiling, 0 at the bottom of the band.
+  const t: any = below.div(band).clamp(0, 1).oneMinus();
+  // Weighted to the top: most of the band barely dims, the last stretch takes everything.
+  const eaten: any = t.pow(uBlackBias as any);
+  return (span.greaterThan(0.01) as any).select(eaten.oneMinus(), (float as any)(1));
 }
 
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
@@ -422,11 +441,12 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
     // count 0). See scene/gore-webgpu.ts.
     out = applyGoreWebGPU(out);
-    // ── AND THE CLIMB EATS WHAT IS LEFT ───────────────────────────────────────
-    // Last, and on the TOTAL — direct, ambient, specular, rim and all. Applying it per light
-    // was the previous version's mistake: a small room's ceiling is lit mostly by the AMBIENT
-    // term, which a per-light attenuation never sees, so nothing visibly happened there.
-    out = out.mul(heightTransmission());
+    // ── AND THE TOP OF THE ROOM TAKES WHAT IS LEFT ────────────────────────
+    // Last, and on the TOTAL — direct, ambient, specular, rim and all. Per light was an earlier
+    // version's mistake: a small room's ceiling is lit mostly by the AMBIENT term, which a
+    // per-light attenuation never sees, so nothing visibly happened there. And it has to come
+    // after the rim, or the rim keeps burning a silhouette into a ceiling meant to be absent.
+    out = out.mul(roomTopTransmission());
     context.outgoingLight.assign(out);
     super.finish(builder);
   }

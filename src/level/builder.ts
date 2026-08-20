@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tagRoomHeight, tagRoomHeightSloped } from '../scene/room-height';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
 import {
@@ -494,6 +495,11 @@ function buildRoomShell(
     ceiling.position.set(rect.x, elev, rect.z);   // geometry already in world-Y (above the room's floor)
   }
   ceiling.receiveShadow = true;
+  // The dark at the top of the room is measured against THIS room — see scene/room-height.ts. A
+  // ramped corridor's floor is not level, so its shell is sampled per vertex against the
+  // elevation field rather than carrying one pair of numbers wrong at both ends of the run.
+  if (sloped) tagRoomHeightSloped(ceiling, H, groundYAt);
+  else tagRoomHeight(ceiling, elev, elev + H);
   ceiling.name = 'ceiling';
   ceiling.userData.dbgKind = 'ceiling';
   ceiling.userData.dbgSource = `ceiling · ${room.id} (${ceilStyle}) @(${rect.x.toFixed(1)},${rect.z.toFixed(1)}) y${H.toFixed(1)}`;
@@ -687,6 +693,8 @@ function buildRoomShell(
       markStatic(walls);   // built once, never touched — see scene/animation-gate.ts
       walls.userData.dbgKind = 'wall';
       walls.userData.dbgSource = `walls · ${room.id}`;
+      if (sloped) tagRoomHeightSloped(walls, H, groundYAt);
+      else tagRoomHeight(walls, elev, elev + H);
       scene.add(walls);
     }
   }
