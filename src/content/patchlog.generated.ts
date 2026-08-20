@@ -4,6 +4,194 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 55",
+    "date": "2026-08-20",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Eyes in the dark carry now. Bring a light and they settle into a face, which is rarely an improvement.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Things in the dark are shapes with eyes now. Bring a light if you want to know what you are fighting.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The rooms lose their courtesy glow. What light there is now comes from something you can point at.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dark overhead settles into its shape, and the line where it starts stops being a line.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Every room now ends in nothing overhead, and the edge of it wanders like something breathing.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The air over your head has started drinking the light. Small rooms dim; tall ones simply have no top.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dark stops being a line drawn across the walls and becomes something that creeps in from wherever the light cannot reach.",
+        "area": [
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "Build 54",
+    "date": "2026-08-19",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "The dark hangs under the ceiling like a held breath. Low rooms keep their headroom; high ones lose their tops entirely.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dark overhead learns about stairs, and stops letting a lantern buy back the ceiling of a small room.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dark overhead stops being a straight line, and stops being something you can out-shine.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dark overhead finds the rest of the dungeon. Every ceiling is in on it now.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dark overhead now knows how high the ceiling is. Tall halls keep their height; low corridors press down on you.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Something above has started drinking the light. Look up and there is nothing to see, which is the point.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern-bearer settles into its carry. It has held this light a long time and it shows.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern-bearer's wrist relaxes a few degrees. It has carried this a long way.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The lantern-bearer holds its light out in front of it at last, palm down, fingers hooked through the bail.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Two hands come out of the dark now, one holding a light and one holding steel, and neither answers to an arm.",
+        "area": [
+          "atmosphere",
+          "controls"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern-bearer's hand comes in from the edge of the dark now, rather than pointing itself at you.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The lantern-bearer holds its light like something that has carried one before.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The pale sphere that followed you down every stair is gone, and the room where you choose your weapon has a floor again.",
+        "area": [
+          "atmosphere",
+          "level",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern-bearer's thumb curls with the rest of the hand now, instead of pointing off into the dark.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The arms are gone. Two hands come out of the dark carrying a sword and a light, and the dungeon gets the rest of the frame.",
+        "area": [
+          "atmosphere",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The lantern-bearer's fingers curl down over the bail at last, instead of grasping at the ceiling.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern hangs off two hooked fingers now, swinging where the fist used to clench.",
+        "area": [
+          "atmosphere",
+          "controls"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 53",
     "date": "2026-08-18",
     "entries": [
@@ -209,198 +397,6 @@ export const GENERATED_PATCHLOG = [
         "tag": "fix",
         "text": "Loop corridors are planned properly now, or the floor simply goes without one.",
         "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Pocket corridors are planned instead of guessed. Straighter halls, and far fewer of them wrong.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Loop corridors are planned like every other corridor now, instead of guessed.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Doorways get their floor back. The threshold belongs to the wall now, not to a gate that might not be there.",
-        "area": [
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The stone goes dry and the light goes soft. Profiles get a proper picker that tells you what each one does.",
-        "area": [
-          "atmosphere",
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A close flame stops drawing a bullseye. The light breaks stone by stone now.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Doorways get a real lintel now — the wall carries itself over the arch instead of the arch carrying the wall.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 51",
-    "date": "2026-08-16",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "Mortar runs the same width all the way round a stone now, instead of pooling on one side.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The floor stops sprouting iron bars, and the torches climb out of the walls they were buried in.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Stones stop being mistaken for each other, and the joint sliders start telling the truth.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The walls stop stepping in and out of themselves. Flat stone, and the light does the rest.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The walls stop wearing skirting boards. Bare stone, floor to ceiling.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Corners are laid with bigger stone now, and the arch stops wearing the wall's pattern sideways.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The gate stops shouting in the same voice as the wall, and the floor remembers it is wet.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dungeon puts away its furniture. Bare stone, one gate, and the arch stops pretending it holds up the ceiling.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The torches hang lower. The stone shows its scars, and the floor stops being a rumour.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Doorways are cut from the same stone as the walls now, and they stopped glowing when you walk up to them.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The wall keeps its warmth against a cold floor, and the small stones stop looking like leftovers.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The stones were laid by someone working with what they had — big ones first, small ones filling what was left.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The wall was built by someone with the stones they had, not by a machine with one mould.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "A stone can be split and crazed at once now, the way old stone usually is.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The walls split the way stone splits, and something has been cutting patterns into the floor.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The stone splits along straight lines that meet at corners, the way stone actually splits.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The light can be told exactly where to step and how far, and the stones lose corners in pairs.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Corners come off the blocks again, and the edges of the light break into grain instead of drawing lines.",
-        "area": [
-          "atmosphere",
           "level"
         ]
       }
