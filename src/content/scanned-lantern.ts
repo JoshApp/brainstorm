@@ -19,11 +19,12 @@
 // SHELL — the thing that reads as iron and glass — and the fire inside it is a separate concern
 // that the atmosphere work already tuned. Swapping the shell should not disturb the flame.
 //
-// DEV-only, on the same `?bonearm=1` flag as the hands, and dead-code-eliminated in production.
+// Shipping content as of 2026-08-20 — it loads unconditionally, on the same decision as the
+// scanned hands. `?bonearm=0` falls back to the procedural cage this replaced.
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DEV } from './dev';
+
 
 /**
  * The bail bar's radius, metres — what the hand actually closes around.
@@ -118,7 +119,6 @@ export function onLanternLoaded(fn: () => void): void {
 
 /** Start loading. Safe to call repeatedly — the load happens once. */
 export function preloadLantern(): Promise<void> {
-  if (!DEV) return Promise.resolve();
   if (loading) return loading;
   loading = new Promise<void>((resolve) => {
     new GLTFLoader().load(
@@ -142,6 +142,6 @@ export function preloadLantern(): Promise<void> {
  * The caller positions it at the lamp's ring anchor and it hangs.
  */
 export function buildLantern(): THREE.Object3D | null {
-  if (!DEV || !source) return null;
+  if (!source) return null;
   return source.clone(true);
 }

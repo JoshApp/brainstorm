@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dungeon settles into its new dark. The lantern reaches further, the corners do not, and nothing glows without a reason.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Eyes in the dark carry now. Bring a light and they settle into a face, which is rarely an improvement.",
         "area": [
           "atmosphere",
@@ -391,13 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Loop corridors are planned properly now, or the floor simply goes without one.",
-        "area": [
-          "level"
         ]
       }
     ]

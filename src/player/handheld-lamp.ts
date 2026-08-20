@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { boneArmsWanted } from '../debug/bone-hand';
+import { boneArmsWanted } from '../content/scanned-hand';
 import { buildLantern, preloadLantern, onLanternLoaded, lanternBodyCentreY }
-  from '../debug/bone-lantern';
+  from '../content/scanned-lantern';
 import { disposeGpu, disposeGpuTree } from '../scene/gpu-dispose';
 
 // Worn hip lantern — a small lantern model parented to the player
@@ -245,7 +245,7 @@ export function attachLamp(camera: THREE.Camera) {
   // Placing it is one assignment, because prep-lantern.py origins the model on its BAIL: put it
   // where the ring is and it hangs from the hook. It arrives from a file long after this runs,
   // so the swap rides the load hook.
-  if (import.meta.env.DEV && boneArmsWanted()) {
+  if (boneArmsWanted()) {
     const iron = [top, bottom, post, ring, ...body.children.filter(
       (c) => (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry instanceof THREE.BoxGeometry,
     )];

@@ -19,6 +19,7 @@ import { bindSight } from './scene/sight-distance';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
 import { attachLampHand } from './player/lamp-hand';
+import { preloadBoneHand } from './content/scanned-hand';
 import { initBreath } from './effects/breath';
 import { initCardClaim } from './effects/card-claim';
 import { initDomainBind } from './effects/domain-bind';
@@ -883,6 +884,16 @@ const weapon = createWeaponViewmodel(camera, {
 //
 // The player's lamp is the BASELINE light everywhere (CLAUDE.md
 // "Lighting as signal"). Attach it once, permanently — never detached.
+// ── THE SCANNED HANDS LOAD ON THE REAL BOOT PATH ──────────────────────────
+//
+// They used to be preloaded from debug/dev-hooks.ts, which is DEV-only — correct while they were
+// a `?bonearm=1` trial and exactly wrong once they became the viewmodel: in a production build
+// nothing would ever have asked for the file, and every player would have quietly got the
+// authored primitive hands while the developer saw scans. Started here, unawaited, so the boot
+// does not block on it — the hands swap in when the GLB lands, which is the same hook the flag
+// used.
+void preloadBoneHand();
+
 attachLamp(camera);
 // Left arm holding the lantern's O-ring — IK-driven, mirrors the
 // right arm (which holds the weapon). Must attach AFTER attachLamp

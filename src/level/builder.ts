@@ -2360,6 +2360,11 @@ export function buildLevel(
         mesh.name = 'extra-walls-merged';
         mesh.userData.dbgKind = 'wall';
         mesh.userData.dbgSource = 'extra-walls (merged)';
+        // These carry the wall material, so they read aRoomY like every other wall — and without
+        // a tag three warns about a missing attribute on every compile. Per vertex against the
+        // elevation field: the segments are merged from several places in the room and each sits
+        // on its own ground height, so one pair of numbers would be wrong for most of them.
+        tagRoomHeightSloped(mesh, defaultH, groundYAt);
         root.add(mesh);
       }
     }

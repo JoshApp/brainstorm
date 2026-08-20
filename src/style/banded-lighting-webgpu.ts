@@ -332,6 +332,8 @@ const creatureReveal = objectScalar('reveal', 1);
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
   /** Scale the lit result by the object's `reveal` (creatures only). */
   veiled = false;
+  /** Read `aRoomY` and darken the top of the room (SHELL materials only). */
+  roomTop = false;
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
   // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
   // chromaNode (optional TSL node) is a PER-FRAGMENT chroma — used to amplify the
@@ -477,7 +479,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // version's mistake: a small room's ceiling is lit mostly by the AMBIENT term, which a
     // per-light attenuation never sees, so nothing visibly happened there. And it has to come
     // after the rim, or the rim keeps burning a silhouette into a ceiling meant to be absent.
-    out = out.mul(roomTopTransmission());
+    if (this.roomTop) out = out.mul(roomTopTransmission());
     context.outgoingLight.assign(out);
     super.finish(builder);
   }
@@ -593,6 +595,30 @@ export function setMaterialStoneLightingWebGPU(
  * material an extra per-object uniform read would be a cost paid by the whole dungeon for a
  * property only living things have.
  */
+/**
+ * Put a material on the ROOM-TOP path — its lit result is taken by the dark under the ceiling.
+ *
+ * SHELL ONLY, and that restriction is the point. The term reads a vertex attribute (`aRoomY`),
+ * and three warns — loudly, per material, in production as well as dev — for every geometry that
+ * lacks one: *"Vertex attribute aRoomY not found on geometry."* The stone lighting model is
+ * shared by props, doors, timber and rubble, none of which are tagged and none of which should be,
+ * so leaving the read in the shared graph flooded the console with warnings about behaviour that
+ * was working exactly as designed (a missing attribute reads as a zero span, and a zero span is
+ * the leave-it-alone case).
+ *
+ * Behaviour is unchanged. Only the materials that were ever going to do something now ask.
+ */
+export function setMaterialRoomTopDarkWebGPU(mat: any): void {
+  const prev = mat.setupLightingModel;
+  mat.setupLightingModel = (...args: unknown[]) => {
+    const model = typeof prev === 'function'
+      ? prev.apply(mat, args)
+      : new BandedPhysicalLightingModel(1, null, 0);
+    if (model instanceof BandedPhysicalLightingModel) model.roomTop = true;
+    return model;
+  };
+}
+
 export function setMaterialCreatureRevealWebGPU(mat: any): void {
   const prev = mat.setupLightingModel;
   mat.setupLightingModel = (...args: unknown[]) => {

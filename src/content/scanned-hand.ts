@@ -25,7 +25,9 @@
 // ── AND THE CHARTER ─────────────────────────────────────────────────────────
 //
 // Pillar 6 says no model files, no texture pipelines. This is the trial of whether that should
-// move, and it is DEV-only and flag-gated (`?bonearm=1`) until it is decided. What an imported
+// move. DECIDED 2026-08-20: this is the viewmodel now, so the module lives in content/ rather
+// than debug/ and loads unconditionally. `?bonearm=0` is the escape hatch back to the authored
+// primitive hands. What an imported
 // mesh does not get, and would be owed: the lamp-reveal shader, the mood tint, the prop-class
 // shadow policy — all keyed off ModelSpec. If it survives, the end state is a conversion that
 // emits these shells as a ModelSpec, not a runtime GLTF load. The asset ships either way while
@@ -36,7 +38,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import { HAND_RIGHT } from '../content/hand';
 import type { ModelSpec } from '../ecs/model-types';
-import { DEV } from './dev';
+import { DEV } from '../debug/dev';
 
 /** Slot names the rest of the game asks this hand for. Anything in the GLB matching one of
  *  these becomes a slot; everything else is a part. Kept as a list rather than inferred from
@@ -70,7 +72,6 @@ export function onBoneHandLoaded(fn: () => void): void {
  * waiting is a frame of the wrong hand.
  */
 export function preloadBoneHand(): Promise<void> {
-  if (!DEV) return Promise.resolve();
   if (loading) return loading;
   const loader = new GLTFLoader();
   const one = (side: Side): Promise<void> => new Promise((resolve) => {
@@ -103,7 +104,7 @@ export function preloadBoneHand(): Promise<void> {
  * arrival is picked up on the next weapon swap, which recomposes anyway.
  */
 export function buildBoneHand(side: Side = 'right', pose: ModelSpec = HAND_RIGHT): BuiltModel | null {
-  const scene = DEV ? source[side] : null;
+  const scene = source[side];
   if (!scene) return null;
 
   // The HAND is the `wrist` subtree specifically: the right file also carries three loose arm
@@ -169,7 +170,7 @@ export function buildBoneHand(side: Side = 'right', pose: ModelSpec = HAND_RIGHT
  * Keyed by the same part names ARM_RIGHT uses, so the caller swaps by name.
  */
 export function buildBoneArmParts(side: Side = 'right'): Map<string, THREE.Mesh> | null {
-  const scene = DEV ? source[side] : null;
+  const scene = source[side];
   if (!scene) return null;
   const out = new Map<string, THREE.Mesh>();
   for (const part of ['humerus', 'radius', 'ulna']) {
@@ -181,8 +182,17 @@ export function buildBoneArmParts(side: Side = 'right'): Map<string, THREE.Mesh>
 
 /** Is the trial on? Read by the composition, so nothing else has to know about the flag. */
 export function boneArmsWanted(): boolean {
-  return DEV && typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('bonearm') === '1';
+  // ── THE SCANNED HANDS ARE THE HANDS NOW ────────────────────────────────────
+  //
+  // This was `DEV && ?bonearm=1` while it was a trial. Josh, after it shipped behind the flag:
+  // *"can we make the bonehand and lantern also default on main like switch to that."*
+  //
+  // So it returns true, and `?bonearm=0` turns it off — the flag inverts from opt-in to escape
+  // hatch, which is what a decided feature's flag is for. Kept rather than deleted because the
+  // authored primitive hands are still built and still correct, and an A/B against them is the
+  // only way to answer "is the scan actually better" on a phone in a dark room.
+  if (typeof window === 'undefined') return true;
+  return new URLSearchParams(window.location.search).get('bonearm') !== '0';
 }
 
 /** Is the side-by-side view on? */

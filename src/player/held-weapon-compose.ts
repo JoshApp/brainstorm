@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import type { ModelSpec } from '../ecs/model-types';
 import { HAND_RIGHT } from '../content/hand';
-import { boneArmsWanted, buildBoneHand } from '../debug/bone-hand';
+import { boneArmsWanted, buildBoneHand } from '../content/scanned-hand';
 import { solveGrip } from '../anim/grip-solver';
 import { resolveGrip, type ResolvedGrip } from '../content/grip';
 
@@ -100,7 +100,7 @@ export function composeHeldWeapon(
   // names), so it drops in as the hand and everything below this line is unchanged: the grip
   // alignment, the finger curl, the arm IK, the wrist solver. See debug/bone-hand.ts.
   // Dead-code-eliminated in production.
-  const hand = (import.meta.env.DEV && boneArmsWanted() && buildBoneHand()) || buildModel(handSpec);
+  const hand = (boneArmsWanted() && buildBoneHand()) || buildModel(handSpec);
   const group = new THREE.Group();
   group.add(hand.group);
   let weapon: BuiltModel | null = null;

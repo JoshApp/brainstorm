@@ -18,7 +18,7 @@ import { WristAim } from '../anim/wrist-solver';
 import { FOREARM_EXIT_DESIRED } from '../content/hand';
 import { buildModel } from '../ecs/build-model';
 import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
-import { boneArmsWanted, buildBoneArmParts, onBoneHandLoaded } from '../debug/bone-hand';
+import { boneArmsWanted, buildBoneArmParts, onBoneHandLoaded } from '../content/scanned-hand';
 import { FLOATING_HANDS, stripArmGeometry } from './floating-hands';
 import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
@@ -290,7 +290,7 @@ export function createWeaponViewmodel(
   // Josh's complaint was that a procedural forearm meeting a scanned hand is two vocabularies
   // colliding at the wrist, not that the arm moves wrong. The bones arrive asynchronously, so
   // the swap rides a load hook rather than construction order. Stripped in production.
-  if (import.meta.env.DEV && boneArmsWanted() && !FLOATING_HANDS) {
+  if (boneArmsWanted() && !FLOATING_HANDS) {
     onBoneHandLoaded(() => {
       const bones = buildBoneArmParts();
       if (!bones) return;
@@ -900,7 +900,7 @@ export function createWeaponViewmodel(
   // The bone hand arrives from a file, and composeHeldWeapon is synchronous — so the first
   // compose almost always gets the authored hand and never hears about the replacement. The arm
   // swap already rides this hook; the hand needs it too, or the flag is on and nothing changes.
-  if (import.meta.env.DEV && boneArmsWanted()) {
+  if (boneArmsWanted()) {
     onBoneHandLoaded(() => { mount(currentWeaponSpec); });
   }
 

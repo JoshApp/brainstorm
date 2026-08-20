@@ -27,8 +27,8 @@ import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-po
 import { getLampRingAnchorWorldPosition } from './handheld-lamp';
 import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-frame';
 import { mergeRigidViewmodel } from './viewmodel-merge';
-import { boneArmsWanted, buildBoneHand, onBoneHandLoaded } from '../debug/bone-hand';
-import { bailBarRadius } from '../debug/bone-lantern';
+import { boneArmsWanted, buildBoneHand, onBoneHandLoaded } from '../content/scanned-hand';
+import { bailBarRadius } from '../content/scanned-lantern';
 import { solveGrip } from '../anim/grip-solver';
 import { HOOK_GRIP } from '../content/grip-pose';
 import { HandRig, type HandRest } from './hand-rig';
@@ -107,12 +107,12 @@ export function attachLampHand(cam: THREE.Camera): void {
   install();
   // The scanned hand arrives asynchronously and this function never runs again, so the swap has
   // to ride the load hook or the flag silently does nothing here.
-  if (import.meta.env.DEV && boneArmsWanted()) onBoneHandLoaded(install);
+  if (boneArmsWanted()) onBoneHandLoaded(install);
 }
 
 function install(): void {
   if (!rig) return;
-  const bone = import.meta.env.DEV && boneArmsWanted() ? buildBoneHand('left', HAND_LEFT_LANTERN) : null;
+  const bone = boneArmsWanted() ? buildBoneHand('left', HAND_LEFT_LANTERN) : null;
   const hand: BuiltModel = bone ?? buildModel(HAND_LEFT_LANTERN);
   rig.setHand(hand, LAMP_REST);
 

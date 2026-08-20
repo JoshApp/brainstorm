@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setMaterialRoomTopDarkWebGPU } from './banded-lighting-webgpu';
 import { CONFIG } from '../config';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
@@ -271,6 +272,12 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.14,
   });
   installNamedSurfaceDetail(propStone, 'grain');   // columns: faint grain only
+
+  // The dark under a room's ceiling reads `aRoomY`, which only shell geometry carries. Installed
+  // on exactly the two materials the level builders tag, so no other material asks for an
+  // attribute it will never have — see setMaterialRoomTopDarkWebGPU.
+  setMaterialRoomTopDarkWebGPU(wallBase);
+  setMaterialRoomTopDarkWebGPU(ceilingBase);
 
   return {
     wall: wallBase,

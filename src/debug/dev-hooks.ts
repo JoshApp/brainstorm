@@ -9,7 +9,7 @@ import { interpSync } from '../engine/render-interp';
 import { initNavOverlay, setNavOverlay } from './nav-overlay';
 import { initCullMap, setCullMap } from './cull-map';
 import { mountBoneView, boneViewWanted, boneArmsWanted, preloadBoneHand }
-  from './bone-hand';
+  from '../content/scanned-hand';
 import { mountGripBench, gripBenchWanted } from './grip-bench';
 import { runOriginProbe, originProbeWanted } from './origin-probe';
 import { stampSplat, stampSpray, emitGoreSplash } from '../scene/splat-map';
