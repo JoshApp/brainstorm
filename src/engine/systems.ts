@@ -42,6 +42,7 @@ import { tickDarkAdaptation, darkAdaptBrightness, sampleLitSignal } from '../sce
 import { updateDarkAdaptReadout } from '../debug/dark-adapt-readout';
 import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
+import { tickEnemyReveal } from '../mobs/enemy-reveal';
 import { tickThresholdVeils } from '../scene/threshold-veil';
 import { tickSignalOcclusion } from '../scene/signal-layer';
 import { flushEncodeBreakdown } from '../debug/encode-breakdown';
@@ -505,6 +506,15 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // The flask button's drink-progress ring — early-outs to one boolean when
     // no drink is in flight.
     { name: 'flask-hud', phase: 'always', tick() { tickFlaskDrinkUi(); } },
+
+    // How much of each creature the light has resolved — a silhouette with burning eyes at 0,
+    // itself at 1 (mobs/enemy-reveal.ts). PRESENT, not sim: it changes nothing about the fight,
+    // only what you can see of it, so it must keep easing while the game is paused mid-reveal
+    // rather than freezing a creature half-emerged.
+    { name: 'enemy-reveal', kind: 'present', phase: 'always', tick(ctx) {
+      const level = getLevel();
+      if (level) tickEnemyReveal(level.enemies, ctx.realDt);
+    } },
 
     // Enemy sleep: skip update() for enemies far from the player — they can't
     // influence gameplay outside perception range. Threshold 25m, past the

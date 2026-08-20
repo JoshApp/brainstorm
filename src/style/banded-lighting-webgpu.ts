@@ -36,6 +36,7 @@ import { applyGoreWebGPU } from '../scene/gore-webgpu';
 //             a MOVING lamp crawls. This is the knob for that trade, and it is
 //             a trade rather than a bug to fix.
 import { tuneUniform } from '../debug/tuning';
+import { objectScalar } from './object-scalar';
 import { ROOM_Y_ATTR } from '../scene/room-height';
 
 const uBands = tuneUniform({
@@ -303,7 +304,34 @@ function roomTopTransmission(): any {
   return (span.greaterThan(0.01) as any).select(eaten.oneMinus(), (float as any)(1));
 }
 
+// -- STATES OF REVEAL: A CREATURE EMERGING FROM THE DARK ----------------------
+//
+// Josh: *"if its not culled it is kinda drawn and then states of reveal ... eyes only and then
+// veiled silhouette and glowing parts."*
+//
+// A creature is drawn whenever its room is drawn, and how much of it you can SEE is a number
+// rather than a visibility flag. `reveal` runs 0 to 1 on the object (mobs/enemy-reveal.ts writes
+// it from how lit the creature actually is), and this scales the LIT contribution by it.
+//
+// WHY THAT GIVES "SILHOUETTE PLUS GLOWING PARTS" FOR FREE. Three adds a material's EMISSIVE after
+// the lighting model has produced `outgoingLight`, so emissive is not part of what this scales.
+// At reveal 0 the flesh, hide and steel go to black while anything authored emissive stays at
+// full strength — which is exactly the read being asked for: eyes, a rune, a seam of heat, a
+// glint on bone, hanging in a shape you cannot resolve. The eye halos are separate additive
+// sprites in the signal layer and were never touched by this at all.
+//
+// AND IT CANNOT POP. The old behaviour was a boolean: a mob crossed into a drawn rect and arrived
+// at full material in one frame. A number can be eased, so walking into lamplight FADES a
+// creature up out of its own silhouette. The reveal IS the animation.
+//
+// Fallback 1, deliberately. This node goes on materials other things share, and a mesh nobody has
+// driven yet must render exactly as it did before — a fallback of 0 would turn every un-driven
+// creature into a black hole on its first frame.
+const creatureReveal = objectScalar('reveal', 1);
+
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
+  /** Scale the lit result by the object's `reveal` (creatures only). */
+  veiled = false;
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
   // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
   // chromaNode (optional TSL node) is a PER-FRAGMENT chroma — used to amplify the
@@ -441,6 +469,9 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
     // count 0). See scene/gore-webgpu.ts.
     out = applyGoreWebGPU(out);
+    // The creature's own reveal, on the LIT total only - three adds emissive after this,
+    // so a veiled creature keeps its eyes and glowing parts while its body goes to nothing.
+    if (this.veiled) out = out.mul(creatureReveal);
     // ── AND THE TOP OF THE ROOM TAKES WHAT IS LEFT ────────────────────────
     // Last, and on the TOTAL — direct, ambient, specular, rim and all. Per light was an earlier
     // version's mistake: a small room's ceiling is lit mostly by the AMBIENT term, which a
@@ -555,6 +586,27 @@ export function setMaterialStoneLightingWebGPU(
 /** Restore the stock (un-banded) lighting model on a material — used for the
  *  close-up viewmodel, where cel-banding a flickering lamp-lit arm reads as
  *  flicker. Smooth lighting there is steadier and barely distinguishable. */
+/**
+ * Put a material on the reveal path - its lit contribution is scaled by the object's `reveal`.
+ *
+ * For CREATURES. Stone does not want it: a wall has no state of being noticed, and giving every
+ * material an extra per-object uniform read would be a cost paid by the whole dungeon for a
+ * property only living things have.
+ */
+export function setMaterialCreatureRevealWebGPU(mat: any): void {
+  const prev = mat.setupLightingModel;
+  mat.setupLightingModel = (...args: unknown[]) => {
+    const model = typeof prev === 'function'
+      ? prev.apply(mat, args)
+      : new BandedPhysicalLightingModel(1, null, 0);
+    // Wrapped rather than replaced: a creature material may ALREADY carry a chroma or a
+    // dark-reactive rim from its spec (content/enemies.ts authors both), and rebuilding the model
+    // here would silently drop whichever the species had chosen.
+    if (model instanceof BandedPhysicalLightingModel) model.veiled = true;
+    return model;
+  };
+}
+
 export function unbandMaterialWebGPU(mat: any): void {
   if (origSetupLightingModel) mat.setupLightingModel = origSetupLightingModel;
 }

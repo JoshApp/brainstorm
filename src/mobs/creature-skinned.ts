@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Creature } from '../content/creature-types';
 import { setRevealAttributes } from '../ecs/build-model';
+import { setMaterialCreatureRevealWebGPU } from '../style/banded-lighting-webgpu';
 
 // ── Creature Render V2 — rigid-skinned creature (M1) ─────────────────────────
 //
@@ -135,6 +136,15 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     const arr = byMat.get(mat);
     if (arr) arr.push(g); else byMat.set(mat, [g]);
   }
+
+  // ── EVERY CREATURE MATERIAL IS ON THE REVEAL PATH ────────────────────────
+  //
+  // Its lit contribution is scaled by the object's `reveal` (mobs/enemy-reveal.ts writes it, the
+  // lighting model reads it per object). Installed HERE, at the one place a creature's materials
+  // are collected, so a new species cannot be authored that quietly misses it — a mob that always
+  // rendered at full material in a dark room would look like a bug in the effect rather than a
+  // missing call, which is the kind of gap that survives for months.
+  for (const mat of byMat.keys()) setMaterialCreatureRevealWebGPU(mat);
 
   const materials: THREE.Material[] = [];
   const perMat: THREE.BufferGeometry[] = [];

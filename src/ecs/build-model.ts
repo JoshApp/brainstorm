@@ -7,6 +7,7 @@ import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, V
 import { shadowFlags } from '../scene/shadow-role';
 import { createBatchedSprite, isSpriteBatchingEnabled } from '../scene/sprite-batch';
 import { markAsSignal } from '../scene/signal-layer';
+import { objectScalar } from '../style/object-scalar';
 import { createBatchedFlameMesh, isFlameMeshBatchingEnabled } from '../scene/flame-mesh-batch';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
@@ -501,25 +502,6 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
 // per-instance to corrupt. The canonical three.webgpu pattern (official
 // webgpu_instance_uniform example). Drive it by setting `mesh.userData[key]`.
 // (WebGL is unaffected — it uses the onBeforeCompile uDissolve path, not this.)
-/* eslint-disable @typescript-eslint/no-explicit-any */
-class ObjectUniformScalar extends (TSLNode as any) {
-  key: string;
-  uniformNode: any;
-  constructor(key: string, init = 0) {
-    super('float');
-    this.key = key;
-    this.uniformNode = (tslUniform as any)(init);
-    this.updateType = (NodeUpdateType as any).OBJECT;
-  }
-  update(frame: any): void {
-    const v = frame.object?.userData?.[this.key];
-    this.uniformNode.value = typeof v === 'number' ? v : 0;
-  }
-  setup(): any { return this.uniformNode; }
-}
-/** Per-object scalar TSL node bound to `mesh.userData[key]` (default 0). */
-function objectScalar(key: string): any { return (nodeObject as any)(new ObjectUniformScalar(key)); }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** WEBGPU rim reveal — additive fresnel emissive ("forms emerge from black").
  *  The GLSL seam's rim was darkness-reactive (brighter where scene light isn't);
