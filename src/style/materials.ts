@@ -13,6 +13,8 @@ import type { DelveRenderer } from '../scene/create-renderer';
 export interface StyleMaterials {
   wall: THREE.Material;
   floor: THREE.Material;
+  /** Stair treads + risers — the floor look on a wall projection. See above. */
+  stair: THREE.Material;
   ceiling: THREE.Material;
   /** Aged dark timber — mine-shaft bracing + plank doors. */
   timber: THREE.Material;
@@ -186,6 +188,33 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     role: 'floor',
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [0.90, 0.97, 1.12], relief: 0.32,
   });
+  // ── STAIRS PROJECT LIKE A WALL, NOT LIKE A FLOOR ─────────────────────────
+  //
+  // Josh: *"can we make the stone texture read better on stairs like basically not just stretched
+  // vertically."*
+  //
+  // The cause is the projection, not the texture. Stone is sampled in WORLD space, and the floor
+  // uses `horiz` — the XZ plane. That is right for a floor and degenerate on a stair RISER: a
+  // riser is vertical, so climbing it changes neither X nor Z, the sampled coordinate does not
+  // move, and the last row of pixels before the edge is smeared the whole height of the step.
+  // Stretched vertically is the exact signature of an XZ projection meeting a vertical face.
+  //
+  // `wall` is not a different look, it is a SUPERSET: it picks the world plane each face is most
+  // parallel to, so a riser gets a wall layout and a tread — being up-facing — takes the same
+  // ground-plane branch the floor projection would have given it. Treads keep the floor's look;
+  // risers stop smearing.
+  //
+  // A separate material rather than switching the floor's own projection, which would re-phase
+  // every floor in the game to fix the one surface that is broken. It costs one pipeline, on
+  // floors that actually have a stair run.
+  const stairBase = floorBase.clone();
+  installSurfaceDetail(stairBase, {
+    splat: true, seamShadow: true, seamGlowScale: 0.35,
+    tex: bakeSurfaceTexture(renderer, 'floor'),
+    role: 'floor',
+    tile: SURFACE_TILE.floor, proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.32,
+  });
+
   installSurfaceDetail(ceilingBase, {
     seamShadow: true,   // panel/beam SHADOW for depth — no coloured glow (that looked weird up there)
     tex: bakeSurfaceTexture(renderer, 'ceiling'),
@@ -282,6 +311,7 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   return {
     wall: wallBase,
     floor: floorBase,
+    stair: stairBase,
     ceiling: ceilingBase,
     timber: timberBase,
     stone: propStone,

@@ -317,7 +317,10 @@ function buildRoomShell(
       toWorld: (sx, sy) => [PX + sx, PZ - sy],
     });
   }
-  const floor = new THREE.Mesh(floorGeo, materials.floor);
+  // A stair run is boxes, and a box has vertical faces — which the floor's XZ projection cannot
+  // describe (see materials.ts, the stair material). Only the SLOPED case: a flat floor has no
+  // risers and wants the floor material it has always had.
+  const floor = new THREE.Mesh(floorGeo, sloped ? materials.stair : materials.floor);
   if (!sloped) {
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(PX, elev, PZ);

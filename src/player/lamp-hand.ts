@@ -176,7 +176,17 @@ export function setLampHandVisible(on: boolean): void {
   handVisible = on;
   rig?.setHandVisible(on);
 }
-let handVisible = true;
+// ── HIDDEN BY DEFAULT ───────────────────────────────────────────────────────
+//
+// Josh: *"can you disable the left hand in production by default."* The View knob's default was
+// already 0, but a knob default is not a production default — debug/tuning.ts and the panel that
+// reapplies its values are DEV-gated, so in a built game nothing would ever have called this and
+// every player would have seen a hand the developer had switched off. The default lives here, on
+// the state itself, and the knob moves it.
+//
+// The lantern is unaffected either way: it belongs to handheld-lamp.ts and the hand merely
+// follows it to the bail, so with no hand the light simply hangs there, carried by nothing.
+let handVisible = false;
 
 export function tickLampHand(dt: number): void {
   if (!rig) return;
