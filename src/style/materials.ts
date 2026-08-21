@@ -146,6 +146,11 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // Shared with the STAIR material below, which is the floor's own stone on a wall
   // projection — baking it twice would be two identical textures and two uploads.
   const floorTex = bakeSurfaceTexture(renderer, 'floor');
+  // ── THE STAIR TILE IS DERIVED FROM THE RISER ──────────────────────────────
+  // A stone has to be shorter than the face it sits on or that face can never show a horizontal
+  // seam. The baked floor texture is a 5x5 grid of flagstone cells per tile, so cell = tile / 5;
+  // solving for a cell at 0.7 of a riser gives the tile below. See the stair material.
+  const STAIR_TILE = CONFIG.STAIR_RISER_M * 0.7 * 5;
   const wallCfg = {
     splat: true,
     brickDamage: true, grooveFill: true, seamGlow: true,
@@ -254,19 +259,25 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // flight reads as 3D, and a step is the one place the eye gets an unambiguous silhouette to
     // check the relief against — it can afford to be stronger here than on a flat surface where
     // it would only look noisy.
-    // ── SIZED TO THE RISER, NOT TO THE FLIGHT ──────────────────────────────
+    // ── SMALL ENOUGH THAT A STONE FITS INSIDE A RISER ──────────────────────
     //
-    // Josh: *"it continues the seam but it is not like the nice rounded stones."* Scale again, and
-    // in the other direction this time. A riser is 0.22m tall (STEP_HEIGHT) and a step's tread is
-    // 0.32m deep, so at ~0.38m stones a riser was showing the MIDDLE of one flag — and the middle
-    // of a flag is flat by design. All the rounding a stone has lives at its edges, and there was
-    // no edge crossing that face.
+    // Josh, four passes in: *"the vertical side still reads flat ... corridor stairs."* Everything
+    // upstream was right — the projection is the wall branch (measured: 67% of a run's vertices
+    // are side-facing, scripts/stair-normals.ts), sV is world Y, the slabs are tinted. The fault
+    // was arithmetic and it had been there the whole time.
     //
-    // The stones have to be smaller than the step for a step to look like stones. At this tile
-    // they are ~0.21m, so a riser carries roughly one whole stone with its edges at top and
-    // bottom, and a tread carries a couple. That reads as a cobbled stair, which is what a
-    // dungeon stair is, rather than as a flagstone floor bent upward.
-    tile: [1.05, 1.05], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.50,
+    // A corridor riser is CONFIG.STAIR_RISER_M = 0.18m tall. The stones were 0.21m. A stone
+    // cannot FIT inside the face, so the riser showed only the vertical seams between
+    // horizontally-adjacent stones and never a horizontal one — vertical streaks running the
+    // whole height, which is exactly what the screenshots showed from the first attempt onward.
+    // No amount of projection or tint work can put an edge on a face too small to contain one.
+    //
+    // So the cell size is DERIVED from the riser rather than picked: at 0.7 of a riser, every
+    // riser is crossed by at least one horizontal seam, and a stone's top and bottom edges are
+    // both on the face where the light can find them. Tying the two together also means a change
+    // to the stair geometry cannot silently re-open this — the numbers move together or not at
+    // all.
+    tile: [STAIR_TILE, STAIR_TILE], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.50,
   });
 
   installSurfaceDetail(ceilingBase, {
