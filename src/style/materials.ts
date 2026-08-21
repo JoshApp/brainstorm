@@ -254,11 +254,19 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // flight reads as 3D, and a step is the one place the eye gets an unambiguous silhouette to
     // check the relief against — it can afford to be stronger here than on a flat surface where
     // it would only look noisy.
-    // Roughly a third of floor scale. Floor flags are ~1.05m, which showed a third of one stone
-    // on a quarter-metre riser; at this tile they are ~0.38m, so a riser carries most of a whole
-    // flag and a tread carries several. Small enough to read as stone, large enough to still be
-    // the floor's stone rather than gravel.
-    tile: [1.90, 1.90], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.42,
+    // ── SIZED TO THE RISER, NOT TO THE FLIGHT ──────────────────────────────
+    //
+    // Josh: *"it continues the seam but it is not like the nice rounded stones."* Scale again, and
+    // in the other direction this time. A riser is 0.22m tall (STEP_HEIGHT) and a step's tread is
+    // 0.32m deep, so at ~0.38m stones a riser was showing the MIDDLE of one flag — and the middle
+    // of a flag is flat by design. All the rounding a stone has lives at its edges, and there was
+    // no edge crossing that face.
+    //
+    // The stones have to be smaller than the step for a step to look like stones. At this tile
+    // they are ~0.21m, so a riser carries roughly one whole stone with its edges at top and
+    // bottom, and a tread carries a couple. That reads as a cobbled stair, which is what a
+    // dungeon stair is, rather than as a flagstone floor bent upward.
+    tile: [1.05, 1.05], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.50,
   });
 
   installSurfaceDetail(ceilingBase, {
