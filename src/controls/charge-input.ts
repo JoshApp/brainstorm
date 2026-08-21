@@ -163,8 +163,32 @@ export function isChargePerfectWindow(): boolean {
  */
 export function releaseChargeIntoDash(): boolean {
   const fired = tryReleaseChargedAttack();
+  if (fired) dashSpentSwing = true;
   suppressed = true;
   return fired;
+}
+
+// ── THE FINGER IS STILL DOWN AFTER A DASH ATTACK ────────────────────────────
+//
+// Josh: *"when dash attacking it always does a second attack right after can you fix that its
+// probably because i release the attack."* Exactly that.
+//
+// A dash out of a held heavy swings AT THE DASH — the button is still held at that moment, and
+// the player then lets go. Every release path fires a swing on the way out, deliberately: a hold
+// that never reached the charge ramp still has to produce a plain attack, or the button would
+// silently do nothing. So the release fired a second blade after the dash had already fired the
+// first.
+//
+// This latches the fact that the press was ALREADY SPENT, and the release paths consume it and
+// stay quiet. One press, one swing — which is the rule everywhere else and the one that broke
+// here only because a press can now be cashed in by something other than its own release.
+let dashSpentSwing = false;
+
+/** Was this press already swung by a dash? Consumed once, by whichever release path runs. */
+export function consumeDashSpentSwing(): boolean {
+  const v = dashSpentSwing;
+  dashSpentSwing = false;
+  return v;
 }
 
 export function suppressChargeUntilRelease(): void {
@@ -205,7 +229,8 @@ export function tryReleaseChargedAttack(): boolean {
  *  the tap-movement threshold, screen rotation, etc). Clears progress
  *  WITHOUT firing. */
 export function cancelCharge(): void {
-  refundReserved();   // backed out — give the locked stamina back, free
+  refundReserved();
+  dashSpentSwing = false;   // backed out — give the locked stamina back, free
   liveProgress = 0;
   poured = 0;
   wasFull = false;

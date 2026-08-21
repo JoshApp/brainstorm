@@ -27,6 +27,7 @@ import {
   setChargeFromHeldMs,
   setChargePosition,
   tryReleaseChargedAttack,
+  consumeDashSpentSwing,
   cancelCharge,
 } from './charge-input';
 import { wantsHoldToCharge } from '../player/current-weapon';
@@ -197,8 +198,11 @@ export const desktopScheme: InputScheme = {
       // plain swing if it never reached the ramp).
       if (keyChargeDown && actionForCode(e.code) === 'attack') {
         keyChargeDown = false;
+        // A dash may already have cashed this press in as a dash attack — see
+        // consumeDashSpentSwing. Releasing then would swing a second time.
+        const alreadySwung = consumeDashSpentSwing();
         tryReleaseChargedAttack();
-        triggerAttack();
+        if (!alreadySwung) triggerAttack();
         cancelCharge();
       }
     });
@@ -274,8 +278,9 @@ export const desktopScheme: InputScheme = {
       // charge — fire either way so a hold that never reached the ramp
       // still swings. (A non-eligible long hold does nothing, as before.)
       if (wasChargeHold) {
+        const alreadySwung = consumeDashSpentSwing();
         tryReleaseChargedAttack();
-        triggerAttack();
+        if (!alreadySwung) triggerAttack();
       }
       cancelCharge();
     });

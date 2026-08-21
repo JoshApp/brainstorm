@@ -12,7 +12,7 @@ import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
 import { triggerDash } from './dash-input';
-import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge, setChargePosition } from './charge-input';
+import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge, setChargePosition, consumeDashSpentSwing } from './charge-input';
 import { getSettings } from '../settings/settings';
 import { wantsHoldToCharge } from '../player/current-weapon';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
@@ -237,8 +237,11 @@ export const touchScheme: InputScheme = {
           // commit (the player was aiming) — that's fine, the charge
           // is still in flight. tryReleaseChargedAttack queues the
           // attack with the captured progress level.
+          // Consumed even though the touch path already gates on `fired` — the latch must not
+          // survive this press and arm the next one.
+          const alreadySwung = consumeDashSpentSwing();
           const fired = tryReleaseChargedAttack();
-          if (fired) triggerAttack();
+          if (fired && !alreadySwung) triggerAttack();
         }
         // Any touch that ended without firing a charge release leaves
         // the visible ring at zero — cancelCharge is idempotent.
