@@ -1,5 +1,6 @@
 import type { DelveRenderer } from '../scene/create-renderer';
 import { isWarmingUp } from '../style/render-webgpu';
+import { warmLockHolder } from '../content/warm-lock';
 
 // ── PIPELINE CENSUS — warm coverage, measured ────────────────────────────────
 //
@@ -89,7 +90,12 @@ export function diffState(live: DecodedKey, warm: DecodedKey): string[] {
     const f = KEY_FIELDS[i];
     if (live.state[f] !== warm.state[f]) out.push(`${f} ${warm.state[f] || '∅'}→${live.state[f] || '∅'}`);
   }
-  if (live.tail !== warm.tail) out.push('geometry/clipping layout differs');
+  // The tail is the geometry cache key (attribute names/strides, then bone
+  // count) FOLLOWED BY the clipping key — two very different fixes. Saying only
+  // "layout differs" left ~73 of 117 in-play compiles pointing at a sentence
+  // instead of a cause, so print both sides and let the reader see which half
+  // moved: an attribute name, the trailing bone count, or the clipping digits.
+  if (live.tail !== warm.tail) out.push(`layout ${warm.tail || '∅'} → ${live.tail || '∅'}`);
   return out;
 }
 
@@ -115,6 +121,12 @@ export interface CensusEntry {
   count: number;
   verdict: Verdict;
   detail: string;
+  /** Size of the warm set when this row's FIRST compile was classified. Only set
+   *  for `inPlayGaps` (the resident `gaps` diff runs once, at the end). Well
+   *  below the final `warmed` means the verdict was taken against an unfinished
+   *  warm — read the row as "compiled before the warm reached it", not as a
+   *  coverage gap. */
+  warmedAt?: number;
 }
 
 export interface PipelineCensus {
@@ -167,12 +179,29 @@ export function classifyKey(
         + `(${d.vertexStage}/${d.fragmentStage}; warm had ${ids}) — the WGSL is being re-minted, not the state`,
     };
   }
-  // Nearest warmed key = fewest differing state fields, tail-match preferred.
+  // Nearest warmed key: a TAIL MATCH WINS FIRST, then fewest differing state
+  // fields. The comment here has always claimed "tail-match preferred" and the
+  // code never did it — a tail mismatch counted as exactly one diff, the same
+  // weight as a single state field, so a warm key differing only in `side` beat
+  // one with the IDENTICAL geometry layout differing in two state fields. The
+  // report then read "layout … → …" for ~73 of 117 in-play compiles and sent
+  // the reader after the dummies' vertex layouts, when for most of them a warm
+  // subject with exactly that layout existed and something else was off.
+  //
+  // Geometry layout is the coarser axis — if any warm key shares it, that is the
+  // comparison worth showing, because the remaining difference is then the whole
+  // finding.
   let best: DecodedKey | null = null;
   let bestDiff: string[] = [];
+  let bestTailMatch = false;
   for (const w of warm) {
+    const tailMatch = w.tail === d.tail;
+    if (best && bestTailMatch && !tailMatch) continue;      // never regress to a worse layout
     const diff = diffState(d, w);
-    if (!best || diff.length < bestDiff.length) { best = w; bestDiff = diff; }
+    const better = !best
+      || (tailMatch && !bestTailMatch)                      // layout match trumps a shorter diff
+      || (tailMatch === bestTailMatch && diff.length < bestDiff.length);
+    if (better) { best = w; bestDiff = diff; bestTailMatch = tailMatch; }
   }
   if (!best || bestDiff.length > 6) {
     return { verdict: 'NOT-WARMED', detail: 'no warmed pipeline resembles this one' };
@@ -207,12 +236,21 @@ let censusRenderer: DelveRenderer | null = null;
  *  the END of each warm pass — boot warm, roster warm, per-descent scene
  *  compile, prepare pass. Idempotent and additive: warms run at several points
  *  and the union of them is what "the warm produced" means. */
-export function absorbWarmPipelines(r: DelveRenderer): void {
+export function absorbWarmPipelines(r: DelveRenderer, opts?: { seal?: boolean }): void {
   const caches = pipelineCacheOf(r);
   if (!caches) return;
   for (const k of caches.keys()) warmKeys.add(k);
   warmDecodedCache = null;   // the warm set grew — the memoised decode is stale
-  sealed = true;
+  // SEALING IS WHAT STARTS THE CLOCK on in-play counting, so it must not happen
+  // until a warm that represents THE GAME has finished. The title vignette's
+  // prewarm is a `warmSceneCompile` over a bonfire and some props — 28 keys —
+  // and sealing there made every later compile "in-play", including the entire
+  // roster warm. Measured 2026-08-21: 85 counted compiles, EVERY ONE of them
+  // classified against those 28 keys, against a warm set that ends at 195. The
+  // number was never a count of compiles during play, and the verdicts attached
+  // to it were comparisons with a warm that had not run yet.
+  // The title passes seal:false; the floor chain seals.
+  if (opts?.seal !== false) sealed = true;
   censusRenderer = r;
 }
 
@@ -266,7 +304,23 @@ export function notePipelineCompile(key: string, name: string): boolean {
   // filled with the warm's own pipelines); one instrument repeating another's
   // bug is how a measurement becomes folklore. The next absorb folds these into
   // the warm set anyway.
-  if (isWarmingUp()) return false;
+  // `isWarmingUp()` is true only while a warm RENDER is being driven — not
+  // across the whole warm chain. A chain also runs `warmSceneCompile`
+  // (compileAsync, no render), the roster build, and the prepare pass, and every
+  // pipeline compiled in those windows was landing in `inPlaySeen` and being
+  // classified against whatever the warm set happened to be BEFORE this chain's
+  // absorb — the title vignette's ~28 keys.
+  //
+  // That is what made the report say "geometry layout differs" for the creature
+  // bodies: the roster warm's own skinned dummies compiled, got counted as
+  // in-play, and were compared against a warm set that did not contain a single
+  // skinned key yet. `window.__warmKeys()` settles it — the warm set ends the
+  // chain holding all 35 keys with exactly that layout, so the coverage was
+  // never missing.
+  //
+  // The unit of "a warm is happening" is the CHAIN, which is precisely what the
+  // warm lock holds (content/warm-lock.ts). Gate on it.
+  if (isWarmingUp() || warmLockHolder() !== null) return false;
   inPlaySeen++;
   inPlaySeenNames.set(name, (inPlaySeenNames.get(name) ?? 0) + 1);
   // O(warm set) per in-play compile — a few hundred string compares, only on the
@@ -277,7 +331,12 @@ export function notePipelineCompile(key: string, name: string): boolean {
   const { verdict, detail } = classifyKey(key, warmList, warmDecodedCache);
   const g = inPlayVerdicts.get(`${name}|${verdict}`);
   if (g) g.count++;
-  else inPlayVerdicts.set(`${name}|${verdict}`, { name, count: 1, verdict, detail });
+  // `warmedAt` — how big the warm set was when this compile happened. A verdict
+  // is only ever as good as the set it was compared against, and a row whose
+  // warmedAt is far below the final `warmed` was judged against a warm that had
+  // not finished. That is the difference between "the warm missed this" and
+  // "this compiled before the warm got to it", which are opposite fixes.
+  else inPlayVerdicts.set(`${name}|${verdict}`, { name, count: 1, verdict, detail, warmedAt: warmKeys.size });
   return true;
 }
 
@@ -325,5 +384,14 @@ export function takePipelineCensus(r: DelveRenderer): PipelineCensus | null {
  *  not only inside a recording. Prod-safe (read-only diagnostics). */
 export function installPipelineCensusHook(r: DelveRenderer): void {
   if (typeof window === 'undefined') return;
-  (window as unknown as { __pipelineCensus?: () => unknown }).__pipelineCensus = () => takePipelineCensus(r);
+  const w = window as unknown as {
+    __pipelineCensus?: () => unknown;
+    __warmKeys?: () => { warmed: number; keys: string[] };
+  };
+  w.__pipelineCensus = () => takePipelineCensus(r);
+  // The warm set itself. `gaps`/`inPlayGaps` summarise it; answering "did the
+  // warm ever produce THIS geometry layout / render state?" needs the raw set,
+  // and inferring it from the resident cache cannot distinguish a warm pipeline
+  // from an in-play one.
+  w.__warmKeys = () => ({ warmed: warmKeys.size, keys: [...warmKeys] });
 }

@@ -139,6 +139,56 @@ WebGPU-only: it can only be measured on a real device, and a number that never
 reaches the phone is not a measurement. `window.__pipelineCensus()` gives the same
 thing live.
 
+### `inPlaySeen` was never counting play (fixed 2026-08-21)
+
+The number that drove this whole subsystem's recent history — 80, then 215, then
+203, then 131 "in-play compiles" — was measuring the wrong window, and every
+verdict attached to it was a comparison against a warm that had not run.
+
+Three faults compounded:
+
+1. **Sealed at the title.** `absorbWarmPipelines` set `sealed` — which starts the
+   in-play clock — at the *title vignette's* prewarm, a `warmSceneCompile` over a
+   bonfire and some props. **28 keys.** Every pipeline the descent's ROSTER warm
+   then compiled was counted as in-play and judged against those 28. The title
+   now passes `{ seal: false }`; the floor chain seals.
+2. **`isWarmingUp()` is not "a warm is happening".** It is true only while a warm
+   RENDER is being driven. A warm CHAIN also runs `warmSceneCompile`
+   (compileAsync, no render), the roster build and the prepare pass. The unit of
+   exclusion is the chain, which is exactly what `warm-lock.ts` holds — so the
+   gate is `isWarmingUp() || warmLockHolder() !== null`.
+3. **The nearest-warm-key search ignored geometry.** `classifyKey`'s comment said
+   "tail-match preferred" and the code counted a tail mismatch as one diff, the
+   same weight as one state field — so a warm key differing only in `side` beat
+   one with the identical geometry layout differing in two state fields. The
+   report then blamed vertex layouts for what were state gaps.
+
+Together those turned 0 into 131 and pointed the fix at the warm dummies, whose
+layouts turned out to be exactly right (`window.__warmKeys()` shows the warm set
+ending with all 35 keys carrying the creature body's precise layout).
+
+**What it actually reads now**, same route, same build:
+
+| | compiles |
+| --- | --- |
+| Steady play on a warmed floor | **0** |
+| A descent to a new floor | **13**, all `PROGRAM-CHURN` |
+
+Zero coverage gaps. The residual is WGSL being re-minted for render state and
+geometry layout that WERE warmed — which no amount of warming can fix; it is
+material-instance sharing and retention (see PROGRAM-CHURN in the verdict table).
+
+Two instrument rules came out of it, and they are the reusable part:
+
+- **A verdict is only as good as the set it was compared against.** Each
+  `inPlayGaps` row now carries `warmedAt`, the size of the warm set at the moment
+  it was classified. A row far below the final `warmed` was judged against an
+  unfinished warm — read it as "compiled before the warm reached it", not as a
+  coverage gap. Every one of the 131 read `warmedAt: 28` against a final 195.
+- **Print both sides of a difference.** "geometry/clipping layout differs" is not
+  a finding; the tail is the geometry key AND the clipping key, and which half
+  moved decides the fix.
+
 ### Every pipeline has a name (`scene/material-attribution.ts`)
 
 The census attributes a compile by reading the shader program's name, which three

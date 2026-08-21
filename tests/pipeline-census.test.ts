@@ -103,7 +103,9 @@ test('names the differing field and its direction', () => {
 test('reports a geometry-layout difference separately from state', () => {
   const live = decodePipelineKey(key({}, 'position,3,skinIndex,4'));
   const warm = decodePipelineKey(key({}, 'position,3'));
-  assert.deepEqual(diffState(live, warm), ['geometry/clipping layout differs']);
+  // Both sides are printed: the tail is the geometry key AND the clipping key,
+  // and which half moved decides the fix.
+  assert.deepEqual(diffState(live, warm), ['layout position,3 → position,3,skinIndex,4']);
 });
 
 test('is empty for keys differing only by program id', () => {
@@ -154,6 +156,20 @@ test('prefers the nearest warmed key when several are close', () => {
   const near = key({ side: '0' });
   const live = key({ side: '1', vertexStage: '80', fragmentStage: '81' });
   assert.equal(classifyKey(live, [far, near]).detail, 'side 0→1');
+});
+
+test('a matching geometry layout beats a shorter state diff', () => {
+  // sameLayout differs in TWO state fields but shares the live geometry layout;
+  // otherLayout differs in ONE. The old scoring counted the tail as a single
+  // diff and picked otherLayout, so the report blamed the vertex layout for
+  // what was really a state gap. The layout match has to win.
+  const layout = 'position,3,skinIndex,4';
+  const sameLayout = key({ side: '2', depthWrite: 'false' }, layout);
+  const otherLayout = key({ side: '1' }, 'position,3');
+  const live = key({ side: '1', vertexStage: '80', fragmentStage: '81' }, layout);
+  const detail = classifyKey(live, [otherLayout, sameLayout]).detail;
+  assert.equal(detail.includes('layout'), false);
+  assert.equal(detail, 'depthWrite false→true; side 2→1');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

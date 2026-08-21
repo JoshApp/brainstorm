@@ -622,7 +622,12 @@ initLevelLoader({
       prewarm = withWarmLock('title-vignette', async () => {
         await yieldToCover();
         try { await warmSceneCompile(renderer, scene, camera); } catch { /* best-effort */ }
-        absorbWarmPipelines(renderer as unknown as DelveRenderer);
+        // seal:false — the title's warm is a bonfire and some props (~28 keys),
+        // not the game's. Sealing here starts the census's in-play clock before
+        // the ROSTER has warmed, so every pipeline the descent warm compiles is
+        // counted as an in-play compile and judged against those 28 keys. The
+        // floor chain below seals. See debug/pipeline-census.ts.
+        absorbWarmPipelines(renderer as unknown as DelveRenderer, { seal: false });
         installPipelineCensusHook(renderer as unknown as DelveRenderer);
       });
     } else {
