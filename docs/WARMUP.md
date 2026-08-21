@@ -149,6 +149,58 @@ and `WebGPUBackend.getRenderCacheKey`). If a three upgrade reorders that array t
 labels silently start lying — `tests/pipeline-census.test.ts` decodes a key captured
 verbatim from a phone recording and is what catches it.
 
+## The duplicate-shader tax (fixed 2026-08-21) — read this before warming harder
+
+For most of this system's life, **~60% of every shader the game compiled was a
+byte-duplicate of one it had already compiled**, and no amount of warm coverage
+could have touched it.
+
+three r185 names a shader's uniform/storage buffer after a **global node
+counter** (`WGSLNodeBuilder.js:1326` → `NodeUniform.id` → `Node.id`), and that
+identifier is emitted into the WGSL:
+
+```
+struct NodeBuffer_583001Struct { value : array< mat4x4<f32>, 17 > }
+...  skinWeight.x * NodeBuffer_583001.value[ ... ]
+```
+
+three keys its `ProgrammableStage` cache on the shader SOURCE STRING, so two
+otherwise-identical shaders that differ in that one token become two programs,
+two pipeline keys, and two GPU compiles. `Skinning.js:138` builds its bone-matrix
+buffer node **per SkinnedMesh**, so — since Creature Render V2 — *every mob
+instance minted its own vertex shader at spawn*. Instanced-matrix buffers do the
+same per instanced group per floor.
+
+**This is why the warm could never reach zero.** The identifier does not exist
+until the object is constructed: the warm compiles instance A's shader and the
+live spawn is instance B. It is also why the census could read `gaps: []` while
+`inPlaySeen` sat near 200 — a later `absorbWarmPipelines` folds those in-play
+compiles into the warm set.
+
+`scene/stable-buffer-names.ts` names the buffer after its SHAPE
+(`NodeBuffer_mat4_17`) instead of its identity. Measured on `443dd437`, desktop
+Chrome, WebGPU, same route (title → CONTINUE → `__descend`), `?stablebuf=0` vs on:
+
+| | id names (upstream) | shape names |
+| --- | --- | --- |
+| Pipelines resident | 336 | **199** |
+| Distinct vertex programs | 253 | **104** |
+| Distinct fragment programs | 121 | 122 |
+| Duplicate vertex shaders | 149 | **0** |
+| `census.inPlaySeen` | 203 | **122** |
+
+Two things follow for anyone working on this system:
+
+- **The remaining `inPlaySeen` is now a real number.** Before, it was mostly
+  duplicate churn; the residual (~120, led by unnamed materials and
+  `modeldef:dis:rd+t`) is genuine warm coverage worth chasing.
+- **Material sharing (`stdMat`/`basicMat`) was never the lever for pipeline
+  count.** `shared:std` carried 22 byte-distinct vertex shaders at a single
+  source length while sharing one material instance. Re-measure before
+  extending that refactor; `docs/PIPELINE-BUDGET.md`'s "every material instance
+  becomes its own pipeline" premise is not what r185's code does — the material
+  cache key is structural and skips uuid (`RenderObject.js:735`).
+
 ## Known limits / future options
 
 - **First visit compiles ~all pipelines** (one-time, behind the loading screen). Repeat visits

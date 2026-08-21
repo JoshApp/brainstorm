@@ -5,6 +5,7 @@ import { isDesktopLike } from '../controls/platform';
 import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
+import { installStableBufferNames } from './stable-buffer-names';
 
 /** The one renderer DELVE runs on. WebGPURenderer auto-selects a WebGL2
  *  backend on devices without WebGPU — same node materials, one code path.
@@ -139,6 +140,13 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
         + '(clustered needs a compute pass this backend does not have)');
     }
   }
+
+  // r185 names each shader's uniform BUFFER after a global node counter, so two
+  // otherwise-identical shaders emit byte-different WGSL and compile as separate
+  // pipelines — every SkinnedMesh instance minting its own vertex shader at
+  // spawn. Must be installed BEFORE the first node build (i.e. before anything
+  // renders or compiles). See stable-buffer-names.ts.
+  installStableBufferNames(renderer);
 
   // r185 executes render bundles AFTER transparents (end of pass), letting
   // bundled opaque walls paint over additive flames — this reorders the flush
