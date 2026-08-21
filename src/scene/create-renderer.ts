@@ -6,6 +6,7 @@ import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
 import { installStableBufferNames } from './stable-buffer-names';
+import { installStaleVertexBufferFix } from './stale-vertex-buffers';
 
 /** The one renderer DELVE runs on. WebGPURenderer auto-selects a WebGL2
  *  backend on devices without WebGPU — same node materials, one code path.
@@ -147,6 +148,12 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // spawn. Must be installed BEFORE the first node build (i.e. before anything
   // renders or compiles). See stable-buffer-names.ts.
   installStableBufferNames(renderer);
+
+  // r185's RenderObject.setGeometry clears the attribute cache but not the
+  // vertex-buffer cache built from it, so an in-place geometry swap can draw the
+  // OLD buffer list against a pipeline built for the new layout. See
+  // stale-vertex-buffers.ts.
+  installStaleVertexBufferFix(renderer);
 
   // r185 executes render bundles AFTER transparents (end of pass), letting
   // bundled opaque walls paint over additive flames — this reorders the flush
