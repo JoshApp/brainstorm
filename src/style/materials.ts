@@ -143,6 +143,9 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // procedural a bit."* The generator survives as scripts/gen-surface-tex.ts if
   // it is ever wanted again; nothing in the runtime path depends on it now.)
   const wallTex = bakeSurfaceTexture(renderer, 'wall');
+  // Shared with the STAIR material below, which is the floor's own stone on a wall
+  // projection — baking it twice would be two identical textures and two uploads.
+  const floorTex = bakeSurfaceTexture(renderer, 'floor');
   const wallCfg = {
     splat: true,
     brickDamage: true, grooveFill: true, seamGlow: true,
@@ -169,7 +172,7 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // Floor: SHADOW only (subtle), no coloured glow — the glow on the ground was
     // too light/yellow and broke the grimdark. Just a quiet darken in the gaps.
     splat: true, seamShadow: true, seamGlowScale: 0.35,
-    tex: bakeSurfaceTexture(renderer, 'floor'),
+    tex: floorTex,
     // TINT WAS [1.08, 0.9, 0.64] — a hard amber multiply on the floor's albedo:
     // blue cut by 36%. THAT is why the floor and the wall read as the same
     // stone. Josh: *"the floor and wall look the exact same hue ... they have
@@ -229,13 +232,33 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // brickDamage + grooveFill come with it: chipped arrises and filled joints are most of what
     // sells cut stone at close range, and stairs are always seen close.
     splat: true, seamShadow: true, seamGlowScale: 0.35,
-    tex: wallTex, brickDamage: true, grooveFill: true,
+    // ── THE FLOOR'S OWN STONES, WRAPPING THE CORNER ────────────────────────
+    //
+    // Josh: *"can you make the same nice floor geometry on the floors vertical texture so its
+    // like these 3d stones going around the corner."*
+    //
+    // The first pass used the WALL's brick, and that was the mistake: a flight then spoke a
+    // different masonry language from the floor it starts and ends on, so the eye read a change of
+    // material at the top and bottom step instead of a continuous surface folding upward. Bricks
+    // are also the wrong idea for this — a stair is cut out of the same flags you are walking on,
+    // not bonded out of little blocks.
+    //
+    // So it is the FLOOR texture on both faces, and the corner-wrap follows for free from how the
+    // projection works. Both faces are projected in WORLD space, and along the shared edge — the
+    // nose — the tread's horizontal coordinate and the riser's horizontal coordinate are the SAME
+    // world axis. Same texture, same tile, same axis: a stone that ends at the nose on top starts
+    // at the nose on the face, and reads as one block turning the corner.
+    tex: floorTex,
     role: 'floor',
     // Deeper relief than either the floor (0.32) or the wall (0.30). The whole ask is that a
     // flight reads as 3D, and a step is the one place the eye gets an unambiguous silhouette to
     // check the relief against — it can afford to be stronger here than on a flat surface where
     // it would only look noisy.
-    tile: [1.75, 1.80], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.42,
+    // Roughly a third of floor scale. Floor flags are ~1.05m, which showed a third of one stone
+    // on a quarter-metre riser; at this tile they are ~0.38m, so a riser carries most of a whole
+    // flag and a tread carries several. Small enough to read as stone, large enough to still be
+    // the floor's stone rather than gravel.
+    tile: [1.90, 1.90], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.42,
   });
 
   installSurfaceDetail(ceilingBase, {

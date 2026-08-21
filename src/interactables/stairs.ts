@@ -122,16 +122,30 @@ export function spawnStairs(
   for (let i = 0; i < STEP_COUNT; i++) {
     const yTop = -TOP_RECESS - i * STEP_HEIGHT;
     const zFront = i * STEP_DEPTH;
+    // ── TREAD AND RISER ARE ONE STONE ──────────────────────────────────────
+    //
+    // Josh: *"can you make the same nice floor geometry on the floors vertical texture so its
+    // like these 3d stones going around the corner."*
+    //
+    // These two used to carry DIFFERENT materials — the tread the floor's flagstones, the riser
+    // the wall's bricks — so every nose was a joint between two masonries, at two scales, in two
+    // patterns. That is the flat grey band in his screenshot: the wall's 0.6m courses squeezed
+    // onto a 0.18m face show a sliver of one brick and no edge at all.
+    //
+    // `materials.stair` is one masonry for both: the floor's own stone, projected per-face so a
+    // riser gets a vertical layout, at a third of floor scale so a step carries a whole flag.
+    // Along the nose both faces project on the SAME world axis, so a stone that ends at the edge
+    // on top starts at the edge on the face — the corner-wrap the ask is about.
     const tread = new THREE.Mesh(
       pooledBox(STEP_WIDTH, 0.05, STEP_DEPTH),
-      materials.floor,
+      materials.stair,
     );
     tread.position.set(0, yTop - 0.025, zFront + STEP_DEPTH / 2);
     tread.receiveShadow = true;
     group.add(tread);
     const riser = new THREE.Mesh(
       pooledBox(STEP_WIDTH, STEP_HEIGHT, 0.04),
-      materials.wall,
+      materials.stair,   // same stone as the tread — see above
     );
     riser.position.set(0, yTop - STEP_HEIGHT / 2, zFront);
     riser.receiveShadow = true;
@@ -176,7 +190,7 @@ export function spawnStairs(
   const landDepth = 1.7;
   const landing = new THREE.Mesh(
     pooledBox(STEP_WIDTH, 0.06, landDepth),
-    materials.floor,
+    materials.stair,   // the flight's own stone, so the last step does not change material
   );
   landing.position.set(0, landY - 0.03, totalDepth + landDepth / 2);
   landing.receiveShadow = true;
