@@ -110,7 +110,7 @@ export interface CornerFieldInput {
  * Cheap: a few hundred corners, each touching a ~4x4 texel neighbourhood.
  */
 export function buildCornerField(input: CornerFieldInput): void {
-  const corners: Array<{ x: number; z: number }> = [];
+  const corners: Array<{ x: number; z: number; convex: boolean }> = [];
   for (const poly of input.polys) {
     const n = poly.length;
     if (n < 3) continue;
@@ -127,7 +127,19 @@ export function buildCornerField(input: CornerFieldInput): void {
       const cosT = (ax * bx + az * bz) / (la * lb);
       const turn = Math.acos(Math.max(-1, Math.min(1, cosT)));
       if (turn < MIN_TURN) continue;
-      corners.push({ x: c[0], z: c[1] });
+      // ── AND WHICH WAY IT TURNS, WHICH THE QUOIN DID NOT NEED ────────────
+      //
+      // Josh: *"can we kinda bevel edges that are inwards? currently the edges are sharp."*
+      // A quoin is the same stone whichever way a wall turns, which is why this was taken from
+      // the dot alone. Rounding an arris is NOT: a convex edge rounds by splaying its normals
+      // AWAY from the corner and a concave one by drawing them toward it, so getting the sign
+      // wrong does not soften an edge, it sharpens it into a crease.
+      //
+      // The cross gives it, and it costs one multiply. Stored in the field's GREEN channel,
+      // which has been sitting there unused since the texture is RGBA and only red was ever
+      // written — no new buffer, no new upload, no second sampler.
+      const cross = ax * bz - az * bx;
+      corners.push({ x: c[0], z: c[1], convex: cross < 0 });
     }
   }
 
@@ -170,7 +182,14 @@ export function buildCornerField(input: CornerFieldInput): void {
         // MAX, not add: two corners a metre apart (a chamfer's two ends) should
         // read as one continuous corner, not as a double-bright hotspot.
         const cur = data[k] / 255;
-        if (v > cur) data[k] = Math.round(v * 255);
+        // The winning corner owns the SIGN too. Writing green only when red wins keeps the two
+        // channels describing the SAME corner — a texel whose strength came from one corner and
+        // whose sign came from another would round an edge the wrong way exactly where two
+        // corners meet, which is where it shows most.
+        if (v > cur) {
+          data[k] = Math.round(v * 255);
+          data[k + 1] = c.convex ? 255 : 0;
+        }
       }
     }
   }
@@ -211,6 +230,22 @@ export function cornerFieldNode(worldPos: any): any {
     worldPos.z.sub(uOrigin.y).mul(uInvSize.y),
   );
   return (fieldTex as any).sample(uv).r.mul(uOn);
+}
+
+/**
+ * Which way the nearest corner turns, as -1 (concave, folding into the room) .. +1 (convex).
+ *
+ * Paired with `cornerFieldNode`: that says HOW MUCH corner, this says WHICH KIND. Both read the
+ * same texel of the same texture, so they cannot disagree about which corner they are describing.
+ * Zero where there is no field at all, which is the "leave it alone" value for anything that
+ * multiplies by it.
+ */
+export function cornerTurnNode(worldPos: any): any {
+  const uv = (vec2 as any)(
+    worldPos.x.sub(uOrigin.x).mul(uInvSize.x),
+    worldPos.z.sub(uOrigin.y).mul(uInvSize.y),
+  );
+  return (fieldTex as any).sample(uv).g.mul(2).sub(1).mul(uOn);
 }
 
 /** DEV readout: what the field currently covers. */

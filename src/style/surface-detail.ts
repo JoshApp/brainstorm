@@ -3,7 +3,7 @@ import { setMaterialStoneLightingWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, max as tslMax, materialColor, cameraPosition, cameraViewMatrix, uv as uvNode, frameGroup } from 'three/tsl';
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
-import { cornerFieldNode } from '../scene/corner-field';
+import { cornerFieldNode, cornerTurnNode } from '../scene/corner-field';
 
 // ── POM TUNING ───────────────────────────────────────────────────────────────
 // Read ONCE at module load, not per material: the step count is unrolled into
@@ -14,6 +14,14 @@ import { cornerFieldNode } from '../scene/corner-field';
 // ?pom=0 disables, ?pom=<n> sets the step count (DEV only; the flag is stripped
 // from production, the default is not).
 const POM_DEFAULT_STEPS = 8;
+
+// How hard a corner's arris is rounded — see the normal assembly for what it does and why it is
+// shading rather than geometry. 0 restores the razor edge.
+const uArris = tuneUniform({
+  id: 'arris', group: 'Wall', label: 'Corner rounding',
+  min: 0, max: 1.5, value: 0.55, step: 0.05,
+  hint: 'softens the shading at a room corner so the edge reads worn instead of cut',
+});
 // Apparent depth of the height field. Josh: *"cant we make the bricks even more
 // 3d."* This is the dial for that — it is how far the ray marches, so it sets
 // how deep a mortar line or a missing flagstone actually goes. Raised 0.055 →
@@ -1239,10 +1247,54 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // which meant that on a horizontal face the perturbed NORMAL flipped even
   // when the pattern under it did not: the stone held still and the lighting
   // on it strobed.
-  const nWorld: any = nrm
+  let nWorld: any = nrm
     .sub(axisU.mul(dU.mul(amp)))
     .sub(axisV.mul(dV.mul(amp)))
     .normalize();
+
+  // -- THE ARRIS IS ROUNDED, NOT CUT --------------------------------------
+  //
+  // Josh: *"can we kinda bevel edges that are inwards? currently the edges are sharp and read a
+  // bit unnatural ... sharp edges dont really align with broken off edges."*
+  //
+  // He is describing a mismatch rather than a missing feature. The STONES are chipped, worn and
+  // irregular; the corner they meet at is a mathematically exact line. Every other cue says
+  // "this was quarried and has stood a long time" and the arris says "this was extruded".
+  //
+  // A real chamfer is geometry, and geometry is what a silhouette needs — but a UNIFORM bevel is
+  // its own kind of wrong: a perfect 2cm 45-degree cut all the way up a corner reads as CAD, the
+  // same unnaturalness wearing different clothes. What sells a worn edge at the distance a player
+  // actually stands is the SHADING: an arris that catches a soft highlight along it instead of
+  // dividing two flat tones on a hard line.
+  //
+  // So the normal is splayed near a corner, which is what a rounded edge does to light. It costs
+  // no vertices, cannot break the wall merge (the corner-field header explains at length why a
+  // vertex attribute here is a trap), and works on both builders' walls because the field is
+  // world-space and neither builder has to know it exists.
+  //
+  // DIRECTION COMES FROM THE FIELD'S GRADIENT, which points toward the corner — sampled with two
+  // forward differences rather than four, since the field is already a smooth blur and the extra
+  // pair buys nothing the eye can find. SIGN comes from the turn channel: a convex edge rounds by
+  // splaying its normals AWAY from the corner, a concave one by drawing them toward it. Getting
+  // that backwards does not soften an edge, it creases it, which is why the field had to learn
+  // which way it turns.
+  if (cfg.proj === 'wall') {
+    const cf: any = cornerFieldNode(positionWorld);
+    const eps = 0.12;
+    const gx: any = cornerFieldNode((positionWorld as any).add((vec3 as any)(eps, 0, 0))).sub(cf);
+    const gz: any = cornerFieldNode((positionWorld as any).add((vec3 as any)(0, 0, eps))).sub(cf);
+    const grad: any = (vec3 as any)(gx, 0, gz);
+    const gLen: any = grad.length().max(1e-5);
+    // Toward the corner, horizontal, unit length.
+    const toCorner: any = grad.div(gLen);
+    // -1 concave .. +1 convex. Convex splays outward (away), concave draws inward (toward).
+    const sign: any = cornerTurnNode(positionWorld).negate();
+    // Strongest AT the edge and gone a hand's width from it: the field itself reaches metres,
+    // which is right for a quoin's masonry and far too wide for an arris. Squaring the top of
+    // its range pulls the effect back onto the edge without needing a second field.
+    const edge: any = cf.mul(cf).mul(cf).mul(uArris as any);
+    nWorld = nWorld.add(toCorner.mul(edge.mul(sign))).normalize();
+  }
   // normalNode wants a VIEW-space normal; the frame above is world.
   (mat as any).normalNode = (cameraViewMatrix as any).transformDirection(nWorld);
   // (Banded cel lighting is applied GLOBALLY at boot — installBandedLightingWebGPU
