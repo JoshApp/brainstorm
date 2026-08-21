@@ -137,6 +137,10 @@ export interface PipelineCensus {
   inPlaySeen: number;
   /** Which materials those seen-compiles belonged to, worst first. */
   inPlayByName: Array<{ name: string; count: number }>;
+  /** The same compiles, CLASSIFIED at the moment each one happened — the only
+   *  time the answer is knowable, since a later absorb folds them into the warm
+   *  set and `gaps` then reports nothing. This is the list to work from. */
+  inPlayGaps: CensusEntry[];
   /** Post-warm compiles still RESIDENT, grouped and classified, worst first. */
   gaps: CensusEntry[];
 }
@@ -207,6 +211,7 @@ export function absorbWarmPipelines(r: DelveRenderer): void {
   const caches = pipelineCacheOf(r);
   if (!caches) return;
   for (const k of caches.keys()) warmKeys.add(k);
+  warmDecodedCache = null;   // the warm set grew — the memoised decode is stale
   sealed = true;
   censusRenderer = r;
 }
@@ -235,6 +240,20 @@ export function isWarmPipelineKey(key: string): boolean { return warmKeys.has(ke
 let inPlaySeen = 0;
 const inPlaySeenNames = new Map<string, number>();
 
+// ── Verdicts, taken AT THE COMPILE ───────────────────────────────────────────
+//
+// `gaps` can only classify a pipeline that is still resident AND has not been
+// folded into the warm set by a later absorb — which on a real descent is almost
+// none of them, so `gaps` reads empty while `inPlaySeen` says 131. The names
+// alone say WHAT compiled, never WHY, and "why" is what decides the fix (add a
+// warm subject / warm at that state / stop re-minting the material).
+//
+// So classify at the only moment the answer is still knowable: the compile
+// itself, against the warm set as it stood right then. Grouped by
+// name+verdict+detail, exactly as `gaps` groups, so the two read the same way.
+const inPlayVerdicts = new Map<string, CensusEntry>();
+let warmDecodedCache: DecodedKey[] | null = null;
+
 /** Record a pipeline compile observed during play. Returns false — and counts
  *  nothing — for warm keys and for anything before the first warm was absorbed,
  *  so callers can use it as the "is this actually an in-play compile?" test. */
@@ -250,6 +269,15 @@ export function notePipelineCompile(key: string, name: string): boolean {
   if (isWarmingUp()) return false;
   inPlaySeen++;
   inPlaySeenNames.set(name, (inPlaySeenNames.get(name) ?? 0) + 1);
+  // O(warm set) per in-play compile — a few hundred string compares, only on the
+  // compiles we already consider a problem. The decode is memoised per warm set
+  // and dropped by the next absorb.
+  const warmList = [...warmKeys];
+  if (warmDecodedCache === null) warmDecodedCache = warmList.map(decodePipelineKey);
+  const { verdict, detail } = classifyKey(key, warmList, warmDecodedCache);
+  const g = inPlayVerdicts.get(`${name}|${verdict}`);
+  if (g) g.count++;
+  else inPlayVerdicts.set(`${name}|${verdict}`, { name, count: 1, verdict, detail });
   return true;
 }
 
@@ -286,6 +314,7 @@ export function takePipelineCensus(r: DelveRenderer): PipelineCensus | null {
     inPlayByName: [...inPlaySeenNames.entries()]
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count).slice(0, 12),
+    inPlayGaps: [...inPlayVerdicts.values()].sort((a, b) => b.count - a.count),
     resident,
     evicted,
     gaps: [...grouped.values()].sort((a, b) => b.count - a.count),
