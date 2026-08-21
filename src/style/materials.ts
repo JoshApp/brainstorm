@@ -209,10 +209,33 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // floors that actually have a stair run.
   const stairBase = floorBase.clone();
   installSurfaceDetail(stairBase, {
+    // ── STAIRS ARE MASONRY, AT MASONRY'S SIZE ──────────────────────────────
+    //
+    // Josh: *"can we make it so there are like nice stones vertically as well so it looks a bit
+    // 3d around stairs?"*
+    //
+    // The projection fix stopped the smearing but left the stones FLOOR-SIZED, and that is why a
+    // riser still read as a flat band: a riser is about a quarter-metre tall and a floor flagstone
+    // is 1.05m across, so the face was showing a third of one stone with no edge in it. Nothing to
+    // catch light, nothing to say "these are blocks".
+    //
+    // So stairs take the WALL's brick pattern — running bond is the right language for a riser,
+    // which is a little retaining wall holding up a step — at roughly a third of wall scale.
+    // Wall courses are 0.6m; at this tile they are near 0.22m, so a single riser shows one clean
+    // course of blocks and a tread shows a few, and the two agree because they are the same
+    // masonry seen on two faces. That agreement is what makes a flight read as one built object
+    // rather than as stripes.
+    //
+    // brickDamage + grooveFill come with it: chipped arrises and filled joints are most of what
+    // sells cut stone at close range, and stairs are always seen close.
     splat: true, seamShadow: true, seamGlowScale: 0.35,
-    tex: bakeSurfaceTexture(renderer, 'floor'),
+    tex: wallTex, brickDamage: true, grooveFill: true,
     role: 'floor',
-    tile: SURFACE_TILE.floor, proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.32,
+    // Deeper relief than either the floor (0.32) or the wall (0.30). The whole ask is that a
+    // flight reads as 3D, and a step is the one place the eye gets an unambiguous silhouette to
+    // check the relief against — it can afford to be stronger here than on a flat surface where
+    // it would only look noisy.
+    tile: [1.75, 1.80], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.42,
   });
 
   installSurfaceDetail(ceilingBase, {
