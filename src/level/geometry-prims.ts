@@ -486,17 +486,16 @@ export function makeSteppedRampGeometry(
   if (!geos.length) return null;
   const merged = mergeGeometries(geos, false);
   if (!merged) return null;
-  {
-    const count = merged.getAttribute('position').count;
-    const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const base = 0.85 + buildRng() * 0.15;
-      colors[i * 3 + 0] = base;
-      colors[i * 3 + 1] = base;
-      colors[i * 3 + 2] = base;
-    }
-    merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  }
+  // ── NOT TINTED HERE ────────────────────────────────────────────────────────
+  //
+  // This used to write a random shade PER VERTEX, which is not what a laid floor looks like: a
+  // per-vertex value interpolates across each face, so every step came out as a smooth gradient
+  // rather than as stones of different shades. It was the last floor surface in the game not laid
+  // as slabs — the same gap layAsFlagstones was written to close for corridors, which its own
+  // header describes as reading "flat untinted stone" beside the rooms around them.
+  //
+  // The caller lays it (builder.ts), because the slab pattern is keyed to the ROOM and projected
+  // in world XZ, and this function knows neither.
   return merged;
 }
 

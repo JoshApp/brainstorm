@@ -320,6 +320,29 @@ function buildRoomShell(
   // A stair run is boxes, and a box has vertical faces — which the floor's XZ projection cannot
   // describe (see materials.ts, the stair material). Only the SLOPED case: a flat floor has no
   // risers and wants the floor material it has always had.
+  // ── A STAIR IS LAID, LIKE EVERY OTHER FLOOR ───────────────────────────────
+  //
+  // Josh: *"the logic that is applied on the horizontal surface needs to be applied to the side as
+  // well ... its just flat."* The stepped ramp was the last floor surface in the game that was
+  // not laid as slabs — it carried a random shade per VERTEX, which interpolates across a face and
+  // so gave every step a smooth gradient instead of stones of differing shades. Relief and seams
+  // were both already correct; what was missing is the thing that makes one stone read as a
+  // DIFFERENT stone from the one beside it.
+  //
+  // Same call the flat plates make, and layAsFlagstones' own header names this exact failure for
+  // corridors: untinted stone reads flatter than the floors around it, and there is no error to
+  // see, only a surface that does not match its neighbours.
+  if (sloped) {
+    layAsFlagstones(floorGeo, {
+      wear: room.wear ?? 0.45, key: `${room.id}:stair`,
+      // Already in WORLD space — boxes translated into place, not a plate — so the horizontal
+      // axes are x and z, and y is the height of the flight.
+      axes: 'xz',
+      // No outline: a stair's edges are not walls, so the perimeter grime band would draw a dark
+      // border around every tread.
+      toWorld: (sx, sy) => [sx, sy],
+    });
+  }
   const floor = new THREE.Mesh(floorGeo, sloped ? materials.stair : materials.floor);
   if (!sloped) {
     floor.rotation.x = -Math.PI / 2;

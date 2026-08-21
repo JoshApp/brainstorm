@@ -528,6 +528,17 @@ export function tintAsFlagstones(
    *  paints are a different set from the slabs it is painting on. Omit and the
    *  plate is treated as if it sat at the world origin. */
   toWorld?: (sx: number, sy: number) => [number, number],
+  /**
+   * Which two vertex axes carry the SHAPE.
+   *
+   * 'xy' is a plate: floor and ceiling geometry is authored flat in its own space and rotated
+   * upright afterwards, so its two horizontal axes are x and y.
+   *
+   * 'xz' is geometry already in WORLD space, where y is height — a stepped stair run, which is
+   * boxes translated into place rather than a plate. Reading x/y there samples the slab grid
+   * against a HEIGHT, which walks the pattern up the flight instead of across it.
+   */
+  axes: 'xy' | 'xz' = 'xy',
 ): void {
   if (geo.index) return;
   const pos = geo.getAttribute('position');
@@ -567,7 +578,10 @@ export function tintAsFlagstones(
   for (let t = 0; t < n; t += 3) {
     // Centroid in the plate's own shape space.
     let cx = 0, cy = 0;
-    for (let k = 0; k < 3; k++) { cx += pos.getX(t + k); cy += pos.getY(t + k); }
+    for (let k = 0; k < 3; k++) {
+      cx += pos.getX(t + k);
+      cy += axes === 'xz' ? pos.getZ(t + k) : pos.getY(t + k);
+    }
     cx /= 3; cy /= 3;
     // WHICH SLAB — asked of the shared grid, in world space, so this is the same
     // slab the baked texture is drawing the edges of.

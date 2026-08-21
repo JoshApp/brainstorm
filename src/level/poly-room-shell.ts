@@ -611,11 +611,14 @@ export function layAsFlagstones(
     maxEdge?: number;
     /** Distinguishes a ceiling from a floor built off the same room. */
     salt?: number;
+    /** Which vertex axes carry the shape — see tintAsFlagstones. 'xz' for geometry already in
+     *  world space (a stepped stair run); 'xy' for a plate. */
+    axes?: 'xy' | 'xz';
   },
 ): void {
   subdivideToMaxEdge(geo, opts.maxEdge ?? FLOOR_MAX_EDGE);
   tintAsFlagstones(geo, opts.wear, hashKey(opts.key) ^ (opts.salt ?? 0),
-                   opts.outline, opts.toWorld);
+                   opts.outline, opts.toWorld, opts.axes ?? 'xy');
   // AND IT DID SOMETHING. `tintAsFlagstones` returns silently on an indexed geometry,
   // which is the property that let a whole path go untinted without anyone noticing —
   // there is no error to see, just a floor that reads flatter than the one next to it.
