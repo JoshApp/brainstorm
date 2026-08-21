@@ -139,6 +139,30 @@ WebGPU-only: it can only be measured on a real device, and a number that never
 reaches the phone is not a measurement. `window.__pipelineCensus()` gives the same
 thing live.
 
+### Every pipeline has a name (`scene/material-attribution.ts`)
+
+The census attributes a compile by reading the shader program's name, which three
+takes from `material.name`. An unnamed material produced an unnamed program and
+the census printed `?` — which after the duplicate-shader fix was the LARGEST
+in-play bucket, 44 of 128. A third of the instrument's signal was unreadable.
+
+Rather than name every material at its creation site (the version that rots — add
+a material, forget the name, lose the attribution silently), the name is filled in
+at the one place it is read: `Pipelines.getForRender`. A material arriving without
+a name gets `auto:<kind>[@site]|<variant>` — the variant tags being the properties
+that decide which pipeline it compiles into (`t` transparent, `b<n>` blending,
+`nd` no depthWrite, `nz` no depthTest, `s<n>` side).
+
+The site is usually absent: a material's pipeline is typically first created while
+its object is still detached (pooled effects, warm dummies), so the variant tags
+are what carry the discrimination. `auto:basic|t,b2,nd` is a row you can act on;
+`auto:basic` is not.
+
+This is safe by construction — `RenderObject.getMaterialCacheKey` skips `name` by
+regex, so it can never move a cache key, a shader, or a pipeline. The check is
+that the pipeline count is identical with naming on and off (192/101 both ways,
+2026-08-21).
+
 **Read the `keySpace` field first.** On the WebGL2 fallback
 `WebGLBackend.getRenderCacheKey()` returns `''`, so the key carries no render state
 and every gap would read as `PROGRAM-CHURN`. The census reports `stateless` in that

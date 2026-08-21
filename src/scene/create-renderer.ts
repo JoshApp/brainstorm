@@ -7,6 +7,7 @@ import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
 import { installStableBufferNames } from './stable-buffer-names';
 import { installStaleVertexBufferFix } from './stale-vertex-buffers';
+import { installMaterialAttribution } from './material-attribution';
 
 /** The one renderer DELVE runs on. WebGPURenderer auto-selects a WebGL2
  *  backend on devices without WebGPU — same node materials, one code path.
@@ -154,6 +155,12 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // OLD buffer list against a pipeline built for the new layout. See
   // stale-vertex-buffers.ts.
   installStaleVertexBufferFix(renderer);
+
+  // A material with no name mints a shader program with no name, and the
+  // pipeline census reports the compile as `?` — 44 of 128 in-play compiles
+  // were unattributable that way. Fill the name in at the one place it is read.
+  // See material-attribution.ts.
+  installMaterialAttribution(renderer);
 
   // r185 executes render bundles AFTER transparents (end of pass), letting
   // bundled opaque walls paint over additive flames — this reorders the flush
