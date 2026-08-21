@@ -486,6 +486,7 @@ export function makeSteppedRampGeometry(
   if (!geos.length) return null;
   const merged = mergeGeometries(geos, false);
   if (!merged) return null;
+
   // ── NOT TINTED HERE ────────────────────────────────────────────────────────
   //
   // This used to write a random shade PER VERTEX, which is not what a laid floor looks like: a
@@ -579,4 +580,47 @@ export function makeCeilingShaftGeometry(
   const merged = mergeGeometries(geos, false);
   applyDepthFade(merged, lipY, fadeM);    // lip bright → black above
   return merged;
+}
+
+
+// ── THE STAIR UNWRAP ──────────────────────────────────────────────────
+//
+// Josh: *"why is it so hard to put the logic that happens on the up face on the side as an
+// extension of it?"* Because a world projection cannot be one: a tread is laid out in (x, z) and
+// a riser in (along, y), neither knows the other exists, and the stone restarts at every nose no
+// matter how the two are tuned.
+//
+// This is the coordinate that IS an extension — what a tape measure laid along the walking line
+// would read. Across the run is just position. ALONG it is `travel + drop`: crossing a tread
+// advances travel while drop holds, going down a riser advances drop while travel holds, so the
+// sum increases monotonically over both and is continuous through every nose by construction,
+// rather than by two projections being tuned to agree.
+//
+// Written in METRES, so a material's tile divides it exactly as it divides a world projection.
+// Read by `proj: 'stair'` in style/surface-detail.ts.
+//
+// ── CALLED AFTER THE SLAB TINT, NOT BEFORE ───────────────────────────
+//
+// layAsFlagstones subdivides, and subdivideToMaxEdge rebuilds POSITION ONLY — it deletes the
+// normals and does not carry a uv across. Baking the unwrap inside the geometry builder therefore
+// wrote a UV that was discarded a few lines later, which is a fine way to spend an afternoon
+// wondering why a shader change did nothing. It runs last, and derives its own origin from the
+// finished geometry so it cannot disagree with what is actually there.
+export function bakeStairUnwrapUV(geo: THREE.BufferGeometry, alongX: boolean): void {
+  const pos = geo.getAttribute('position');
+  if (!pos) return;
+  let lo = Infinity;
+  let topY = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    lo = Math.min(lo, alongX ? pos.getX(i) : pos.getZ(i));
+    topY = Math.max(topY, pos.getY(i));
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(topY)) return;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const travel = (alongX ? pos.getX(i) : pos.getZ(i)) - lo;
+    uv[i * 2] = alongX ? pos.getZ(i) : pos.getX(i);      // across the run
+    uv[i * 2 + 1] = travel + (topY - pos.getY(i));        // along it, over tread AND riser
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }

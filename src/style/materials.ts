@@ -277,7 +277,7 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
     // both on the face where the light can find them. Tying the two together also means a change
     // to the stair geometry cannot silently re-open this — the numbers move together or not at
     // all.
-    tile: [STAIR_TILE, STAIR_TILE], proj: 'wall', tint: [0.90, 0.97, 1.12], relief: 0.50,
+    tile: [STAIR_TILE, STAIR_TILE], proj: 'stair', tint: [0.90, 0.97, 1.12], relief: 0.50,
   });
 
   installSurfaceDetail(ceilingBase, {

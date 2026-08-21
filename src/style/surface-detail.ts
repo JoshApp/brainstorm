@@ -678,6 +678,45 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
       (swapAxes as any).select((vec3 as any)(1, 0, 0), (vec3 as any)(0, 0, 1)),
       (vec3 as any)(0, 1, 0),
     );
+  } else if (cfg.proj === 'stair') {
+    // ── UNWRAPPED: THE TREAD AND THE RISER ARE ONE SURFACE ───────────────────
+    //
+    // Josh, after four passes: *"why is it so hard to put the logic that happens on the up face
+    // on the side as an extension of it?"*
+    //
+    // Because 'horiz' and 'wall' are not extensions of each other. They are two separate 2D
+    // layouts that happen to meet at an edge: the up face is sampled in world (x, z), the side in
+    // (along-the-face, world Y). Both are correct, neither knows the other exists, and no tuning
+    // of either makes a stone continue over the nose — the coordinate simply restarts.
+    //
+    // A stair wants ONE coordinate that runs across the tread and then down the riser, which is
+    // the surface UNWRAPPED — what you would get by laying a tape measure along the walking line.
+    // That cannot be derived from the normal (a tread's normal says nothing about which way the
+    // flight runs), so the geometry bakes it: level/geometry-prims.ts writes metres into the UV,
+    // u across the run and v along it, continuous through every nose by construction.
+    //
+    // The tread and the riser then carry the same stone, and it turns the corner because it is
+    // the same coordinate on both — not because two projections were tuned to agree.
+    const uvS: any = uvNode();
+    sU = uvS.x;
+    sV = uvS.y;
+    // POM still needs WORLD directions to march along. Across the run is horizontal and shared by
+    // both faces; along it is the travel direction on a tread and straight down on a riser, which
+    // is the same `flat` test the wall branch uses.
+    const flatS: any = nrm.y.abs().greaterThanEqual((tslMax as any)(nrm.x.abs(), nrm.z.abs()));
+    // A RISER knows both of its axes from its own normal: it faces along the run, so the
+    // horizontal direction across its face is the across-run axis, and the unwrap runs straight
+    // down it.
+    const hLenS: any = nrm.x.mul(nrm.x).add(nrm.z.mul(nrm.z)).sqrt().max(1e-4);
+    const acrossS: any = (vec3 as any)(nrm.z.div(hLenS), 0, nrm.x.negate().div(hLenS));
+    // A TREAD does not — its normal is +Y and says nothing about which way the flight runs — so
+    // it takes the world axes. On a corridor running along Z that swaps the two, which shifts
+    // where PARALLAX pulls and nothing else: the UVs themselves are baked and stay exact, so the
+    // stone pattern is right either way and only the depth illusion leans the wrong way slightly.
+    // Worth it to keep this branch derivable from the fragment instead of needing per-corridor
+    // material state.
+    axisU = (flatS as any).select((vec3 as any)(1, 0, 0), acrossS);
+    axisV = (flatS as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, -1, 0));
   } else {
     sU = pos.x; sV = pos.z;
     axisU = (vec3 as any)(1, 0, 0);
@@ -1228,7 +1267,8 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
 export interface SurfaceTexConfig {
   tex: THREE.Texture;
   tile: readonly [number, number];     // world metres per repeat
-  proj: 'wall' | 'horiz';              // wall = vertical plane, horiz = floor/ceiling
+  // wall = vertical plane, horiz = floor/ceiling, stair = UNWRAPPED (see below)
+  proj: 'wall' | 'horiz' | 'stair';
   /** WHAT this surface is, as opposed to how it is projected — the ceiling
    *  shares the floor's projection and should share none of its tuning. Opts a
    *  surface into the live Sheen knobs; only the floor has any today. Costs no

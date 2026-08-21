@@ -184,6 +184,7 @@ import {
   makeChasmDropGeometry,
   makeCeilingShaftGeometry,
   makeSteppedRampGeometry,
+  bakeStairUnwrapUV,
 } from './geometry-prims';
 import { getPropAABB } from './prop-aabb';
 import { dressing } from './dressing';
@@ -342,6 +343,9 @@ function buildRoomShell(
       // border around every tread.
       toWorld: (sx, sy) => [sx, sy],
     });
+    // LAST. The subdivision inside layAsFlagstones rebuilds position and drops everything else,
+    // so the unwrap has to be written after it or it is discarded unread.
+    bakeStairUnwrapUV(floorGeo, alongX);
   }
   const floor = new THREE.Mesh(floorGeo, sloped ? materials.stair : materials.floor);
   if (!sloped) {
