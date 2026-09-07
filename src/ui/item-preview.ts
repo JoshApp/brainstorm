@@ -75,6 +75,7 @@ export function registerItemPreview(id: string, item: ItemSpec, opts: ItemPrevie
   const el = document.createElement('div');
   Object.assign(el.style, {
     position: 'fixed',
+    left: '0', top: '0',
     transform: 'translate(-50%, -100%)',
     pointerEvents: 'none',
     zIndex: '12',
@@ -246,13 +247,14 @@ export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement
       if (e.el.style.opacity !== '0') e.el.style.opacity = '0';
       continue;
     }
-    e.el.style.left = `${p.x}px`;
     // VERTICAL clamp only (no horizontal — that one snapped toward centre). The
     // label sits ABOVE its anchor (translate -100%), so its top edge sits at
     // p.y − height; keep that edge on-screen so a high/close item can't drive
     // the box off the top. Slides freely otherwise.
     const minTop = e.el.offsetHeight + 8;
-    e.el.style.top = `${Math.max(p.y, minTop)}px`;
+    // Moving left/top invalidates layout before the next preview's size read.
+    // A transform preserves the measured box and its bottom-centre anchor.
+    e.el.style.transform = `translate(${p.x}px, ${Math.max(p.y, minTop)}px) translate(-50%, -100%)`;
     if (e.el.style.opacity !== '1') e.el.style.opacity = '1';
   }
 }

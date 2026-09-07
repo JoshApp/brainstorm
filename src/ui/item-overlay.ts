@@ -35,10 +35,10 @@ function ensurePanel(): HTMLDivElement {
   panel.classList.add('game-hud');
   Object.assign(panel.style, {
     position: 'fixed',
-    // Anchored each frame above the TAKE prompt (left/top set in tickItemOverlay).
+    // Anchored each frame above the TAKE prompt using a layout-free transform.
     // translate(-50%, -100%) hangs the card UPWARD from its anchor point, so the
     // anchor is the card's bottom-centre — sitting it right on top of the prompt.
-    left: '50%', top: '50%',
+    left: '0', top: '0',
     transform: 'translate(-50%, -100%)',
     maxWidth: 'min(320px, 80vw)', width: 'max-content',
     padding: '9px 13px',
@@ -140,8 +140,7 @@ function anchorAbovePrompt(
   if (anchorBottomY - ch < TOP_MARGIN) anchorBottomY = TOP_MARGIN + ch;
   anchorBottomY = Math.min(anchorBottomY, vh - SIDE_MARGIN);
 
-  p.style.left = `${anchorX}px`;
-  p.style.top = `${anchorBottomY}px`;
+  p.style.transform = `translate(${anchorX}px, ${anchorBottomY}px) translate(-50%, -100%)`;
 }
 
 function hide(p: HTMLDivElement): void {

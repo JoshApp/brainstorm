@@ -4,6 +4,7 @@ import { SpriteNodeMaterial } from 'three/webgpu';
 import { instancedBufferAttribute, texture as textureNode, vec4 } from 'three/tsl';
 import { getTexture } from '../style/procedural-textures';
 import { registerWarmup } from '../content/warmup-registry';
+import { uploadActiveInstances } from './instance-upload';
 
 // ── INSTANCED SPRITE BATCH — flames, wisps, glows in a handful of draws ──────
 //
@@ -281,9 +282,9 @@ export function tickSpriteBatch(): void {
     b.mesh.visible = n > 0;
     if (n === 0 && b.geo.instanceCount === 0) continue;   // idle — skip uploads
     b.geo.instanceCount = n;
-    b.pos.needsUpdate = true;
-    b.scale.needsUpdate = true;
-    b.col.needsUpdate = true;
+    uploadActiveInstances(b.pos, n);
+    uploadActiveInstances(b.scale, n);
+    uploadActiveInstances(b.col, n);
   }
 }
 
@@ -342,7 +343,9 @@ registerWarmup({
         b.col.setXYZ(0, 1, 1, 1);
         b.geo.instanceCount = 1;
         b.mesh.visible = true;
-        b.pos.needsUpdate = true; b.scale.needsUpdate = true; b.col.needsUpdate = true;
+        uploadActiveInstances(b.pos, 1);
+        uploadActiveInstances(b.scale, 1);
+        uploadActiveInstances(b.col, 1);
       }
     }
   },

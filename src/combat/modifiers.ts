@@ -5,7 +5,7 @@ import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '..
 import { temperDamageBonus } from '../state/weapon-temper';
 import { getScars } from '../state/weapon-scars';
 import { scarModifiers } from '../content/scars';
-import { getReliquary } from '../player/reliquary';
+import { getReliquary, getReliquaryRevision } from '../player/reliquary';
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
 import { aggregateMutationModifiers } from '../state/run-mutations';
@@ -92,6 +92,32 @@ export function stackedRelicModifiers(mods: StatModifier[] | undefined, n: numbe
   return out;
 }
 
+type RelicSpec = ReturnType<typeof getReliquary>[number]['spec'];
+type RelicCondition = NonNullable<RelicSpec['conditionalModifiers']>[number]['condition'];
+let relicRevision = -1;
+let relicStacks: { modifiers: StatModifier[]; conditional: { condition: RelicCondition; modifiers: StatModifier[] }[] }[] = [];
+
+/** Stack preparation depends on pickups, not frame time or HP. Keep the
+ * original group/modifier order (including floating-point multiplier order).
+ * Conditional predicates themselves must still be evaluated on every read. */
+function preparedRelicStacks(): typeof relicStacks {
+  const revision = getReliquaryRevision();
+  if (relicRevision === revision) return relicStacks;
+  const copies = new Map<string, { spec: RelicSpec; n: number }>();
+  for (const { spec } of getReliquary()) {
+    const group = copies.get(spec.id);
+    if (group) group.n++; else copies.set(spec.id, { spec, n: 1 });
+  }
+  relicStacks = Array.from(copies.values(), ({ spec, n }) => ({
+    modifiers: stackedRelicModifiers(spec.modifiers, n),
+    conditional: (spec.conditionalModifiers ?? []).map(c => ({
+      condition: c.condition, modifiers: stackedRelicModifiers(c.modifiers, n),
+    })),
+  }));
+  relicRevision = revision;
+  return relicStacks;
+}
+
 export function aggregateModifiers(entityId: EntityId): StatModifier[] {
   const out: StatModifier[] = [];
 
@@ -121,19 +147,11 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // default per-copy (additive kinds linear, multiplier kinds compound),
     // 'hyperbolic' collapses to one synthesized modifier with diminishing
     // returns. See stackedRelicModifiers below (exported for tests).
-    const relicEntries = getReliquary();
-    const copies = new Map<string, { spec: (typeof relicEntries)[number]['spec']; n: number }>();
-    for (const r of relicEntries) {
-      const g = copies.get(r.spec.id);
-      if (g) g.n++; else copies.set(r.spec.id, { spec: r.spec, n: 1 });
-    }
-    for (const { spec, n } of copies.values()) {
-      out.push(...stackedRelicModifiers(spec.modifiers, n));
-      if (spec.conditionalModifiers) {
-        for (const c of spec.conditionalModifiers) {
-          if (evaluateModifierCondition(c.condition, entityId)) {
-            out.push(...stackedRelicModifiers(c.modifiers, n));
-          }
+    for (const stack of preparedRelicStacks()) {
+      out.push(...stack.modifiers);
+      for (const c of stack.conditional) {
+        if (evaluateModifierCondition(c.condition, entityId)) {
+          out.push(...c.modifiers);
         }
       }
     }

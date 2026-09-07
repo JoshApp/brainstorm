@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { instancedBufferAttribute, positionGeometry, vec4 } from 'three/tsl';
 import { registerWarmup } from '../content/warmup-registry';
+import { uploadActiveInstances } from './instance-upload';
 
 // ── INSTANCED FLAME-MESH BATCH — the solid flame BLOBS in one draw ───────────
 //
@@ -163,9 +164,9 @@ export function tickFlameMeshBatch(): void {
   mesh.visible = n > 0;   // instanceCount 0 still submits a degenerate draw
   if (n === 0 && geo.instanceCount === 0) return;
   geo.instanceCount = n;
-  aPos.needsUpdate = true;
-  aScale.needsUpdate = true;
-  aCol.needsUpdate = true;
+  uploadActiveInstances(aPos, n);
+  uploadActiveInstances(aScale, n);
+  uploadActiveInstances(aCol, n);
 }
 
 /**
@@ -212,7 +213,9 @@ registerWarmup({
     aScale.setXYZ(0, 0.02, 0.03, 0.02);
     aCol.setXYZ(0, 1, 0.7, 0.3);
     geo.instanceCount = 1;
-    aPos.needsUpdate = true; aScale.needsUpdate = true; aCol.needsUpdate = true;
+    uploadActiveInstances(aPos, 1);
+    uploadActiveInstances(aScale, 1);
+    uploadActiveInstances(aCol, 1);
   },
   clear: () => { if (geo) geo.instanceCount = 0; },
 });

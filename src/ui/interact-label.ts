@@ -108,7 +108,7 @@ export function ensureInteractLabel(): void {
     cursor: 'pointer',
     opacity: '0',
     transition: 'opacity 180ms ease-out',
-    willChange: 'transform, opacity, left, top',
+    willChange: 'transform, opacity',
   } as Partial<CSSStyleDeclaration>);
 
   // Tap/click the prompt → fire the registered handler. pointerup covers
@@ -295,8 +295,9 @@ export function updateInteractLabel(
   const y = Math.max(h + EDGE_MARGIN, Math.min(vh - EDGE_MARGIN, p.y));
   const x = Math.max(w / 2 + EDGE_MARGIN, Math.min(vw - w / 2 - EDGE_MARGIN, p.x));
   lastBottomY = y;
-  labelEl.style.left = `${x}px`;
-  labelEl.style.top = `${y}px`;
+  // Keep layout at (0,0); the item overlay reads this prompt's height next.
+  // Changing left/top here forced a synchronous layout on that read each frame.
+  labelEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
   if (!shown) {
     shown = true;
     labelEl.style.opacity = '1';

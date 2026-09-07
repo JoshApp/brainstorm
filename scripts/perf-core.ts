@@ -25,6 +25,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { HEADLESS_ARGS, installWebGPUShims } from './headless-browser';
 
 const CHROMIUM_CANDIDATES = [
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -171,15 +172,13 @@ export async function withHarness(
       executablePath: chromiumPath,
       // --enable-precise-memory-info unlocks usedJSHeapSize granularity so the
       // GC churn proxy is meaningful headless.
-      args: [
-        '--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-precise-memory-info',
-        // WebGPU-on-swiftshader (Vulkan CPU path): lets allocation/count probes run
-        // the REAL WebGPU backend headless. Harmless where unsupported — the game
-        // falls back to the WebGL2 backend as in any no-WebGPU browser.
-        '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader',
-      ],
+      args: [...HEADLESS_ARGS, '--enable-precise-memory-info'],
     });
-    const context = await browser.newContext({ viewport: opts.viewport });
+    const { width, height, deviceScaleFactor = 1 } = opts.viewport;
+    // DPR belongs to the context, not its viewport object. Passing it inside
+    // viewport silently ran the "phone DPR 2" profile at DPR 1.
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor });
+    await installWebGPUShims(context);
     const page: Page = await context.newPage();
     page.on('pageerror', (err) => opts.onLog?.(`[browser pageerror] ${err.message}`));
 

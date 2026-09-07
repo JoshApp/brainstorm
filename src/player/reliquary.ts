@@ -11,6 +11,7 @@ import type { AffixInstance } from '../content/affixes';
 export interface RelicEntry { spec: ItemSpec; affixes: AffixInstance[]; }
 
 let relics: RelicEntry[] = [];
+let revision = 0;
 type Listener = (r: readonly RelicEntry[]) => void;
 const listeners = new Set<Listener>();
 function notify(): void { for (const l of listeners) l(relics); }
@@ -18,15 +19,18 @@ function notify(): void { for (const l of listeners) l(relics); }
 /** Collect a relic — it applies immediately and permanently (never displaces). */
 export function addRelic(spec: ItemSpec, affixes: AffixInstance[] = []): void {
   relics.push({ spec, affixes });
+  revision++;
   notify();
 }
 
 /** Every collected relic, in pickup order (the reliquary display + the stat
  *  pipeline iterate this whole array — that's why they all apply). */
 export function getReliquary(): readonly RelicEntry[] { return relics; }
+/** Changes before listeners run, so stat reads inside pickup callbacks are fresh. */
+export function getReliquaryRevision(): number { return revision; }
 
 /** Wipe the reliquary (new run / death). */
-export function clearReliquary(): void { relics = []; notify(); }
+export function clearReliquary(): void { relics = []; revision++; notify(); }
 
 export function onReliquaryChanged(fn: Listener): () => void {
   listeners.add(fn);
