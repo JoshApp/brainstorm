@@ -240,6 +240,50 @@ export function canSeeSignalAt(x: number, z: number): boolean {
 }
 
 /**
+ * Is the SIGNAL MARKER nearest this point currently shown?
+ *
+ * For an emitter that belongs to a marker rather than standing on its own — sparks off a torch,
+ * which have no business being visible when their fire is not, or invisible when it is.
+ *
+ * ── WHY THIS RATHER THAN ASKING THE RULE AGAIN ──────────────────────────────
+ *
+ * Because asking the rule again is how the last two bugs happened. Embers re-derived their own
+ * answer from the space index, and every time that answer disagreed with the flame's — a
+ * different channel, a cached `locate` against an uncached `locateMoving`, an LOS test taken from
+ * a slightly different point — the player saw a fire with no sparks, or sparks with no fire.
+ * Josh, twice: *"not culled before, then culled when i enter the room, and not culled when i go
+ * in a bit further"*, then *"i stand inside a room see all flames but some further away embers
+ * are culled for no apparent reason ... it seems finnicky."* Both are two rules that were meant
+ * to agree and did not.
+ *
+ * A fire and its sparks are ONE decision. This reads the decision that was already made for the
+ * flame this frame, so they cannot drift: whatever tickSignalOcclusion concluded about the
+ * marker, the sparks inherit. The remaining honest failure is a torch with no marker near it,
+ * which falls back to visible — an ember cloud with no fire is a far smaller wrong than a fire
+ * with no embers, and it is the same fail-open the markers themselves use before the first LOS.
+ *
+ * Radius is generous on purpose: a flame's marker sits at the fire, the light that spawns embers
+ * sits at the same sconce, and nothing else registers a signal that close to a torch.
+ */
+export function signalShownNear(x: number, z: number, radius = 0.6): boolean {
+  if (!lastLos) return true;
+  const r2 = radius * radius;
+  let best = Infinity;
+  let shown = true;
+  for (const m of registry) {
+    if (!m.o.parent) continue;
+    m.o.getWorldPosition(scratch);
+    const dx = scratch.x - x;
+    const dz = scratch.z - z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 > r2 || d2 >= best) continue;
+    best = d2;
+    shown = m.o.visible;
+  }
+  return shown;
+}
+
+/**
  * The same question on a named channel — because the channel has to match the LAYER the thing
  * is drawn in, and getting that pair wrong is invisible until someone walks a doorway.
  *

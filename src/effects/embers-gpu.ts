@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { forEachLight } from '../scene/light-pool';
-import { canSeeEmitterAt } from '../scene/signal-layer';
+import { signalShownNear } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
   vertexIndex, time, hash, float, vec3, uniform, uniformArray, frameGroup,
@@ -128,12 +128,23 @@ export function tickEmbersGPU(): void {
     // Filtered at the EMITTER, which is the only place it can be done: the cloud is one
     // Points draw whose trajectories are a pure function of time and index, with no
     // per-particle object to hide. Sixteen tests a frame instead of eight hundred.
-    // THE 'LIGHT' CHANNEL, matching the layer these now draw in. They used to ask the SIGNAL
-    // question, which allows one sealed threshold further than a light — coherent while they
-    // composited after the veil, and wrong the moment they stopped. Asking one rule and drawing
-    // under another is what made them appear outside a room, vanish on the threshold and come
-    // back further in.
-    if (!canSeeEmitterAt(src.position.x, src.position.z, 'light')) return;
+    // ── SPARKS FOLLOW THEIR FIRE, THEY DO NOT DECIDE FOR THEMSELVES ─────────
+    //
+    // This asked the space index directly, twice, and got it wrong twice: first on the SIGNAL
+    // channel (one gate looser than the layer it draws in, so it flickered on thresholds), then
+    // on the LIGHT channel (stricter than the flame's own rule, so a torch you were standing next
+    // to kept its fire and lost its sparks). Both are the same mistake — re-deriving an answer
+    // that had already been decided for the flame this frame, by a slightly different route.
+    //
+    // So it reads the flame's verdict instead. A fire and its sparks are one decision, and this
+    // makes that true by construction rather than by two rules happening to agree.
+    //
+    // ONE FRAME STALE, deliberately: this ticks at the top of the frame (before either render
+    // path reads the buffer) and the occlusion pass runs inside runSystems after it, so the
+    // verdict read here was computed last frame. A single frame of lag on sparks appearing is
+    // invisible, and the alternative — reordering a compute tick that both render paths depend
+    // on — would risk far more than it buys.
+    if (!signalShownNear(src.position.x, src.position.z)) return;
     _scratch[n].copy(src.position);
     // The torch's (possibly flicker-animated) light colour → this torch's embers.
     if (src.getColor) src.getColor(_tmpCol); else _tmpCol.setHex(src.color);
