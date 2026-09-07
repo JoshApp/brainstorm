@@ -624,10 +624,15 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
           emissive: (m.emissive ?? m.color).getHex(),
           emissiveIntensity: m.emissiveIntensity ?? 1,
         });
-        // THE OTHER HALF OF A FLAME. The additive wisps go through the sprite batch and are
-        // marked there; this is the solid emissive blob at the core. Both belong to the same
-        // fire, so both belong to the signal layer — marking only one means a veiled doorway
-        // shows you a fire's wisps with no flame inside them.
+        // THE CORE OF A FLAME, and the half that IS a signal. A fire is a thing, and knowing one
+        // burns in a room you cannot see into is exactly what the signal layer carries.
+        //
+        // Its WISPS no longer are. They used to be, on the reasoning that showing a veiled
+        // doorway a fire's wisps with no flame inside them would read wrong — and the opposite
+        // turned out to be what players see: a halo of drifting flicker with no visible source
+        // under it reads as debris caught in the doorway. So the source passes and the flicker
+        // veils with its room (scene/sprite-batch.ts), which leaves a compact point of fire
+        // through a doorway rather than a fuzzy cloud.
         markAsSignal(handle.obj);
         return handle.obj;
       }
@@ -743,12 +748,18 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
           color: part.color ?? 0xffffff,
           opacity: part.opacity ?? 1,
           flicker: part.flicker,
+          signal: part.signal === true,
         });
-        // THE PLACEHOLDER IS THE MARKER. It is what has a world position, so it is what
-        // gets occlusion-tested; the batch reads its visibility up the parent chain each
-        // tick. See scene/signal-layer.ts for why a thing drawn after the veil has to
-        // carry its own occlusion.
-        markAsSignal(handle.obj);
+        // THE PLACEHOLDER IS THE MARKER, for the ones that are markers. It is what has a world
+        // position, so it is what gets occlusion-tested; the batch reads its visibility up the
+        // parent chain each tick. See scene/signal-layer.ts for why a thing drawn after the veil
+        // has to carry its own occlusion.
+        //
+        // Only a SIGNAL sprite needs it. Registering every additive sprite here put the flicker
+        // around every flame into the occlusion registry, which is both work and a promise the
+        // sprite was not keeping — it drew through veils because the batch did, not because
+        // anything had decided it should.
+        if (part.signal === true) markAsSignal(handle.obj);
         return handle.obj;
       }
       const spriteMat = new THREE.SpriteMaterial({

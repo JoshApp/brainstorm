@@ -157,9 +157,11 @@ export function creature(opts: CreatureOptions): ModelSpec {
           ]),
       { parent: 'neck', kind: 'sphere', pos: [-0.08, headLocalY + 0.03, -(headR + 0.03)], radius: 0.045, segments: [12, 10], mat: 'eyes' },
       { parent: 'neck', kind: 'sphere', pos: [ 0.08, headLocalY + 0.03, -(headR + 0.03)], radius: 0.045, segments: [12, 10], mat: 'eyes' },
-      // Eye halos so the gaze reads at distance.
-      { name: 'eyeHaloL', parent: 'neck', kind: 'sprite', pos: [-0.08, headLocalY + 0.03, -(headR + 0.06)], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: opts.palette.eye },
-      { name: 'eyeHaloR', parent: 'neck', kind: 'sprite', pos: [ 0.08, headLocalY + 0.03, -(headR + 0.06)], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: opts.palette.eye },
+      // Eye halos so the gaze reads at distance. SIGNAL: these are the one sprite that should
+      // survive a veil — being able to count the eyes in a room you cannot see into is the whole
+      // point of the signal layer, and it is what a player reads a dark doorway by.
+      { name: 'eyeHaloL', parent: 'neck', kind: 'sprite', pos: [-0.08, headLocalY + 0.03, -(headR + 0.06)], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', signal: true, color: opts.palette.eye },
+      { name: 'eyeHaloR', parent: 'neck', kind: 'sprite', pos: [ 0.08, headLocalY + 0.03, -(headR + 0.06)], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', signal: true, color: opts.palette.eye },
     ],
   };
 }

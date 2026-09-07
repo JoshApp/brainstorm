@@ -246,6 +246,12 @@ export type PartSpec =
       texture: string;
       color?: number;
       blending?: 'normal' | 'additive';
+      /** Pass a VEIL at full strength — see scene/sprite-batch.ts. Default false: a sprite
+       *  veils with the room it is in, like everything else. Opt in only for a marker that says
+       *  SOMETHING IS HERE and is meant to be countable from a doorway you have not entered —
+       *  a creature's eyes. Not the flicker around a flame, which reads as debris without a
+       *  visible source under it. */
+      signal?: boolean;
       /** 0..1 transparency. Default 1. */
       opacity?: number;
       flicker?: {

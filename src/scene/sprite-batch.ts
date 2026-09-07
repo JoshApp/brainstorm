@@ -86,6 +86,7 @@ export interface BatchedSprite {
 interface Entry extends BatchedSprite {
   textureName: string;
   fog: boolean;
+  signal: boolean;
   persistent: boolean;
   flicker: Flicker | null;
   baseY: number;   // placeholder's authored local Y (bob is applied around it)
@@ -93,8 +94,8 @@ interface Entry extends BatchedSprite {
 
 /** A batch serves one (texture, fog) pair — both are baked into the pipeline,
  *  so they are the key. */
-function batchKey(textureName: string, fog: boolean): string {
-  return `${textureName}|${fog ? 'fog' : 'nofog'}`;
+function batchKey(textureName: string, fog: boolean, signal: boolean): string {
+  return `${textureName}|${fog ? 'fog' : 'nofog'}|${signal ? 'sig' : 'lit'}`;
 }
 
 class Batch {
@@ -103,7 +104,7 @@ class Batch {
   scale: THREE.InstancedBufferAttribute;
   col: THREE.InstancedBufferAttribute;
   geo: THREE.InstancedBufferGeometry;
-  constructor(textureName: string, fog: boolean) {
+  constructor(textureName: string, fog: boolean, signal: boolean) {
     const plane = new THREE.PlaneGeometry(1, 1);
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = plane.index;
@@ -132,18 +133,29 @@ class Batch {
     (mat as any).colorNode = (textureNode(getTexture(textureName)) as any)
       .mul((vec4 as any)(instancedBufferAttribute(this.col), 1));
     /* eslint-enable @typescript-eslint/no-explicit-any */
-    const key = batchKey(textureName, fog);
+    const key = batchKey(textureName, fog, signal);
     mat.name = `sprite-batch:${key}`;
 
     this.mesh = new THREE.Mesh(geo, mat);
     // ── THE SIGNAL LAYER, DRAW ORDER ONLY ───────────────────────────────────
     //
-    // Flames and embers are what the dungeon is willing to tell you through a veiled
-    // doorway, so the batch composites after the veil. ORDER ONLY: this one mesh sits at
-    // the origin and holds every flame on the floor, so occlusion-testing it would ask
-    // about the origin and hide or show them all together. Each instance is gated through
-    // its own placeholder instead — see scene/signal-layer.ts.
-    signalDrawOrder(this.mesh);
+    // ── ONLY A SIGNAL BATCH COMPOSITES AFTER THE VEIL ──────────────────────
+    //
+    // This used to be every sprite, on the reading that flames are what the dungeon is willing
+    // to tell you through a veiled doorway. The flame CORE is — a fire is a thing, and knowing
+    // one is in there is exactly the information the signal layer exists to carry. Its wisps are
+    // not: Josh, twice, relaying a first-time player — *"it feels a bit buggy to see torch
+    // particles through the veils."* A halo of drifting flicker with no visible source under it
+    // reads as debris caught in the doorway rather than as a fire.
+    //
+    // So the batch key carries it and the two kinds live in different draws. `signal: true` is
+    // opt-in and rare — a creature's eye halos, which are the whole point of being able to count
+    // what is in a dark room. Everything else veils with the room it is in.
+    //
+    // ORDER ONLY, when it applies: this one mesh sits at the origin and holds every sprite of its
+    // kind on the floor, so occlusion-testing it would ask about the origin and hide or show them
+    // all together. Each instance is gated through its own placeholder — see signal-layer.ts.
+    if (signal) signalDrawOrder(this.mesh);
     this.mesh.frustumCulled = false;      // instances span the floor; cull per-entry via visibility
     this.mesh.matrixAutoUpdate = false;   // identity — instance positions are world-space
     this.mesh.name = `sprite-batch:${key}`;
@@ -157,11 +169,11 @@ const _world = new THREE.Vector3();
 const _scale = new THREE.Vector3();
 const _counts = new Map<string, number>();   // per-frame fill counts, reused (see tickSpriteBatch)
 
-function batchFor(textureName: string, fog: boolean): Batch {
-  const key = batchKey(textureName, fog);
+function batchFor(textureName: string, fog: boolean, signal: boolean): Batch {
+  const key = batchKey(textureName, fog, signal);
   let b = batches.get(key);
   if (!b) {
-    b = new Batch(textureName, fog);
+    b = new Batch(textureName, fog, signal);
     batches.set(key, b);
     batchScene?.add(b.mesh);
   }
@@ -186,6 +198,10 @@ export function createBatchedSprite(opts: {
   /** Fog family — see the FOG note in the header. Defaults true (world flames,
    *  the original consumer); combat glows pass false. */
   fog?: boolean;
+  /** Draw AFTER the veil, at full strength through a doorway you have not entered.
+   *  Defaults FALSE — see the note in the Batch constructor. Opt in only for things that
+   *  say "something is here": a creature's eyes, not the flicker around a flame. */
+  signal?: boolean;
   /** APP-scoped rather than level-scoped: survives resetSpriteBatch(). For
    *  fixed pools built once at boot (status-vfx) whose owner outlives the
    *  floor. Level-scoped props leave this false so teardown still drops them. */
@@ -195,6 +211,7 @@ export function createBatchedSprite(opts: {
   const obj = new THREE.Object3D();
   const entry: Entry = {
     obj,
+    signal: opts.signal === true,
     color: new THREE.Color(opts.color),
     opacity: opts.opacity,
     scaleMul: new THREE.Vector2(1, 1),
@@ -213,7 +230,7 @@ export function createBatchedSprite(opts: {
   };
   obj.userData.batchedSprite = entry;
   entries.push(entry);
-  batchFor(entry.textureName, entry.fog);   // ensure the batch exists (and warms) up front
+  batchFor(entry.textureName, entry.fog, entry.signal);   // ensure the batch exists (and warms) up front
   return entry;
 }
 
@@ -239,8 +256,8 @@ export function tickSpriteBatch(): void {
   const now = Date.now();
   for (const e of entries) {
     if (!worldVisible(e.obj)) continue;
-    const key = batchKey(e.textureName, e.fog);
-    const b = batchFor(e.textureName, e.fog);
+    const key = batchKey(e.textureName, e.fog, e.signal);
+    const b = batchFor(e.textureName, e.fog, e.signal);
     const i = _counts.get(key) ?? 0;
     if (i >= MAX_PER_BATCH) continue;
     _counts.set(key, i + 1);
@@ -337,15 +354,19 @@ registerWarmup({
     if (!batchScene) return;
     for (const name of ['fire-wisp', 'moonbeam']) {
       for (const fog of [true, false]) {
-        const b = batchFor(name, fog);
-        b.pos.setXYZ(0, 0, 0.5, 0);
-        b.scale.setXY(0, 0.05, 0.05);
-        b.col.setXYZ(0, 1, 1, 1);
-        b.geo.instanceCount = 1;
-        b.mesh.visible = true;
-        uploadActiveInstances(b.pos, 1);
-        uploadActiveInstances(b.scale, 1);
-        uploadActiveInstances(b.col, 1);
+        // BOTH families warm: a signal batch and a lit batch are separate pipelines, and a
+        // creature's eye halos would otherwise first-compile the moment one is looked at.
+        for (const signal of [true, false]) {
+          const b = batchFor(name, fog, signal);
+          b.pos.setXYZ(0, 0, 0.5, 0);
+          b.scale.setXY(0, 0.05, 0.05);
+          b.col.setXYZ(0, 1, 1, 1);
+          b.geo.instanceCount = 1;
+          b.mesh.visible = true;
+          uploadActiveInstances(b.pos, 1);
+          uploadActiveInstances(b.scale, 1);
+          uploadActiveInstances(b.col, 1);
+        }
       }
     }
   },
