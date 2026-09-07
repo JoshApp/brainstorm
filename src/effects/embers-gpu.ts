@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { forEachLight } from '../scene/light-pool';
-import { canSeeSignalAt } from '../scene/signal-layer';
+import { canSeeEmitterAt } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
   vertexIndex, time, hash, float, vec3, uniform, uniformArray, frameGroup,
@@ -128,7 +128,12 @@ export function tickEmbersGPU(): void {
     // Filtered at the EMITTER, which is the only place it can be done: the cloud is one
     // Points draw whose trajectories are a pure function of time and index, with no
     // per-particle object to hide. Sixteen tests a frame instead of eight hundred.
-    if (!canSeeSignalAt(src.position.x, src.position.z)) return;
+    // THE 'LIGHT' CHANNEL, matching the layer these now draw in. They used to ask the SIGNAL
+    // question, which allows one sealed threshold further than a light — coherent while they
+    // composited after the veil, and wrong the moment they stopped. Asking one rule and drawing
+    // under another is what made them appear outside a room, vanish on the threshold and come
+    // back further in.
+    if (!canSeeEmitterAt(src.position.x, src.position.z, 'light')) return;
     _scratch[n].copy(src.position);
     // The torch's (possibly flicker-animated) light colour → this torch's embers.
     if (src.getColor) src.getColor(_tmpCol); else _tmpCol.setHex(src.color);

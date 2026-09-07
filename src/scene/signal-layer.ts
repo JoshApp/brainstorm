@@ -236,11 +236,31 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
  * reason the markers do.
  */
 export function canSeeSignalAt(x: number, z: number): boolean {
+  return canSeeEmitterAt(x, z, 'signal');
+}
+
+/**
+ * The same question on a named channel — because the channel has to match the LAYER the thing
+ * is drawn in, and getting that pair wrong is invisible until someone walks a doorway.
+ *
+ * Josh: *"the flame particles are not culled before, then culled when i enter the room, and not
+ * culled when i go in a bit further."* Non-monotonic visibility is the signature of two rules
+ * disagreeing, and that is exactly what it was: embers were moved OUT of the signal layer (they
+ * veil with their room now) and left asking the SIGNAL question, which is deliberately looser —
+ * it allows one sealed threshold further so a fire in the next room reaches you as a promise.
+ * A thing drawn in the lit layer that is gated one gate further than the lit layer reaches will
+ * appear and disappear on boundaries that belong to neither rule.
+ *
+ * So a caller names the channel it draws in. Embers ask 'light': they are the sparks off a torch
+ * and belong exactly where that torch's light belongs.
+ */
+export function canSeeEmitterAt(x: number, z: number, channel: 'light' | 'signal'): boolean {
   if (!lastLos) return true;
   // An emitter is a MOVING question from the index's point of view — the caller is a torch
   // this frame and a different torch the next — so it takes the uncached path rather than
   // filling the binding table with entries nobody reads twice.
-  if (!passes({ channel: 'signal', maxGates: signalKnobs.gates() }, locateMoving(x, z))) return false;
+  const maxGates = channel === 'signal' ? signalKnobs.gates() : signalKnobs.lightGates();
+  if (!passes({ channel, maxGates }, locateMoving(x, z))) return false;
   return seeable(x, z);
 }
 
