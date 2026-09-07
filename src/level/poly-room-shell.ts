@@ -5,6 +5,7 @@ import type { RoomSpec } from './types';
 import type { WallSegment } from './walkable';
 import type { StyleMaterials } from '../style/materials';
 import { groundYAt } from './elevation';
+import { COURSE_H } from '../style/stone-grid';
 import { tagRoomHeight } from '../scene/room-height';
 import { makeJitteredPlane, makeArchedCeilingGeometry, archCeilingMaterial } from './geometry-prims';
 import { buildRng } from '../engine/rng';
@@ -317,11 +318,26 @@ export function buildPolyRoomShell(
   // The hole has a height now (link.ts, WallCut.height) and the ring never removes the
   // wall above it, so the stone over a doorway is just another span. Nothing to solve,
   // and nothing that looks wrong when a decoration is off.
+  // Bond the corners — see quoinGeometry. Pushed in with the spans so they are the same mesh,
+  // the same draw and the same material as the wall they belong to.
+  pieces.push(...quoinGeometry(poly, elev, H));
+
   if (pieces.length > 0) {
     const merged = mergeGeometries(pieces, false);
     for (const g of pieces) g.dispose();
     if (merged) {
       const walls = new THREE.Mesh(merged, materials.wall);
+      // ── AND THEY DO CAST, WHICH IS NOT WHAT I ASSUMED ──────────────────
+      //
+      // I proposed making these receive-only as a free win, reasoning from the RECT builder's
+      // note ("walls = shell, receive-only — was casting into the lamp cube map") and from
+      // shadow encode being ~44% of the phone's frame. Tried it: the whole floor went pale and
+      // flat, because a room's shell is exactly what stops the lamp's light reaching the next
+      // room. These shadows are not incidental, they are the dark.
+      //
+      // The rect note is still true of what it describes — interior and niche walls, which stand
+      // INSIDE a room and occlude nothing that matters. The polygon shell is the enclosure
+      // itself. Same word, two different jobs, and the saving is only available on one of them.
       walls.castShadow = true;
       walls.receiveShadow = true;
       walls.name = `polywalls:${room.id}`;
@@ -468,6 +484,95 @@ function seededRand(key: string): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+
+// ── QUOINS — THE CORNER IS A STACK OF BLOCKS, NOT A LINE ─────────────────────
+//
+// Josh: *"would it be bad to make geometric cuts there? ... what would you do to break up the
+// edges."*
+//
+// A shader can round how an arris CATCHES LIGHT (surface-detail's corner rounding) and it can do
+// nothing at all about the outline. Against a lit wall behind it, a room corner is still a
+// perfectly straight line, and straight lines are the thing that reads as extruded.
+//
+// A uniform chamfer would break that line and introduce a worse one: a flawless 45-degree cut
+// running the full height is CAD in profile instead of CAD in shading. What real masonry does at
+// a corner is INTERLOCK — alternate courses bond into one wall and then the other, so the corner
+// is a stack of slightly offset blocks. That breaks the silhouette while reading as construction
+// rather than as damage, which matters because damage everywhere goes noisy fast.
+//
+// ── THE STEP HEIGHT IS THE TEXTURE'S COURSE HEIGHT ──────────────────────────
+//
+// COURSE_H, imported from the same module the wall bake uses, NOT a number picked to look right.
+// If the geometry stepped every 0.4m while the shading showed 0.6m courses, the offsets would
+// land mid-stone and the corner would look worse than a sharp one — geometry and shading
+// disagreeing is more unnatural than either being simple. That is exactly the mistake the stair
+// tile made, and it is checkable arithmetic before any code is written.
+//
+// ── AND THE ATTRIBUTES MATCH, DELIBERATELY ──────────────────────────────────
+//
+// These merge into the same buffer as the wall spans, and mergeGeometries returns NULL — not an
+// error — when its inputs disagree about attributes. The failure mode is a whole floor with no
+// walls. Spans carry position, uv, normal and COLOR; a BoxGeometry carries the first three, so
+// the colour is written here rather than left to chance.
+// How far a bonded course stands out of the corner. Small on purpose: this is a stone sitting
+// slightly proud of its neighbours, not a buttress.
+const QUOIN_PROUD = 0.03;
+// Along the wall — about a third of a brick (BRICK_W is 1.15), so it reads as one stone of the
+// course it belongs to rather than as an applied strip.
+const QUOIN_W = 0.38;
+// THROUGH the wall, and this is the number that matters. It must not exceed the wall's own
+// thickness: the first version used a 0.42 cube, which reached 0.38m behind the corner against a
+// 0.25m wall — so every quoin punched clean through and hung in the space on the far side as a
+// pale slab. That is what the first snap was showing, not a lighting bug.
+const QUOIN_D = WALL_T * 0.9;
+
+function quoinGeometry(poly: Poly, baseY: number, H: number): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const n = poly.length;
+  if (n < 3) return out;
+  for (let i = 0; i < n; i++) {
+    const p = poly[(i + n - 1) % n], c = poly[i], q = poly[(i + 1) % n];
+    const ux = p[0] - c[0], uz = p[1] - c[1];
+    const vx = q[0] - c[0], vz = q[1] - c[1];
+    const lu = Math.hypot(ux, uz), lv = Math.hypot(vx, vz);
+    if (lu < 1e-3 || lv < 1e-3) continue;
+    // The bisector of the two edges leaving this vertex points INTO the room.
+    let bx = ux / lu + vx / lv, bz = uz / lu + vz / lv;
+    const lb = Math.hypot(bx, bz);
+    // A straight run has no corner to bond: the two edges cancel.
+    if (lb < 0.2) continue;
+    bx /= lb; bz /= lb;
+    const yaw = Math.atan2(bx, bz);
+    // EVERY OTHER COURSE, on the world course grid rather than from the room's own floor — the
+    // wall texture's courses sit at world Y multiples of COURSE_H, so a quoin keyed to the room
+    // would drift out of step with the stones it is supposed to be one of.
+    const first = Math.ceil(baseY / COURSE_H);
+    const last = Math.floor((baseY + H) / COURSE_H);
+    for (let k = first; k <= last; k++) {
+      if (((k % 2) + 2) % 2 !== 0) continue;
+      const y = k * COURSE_H;
+      if (y < baseY + 0.05 || y > baseY + H - COURSE_H * 0.5) continue;
+      const g = new THREE.BoxGeometry(QUOIN_W, COURSE_H * 0.94, QUOIN_D);
+      // Sits ACROSS the corner, protruding QUOIN_PROUD into the room and buried for the rest of
+      // its depth, so the only part that can ever be seen is the stone's own face.
+      const m = new THREE.Matrix4()
+        .makeRotationY(yaw)
+        .setPosition(
+          c[0] + bx * (QUOIN_D / 2 - QUOIN_PROUD),
+          y + COURSE_H * 0.47,
+          c[1] + bz * (QUOIN_D / 2 - QUOIN_PROUD),
+        );
+      g.applyMatrix4(m);
+      const count = g.getAttribute('position').count;
+      const col = new Float32Array(count * 3);
+      col.fill(1);
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      out.push(g);
+    }
+  }
+  return out;
 }
 
 function spanGeometry(
