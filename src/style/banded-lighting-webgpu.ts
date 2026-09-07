@@ -267,6 +267,27 @@ const uBlackEdge = tuneUniform({
   min: 0, max: 1.5, value: 0.95, step: 0.05,
   hint: 'how far the boundary wanders; 0 is a dead level line and reads as a painted plane',
 });
+// ── A WALL AT THE TOP IS NOT A CEILING ──────────────────────────────────────
+//
+// Josh: *"this shadow is kinda just a ceiling being black but its part of the walls after the
+// ceiling drop of a corridor with stairs."*
+//
+// Where a stair corridor's lower ceiling meets a room, wall geometry fills the gap from the
+// passage's ceiling up to the room's — a head, a lintel, real architecture. It sits at the very
+// top of the room, so the band took it to pure black, and a black rectangle in the plane of a
+// wall does not read as a lintel in shadow. It reads as the CEILING coming down in a wedge,
+// which is the "big drop" being reported: the eye loses where the ceiling actually is.
+//
+// So the two surfaces get different floors. A CEILING is meant to stop existing — that is the
+// whole effect, and it is what finally worked. A WALL near the ceiling should go very dark and
+// still be stone, because it is a thing you are meant to understand the shape of. Four percent is
+// almost nothing and it is the difference between a void and a beam.
+const uWallKeep = tuneUniform({
+  id: 'wallkeep', group: 'The dark', label: 'Wall keeps at top',
+  min: 0, max: 0.3, value: 0.04, step: 0.005,
+  hint: 'light a WALL keeps under the band, so a lintel reads as stone and not as a hole',
+});
+
 const uBlackBias = tuneUniform({
   id: 'blackbias', group: 'The dark', label: 'Vanish late',
   min: 1, max: 6, value: 1.8, step: 0.1,
@@ -303,7 +324,10 @@ function blackEdgeNoise(): any {
  * because emissive survives — which is exactly why it took a while to see: the behaviour is a
  * feature one place and a bug the other, and the code reads identically in both.
  */
-export function roomTopTransmission(): any {
+/** The floor a WALL keeps at the top of a room — see uWallKeep. */
+export function wallKeepNode(): any { return uWallKeep as any; }
+
+export function roomTopTransmission(keep: any = (float as any)(0)): any {
   const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
   const span: any = roomY.y.sub(roomY.x);
   const below: any = roomY.y.sub((positionWorld as any).y);     // metres BELOW the ceiling
@@ -314,7 +338,10 @@ export function roomTopTransmission(): any {
   const t: any = below.div(band).clamp(0, 1).oneMinus();
   // Weighted to the top: most of the band barely dims, the last stretch takes everything.
   const eaten: any = t.pow(uBlackBias as any);
-  return (span.greaterThan(0.01) as any).select(eaten.oneMinus(), (float as any)(1));
+  // `keep` is the floor this surface may not go below. A ceiling passes 0 and reaches true black;
+  // a wall passes uWallKeep and stays readable as stone.
+  const survives: any = eaten.oneMinus().max(keep);
+  return (span.greaterThan(0.01) as any).select(survives, (float as any)(1));
 }
 
 // -- STATES OF REVEAL: A CREATURE EMERGING FROM THE DARK ----------------------
@@ -347,6 +374,8 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   veiled = false;
   /** Read `aRoomY` and darken the top of the room (SHELL materials only). */
   roomTop = false;
+  /** What this surface keeps at the very top — 0 for a ceiling, a little for a wall. */
+  roomTopKeep: any = null;
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
   // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
   // chromaNode (optional TSL node) is a PER-FRAGMENT chroma — used to amplify the
@@ -492,7 +521,7 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // version's mistake: a small room's ceiling is lit mostly by the AMBIENT term, which a
     // per-light attenuation never sees, so nothing visibly happened there. And it has to come
     // after the rim, or the rim keeps burning a silhouette into a ceiling meant to be absent.
-    if (this.roomTop) out = out.mul(roomTopTransmission());
+    if (this.roomTop) out = out.mul(roomTopTransmission(this.roomTopKeep ?? (float as any)(0)));
     context.outgoingLight.assign(out);
     super.finish(builder);
   }
@@ -621,13 +650,16 @@ export function setMaterialStoneLightingWebGPU(
  *
  * Behaviour is unchanged. Only the materials that were ever going to do something now ask.
  */
-export function setMaterialRoomTopDarkWebGPU(mat: any): void {
+export function setMaterialRoomTopDarkWebGPU(mat: any, keep: any = null): void {
   const prev = mat.setupLightingModel;
   mat.setupLightingModel = (...args: unknown[]) => {
     const model = typeof prev === 'function'
       ? prev.apply(mat, args)
       : new BandedPhysicalLightingModel(1, null, 0);
-    if (model instanceof BandedPhysicalLightingModel) model.roomTop = true;
+    if (model instanceof BandedPhysicalLightingModel) {
+      model.roomTop = true;
+      model.roomTopKeep = keep;
+    }
     return model;
   };
 }

@@ -1,6 +1,6 @@
 import { vec3 } from 'three/tsl';
 import * as THREE from 'three';
-import { setMaterialRoomTopDarkWebGPU, roomTopTransmission } from './banded-lighting-webgpu';
+import { setMaterialRoomTopDarkWebGPU, roomTopTransmission, wallKeepNode } from './banded-lighting-webgpu';
 import { CONFIG } from '../config';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
@@ -371,7 +371,10 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // The dark under a room's ceiling reads `aRoomY`, which only shell geometry carries. Installed
   // on exactly the two materials the level builders tag, so no other material asks for an
   // attribute it will never have — see setMaterialRoomTopDarkWebGPU.
-  setMaterialRoomTopDarkWebGPU(wallBase);
+  // A wall keeps a little at the top so a lintel over a passage reads as stone rather than as a
+  // hole in the world; a ceiling keeps nothing, because vanishing is the entire point of it.
+  // See setMaterialRoomTopDarkWebGPU.
+  setMaterialRoomTopDarkWebGPU(wallBase, wallKeepNode());
   setMaterialRoomTopDarkWebGPU(ceilingBase);
   // ── AND THE EMISSIVE GOES WITH IT ─────────────────────────────────────────
   //
@@ -383,10 +386,10 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   //
   // Scaling it by the SAME transmission means "black" is actually reachable. Below the band the
   // transmission is 1, so nothing anywhere else in the room changes.
-  for (const m of [wallBase, ceilingBase]) {
+  for (const [m, keep] of [[wallBase, wallKeepNode()], [ceilingBase, null]] as const) {
     const e = (m as THREE.MeshStandardMaterial).emissive;
     (m as unknown as { emissiveNode: unknown }).emissiveNode =
-      vec3(e.r, e.g, e.b).mul(roomTopTransmission());
+      vec3(e.r, e.g, e.b).mul(roomTopTransmission(keep ?? undefined));
   }
 
   return {
