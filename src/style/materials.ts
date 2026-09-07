@@ -1,5 +1,6 @@
+import { vec3 } from 'three/tsl';
 import * as THREE from 'three';
-import { setMaterialRoomTopDarkWebGPU } from './banded-lighting-webgpu';
+import { setMaterialRoomTopDarkWebGPU, roomTopTransmission } from './banded-lighting-webgpu';
 import { CONFIG } from '../config';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
@@ -372,6 +373,21 @@ export function buildMaterials(renderer: DelveRenderer): StyleMaterials {
   // attribute it will never have — see setMaterialRoomTopDarkWebGPU.
   setMaterialRoomTopDarkWebGPU(wallBase);
   setMaterialRoomTopDarkWebGPU(ceilingBase);
+  // ── AND THE EMISSIVE GOES WITH IT ─────────────────────────────────────────
+  //
+  // Three composites a material's emissive AFTER the lighting model, so scaling `outgoingLight`
+  // in finish() leaves it untouched — and both shell materials carry a small self-lit value
+  // (0x040303 on the ceiling, 0x06050a on the floor's stone). That value was the floor the
+  // darkness could not tune past: turn every knob to its darkest and the ceiling still glowed
+  // faintly at its own emissive.
+  //
+  // Scaling it by the SAME transmission means "black" is actually reachable. Below the band the
+  // transmission is 1, so nothing anywhere else in the room changes.
+  for (const m of [wallBase, ceilingBase]) {
+    const e = (m as THREE.MeshStandardMaterial).emissive;
+    (m as unknown as { emissiveNode: unknown }).emissiveNode =
+      vec3(e.r, e.g, e.b).mul(roomTopTransmission());
+  }
 
   return {
     wall: wallBase,

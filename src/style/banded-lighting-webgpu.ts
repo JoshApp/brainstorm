@@ -290,7 +290,20 @@ function blackEdgeNoise(): any {
 }
 
 /** How much light survives here. Exactly 0 at the ceiling, exactly 1 below the band. */
-function roomTopTransmission(): any {
+/**
+ * Exported so a shell material can scale its EMISSIVE by the same curve.
+ *
+ * Josh: *"its broken it doesnt make the ceiling actually black when i tune it."* Right, and the
+ * reason is not in this function — it is that three adds a material's emissive AFTER the lighting
+ * model has produced outgoingLight, so the term below never touches it. The ceiling material
+ * carries emissive 0x040303, which is a small self-lit floor the darkness could not reach past no
+ * matter where the knobs went.
+ *
+ * That is the same mechanism the creature reveal RELIES on — a veiled creature keeps its eyes
+ * because emissive survives — which is exactly why it took a while to see: the behaviour is a
+ * feature one place and a bug the other, and the code reads identically in both.
+ */
+export function roomTopTransmission(): any {
   const roomY: any = (attribute as any)(ROOM_Y_ATTR, 'vec2');
   const span: any = roomY.y.sub(roomY.x);
   const below: any = roomY.y.sub((positionWorld as any).y);     // metres BELOW the ceiling

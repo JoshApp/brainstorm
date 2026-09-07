@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { forEachLight } from '../scene/light-pool';
-import { canSeeSignalAt, signalDrawOrder } from '../scene/signal-layer';
+import { canSeeSignalAt } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
   vertexIndex, time, hash, float, vec3, uniform, uniformArray, frameGroup,
@@ -86,10 +86,25 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
 
   points = new THREE.Points(geom, mat);
   points.frustumCulled = false;
-  // AFTER THE VEIL, like the fire they rise from. Embers are gated at the emitter (see
-  // tickEmbersGPU), so any that exist belong to a torch the player can see — and a spark
-  // that dimmed at a doorway while its flame did not would read as two different fires.
-  signalDrawOrder(points);
+  // ── THE SOURCE PASSES A VEIL; ITS DEBRIS DOES NOT ────────────────────────
+  //
+  // These used to draw after the veil "like the fire they rise from", on the reasoning that a
+  // spark dimming at a doorway while its flame did not would read as two different fires. In
+  // play it reads as the opposite. Josh, relaying a first-time player: *"it feels a bit buggy to
+  // see torch particles through the veils."*
+  //
+  // The signal layer's job is to tell you WHAT IS IN A ROOM you cannot see into — three pairs of
+  // eyes, one flame, a glint. Every one of those is a THING. Embers are not a thing; they are the
+  // texture around a thing, and a drifting cloud of sparks with no visible torch under it reads
+  // as debris hanging in a doorway rather than as information.
+  //
+  // So the rule is: the SOURCE passes a veil, its DEBRIS does not. A flame, an eye, a rune, a
+  // glint — those say something is there and stay at full strength. Embers, wisps, motes and dust
+  // belong to the lit layer and get veiled with the room they are in. The constellation you see
+  // through a doorway stays a list of things, which is what made it readable.
+  //
+  // (Not deleted, VEILED: the emitter gate in tickEmbersGPU is unchanged, so embers still only
+  // exist for torches the player could see. This changes what a veil does to them.)
   // Stay visible through the boot warm so this compute-driven PointsNodeMaterial pipeline
   // compiles THERE (the warm hides the rest of the scene; warmKeep opts back in) — else it
   // first-compiles when a torch/bonfire comes into view in-play (a hitch). See warmup-pass.ts.
