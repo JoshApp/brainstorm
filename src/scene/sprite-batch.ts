@@ -234,15 +234,27 @@ export function createBatchedSprite(opts: {
   return entry;
 }
 
-/** True when every ancestor up to (and including) the batch scene is visible. */
-function worldVisible(o: THREE.Object3D): boolean {
+/**
+ * How much of this sprite reaches the player, 0..1 — or 0 if any ancestor is hidden or the
+ * placeholder is detached from the scene.
+ *
+ * Was a boolean walk of `.visible`. A signal marker's answer is a FRACTION now
+ * (scene/signal-layer.ts, "exposure, not visibility"): a flame half behind a doorway jamb is
+ * half a flame rather than a coin toss re-flipped every time the player shifts their weight.
+ * The batch already folds opacity into the additive colour, so honouring it costs one
+ * multiply on a walk that was happening anyway.
+ */
+function worldExposure(o: THREE.Object3D): number {
+  let e = 1;
   let cur: THREE.Object3D | null = o;
   while (cur) {
-    if (!cur.visible) return false;
-    if (cur === (batchScene as THREE.Object3D)) return true;
+    if (!cur.visible) return 0;
+    const x = cur.userData?.signalExposure;
+    if (typeof x === 'number') e *= x;
+    if (cur === (batchScene as THREE.Object3D)) return e;
     cur = cur.parent;
   }
-  return false;   // detached from the scene (torn down / not yet mounted)
+  return 0;   // detached from the scene (torn down / not yet mounted)
 }
 
 /** Per-frame: fold every live entry into its batch's instance attributes.
@@ -255,7 +267,8 @@ export function tickSpriteBatch(): void {
   _counts.clear();
   const now = Date.now();
   for (const e of entries) {
-    if (!worldVisible(e.obj)) continue;
+    const exposure = worldExposure(e.obj);
+    if (exposure <= 0.004) continue;
     const key = batchKey(e.textureName, e.fog, e.signal);
     const b = batchFor(e.textureName, e.fog, e.signal);
     const i = _counts.get(key) ?? 0;
@@ -290,7 +303,8 @@ export function tickSpriteBatch(): void {
     );
     // Additive: only rgb×alpha reaches the framebuffer, so opacity folds into
     // the tint and the shader's alpha stays the texture's own.
-    b.col.setXYZ(i, e.color.r * e.opacity, e.color.g * e.opacity, e.color.b * e.opacity);
+    const a = e.opacity * exposure;
+    b.col.setXYZ(i, e.color.r * a, e.color.g * a, e.color.b * a);
   }
   for (const [key, b] of batches) {
     const n = _counts.get(key) ?? 0;

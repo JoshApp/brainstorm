@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { forEachLight } from '../scene/light-pool';
-import { signalShownNear } from '../scene/signal-layer';
+import { signalExposureNear } from '../scene/signal-layer';
 import { PointsNodeMaterial } from 'three/webgpu';
 import {
   vertexIndex, time, hash, float, vec3, uniform, uniformArray, frameGroup,
@@ -144,10 +144,17 @@ export function tickEmbersGPU(): void {
     // verdict read here was computed last frame. A single frame of lag on sparks appearing is
     // invisible, and the alternative — reordering a compute tick that both render paths depend
     // on — would risk far more than it buys.
-    if (!signalShownNear(src.position.x, src.position.z)) return;
+    //
+    // The verdict is a FRACTION now (signal-layer.ts, "exposure, not visibility"), so the
+    // sparks dim with their fire instead of switching with it. Below the cutoff the emitter
+    // drops out of the array entirely, which is what keeps the GPU cost proportional to the
+    // fires you can actually see.
+    const exposure = signalExposureNear(src.position.x, src.position.z);
+    if (exposure <= 0.02) return;
     _scratch[n].copy(src.position);
     // The torch's (possibly flicker-animated) light colour → this torch's embers.
     if (src.getColor) src.getColor(_tmpCol); else _tmpCol.setHex(src.color);
+    _tmpCol.multiplyScalar(exposure);
     (torchColArr as any).array[n].set(_tmpCol.r, _tmpCol.g, _tmpCol.b);
     n++;
   });

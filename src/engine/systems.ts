@@ -624,10 +624,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // placeholder's visibility into its instance buffer. So the occlusion landed one frame
     // late, every frame, which reads as flames lagging a step behind the wall they are
     // meant to be hidden by while you walk.
-    { name: 'signal-occlusion', phase: 'always', tick() {
+    { name: 'signal-occlusion', phase: 'always', tick(ctx) {
       const walkable = getLevel()?.walkable;
       if (!walkable) return;
-      tickSignalOcclusion(camera.position.x, camera.position.y, camera.position.z,
+      tickSignalOcclusion(ctx.realDt, camera.position.x, camera.position.z,
         walkable.hasLineOfSight.bind(walkable));
     } },
     { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },

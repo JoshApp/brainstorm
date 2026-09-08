@@ -114,8 +114,29 @@ export function isSignal(o: THREE.Object3D): boolean {
 // pool has always used to keep a torch from lighting through a wall. It is the right
 // question ("can the player see this point"), it is independent of what is drawn, and it
 // costs about sixty segment tests a frame next to the pool's twenty-odd.
-type LOS = (ax: number, az: number, bx: number, bz: number,
-            opts?: { includeObstacles?: boolean; minTop?: number }) => boolean;
+//
+// ── WALLS ONLY, AND PROPS DELIBERATELY NOT ──────────────────────────────────
+//
+// This test used to ask about obstacles too — "a flame behind a pillar is behind
+// something". Twice now that has come back as strobing: first the starter chamber's chest,
+// and then Josh again on the same room — *"the exit stairwell can obstruct things and there
+// are other things like the altars might still do it ... something still isn't right."*
+// Giving obstacles a height helped and did not cure it, which is the tell that the height
+// was not the problem.
+//
+// The problem is that the question is being asked at all. Read the invariant above: the CPU
+// test exists because the CULLER decides what is in the depth buffer, and a wall two rooms
+// away may simply not be drawn. A PROP is different in exactly the way that matters — it
+// only occludes anything when it is close to you, and when it is close to you it is being
+// drawn. So the depth buffer already hides the flame behind the altar, per-pixel, in real
+// 3D, with no ray and no footprint. The CPU copy adds nothing except a second opinion that
+// is binary, taken from one ray, and therefore flips when you shift your weight: a small
+// footprint a couple of metres away subtends a wide angle, so 20cm of movement swings the
+// segment on and off it.
+//
+// Walls are the only occluder the depth buffer cannot be trusted for, so walls are the only
+// occluder this asks about.
+type LOS = (ax: number, az: number, bx: number, bz: number) => boolean;
 
 interface Marker {
   o: THREE.Object3D;
@@ -125,18 +146,24 @@ interface Marker {
   /** Last frame's verdict, for the DEV probe. '' = shown. */
   why: string;
   gates: number;
+  /** How much of this marker the player can see, 0..1 — see "EXPOSURE, NOT VISIBILITY".
+   *  Eased toward the sampled coverage; read by anything that draws or emits for it. */
+  exposure: number;
+  /** Has this marker ever been measured? The first answer snaps — a fire should not fade
+   *  up out of nothing on the frame it is created. */
+  decided: boolean;
 }
 
 const registry: Marker[] = [];
 /** Monotonic, so a marker's key is unique for the session. */
 let nextMarkerKey = 0;
-let lastEyeX = 0, lastEyeZ = 0, lastEyeY = 1.6;
+let lastEyeX = 0, lastEyeZ = 0;
 let lastLos: LOS | undefined;
 
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
 function track(o: THREE.Object3D): void {
   if (registry.some((m) => m.o === o)) return;
-  registry.push({ o, key: `signal:${nextMarkerKey++}`, why: '', gates: 0 });
+  registry.push({ o, key: `signal:${nextMarkerKey++}`, why: '', gates: 0, exposure: 0, decided: false });
 }
 
 /**
@@ -160,21 +187,81 @@ function track(o: THREE.Object3D): void {
  */
 const MOUNT_CLEARANCE = 0.35;
 
-/**
- * Can the eye reach this point, ignoring whatever the marker itself is bolted to?
- *
- * `y` is the marker's height. It is not decoration: obstacles only block a sightline they
- * are tall enough to cross (walkable.hasLineOfSight, minTop), and a wall sconce sits well
- * above the crates and chests that were strobing it.
- */
-function seeable(x: number, z: number, y: number): boolean {
+// ── EXPOSURE, NOT VISIBILITY ─────────────────────────────────────────────────
+//
+// Josh, on the third round of this bug: *"can we kinda restructure this in a way its more
+// robust, it feels like the fix is a rewrite not a patch."* He is right, and the three
+// bugs were one bug wearing different clothes.
+//
+// Every version of this asked ONE RAY whether the eye reaches the marker's CENTRE, and
+// then wrote the answer straight to `.visible`. Both halves of that are the defect:
+//
+//   ONE RAY against one edge is a coin toss at the boundary. A doorway jamb, a pillar's
+//   corner, the lip of a stairwell — the segment is on it or off it, and 20cm of walking
+//   swings between. Nothing about a torch actually changed.
+//
+//   A BOOLEAN cannot express the true answer, which is "most of it". A fire half behind a
+//   jamb is half a fire. Forced to round that to on or off, the system rounds a different
+//   way every few centimetres, and the rounding IS the strobe.
+//
+// So a marker no longer has a visibility. It has an EXPOSURE in 0..1 — how much of it the
+// player can see — and that number is:
+//
+//   SAMPLED ACROSS THE MARKER'S WIDTH, not at a point. A handful of rays spread
+//   perpendicular to the eye, so an edge cutting through the marker returns a FRACTION.
+//   That alone turns every hard boundary in the level into a ramp.
+//
+//   EASED, never snapped. Coming into view is quicker than leaving it, the same asymmetry
+//   mobs/enemy-reveal.ts uses and for the same reason: a fire you step into sight of should
+//   arrive, a fire you step away from should linger a moment.
+//
+// The result cannot strobe, because a continuous input cannot. And it is not a tolerance
+// bolted on top — a partially occluded flame being partially bright is simply correct.
+//
+// This is also the same conclusion the LIGHT pool reached independently
+// (scene/light-pool.ts: "Binary LOS culling made lights pop ... instead, LOS-blocked
+// sources stay candidates at LOS_DIM with eased visibility"). Two systems answering the
+// same question now answer it the same way.
+
+/** Rays per marker. Odd, so one of them is always the centre. */
+const RAYS = 3;
+/** How far the outer rays sit either side of the marker, metres — about a flame's width. */
+const SPREAD = 0.28;
+/** Per-second easing rates. Faster in than out; see the header. */
+const RISE = 9.0;
+const FALL = 4.0;
+/** Below this a marker is switched off outright, so the batch skips it and the culler's
+ *  saving survives. Low enough that nothing visible is cut. */
+const CUTOFF = 0.02;
+
+/** One ray, stopping short of whatever the marker is bolted to — see MOUNT_CLEARANCE. */
+function rayReaches(x: number, z: number): boolean {
   if (!lastLos) return true;
   const dx = x - lastEyeX, dz = z - lastEyeZ;
   const d = Math.hypot(dx, dz);
   if (d < 1e-3) return true;
   const back = Math.min(MOUNT_CLEARANCE, d * 0.5);
-  return lastLos(lastEyeX, lastEyeZ, x - (dx / d) * back, z - (dz / d) * back,
-                 { includeObstacles: true, minTop: Math.min(lastEyeY, y) });
+  return lastLos(lastEyeX, lastEyeZ, x - (dx / d) * back, z - (dz / d) * back);
+}
+
+/**
+ * What fraction of a marker at (x, z) the eye can reach, 0..1.
+ *
+ * Rays are spread PERPENDICULAR to the line of sight, which is the axis an occluder's edge
+ * actually cuts across. Spreading them along the sight line instead would sample the same
+ * shadow three times and learn nothing.
+ */
+function coverage(x: number, z: number): number {
+  if (!lastLos) return 1;
+  const dx = x - lastEyeX, dz = z - lastEyeZ;
+  const d = Math.hypot(dx, dz) || 1;
+  const px = -dz / d, pz = dx / d;          // unit perpendicular, in the ground plane
+  let hit = 0;
+  for (let i = 0; i < RAYS; i++) {
+    const t = (i / (RAYS - 1)) * 2 - 1;   // -1 .. +1, so ray 1 of 3 is the centre
+    if (rayReaches(x + px * SPREAD * t, z + pz * SPREAD * t)) hit++;
+  }
+  return hit / RAYS;
 }
 
 /**
@@ -189,12 +276,14 @@ function seeable(x: number, z: number, y: number): boolean {
  * marker is the thing the player is navigating by.
  */
 export function tickSignalOcclusion(
-  eyeX: number, eyeY: number, eyeZ: number, los: LOS | undefined,
+  dt: number, eyeX: number, eyeZ: number, los: LOS | undefined,
 ): void {
   // Kept so anything that EMITS signal can ask the same question without being handed the
   // camera and the level — see canSeeSignalAt.
-  lastEyeX = eyeX; lastEyeY = eyeY; lastEyeZ = eyeZ; lastLos = los;
+  lastEyeX = eyeX; lastEyeZ = eyeZ; lastLos = los;
   if (!los) return;
+  // Clamped: a long frame (a load, a tab-out) must not teleport every marker's exposure.
+  const step = Math.min(Math.max(dt, 0), 0.1);
   const maxGates = signalKnobs.gates();
   for (const m of registry) {
     if (!m.o.parent) continue;                    // torn down; the batch drops it anyway
@@ -222,13 +311,23 @@ export function tickSignalOcclusion(
     // further, so a fire in the next room reaches you as a promise while its room stays
     // dark. Josh asked for exactly that: break the corridor's seal to see what is past it.
     m.gates = where.gates.signal;
-    if (!passes({ channel: 'signal', maxGates }, where)) { m.why = 'gates'; m.o.visible = false; continue; }
+    // GATES ARE STILL A HARD RULE, and deliberately so: "one sealed threshold further" is a
+    // design statement about what the dungeon will tell you, not a visibility approximation
+    // that wants softening. It sets the target to zero; the easing below is what stops it
+    // popping as you cross.
+    const gated = !passes({ channel: 'signal', maxGates }, where);
+    const target = gated ? 0 : coverage(scratch.x, scratch.z);
+    m.why = target >= 1 ? '' : (gated ? 'gates' : 'los');
 
-    // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
-    // MOUNT_CLEARANCE.
-    const lit = seeable(scratch.x, scratch.z, scratch.y);
-    m.why = lit ? '' : 'los';
-    m.o.visible = lit;
+    if (!m.decided) { m.decided = true; m.exposure = target; }
+    else {
+      const rate = target > m.exposure ? RISE : FALL;
+      m.exposure += (target - m.exposure) * (1 - Math.exp(-rate * step));
+    }
+    // Both faces of the answer. `visible` keeps the culler's saving and stops a fully hidden
+    // marker costing a draw; the scalar is what anything that can FADE reads instead.
+    m.o.userData.signalExposure = m.exposure;
+    m.o.visible = m.exposure > CUTOFF;
   }
 }
 
@@ -243,12 +342,12 @@ export function tickSignalOcclusion(
  * gets the same answer the markers got. Fails VISIBLE when there is no LOS yet, for the same
  * reason the markers do.
  */
-export function canSeeSignalAt(x: number, z: number, y = lastEyeY): boolean {
-  return canSeeEmitterAt(x, z, 'signal', y);
+export function canSeeSignalAt(x: number, z: number): boolean {
+  return canSeeEmitterAt(x, z, 'signal');
 }
 
 /**
- * Is the SIGNAL MARKER nearest this point currently shown?
+ * How exposed is the SIGNAL MARKER nearest this point, 0..1?
  *
  * For an emitter that belongs to a marker rather than standing on its own — sparks off a torch,
  * which have no business being visible when their fire is not, or invisible when it is.
@@ -272,12 +371,15 @@ export function canSeeSignalAt(x: number, z: number, y = lastEyeY): boolean {
  *
  * Radius is generous on purpose: a flame's marker sits at the fire, the light that spawns embers
  * sits at the same sconce, and nothing else registers a signal that close to a torch.
+ *
+ * A SCALAR now, not a boolean — sparks fade with their fire rather than switching with it. A
+ * caller that can only be on or off should compare against a threshold and say so.
  */
-export function signalShownNear(x: number, z: number, radius = 0.6): boolean {
-  if (!lastLos) return true;
+export function signalExposureNear(x: number, z: number, radius = 0.6): number {
+  if (!lastLos) return 1;
   const r2 = radius * radius;
   let best = Infinity;
-  let shown = true;
+  let exposure = 1;
   for (const m of registry) {
     if (!m.o.parent) continue;
     m.o.getWorldPosition(scratch);
@@ -286,9 +388,9 @@ export function signalShownNear(x: number, z: number, radius = 0.6): boolean {
     const d2 = dx * dx + dz * dz;
     if (d2 > r2 || d2 >= best) continue;
     best = d2;
-    shown = m.o.visible;
+    exposure = m.exposure;
   }
-  return shown;
+  return exposure;
 }
 
 /**
@@ -306,16 +408,15 @@ export function signalShownNear(x: number, z: number, radius = 0.6): boolean {
  * So a caller names the channel it draws in. Embers ask 'light': they are the sparks off a torch
  * and belong exactly where that torch's light belongs.
  */
-export function canSeeEmitterAt(
-  x: number, z: number, channel: 'light' | 'signal', y = lastEyeY,
-): boolean {
+export function canSeeEmitterAt(x: number, z: number, channel: 'light' | 'signal'): boolean {
   if (!lastLos) return true;
   // An emitter is a MOVING question from the index's point of view — the caller is a torch
   // this frame and a different torch the next — so it takes the uncached path rather than
   // filling the binding table with entries nobody reads twice.
   const maxGates = channel === 'signal' ? signalKnobs.gates() : signalKnobs.lightGates();
   if (!passes({ channel, maxGates }, locateMoving(x, z))) return false;
-  return seeable(x, z, y);
+  // Any coverage at all is "can be seen" for a caller that only has a boolean to give.
+  return coverage(x, z) > 0;
 }
 
 /** Every signal marker, where it is and which test decided it — for debug/cull-map.ts.
@@ -323,6 +424,9 @@ export function canSeeEmitterAt(
  *  is invisible from inside the game precisely because it is somewhere you are not. */
 export interface SignalMapRow {
   x: number; z: number; visible: boolean; why: string; gates: number;
+  /** 0..1 — a marker can now be PARTLY shown, and a map that only said yes/no would
+   *  report a half-occluded flame as a clean pass. */
+  exposure: number;
 }
 export function debugSignalMap(): SignalMapRow[] {
   if (!DEV) return [];
@@ -330,7 +434,8 @@ export function debugSignalMap(): SignalMapRow[] {
   for (const m of registry) {
     if (!m.o.parent) continue;
     m.o.getWorldPosition(scratch);
-    out.push({ x: scratch.x, z: scratch.z, visible: m.o.visible, why: m.why, gates: m.gates });
+    out.push({ x: scratch.x, z: scratch.z, visible: m.o.visible, why: m.why, gates: m.gates,
+               exposure: m.exposure });
   }
   return out;
 }
