@@ -45,6 +45,7 @@ import { tickThresholdDrafts } from '../scene/threshold-draft';
 import { tickEnemyReveal } from '../mobs/enemy-reveal';
 import { tickThresholdVeils } from '../scene/threshold-veil';
 import { tickSignalOcclusion } from '../scene/signal-layer';
+import { tickFlickerRecorder } from '../debug/flicker-recorder';
 import { flushEncodeBreakdown } from '../debug/encode-breakdown';
 import { isAnyScreenOpen } from '../ui/screen-manager';
 import { isDescendTransition } from '../ui/descent-fade';
@@ -631,6 +632,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         walkable.hasLineOfSight.bind(walkable));
     } },
     { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },
+
+    // DEV: record why every flame and lamp near the camera is as bright as it is, while
+    // somebody walks. Runs AFTER the occlusion pass and the batch fold, so a sample is the
+    // state that was actually drawn this frame rather than the state it was about to be.
+    { name: 'flicker-recorder', phase: 'always', tick(ctx) {
+      tickFlickerRecorder(camera, ctx.realDt);
+    } },
 
     // ── always-on (run through pause/death so the screen stays live) ──
 
