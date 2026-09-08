@@ -51,7 +51,7 @@ export function spawnCardDrop(scene: THREE.Object3D, pos: THREE.Vector3, cardId:
   // floor glow disc — domain-tinted, self-emissive (carries the "lit" read)
   const disc = new THREE.Mesh(pooledPlane(DISC_SIZE, DISC_SIZE), new THREE.MeshStandardMaterial({
     map: getTexture('fire-wisp'), color: accent, emissive: accent, emissiveIntensity: 1.4,
-    transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, fog: false, depthWrite: false,
+    transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
   }));
   disc.rotation.x = -Math.PI / 2;

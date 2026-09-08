@@ -510,7 +510,10 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     if (this.rimDarkReactive > 0) {
       const rimAttr: any = (attribute as any)('aRevealRim', 'vec4');
       const viewDir: any = (cameraPosition as any).sub(positionWorld).normalize();
-      const fres: any = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
+      // `.max(0.5)` on the power: a creature WITHOUT a rim carries a zero
+      // aRevealRim (colour and power) — pow(0, 0) is undefined in WGSL and a
+      // NaN there would survive the ×0. Real rims author power ≥ 2, unaffected.
+      const fres: any = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w.max(0.5));
       // The exact GLSL-era gate (7f07509): mix(1, mix(1, 0.22, litLuma), dr)
       // = 1 − 0.78·dr·litLuma — full rim in black, easing toward a 0.22 floor
       // as the fragment lights up. Parity, not a re-tune.
@@ -585,9 +588,14 @@ export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
  *  (the rim reads the fragment's lit luminance and fades under light; colour +
  *  fresnel power ride the per-vertex aRevealRim attribute). One installer so
  *  rim'd + painted materials compose through a single lighting model. */
-export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: number; rimDarkReactive?: number }): void {
+export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: number; rimDarkReactive?: number; compileAll?: boolean }): void {
   const chroma = opts.chroma ?? 1;
   const dr = opts.rimDarkReactive ?? 0;
+  // `compileAll` — the creature kind: compile the chroma AND rim paths whatever
+  // the values, so every creature shares one program. The gates passed to the
+  // model are then constants that force inclusion; the refs carry the truth.
+  const gateChroma = opts.compileAll ? 2 : chroma;
+  const gateDr = opts.compileAll ? 1 : dr;
   // The amounts live on the MATERIAL and reach the shader as per-draw uniforms
   // (materialReference), so every chroma/rim value shares one program. The
   // numbers passed to the model are only presence gates (≠1, >0). userData is
@@ -596,9 +604,9 @@ export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: numbe
   mat.userData.revealChroma = chroma;
   mat.userData.revealRimDarkReactive = dr;
   mat.setupLightingModel = () => {
-    const model = new BandedPhysicalLightingModel(chroma, null, dr);
-    if (chroma !== 1) model.chromaRef = (materialReference as any)('userData.revealChroma', 'float');
-    if (dr > 0) model.rimDarkReactiveRef = (materialReference as any)('userData.revealRimDarkReactive', 'float');
+    const model = new BandedPhysicalLightingModel(gateChroma, null, gateDr);
+    if (gateChroma !== 1) model.chromaRef = (materialReference as any)('userData.revealChroma', 'float');
+    if (gateDr > 0) model.rimDarkReactiveRef = (materialReference as any)('userData.revealRimDarkReactive', 'float');
     return model;
   };
 }
@@ -688,6 +696,12 @@ export function setMaterialRoomTopDarkWebGPU(mat: any, keep: any = null): void {
 }
 
 export function setMaterialCreatureRevealWebGPU(mat: any): void {
+  // Idempotent: the creature kind installs this at material creation
+  // (build-model), and the skinned build calls it again per body. A pooled
+  // material must not be re-wrapped, or it drifts from the shader the warm
+  // compiled for it.
+  if (mat.userData.creatureVeiled) return;
+  mat.userData.creatureVeiled = true;
   const prev = mat.setupLightingModel;
   mat.setupLightingModel = (...args: unknown[]) => {
     const model = typeof prev === 'function'

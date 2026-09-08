@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { registerMaterialPool, glowSurface, glowSprite, smokeSprite } from '../style/material-registry';
+import { flatGeometry, wantsFlatBake } from '../scene/flat-bake';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
@@ -12,7 +13,7 @@ import { createBatchedFlameMesh, isFlameMeshBatchingEnabled } from '../scene/fla
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
-import { setMaterialRevealLightingWebGPU } from '../style/banded-lighting-webgpu';
+import { setMaterialRevealLightingWebGPU, setMaterialCreatureRevealWebGPU } from '../style/banded-lighting-webgpu';
 import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute, materialOpacity } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
@@ -397,11 +398,14 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
     emissiveIntensity: def.emissiveIntensity ?? 1,
     roughness: def.roughness ?? 0.95,
     metalness: def.metalness ?? 0,
-    flatShading,
+    // Flat shading is baked into the part's GEOMETRY (scene/flat-bake.ts), never
+    // set on the material: the material flag is a second shader program.
+    flatShading: false,
     transparent: def.transparent ?? false,
     opacity: def.opacity ?? 1,
     fog: def.fog ?? true,
   });
+  if (flatShading) mat.userData.flatBaked = true;
 
   // Inject custom GLSL for rim glow + dissolve. We do this once at
   // build time so the shader compiles during warmup; the death sequence
@@ -514,9 +518,18 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
  *  constant emissive-node path. World-space fresnel either way. */
 function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
   const rimDR = def.rim?.darkReactive ?? 0;
-  // PAINTED chroma and/or dark-reactive rim — both live in the per-material
-  // banded lighting model (finish() sees the lit colour; emissive nodes don't).
-  if ((def.chroma != null && def.chroma !== 1) || rimDR > 0) {
+  // THE CREATURE KIND. Every dissolvable material (build-creature forces it on
+  // every creature) compiles the SAME shader: chroma, dark-reactive rim, veil
+  // and dissolve all present, driven by uniforms and attributes that are
+  // identity when unused (chroma 1, rim strength 0, rim colour zero). Before
+  // this, each feature a species used or didn't was its own fragment program —
+  // eight programs behind one family on a single floor. A non-creature
+  // material keeps the à-la-carte path (chroma / dark rim only when asked).
+  const creature = !!def.dissolvable;
+  if (creature) {
+    setMaterialRevealLightingWebGPU(mat, { chroma: def.chroma ?? 1, rimDarkReactive: rimDR, compileAll: true });
+    setMaterialCreatureRevealWebGPU(mat);
+  } else if ((def.chroma != null && def.chroma !== 1) || rimDR > 0) {
     setMaterialRevealLightingWebGPU(mat, { chroma: def.chroma ?? 1, rimDarkReactive: rimDR });
   }
 
@@ -548,7 +561,9 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
     reveal.reveal_rim = [c.r * intens, c.g * intens, c.b * intens, power];
     // darkReactive rims render in the lighting model's finish() (which reads the
     // same aRevealRim attribute baked above) — adding here too would double them.
-    if (rimDR === 0) {
+    // A creature's rim ALWAYS renders there (strength 0 = the constant rim), so
+    // the emissive-node path is only for a non-creature rim.
+    if (rimDR === 0 && !creature) {
       const rimAttr: any = (tslAttribute as any)('aRevealRim', 'vec4');
       const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
       const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
@@ -901,7 +916,10 @@ function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec
   // them (different materials share it), so CLONE before baking. Non-reveal materials keep the pooled
   // geometry untouched.
   const reveal = revealOf(mat);
-  const meshGeo = reveal ? geo.clone() : geo;
+  // Flat first (the cached flat twin is shared, like the pooled source), then
+  // a private clone if reveal attributes have to be written into it.
+  const base = wantsFlatBake(mat) ? flatGeometry(geo) : geo;
+  const meshGeo = reveal ? base.clone() : base;
   if (reveal) setRevealAttributes(meshGeo, reveal);
   const mesh = new THREE.Mesh(meshGeo, mat);
   mesh.castShadow = castsShadow(part, mat);
@@ -943,7 +961,8 @@ function buildCsg(
 ): THREE.Mesh {
   const cached = CSG_CACHE.get(part);
   if (cached) {
-    const mesh = new THREE.Mesh(cached.clone(), materials.get(part.mat)!);
+    const cachedMat = materials.get(part.mat)!;
+    const mesh = new THREE.Mesh((wantsFlatBake(cachedMat) ? flatGeometry(cached) : cached).clone(), cachedMat);
     // Reveal attributes are stamped per build, not cached, so a spec reused
     // under a different material still gets that material's reveal colours.
     const rev = revealOf(mesh.material as THREE.Material);
@@ -995,6 +1014,7 @@ function buildCsg(
   // reveal material's per-vertex aReveal* attributes are lost, and a later
   // same-material merge (mergeRigidSegments) rejects the mixed attribute
   // sets. Stamp them on the result exactly like makeMesh does.
+  if (wantsFlatBake(result.material)) result.geometry = flatGeometry(result.geometry);
   const reveal = revealOf(result.material);
   if (reveal) setRevealAttributes(result.geometry, reveal);
   geoA.dispose();

@@ -35,7 +35,7 @@ const SHROUDED_RELIC_MODEL: ModelSpec = {
   materials: {
     cloth: { color: 0x1a151f, roughness: 1.0, metalness: 0.0, flatShading: 'auto' },
     cord:  { color: 0x0c0a10, roughness: 1.0, metalness: 0.0 },
-    glint: { color: 0x2a1230, emissive: VIOLET, emissiveIntensity: 1.4, roughness: 0.4, fog: false },
+    glint: { color: 0x2a1230, emissive: VIOLET, emissiveIntensity: 1.4, roughness: 0.4 },
   },
   parts: [
     // Wrapped body — an ovoid bundle.

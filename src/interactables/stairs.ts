@@ -246,7 +246,7 @@ export function spawnStairs(
   // arch, so the fire floats in void until it wakes.
   // Pure black, never animated — one shared instance across every staircase
   // on the floor (material-registry pool; see tests/material-authority).
-  const voidMat = basicMat({ color: 0x000000, fog: false });
+  const voidMat = basicMat({ color: 0x000000 });
   const voidBack = new THREE.Mesh(pooledPlane(STEP_WIDTH, totalDrop + 1.6), voidMat);
   voidBack.position.set(0, -totalDrop / 2 - 0.2, archZ + 1.6);
   group.add(voidBack);

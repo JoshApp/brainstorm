@@ -433,7 +433,7 @@ export const LURKER: ModelSpec = {
     shroud:    { color: 0x0a0c10, roughness: 1.0, flatShading: true },
     // Eye dots — emissive only, no diffuse colour. Dim enough to be
     // mistaken for a stuck pixel until the player is sure.
-    eyeglow:   { color: 0x000000, emissive: 0xa86028, emissiveIntensity: 1.6, roughness: 1.0, flatShading: true, fog: false },
+    eyeglow:   { color: 0x000000, emissive: 0xa86028, emissiveIntensity: 1.6, roughness: 1.0, flatShading: true },
   },
   parts: [
     // Hunched torso — slight forward lean (negative rotX) and a tilt

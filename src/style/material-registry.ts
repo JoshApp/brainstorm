@@ -57,7 +57,14 @@ function shared<T extends THREE.Material>(cache: Map<string, T>, make: () => T, 
  *  `new THREE.MeshStandardMaterial` for any STATIC surface (decor, static interactables) so the
  *  game's recurring-material set stays closed and warmable. See docs/PIPELINE-BUDGET.md. */
 export function stdMat(params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
-  return shared(stdCache, () => new THREE.MeshStandardMaterial(params), params);
+  // `flatShading` never reaches the material (it is a second shader program);
+  // the material is marked and the MESH bakes face normals into its geometry —
+  // see scene/flat-bake.ts. The key keeps the flag so flat and smooth callers
+  // get distinct instances, which is what lets the mesh side tell them apart.
+  const { flatShading, ...rest } = params;
+  const m = shared(stdCache, () => new THREE.MeshStandardMaterial(rest), params);
+  if (flatShading) m.userData.flatBaked = true;
+  return m;
 }
 
 /** Shared, structurally-deduplicated MeshBasicMaterial — the unlit twin of stdMat, for static

@@ -49,7 +49,6 @@ export function bossMistModel(tint: number, halfWidth = 1.7, height = 4.6): Mode
         roughness: 1.0,
         transparent: true,
         opacity: 0.55,
-        fog: false,
       },
       // A secondary darker panel BEHIND the main one adds a slight
       // depth shadow so the curtain doesn't read as a flat decal.
@@ -60,7 +59,6 @@ export function bossMistModel(tint: number, halfWidth = 1.7, height = 4.6): Mode
         roughness: 1.0,
         transparent: true,
         opacity: 0.30,
-        fog: false,
       },
     },
     slots: {

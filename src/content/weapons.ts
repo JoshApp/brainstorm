@@ -63,7 +63,6 @@ export const HEARTBURN: ModelSpec = {
       emissiveIntensity: 1.0,
       roughness: 0.45,
       metalness: 0.5,
-      fog: false,
       flatShading: 'auto',
     },
     fittings: {
@@ -71,14 +70,12 @@ export const HEARTBURN: ModelSpec = {
       color: 0xa37822,
       roughness: 0.4,
       metalness: 0.85,
-      fog: false,
       flatShading: 'auto',
     },
     grip: {
       color: 0x1c1410,
       roughness: 0.95,
       metalness: 0.1,
-      fog: false,
       flatShading: 'auto',
     },
     pommelStone: {
@@ -87,7 +84,6 @@ export const HEARTBURN: ModelSpec = {
       emissive: 0xff2233,
       emissiveIntensity: 1.6,
       roughness: 0.4,
-      fog: false,
     },
   },
   parts: [
@@ -136,21 +132,18 @@ export const BONE_NEEDLE: ModelSpec = {
       metalness: 0.05,
       emissive: 0x281a10,
       emissiveIntensity: 0.25,
-      fog: false,
       flatShading: 'auto',
     },
     guard: {
       color: 0x1a1410,
       roughness: 0.55,
       metalness: 0.65,
-      fog: false,
       flatShading: 'auto',
     },
     wrap: {
       color: 0x2a1a0e,
       roughness: 0.95,
       metalness: 0.0,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -185,7 +178,6 @@ export const IRON_MAUL: ModelSpec = {
       color: 0x3c3a36,
       roughness: 0.45,
       metalness: 0.85,
-      fog: false,
       flatShading: 'auto',
     },
     haft: {
@@ -193,14 +185,12 @@ export const IRON_MAUL: ModelSpec = {
       color: 0x2a1a10,
       roughness: 0.92,
       metalness: 0.05,
-      fog: false,
       flatShading: 'auto',
     },
     band: {
       color: 0x52504a,
       roughness: 0.55,
       metalness: 0.8,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -243,9 +233,9 @@ export const IRON_MAUL: ModelSpec = {
 export const CROSSBOW: ModelSpec = {
   id: 'weapon-crossbow',
   materials: {
-    wood:  { color: 0x3a2a1a, roughness: 0.85, metalness: 0.1, fog: false, flatShading: 'auto' },
-    metal: { color: 0x6a6258, roughness: 0.5, metalness: 0.7, fog: false, flatShading: 'auto' },
-    bolt:  { color: 0x9a8a70, roughness: 0.7, metalness: 0.3, fog: false, flatShading: 'auto' },
+    wood:  { color: 0x3a2a1a, roughness: 0.85, metalness: 0.1, flatShading: 'auto' },
+    metal: { color: 0x6a6258, roughness: 0.5, metalness: 0.7, flatShading: 'auto' },
+    bolt:  { color: 0x9a8a70, roughness: 0.7, metalness: 0.3, flatShading: 'auto' },
   },
   parts: [
     // Stock — runs forward along −Z.
@@ -278,9 +268,9 @@ export const CROSSBOW: ModelSpec = {
 export const WAND: ModelSpec = {
   id: 'weapon-wand',
   materials: {
-    wood:  { color: 0x241a12, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    iron:  { color: 0x14110d, roughness: 0.55, metalness: 0.6, fog: false, flatShading: 'auto' },
-    orb:   { color: 0x000000, emissive: 0xb060ff, emissiveIntensity: 2.8, roughness: 1.0, fog: false },
+    wood:  { color: 0x241a12, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    iron:  { color: 0x14110d, roughness: 0.55, metalness: 0.6, flatShading: 'auto' },
+    orb:   { color: 0x000000, emissive: 0xb060ff, emissiveIntensity: 2.8, roughness: 1.0 },
   },
   parts: [
     // Long gnarled shaft — runs from grip (+Z) to the crown
@@ -317,9 +307,9 @@ export const SPEAR: ModelSpec = {
   // CENTRE — the only place a radius sniff knows about. Held down the shaft, thumb along it.
   grip: { style: 'staff' },
   materials: {
-    haft: { color: 0x4a3322, roughness: 0.9, metalness: 0.05, fog: false, flatShading: 'auto' },
-    head: { color: 0x9a948a, roughness: 0.5, metalness: 0.7, fog: false, flatShading: 'auto' },
-    bind: { color: 0x2a1d12, roughness: 0.8, metalness: 0.1, fog: false, flatShading: 'auto' },
+    haft: { color: 0x4a3322, roughness: 0.9, metalness: 0.05, flatShading: 'auto' },
+    head: { color: 0x9a948a, roughness: 0.5, metalness: 0.7, flatShading: 'auto' },
+    bind: { color: 0x2a1d12, roughness: 0.8, metalness: 0.1, flatShading: 'auto' },
   },
   parts: [
     // Shaft — long thin rod running forward along −Z.
@@ -352,21 +342,18 @@ export const WEAPON_SCIMITAR: ModelSpec = {
       color: 0x8a847a,
       roughness: 0.55,
       metalness: 0.7,
-      fog: false,
       flatShading: 'auto',
     },
     fittings: {
       color: 0x44321e,
       roughness: 0.6,
       metalness: 0.65,
-      fog: false,
       flatShading: 'auto',
     },
     grip: {
       color: 0x1c1410,
       roughness: 0.95,
       metalness: 0.1,
-      fog: false,
       flatShading: 'auto',
     },
   },

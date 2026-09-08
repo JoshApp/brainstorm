@@ -99,7 +99,7 @@ export function spawnChest(
   if (gated && gateId) {
     const sealMat = stdMat({
       map: getTexture('fire-wisp'), color: 0x8a4bd6, emissive: 0x8a4bd6, emissiveIntensity: 1.1,
-      transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, fog: false, depthWrite: false,
+      transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, depthWrite: false,
     });
     sealDisc = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 1.35), sealMat);
     sealDisc.rotation.x = -Math.PI / 2;

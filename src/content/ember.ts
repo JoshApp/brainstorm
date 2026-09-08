@@ -29,7 +29,7 @@ export const GUTTERING_EMBER: ModelSpec = {
     cinder: { color: CINDER, roughness: 0.95, flatShading: 'auto' },
     // The core is emissive-only: its own base colour is black, so it reads as
     // light coming OUT of the shell rather than as a painted orange ball.
-    core:   { color: 0x000000, emissive: HOT, emissiveIntensity: 3.4, roughness: 1.0, fog: false },
+    core:   { color: 0x000000, emissive: HOT, emissiveIntensity: 3.4, roughness: 1.0 },
     ash:    { color: 0x141110, roughness: 1.0, flatShading: 'auto' },
   },
   parts: [

@@ -13,7 +13,6 @@ export const HEALING_POTION: ModelSpec = {
       color: 0x161814,
       roughness: 0.25,
       metalness: 0.1,
-      fog: false,
       flatShading: 'auto',
     },
     elixir: {
@@ -23,13 +22,11 @@ export const HEALING_POTION: ModelSpec = {
       emissive: 0xff2233,
       emissiveIntensity: 1.8,
       roughness: 0.4,
-      fog: false,
     },
     cork: {
       color: 0x4a3a26,
       roughness: 0.95,
       metalness: 0.0,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -69,7 +66,6 @@ export const ESTUS_FLASK: ModelSpec = {
       metalness: 0.12,
       transparent: true,
       opacity: 0.42,
-      fog: false,
       flatShading: 'auto',
     },
     elixir: {
@@ -78,20 +74,17 @@ export const ESTUS_FLASK: ModelSpec = {
       emissive: 0xffb43c,
       emissiveIntensity: 2.0,
       roughness: 0.3,
-      fog: false,
     },
     iron: {
       color: 0x2c2823,
       roughness: 0.55,
       metalness: 0.8,
-      fog: false,
       flatShading: 'auto',
     },
     cork: {
       color: 0x4a3a26,
       roughness: 0.95,
       metalness: 0.0,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -123,9 +116,9 @@ export const ESTUS_FLASK: ModelSpec = {
 export const FLASK_DRAUGHT: ModelSpec = {
   id: 'flask-draught',
   materials: {
-    glass: { color: 0x1b1a15, roughness: 0.25, metalness: 0.1, fog: false, flatShading: 'auto' },
-    elixir: { color: 0x000000, emissive: 0xffb43c, emissiveIntensity: 1.6, roughness: 0.4, fog: false },
-    cork: { color: 0x4a3a26, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
+    glass: { color: 0x1b1a15, roughness: 0.25, metalness: 0.1, flatShading: 'auto' },
+    elixir: { color: 0x000000, emissive: 0xffb43c, emissiveIntensity: 1.6, roughness: 0.4 },
+    cork: { color: 0x4a3a26, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
   },
   parts: [
     { kind: 'cylinder', pos: [0, 0.055, 0], radius: 0.038, height: 0.09, segments: 10, mat: 'glass' },
@@ -140,8 +133,8 @@ export const FLASK_DRAUGHT: ModelSpec = {
 export const FLASK_SHARD: ModelSpec = {
   id: 'flask-shard',
   materials: {
-    shard: { color: 0x201c12, roughness: 0.2, metalness: 0.15, fog: false, flatShading: 'auto' },
-    gleam: { color: 0x000000, emissive: 0xffc860, emissiveIntensity: 1.4, roughness: 0.3, fog: false },
+    shard: { color: 0x201c12, roughness: 0.2, metalness: 0.15, flatShading: 'auto' },
+    gleam: { color: 0x000000, emissive: 0xffc860, emissiveIntensity: 1.4, roughness: 0.3 },
   },
   parts: [
     // A broken curve of bulb-glass — three thin plates fanned along an arc
@@ -163,7 +156,6 @@ function ringModel(id: string, jewelColor: number, jewelEmissive: number): Model
         color: 0xb09060,
         roughness: 0.45,
         metalness: 0.7,
-        fog: false,
         flatShading: 'auto',
       },
       jewel: {
@@ -171,7 +163,6 @@ function ringModel(id: string, jewelColor: number, jewelEmissive: number): Model
         emissive: jewelColor,
         emissiveIntensity: jewelEmissive,
         roughness: 0.35,
-        fog: false,
       },
     },
     parts: [
@@ -194,8 +185,8 @@ export const RING_OF_FRENZY = ringModel('ring-frenzy', 0xc05bd6, 2.4);    // vio
 export const IRON_COIF: ModelSpec = {
   id: 'iron-coif',
   materials: {
-    iron: { color: 0x44423e, roughness: 0.55, metalness: 0.7, fog: false, flatShading: 'auto' },
-    band: { color: 0x2a2622, roughness: 0.7, metalness: 0.5, fog: false, flatShading: 'auto' },
+    iron: { color: 0x44423e, roughness: 0.55, metalness: 0.7, flatShading: 'auto' },
+    band: { color: 0x2a2622, roughness: 0.7, metalness: 0.5, flatShading: 'auto' },
   },
   parts: [
     // Dome — upper hemisphere of a sphere (scaled flat). PartSpec doesn't
@@ -211,9 +202,9 @@ export const IRON_COIF: ModelSpec = {
 export const BONE_AMULET: ModelSpec = {
   id: 'bone-amulet',
   materials: {
-    chain: { color: 0x2a2622, roughness: 0.6, metalness: 0.7, fog: false, flatShading: 'auto' },
-    bone:  { color: 0xc8b896, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    eye:   { color: 0x000000, emissive: 0xff4400, emissiveIntensity: 1.6, roughness: 1.0, fog: false },
+    chain: { color: 0x2a2622, roughness: 0.6, metalness: 0.7, flatShading: 'auto' },
+    bone:  { color: 0xc8b896, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    eye:   { color: 0x000000, emissive: 0xff4400, emissiveIntensity: 1.6, roughness: 1.0 },
   },
   parts: [
     // Chain — wide thin torus at top.
@@ -233,7 +224,7 @@ export const BONE_AMULET: ModelSpec = {
 export const ACID_TONGUE_AMULET: ModelSpec = {
   id: 'acid-tongue-amulet',
   materials: {
-    chain: { color: 0x1c2010, roughness: 0.7, metalness: 0.7, fog: false, flatShading: 'auto' },
+    chain: { color: 0x1c2010, roughness: 0.7, metalness: 0.7, flatShading: 'auto' },
     stone: {
       // Black-green base with bright acid emissive — the stone glows.
       color: 0x0a1408,
@@ -241,9 +232,8 @@ export const ACID_TONGUE_AMULET: ModelSpec = {
       emissiveIntensity: 1.4,
       roughness: 0.35,
       metalness: 0.2,
-      fog: false,
     },
-    drip: { color: 0x000000, emissive: 0xa8ff44, emissiveIntensity: 2.2, roughness: 1.0, fog: false },
+    drip: { color: 0x000000, emissive: 0xa8ff44, emissiveIntensity: 2.2, roughness: 1.0 },
   },
   parts: [
     // Chain — thin torus loop at top.
@@ -266,10 +256,10 @@ export const ACID_TONGUE_AMULET: ModelSpec = {
 export const RELIC_BUNDLE: ModelSpec = {
   id: 'relic-bundle',
   materials: {
-    wrap:  { color: 0x1a1512, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
-    cord:  { color: 0x0d0a06, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
-    bone:  { color: 0xbfb096, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    brand: { color: 0x000000, emissive: 0xcc1418, emissiveIntensity: 1.8, roughness: 1.0, fog: false },
+    wrap:  { color: 0x1a1512, roughness: 1.0, metalness: 0.0, flatShading: 'auto' },
+    cord:  { color: 0x0d0a06, roughness: 1.0, metalness: 0.0, flatShading: 'auto' },
+    bone:  { color: 0xbfb096, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    brand: { color: 0x000000, emissive: 0xcc1418, emissiveIntensity: 1.8, roughness: 1.0 },
   },
   parts: [
     // The wrapped bundle — a chunky bevelled parcel of dark cloth.
@@ -288,8 +278,8 @@ export const RELIC_BUNDLE: ModelSpec = {
 export const LEATHER_GLOVES: ModelSpec = {
   id: 'leather-gloves',
   materials: {
-    leather: { color: 0x3a2a1c, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    binding: { color: 0x161208, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
+    leather: { color: 0x3a2a1c, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    binding: { color: 0x161208, roughness: 1.0, metalness: 0.0, flatShading: 'auto' },
   },
   parts: [
     // Hand box — slightly tall, narrow.
@@ -305,8 +295,8 @@ export const LEATHER_GLOVES: ModelSpec = {
 export const WORN_BOOTS: ModelSpec = {
   id: 'worn-boots',
   materials: {
-    leather: { color: 0x2a1f14, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    sole:    { color: 0x12100a, roughness: 1.0, metalness: 0.0, fog: false, flatShading: 'auto' },
+    leather: { color: 0x2a1f14, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    sole:    { color: 0x12100a, roughness: 1.0, metalness: 0.0, flatShading: 'auto' },
   },
   parts: [
     // Ankle column.
@@ -327,8 +317,8 @@ export const WORN_BOOTS: ModelSpec = {
 export const OIL_LAMP_MODEL: ModelSpec = {
   id: 'oil-lamp',
   materials: {
-    iron: { color: 0x1a1410, metalness: 0.7, roughness: 0.45, emissive: 0x2a1a08, emissiveIntensity: 0.4, fog: false, flatShading: 'auto' },
-    flame: { color: 0x000000, emissive: 0xffc488, emissiveIntensity: 2.4, roughness: 0.4, fog: false },
+    iron: { color: 0x1a1410, metalness: 0.7, roughness: 0.45, emissive: 0x2a1a08, emissiveIntensity: 0.4, flatShading: 'auto' },
+    flame: { color: 0x000000, emissive: 0xffc488, emissiveIntensity: 2.4, roughness: 0.4 },
   },
   parts: [
     // Top + bottom plates of the cage.
@@ -349,9 +339,9 @@ export const OIL_LAMP_MODEL: ModelSpec = {
 export const WOODEN_SHIELD: ModelSpec = {
   id: 'wooden-shield',
   materials: {
-    wood: { color: 0x3a2418, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    iron: { color: 0x32302c, roughness: 0.55, metalness: 0.7, fog: false, flatShading: 'auto' },
-    boss: { color: 0x44423e, roughness: 0.5, metalness: 0.75, fog: false, flatShading: 'auto' },
+    wood: { color: 0x3a2418, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+    iron: { color: 0x32302c, roughness: 0.55, metalness: 0.7, flatShading: 'auto' },
+    boss: { color: 0x44423e, roughness: 0.5, metalness: 0.75, flatShading: 'auto' },
   },
   parts: [
     // Shield face — short flat cylinder (a disc).
@@ -373,7 +363,6 @@ export const BERSERK_POTION: ModelSpec = {
       color: 0x161814,
       roughness: 0.25,
       metalness: 0.1,
-      fog: false,
       flatShading: 'auto',
     },
     elixir: {
@@ -381,13 +370,11 @@ export const BERSERK_POTION: ModelSpec = {
       emissive: 0xff7722,        // bright orange (distinct from healing's red)
       emissiveIntensity: 2.4,
       roughness: 0.4,
-      fog: false,
     },
     cork: {
       color: 0x4a3a26,
       roughness: 0.95,
       metalness: 0.0,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -409,7 +396,6 @@ export const TATTERED_CLOAK: ModelSpec = {
       color: 0x2a1f18,
       roughness: 1.0,
       metalness: 0.0,
-      fog: false,
       flatShading: 'auto',
     },
   },

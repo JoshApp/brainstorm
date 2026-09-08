@@ -92,6 +92,7 @@ import { setSpriteBatchScene } from './scene/sprite-batch';
 import { setFlameMeshBatchScene } from './scene/flame-mesh-batch';
 import { raiseFlaskForWarm } from './player/flask-viewmodel';
 import { batchStaticWorld } from './scene/static-batch';
+import { bakeFlatShading } from './scene/flat-bake';
 import { initCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
@@ -555,6 +556,10 @@ initLevelLoader({
   levels: LEVELS,
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
+    // Flat shading is a GEOMETRY property here, not a shader variant: swap every
+    // flat-marked mesh onto face-normal geometry BEFORE the batchers, so flat and
+    // smooth parts of one material merge into one batch (scene/flat-bake.ts).
+    bakeFlatShading(currentLevel.root);
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);

@@ -45,7 +45,7 @@ export function spawnChandelier(
   const wax = stdMat({ color: 0xb8a98c, roughness: 0.95 });
   const flameColor = tint ?? 0xffaa55;
   const flame = stdMat({
-    color: 0x000000, emissive: flameColor, emissiveIntensity: 2.2, roughness: 1.0, fog: false,
+    color: 0x000000, emissive: flameColor, emissiveIntensity: 2.2, roughness: 1.0,
   });
   const stubs = 4;
   for (let i = 0; i < stubs; i++) {

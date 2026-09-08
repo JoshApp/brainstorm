@@ -30,7 +30,7 @@ export const WALL_STUB: ModelSpec = {
   materials: {
     wax: { color: 0xb0a184, roughness: 0.95, flatShading: 'auto' },
     sill: { color: 0x2a2620, roughness: 0.9, flatShading: 'auto' },
-    flame: { color: 0x000000, emissive: 0xffaa55, emissiveIntensity: 2.4, roughness: 1.0, fog: false },
+    flame: { color: 0x000000, emissive: 0xffaa55, emissiveIntensity: 2.4, roughness: 1.0 },
   },
   parts: [
     { name: 'sill', kind: 'box', pos: [0, -0.05, -0.05], size: [0.16, 0.025, 0.11], mat: 'sill' },

@@ -253,6 +253,31 @@ function arachnidSkeleton(p: Proportions): SkeletonDef {
   return { joints: j, root: 'root', spine: ['body', 'abdomen'], head: 'head', limbs: [] };
 }
 
+// ── Arachnid, SIMPLE (experiment 2026-09-08) ──────────────────────────────────
+// Same body, same eight leg ROOTS, no knee or foot joints: nothing in the game
+// ever animated them (the stance is static; the scuttle is a presence overlay),
+// so the bent leg can be authored as two capsules hung off the hip. 28 joints →
+// 12. The play-distance test in docs/PIPELINE-BUDGET.md decides whether this
+// replaces the 28-joint rig.
+export function arachnidSkeletonSimple(p: Proportions): SkeletonDef {
+  const bodyY = p.legLength * 0.45;
+  const bodyHalf = p.girth * 0.55;
+  const j: JointDef[] = [
+    { name: 'root', abs: [0, 0, 0] },
+    { name: 'body', parent: 'root', abs: [0, bodyY, -p.girth * 0.3] },
+    { name: 'abdomen', parent: 'body', abs: [0, bodyY + p.girth * 0.12, p.girth * 0.8] },
+    { name: 'head', parent: 'body', abs: [0, bodyY + p.girth * 0.05, -p.girth * 0.85] },
+  ];
+  const zRow = [-0.6, -0.2, 0.2, 0.6];
+  for (const s of [-1, 1]) {
+    const sl = s < 0 ? 'L' : 'R';
+    for (let i = 0; i < 4; i++) {
+      j.push({ name: `hip${sl}${i}`, parent: 'body', abs: [s * bodyHalf, bodyY, zRow[i] * p.girth] });
+    }
+  }
+  return { joints: j, root: 'root', spine: ['body', 'abdomen'], head: 'head', limbs: [] };
+}
+
 // ── Flier (hovering insectoid; thorax + head + wing joints, no legs) ─────────
 // root(floor) → core(thorax, hovering at `height`) → head(front) + four wing
 // joints (fore/hind L/R). Wings are NOT limbs — they get no auto-hitzone (you

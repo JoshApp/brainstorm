@@ -621,11 +621,43 @@ After the canonical-kinds sweep below, plus receive-shadow and the gore path
 made uniform across every lit family: **146 pipelines, 97 programs** (vertex 77,
 fragment 86). Same floor, same seed, zero in-play compiles.
 
-| | pipelines | programs |
-| --- | --- | --- |
-| main @c531bc83 | 175 | 127 |
-| + capacity, literals, per-scope names | 151 | 100 |
-| + canonical unlit kinds, uniform receive/gore | 146 | 97 |
+| | pipelines (three) | pipelines (GPU-distinct) | programs |
+| --- | --- | --- | --- |
+| main @c531bc83 | 175 | — | 127 |
+| + capacity, literals, per-scope names | 151 | — | 100 |
+| + canonical unlit kinds, uniform receive/gore | 146 | 124 | 97 |
+| + fog everywhere, facets in geometry | 140 | 124 | 94 |
+| + the creature kind (one shader per creature) | 124 | 107 | 77 |
+
+"GPU-distinct" is `(vertex, fragment, render state)`: three's cache also splits
+on vertex-layout bookkeeping (index-ness, attributes the shader never reads —
+a glow's vertex stage declares `position, uv` whatever the geometry carries)
+that never reaches the WebGPU descriptor, so its raw count runs ~15% high.
+The budget (`CONFIG.PIPELINE_BUDGET`, checked in DEV at every descent warm
+point by `debug/pipeline-budget.ts`) is on programs and GPU-distinct pipelines.
+
+**The five kinds, as of 2026-09-08.** Content authors pick one and vary colour,
+roughness, metalness, emissive — uniforms, never a shader:
+
+1. **Prop** — every item, prop, decor and clutter material. Fog always on
+   (`fog: false` is gone from content; FOG_NEAR is 1.5 m so held things are
+   untouched and dropped things stop rendering unfogged at distance). Flat
+   shading is a GEOMETRY property (`scene/flat-bake.ts`: face normals baked
+   into a non-indexed twin, cached and pooled), so the material flag — a
+   second program — is retired.
+2. **Creature** — every dissolvable material compiles the same shader: chroma,
+   dark-reactive rim, veil, dissolve, all present and identity when unused.
+   A species no longer picks its program by which features it authored.
+3. **Shell** — walls, floor, ceiling, stairs, dressed stone, frames: the
+   parallax stone shader, ~7 structural configs (projection wall/horiz/stair,
+   floor role, seam and damage flags). DELIBERATELY NOT unified: tile, tint and
+   seam scale already ride uniforms; what is left is three genuinely different
+   projection maths and a handful of flag branches, and folding them into one
+   shader would put the wall's branch on every floor and ceiling pixel. The set
+   is closed (authored in one file, warmed at boot, cannot grow with content),
+   which is the property the budget actually needs.
+4. **Glow / veil / art / sprites** — `material-registry.ts` kinds.
+5. **Shadow depth and post** — three vertex kinds and the fixed pipeline.
 
 (A word on measuring: count with the tab in the FOREGROUND and the floor
 actually loaded. A backgrounded tab is throttled, the descent never completes,
@@ -659,9 +691,10 @@ What remains, and what each would cost to remove:
 - **9 shadow pipelines** = caster layouts × side. Fewer caster layouts (shells
   indexed everywhere) is the only lever.
 
-Next: a pipeline BUDGET the census enforces (programs ≤ 100, pipelines ≤ 150 on
-the reference floor), so this never grows back unnoticed — that is the missing
-piece, not another sweep.
+(The list above is the state after the sweep; the kinds section and the table
+record what happened next. The budget is built — `CONFIG.PIPELINE_BUDGET`,
+100 programs / 130 GPU-distinct pipelines, DEV console.error naming the family
+that grew.)
 
 What was left was *flag drift*, and that one IS ours: the same glow authored
 `DoubleSide` here and default-front there, `fog:false` in one file and defaulted

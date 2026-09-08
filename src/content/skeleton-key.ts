@@ -25,7 +25,6 @@ export const SKELETON_KEY: ModelSpec = {
       color: 0xb8902f,
       roughness: 0.3,
       metalness: 0.95,
-      fog: false,
       flatShading: 'auto',
     },
     // Paler, bonier gilt for the skull bow — distinct from the shaft so the
@@ -34,7 +33,6 @@ export const SKELETON_KEY: ModelSpec = {
       color: 0xcdb46a,
       roughness: 0.42,
       metalness: 0.85,
-      fog: false,
       flatShading: 'auto',
     },
     // Dark tarnished gold for the collar ring between skull and shaft —
@@ -43,7 +41,6 @@ export const SKELETON_KEY: ModelSpec = {
       color: 0x6e5320,
       roughness: 0.5,
       metalness: 0.9,
-      fog: false,
       flatShading: 'auto',
     },
     // Dark accent for the stylized nose + mouth recess — reads as a hole.
@@ -51,7 +48,6 @@ export const SKELETON_KEY: ModelSpec = {
       color: 0x05030a,
       roughness: 1.0,
       metalness: 0.0,
-      fog: false,
     },
     // The signal: hot amber embers burning inside the sockets. Bright
     // emissive, harmonised with the gold + torchlight palette.
@@ -60,7 +56,6 @@ export const SKELETON_KEY: ModelSpec = {
       emissive: 0xff7a1e,
       emissiveIntensity: 2.6,
       roughness: 1.0,
-      fog: false,
     },
   },
   parts: [

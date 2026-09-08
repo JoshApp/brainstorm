@@ -5,6 +5,7 @@ import { registerWarmup } from '../content/warmup-registry';
 import { stampSplat } from '../scene/splat-map';
 import { getTexture } from '../style/procedural-textures';
 import { groundYAt } from '../level/elevation';
+import { flatGeometry } from '../scene/flat-bake';
 
 // Blood burst — short-lived spray of red additive sprites + a few
 // chunky droplet meshes. Used by the blood-altar take effect (the
@@ -48,9 +49,8 @@ function ensureMats() {
       metalness: 0.0,
       emissive: 0x5a0204,
       emissiveIntensity: 1.6,
-      fog: false,
-      flatShading: true,
     });
+    dropMat.userData.flatBaked = true;   // facets come from the geometry (scene/flat-bake.ts)
   }
   if (!spriteMat) {
     spriteMat = glowSprite({ map: getTexture('fire-wisp'), color: 0xc02014, opacity: 0.95 });
@@ -79,7 +79,7 @@ export function spawnBloodBurst(scene: THREE.Object3D, x: number, y: number, z: 
   const dropCount = 14 + Math.floor(Math.random() * 6);
   for (let i = 0; i < dropCount; i++) {
     const r = 0.02 + Math.random() * 0.022;
-    const geo = new THREE.SphereGeometry(r, 6, 5);
+    const geo = flatGeometry(new THREE.SphereGeometry(r, 6, 5));
     const mesh = new THREE.Mesh(geo, dropMat!);
     mesh.position.set(x, y, z);
     mesh.castShadow = false;

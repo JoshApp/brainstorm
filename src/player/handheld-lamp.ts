@@ -39,6 +39,7 @@ import { getLanternSwing, getBobOffset } from './viewmodel-bob';
 import { getLampSway, getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback, getViewmodelPullbackFrac } from './viewmodel-pullback';
 import { getTexture } from '../style/procedural-textures';
+import { bakeFlatShading } from '../scene/flat-bake';
 
 interface FlameSprite {
   sprite: THREE.Sprite;
@@ -174,9 +175,8 @@ export function attachLamp(camera: THREE.Camera) {
     roughness: 0.45,
     emissive: 0x2a1a08,
     emissiveIntensity: 0.5,
-    fog: false,
-    flatShading: true,
   });
+  ironMat.userData.flatBaked = true;   // facets baked into the geometry below (scene/flat-bake.ts)
 
   // 4 vertical bars forming a cage so the flame inside shines through.
   const barH = 0.10;
@@ -235,6 +235,8 @@ export function attachLamp(camera: THREE.Camera) {
   const ringAnchor = new THREE.Object3D();
   ringAnchor.position.copy(ring.position);
   body.add(ringAnchor);
+  // The iron parts are flat-shaded through their geometry, not a shader variant.
+  bakeFlatShading(body);
 
   // ── THE SCANNED LANTERN, WHEN THE TRIAL IS ON ─────────────────────────
   //

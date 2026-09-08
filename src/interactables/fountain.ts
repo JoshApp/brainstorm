@@ -159,7 +159,6 @@ export function spawnFountain(
     metalness: 0.0,
     transparent: true,
     opacity: 0.85,
-    fog: false,
   });
   liquid = new THREE.Mesh(
     new THREE.CylinderGeometry(0.34, 0.34, 0.04, 16),

@@ -14,15 +14,14 @@ export const REAPERS_TOLL: ModelSpec = {
   materials: {
     // fog:false on EVERY material — a held weapon sits right at the camera and
     // would otherwise fade into the close fog (it read as a tiny, dim sickle).
-    haft: { color: 0x2a1c10, roughness: 0.95, metalness: 0.05, fog: false, flatShading: 'auto' },
-    binding: { color: 0x0c0805, roughness: 1.0, fog: false },
+    haft: { color: 0x2a1c10, roughness: 0.95, metalness: 0.05, flatShading: 'auto' },
+    binding: { color: 0x0c0805, roughness: 1.0 },
     blade: {
       color: 0x141014,
       emissive: 0x441010,
       emissiveIntensity: 0.35,
       roughness: 0.35,
       metalness: 0.85,
-      fog: false,
       flatShading: 'auto',
     },
   },
@@ -67,9 +66,9 @@ export const PENITENTS_CHAIN: ModelSpec = {
   id: 'penitents-chain',
   materials: {
     // fog:false everywhere — held weapon at the camera, mustn't fade into fog.
-    grip: { color: 0x1a1208, roughness: 0.9, metalness: 0.1, fog: false, flatShading: 'auto' },
-    binding: { color: 0x0c0805, roughness: 1.0, fog: false },
-    cord:   { color: 0x2c1a10, roughness: 0.85, metalness: 0.2, fog: false },
+    grip: { color: 0x1a1208, roughness: 0.9, metalness: 0.1, flatShading: 'auto' },
+    binding: { color: 0x0c0805, roughness: 1.0 },
+    cord:   { color: 0x2c1a10, roughness: 0.85, metalness: 0.2 },
   },
   parts: [
     // Handle — short cylinder, leather-wrapped at the grip end.

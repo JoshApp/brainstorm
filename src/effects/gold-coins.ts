@@ -6,6 +6,7 @@ import { grantGold } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
 import type { WalkableRegion } from '../level/walkable';
 import { registerWarmup } from '../content/warmup-registry';
+import { flatGeometry } from '../scene/flat-bake';
 
 // Reused spawn point for the boot warmup (a Vector3 alloc at module scope, not
 // per-call). Half a metre up so it reads like a real drop in the scratch scene.
@@ -52,12 +53,12 @@ const MAX_GOLD_PER_COIN = 12;
 const MAX_COINS_PER_DROP = 3;
 
 // Shared resources.
-let COIN_GEOM: THREE.CylinderGeometry | null = null;
+let COIN_GEOM: THREE.BufferGeometry | null = null;
 let COIN_MAT: THREE.MeshStandardMaterial | null = null;
 let HALO_MAT: THREE.SpriteMaterial | null = null;
 
 function ensureResources(): void {
-  if (!COIN_GEOM) COIN_GEOM = new THREE.CylinderGeometry(0.085, 0.085, 0.022, 14);
+  if (!COIN_GEOM) COIN_GEOM = flatGeometry(new THREE.CylinderGeometry(0.085, 0.085, 0.022, 14));
   if (!COIN_MAT) {
     // Slightly muted gold — bright enough to read on a dark floor but
     // not so saturated it punches a hole in the dungeon's tone.
@@ -67,8 +68,8 @@ function ensureResources(): void {
       emissiveIntensity: 0.65,
       roughness: 0.40,
       metalness: 0.85,
-      flatShading: true,
     });
+    COIN_MAT.userData.flatBaked = true;   // facets come from the geometry (scene/flat-bake.ts)
   }
   if (!HALO_MAT) {
     HALO_MAT = glowSprite({ map: getTexture('fire-wisp'), color: 0xd8a850, opacity: 0.45 });

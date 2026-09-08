@@ -72,7 +72,6 @@ export function spawnTomePillar(
     emissiveIntensity: 0.65,
     roughness: 0.85,
     flatShading: true,
-    fog: false,
   });
   // Leather cover — a flat slab the pages sit on.
   const cover = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.04, 0.36), leatherMat);

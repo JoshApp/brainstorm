@@ -551,6 +551,15 @@ export const CONFIG = {
   // lengths were ten programs of one shader. Padding every skeleton and every
   // instance buffer to a fixed capacity makes the WGSL byte-identical across
   // species and props. See scene/gpu-capacity.ts.
+  // ── PIPELINE BUDGET — checked at every descent warm point in DEV ──────────
+  // (debug/pipeline-budget.ts). PROGRAMS = distinct shader pairs (compiles);
+  // PIPELINES = distinct (shaders × render state), what the GPU builds. The
+  // reference floor (?autostart=1&dev=1&depth=3&seed=4242) sat at 94 / 124
+  // after the 2026-09-08 lean pass; the budget is that plus a little room for
+  // a new kind of thing, not for drift. Over budget is a console.error naming
+  // the family that grew. Raise it only with a reason written next to it.
+  PIPELINE_BUDGET: { programs: 100, pipelines: 130 },
+
   GPU_CAPACITY: {
     // Bones per skinned creature. The largest rig (spider) has 28 joints; a
     // rig past this pads to the next multiple and costs one extra program.

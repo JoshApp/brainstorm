@@ -66,7 +66,7 @@ import { orient } from '../anim/orient';
 const IRON = { color: 0x16140f, roughness: 0.6, metalness: 0.75, flatShading: 'auto' as const };
 const WAX = { color: 0xb0a184, roughness: 0.95, flatShading: 'auto' as const };
 const FLAME_MAT = {
-  color: 0x000000, emissive: 0xffaa55, emissiveIntensity: 2.4, roughness: 1.0, fog: false,
+  color: 0x000000, emissive: 0xffaa55, emissiveIntensity: 2.4, roughness: 1.0,
 };
 /** Cold iron — the same metal, read as unlit. Slightly bluer and rougher so it
  *  does not catch a highlight the way a tended fitting does. */

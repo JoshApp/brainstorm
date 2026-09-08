@@ -1,5 +1,6 @@
 import { getSettings } from '../settings/settings';
 import { pipelineCount, type DelveRenderer } from '../scene/create-renderer';
+import { checkPipelineBudget } from '../debug/pipeline-budget';
 
 // ── WARM CACHE — skip the roster warm on repeat app opens ────────────────────
 //
@@ -81,6 +82,8 @@ let healArmed = false;
  *  pipeline count here is the legitimate baseline; growth before the next call
  *  is in-play compiling. */
 export function noteCoveredWarmPoint(renderer: DelveRenderer): void {
+  // The floor's set is compiled: this is where the budget is checked (DEV).
+  checkPipelineBudget(renderer);
   const now = pipelineCount(renderer);
   if (lastCoveredCount > 0 && now > lastCoveredCount) {
     // Creations since the previous covered point happened in live play.

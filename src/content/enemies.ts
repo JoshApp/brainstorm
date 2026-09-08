@@ -7,15 +7,50 @@ import type { Ability } from './abilities';
 import type { HurtZoneSpec } from '../combat/hurtbox';
 import type { CreatureSpec, SkinPart } from './creature-types';
 import { humanoidBipedSkin } from './creature-skins';
+import * as THREE from 'three';
+import { arachnidSkeletonSimple, resolveProportions } from './skeletons';
 
 /** The 16 leg bones (hip→knee→foot, eight legs) for an arachnid creature,
  *  referencing the joint names the arachnid skeleton generates. Tapered. */
-function spiderLegSkin(mat: string): SkinPart[] {
+export function spiderLegSkin(mat: string): SkinPart[] {
   const out: SkinPart[] = [];
   for (const sl of ['L', 'R']) {
     for (let i = 0; i < 4; i++) {
       out.push({ kind: 'bone', from: `hip${sl}${i}`, to: `knee${sl}${i}`, radius: 0.03, mat });
       out.push({ kind: 'bone', from: `knee${sl}${i}`, to: `foot${sl}${i}`, radius: 0.022, mat });
+    }
+  }
+  return out;
+}
+
+/** The SIMPLE arachnid legs: the same two tapered segments per leg, but as
+ *  capsules posed in hip space (no knee/foot joints — see
+ *  arachnidSkeletonSimple). Knee and foot offsets mirror the full skeleton's
+ *  arithmetic exactly, so the silhouette is the same stance. */
+function spiderLegSkinSimple(mat: string, p: { girth: number; legLength: number }): SkinPart[] {
+  const out: SkinPart[] = [];
+  const reach = p.legLength, bodyY = p.legLength * 0.45;
+  const Y = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), e = new THREE.Euler();
+  const capsule = (parent: string, a: Vec3, b: Vec3, radius: number): SkinPart => {
+    const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const len = d.length();
+    q.setFromUnitVectors(Y, d.clone().normalize());
+    e.setFromQuaternion(q, 'XYZ');
+    return {
+      kind: 'capsule', parent, radius, height: Math.max(0.01, len - 2 * radius), mat,
+      pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+      rot: [e.x, e.y, e.z],
+    } as SkinPart;
+  };
+  for (const s of [-1, 1]) {
+    const sl = s < 0 ? 'L' : 'R';
+    for (let i = 0; i < 4; i++) {
+      const splay = (i - 1.5) * reach * 0.18;
+      const hip: Vec3 = [0, 0, 0];
+      const knee: Vec3 = [s * reach * 0.55, reach * 0.42, splay];
+      const foot: Vec3 = [s * reach * 1.1, -bodyY, splay * 2.2];
+      out.push(capsule(`hip${sl}${i}`, hip, knee, 0.03));
+      out.push(capsule(`hip${sl}${i}`, knee, foot, 0.022));
     }
   }
   return out;
@@ -1796,6 +1831,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'spider',
       archetype: 'arachnid',
       proportions: { height: 0.22, girth: 0.26, legLength: 0.5 },
+      // EXPERIMENT: the 12-joint rig (legs posed in hip space). See arachnidSkeletonSimple.
+      skeleton: arachnidSkeletonSimple(resolveProportions('arachnid', { height: 0.22, girth: 0.26, legLength: 0.5 })),
       materials: {
         // Absorbed — dark chitin, no rim; the eyes are the read in the dark.
         chitin: { color: 0x1a1016, roughness: 0.45, metalness: 0.15, flatShading: 'auto' },
@@ -1814,8 +1851,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'sphere', joint: 'head', radius: 0.025, pos: [0.1, -0.01, -0.06], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.022, pos: [-0.03, 0.06, -0.07], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.022, pos: [0.03, 0.06, -0.07], mat: 'eyes' },
-        // Eight bent legs.
-        ...spiderLegSkin('chitin'),
+        // Eight bent legs — posed capsules on the 12-joint rig (experiment; the
+        // 28-joint version is spiderLegSkin + the 'arachnid' archetype skeleton).
+        ...spiderLegSkinSimple('chitin', { girth: 0.26, legLength: 0.5 }),
       ],
     },
     baseEyeEmissive: 2.4,
