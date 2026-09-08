@@ -27,3 +27,6 @@ server/spacetimedb/dist/
 # throwaway dev scripts (underscore-prefixed) — never block a deploy
 scripts/_*.ts
 scripts/_*.py
+
+# Per-worktree Vite dep cache (see vite.config.ts cacheDir)
+.vite

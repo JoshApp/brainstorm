@@ -36,6 +36,26 @@ const BASE = '/brainstorm/';
 
 export default defineConfig({
   base: BASE,
+  // ── ONE DEP CACHE PER WORKTREE ─────────────────────────────────────────────
+  //
+  // Vite's default cacheDir is `node_modules/.vite`. In this repo `node_modules` is a
+  // SYMLINK from every worktree to the main checkout's (see CLAUDE.md → multi-agent
+  // worktrees), and there are dozens of worktrees — so every dev server on this machine
+  // was reading and writing ONE optimize cache while compiling a DIFFERENT source tree.
+  // Vite's cache key is the lockfile and this config, not the sources, so it has no way
+  // to notice.
+  //
+  // What that looks like when it goes wrong is nothing like a cache bug. One worktree's
+  // pre-bundle gets served to another, `three`, `three/webgpu` and `three/tsl` stop
+  // sharing a chunk, and you get "THREE.WARNING: Multiple instances of Three.js being
+  // imported" — two copies of the builtin TSL nodes, so the GLSL builder emits a float
+  // uniform under a builtin's identifier and the shader dies on
+  // `nodeVar124 > cameraViewMatrix`. Measured 2026-09-08: 22 shader compile failures on
+  // the dev server (floor, ceiling, walls, trim — most of the world missing), 0 on the
+  // production build of the same commit, 0 after `vite --force`.
+  //
+  // So the cache goes INSIDE the worktree, where it belongs to exactly one source tree.
+  cacheDir: '.vite',
   // Replaced as a literal at build + dev-serve, so the identifier always exists.
   define: {
     __BUILD_SHA__: JSON.stringify(buildSha()),
