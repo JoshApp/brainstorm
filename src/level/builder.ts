@@ -776,6 +776,48 @@ function buildRoomShell(
       }
     }
   }
+  // ── A STAIR'S WALLS GO DOWN WITH IT ────────────────────────────────────────
+  //
+  // Josh: *"the corridor's wall still has a black shadow affected by the dark above where
+  // the rest of the corridor isn't affected — part of the corridor's wall at the second
+  // half is built different from the rest of its wall."*
+  //
+  // Measured in the running game, down a 1.2m stair corridor:
+  //
+  //   z        tagged ceiling   wall top
+  //   23.0     2.26             2.30
+  //   25.5     1.70             2.30
+  //   28.0     1.14             2.30
+  //
+  // The floor follows the stair. The ceiling follows the stair. The WALL is one
+  // constant-height slab: `H + (elevHi - elevLo)` based at the LOWEST point, so its top
+  // sits at `elevHi + H` for the whole run. By the bottom of the flight that is 1.16m of
+  // masonry standing ABOVE the ceiling — and the dark-above band reads those vertices as
+  // `ceilY - posY < 0`, clamps, and paints them dead black. It grows toward the low end,
+  // which is exactly the "second half" that looked built differently. It was.
+  //
+  // So the wall is sheared onto the ground it stands on: its top lands on the ceiling
+  // (`groundY + H`) and its base is buried under the floor. Done here, on the finished
+  // world-space geometry, rather than inside `bakeWallSegmentGeometry` — that function
+  // builds profiles, corner overlaps and return faces in a local frame and knows nothing
+  // about elevation, and threading a height field through it would put the stair's business
+  // in the middle of the wall's.
+  if (sloped && wallGeos.length > 0) {
+    /** How far the base is buried. Enough to stay under the floor at the steepest grade the
+     *  elevation budget allows, so no wall ever floats at the bottom of a flight. */
+    const BURY = 0.5;
+    const wallH = H + (elevHi - elevLo);
+    for (const g of [...wallGeos, ...trimGeos]) {
+      const pos = g.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        const t = wallH > 1e-6 ? (pos.getY(i) - elevLo) / wallH : 0;
+        const ground = groundYAt(pos.getX(i), pos.getZ(i));
+        pos.setY(i, ground - BURY + t * (H + BURY));
+      }
+      pos.needsUpdate = true;
+      g.computeVertexNormals();
+    }
+  }
   if (wallGeos.length > 0) {
     const merged = mergeGeometries(wallGeos, false);
     for (const g of wallGeos) g.dispose();
