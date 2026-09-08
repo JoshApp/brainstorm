@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface } from '../style/material-registry';
 import { registerWarmup } from '../content/warmup-registry';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 
@@ -48,10 +49,7 @@ function shared() {
     color: 0x081004, emissive: 0xffffff, emissiveIntensity: 2.0,
     roughness: 0.5, transparent: true, opacity: 0.96, depthWrite: false,
   });
-  if (!_tipMatTpl) _tipMatTpl = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-  });
+  if (!_tipMatTpl) _tipMatTpl = glowSurface({ color: 0xffffff, opacity: 0.9, side: THREE.FrontSide });
   return { segGeo: _segGeo, tipGeo: _tipGeo, matTpl: _matTpl, tipMatTpl: _tipMatTpl };
 }
 

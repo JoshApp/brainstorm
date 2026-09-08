@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { stdMat, basicMat, glowSurface, outlineSurface } from '../style/material-registry';
+import { stdMat, basicMat, glowSurface, outlineSurface, glowSprite } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
@@ -474,15 +474,7 @@ export function spawnStairs(
 
   // Dust motes along the shaft — keep them, they sell the
   // volumetric beam feel. Same neutral 'moonbeam' texture.
-  const moteMat = new THREE.SpriteMaterial({
-    map: getTexture('moonbeam'),
-    color: 0xd8e0ff,
-    transparent: true,
-    opacity: 0.50,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-  });
+  const moteMat = glowSprite({ map: getTexture('moonbeam'), color: 0xd8e0ff, opacity: 0.50 });
   const moteOffsets: Array<[number, number]> = [
     [-0.05, 0.6], [-0.10, 1.2], [-0.18, 1.85], [-0.25, 2.45], [-0.13, 2.8],
   ];
@@ -566,10 +558,7 @@ export function spawnStairs(
   if (isBossGate) {
     wardGroup = new THREE.Group();
     // 1) The glowing membrane — additive, pulses while sealed.
-    wardSlabMat = new THREE.MeshBasicMaterial({
-      color: sealColor, transparent: true, opacity: 0.32,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
+    wardSlabMat = glowSurface({ color: sealColor, opacity: 0.32 });
     const slab = new THREE.Mesh(pooledBox(STEP_WIDTH, 0.02, totalDepth), wardSlabMat);
     slab.position.set(0, 0.09, totalDepth / 2);
     wardGroup.add(slab);

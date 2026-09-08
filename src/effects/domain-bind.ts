@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface, overlaySprite } from '../style/material-registry';
 import type { DomainId } from '../content/domains';
 import { DOMAIN_VISUAL } from '../art/domains';
 import { getTexture } from '../style/procedural-textures';
@@ -84,10 +85,7 @@ export function bindToDomain(
   // The rune-ring — a flat annulus facing the player (camera-local, no billboard
   // needed), closing inward as the bind takes.
   const ringGeo = new THREE.RingGeometry(0.16, 0.19, 48);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, fog: false, toneMapped: false,
-  });
+  const ringMat = glowSurface({ color, opacity: 0, overlay: true });
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.renderOrder = 9990;
   ring.frustumCulled = false;
@@ -95,11 +93,7 @@ export function bindToDomain(
 
   // The domain sigil — a tinted glyph sprite that blooms then is pulled in.
   const sigilTex = sigilTexture(domain);
-  const sigilMat = new THREE.SpriteMaterial({
-    map: sigilTex ?? getTexture('fire-wisp'), color,
-    transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
-    depthTest: false, depthWrite: false, fog: false, toneMapped: false,
-  });
+  const sigilMat = overlaySprite({ map: sigilTex ?? getTexture('fire-wisp'), color, opacity: 0 });
   const sigil = new THREE.Sprite(sigilMat);
   sigil.scale.set(0.2, 0.2, 0.2);
   sigil.renderOrder = 9991;
@@ -107,11 +101,7 @@ export function bindToDomain(
   rig.add(sigil);
 
   // A soft domain-tinted glow behind the sigil so it reads against the dark.
-  const glowMat = new THREE.SpriteMaterial({
-    map: getTexture('fire-wisp'), color,
-    transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
-    depthTest: false, depthWrite: false, fog: false, toneMapped: false,
-  });
+  const glowMat = overlaySprite({ map: getTexture('fire-wisp'), color, opacity: 0 });
   const glow = new THREE.Sprite(glowMat);
   glow.scale.set(0.5, 0.5, 0.5);
   glow.position.z = -0.02;

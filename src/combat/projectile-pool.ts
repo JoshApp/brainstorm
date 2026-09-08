@@ -13,7 +13,7 @@ import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
 import { registerWarmup } from '../content/warmup-registry';
 import { markWarmIgnored } from '../scene/warm-visibility';
-import { basicMat } from '../style/material-registry';
+import { basicMat, glowSurface, glowSprite } from '../style/material-registry';
 import { CONFIG } from '../config';
 
 // Scratch vector for the projectile impact point (zone resolution). Module-level
@@ -144,14 +144,7 @@ const materialsByType = new Map<string, THREE.MeshBasicMaterial>();
 function materialFor(type: ProjectileType): THREE.MeshBasicMaterial {
   const existing = materialsByType.get(type.id);
   if (existing) return existing;
-  const mat = new THREE.MeshBasicMaterial({
-    color: type.color,
-    transparent: true,
-    opacity: 0.95,
-    fog: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
+  const mat = glowSurface({ color: type.color, opacity: 0.95, side: THREE.FrontSide });
   materialsByType.set(type.id, mat);
   return mat;
 }
@@ -233,15 +226,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
     markWarmIgnored(mesh);
     sc.add(mesh);
     // Trail — additive sprite, scales with travel direction below.
-    const trailMat = new THREE.SpriteMaterial({
-      color: 0xffffff,
-      map: softGlowTexture(),
-      transparent: true,
-      opacity: 0.5,
-      blending: THREE.AdditiveBlending,
-      fog: false,
-      depthWrite: false,
-    });
+    const trailMat = glowSprite({ color: 0xffffff, map: softGlowTexture(), opacity: 0.5 });
     const trail = new THREE.Sprite(trailMat);
     trail.visible = false;
     markWarmIgnored(trail);

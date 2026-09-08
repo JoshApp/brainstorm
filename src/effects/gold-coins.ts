@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import { getTexture } from '../style/procedural-textures';
 import { grantGold } from '../state/run-state';
@@ -70,15 +71,7 @@ function ensureResources(): void {
     });
   }
   if (!HALO_MAT) {
-    HALO_MAT = new THREE.SpriteMaterial({
-      map: getTexture('fire-wisp'),
-      color: 0xd8a850,
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: false,
-    });
+    HALO_MAT = glowSprite({ map: getTexture('fire-wisp'), color: 0xd8a850, opacity: 0.45 });
   }
 }
 

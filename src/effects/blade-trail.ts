@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface } from '../style/material-registry';
 import { disposeGpu } from '../scene/gpu-dispose';
 
 // Blade trail — a warm-amber ribbon drawn from the held weapon's
@@ -83,16 +84,9 @@ export function initBladeTrail(scene: THREE.Object3D): void {
   geometry.setIndex(indices);
   geometry.setDrawRange(0, 0);
 
-  material = new THREE.MeshBasicMaterial({
-    color: 0xffffff,              // unit white; vertex colour does the tinting
-    transparent: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    depthTest: true,              // world geometry occludes the streak
-    depthWrite: false,
-    fog: false,
-    side: THREE.DoubleSide,       // ribbon's orientation flips as swing arcs
-  });
+  // Unit white; vertex colour does the tinting. Depth-tested (world geometry
+  // occludes the streak), double-sided (the ribbon flips as the swing arcs).
+  material = glowSurface({ color: 0xffffff, vertexColors: true });
 
   mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;     // it can move/swing past culling bounds in one frame

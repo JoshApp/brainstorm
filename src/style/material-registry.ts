@@ -96,26 +96,175 @@ export interface GlowOptions {
   map?: THREE.Texture;
   color?: THREE.ColorRepresentation;
   opacity?: number;
-  /** DoubleSide by default — a glow quad read from behind should still glow. */
+  /** DoubleSide by default — a glow quad read from behind should still glow.
+   *  Pass FrontSide for a CLOSED additive solid (a projectile core, a tendril
+   *  tube): double-sided additive draws its back faces too and doubles the
+   *  brightness. Those two are the only sides a glow has. */
   side?: THREE.Side;
+  /** THE TWO FOG FAMILIES (see sprite-batch.ts): a thing IN THE AIR — a world
+   *  flame, a doorway haze, an eye's glow — hazes out with the corridor and
+   *  wants fog on. A combat glow wants it off: additive fog ADDS the fog colour
+   *  with distance, so a receding mote brightens. Default off. */
+  fog?: boolean;
+  /** Per-vertex colour (blade trails). Changes the vertex layout, so it is
+   *  its own pipeline either way; stated here so the intent is visible. */
+  vertexColors?: boolean;
+  /** Drawn over everything (no depth test) — an overlay, not a thing in the
+   *  world. Domain-bind sigils. */
+  overlay?: boolean;
 }
+
+// A map's PRESENCE is in the shader (the sample is compiled in or not), so an
+// untextured glow and a textured one were two programs of every kind. Every
+// kind now samples a map; the untextured ones sample this 1×1 white.
+let whiteTex: THREE.DataTexture | null = null;
+function whiteMap(): THREE.Texture {
+  if (!whiteTex) {
+    whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    whiteTex.colorSpace = THREE.SRGBColorSpace;
+    whiteTex.needsUpdate = true;
+  }
+  return whiteTex;
+}
+function named<T extends THREE.Material>(m: T, kind: string): T { m.name = `kind:${kind}`; return m; }
 
 /** ADDITIVE GLOW — light that isn't a light. Fire wisps, light shafts, floor
  *  pools, telegraph rings: anything that ADDS brightness and must never occlude
- *  what's behind it. Fixed: transparent, additive, no depth write, no fog. */
+ *  what's behind it. Fixed: transparent, additive, no depth write. */
 export function glowSurface(o: GlowOptions = {}): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    map: o.map,
+  return named(new THREE.MeshBasicMaterial({
+    map: o.map ?? whiteMap(),
     color: o.color ?? 0xffffff,
     opacity: o.opacity ?? 1,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    // Fog would darken an emissive surface with distance, which reads as the
-    // glow dimming rather than the air thickening. Glows opt out.
-    fog: false,
+    depthTest: !o.overlay,
+    fog: o.fog ?? false,
     side: o.side ?? THREE.DoubleSide,
-  });
+    vertexColors: o.vertexColors ?? false,
+  }), o.fog ? 'glow:fog' : o.overlay ? 'glow:overlay' : 'glow');
+}
+
+/** VEIL / SHADE — normal-blended darkness or haze that must never occlude:
+ *  the threshold veil, a blob shadow, a hazard's floor stain, a telegraph
+ *  disc. Fixed: transparent, normal blend, no depth write, double-sided.
+ *  `fog` follows the same two-family rule as glows (a blob shadow is on the
+ *  ground and hazes; the veil IS the darkness and must not). */
+export function veilSurface(o: GlowOptions = {}): THREE.MeshBasicMaterial {
+  return named(new THREE.MeshBasicMaterial({
+    map: o.map ?? whiteMap(),
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+    depthTest: !o.overlay,
+    fog: o.fog ?? false,
+    side: THREE.DoubleSide,
+  }), o.fog ? 'veil:fog' : 'veil');
+}
+
+/** ART QUAD — a picture in the world: a tarot card's face. Normal blend, writes
+ *  depth (the front and back faces are separate quads and must sort against
+ *  each other), front-only, no fog, and NOT tone-mapped so the art reads as
+ *  authored. `overlay` is the claim animation: drawn over everything, both
+ *  sides, no depth write. */
+export function artQuadSurface(o: { map?: THREE.Texture; opacity?: number; overlay?: boolean } = {}): THREE.MeshBasicMaterial {
+  return named(new THREE.MeshBasicMaterial({
+    map: o.map ?? whiteMap(),
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    depthWrite: !o.overlay,
+    depthTest: !o.overlay,
+    side: o.overlay ? THREE.DoubleSide : THREE.FrontSide,
+    fog: false,
+    toneMapped: false,
+  }), o.overlay ? 'art:overlay' : 'art');
+}
+
+// ── SPRITE KINDS — the same discipline for billboards ─────────────────────────
+//
+// A SpriteMaterial's pipeline is decided by blending, depthTest and fog (and
+// whether it has a map; every DELVE sprite does). Three kinds cover every
+// sprite the game draws; the audit found the same three authored eleven ways.
+
+export interface SpriteOptions {
+  map?: THREE.Texture;
+  color?: THREE.ColorRepresentation;
+  opacity?: number;
+  /** World-flame family (fog on) vs combat-glow family (fog off, default). */
+  fog?: boolean;
+}
+
+/** GLOW SPRITE — an additive billboard IN the world, depth-tested: eye halos,
+ *  coin sparks, XP wisps, parry sparks, corpse wisps (fog on: they are flames). */
+export function glowSprite(o: SpriteOptions = {}): THREE.SpriteMaterial {
+  return named(new THREE.SpriteMaterial({
+    map: o.map ?? whiteMap(),
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: true,
+    fog: o.fog ?? false,
+  }), o.fog ? 'sprite:glow:fog' : 'sprite:glow');
+}
+
+/** OVERLAY SPRITE — drawn over everything (no depth test): the viewmodel's
+ *  flame layers and flask glow, stun stars, the fear skull, breath puffs.
+ *  Additive by default; `additive: false` for the smoke-like ones. Never
+ *  fogged — an overlay has no distance. */
+export function overlaySprite(o: SpriteOptions & { additive?: boolean } = {}): THREE.SpriteMaterial {
+  return named(new THREE.SpriteMaterial({
+    map: o.map ?? whiteMap(),
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: o.additive === false ? THREE.NormalBlending : THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  }), o.additive === false ? 'sprite:overlay:normal' : 'sprite:overlay');
+}
+
+/** SMOKE SPRITE — a normal-blended puff IN the world that hazes with distance:
+ *  dust puffs, summon smoke. Fixed: normal blend, depth-tested, fog on. */
+export function smokeSprite(o: SpriteOptions = {}): THREE.SpriteMaterial {
+  return named(new THREE.SpriteMaterial({
+    map: o.map ?? whiteMap(),
+    color: o.color ?? 0xffffff,
+    opacity: o.opacity ?? 1,
+    transparent: true,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+    depthTest: true,
+    fog: o.fog ?? true,
+  }), 'sprite:smoke');
+}
+
+/** THE CLOSED SET of unlit surface kinds, as builders — what the boot warm
+ *  compiles so no glow, veil or sprite ever compiles on first sight in play.
+ *  A kind that is added above and not listed here is the one that will hitch. */
+export function unlitSurfaceKinds(): Array<{ label: string; make: () => THREE.Material; sprite: boolean }> {
+  return [
+    { label: 'glow', make: () => glowSurface(), sprite: false },
+    { label: 'glow:fog', make: () => glowSurface({ fog: true }), sprite: false },
+    { label: 'glow:solid', make: () => glowSurface({ side: THREE.FrontSide }), sprite: false },
+    { label: 'glow:overlay', make: () => glowSurface({ overlay: true }), sprite: false },
+    { label: 'outline', make: () => outlineSurface(), sprite: false },
+    { label: 'outline:additive', make: () => outlineSurface({ additive: true }), sprite: false },
+    { label: 'veil', make: () => veilSurface(), sprite: false },
+    { label: 'veil:fog', make: () => veilSurface({ fog: true }), sprite: false },
+    { label: 'art', make: () => artQuadSurface(), sprite: false },
+    { label: 'art:overlay', make: () => artQuadSurface({ overlay: true }), sprite: false },
+    { label: 'sprite:glow', make: () => glowSprite(), sprite: true },
+    { label: 'sprite:glow:fog', make: () => glowSprite({ fog: true }), sprite: true },
+    { label: 'sprite:overlay', make: () => overlaySprite(), sprite: true },
+    { label: 'sprite:overlay:normal', make: () => overlaySprite({ additive: false }), sprite: true },
+    { label: 'sprite:smoke', make: () => smokeSprite(), sprite: true },
+  ];
 }
 
 /** INVERSE-HULL OUTLINE — a back-faced shell scaled slightly larger than the
@@ -124,7 +273,8 @@ export function glowSurface(o: GlowOptions = {}): THREE.MeshBasicMaterial {
  *  worth varying here: an additive outline glows, a normal-blended one reads as
  *  a hard ink line. */
 export function outlineSurface(o: GlowOptions & { additive?: boolean } = {}): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
+  return named(new THREE.MeshBasicMaterial({
+    map: whiteMap(),   // same shader as a glow; only the side differs (a state, not a program)
     color: o.color ?? 0xffffff,
     opacity: o.opacity ?? 1,
     transparent: true,
@@ -132,7 +282,7 @@ export function outlineSurface(o: GlowOptions & { additive?: boolean } = {}): TH
     depthWrite: false,
     fog: false,
     side: THREE.BackSide,
-  });
+  }), 'outline');
 }
 
 /** Every distinct shared material created so far — the closed set the warm compiles. */

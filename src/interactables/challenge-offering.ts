@@ -17,7 +17,7 @@ import { playImpact, playRitualBell } from '../audio/sfx';
 import { kickShake } from '../combat/screen-shake';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { setRoomMood } from '../level/room-mood';
-import { disposeBuiltTree } from '../style/material-registry';
+import { disposeBuiltTree, veilSurface, glowSurface } from '../style/material-registry';
 
 // Challenge offering — the VOLUNTARY arena, framed as a RITUAL ALTAR.
 // A dark stone altar with two unlit candles sits in the centre. Approach
@@ -67,9 +67,7 @@ export function spawnChallengeOffering(
   group.add(slab);
 
   // Carved sigil glow on top of the slab. The colour flips on ritual start.
-  const sigilMat = new THREE.MeshBasicMaterial({
-    color: SEAM_DARK, transparent: true, opacity: 0.40, fog: false,
-  });
+  const sigilMat = veilSurface({ color: SEAM_DARK, opacity: 0.40 });
   const sigil = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.46), sigilMat);
   sigil.rotation.x = -Math.PI / 2;
   sigil.position.y = 0.49;
@@ -89,9 +87,7 @@ export function spawnChallengeOffering(
     wax.castShadow = true;
     group.add(wax);
 
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: CANDLE_ACTIVE, transparent: true, opacity: 0, fog: false,
-    });
+    const flameMat = glowSurface({ color: CANDLE_ACTIVE, opacity: 0, side: THREE.FrontSide });
     const flame = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), flameMat);
     flame.position.set(localX, 0.66, localZ);
     flame.scale.setScalar(0);
@@ -104,10 +100,7 @@ export function spawnChallengeOffering(
 
   // Ritual circle on the floor — a wide ring of faint glow ringed around the
   // altar. Same hue as the sigil so the whole altar reads as one mood.
-  const circleMat = new THREE.MeshBasicMaterial({
-    color: SEAM_DARK, transparent: true, opacity: 0.16, fog: false,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
+  const circleMat = glowSurface({ color: SEAM_DARK, opacity: 0.16 });
   const circle = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.18, 32), circleMat);
   circle.rotation.x = -Math.PI / 2;
   circle.position.y = 0.04;

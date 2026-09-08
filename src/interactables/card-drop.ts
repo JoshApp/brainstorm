@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface, artQuadSurface, glowSprite } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, unregisterInteractable, getInRangeInteractable } from './system';
@@ -58,10 +59,7 @@ export function spawnCardDrop(scene: THREE.Object3D, pos: THREE.Vector3, cardId:
   group.add(disc);
 
   // in-range ring (shown only when the player can take it)
-  const ring = new THREE.Mesh(pooledRing(0.52, 0.64, 28), new THREE.MeshBasicMaterial({
-    color: accent, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
-    fog: false, depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
+  const ring = new THREE.Mesh(pooledRing(0.52, 0.64, 28), glowSurface({ color: accent, opacity: 0.85 }));
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = floorLocalY(0.015);
   ring.visible = false;
@@ -70,17 +68,13 @@ export function spawnCardDrop(scene: THREE.Object3D, pos: THREE.Vector3, cardId:
   // the card — two textured planes back-to-back, self-lit so it glows
   const cardMesh = new THREE.Group();
   const geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
-  const front = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: cardTex(`${BASE}cards/${cardId}.webp`), transparent: true, side: THREE.FrontSide, toneMapped: false }));
+  const front = new THREE.Mesh(geo, artQuadSurface({ map: cardTex(`${BASE}cards/${cardId}.webp`) }));
   front.position.z = 0.005;
-  const back = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: cardTex(`${BASE}cards/back.webp`), transparent: true, side: THREE.FrontSide, toneMapped: false }));
+  const back = new THREE.Mesh(geo, artQuadSurface({ map: cardTex(`${BASE}cards/back.webp`) }));
   back.rotation.y = Math.PI; back.position.z = -0.005;
   // Domain aura — a soft accent-tinted glow behind the card, so a floor fate
   // carries its DOMAIN colour as a halo-frame the way the reading frames it.
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: getTexture('fire-wisp'), color: accent,
-    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
-    depthWrite: false, fog: false, toneMapped: false,
-  }));
+  const halo = new THREE.Sprite(glowSprite({ map: getTexture('fire-wisp'), color: accent, opacity: 0.5 }));
   halo.scale.set(CARD_W * 2.1, CARD_H * 1.5, 1);
   halo.position.z = -0.02;
   cardMesh.add(halo, front, back);

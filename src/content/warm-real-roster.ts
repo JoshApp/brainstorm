@@ -8,7 +8,7 @@ import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { warmRenderWebGPU, flushWarmRenders, setWarmLowRes } from '../style/render-webgpu';
-import { registeredFloorMaterials, stdMat } from '../style/material-registry';
+import { registeredFloorMaterials, stdMat, glowSurface } from '../style/material-registry';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { getTexture } from '../style/procedural-textures';
 import { DEV } from '../debug/dev';
@@ -137,10 +137,7 @@ export async function warmRealRoster(
     });
     (discMat as THREE.Material).needsUpdate = true;
     subjects.push(new THREE.Mesh(pooledPlane(0.9, 0.9), discMat));
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, fog: false,
-      depthWrite: false, blending: THREE.AdditiveBlending,
-    });
+    const ringMat = glowSurface({ color: 0xffffff, opacity: 0.85 });
     subjects.push(new THREE.Mesh(pooledRing(0.50, 0.62, 28), ringMat));
   } catch { /* skip */ }
 

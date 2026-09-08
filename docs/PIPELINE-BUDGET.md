@@ -577,6 +577,118 @@ no CPU and normal GPU, i.e. a stall outside anything we measure (compositor,
 paging, or the OS). Neither is a warm problem, and no amount of pipeline work
 will move them.
 
+## What a pipeline is actually made of (measured 2026-09-08)
+
+Josh: *"why do we have such pipeline explosion, we don't even need that many
+materials."* Right question, wrong noun. Decoded from three's own cache keys on a
+depth-3 floor (seed 4242, desktop Chrome, WebGPU, full warm), the 175 resident
+pipelines factored as:
+
+| axis | distinct | note |
+| --- | --- | --- |
+| shader PROGRAMS (vertex/fragment pairs) | 127 | the number that costs compile time |
+| render states (blend/depth/side/target) | 22 | |
+| vertex layouts (attribute sets) | 21 | |
+| render targets | 4 | PSX scene target, shadow depth, UI, canvas |
+| material NAMES (families) | 40 | |
+
+So the explosion was never material count. It was that one material family
+compiled as ten programs, and the reasons were all *text* — something in the
+generated WGSL that varied without the look varying. Four mechanisms, in the
+order they were found:
+
+1. **Identity in the identifier** (fixed 2026-08-21, `scene/stable-buffer-names.ts`):
+   buffer names carried a global node id.
+2. **Array sizes in the vertex shader** (`scene/gpu-capacity.ts`): a skeleton's bone
+   count and an instanced group's capacity are emitted as `array<mat4x4<f32>, N>`.
+   Five bone counts and five chain lengths were ten vertex programs. Every rig
+   pads to `CONFIG.GPU_CAPACITY.SKIN_BONES`, every instance buffer to
+   `CONFIG.GPU_CAPACITY.INSTANCES`.
+3. **Tuning numbers in the fragment shader** (`style/banded-lighting-webgpu.ts`): a
+   JS number multiplied into the node graph is a WGSL literal. Nine dark-reactive
+   rim strengths were nine fragment programs. Amounts now ride on the material
+   and reach the shader through `materialReference`, like `material.color`.
+4. **Builder-global counters** (`scene/stable-shader-names.ts`): uniforms,
+   attributes and variables are numbered from counters shared by both stages, so
+   a fragment shader's identifiers shift by whatever the vertex stage claimed —
+   one fragment program per vertex layout it was paired with. Uniforms are now
+   numbered per group (the group struct is one declaration shared by both
+   stages), textures per builder, variables per stage.
+
+After 2–4: **151 pipelines, 100 programs** (vertex 97 → 79, fragment 108 → 89),
+zero in-play compiles, no validation errors, the wraith's rim pixel-identical.
+After the canonical-kinds sweep below, plus receive-shadow and the gore path
+made uniform across every lit family: **146 pipelines, 97 programs** (vertex 77,
+fragment 86). Same floor, same seed, zero in-play compiles.
+
+| | pipelines | programs |
+| --- | --- | --- |
+| main @c531bc83 | 175 | 127 |
+| + capacity, literals, per-scope names | 151 | 100 |
+| + canonical unlit kinds, uniform receive/gore | 146 | 97 |
+
+(A word on measuring: count with the tab in the FOREGROUND and the floor
+actually loaded. A backgrounded tab is throttled, the descent never completes,
+and the cache holds only the warm set — two readings of "98 pipelines" in this
+session were exactly that mistake.)
+
+The sweep bought less pipeline count than the audit promised, and the reason is
+the lesson: **a pipeline is programs × render states × vertex layouts, and the
+unlit family's fan-out was never programs.** One glow shader was — and still
+is — 15 pipelines, because it draws on five geometry layouts (pooled plane,
+merged non-indexed quad, ring without uv, a vertex-coloured trail, the
+threshold draft's custom attributes) in three sides and two blend modes. The
+kinds fixed the drift that was *wrong* (a glow writing depth, a strip that
+fogged, a sigil that skipped tone mapping) and closed the set for the warm;
+they could not merge states that are genuinely different draws.
+
+What remains, and what each would cost to remove:
+
+- **53 unlit pipelines ≈ 8 programs × states × layouts.** The lever is ONE
+  layout for every unlit quad (`position,uv`, indexed — the sprite layout) and
+  collapsing to two sides (double for quads, back for hulls; solids become
+  double-sided at half opacity). No look change worth the name; a day of
+  geometry plumbing.
+- **22 `shared:std`** are the floor palette's plain/instanced × smooth/flat ×
+  detail-texture variants. Flat vs smooth is a program (`flatShading` bakes a
+  derivative-normal path). Baking facets into geometry and shipping one smooth
+  shader is a LOOK decision for Josh — it also makes the shader cheaper.
+- **Creature families (dis:d 8, dis:rd+t 9, opa:plain 8)** are body/chunk ×
+  opaque/transparent × skinned/plain × indexed/non-indexed. The indexed pairs
+  are bookkeeping (below); the rest is the floor.
+- **9 shadow pipelines** = caster layouts × side. Fewer caster layouts (shells
+  indexed everywhere) is the only lever.
+
+Next: a pipeline BUDGET the census enforces (programs ≤ 100, pipelines ≤ 150 on
+the reference floor), so this never grows back unnoticed — that is the missing
+piece, not another sweep.
+
+What was left was *flag drift*, and that one IS ours: the same glow authored
+`DoubleSide` here and default-front there, `fog:false` in one file and defaulted
+on in the next, `depthWrite` left on for a transparent strip, `toneMapped:false`
+on one sigil. Ninety-three unlit construction sites for what turned out to be
+seven looks. `style/material-registry.ts` now carries the CANONICAL KINDS —
+`glowSurface`, `outlineSurface`, `veilSurface`, `artQuadSurface`, `glowSprite`,
+`overlaySprite`, `smokeSprite` — each fixing every flag but the look, and
+`unlitSurfaceKinds()` is the closed list the boot warm compiles. Two fog
+families survive on purpose (a thing in the air hazes; a combat glow must not,
+because additive fog *adds* the fog colour with distance), and a closed additive
+solid stays front-faced (double-sided additive draws its back faces and doubles
+the brightness). Everything else is a bug that used to have a pipeline.
+
+Two things NOT worth chasing, so nobody does:
+
+- **Indexed vs non-indexed duplicates.** three keys the geometry on whether it
+  has an index, so a merged (non-indexed) and a pooled (indexed) primitive under
+  the same material are two pipelines in its cache. The WebGPU descriptor is
+  identical (`stripIndexFormat` only exists for strips), and Dawn's frontend
+  cache returns the same pipeline object for an identical descriptor — so this
+  is bookkeeping, not a compile.
+- **Skinned vs plain fragment programs.** The uniform group struct is shared by
+  both stages, so a fragment shader whose vertex stage carries the skinning
+  uniforms genuinely differs in text. Two programs per creature family is the
+  floor.
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
 [Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
 [UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook

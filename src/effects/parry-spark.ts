@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { registerWarmup } from '../content/warmup-registry';
 import { getTexture } from '../style/procedural-textures';
 
@@ -29,27 +30,17 @@ let sparkMat: THREE.SpriteMaterial | null = null;
 let flashMat: THREE.SpriteMaterial | null = null;
 function ensureMats() {
   if (!sparkMat) {
-    sparkMat = new THREE.SpriteMaterial({
+    sparkMat = glowSprite({
       map: getTexture('moonbeam'),   // neutral white radial — tint carries the colour
       color: 0xffe8a8,               // white-gold struck-steel
-      transparent: true,
       opacity: 1.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: true,
-      fog: false,
     });
   }
   if (!flashMat) {
-    flashMat = new THREE.SpriteMaterial({
+    flashMat = glowSprite({
       map: getTexture('moonbeam'),
       color: 0xfffbe6,               // near-white hot core
-      transparent: true,
       opacity: 1.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: true,
-      fog: false,
     });
   }
 }

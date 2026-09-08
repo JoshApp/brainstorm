@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { registerMaterialPool } from '../style/material-registry';
+import { registerMaterialPool, glowSurface, glowSprite, smokeSprite } from '../style/material-registry';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
@@ -450,9 +450,12 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   // floor's splat map by world XZ with a height fade: crates standing
   // in pools get bloodied at the base, mobs wading through gore pick
   // it up on their feet. Per-fragment world position means instanced
-  // batches work unmodified. Skipped for transparent/additive
-  // materials (blood on a flame would be wrong).
-  const hasGore = mat.transparent !== true && mat.blending === THREE.NormalBlending;
+  // batches work unmodified. Skipped for additive materials (blood on a
+  // flame would be wrong) but NOT for transparent ones: the gore path is
+  // compiled into the fragment shader, so gating it on transparency gave
+  // every model family a second program for the potion's glass. Blood
+  // creeping up a bottle standing in a pool is, if anything, correct.
+  const hasGore = mat.blending === THREE.NormalBlending;
   if (!hasRim && !hasDissolve && !hasChroma && !hasGore) return;
 
   // WEBGPU: onBeforeCompile is dead under the node renderer. Port the RIM REVEAL
@@ -762,14 +765,12 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
         if (part.signal === true) markAsSignal(handle.obj);
         return handle.obj;
       }
-      const spriteMat = new THREE.SpriteMaterial({
-        map: getTexture(part.texture),
-        color: part.color ?? 0xffffff,
-        transparent: true,
-        opacity: part.opacity ?? 1,
-        blending: part.blending === 'additive' ? THREE.AdditiveBlending : THREE.NormalBlending,
-        depthWrite: false,
-      });
+      // A model's sprite is IN the world (an eye halo, a candle wisp), so it is
+      // the world-flame family: fogged. Canonical kinds — see material-registry.
+      const spriteOpts = { map: getTexture(part.texture), color: part.color ?? 0xffffff, opacity: part.opacity ?? 1 };
+      const spriteMat = part.blending === 'additive'
+        ? glowSprite({ ...spriteOpts, fog: true })
+        : smokeSprite(spriteOpts);
       const sprite = new THREE.Sprite(spriteMat);
       const baseW = part.size[0];
       const baseH = part.size[1];
@@ -804,15 +805,11 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       // so it casts a real texture-shaped shadow.
       const cutout = part.alphaTest != null;
       const mat = additive
-        ? new THREE.MeshBasicMaterial({
+        ? glowSurface({
             map: getTexture(part.texture),
             color: part.color ?? 0xffffff,
-            transparent: true,
             opacity: part.opacity ?? 1,
-            blending: THREE.AdditiveBlending,
             fog: part.fog ?? false,
-            depthWrite: part.depthWrite ?? false,
-            side: THREE.DoubleSide,
           })
         : cutout
         ? new THREE.MeshStandardMaterial({
@@ -891,6 +888,14 @@ function revealOf(mat: THREE.Material): Record<string, number[]> | undefined {
   return (mat.userData as { reveal?: Record<string, number[]> }).reveal;
 }
 
+/** Whether a part casts. A TRANSPARENT part never does: glass throwing a solid
+ *  shadow is wrong, and the shadow pass compiles a separate pipeline for
+ *  transparent casters (three keys the depth material on it) — the potion's
+ *  bulb and neck were two shadow pipelines for a shadow nobody wanted. */
+function castsShadow(part: PartSpec, mat: THREE.Material): boolean {
+  return (part.castShadow ?? curShadow.cast) && !mat.transparent;
+}
+
 function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec): THREE.Mesh {
   // A reveal material reads the per-vertex aReveal* attributes; a pooled/shared geometry can't carry
   // them (different materials share it), so CLONE before baking. Non-reveal materials keep the pooled
@@ -899,7 +904,7 @@ function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec
   const meshGeo = reveal ? geo.clone() : geo;
   if (reveal) setRevealAttributes(meshGeo, reveal);
   const mesh = new THREE.Mesh(meshGeo, mat);
-  mesh.castShadow = part.castShadow ?? curShadow.cast;
+  mesh.castShadow = castsShadow(part, mat);
   mesh.receiveShadow = part.receiveShadow ?? curShadow.receive;
   return mesh;
 }
@@ -943,7 +948,7 @@ function buildCsg(
     // under a different material still gets that material's reveal colours.
     const rev = revealOf(mesh.material as THREE.Material);
     if (rev) setRevealAttributes(mesh.geometry, rev);
-    mesh.castShadow = part.castShadow ?? curShadow.cast;
+    mesh.castShadow = castsShadow(part, mesh.material as THREE.Material);
     mesh.receiveShadow = part.receiveShadow ?? curShadow.receive;
     return mesh;
   }
@@ -994,7 +999,7 @@ function buildCsg(
   if (reveal) setRevealAttributes(result.geometry, reveal);
   geoA.dispose();
   geoB.dispose();
-  result.castShadow = part.castShadow ?? curShadow.cast;
+  result.castShadow = castsShadow(part, result.material as THREE.Material);
   result.receiveShadow = part.receiveShadow ?? curShadow.receive;
   return result;
 }

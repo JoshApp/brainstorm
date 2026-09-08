@@ -9,7 +9,7 @@ import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
-import { disposeBuiltTree } from '../style/material-registry';
+import { disposeBuiltTree, glowSurface } from '../style/material-registry';
 import { applyBrokenness } from './brokenness';
 import { getPlayerMaxHp } from '../player/health';
 import { CONFIG } from '../config';
@@ -86,10 +86,7 @@ export function spawnBloodAltar(
       stoneGroup.add(top);
 
       // Cursed-violet floor disc under the offering.
-      discMat = new THREE.MeshBasicMaterial({
-        color: RARITY_COLORS.cursed, transparent: true, opacity: 0.55,
-        blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
-      });
+      discMat = glowSurface({ color: RARITY_COLORS.cursed, opacity: 0.55 });
       const disc = new THREE.Mesh(new THREE.PlaneGeometry(topW * 0.85, topD * 0.85), discMat);
       disc.rotation.x = -Math.PI / 2;
       disc.position.y = baseH + topH + 0.005;

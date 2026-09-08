@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { generateEntityId } from '../ecs/world';
 import { buildModel } from '../ecs/build-model';
 import { mergeRigidViewmodel } from '../player/viewmodel-merge';
@@ -94,10 +95,7 @@ export function spawnCorpse(
     getIntensity: () => { const t = performance.now() / 1000; return 0.85 * (0.75 + 0.25 * Math.sin(t * 1.6)); },
   });
   {
-    const moteMat = new THREE.SpriteMaterial({
-      map: getTexture('fire-wisp'), color: SOUL_COLOR, transparent: true,
-      opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
-    });
+    const moteMat = glowSprite({ map: getTexture('fire-wisp'), color: SOUL_COLOR, opacity: 0.5, fog: true });
     const mote = new THREE.Sprite(moteMat);
     mote.scale.set(0.3, 0.3, 0.3);
     mote.position.set(pos.x, pos.y + 0.75, pos.z);

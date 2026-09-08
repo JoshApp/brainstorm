@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { getTexture } from '../style/procedural-textures';
 import { grantXp } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
@@ -39,17 +40,13 @@ let HALO_MAT: THREE.SpriteMaterial | null = null;
 
 function ensureResources(): void {
   if (!HALO_MAT) {
-    HALO_MAT = new THREE.SpriteMaterial({
+    HALO_MAT = glowSprite({
       map: getTexture('fire-wisp'),
       // Pale washed cool tone — sits closer to white than to bright
       // blue/violet. Restraint over candy: this is essence, not loot
       // confetti.
       color: 0xa8c4d8,
-      transparent: true,
       opacity: 0.75,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: false,
     });
   }
 }

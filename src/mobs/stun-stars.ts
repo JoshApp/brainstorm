@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overlaySprite } from '../style/material-registry';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 import { registerWarmup } from '../content/warmup-registry';
 
@@ -58,12 +59,9 @@ const ORBIT_RADIUS = 0.26;
 // mid-fight; see scene/effect-clone-pool.ts.)
 let starMatTpl: THREE.SpriteMaterial | null = null;
 function getStarMatTemplate(): THREE.SpriteMaterial {
-  if (!starMatTpl) starMatTpl = new THREE.SpriteMaterial({
-    // depthTest OFF + high renderOrder → an OVERLAY cue that always reads
-    // above the head, never buried inside the (often tall) body mesh.
-    map: getStarTexture(), color: 0xeaf2ff, transparent: true, opacity: 0,
-    depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false,
-  });
+  // Overlay (depthTest OFF) + high renderOrder → a cue that always reads
+  // above the head, never buried inside the (often tall) body mesh.
+  if (!starMatTpl) starMatTpl = overlaySprite({ map: getStarTexture(), color: 0xeaf2ff, opacity: 0 });
   return starMatTpl;
 }
 

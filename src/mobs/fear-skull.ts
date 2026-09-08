@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overlaySprite } from '../style/material-registry';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 import { registerWarmup } from '../content/warmup-registry';
 
@@ -109,12 +110,11 @@ const SKULL_SIZE = 0.40;
 // rout would recompile mid-fight (see scene/effect-clone-pool.ts).
 let skullMatTpl: THREE.SpriteMaterial | null = null;
 function getSkullMatTemplate(): THREE.SpriteMaterial {
-  if (!skullMatTpl) skullMatTpl = new THREE.SpriteMaterial({
-    // depthTest OFF + high renderOrder → the cue always reads above the head,
-    // never buried in the body of a tall creature or occluded by the pillar the
-    // coward is cowering behind. Finding it is the reward; hunting for it isn't.
-    map: getSkullTexture(), color: 0xffffff, transparent: true, opacity: 0,
-    depthWrite: false, depthTest: false, fog: false,
+  // Overlay (depthTest OFF) + high renderOrder → the cue always reads above the
+  // head, never buried in the body of a tall creature or occluded by the pillar
+  // the coward is cowering behind. Finding it is the reward; hunting for it isn't.
+  if (!skullMatTpl) skullMatTpl = overlaySprite({
+    additive: false, map: getSkullTexture(), color: 0xffffff, opacity: 0,
   });
   return skullMatTpl;
 }

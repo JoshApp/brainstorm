@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { artQuadSurface, overlaySprite } from '../style/material-registry';
 import { getTexture } from '../style/procedural-textures';
 import type { DomainId } from '../content/domains';
 import { bindToDomain } from './domain-bind';
@@ -73,11 +74,7 @@ export function playCardClaim(cardId: string, accentHex: string, domain?: Domain
 
   // The card — a self-lit quad facing the player. depthTest off + a high
   // renderOrder so it draws cleanly over the world for its short life.
-  const faceMat = new THREE.MeshBasicMaterial({
-    map: cardTex(`${BASE}cards/${cardId}.webp`),
-    transparent: true, side: THREE.DoubleSide, toneMapped: false,
-    depthTest: false, depthWrite: false, opacity: 0,
-  });
+  const faceMat = artQuadSurface({ map: cardTex(`${BASE}cards/${cardId}.webp`), opacity: 0, overlay: true });
   const card = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), faceMat);
   card.renderOrder = 10000;
   card.frustumCulled = false;
@@ -85,11 +82,7 @@ export function playCardClaim(cardId: string, accentHex: string, domain?: Domain
 
   // Flame wash behind + around the card — additive, accent-tinted, blooms during
   // the ignite beat and guts out through the absorb.
-  const flameMat = new THREE.SpriteMaterial({
-    map: getTexture('fire-wisp'), color: accent,
-    transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
-    depthTest: false, depthWrite: false, fog: false,
-  });
+  const flameMat = overlaySprite({ map: getTexture('fire-wisp'), color: accent, opacity: 0 });
   const flame = new THREE.Sprite(flameMat);
   flame.scale.set(CARD_W * 2.4, CARD_H * 1.7, 1);
   flame.position.z = -0.03;

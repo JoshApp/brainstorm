@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overlaySprite } from '../style/material-registry';
 import { boneArmsWanted } from '../content/scanned-hand';
 import { buildLantern, preloadLantern, onLanternLoaded, lanternBodyCentreY }
   from '../content/scanned-lantern';
@@ -354,19 +355,14 @@ export function attachLamp(camera: THREE.Camera) {
       flicker: { scale: 0.10, bob: 0.003, speed: 0.9 } },
   ];
   for (const layer of FLAME_LAYERS) {
-    const mat = new THREE.SpriteMaterial({
+    // Overlay sprite: match the rest of the viewmodel — paint over world
+    // geometry (depthTest off + write off) and sort into the transparent
+    // phase so renderOrder beats world-space sprites. The hinge traverse
+    // below only handles meshes, so set this here.
+    const mat = overlaySprite({
       map: getTexture('fire-wisp'),
       color: layer.color,
-      transparent: true,
       opacity: layer.opacity,
-      blending: THREE.AdditiveBlending,
-      // Match the rest of the viewmodel: paint over world geometry
-      // (depthTest off + write off) and sort into the transparent
-      // phase so renderOrder beats world-space sprites. The hinge
-      // traverse below only handles meshes, so set this here.
-      depthTest: false,
-      depthWrite: false,
-      fog: false,
     });
     const sprite = new THREE.Sprite(mat);
     sprite.position.set(layer.pos[0], layer.pos[1], layer.pos[2]);

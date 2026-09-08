@@ -19,13 +19,19 @@ import type { ShadowRole } from '../ecs/model-types';
 // scattering raw `castShadow = true`, so both paths speak the same policy.
 
 /** Cast/receive flags for a role. Single source of truth (build-model imports
- *  this for its per-build default too). */
+ *  this for its per-build default too).
+ *
+ *  RECEIVE IS ALWAYS ON. Whether a material receives is baked into its fragment
+ *  shader (three includes the shadow lookup only for receivers), so a role that
+ *  switched it off gave every material family a second fragment program — one
+ *  with the lookup, one without — for a saving of one depth sample per lit
+ *  fragment on clutter. Measured 2026-09-08: six pipelines on a floor. The role
+ *  now decides CASTING only, which is the half that costs anything. */
 export function shadowFlags(role?: ShadowRole): { cast: boolean; receive: boolean } {
   switch (role) {
-    case 'cast':    return { cast: true,  receive: false };
-    case 'receive': return { cast: false, receive: true };
-    case 'none':    return { cast: false, receive: false };
-    default:        return { cast: true,  receive: true };   // 'both' / undefined
+    case 'receive':
+    case 'none':    return { cast: false, receive: true };
+    default:        return { cast: true,  receive: true };   // 'both' / 'cast' / undefined
   }
 }
 

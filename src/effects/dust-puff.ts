@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { smokeSprite } from '../style/material-registry';
 import { registerWarmup } from '../content/warmup-registry';
 import { getTexture } from '../style/procedural-textures';
 
@@ -31,16 +32,13 @@ const SETTLE = -0.45;
 let puffMat: THREE.SpriteMaterial | null = null;
 function ensureMat() {
   if (!puffMat) {
-    puffMat = new THREE.SpriteMaterial({
-      // 'moonbeam' is a NEUTRAL white radial blob — unlike 'fire-wisp' it bakes
-      // in no warm gradient, so the grey tint reads as stone dust, not embers.
+    // Smoke kind: dust occludes, never glows. 'moonbeam' is a NEUTRAL white
+    // radial blob — unlike 'fire-wisp' it bakes in no warm gradient, so the
+    // grey tint reads as stone dust, not embers.
+    puffMat = smokeSprite({
       map: getTexture('moonbeam'),
       color: 0x6b6258,                // dusty grey-brown
-      transparent: true,
       opacity: 0.5,
-      blending: THREE.NormalBlending, // dust occludes, never glows
-      depthWrite: false,
-      fog: true,
     });
   }
 }

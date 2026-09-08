@@ -40,6 +40,7 @@
 // a plane across it; and its alpha falls off at the rim, so it meets the jambs as shadow
 // instead of as an edge. A 3.6m gallery opening is the case that tests both.
 import * as THREE from 'three';
+import { veilSurface } from '../style/material-registry';
 import { DEV } from '../debug/dev';
 import { WALL_T } from '../level/poly-shell-plan';
 import { veilKnobs } from '../debug/tuning-veil';
@@ -128,18 +129,11 @@ export function spawnThresholdVeil(scene: THREE.Object3D, o: {
   b: string;
 }): void {
   const { mid, normal, rotY, width, height, floorY } = o;
-  const mat = new THREE.MeshBasicMaterial({
-    map: veilTexture(),
-    transparent: true,
-    opacity: 0,
-    // NO DEPTH WRITE. The veil darkens what is already drawn; writing depth would make it
-    // occlude anything sorted after it, including the motes and the threshold haze that
-    // are supposed to drift through the same doorway.
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    // The veil IS the darkness. Fogging it would fade the thing doing the fading.
-    fog: false,
-  });
+  // Veil kind: NO DEPTH WRITE. The veil darkens what is already drawn; writing depth would
+  // make it occlude anything sorted after it, including the motes and the threshold haze
+  // that are supposed to drift through the same doorway. And NO FOG: the veil IS the
+  // darkness — fogging it would fade the thing doing the fading.
+  const mat = veilSurface({ map: veilTexture(), opacity: 0 });
   // OVERSIZED, slightly. The aperture is exactly `width` × `height`, and a quad cut to
   // exactly that leaves a hairline of un-veiled opening at the jambs where the falloff has
   // already reached zero. The rim fade means the extra is invisible.

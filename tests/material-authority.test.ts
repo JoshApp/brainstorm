@@ -97,7 +97,7 @@ for (const f of files) {
 }
 
 // Measured 2026-08-10 by this test itself. Lower as call sites move to the pool.
-const BUDGET = 75;   // 78 → 75: the archway eye's two stone materials moved to stdMat
+const BUDGET = 22;   // 75 → 22: every glow, veil, art quad and sprite now comes from a canonical kind (material-registry.ts)
 
 test('direct material construction outside the authority does not grow', () => {
   const worst = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);

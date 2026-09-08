@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { freezeTransform, isDrawn } from './animation-gate';
 import { disposeGpu } from './gpu-dispose';
 import { isPooledGeometry, pooledCircle, pooledPlane, pooledSphere, pooledTorus } from './geometry-pool';
-import { stdMat } from '../style/material-registry';
+import { stdMat, glowSurface, veilSurface } from '../style/material-registry';
 import { instanceCapacity } from './gpu-capacity';
 
 // ARCHWAY EYE — the diegetic exit cue, as the dungeon's own eye set in the
@@ -201,10 +201,7 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
 
   // Glow halo — soft additive disc so the open eye reads as LIGHT spilling out
   // (fixed; the gaze moves over it).
-  const haloMat = new THREE.MeshBasicMaterial({
-    map: glowTexture(), color: GAZE_GLOW, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
-  });
+  const haloMat = glowSurface({ map: glowTexture(), color: GAZE_GLOW, opacity: 0, fog: true });
   const halo = new THREE.Mesh(pooledPlane(EYE_W * 1.5, EYE_W * 1.1), haloMat);
   halo.position.z = EYE_W * 0.16;
   group.add(halo);
@@ -221,16 +218,13 @@ export function buildArchwayEye(root: THREE.Object3D, pos: THREE.Vector3, quat: 
   ball.position.z = -0.05;
 
   // Iris — the bright gaze. ADDITIVE so it reads as light, not a tinted surface.
-  const irisMat = new THREE.MeshBasicMaterial({
-    color: GAZE_CORE, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
-  });
+  const irisMat = glowSurface({ color: GAZE_CORE, opacity: 0, fog: true });
   const iris = new THREE.Mesh(pooledCircle(EYE_W * 0.3, 20), irisMat);
   iris.position.z = EYE_W * 0.2;
   gaze.add(iris);
 
   // Pupil — a dark round centre over the glow so it reads as an EYE, not a gem.
-  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x080406, transparent: true, opacity: 0, fog: true });
+  const pupilMat = veilSurface({ color: 0x080406, opacity: 0, fog: true });
   const pupil = new THREE.Mesh(pooledCircle(EYE_W * 0.13, 16), pupilMat);
   pupil.position.z = EYE_W * 0.22;
   gaze.add(pupil);

@@ -15,6 +15,7 @@
 // Tunable via CONFIG.EXHAUSTION.BREATH_PUFF_*. Browser-only (canvas texture).
 
 import * as THREE from 'three';
+import { overlaySprite } from '../style/material-registry';
 import { tagOrigin } from '../scene/provenance';
 import { CONFIG } from '../config';
 import { registerWarmup } from '../content/warmup-registry';
@@ -69,14 +70,12 @@ export function initBreath(camera: THREE.Camera): void {
   cam = camera;
   texture = makePuffTexture();
   for (let i = 0; i < COUNT; i++) {
-    const mat = new THREE.SpriteMaterial({
+    // Overlay (no depth test): always reads in front of the view.
+    const mat = overlaySprite({
+      additive: false,
       map: texture,
       color: 0xdfe6ea,          // pale cold grey-white
-      transparent: true,
       opacity: 0,
-      depthTest: false,         // always reads in front of the view
-      depthWrite: false,
-      fog: false,
     });
     const sprite = new THREE.Sprite(mat);
     sprite.visible = false;

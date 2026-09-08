@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { getTexture } from '../style/procedural-textures';
 import { get } from '../ecs/world';
 import { BUFFS } from '../content/buffs';
@@ -59,14 +60,7 @@ function makeGlow(scene: THREE.Object3D, texture: string, color: number): Glow {
       setVisible: (v) => { h.obj.visible = v; },
     };
   }
-  const material = new THREE.SpriteMaterial({
-    map: getTexture(texture),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: false,
-    opacity: 0,
-  });
+  const material = glowSprite({ map: getTexture(texture), opacity: 0 });
   material.color.setHex(color);
   const sprite = new THREE.Sprite(material);
   sprite.visible = false;

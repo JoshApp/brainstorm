@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface, smokeSprite } from '../style/material-registry';
 import { registerWarmup } from '../content/warmup-registry';
 import { groundYAt } from '../level/elevation';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
@@ -93,23 +94,8 @@ let _sigilTpl: THREE.MeshBasicMaterial | null = null;
 let _smokeTpl: THREE.SpriteMaterial | null = null;
 function shared() {
   if (!_sigilGeo) _sigilGeo = new THREE.PlaneGeometry(2, 2);   // unit sigil — scaled by radius
-  if (!_sigilTpl) _sigilTpl = new THREE.MeshBasicMaterial({
-    map: sigilTexture(),
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: false,
-    side: THREE.DoubleSide,
-  });
-  if (!_smokeTpl) _smokeTpl = new THREE.SpriteMaterial({
-    map: smokeTexture(),
-    color: 0x231a1c,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    fog: true,
-  });
+  if (!_sigilTpl) _sigilTpl = glowSurface({ map: sigilTexture(), opacity: 0 });
+  if (!_smokeTpl) _smokeTpl = smokeSprite({ map: smokeTexture(), color: 0x231a1c, opacity: 0 });
   return { sigilGeo: _sigilGeo, sigilTpl: _sigilTpl, smokeTpl: _smokeTpl };
 }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { disposeGpu } from '../scene/gpu-dispose';
 import { getTexture } from '../style/procedural-textures';
 import { registerWarmup } from '../content/warmup-registry';
@@ -67,14 +68,10 @@ function getShardMaterial(tint: number): THREE.MeshStandardMaterial {
   return mat;
 }
 
-const puffMaterial = new THREE.SpriteMaterial({
+const puffMaterial = glowSprite({
   map: getTexture('moonbeam'),
   color: 0x6c5a48,         // warm dust grey-tan
-  transparent: true,
   opacity: 0.85,
-  blending: THREE.AdditiveBlending,
-  fog: false,
-  depthWrite: false,
 });
 
 /** Fire a shatter burst at world (x, y, z). `broken` marks

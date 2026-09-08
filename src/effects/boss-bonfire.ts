@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { disposeGpu } from '../scene/gpu-dispose';
 import { buildModel } from '../ecs/build-model';
 import { BONFIRE } from '../content/bonfire';
@@ -97,14 +98,10 @@ export function spawnBossBonfire(
   const soulRoot = new THREE.Group();
   soulRoot.position.set(pos.x, pos.y, pos.z);
   scene.add(soulRoot);
-  const soulMat = new THREE.SpriteMaterial({
+  const soulMat = glowSprite({
     map: getTexture('fire-wisp'),
     color: minor ? MINI_SOUL_COLOR : SOUL_COLOR,
-    transparent: true,
     opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: false,
   });
   // Where the souls START (soulRoot-local). With a death spot, they gather at the
   // fallen boss and STREAM to the fire; without one, they rise from a ring around

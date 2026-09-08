@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface, veilSurface } from '../style/material-registry';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { registerWarmup } from '../content/warmup-registry';
 import { damagePlayer } from '../player/health';
@@ -63,10 +64,9 @@ function makeBlobGeometry(radius: number, segments: number, lumpiness: number, p
 }
 
 function blobLayer(radius: number, segs: number, lump: number, color: number, opacity: number, blending: THREE.Blending, y: number): { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
-  const mat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity,
-    blending, depthWrite: false, fog: false, side: THREE.DoubleSide,
-  });
+  const mat = blending === THREE.AdditiveBlending
+    ? glowSurface({ color, opacity })
+    : veilSurface({ color, opacity });
   const mesh = new THREE.Mesh(makeBlobGeometry(radius, segs, lump, Math.random() * Math.PI * 2), mat);
   mesh.position.z = -y;   // group is rotated -90° about X, so local -Z = world up
   return { mesh, mat };

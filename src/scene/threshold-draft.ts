@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface, glowSprite } from '../style/material-registry';
 import { createBatchedSprite, isSpriteBatchingEnabled, type BatchedSprite } from './sprite-batch';
 import { disposeEyePool, type ArchwayEye } from './archway-eye';
 
@@ -182,16 +183,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
   // Layered haze planes at staggered depths within the archway frame.
   const hazeLayers: HazeLayer[] = [];
   for (let i = 0; i < HAZE_LAYERS; i++) {
-    const mat = new THREE.MeshBasicMaterial({
-      map: hazeTexture(),
-      color: HAZE_COLOR,
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: true,
-      side: THREE.DoubleSide,
-    });
+    const mat = glowSurface({ map: hazeTexture(), color: HAZE_COLOR, opacity: 0, fog: true });
     // Vary size per layer so the stack doesn't read as one crisp rectangle.
     const sclW = 0.86 + (i % 2) * 0.18;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w * sclW, HAZE_HEIGHT * (0.9 + (i % 2) * 0.08)), mat);
@@ -220,15 +212,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
       sprite = handle.obj;
       scene.add(sprite);
     } else {
-      mat = new THREE.SpriteMaterial({
-        map: moteTexture(),
-        color: DUST_COLOR,
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: true,
-      });
+      mat = glowSprite({ map: moteTexture(), color: DUST_COLOR, opacity: 0, fog: true });
       const s = new THREE.Sprite(mat);
       s.scale.set(sz, sz, 1);
       scene.add(s);

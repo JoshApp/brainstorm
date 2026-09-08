@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { groundYAt } from '../level/elevation';
-import { stdMat } from '../style/material-registry';
+import { stdMat, glowSurface } from '../style/material-registry';
 import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { buildRelicBillboard } from '../effects/relic-billboard';
 import { hasRelicArt } from '../content/relic-art-assets';
@@ -156,15 +156,7 @@ export function createPickup(
   // without relying solely on the use button (some players reach for
   // the object directly with their thumb on phone).
   const ringGeom = pooledRing(0.50, 0.62, 28);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: rarityColor,
-    transparent: true,
-    opacity: 0.85,
-    side: THREE.DoubleSide,
-    fog: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
+  const ringMat = glowSurface({ color: rarityColor, opacity: 0.85 });
   const ring = new THREE.Mesh(ringGeom, ringMat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = floorLocalY(pos.x, pos.z, 0.015);
@@ -524,10 +516,7 @@ registerWarmup({
       m.frustumCulled = false;
       scene.add(m);
     }
-    const ring = new THREE.Mesh(pooledRing(0.50, 0.62, 28), new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
-      fog: false, depthWrite: false, blending: THREE.AdditiveBlending,
-    }));
+    const ring = new THREE.Mesh(pooledRing(0.50, 0.62, 28), glowSurface({ color: 0xffffff, opacity: 0.85 }));
     ring.frustumCulled = false;
     scene.add(ring);
   },

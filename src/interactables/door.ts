@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { veilSurface } from '../style/material-registry';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { groundYAt } from '../level/elevation';
 import type { DoorSpec } from '../level/types';
@@ -144,14 +145,7 @@ export function spawnDoor(
   // A faint emissive strip on the floor along the doorway. Reads from a
   // distance as "passage here." Color shifts cool/sealed → warm/open.
   const lengthThresh = length;
-  const thresholdMat = new THREE.MeshBasicMaterial({
-    color: 0x8c5a30,
-    transparent: true,
-    opacity: 0.6,
-    fog: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
+  const thresholdMat = veilSurface({ color: 0x8c5a30, opacity: 0.6 });
   const thresholdGeo = new THREE.BoxGeometry(lengthThresh * 0.92, 0.04, 0.18);
   const threshold = new THREE.Mesh(thresholdGeo, thresholdMat);
   threshold.position.set(cx, baseY + 0.025, cz);

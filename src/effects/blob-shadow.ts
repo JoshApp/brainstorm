@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { veilSurface } from '../style/material-registry';
 
 // Blob shadow — a cheap soft contact shadow on the floor under a moving thing
 // (creatures now; loot/props can share it later), REPLACING real cube-map cast
@@ -44,14 +45,8 @@ let sharedMat: THREE.MeshBasicMaterial | null = null;
 
 function blobMaterial(): THREE.MeshBasicMaterial {
   if (sharedMat) return sharedMat;
-  sharedMat = new THREE.MeshBasicMaterial({
-    map: blobTexture(),
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.5,
-    depthWrite: false,     // a decal — never occludes
-    fog: true,             // fade with the dungeon fog like the floor it sits on
-  });
+  // A decal — never occludes; fades with the dungeon fog like the floor it sits on.
+  sharedMat = veilSurface({ map: blobTexture(), color: 0x000000, opacity: 0.5, fog: true });
   return sharedMat;
 }
 

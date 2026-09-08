@@ -19,7 +19,7 @@ import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, spawnBreakableDecoration, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
-import { stdMat } from '../style/material-registry';
+import { stdMat, basicMat } from '../style/material-registry';
 import { installPropHeightAO } from '../style/surface-ao';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -406,7 +406,7 @@ function buildRoomShell(
     // inhabited depth, never competing with the lamp.
     const glow = new THREE.Mesh(
       new THREE.PlaneGeometry(s * 0.8, s * 0.8),
-      new THREE.MeshBasicMaterial({ color: CONFIG.GRATE_GLOW_COLOR }),
+      basicMat({ color: CONFIG.GRATE_GLOW_COLOR }),
     );
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(gx, elev - CONFIG.GRATE_DEPTH_M + 0.5, gz);
@@ -616,7 +616,7 @@ function buildRoomShell(
     // the lamp sweeps past, staying well below the lamp baseline.
     const cap = new THREE.Mesh(
       new THREE.PlaneGeometry(shaftRect.w, shaftRect.d),
-      new THREE.MeshBasicMaterial({ color: 0x05070c }),
+      basicMat({ color: 0x05070c }),
     );
     cap.rotation.x = Math.PI / 2;   // face down the well
     cap.position.set(wx, elev + H + CONFIG.SHAFT_RISE_M, wz);

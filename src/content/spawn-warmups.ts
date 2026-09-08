@@ -6,7 +6,7 @@ import { buildModel, createMaterialFromDef, setRevealAttributes } from '../ecs/b
 import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
 import { getTexture } from '../style/procedural-textures';
-import { primeFloorPalette, registeredFloorMaterials } from '../style/material-registry';
+import { primeFloorPalette, registeredFloorMaterials, unlitSurfaceKinds } from '../style/material-registry';
 import { ACTS } from '../level/acts';
 import { SKELETONS, resolveProportions } from './skeletons';
 import { padBones, instanceCapacity } from '../scene/gpu-capacity';
@@ -161,49 +161,27 @@ for (const spec of Object.values(ENEMIES)) {
   });
 }
 
-// NON-MeshStandard PRIMITIVES — the cheap warm above only covers MeshStandard (enemy/prop
-// bodies). But models + effects also use SPRITES (enemy eye-halos: additive 'fire-wisp';
-// status motes), POINTS, and BASIC materials — each a DISTINCT pipeline, keyed on blending +
-// fog. Those were compiling when first SEEN in-play (the compile-watch surfaced exactly these:
-// SpriteMaterial / PointsNodeMaterial / MeshBasicMaterial). Warm a representative of each
-// variant here so they're ready before the first enemy / proc / particle.
+// UNLIT SURFACE KINDS — every glow, veil, art quad and sprite the game draws is
+// one of the canonical kinds in style/material-registry.ts (glowSurface,
+// veilSurface, artQuadSurface, glowSprite, overlaySprite, smokeSprite). That
+// module exports the CLOSED list; warming it here is what makes "no glow ever
+// compiles on first sight in play" a property of the registry instead of a
+// hand-kept enumeration of blending × fog × side that rotted twice (the pickup
+// ring and the flask glow each hitched in play after a variant went unlisted).
+// Meshes warm on the plain indexed box (the pooled plane/ring/circle layout the
+// glows use); sprites on a Sprite. Layouts inherited from a model's geometry
+// (an outline hull over a reveal-attributed body) warm with that model.
 registerWarmup({
-  label: 'primitive:sprites+basic', live: true,
+  label: 'primitive:unlit-kinds', live: true,
   spawn: (scene) => {
     const wisp = getTexture('fire-wisp');
-    const sprite = (blending: THREE.Blending, fog: boolean, depthTest = true): THREE.Sprite => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: wisp, transparent: true, blending, depthWrite: false, fog, depthTest }));
-      s.frustumCulled = false; s.position.set(0, 0.5, 0);
-      return s;
-    };
-    // additive (eye-halos / glows) + normal, each with and without fog — the 4 sprite pipelines.
-    scene.add(sprite(THREE.AdditiveBlending, true), sprite(THREE.AdditiveBlending, false));
-    scene.add(sprite(THREE.NormalBlending, true), sprite(THREE.NormalBlending, false));
-    // depthTest-OFF additive — the VIEWMODEL overlay sprites (flask glow, lamp
-    // flame layers: depth always + additive). The flask's glow first renders on
-    // the first mid-fight sip, which compiled this variant IN PLAY — a ~120ms
-    // hitch on the phone (2026-07-03 recording, verified by __compileReport's
-    // "depth w0:always vs w0:less-equal" mismatch). Both fog states.
-    scene.add(sprite(THREE.AdditiveBlending, true, false), sprite(THREE.AdditiveBlending, false, false));
-    // …and normal-blended depth-off (breath puffs, over-viewmodel wisps).
-    scene.add(sprite(THREE.NormalBlending, true, false), sprite(THREE.NormalBlending, false, false));
-    // basic unlit (simple effect/decal meshes): normal AND additive blending
-    // (additive was missing — pickup range rings + additive decals compiled
-    // their MeshBasic pipeline on first sight in play), fog + no-fog, the
-    // depth-write-off variant additive effects use, and BOTH cull modes —
-    // rings/decals are DoubleSide, which is its own pipeline (the guard's
-    // "prim triangle-list/back vs none" mismatch).
-    for (const fog of [true, false]) {
-      for (const blending of [THREE.NormalBlending, THREE.AdditiveBlending]) {
-        for (const side of [THREE.FrontSide, THREE.DoubleSide]) {
-          const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({
-            color: 0xffffff, transparent: true, fog, blending, side,
-            depthWrite: blending === THREE.NormalBlending,
-          }));
-          m.castShadow = false; m.frustumCulled = false;
-          scene.add(m);
-        }
-      }
+    for (const kind of unlitSurfaceKinds()) {
+      const mat = kind.make() as THREE.MeshBasicMaterial | THREE.SpriteMaterial;
+      mat.map = wisp;   // every live sprite/glow is textured; the map is part of the shader
+      mat.name = `warm:${kind.label}`;
+      const o: THREE.Object3D = kind.sprite ? new THREE.Sprite(mat as THREE.SpriteMaterial) : new THREE.Mesh(WARM_BOX_MODEL, mat);
+      (o as THREE.Mesh).castShadow = false; o.frustumCulled = false; o.position.set(0, 0.5, 0);
+      scene.add(o);
     }
   },
   clear: () => {},

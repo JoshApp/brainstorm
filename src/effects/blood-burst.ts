@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../style/material-registry';
 import { disposeGpu } from '../scene/gpu-dispose';
 import { registerWarmup } from '../content/warmup-registry';
 import { stampSplat } from '../scene/splat-map';
@@ -52,15 +53,7 @@ function ensureMats() {
     });
   }
   if (!spriteMat) {
-    spriteMat = new THREE.SpriteMaterial({
-      map: getTexture('fire-wisp'),
-      color: 0xc02014,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: false,
-    });
+    spriteMat = glowSprite({ map: getTexture('fire-wisp'), color: 0xc02014, opacity: 0.95 });
   }
 }
 

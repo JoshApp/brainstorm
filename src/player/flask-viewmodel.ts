@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overlaySprite } from '../style/material-registry';
 import { disposeGpuTree } from '../scene/gpu-dispose';
 import { CONFIG } from '../config';
 import { composeFlaskHold } from './flask-hold';
@@ -105,15 +106,7 @@ function buildFlaskGroup(): {
   });
   const elixir = composed.weapon!.materials.get('elixir') as THREE.MeshStandardMaterial;
 
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: makeGlowTexture(),
-    color: 0xffc860,
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    opacity: 0,
-  }));
+  const sprite = new THREE.Sprite(overlaySprite({ map: makeGlowTexture(), color: 0xffc860, opacity: 0 }));
   sprite.scale.setScalar(0.26);
   sprite.position.set(0, 0.07, 0);   // centered on the bulb
   sprite.renderOrder = 1000;

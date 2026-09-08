@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSurface } from '../style/material-registry';
 import { groundYAt } from '../level/elevation';
 import { acquireClone, releaseClone } from '../scene/effect-clone-pool';
 import { registerWarmup } from '../content/warmup-registry';
@@ -39,13 +40,9 @@ function shared() {
     disc: new THREE.CircleGeometry(1, 40),       // unit disc — scale by radius·progress
   };
   if (!_mat) {
-    const base = {
-      color: RING_COLOR, transparent: true,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
-    } as const;
     _mat = {
-      ring: new THREE.MeshBasicMaterial({ ...base, opacity: 0.5 }),
-      fill: new THREE.MeshBasicMaterial({ ...base, opacity: 0.0 }),
+      ring: glowSurface({ color: RING_COLOR, opacity: 0.5 }),
+      fill: glowSurface({ color: RING_COLOR, opacity: 0.0 }),
     };
   }
   return { geo: _geo, mat: _mat };
