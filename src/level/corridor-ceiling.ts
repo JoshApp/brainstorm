@@ -53,3 +53,63 @@ export function ceilingForLink(
   }
   return lowest;
 }
+
+// ── A STAIR HALL HAS A RAKED SOFFIT, NOT A CREASED ONE ───────────────────────
+//
+// Josh: *"the corridor ceiling doesnt follow the stair but is straight then sudden
+// drop then straight again, while the stair slopes gently"* — and, on the darkness
+// band: *"it generates this irregular ceiling in the middle with a big drop kinda
+// which makes it irregular in shape for the ceiling darkening."*
+//
+// Both are one fact, and it is in the FLOOR field, not in the ceiling code. Sampled
+// down the centreline of a ramped corridor, the elevation field is FLAT, then SLOPE,
+// then FLAT:
+//
+//   cor-1  run 7.89m  ramp 0.00 → −1.20
+//   slope   ·   ·   ·  −.20 −.20 −.20 … −.20 −.20   ·   ·   ·
+//
+// That is correct for the floor and deliberate: each end is pinned level to the room
+// it opens into, so you never start descending in a doorway. The ceiling was then
+// built at `groundYAt(x, z) + H` per vertex — "headroom stays constant down the
+// slope" — which faithfully copies the shelves and gives the ceiling TWO HARD
+// CREASES a metre inside each mouth. On a 2.30m squeeze that fold is right in your
+// eyeline, and the room-top darkness is measured against the ceiling, so the band
+// creases with it.
+//
+// A ceiling does not need a level threshold; only the floor does. So it stops
+// copying the floor and becomes what a real stair hall has: ONE RAKED PLANE, from
+// the headroom at one mouth to the headroom at the other.
+//
+// NO BIAS TERM, on purpose. The plane could be lifted until headroom never dips
+// below H anywhere, but that would raise the ceiling at the mouths above the doorway
+// head — which is built at the passage's own height — and put a ledge over every
+// door to buy back a few centimetres in the middle. Meeting the head exactly is
+// worth more than the clearance: the dip is the shelf's own height, measured at most
+// 0.17m on the sampled floors, against a body 1.7m tall in a 2.30m passage.
+
+/**
+ * The ceiling plane of a ramped corridor rect: a straight rake between the headroom
+ * at its two ends.
+ *
+ * `alongX` is the travel axis; `floorAt` is the elevation field. Returns the ceiling
+ * height at a world point — used both to displace the ceiling mesh and to tell the
+ * darkness band where the ceiling is, so the two cannot drift apart.
+ */
+export function rakeCeiling(
+  rect: Box,
+  alongX: boolean,
+  height: number,
+  floorAt: (x: number, z: number) => number,
+): (x: number, z: number) => number {
+  const t0 = alongX ? rect.x - rect.w / 2 : rect.z - rect.d / 2;
+  const t1 = alongX ? rect.x + rect.w / 2 : rect.z + rect.d / 2;
+  const lat = alongX ? rect.z : rect.x;
+  // A hair inside each end, so a field that falls back outside its own bounds is
+  // never the thing that sets the rake.
+  const eps = Math.min(0.01, (t1 - t0) * 0.02);
+  const y0 = floorAt(alongX ? t0 + eps : lat, alongX ? lat : t0 + eps);
+  const y1 = floorAt(alongX ? t1 - eps : lat, alongX ? lat : t1 - eps);
+  const span = t1 - t0;
+  const k = span > 1e-6 ? (y1 - y0) / span : 0;
+  return (x: number, z: number): number => y0 + k * ((alongX ? x : z) - t0) + height;
+}

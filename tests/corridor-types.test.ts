@@ -35,7 +35,8 @@ import {
   corridorType, corridorTypeFor, sectionForWidth, type CorridorTypeId,
 } from '../src/level/corridor-types';
 import { gateAdmits } from '../src/level/nav-grid';
-import { ceilingForLink } from '../src/level/corridor-ceiling';
+import { ceilingForLink, rakeCeiling } from '../src/level/corridor-ceiling';
+import { buildElevationField, setElevationField, groundYAt } from '../src/level/elevation';
 import { archwayPassableHalfBand } from '../src/content/archway';
 import { doorframePassableHalfBand } from '../src/content/doorframe';
 import { ENEMIES } from '../src/content/enemies';
@@ -313,6 +314,57 @@ test('a section is chosen by the RUN, not by a free roll', () => {
   }
   assert.equal(corridorType(undefined).id, CORRIDOR_TYPES.passage.id,
     'an unstamped corridor should read as the workhorse');
+});
+
+test('a ramped corridor\'s ceiling is ONE PLANE, not a copy of the stair', () => {
+  // Josh: "the corridor ceiling doesnt follow the stair but is straight then sudden
+  // drop then straight again, while the stair slopes gently."
+  //
+  // The floor is deliberately shelf-slope-shelf — each mouth is pinned level to its
+  // room so you never start descending in a doorway. Building the ceiling at
+  // `floor + H` copied those shelves and put two hard creases a metre inside every
+  // mouth. This is the claim that they are gone: sampled down the centreline, the
+  // raked ceiling's slope never changes.
+  let ramped = 0, worstBreak = 0, worstDip = 0, dipWhere = '';
+  for (const { spec } of FLOORS) {
+    setElevationField(buildElevationField(spec.rooms as RoomSpec[], spec.corridors as RoomSpec[]));
+    for (const c of spec.corridors) {
+      const r = c.rect;
+      const alongX = c.rampAlongX ?? (r.w >= r.d);
+      const t0 = alongX ? r.x - r.w / 2 : r.z - r.d / 2;
+      const t1 = alongX ? r.x + r.w / 2 : r.z + r.d / 2;
+      const lat = alongX ? r.z : r.x;
+      const at = (t: number): [number, number] => (alongX ? [t, lat] : [lat, t]);
+      if (Math.abs(groundYAt(...at(t1 - 0.05)) - groundYAt(...at(t0 + 0.05))) <= 1e-3) continue;
+      ramped++;
+      const ceil = rakeCeiling(r, alongX, c.height, groundYAt);
+      const N = 60, step = (t1 - t0) / N;
+      let prev = 0, prevSlope: number | null = null;
+      for (let i = 0; i <= N; i++) {
+        const p = at(t0 + step * i);
+        const y = ceil(...p);
+        if (i > 0) {
+          const s = (y - prev) / step;
+          if (prevSlope !== null) worstBreak = Math.max(worstBreak, Math.abs(s - prevSlope));
+          prevSlope = s;
+        }
+        prev = y;
+        const head = y - groundYAt(...p);
+        if (c.height - head > worstDip) {
+          worstDip = c.height - head;
+          dipWhere = `${c.id} (${c.corridorType}, H${c.height}) leaves ${head.toFixed(2)}m`;
+        }
+      }
+    }
+  }
+  assert.ok(ramped > 20, `only ${ramped} ramped corridors in the sample — nothing was measured`);
+  assert.ok(worstBreak < 1e-6,
+    `the ceiling still creases: worst slope break ${worstBreak.toFixed(4)} — it is copying the floor again`);
+  // The rake has no bias term, so headroom dips by the shelf's own height mid-run.
+  // That is the trade (level/corridor-ceiling.ts): the mouths meet the doorway head
+  // exactly. It may not grow into something a body notices.
+  assert.ok(worstDip < 0.35,
+    `a ramped corridor pinches to ${worstDip.toFixed(2)}m under its section height — ${dipWhere}`);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

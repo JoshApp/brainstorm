@@ -13,6 +13,7 @@ import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell, layAsFlagstones } from './poly-room-shell';
 import { offsetRing, WALL_T } from './poly-shell-plan';
+import { rakeCeiling } from './corridor-ceiling';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -265,6 +266,12 @@ function buildRoomShell(
   const sloped = Math.abs(eEnd1 - eEnd0) > 1e-3;
   const elevLo = Math.min(eEnd0, eEnd1, elev);
   const elevHi = Math.max(eEnd0, eEnd1, elev);
+  // WHERE THE CEILING IS, once, for the mesh AND for the darkness band. A ramped
+  // corridor's ceiling is a single raked plane rather than a copy of the floor's
+  // shelf-slope-shelf profile — see level/corridor-ceiling.ts for why.
+  const ceilAt = sloped
+    ? rakeCeiling(rect, alongX, H, groundYAt)
+    : (_x: number, _z: number): number => elev + H;
 
   // ── FLOOR GRATE (box-buster #5) ────────────────────────────────────
   // An iron grate flush with the floor over a recess that falls toward a
@@ -514,14 +521,16 @@ function buildRoomShell(
       ? makeFloorWithHoles(PW, PD, ceilHoles)
       : sloped ? makeJitteredPlane(PW, PD, { flat: true }) : new THREE.PlaneGeometry(PW, PD);
     if (sloped) {
-      // Ramped corridor: the ceiling tracks the floor's grade so headroom
-      // stays constant down the slope. rotX +π/2 maps local (x, y, z) to
-      // world (x, -z, +y): displace local Z by the NEGATIVE target height.
+      // Ramped corridor: the ceiling is ONE RAKED PLANE between the headroom at its two
+      // mouths — not a copy of the floor, whose ends are pinned level to their rooms and
+      // whose creases the ceiling used to inherit (level/corridor-ceiling.ts).
+      // rotX +π/2 maps local (x, y, z) to world (x, -z, +y): displace local Z by the
+      // NEGATIVE target height.
       const pos = ceilGeo.getAttribute('position');
       for (let i = 0; i < pos.count; i++) {
         const wx = PX + pos.getX(i);
         const wz = PZ + pos.getY(i);
-        pos.setZ(i, -(groundYAt(wx, wz) + H));
+        pos.setZ(i, -ceilAt(wx, wz));
       }
       ceilGeo.computeVertexNormals();
       ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
@@ -544,7 +553,7 @@ function buildRoomShell(
   // The dark at the top of the room is measured against THIS room — see scene/room-height.ts. A
   // ramped corridor's floor is not level, so its shell is sampled per vertex against the
   // elevation field rather than carrying one pair of numbers wrong at both ends of the run.
-  if (sloped) tagRoomHeightSloped(ceiling, H, groundYAt);
+  if (sloped) tagRoomHeightSloped(ceiling, H, groundYAt, ceilAt);
   else tagRoomHeight(ceiling, elev, elev + H);
   ceiling.name = 'ceiling';
   ceiling.userData.dbgKind = 'ceiling';
@@ -777,7 +786,7 @@ function buildRoomShell(
       markStatic(walls);   // built once, never touched — see scene/animation-gate.ts
       walls.userData.dbgKind = 'wall';
       walls.userData.dbgSource = `walls · ${room.id}`;
-      if (sloped) tagRoomHeightSloped(walls, H, groundYAt);
+      if (sloped) tagRoomHeightSloped(walls, H, groundYAt, ceilAt);
       else tagRoomHeight(walls, elev, elev + H);
       scene.add(walls);
     }

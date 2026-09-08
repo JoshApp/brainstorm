@@ -87,6 +87,16 @@ export function tagRoomHeightSloped(
   mesh: THREE.Mesh | null | undefined,
   height: number,
   floorAt: (x: number, z: number) => number,
+  /**
+   * Where the ceiling ACTUALLY is, when it is not simply `floor + height`.
+   *
+   * A ramped corridor's floor is pinned level at each mouth and slopes between, but its
+   * ceiling is one raked plane over the whole run (level/corridor-ceiling.ts) — so
+   * assuming a constant headroom would put the darkness band a shelf's height off the
+   * stone it is supposed to be sitting on. Both readings come from the same function
+   * as the mesh so they cannot drift.
+   */
+  ceilAt?: (x: number, z: number) => number,
 ): void {
   const geo = mesh?.geometry;
   const pos = geo?.getAttribute('position');
@@ -99,7 +109,7 @@ export function tagRoomHeightSloped(
     _v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrix);
     const f = floorAt(_v.x, _v.z);
     arr[i * 2] = f;
-    arr[i * 2 + 1] = f + height;
+    arr[i * 2 + 1] = ceilAt ? ceilAt(_v.x, _v.z) : f + height;
   }
   geo.setAttribute(ROOM_Y_ATTR, new THREE.BufferAttribute(arr, 2));
   if (DEV) tagged++;
