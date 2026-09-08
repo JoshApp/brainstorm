@@ -12,6 +12,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell, layAsFlagstones } from './poly-room-shell';
+import { offsetRing, WALL_T } from './poly-shell-plan';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -188,6 +189,21 @@ import {
 } from './geometry-prims';
 import { getPropAABB } from './prop-aabb';
 import { dressing } from './dressing';
+
+/**
+ * A room's OUTER ring — its outline pushed out by the wall thickness, which is where
+ * that room's stone actually stands.
+ *
+ * Memoised on the polygon itself: every rect on the floor asks about every other
+ * room's band, so without this the same mitred offset is solved a few hundred times
+ * per descent for an answer that cannot change.
+ */
+const _outerRings = new WeakMap<object, ReadonlyArray<readonly [number, number]>>();
+function outerRingOf(poly: ReadonlyArray<readonly [number, number]>): ReadonlyArray<readonly [number, number]> {
+  let r = _outerRings.get(poly);
+  if (!r) { r = offsetRing(poly, WALL_T); _outerRings.set(poly, r); }
+  return r;
+}
 
 function buildRoomShell(
   scene: THREE.Object3D,
@@ -681,29 +697,67 @@ function buildRoomShell(
   const otherPolys = allRects
     .filter((r) => r !== room && r.poly && r.poly.length >= 3)
     .map((r) => r.poly!);
+  // ── AND A WALL SEGMENT INSIDE A ROOM'S MASONRY IS NOT DRAWN ────────────────
+  //
+  // Josh, on a phone: *"there is z fighting at the entrance and exit of a corridor
+  // where the room's wall meets the corridor walls."*
+  //
+  // Measured, and it is not a seed accident — it is 252 of 252 corridor ends on
+  // every floor sampled. A room's wall ring is its polygon offset OUTWARD by
+  // WALL_T, so the masonry stands in the first 25cm of the corridor; and cutting
+  // that ring for a doorway produces a JAMB — "a straight perpendicular jamb,
+  // inner point to outer point", which is the reveal you see the wall's thickness
+  // through. A corridor, meanwhile, is a rect whose side walls start at the
+  // threshold. So the room's jamb and the corridor's side wall are the same plane
+  // over the same 25cm. Measured worst-case disagreement between the two: 1.8e-15 m.
+  // Two coplanar faces, both drawn, both claiming the same depth.
+  //
+  // The masonry is the one that belongs there — it is structural, it carries the
+  // doorway's thickness, and `insidePolyRanges` can already answer "is this stretch
+  // of wall inside that outline" if it is handed the OUTER ring instead of the
+  // polygon. So the corridor stops drawing where the room's stone begins.
+  //
+  // It is NOT an opening. The wall is still solid there; only the duty to draw it
+  // has moved. Openings drop the collision line too, and doing that here would
+  // leave a 25cm pocket either side of every doorway that a body could slide into.
+  // So this is subtracted from the GEOMETRY and not from the collision.
+  const otherBands = otherPolys.map(outerRingOf);
 
   for (const we of wallEdges) {
+    const insideRooms = insidePolyRanges(we, otherPolys);
     const openings = [
       ...findOpenings(we, allRects, room),
-      ...insidePolyRanges(we, otherPolys),
+      ...insideRooms,
     ];
+    // The band ONLY: inside a neighbour's masonry but not inside the room itself,
+    // which is already an opening above and must keep being one.
+    const buried: Array<{ start: number; end: number }> = [];
+    for (const m of insidePolyRanges(we, otherBands)) {
+      for (const s of subtractRanges(m.start, m.end, insideRooms)) buried.push(s);
+    }
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
-      bakeWallSegmentGeometry(
-        we, seg.start, seg.end, H + (elevHi - elevLo), elevLo,
-        devWallProfileOverride() ?? room.wallProfile ?? DEFAULT_WALL_PROFILE,
-        { wall: wallGeos, dressed: trimGeos },
-        // Is each end of this segment a room CORNER (the wall's own extent) or
-        // the edge of an OPENING? A recessed profile has to treat them
-        // opposite ways — see bakeWallSegmentGeometry.
-        Math.abs(seg.start - we.wallStart) < 1e-3,
-        Math.abs(seg.end - we.wallEnd) < 1e-3,
-      );
-      if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, seg.start, seg.end);
-      // Record the segment as collision data. The XZ endpoints describe a
-      // line in the floor plane along which the player cannot pass.
+      for (const vis of subtractRanges(seg.start, seg.end, buried)) {
+        if (vis.end - vis.start < 0.01) continue;
+        bakeWallSegmentGeometry(
+          we, vis.start, vis.end, H + (elevHi - elevLo), elevLo,
+          devWallProfileOverride() ?? room.wallProfile ?? DEFAULT_WALL_PROFILE,
+          { wall: wallGeos, dressed: trimGeos },
+          // Is each end of this segment a room CORNER (the wall's own extent) or
+          // the edge of an OPENING? A recessed profile has to treat them
+          // opposite ways — see bakeWallSegmentGeometry. A end that was cut back
+          // by the masonry above is neither, and takes the opening's return face:
+          // a cap, buried in the stone it stops against.
+          Math.abs(vis.start - we.wallStart) < 1e-3,
+          Math.abs(vis.end - we.wallEnd) < 1e-3,
+        );
+        if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, vis.start, vis.end);
+      }
+      // Record the WHOLE segment as collision data — buried stretches included,
+      // per the note above. The XZ endpoints describe a line in the floor plane
+      // along which the player cannot pass.
       if (we.perpAxis === 'z') {
         // wall runs along X at z = we.perpCoord
         wallSegmentsOut.push({ ax: seg.start, az: we.perpCoord, bx: seg.end, bz: we.perpCoord });
