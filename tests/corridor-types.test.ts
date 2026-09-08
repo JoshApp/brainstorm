@@ -339,6 +339,7 @@ test('a ramped corridor\'s ceiling stays PARALLEL to its floor, with no crease i
       ramped++;
       const N = 200, step = (t1 - t0) / N;
       let prev = 0, prevSlope: number | null = null;
+      let maxSlope = 0, breakHere = 0;
       for (let i = 0; i <= N; i++) {
         const p = at(t0 + step * i);
         const floor = groundYAt(...p);
@@ -349,11 +350,18 @@ test('a ramped corridor\'s ceiling stays PARALLEL to its floor, with no crease i
         // (b) NO CREASE. A slope break in the ceiling is a slope break in the floor.
         if (i > 0) {
           const slope = (ceil - prev) / step;
-          if (prevSlope !== null) worstBreak = Math.max(worstBreak, Math.abs(slope - prevSlope));
+          maxSlope = Math.max(maxSlope, Math.abs(slope));
+          if (prevSlope !== null) breakHere = Math.max(breakHere, Math.abs(slope - prevSlope));
           prevSlope = slope;
         }
         prev = ceil;
       }
+      // RELATIVE TO THIS CORRIDOR'S OWN RAKE, not an absolute metre figure. A corner
+      // delivers the WHOLE slope change between two adjacent samples; a rounded knee
+      // spreads it over the blend. Judging that against a fixed number only worked while
+      // every stair had the same grade — the first time TARGET_GRADE moved, a perfectly
+      // rounded knee on a steeper stair failed a threshold calibrated for a gentler one.
+      worstBreak = Math.max(worstBreak, maxSlope > 1e-6 ? breakHere / maxSlope : 0);
     }
   }
   assert.ok(ramped > 20, `only ${ramped} ramped corridors in the sample — nothing was measured`);
@@ -361,10 +369,11 @@ test('a ramped corridor\'s ceiling stays PARALLEL to its floor, with no crease i
     `a ramped corridor pinches ${worstDip.toFixed(2)}m under its section height — ${dipWhere}. `
     + 'The ceiling is floor + H, so this can only mean they stopped being parallel.');
   // The knee rounding spreads the slope change over a stride; a genuine corner would deliver
-  // all of it between two adjacent samples.
-  assert.ok(worstBreak < 0.06,
-    `the floor breaks slope by ${worstBreak.toFixed(3)} between adjacent samples — that is a `
-    + 'corner, and the ceiling inherits it (level/corridor-stair.ts roundedRampProfile)');
+  // all of it — a ratio of 1 — between two adjacent samples.
+  assert.ok(worstBreak < 0.25,
+    `the floor delivers ${(worstBreak * 100).toFixed(0)}% of its whole rake between two `
+    + 'adjacent samples — that is a corner, and the ceiling inherits it '
+    + '(level/corridor-stair.ts roundedRampProfile)');
 });
 
 console.log(`${passed} passed, ${failed} failed`);

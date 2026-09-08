@@ -888,6 +888,19 @@ function buildRoomShell(
       trim.castShadow = false;
       trim.name = 'trim-merged';
       markStatic(trim);
+      // ── THE CORNICE DARKENS TOO ──────────────────────────────────────────
+      //
+      // Skirting and cornice are SHELL — the same stone as the wall behind them, and the
+      // cornice in particular sits a hand's breadth under the ceiling, which is the very
+      // darkest part of the dark-above band. Untagged it read (0, 0), took the shader's
+      // "no room" fallback and stayed fully lit while the wall around it went to black: a
+      // bright stripe ringing every room at exactly the height the effect is strongest.
+      //
+      // It announced itself the whole time — `[room-height] 1 shell mesh(es) carry no room
+      // height and will NOT darken · trim-merged` is what reportRoomHeightTags exists to
+      // say, and it had been saying it.
+      if (sloped) tagRoomHeightSloped(trim, H, groundYAt, ceilAt);
+      else tagRoomHeight(trim, elev, elev + H);
       trim.userData.dbgKind = 'wall';
       trim.userData.dbgSource = `trim · ${room.id}`;
       scene.add(trim);
@@ -906,6 +919,10 @@ function buildRoomShell(
       braces.position.y = elev;
       applyShadowRole(braces, 'receive');   // wall bracing = shell, receive-only
       braces.name = 'braces';
+      // Shell, like the trim above — timber bracing stands against the wall and must eat
+      // the same light it does.
+      if (sloped) tagRoomHeightSloped(braces, H, groundYAt, ceilAt);
+      else tagRoomHeight(braces, elev, elev + H);
       braces.userData.dbgKind = 'wall';
       braces.userData.dbgSource = `braces · ${room.id}`;
       scene.add(braces);

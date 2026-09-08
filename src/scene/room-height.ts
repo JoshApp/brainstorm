@@ -131,6 +131,10 @@ export function reportRoomHeightTags(root: THREE.Object3D): void {
     // A chasm drop hangs BELOW its room's floor, where the fade is already inert (the height
     // fraction is negative there), so it needs no room and is not a gap.
     if ((m.name || '').startsWith('chasm')) return;
+    // A ceiling shaft is a well built deliberately ABOVE the ceiling. Tagging it would put
+    // every one of its vertices past the end of the band and paint the shaft dead black,
+    // which is the opposite of a well you are meant to look up. Not a gap either.
+    if ((m.name || '').startsWith('ceiling-shaft')) return;
     if (m.geometry.getAttribute(ROOM_Y_ATTR)) withAttr++;
     else { without++; if (missing.length < 8) missing.push(m.name || k); }
   });

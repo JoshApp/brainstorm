@@ -49,14 +49,25 @@ const TARGET_RISE = 0.17;
 /**
  * The grade a FLIGHT wants, fall over run.
  *
- * At 0.38 the going comes out near 0.45m against a 0.17m rise — a ratio of 2.6, against the
- * 11 the smeared ramp was producing. Not the 1.6 of a real staircase: that needs a grade of
- * 0.62, which is a 32-degree walk, and the camera glides this slope smoothly rather than
- * climbing steps (CONFIG.STAIR_RISER_M's note — "the eye and collision still glide the
- * smooth linear grade underneath"). Steeper is one constant away if it wants trying, and
- * ELEVATION_MAX_GRADE is the ceiling it has to stay under.
+ * 0.62 is a real staircase: a 0.17m rise to a 0.27m going, the ratio of about 1.6 that
+ * actual cut stone uses. It went in at 0.38 first — a deliberately safe number that got the
+ * ratio from 11 down to 2.6 without touching the walk envelope — and the honest report of
+ * that was "steeper is one constant away if it wants trying". Josh: *"do it."*
+ *
+ * It is a 32-degree walk, which sounds severe and is not what the player's body does: the
+ * camera and collision GLIDE the smooth linear grade underneath the treads
+ * (CONFIG.STAIR_RISER_M — "the eye and collision still glide the smooth grade"), so this is
+ * a slope you walk, not steps you climb.
+ *
+ * ONLY FLIGHTS. A 'full' stair spends its fall over the whole corridor and its grade comes
+ * out of that length, so a staircase that runs the length of a passage stays as gentle as
+ * the passage is long. This steepens the compact flights, which is where the terraces were.
+ *
+ * ELEVATION_MAX_GRADE is the ceiling it has to stay under, and it moved with this — the two
+ * are the same claim about how steep the floor is allowed to get, and
+ * tests/elevation-continuity.test.ts reads the config rather than a copy.
  */
-const TARGET_GRADE = 0.38;
+const TARGET_GRADE = 0.62;
 
 /** Level ground kept at each mouth of the corridor, metres. A flight may not start in a
  *  doorway: the threshold is where the corridor's floor meets the room's, and the ceiling

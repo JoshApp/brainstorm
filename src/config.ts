@@ -639,9 +639,22 @@ export const CONFIG = {
     { drop: 0.6, weight: 35 },
     { drop: 1.2, weight: 15 },
   ],
-  // Max drop per metre of stair-run (0.40 ≈ 22° — the elevation-lab
-  // grade Josh signed off from the phone).
-  ELEVATION_MAX_GRADE: 0.40,
+  // Max drop per metre of stair-run. 0.40 (≈22°) was the elevation-lab grade
+  // signed off from the phone, back when the fall was smeared evenly along a
+  // whole corridor and this number set the pitch of everything.
+  //
+  // It no longer does. A stair is a SECTION now (level/corridor-stair.ts): a
+  // 'full' staircase spends its fall over the length it has and stays as gentle
+  // as that length makes it, while a compact 'flight' asks for TARGET_GRADE.
+  // This is the ceiling both must stay under, and it moved with the flight —
+  // 0.65 (≈33°) is a real cut-stone staircase, a 0.17m rise to a 0.27m going,
+  // which is what buys treads instead of the 1.86m terraces that were measured.
+  // The camera and collision glide the smooth grade under the treads, so this is
+  // a slope walked rather than steps climbed.
+  //
+  // tests/elevation-continuity.test.ts reads THIS, not a copy, so the floor's
+  // continuity guarantee follows the number wherever it goes.
+  ELEVATION_MAX_GRADE: 0.65,
 
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot
