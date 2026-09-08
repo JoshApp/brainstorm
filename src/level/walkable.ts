@@ -353,7 +353,7 @@ export class WalkableRegion {
    */
   hasLineOfSight(
     ax: number, az: number, bx: number, bz: number,
-    opts?: { includeObstacles?: boolean },
+    opts?: { includeObstacles?: boolean; minTop?: number },
   ): boolean {
     const nw = this.wallGrid.querySegment(ax, az, bx, bz, WALL_SCRATCH);
     for (let i = 0; i < nw; i++) {
@@ -364,9 +364,28 @@ export class WalkableRegion {
     // mob will beeline through a pillar and clampMove stops it dead.
     // Default off so existing sight-cone callers keep their behaviour.
     if (opts?.includeObstacles) {
+      // ── AN OBSTACLE ONLY BLOCKS A SIGHTLINE IT ACTUALLY REACHES ───────────
+      //
+      // This test is 2D and every obstacle is a footprint, so without a height it says a
+      // waist-high chest hides a torch bracketed two metres up the wall behind it. Josh:
+      // *"the torches in the back, their light and embers keep getting culled / not culled
+      // depending on small positional changes."* That is the shape of the bug — a small
+      // footprint a couple of metres away subtends a wide angle, so a 20cm step swings the
+      // segment on and off it, and the flame strobes.
+      //
+      // Every obstacle carries `yTop`. A segment from the eye down to a marker never dips
+      // below the lower of its two ends, so anything shorter than that cannot cross it at
+      // any point along the run — that is exact, not a tolerance. A pillar still blocks (it
+      // reaches the ceiling), which is the case obstacles were included for; the crate, the
+      // chest and the weapon rack stop pretending to.
+      //
+      // Omitted → every obstacle blocks, which is what movement LOS wants: a mob walks into
+      // the crate whatever its height.
+      const minTop = opts.minTop;
       const no = this.obstacleGrid.querySegment(ax, az, bx, bz, OBS_SCRATCH);
       for (let i = 0; i < no; i++) {
         const o = OBS_SCRATCH[i];
+        if (minTop !== undefined && o.yTop < minTop) continue;
         if (o.kind === 'circle') {
           if (distSqPointToSegment(o.x, o.z, ax, az, bx, bz) < o.r * o.r) return false;
         } else {

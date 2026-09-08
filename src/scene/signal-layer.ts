@@ -115,7 +115,7 @@ export function isSignal(o: THREE.Object3D): boolean {
 // question ("can the player see this point"), it is independent of what is drawn, and it
 // costs about sixty segment tests a frame next to the pool's twenty-odd.
 type LOS = (ax: number, az: number, bx: number, bz: number,
-            opts?: { includeObstacles?: boolean }) => boolean;
+            opts?: { includeObstacles?: boolean; minTop?: number }) => boolean;
 
 interface Marker {
   o: THREE.Object3D;
@@ -130,7 +130,7 @@ interface Marker {
 const registry: Marker[] = [];
 /** Monotonic, so a marker's key is unique for the session. */
 let nextMarkerKey = 0;
-let lastEyeX = 0, lastEyeZ = 0;
+let lastEyeX = 0, lastEyeZ = 0, lastEyeY = 1.6;
 let lastLos: LOS | undefined;
 
 /** Everything marked, so the occlusion pass does not have to walk the scene. */
@@ -160,15 +160,21 @@ function track(o: THREE.Object3D): void {
  */
 const MOUNT_CLEARANCE = 0.35;
 
-/** Can the eye reach this point, ignoring whatever the marker itself is bolted to? */
-function seeable(x: number, z: number): boolean {
+/**
+ * Can the eye reach this point, ignoring whatever the marker itself is bolted to?
+ *
+ * `y` is the marker's height. It is not decoration: obstacles only block a sightline they
+ * are tall enough to cross (walkable.hasLineOfSight, minTop), and a wall sconce sits well
+ * above the crates and chests that were strobing it.
+ */
+function seeable(x: number, z: number, y: number): boolean {
   if (!lastLos) return true;
   const dx = x - lastEyeX, dz = z - lastEyeZ;
   const d = Math.hypot(dx, dz);
   if (d < 1e-3) return true;
   const back = Math.min(MOUNT_CLEARANCE, d * 0.5);
   return lastLos(lastEyeX, lastEyeZ, x - (dx / d) * back, z - (dz / d) * back,
-                 { includeObstacles: true });
+                 { includeObstacles: true, minTop: Math.min(lastEyeY, y) });
 }
 
 /**
@@ -182,10 +188,12 @@ function seeable(x: number, z: number): boolean {
  * missing occluder should cost a wrong-looking flame, never a missing one, because the
  * marker is the thing the player is navigating by.
  */
-export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undefined): void {
+export function tickSignalOcclusion(
+  eyeX: number, eyeY: number, eyeZ: number, los: LOS | undefined,
+): void {
   // Kept so anything that EMITS signal can ask the same question without being handed the
   // camera and the level — see canSeeSignalAt.
-  lastEyeX = eyeX; lastEyeZ = eyeZ; lastLos = los;
+  lastEyeX = eyeX; lastEyeY = eyeY; lastEyeZ = eyeZ; lastLos = los;
   if (!los) return;
   const maxGates = signalKnobs.gates();
   for (const m of registry) {
@@ -218,7 +226,7 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
 
     // ...and it still has to be SEEN — stopping short of whatever it is mounted on, see
     // MOUNT_CLEARANCE.
-    const lit = seeable(scratch.x, scratch.z);
+    const lit = seeable(scratch.x, scratch.z, scratch.y);
     m.why = lit ? '' : 'los';
     m.o.visible = lit;
   }
@@ -235,8 +243,8 @@ export function tickSignalOcclusion(eyeX: number, eyeZ: number, los: LOS | undef
  * gets the same answer the markers got. Fails VISIBLE when there is no LOS yet, for the same
  * reason the markers do.
  */
-export function canSeeSignalAt(x: number, z: number): boolean {
-  return canSeeEmitterAt(x, z, 'signal');
+export function canSeeSignalAt(x: number, z: number, y = lastEyeY): boolean {
+  return canSeeEmitterAt(x, z, 'signal', y);
 }
 
 /**
@@ -298,14 +306,16 @@ export function signalShownNear(x: number, z: number, radius = 0.6): boolean {
  * So a caller names the channel it draws in. Embers ask 'light': they are the sparks off a torch
  * and belong exactly where that torch's light belongs.
  */
-export function canSeeEmitterAt(x: number, z: number, channel: 'light' | 'signal'): boolean {
+export function canSeeEmitterAt(
+  x: number, z: number, channel: 'light' | 'signal', y = lastEyeY,
+): boolean {
   if (!lastLos) return true;
   // An emitter is a MOVING question from the index's point of view — the caller is a torch
   // this frame and a different torch the next — so it takes the uncached path rather than
   // filling the binding table with entries nobody reads twice.
   const maxGates = channel === 'signal' ? signalKnobs.gates() : signalKnobs.lightGates();
   if (!passes({ channel, maxGates }, locateMoving(x, z))) return false;
-  return seeable(x, z);
+  return seeable(x, z, y);
 }
 
 /** Every signal marker, where it is and which test decided it — for debug/cull-map.ts.

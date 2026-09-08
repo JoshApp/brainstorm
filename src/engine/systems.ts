@@ -627,7 +627,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'signal-occlusion', phase: 'always', tick() {
       const walkable = getLevel()?.walkable;
       if (!walkable) return;
-      tickSignalOcclusion(camera.position.x, camera.position.z,
+      tickSignalOcclusion(camera.position.x, camera.position.y, camera.position.z,
         walkable.hasLineOfSight.bind(walkable));
     } },
     { name: 'sprite-batch', phase: 'always', tick() { tickSpriteBatch(); tickFlameMeshBatch(); } },
