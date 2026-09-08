@@ -220,6 +220,26 @@ export class WalkableRegion {
   }
 
   /** Is the agent center at (x, z) (with given radius) currently walkable?
+   *
+   *  ── AND THERE IS NO Y IN THIS QUESTION, ON PURPOSE ────────────────────────
+   *
+   *  Josh: *"can we stop using 2d checks in a 3d game?"* — the answer is that here they
+   *  are not an approximation of 3D, they are EXACT, and they rest on one property of
+   *  the world:
+   *
+   *    THE WALKABLE SURFACE IS A SINGLE-VALUED, CONTINUOUS HEIGHTFIELD.
+   *    Every discontinuity is a HOLE, which is 2D. The floor never STEPS.
+   *
+   *  Given that, XZ determines Y: `elevation.ts` can answer the height of any point this
+   *  function admits, so carrying a height here would only duplicate it. That is why
+   *  nothing in this class models one, and why nothing in the game stops a body walking
+   *  up a vertical face — there are none.
+   *
+   *  It is enforced, not assumed: tests/elevation-continuity.test.ts sweeps the shipping
+   *  field and fails on any step. Break the invariant (a sunken room with a stepped lip
+   *  is the obvious way) and every XZ-only range check in the game silently stops being
+   *  exact — so read that file before you make the floor drop.
+   *
    *  Options:
    *    ignoreObstacles — skip the obstacle check (props like pillars,
    *                       altars, fountains, chests). Used by phasing
