@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import { corridorRampRun } from './elevation';
+import { planFlight, type StairFlight } from './corridor-stair';
 
 // ── THE FLOOR GOES DOWN ──────────────────────────────────────────────────────
 //
@@ -95,6 +96,8 @@ export interface CorridorStamp {
   rampLoElev?: number;
   rampHiElev?: number;
   elevation?: number;
+  /** The FLIGHT this leg carries, when it carries one — level/corridor-stair.ts. */
+  stair?: StairFlight;
 }
 
 export interface ElevationPlan {
@@ -301,10 +304,14 @@ export function planElevation(
         // nearest room by 2D distance, which is what put ramps in mid-air.
         corridor.set(link.ids[i], { elevation: eAt });
       } else {
+        // THE LEG IS A STAIR, and says so. Planned here because this is the one place
+        // that knows both halves — how far this leg falls and how long it is — and a
+        // consumer that re-derived either would be a second opinion waiting to drift.
         corridor.set(link.ids[i], {
           rampAlongX: legAlongX(i),
           rampLoElev: legFromIsLo(i) ? eAt : eNext,
           rampHiElev: legFromIsLo(i) ? eNext : eAt,
+          stair: planFlight(eNext - eAt, travel(link.rects[i], i)) ?? undefined,
         });
       }
       eAt = eNext;

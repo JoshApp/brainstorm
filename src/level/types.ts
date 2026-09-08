@@ -7,6 +7,7 @@
 
 import type { FittingKind, Edge } from './opening';
 import type { CorridorTypeId } from './corridor-types';
+import type { StairFlight } from './corridor-stair';
 import type { WallProfileName } from './wall-profile';
 import type { FloorGraph } from './floor-graph';
 import type { Link } from './link';
@@ -233,6 +234,16 @@ export type RoomSpec = {
    */
   rampLoElev?: number;
   rampHiElev?: number;
+  /**
+   * CORRIDOR-ONLY: the STAIR this corridor is, if it is one.
+   *
+   * Declared by the elevation pass at the moment it decides a leg carries a fall
+   * (level/poly-elevation.ts), so nothing downstream has to rediscover it by sampling
+   * the ground at both ends — which is what the ceiling, the floor geometry and the
+   * decor pass were each doing separately. `if (room.stair)` is the question; the
+   * flight's own numbers are the answer. See level/corridor-stair.ts.
+   */
+  stair?: StairFlight;
   /**
    * CORRIDOR-ONLY: which axis the ramp runs along, from the actual
    * connection (the two rooms' centre separation), NOT the rect's longer

@@ -316,15 +316,15 @@ test('a section is chosen by the RUN, not by a free roll', () => {
     'an unstamped corridor should read as the workhorse');
 });
 
-test('a ramped corridor\'s ceiling is ONE PLANE, not a copy of the stair', () => {
-  // Josh: "the corridor ceiling doesnt follow the stair but is straight then sudden
-  // drop then straight again, while the stair slopes gently."
+test('a ramped corridor\'s ceiling stays PARALLEL to its floor, with no crease in either', () => {
+  // Josh: "the corridor ceiling doesnt follow the stair but is straight then sudden drop then
+  // straight again" — then, on the first fix: "the ceiling should slowly descend with the
+  // stairs."
   //
-  // The floor is deliberately shelf-slope-shelf — each mouth is pinned level to its
-  // room so you never start descending in a doorway. Building the ceiling at
-  // `floor + H` copied those shelves and put two hard creases a metre inside every
-  // mouth. This is the claim that they are gone: sampled down the centreline, the
-  // raked ceiling's slope never changes.
+  // Two claims, and they are the two that failed in the two previous designs. A straight
+  // raked plane held (b) and broke (a): it pinched headroom by up to half a metre once the
+  // fall concentrated into a flight. Rounding the ceiling's knees while the floor's stayed
+  // sharp broke it worse. Both are caught here.
   let ramped = 0, worstBreak = 0, worstDip = 0, dipWhere = '';
   for (const { spec } of FLOORS) {
     setElevationField(buildElevationField(spec.rooms as RoomSpec[], spec.corridors as RoomSpec[]));
@@ -337,34 +337,34 @@ test('a ramped corridor\'s ceiling is ONE PLANE, not a copy of the stair', () =>
       const at = (t: number): [number, number] => (alongX ? [t, lat] : [lat, t]);
       if (Math.abs(groundYAt(...at(t1 - 0.05)) - groundYAt(...at(t0 + 0.05))) <= 1e-3) continue;
       ramped++;
-      const ceil = rakeCeiling(r, alongX, c.height, groundYAt);
-      const N = 60, step = (t1 - t0) / N;
+      const N = 200, step = (t1 - t0) / N;
       let prev = 0, prevSlope: number | null = null;
       for (let i = 0; i <= N; i++) {
         const p = at(t0 + step * i);
-        const y = ceil(...p);
+        const floor = groundYAt(...p);
+        const ceil = floor + c.height;          // what builder.ts builds
+        // (a) HEADROOM. Parallel by construction, so any dip is a bug in the construction.
+        const dip = c.height - (ceil - floor);
+        if (dip > worstDip) { worstDip = dip; dipWhere = `${c.id} (${c.corridorType})`; }
+        // (b) NO CREASE. A slope break in the ceiling is a slope break in the floor.
         if (i > 0) {
-          const s = (y - prev) / step;
-          if (prevSlope !== null) worstBreak = Math.max(worstBreak, Math.abs(s - prevSlope));
-          prevSlope = s;
+          const slope = (ceil - prev) / step;
+          if (prevSlope !== null) worstBreak = Math.max(worstBreak, Math.abs(slope - prevSlope));
+          prevSlope = slope;
         }
-        prev = y;
-        const head = y - groundYAt(...p);
-        if (c.height - head > worstDip) {
-          worstDip = c.height - head;
-          dipWhere = `${c.id} (${c.corridorType}, H${c.height}) leaves ${head.toFixed(2)}m`;
-        }
+        prev = ceil;
       }
     }
   }
   assert.ok(ramped > 20, `only ${ramped} ramped corridors in the sample — nothing was measured`);
-  assert.ok(worstBreak < 1e-6,
-    `the ceiling still creases: worst slope break ${worstBreak.toFixed(4)} — it is copying the floor again`);
-  // The rake has no bias term, so headroom dips by the shelf's own height mid-run.
-  // That is the trade (level/corridor-ceiling.ts): the mouths meet the doorway head
-  // exactly. It may not grow into something a body notices.
-  assert.ok(worstDip < 0.35,
-    `a ramped corridor pinches to ${worstDip.toFixed(2)}m under its section height — ${dipWhere}`);
+  assert.ok(worstDip < 1e-6,
+    `a ramped corridor pinches ${worstDip.toFixed(2)}m under its section height — ${dipWhere}. `
+    + 'The ceiling is floor + H, so this can only mean they stopped being parallel.');
+  // The knee rounding spreads the slope change over a stride; a genuine corner would deliver
+  // all of it between two adjacent samples.
+  assert.ok(worstBreak < 0.06,
+    `the floor breaks slope by ${worstBreak.toFixed(3)} between adjacent samples — that is a `
+    + 'corner, and the ceiling inherits it (level/corridor-stair.ts roundedRampProfile)');
 });
 
 console.log(`${passed} passed, ${failed} failed`);

@@ -453,6 +453,16 @@ export function makeSteppedRampGeometry(
   // ramps across its SHORT dimension); defaults to the longer side for
   // any caller that doesn't know better.
   alongXArg?: boolean,
+  /**
+   * THE FLIGHT THIS CORRIDOR CARRIES, when the stair section planned one.
+   *
+   * Without it, the steps are `|fall| / riser` boxes spread over the WHOLE rect — which
+   * was measured at a median tread depth of 1.86m and up to 6.5m. Those are terraces, not
+   * a staircase, and no riser fixes them: the going is decided by where the fall is spent.
+   * With it, the treads span the flight and the landings are single level slabs, which is
+   * what the elevation field is now drawing underneath them (level/corridor-stair.ts).
+   */
+  flight?: { t0: number; t1: number; steps: number },
 ): THREE.BufferGeometry | null {
   const alongX = alongXArg ?? (rect.w >= rect.d);
   const runLen = alongX ? rect.w : rect.d;
@@ -461,14 +471,39 @@ export function makeSteppedRampGeometry(
   const e0 = alongX ? groundY(lo + 0.02, rect.z) : groundY(rect.x, lo + 0.02);
   const e1 = alongX ? groundY(lo + runLen - 0.02, rect.z) : groundY(rect.x, lo + runLen - 0.02);
   const delta = e1 - e0;
-  const nSteps = Math.max(2, Math.round(Math.abs(delta) / riserM));
-  const treadLen = runLen / nSteps;
+  // Where the steps live, and how many. The flight states both; without one the whole rect
+  // is the run, which is the pre-section behaviour and still right for a hand-authored ramp.
+  const fLo = flight ? lo + flight.t0 * runLen : lo;
+  const fHi = flight ? lo + flight.t1 * runLen : lo + runLen;
+  const nSteps = flight ? Math.max(1, flight.steps) : Math.max(2, Math.round(Math.abs(delta) / riserM));
+  const treadLen = (fHi - fLo) / nSteps;
   // Deep enough that each tread's box overlaps the next one down.
   const treadThick = Math.abs(delta) / nSteps + 0.14;
   const geos: THREE.BufferGeometry[] = [];
   const m4 = new THREE.Matrix4();
+
+  // THE LANDINGS, one level slab each. They are not steps and must not be cut into any:
+  // a landing sliced into treads at the same height is a stack of coincident boxes, which
+  // is z-fighting dressed as masonry.
+  for (const [a, b] of [[lo, fLo], [fHi, lo + runLen]] as const) {
+    if (b - a < 0.02) continue;
+    const mid = (a + b) / 2;
+    const top = alongX ? groundY(mid, rect.z) : groundY(rect.x, mid);
+    const g = new THREE.BoxGeometry(
+      alongX ? (b - a) + 0.01 : breadth,
+      Math.abs(delta) / nSteps + 0.14,
+      alongX ? breadth : (b - a) + 0.01,
+    );
+    m4.makeTranslation(
+      alongX ? mid : rect.x,
+      top - (Math.abs(delta) / nSteps + 0.14) / 2,
+      alongX ? rect.z : mid,
+    );
+    g.applyMatrix4(m4);
+    geos.push(g);
+  }
   for (let i = 0; i < nSteps; i++) {
-    const centerAlong = lo + (i + 0.5) * treadLen;
+    const centerAlong = fLo + (i + 0.5) * treadLen;
     const top = alongX ? groundY(centerAlong, rect.z) : groundY(rect.x, centerAlong);
     const g = new THREE.BoxGeometry(
       alongX ? treadLen + 0.01 : breadth,

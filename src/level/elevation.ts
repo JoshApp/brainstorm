@@ -1,4 +1,5 @@
 import type { RoomSpec } from './types';
+import { maxFlightRun, roundedRampProfile } from './corridor-stair';
 
 // Ground-elevation field — THE single source of "how high is the floor
 // at (x, z)" for everything that stands on it: the camera, mobs, loot,
@@ -34,20 +35,27 @@ export interface ElevationField {
 const APRON_FRAC = 0.18;
 
 /** The stair-run a corridor of this length actually carries (length
- *  minus both flat aprons). The composer divides a rolled drop by this
- *  to enforce ELEVATION_MAX_GRADE — exported so the grade cap and the
- *  field's ramp math can never disagree about where the slope lives. */
+ *  minus both landings). The composer divides a rolled drop by this
+ *  to enforce ELEVATION_MAX_GRADE — so the grade cap and the field's
+ *  ramp math can never disagree about where the slope lives.
+ *
+ *  Kept as this name because every caller reads it here, but the number
+ *  now belongs to the STAIR SECTION (level/corridor-stair.ts): the slope
+ *  lives in a flight, and how long a flight a corridor can hold is a fact
+ *  about stairs rather than about elevation. */
 export function corridorRampRun(longLen: number): number {
-  const apron = Math.min(longLen * APRON_FRAC, 1.0);
-  return Math.max(0.4, longLen - 2 * apron);
+  return maxFlightRun(longLen);
 }
 
 interface CorridorRamp {
   minX: number; maxX: number; minZ: number; maxZ: number;
   /** Axis the corridor runs along. */
   alongX: boolean;
-  /** Ramp endpoints (world coord along the axis) and elevations there. */
-  a0: number; a1: number;
+  /** Low-coordinate end of the rect along the travel axis, and its length. */
+  lo: number; len: number;
+  /** The RAKE's extent, as fractions of the rect — see roundedRampProfile. */
+  t0: number; t1: number;
+  /** Elevation at the two ends of the rect. */
   e0: number; e1: number;
 }
 
@@ -89,7 +97,13 @@ export function buildElevationField(rooms: RoomSpec[], corridors: RoomSpec[]): E
     const alongX = c.rampAlongX ?? (c.rect.w >= c.rect.d);
     const lo = alongX ? r.minX : r.minZ;
     const hi = alongX ? r.maxX : r.maxZ;
-    const apron = Math.min((hi - lo) * APRON_FRAC, 1.0);
+    // WHERE THE SLOPE LIVES. A corridor that carries a stair says so, and the flight's
+    // own extent is the ramp; the rest of the run is landing. Corridors with no stair
+    // declared — hand-authored levels, the vault path — keep the old fixed apron, so
+    // nothing that never met the section changes shape.
+    const len = hi - lo;
+    const flight = c.stair;
+    const apron = flight ? 0 : Math.min(len * APRON_FRAC, 1.0);
     // PREFER the composer's explicit endpoints (rampLoElev/rampHiElev) —
     // it knows which rooms this corridor bridges. Fall back to spatial
     // probing only for hand-authored corridors that don't stamp them
@@ -104,7 +118,13 @@ export function buildElevationField(rooms: RoomSpec[], corridors: RoomSpec[]): E
       : c.rampHiElev !== undefined ? c.rampHiElev
       : alongX ? roomElevationNear(hi + 0.6, c.rect.z)
                : roomElevationNear(c.rect.x, hi + 0.6);
-    return { ...r, alongX, a0: lo + apron, a1: hi - apron, e0, e1 };
+    return {
+      ...r, alongX, e0, e1, lo, len,
+      // The rake's extent as FRACTIONS of the rect, because the knee rounding below reaches
+      // a little outside it and so cannot be expressed by clamping at two world coordinates.
+      t0: flight ? flight.t0 : (len > 1e-6 ? apron / len : 0),
+      t1: flight ? flight.t1 : (len > 1e-6 ? 1 - apron / len : 1),
+    };
   });
 
   const flat = plateaus.every((p) => p.e === 0) && ramps.every((rp) => rp.e0 === 0 && rp.e1 === 0);
@@ -114,15 +134,21 @@ export function buildElevationField(rooms: RoomSpec[], corridors: RoomSpec[]): E
     // Corridors first — they own the seams.
     for (const rp of ramps) {
       if (x < rp.minX || x > rp.maxX || z < rp.minZ || z > rp.maxZ) continue;
+      // LINEAR down the rake, with the two KNEES ROUNDED.
+      //
+      // Smoothstep across the WHOLE run was tried first and read as a sagging
+      // curve from inside the corridor (and made the mid-slope 1.5× the average
+      // grade — the "way too steep" verdict from the phone). A straight line
+      // between the landings is what a cut stair run is, and this keeps it: the
+      // rake's own slope is untouched, so the grade budget is untouched.
+      //
+      // What is eased is only the two CORNERS where level ground meets the rake.
+      // They are real angles in the FLOOR, and anything built at `floor + H`
+      // inherits them — which is exactly the ceiling crease Josh photographed
+      // (level/corridor-stair.ts, "the crease was never a ceiling problem").
       const a = rp.alongX ? x : z;
-      if (a <= rp.a0) return rp.e0;
-      if (a >= rp.a1) return rp.e1;
-      const t = (a - rp.a0) / (rp.a1 - rp.a0);
-      // LINEAR grade. Smoothstep was tried first and read as a sagging
-      // curve from inside the corridor (and made the mid-slope 1.5× the
-      // average grade — the "way too steep" verdict from the phone). A
-      // straight line between the aprons is what a cut stair run is.
-      return rp.e0 + (rp.e1 - rp.e0) * t;
+      const t = rp.len > 1e-6 ? (a - rp.lo) / rp.len : 0;
+      return rp.e0 + (rp.e1 - rp.e0) * roundedRampProfile(t, rp.t0, rp.t1, rp.len);
     }
     for (const p of plateaus) {
       if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.e;

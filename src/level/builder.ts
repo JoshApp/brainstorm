@@ -13,7 +13,6 @@ import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { buildPolyRoomShell, layAsFlagstones } from './poly-room-shell';
 import { offsetRing, WALL_T } from './poly-shell-plan';
-import { rakeCeiling } from './corridor-ceiling';
 import { pointInPoly } from './room-shape';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
@@ -269,8 +268,11 @@ function buildRoomShell(
   // WHERE THE CEILING IS, once, for the mesh AND for the darkness band. A ramped
   // corridor's ceiling is a single raked plane rather than a copy of the floor's
   // shelf-slope-shelf profile — see level/corridor-ceiling.ts for why.
+  // WHERE THE CEILING IS, once, for the mesh AND for the darkness band. Simply the ground
+  // plus the section's height — the floor's own profile is smooth now, so a parallel ceiling
+  // has no crease in it (level/corridor-ceiling.ts).
   const ceilAt = sloped
-    ? rakeCeiling(rect, alongX, H, groundYAt)
+    ? (x: number, z: number): number => groundYAt(x, z) + H
     : (_x: number, _z: number): number => elev + H;
 
   // ── FLOOR GRATE (box-buster #5) ────────────────────────────────────
@@ -312,7 +314,7 @@ function buildRoomShell(
   // the visual is cut stone treads following the linear grade; the eye
   // and collision glide the smooth line underneath (groundYAt).
   const floorGeo: THREE.BufferGeometry = sloped
-    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M, alongX)
+    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M, alongX, room.stair)
         ?? makeJitteredPlane(PW, PD, { flat: true }))
     : allFloorHoles.length > 0
       ? makeFloorWithHoles(PW, PD, allFloorHoles)
@@ -521,11 +523,9 @@ function buildRoomShell(
       ? makeFloorWithHoles(PW, PD, ceilHoles)
       : sloped ? makeJitteredPlane(PW, PD, { flat: true }) : new THREE.PlaneGeometry(PW, PD);
     if (sloped) {
-      // Ramped corridor: the ceiling is ONE RAKED PLANE between the headroom at its two
-      // mouths — not a copy of the floor, whose ends are pinned level to their rooms and
-      // whose creases the ceiling used to inherit (level/corridor-ceiling.ts).
-      // rotX +π/2 maps local (x, y, z) to world (x, -z, +y): displace local Z by the
-      // NEGATIVE target height.
+      // Ramped corridor: the ceiling rides the ground at a constant height, and the ground
+      // eases through its own knees (level/corridor-ceiling.ts). rotX +π/2 maps local
+      // (x, y, z) to world (x, -z, +y): displace local Z by the NEGATIVE target height.
       const pos = ceilGeo.getAttribute('position');
       for (let i = 0; i < pos.count; i++) {
         const wx = PX + pos.getX(i);
