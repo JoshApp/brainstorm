@@ -543,6 +543,23 @@ export const CONFIG = {
   // back on some floors.
   FILL_LIGHTS: false,
 
+  // ── GPU CAPACITY — fixed array sizes so shaders don't fork per count ──────
+  // three's node renderer writes a skinned mesh's bone count and an
+  // InstancedMesh's capacity into the WGSL as a fixed array length
+  // (`array<mat4x4<f32>, 17>`). Every distinct count is therefore a separate
+  // vertex shader to compile and warm: five species bone counts and five chain
+  // lengths were ten programs of one shader. Padding every skeleton and every
+  // instance buffer to a fixed capacity makes the WGSL byte-identical across
+  // species and props. See scene/gpu-capacity.ts.
+  GPU_CAPACITY: {
+    // Bones per skinned creature. The largest rig (spider) has 28 joints; a
+    // rig past this pads to the next multiple and costs one extra program.
+    SKIN_BONES: 32,
+    // Instances per InstancedMesh (chain links, pooled eyes). Buffers are
+    // allocated at this size and drawn at `count`; past it, the next multiple.
+    INSTANCES: 64,
+  },
+
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
     // torches/candles/glows. Under the default TILED node

@@ -3,6 +3,7 @@ import { freezeTransform, isDrawn } from './animation-gate';
 import { disposeGpu } from './gpu-dispose';
 import { isPooledGeometry, pooledCircle, pooledPlane, pooledSphere, pooledTorus } from './geometry-pool';
 import { stdMat } from '../style/material-registry';
+import { instanceCapacity } from './gpu-capacity';
 
 // ARCHWAY EYE — the diegetic exit cue, as the dungeon's own eye set in the
 // keystone. A dark stone eyeball + a glowing iris + two stone lids, mounted at
@@ -98,7 +99,7 @@ function ensurePool(root: THREE.Object3D, stone: THREE.Material, lidStone: THREE
   const group = new THREE.Group();
   group.name = 'archway-eye-pool';
   const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number): THREE.InstancedMesh => {
-    const im = new THREE.InstancedMesh(geo, mat, n);
+    const im = new THREE.InstancedMesh(geo, mat, instanceCapacity(n));   // fixed-capacity buffer (scene/gpu-capacity.ts)
     im.count = 0;                       // grows as eyes register
     im.frustumCulled = false;           // its instances span the floor; three objects, always submit
     im.userData.dynamicPart = true;     // never sweep an animated batch into a static one

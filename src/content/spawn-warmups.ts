@@ -9,6 +9,7 @@ import { getTexture } from '../style/procedural-textures';
 import { primeFloorPalette, registeredFloorMaterials } from '../style/material-registry';
 import { ACTS } from '../level/acts';
 import { SKELETONS, resolveProportions } from './skeletons';
+import { padBones, instanceCapacity } from '../scene/gpu-capacity';
 
 // ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
 //
@@ -92,6 +93,9 @@ function addSkinnedWarm(scene: THREE.Object3D, mat: THREE.Material, boneCount = 
   const bones: THREE.Bone[] = [];
   for (let i = 0; i < Math.max(1, boneCount); i++) bones.push(new THREE.Bone());
   for (let i = 1; i < bones.length; i++) bones[i - 1].add(bones[i]);
+  // Same padding as the live creature (scene/gpu-capacity.ts) — the bone count
+  // is in the WGSL, so an unpadded dummy would warm a shader nothing draws.
+  padBones(bones);
   const mesh = new THREE.SkinnedMesh(SKIN_GEO, mat);
   mesh.add(bones[0]);
   mesh.bind(new THREE.Skeleton(bones));
@@ -130,7 +134,9 @@ function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
 // plain box alone would miss it. One instance, identity transform.
 const IDENTITY_M4 = new THREE.Matrix4();
 function addInstancedWarm(scene: THREE.Object3D, mat: THREE.Material): void {
-  const inst = new THREE.InstancedMesh(WARM_BOX, mat, 1);
+  // Allocated at the fixed instance capacity (the size is in the WGSL), drawn at 1.
+  const inst = new THREE.InstancedMesh(WARM_BOX, mat, instanceCapacity(1));
+  inst.count = 1;
   inst.setMatrixAt(0, IDENTITY_M4);
   inst.instanceMatrix.needsUpdate = true;
   inst.castShadow = false; inst.frustumCulled = false;

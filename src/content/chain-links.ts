@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { instanceCapacity } from '../scene/gpu-capacity';
 
 // Chain runs built from actual LINKS — interlocking low-poly tori
 // along a sagging curve — replacing the straight-box "chains" that
@@ -48,7 +49,11 @@ export function chainRun(
   // One InstancedMesh for the whole run — every link shares LINK_GEO +
   // material, so the chain is a single draw. castShadow stays OFF: a thin
   // link adds nothing readable to the shadow but a cube-map redraw each.
-  const mesh = new THREE.InstancedMesh(LINK_GEO, material, count);
+  // Allocated at the fixed instance capacity and drawn at `count`: the buffer
+  // size is baked into the vertex shader, so a 16-link and a 37-link chain
+  // would otherwise compile two programs (scene/gpu-capacity.ts).
+  const mesh = new THREE.InstancedMesh(LINK_GEO, material, instanceCapacity(count));
+  mesh.count = count;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
 

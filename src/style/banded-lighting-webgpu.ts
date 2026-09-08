@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, sin } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float, attribute, normalWorld, positionWorld, cameraPosition, screenCoordinate, smoothstep, vec2, sin, materialReference } from 'three/tsl';
 import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
@@ -390,6 +390,15 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // dark, fading as the lamp finds the form. Colour·intensity + fresnel power
   // still ride the per-vertex aRevealRim vec4 — one shared pipeline.
   rimDarkReactive: number;
+  // The AMOUNTS above are gates, not values. A JS number multiplied into the
+  // node graph is emitted as a WGSL literal, and the shader source is the
+  // program cache key — so nine rim strengths across the roster were nine
+  // fragment programs of one shader. When set, these nodes read the amount
+  // from the material being drawn (`material.userData.reveal*`, per draw, the
+  // way material.color reaches the shader) and the WGSL is identical for every
+  // value. See setMaterialRevealLightingWebGPU.
+  chromaRef: any = null;
+  rimDarkReactiveRef: any = null;
   // Optional node scaling this material's DIRECT SPECULAR. See the note on
   // setMaterialStoneLightingWebGPU — this is how the stone's sheen gets turned
   // down without touching the exposure every other object in the game shares.
@@ -491,7 +500,8 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
       out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chromaNode).max((vec3 as any)(0, 0, 0));
     } else if (this.chroma !== 1) {
       const lum: any = (luminance as any)(out);
-      out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chroma).max((vec3 as any)(0, 0, 0));
+      const amount: any = this.chromaRef ?? this.chroma;
+      out = (mix as any)((vec3 as any)(lum, lum, lum), out, amount).max((vec3 as any)(0, 0, 0));
     }
     // DARK-REACTIVE RIM — parity with the GLSL reveal rim ("forms emerge from
     // black"): world-space fresnel in the aRevealRim colour, dimmed by how lit
@@ -505,7 +515,8 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
       // = 1 − 0.78·dr·litLuma — full rim in black, easing toward a 0.22 floor
       // as the fragment lights up. Parity, not a re-tune.
       const litLuma: any = (luminance as any)(out).clamp(0, 1);
-      const dim: any = litLuma.mul(0.78 * this.rimDarkReactive).oneMinus();
+      const dr: any = this.rimDarkReactiveRef ?? (float as any)(this.rimDarkReactive);
+      const dim: any = litLuma.mul(dr.mul(0.78)).oneMinus();
       out = out.add(rimAttr.xyz.mul(fres).mul(dim));
     }
     // GORE creep — recolour toward blood where the WebGPU splat buffer covers this
@@ -567,7 +578,7 @@ export function installBandedLightingWebGPU(on: boolean): void {
 /** Per-material PAINTED chroma — band AND over-saturate toward the light's hue
  *  (pale skeletons/bone take on the torch colour vividly). */
 export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
-  mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma);
+  setMaterialRevealLightingWebGPU(mat, { chroma });
 }
 
 /** Per-material reveal lighting — PAINTED chroma and/or a DARK-REACTIVE rim
@@ -577,7 +588,19 @@ export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
 export function setMaterialRevealLightingWebGPU(mat: any, opts: { chroma?: number; rimDarkReactive?: number }): void {
   const chroma = opts.chroma ?? 1;
   const dr = opts.rimDarkReactive ?? 0;
-  mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma, null, dr);
+  // The amounts live on the MATERIAL and reach the shader as per-draw uniforms
+  // (materialReference), so every chroma/rim value shares one program. The
+  // numbers passed to the model are only presence gates (≠1, >0). userData is
+  // excluded from three's material cache key, which is exactly right: two
+  // materials that differ only in these amounts should share everything.
+  mat.userData.revealChroma = chroma;
+  mat.userData.revealRimDarkReactive = dr;
+  mat.setupLightingModel = () => {
+    const model = new BandedPhysicalLightingModel(chroma, null, dr);
+    if (chroma !== 1) model.chromaRef = (materialReference as any)('userData.revealChroma', 'float');
+    if (dr > 0) model.rimDarkReactiveRef = (materialReference as any)('userData.revealRimDarkReactive', 'float');
+    return model;
+  };
 }
 
 /** Per-material PER-FRAGMENT chroma — over-saturate toward the light's hue only

@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Creature } from '../content/creature-types';
 import { setRevealAttributes } from '../ecs/build-model';
 import { setMaterialCreatureRevealWebGPU } from '../style/banded-lighting-webgpu';
+import { padBones } from '../scene/gpu-capacity';
 
 // ── Creature Render V2 — rigid-skinned creature (M1) ─────────────────────────
 //
@@ -166,6 +167,9 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
   // SkinnedMesh are removed so we keep ONLY the bones + the one skinned mesh.
   for (const m of meshes) m.parent?.remove(m);
 
+  // Pad to the fixed bone capacity so every species shares ONE vertex shader
+  // (the bone count is baked into the WGSL) — see scene/gpu-capacity.ts.
+  padBones(bones);
   const skeleton = new THREE.Skeleton(bones as unknown as THREE.Bone[]);
   const mesh = new THREE.SkinnedMesh(geometry, materials.length === 1 ? materials[0] : materials);
   mesh.castShadow = false;          // creatures use a blob shadow (as today)

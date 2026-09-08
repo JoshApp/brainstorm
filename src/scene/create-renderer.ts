@@ -6,6 +6,7 @@ import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
 import { installStableBufferNames } from './stable-buffer-names';
+import { installStableShaderNames } from './stable-shader-names';
 import { installStaleVertexBufferFix } from './stale-vertex-buffers';
 import { installMaterialAttribution } from './material-attribution';
 
@@ -149,6 +150,11 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
   // spawn. Must be installed BEFORE the first node build (i.e. before anything
   // renders or compiles). See stable-buffer-names.ts.
   installStableBufferNames(renderer);
+  // Same disease, second organ: ordinary uniforms + variables are numbered by a
+  // BUILDER-global counter, so a fragment shader's identifiers shift by however
+  // many the vertex stage claimed — one fragment program per vertex layout it
+  // was paired with. Per-stage numbering. See stable-shader-names.ts.
+  installStableShaderNames(renderer);
 
   // r185's RenderObject.setGeometry clears the attribute cache but not the
   // vertex-buffer cache built from it, so an in-place geometry swap can draw the
