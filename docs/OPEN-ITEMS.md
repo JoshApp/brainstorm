@@ -153,6 +153,43 @@ Still open:
   `compileAsync` (#34816), shadow re-render only on `needsUpdate` (#34794),
   fewer matrix updates (#35203). Needs the phone recording.
 
+### r185 → r187 review: what changed for us, and what we could use (2026-11-21)
+
+976 three commits; 503 touch the renderer/nodes/lights. Measured r186.1 as
+shipped (3bc4c699) vs r187 now, `backend-boot --cpu --metrics --frozen
+--url-extra=seed=4242`, 3 runs each, headless WebGPU (spawn / perf-horde):
+- Per-frame CPU: 2.36 → 2.33 ms / 1.76 → 1.71 ms. No real change.
+- Pipelines −21% / −14%; reveal −15% / −10%; frames over 32 ms right after
+  reveal −67% / −54%; allocation per frame −13% / −8%. r187 makes LOADING and
+  the first seconds smoother, not the steady frame cheaper.
+
+Candidates, none built:
+- **Shadow maps still allocate a colour target nobody reads.** r187 added
+  depth-only render targets (#34782) but `ShadowNode.setupRenderTarget` still
+  calls `createRenderTarget(w, h)` (count 1). The lamp's 512² shadow writes an
+  unused colour buffer every frame. Fix = a shadow-node override (another
+  private patch) or an upstream PR. Bandwidth win on phones; size
+  `[unverified]` until a phone recording.
+- **Lamp shadow on demand.** r186/r187 made `shadow.needsUpdate` reliable
+  (#34794, #35093). Re-render the lamp shadow only when the lamp or a caster in
+  its cone moved. Saves nothing mid-fight, something while exploring.
+  `[unverified]` — needs the phone's `render·shadow` share first.
+- **Clustered lighting on WebGL2** (#34978) works: same room lit, boots
+  ~1-2 s faster, but presented 52-57 frames vs 75-90 for our tiled loop in 5 s
+  on software GL. Would delete `tiled-lighting.ts` (300 lines). Only with a
+  real WebGL2 device A/B (Deck, older phone). Recipe: a DEV switch in
+  create-renderer that skips the WebGL2 → tiled override, both places.
+- **Baked static light** (#34991 LightMapper, #34909 faster probe bakes): bake
+  static torch light per floor into probes or lightmaps, keep only the lamp,
+  flicker and specials dynamic. Lighting slot count is our known GPU wall.
+  Design-level change (torch flicker is part of the look). `[uncertain]`.
+- Not for us now: the new meshlet / visibility-buffer drawing pipelines
+  (#35191, experimental); `mipmapsAutoUpdate` / texture update ranges (no
+  texture of ours updates per frame); BatchedMesh draw merging (#35259) is
+  automatic, but the sampler's `draws` reads 0 (see below), so unconfirmed.
+- Small bug: frame-timing's `draws` is 0 in every `--cpu` sample, so draw
+  counts can't be compared. `perFrameDraws` vs r187's info fields `[unverified]`.
+
 ## Phase 3 — debt
 
 - `createEnemy` ~3,365 lines in one function (`mobs/enemy.ts`); `buildLevel`

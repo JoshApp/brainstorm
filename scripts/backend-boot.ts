@@ -70,6 +70,14 @@ const scenarioName = arg('scenario') ?? 'spawn';
 // exact in headless; times are software rendering and only compare like-for-like
 // on the same machine (e.g. before/after a three upgrade).
 const wantMetrics = process.argv.includes('--metrics');
+// --cpu: subscribe to the game's own frame-timing (src/debug/frame-timing.ts)
+// for the sample window and print the per-frame averages — cpu ms, draws,
+// uploads, alloc, and every render·/enc· bucket (debug/encode-breakdown.ts).
+// JS-side encode cost is real CPU even on headless's software GPU, so it
+// compares like-for-like across three versions on one machine. Pair with
+// --frozen and a fixed --url-extra=seed=N so both runs draw identical frames.
+const wantCpu = process.argv.includes('--cpu');
+const frozen = process.argv.includes('--frozen');
 const evalAfterReveal = process.argv.find((a) => a.startsWith('--eval='))?.slice('--eval='.length);
 
 if (!chromiumPath()) {
@@ -148,7 +156,7 @@ async function check(backend: Backend): Promise<Result> {
     page.on('console', (m) => consoleLines.push(m.text()));
 
     const flag = backend === 'webgl2' ? '&webgpu=0' : '';
-    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${scenarioName}&freeze=false${flag}${urlExtra}`;
+    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${scenarioName}&freeze=${frozen ? 'true' : 'false'}${flag}${urlExtra}`;
     const t0 = Date.now();
     step('goto');
     await page.goto(url, { waitUntil: 'load', timeout: 60_000 });
@@ -189,6 +197,20 @@ async function check(backend: Backend): Promise<Result> {
       notes.push(`eval → ${JSON.stringify(out)?.slice(0, 120)}`);
       await page.waitForTimeout(1_000);   // let a pipeline rebuild land
     }
+    if (wantCpu) {
+      step('cpu listener');
+      await withTimeout(page.evaluate(`import('/brainstorm/src/debug/frame-timing.ts').then(function (m) {
+        var acc = window.__bbCpu = { n: 0, sums: {} };
+        function add(k, v) { if (typeof v === 'number' && isFinite(v)) acc.sums[k] = (acc.sums[k] || 0) + v; }
+        m.addFrameListener(function (s) {
+          acc.n++;
+          add('cpuMs', s.cpuMs); add('draws', s.draws); add('uploads', s.uploads);
+          add('uploadKB', s.uploadKB); add('allocMB', s.allocMB);
+          s.systems.forEach(function (v, k) { if (/^(render|enc)/.test(k)) add(k, v); });
+        });
+        return 'ok';
+      })`), 'cpu listener');
+    }
     step('sampling frames');
     const f0 = await withTimeout(page.evaluate('window.__presentedFrames ? window.__presentedFrames() : -1'), 'frame count') as number;
     await page.waitForTimeout(SAMPLE_MS);
@@ -197,6 +219,16 @@ async function check(backend: Backend): Promise<Result> {
     notes.push(`${frames} frames in ${SAMPLE_MS / 1000}s`);
     if (f0 < 0) problems.push('window.__presentedFrames missing (renderer never wired?)');
     else if (frames < MIN_FRAMES) problems.push(`only ${frames} frames presented in ${SAMPLE_MS / 1000}s — stalled`);
+
+    if (wantCpu) {
+      const cpu = await withTimeout(page.evaluate(`(function () {
+        var a = window.__bbCpu; if (!a || !a.n) return null;
+        var out = { frames: a.n };
+        Object.keys(a.sums).sort().forEach(function (k) { out[k] = +(a.sums[k] / a.n).toFixed(3); });
+        return out;
+      })()`), 'cpu read');
+      console.log(`CPU ${JSON.stringify({ backend, three: installedThree, ...cpu })}`);
+    }
 
     if (wantMetrics) {
       step('metrics');
