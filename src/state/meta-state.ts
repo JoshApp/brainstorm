@@ -83,14 +83,27 @@ function emptyMeta(): MetaState {
 
 // ── In-memory cache ──────────────────────────────────────────────────
 let cache: MetaState | null = null;
+/** True when the stored meta was written by a NEWER build than this one. The
+ *  disk copy is then the player's real progress and this build must not
+ *  overwrite it — see load(). */
+let frozen = false;
 
 function load(): MetaState {
   if (cache) return cache;
   const parsed = readJSON<Partial<MetaState> | null>(STORAGE_KEY, null);
   // Missing / unparseable → a fresh meta (readJSON returned the null fallback).
   if (!parsed) { cache = emptyMeta(); return cache; }
-  // Newer save format from a future build — reset rather than risk half-reading it.
-  if ((parsed.version ?? 0) > META_VERSION) { cache = emptyMeta(); return cache; }
+  // Newer save format from a future build. This used to reset to an empty meta,
+  // and the next persist() wrote that empty meta over the newer save — so any
+  // older build running after a newer one (a PWA serving its cached bundle, a
+  // rolled-back deploy) erased every record and the stash. Now: read what this
+  // build understands for display, and never write. The newer build finds its
+  // save intact; progress made in the old build is what's lost, not the history.
+  if ((parsed.version ?? 0) > META_VERSION) {
+    frozen = true;
+    cache = { ...emptyMeta(), ...parsed };
+    return cache;
+  }
   // Forward-migrate: new fields added in later versions default to empty
   // (v1 → v2 added achievementsUnlocked + stash).
   cache = { ...emptyMeta(), ...parsed, version: META_VERSION };
@@ -98,7 +111,7 @@ function load(): MetaState {
 }
 
 function persist() {
-  if (!cache) return;
+  if (!cache || frozen) return;
   writeJSON(STORAGE_KEY, cache);   // swallows quota/disabled
 }
 
@@ -285,6 +298,7 @@ export function getRunDiscoveries(): Readonly<RunDiscoveries> {
 // ── Reset ─────────────────────────────────────────────────────────
 // Mostly for debug/testing. Wipes lifetime stats.
 export function clearMeta() {
+  frozen = false;   // an explicit wipe is intended, newer save or not
   cache = emptyMeta();
   persist();
 }

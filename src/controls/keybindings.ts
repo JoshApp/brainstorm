@@ -11,6 +11,8 @@
 // alias stay hardwired in input-desktop — they're positional, not
 // rebindable verbs.
 
+import { KEYS } from '../state/persist';
+
 export type BindableAction =
   | 'moveForward'
   | 'moveBack'
@@ -55,7 +57,7 @@ const DEFAULTS: Record<BindableAction, string> = {
   menu:        'Escape',
 };
 
-const STORAGE_KEY = 'delve-keybindings';
+const STORAGE_KEY = KEYS.keybindings;
 
 let bindings: Record<BindableAction, string> = load();
 const listeners = new Set<() => void>();

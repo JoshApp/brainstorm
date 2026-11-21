@@ -35,6 +35,25 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # The suite used to run only in the local pre-push hook, which
+      # SKIP_PREPUSH=1 bypasses and a cloud session may not have. A red test
+      # now stops the deploy instead of reaching the phone.
+      #
+      # Only the tests this push can reach (scripts/test-impact.ts walks the
+      # import graph; anything it can't account for runs everything). The full
+      # suite is ~15 CPU-minutes — ~73s on a 32-core desktop, ~5 min on a 4-core
+      # runner — and would turn the ~90s deploy loop into a six-minute one.
+      # No usable `before` (manual dispatch, first push, force-push) → full run.
+      - name: Test (what this push can reach)
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+             && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            npm test -- --affected --since="$BEFORE"
+          else
+            npm test
+          fi
       - run: npm run build
         # Sentry source-map upload activates only when all three are set as repo
         # secrets/vars (Settings → Secrets and variables → Actions). Until then
@@ -55,6 +74,9 @@ jobs:
           # to the share sheet / download, exactly as today.
           VITE_REPORT_ENDPOINT: ${{ vars.REPORT_ENDPOINT }}
           VITE_REPORT_KEY: ${{ secrets.REPORT_KEY }}
+      # Reads dist/ and fails on anything that must never ship: source maps,
+      # and strings that only exist inside DEV-gated debug code (a missing gate).
+      - run: npm run release-check
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

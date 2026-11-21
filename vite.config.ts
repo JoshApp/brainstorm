@@ -139,10 +139,13 @@ export default defineConfig({
     // Safari <15), all far below the game's real floor (WebGL2 + phones that
     // can run it).
     target: 'es2022',
-    // 'hidden' = emit .map files (so a captured minified stack can be
-    // symbolicated, or uploaded to an error backbone later) WITHOUT advertising
-    // them via sourceMappingURL — they're tooling, not in-browser exposure.
-    sourcemap: 'hidden',
+    // Source maps exist ONLY to be uploaded to Sentry, which deletes them from
+    // dist afterwards. 'hidden' (no sourceMappingURL comment) never stopped
+    // anyone fetching `<chunk>.js.map` by name: with no Sentry secrets set, the
+    // maps stayed in dist and GitHub Pages served the full source of the game.
+    // No upload configured → no maps emitted. scripts/release-check.ts fails
+    // the build if one ever reaches dist again.
+    sourcemap: SENTRY_UPLOAD ? 'hidden' : false,
     rollupOptions: {
       // Ship the perf-review viewer alongside the game so a recording made on
       // the live build (which downloads a JSON, no dev server to POST to) can

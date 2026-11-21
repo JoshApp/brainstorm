@@ -19,6 +19,7 @@
     "bridge": "tsx bridge/discord-bridge.ts",
     "prebuild": "tsx scripts/gen-patchlog.ts",
     "build": "tsc && vite build",
+    "release-check": "tsx scripts/release-check.ts",
     "preview": "vite preview --host",
     "snap": "tsx scripts/snap.ts",
     "bench": "tsx scripts/bench.ts",

@@ -3,6 +3,7 @@
 // preferences; UI code goes through here.
 
 import { CONFIG } from '../config';
+import { KEYS } from '../state/persist';
 
 export interface Settings {
   /** Mouse/touch look sensitivity (radians per pixel of drag). */
@@ -262,7 +263,7 @@ export const DASH_GESTURES: { id: Settings['dashGesture']; label: string }[] = [
   { id: 'doubleTap', label: 'Double-tap' },
 ];
 
-const STORAGE_KEY = 'delve-settings';
+const STORAGE_KEY = KEYS.settings;
 
 /**
  * ── WHERE ARE YOU PLAYING? ───────────────────────────────────────────────────

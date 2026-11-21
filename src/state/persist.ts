@@ -15,7 +15,12 @@
 export const KEYS = {
   meta: 'delve:meta',                     // meta-state (progress across runs)
   save: 'delve:save',                     // current run save
-  settings: 'delve:settings',             // video/audio/control settings
+  // The two below predate the `delve:` convention and keep their dash spelling:
+  // renaming a live key orphans every player's stored value. This entry used to
+  // read 'delve:settings', a key nothing ever wrote.
+  settings: 'delve-settings',             // video/audio/control settings (settings/settings.ts)
+  keybindings: 'delve-keybindings',       // desktop key remaps (controls/keybindings.ts)
+  lux: 'delve-lux',                       // ?lux=1 debug brightness button opt-in
   telemetryLog: 'delve:telemetry-log',    // offline balance event ring
   telemetrySession: 'delve:telemetry-session',
   playerProfile: 'delve:player-profile',  // AI behavioural profile

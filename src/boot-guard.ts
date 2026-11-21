@@ -82,8 +82,12 @@ function showSafeMode(): void {
     try {
       // Wipe everything DELVE owns (save, meta, settings) — the corrupt-state
       // escape hatch. A two-tap confirm so it isn't a single mis-tap away.
+      // Both prefixes: settings and keybindings are stored as `delve-…` (see
+      // state/persist.ts KEYS), and a bad settings value — a forced renderer
+      // backend, say — is exactly the state this button exists to escape. It
+      // used to match `delve:` only, so settings survived the wipe.
       const keys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('delve:')) keys.push(k); }
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.startsWith('delve:') || k.startsWith('delve-'))) keys.push(k); }
       keys.forEach((k) => localStorage.removeItem(k));
     } catch { /* ignore */ }
     window.location.reload();

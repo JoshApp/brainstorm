@@ -335,11 +335,16 @@ export function showStartScreen(opts: StartScreenOptions) {
     });
     pushLink(link);
   }
-  // SAVE PROGRESS — link an account (Google / Discord / Twitch) so this
-  // delver survives a lost device. The 2-tap upgrade; merges onto the
-  // current player. See docs/ALPHA-AND-BACKEND.md.
+  // CLAIM YOUR NAME — link an account (Google / Discord / Twitch) so this
+  // delver's server identity (name, deaths, standings) survives a lost device.
+  // The 2-tap upgrade; merges onto the current player. See
+  // docs/ALPHA-AND-BACKEND.md.
+  //
+  // It was labelled SAVE PROGRESS, which it does not do: meta progress (codex,
+  // records, stash) lives only in localStorage and the server has no table for
+  // it. Rename it back when cloud meta-save exists.
   {
-    const link = makeSecondaryLink('SAVE PROGRESS', 0);
+    const link = makeSecondaryLink('CLAIM YOUR NAME', 0);
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       void startAccountUpgrade();

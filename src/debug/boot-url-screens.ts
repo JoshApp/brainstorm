@@ -1,11 +1,18 @@
 // Boot-time debug URL flags — fake persisted state for snaps, and the ?show*
 // screen-preview hooks that replace the whole boot flow with a single UI
-// screen. Extracted from main.ts; gating is unchanged (these are safe,
-// read-only-ish snap aids and the screens are inert without game state).
+// screen. Extracted from main.ts.
+//
+// DEV-ONLY. These used to ship ungated on the theory that they were harmless
+// snap aids. They were not: `?fakemeta=1` WRITES `delve:meta`, so one crafted
+// link on the live site replaced a player's real progress with the fake
+// record below. Every snap/check script drives the vite dev server, where DEV
+// is true, so nothing that relied on them loses them.
+import { DEV } from './dev';
 
 /** Seed fake meta / save state for title-screen snaps. `?fakemeta=1` shows
  *  records + the CODEX/STASH buttons; `?fakesave=1` shows CONTINUE. */
 export function applyFakeStateFlags(): void {
+  if (!DEV) return;
   if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
     localStorage.setItem('delve:meta', JSON.stringify({
       version: 2,
@@ -40,6 +47,7 @@ export function applyFakeStateFlags(): void {
  *  one UI screen with mocked stats. Returns true when one fired (the caller's
  *  boot flow stops there). */
 export function handleDebugScreenFlags(): boolean {
+  if (!DEV) return false;
   const url = new URLSearchParams(window.location.search);
   if (url.get('showEnd') === '1') {
     void import('../ui/end-screen').then(({ showEndScreen }) => {
