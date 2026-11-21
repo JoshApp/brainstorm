@@ -1,7 +1,6 @@
 import { Lighting, Vector2 } from 'three/webgpu';
 import { Fn, screenCoordinate, positionView, float, int, log, clamp, uniform, frameGroup } from 'three/tsl';
-// No DefinitelyTyped entry yet for the r185 lighting addons — runtime module is real.
-// @ts-expect-error — untyped examples/jsm module
+// Typed since @types/three r187 (it was an untyped examples/jsm module on r185).
 import ClusteredLightsNode from 'three/examples/jsm/tsl/lighting/ClusteredLightsNode.js';
 import { sceneTargetSize } from '../style/render-webgpu';
 

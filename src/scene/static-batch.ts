@@ -303,7 +303,7 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
     // same reason: a surface scalar is per-SURFACE data, not a reason to compile
     // and bind a second shader. This is what collapses `bake|f|1.00|0.00` and
     // `bake|f|0.95|0.00` — identical shading, one float apart — into one batch.
-    const surf = (tslAttribute as (n: string, t: string) => { x: unknown; y: unknown })('aSurface', 'vec2');
+    const surf = (tslAttribute as unknown as (n: string, t: string) => { x: unknown; y: unknown })('aSurface', 'vec2');
     (m as unknown as { roughnessNode?: unknown }).roughnessNode = surf.x;
     (m as unknown as { metalnessNode?: unknown }).metalnessNode = surf.y;
     m.name = `static-batch-baked:${key}`;

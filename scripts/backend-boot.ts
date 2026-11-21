@@ -44,7 +44,13 @@ const MIN_FRAMES = 10;           // over SAMPLE_MS; software rendering is slow, 
 const MIN_MEAN_LUMA = 2.0;       // 0-255. The dungeon is dark by design; a dead canvas is ~0
 const REVEAL_TIMEOUT_MS = 120_000;
 
-const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
+// Everything after the FIRST '=': `--url-extra=stablebuf=0` must yield
+// `stablebuf=0`. (It used `.split('=')[1]`, which silently cut values at their
+// own '=', so every --url-extra A/B ran with its flag unset.)
+const arg = (name: string) => {
+  const a = process.argv.find((x) => x.startsWith(`--${name}=`));
+  return a === undefined ? undefined : a.slice(name.length + 3);
+};
 const wanted = (arg('backend') ?? 'both') as Backend | 'both';
 const backends: Backend[] = wanted === 'both' ? ['webgl2', 'webgpu'] : [wanted];
 const keep = process.argv.includes('--keep');
@@ -52,9 +58,18 @@ const keep = process.argv.includes('--keep');
 // tiled light loop the WebGL2 backend uses, to split backend from lighting.
 const urlExtra = arg('url-extra') ? `&${arg('url-extra')}` : '';
 const tag = arg('tag') ? `-${arg('tag')}` : '';
+// --scenario=<name> boots another debug scenario (default `spawn`, an empty
+// start room). perf-horde puts many skinned enemies on screen, which is where
+// pipeline-naming bugs show up.
+const scenarioName = arg('scenario') ?? 'spawn';
 // --eval=<js expression> runs in the page after reveal and before sampling (may
 // return a promise). For runtime A/Bs a URL flag can't express, e.g.
 //   --eval="import('/brainstorm/src/style/render-webgpu.ts').then(m=>m.setGradeBypass(true))"
+// --metrics prints one JSON line per backend after sampling: compile counts
+// (__compileStats) and the pipeline census summary (__pipelineCensus). Counts are
+// exact in headless; times are software rendering and only compare like-for-like
+// on the same machine (e.g. before/after a three upgrade).
+const wantMetrics = process.argv.includes('--metrics');
 const evalAfterReveal = process.argv.find((a) => a.startsWith('--eval='))?.slice('--eval='.length);
 
 if (!chromiumPath()) {
@@ -105,37 +120,53 @@ const PATCHES: { name: string; line: string; backends: Backend[] }[] = [
 
 interface Result { backend: Backend; ok: boolean; problems: string[]; notes: string[] }
 
+// A frozen page (main thread stuck) makes every page.evaluate wait forever, and
+// the run dies to an outer `timeout` having printed nothing. So: every step is
+// named, each page call has its own deadline, and a hang reports WHERE.
+const STEP_TIMEOUT_MS = 30_000;
+const verbose = process.argv.includes('--verbose');
+function withTimeout<T>(p: Promise<T>, what: string, ms = STEP_TIMEOUT_MS): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timed out after ${ms / 1000}s: ${what}`)), ms))]);
+}
+
 async function check(backend: Backend): Promise<Result> {
   const problems: string[] = [];
   const notes: string[] = [];
+  const tStart = Date.now();
+  const step = (what: string) => { if (verbose) console.error(`  [${backend} +${((Date.now() - tStart) / 1000).toFixed(1)}s] ${what}`); };
   const browser = await launchHeadless();
+  const pageErrorsSeen: string[] = [];
   try {
     const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
     if (backend === 'webgpu') await installWebGPUShims(context);
     const page = await context.newPage();
-    const pageErrors: string[] = [];
+    const pageErrors = pageErrorsSeen;
     page.on('pageerror', (e) => pageErrors.push(e.message));
     const consoleLines: string[] = [];
     page.on('console', (m) => consoleLines.push(m.text()));
 
     const flag = backend === 'webgl2' ? '&webgpu=0' : '';
-    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=spawn&freeze=false${flag}${urlExtra}`;
+    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${scenarioName}&freeze=false${flag}${urlExtra}`;
     const t0 = Date.now();
+    step('goto');
     await page.goto(url, { waitUntil: 'load', timeout: 60_000 });
+    step('waiting for reveal');
 
     const revealed = await page.waitForFunction(`(function () {
       function gone(id) { var el = document.getElementById(id); return !el || parseFloat(getComputedStyle(el).opacity) < 0.05; }
       return typeof window.__presentedFrames === 'function'
         && gone('descent-fade') && gone('descent-loading') && gone('boot-loading');
     })()`, undefined, { timeout: REVEAL_TIMEOUT_MS }).then(() => true, () => false);
-    notes.push(`reveal ${revealed ? 'after' : 'NOT within'} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const revealAt = Date.now();
+    notes.push(`reveal ${revealed ? 'after' : 'NOT within'} ${((revealAt - t0) / 1000).toFixed(1)}s`);
     if (!revealed) problems.push(`descent cover still up after ${REVEAL_TIMEOUT_MS / 1000}s`);
 
     // The backend we got, from create-renderer's own report. Same module instance
     // as the app: vite serves one URL per module.
-    const active = await page.evaluate(`import('/brainstorm/src/scene/create-renderer.ts')
+    step('reading backend');
+    const active = await withTimeout(page.evaluate(`import('/brainstorm/src/scene/create-renderer.ts')
       .then(function (m) { return m.activeGraphicsBackend(); })
-      .catch(function (e) { return 'unreadable: ' + e.message; })`) as string;
+      .catch(function (e) { return 'unreadable: ' + e.message; })`), 'read backend') as string;
     notes.push(`backend ${active}`);
     if (active !== backend) problems.push(`asked for ${backend}, running on ${active}`);
 
@@ -144,16 +175,38 @@ async function check(backend: Backend): Promise<Result> {
       notes.push(`eval → ${JSON.stringify(out)?.slice(0, 120)}`);
       await page.waitForTimeout(1_000);   // let a pipeline rebuild land
     }
-    const f0 = await page.evaluate('window.__presentedFrames ? window.__presentedFrames() : -1') as number;
+    step('sampling frames');
+    const f0 = await withTimeout(page.evaluate('window.__presentedFrames ? window.__presentedFrames() : -1'), 'frame count') as number;
     await page.waitForTimeout(SAMPLE_MS);
-    const f1 = await page.evaluate('window.__presentedFrames ? window.__presentedFrames() : -1') as number;
+    const f1 = await withTimeout(page.evaluate('window.__presentedFrames ? window.__presentedFrames() : -1'), 'frame count') as number;
     const frames = f1 - f0;
     notes.push(`${frames} frames in ${SAMPLE_MS / 1000}s`);
     if (f0 < 0) problems.push('window.__presentedFrames missing (renderer never wired?)');
     else if (frames < MIN_FRAMES) problems.push(`only ${frames} frames presented in ${SAMPLE_MS / 1000}s — stalled`);
 
-    if (backend === 'webgpu') await paintHeadlessFrame(page);
-    const shot = await page.screenshot();
+    if (wantMetrics) {
+      step('metrics');
+      const m = await withTimeout(page.evaluate(`(function () {
+        var c = window.__compileStats ? window.__compileStats() : null;
+        var k = window.__pipelineCensus ? window.__pipelineCensus() : null;
+        return {
+          compiles: c ? { total: c.total, postWarmup: c.postWarmup, hitches: c.compileHitches, laggy: c.laggyFrames } : null,
+          census: k ? { warmed: k.warmed, resident: k.resident, evicted: k.evicted, inPlaySeen: k.inPlaySeen } : null,
+        };
+      })()`), 'metrics').catch((e: Error) => ({ error: e.message }));
+      console.log(`METRICS ${JSON.stringify({ backend, revealS: +((revealAt - t0) / 1000).toFixed(1), frames, ...m })}`);
+    }
+
+    // GPU errors BEFORE the screenshot: a capture that hangs must not hide them.
+    step('gpu errors');
+    const gpuErrors = await withTimeout(page.evaluate('(window.__gpuErrors || []).slice(0, 8)'), 'gpu errors') as string[];
+    for (const e of gpuErrors) problems.push(`gpu validation: ${e.slice(0, 240)}`);
+    const totalGpuErrors = await withTimeout(page.evaluate('(window.__gpuErrors || []).length'), 'gpu error count') as number;
+    if (totalGpuErrors) notes.push(`${totalGpuErrors} gpu validation errors`);
+
+    step('screenshot');
+    if (backend === 'webgpu') await withTimeout(paintHeadlessFrame(page), 'paintHeadlessFrame');
+    const shot = await withTimeout(page.screenshot(), 'screenshot');
     const luma = meanLuma(shot);
     notes.push(`mean luma ${luma.toFixed(1)}`);
     if (luma < MIN_MEAN_LUMA) problems.push(`screen is black (mean luma ${luma.toFixed(2)})`);
@@ -168,13 +221,12 @@ async function check(backend: Backend): Promise<Result> {
       if (!consoleLines.some((l) => l.includes(p.line))) problems.push(`three.js patch not installed: ${p.name}`);
     }
 
-    const gpuErrors = await page.evaluate('(window.__gpuErrors || []).slice(0, 8)') as string[];
-    for (const e of gpuErrors) problems.push(`gpu validation: ${e.slice(0, 240)}`);
     for (const e of pageErrors) problems.push(`page error: ${e.slice(0, 240)}`);
   } catch (e) {
     problems.push(`check crashed: ${(e as Error).message.slice(0, 300)}`);
+    for (const e of pageErrorsSeen) problems.push(`page error: ${e.slice(0, 240)}`);
   } finally {
-    await browser.close();
+    await withTimeout(browser.close(), 'browser close', 10_000).catch(() => {});
   }
   return { backend, ok: problems.length === 0, problems, notes };
 }

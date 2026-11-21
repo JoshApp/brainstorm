@@ -85,8 +85,10 @@ foundations → back to building the game.
   same, and both match the DARK headless WebGL2 frame. So the bright one is the
   headless WebGPU capture path (`paintHeadlessFrame` → `__captureFrame`), not
   the game. Every `snap` taken on WebGPU, art review included, has likely been
-  brighter than the phone. A/B already ruled out the lighting loop, grade,
-  dark-adaptation, shadows, surface detail. `[uncertain]` cause — a double
+  brighter than the phone. Runtime A/B ruled out the grade and shadows.
+  CORRECTION: the lighting-loop, dark-adaptation and surface-detail "rule-outs"
+  were void — `backend-boot --url-extra` cut values at their own `=`, so those
+  runs had their flag unset (fixed 2026-11-21). `[uncertain]` cause — a double
   sRGB encode in the capture is the first suspect, untested.
 - **Measuring on the dev box's Windows Chrome needs a foreground window.**
   Driven through chrome-devtools it ran at exactly 1 frame/s on BOTH backends
@@ -99,24 +101,41 @@ foundations → back to building the game.
   has no timers, so suspect unseeded randomness in what it builds. Output was
   not captured. `[uncertain]` — next time it fails, keep the log. Now that CI
   runs tests, a flake here can block a deploy.
-- **`?raw=1` stops frame presentation** on both backends (0 frames in 5 s,
-  headless). Debug-only flag; low priority.
+- ~~`?raw=1` stops frame presentation~~ — void: measured with the broken
+  `--url-extra` parser, so the flag was never set. Unknown; recheck if needed.
 - **WebGPU inside wrappers is unverified**: Electron on Linux/Deck (AMD is
   behind a Chrome flag), Android WebView `[uncertain]` (no source confirms it),
   iOS 26 WKWebView (developers report yes, Apple doesn't document it)
   `[uncertain]`.
 
-## Phase 2 — three.js r185.1 → r187
+## Phase 2 — three.js (r185.1 → r186.1 done; r187 blocked)
 
-- Candidate patch deletions: deterministic binding labels (r186 #34069) vs
-  `stable-buffer-names`; parallel `compileAsync` (r187 #34816) for warmup;
-  geometry version / render-object cache fixes (r186 #34064, #34076) vs
-  `stale-vertex-buffers`. `[uncertain]` — matched from release-note titles only.
+- **r187 renders a BLACK WORLD on WebGPU** (real GPU, Windows Chrome,
+  2026-11-21): HUD draws, scene doesn't, even with post-processing off
+  (`setSceneOnly`) and bundles off. 11 validation errors during the warm, all
+  `[Texture "depth"|"output"] usage (TextureBinding|RenderAttachment) includes
+  writable usage and another usage in the same synchronization scope` on a
+  70×43 pass tagged `warming=1`; none after reveal. Headless: frame capture
+  hangs; `backend-boot` fails, as it should. r186.1 is clean on the same box.
+  Suspects from the r187 notes, untested: viewport/pixel-ratio
+  (#34333, #34460), depth-only render targets (#34782), animation-loop start
+  (#35278, #35279), CubeUV → cube RTs (#34585). `[uncertain]` — next step is to
+  bisect three's commits between r186 and r187.
+- r187 gains we'd want once it works, from release notes `[unverified]`:
+  parallel pipeline compile in `compileAsync` (#34816) for the descent warm;
+  shadow maps re-render only when `needsUpdate` (#34794); fewer scene matrix
+  updates (#35203); point-light shadow seam fix (#35267); clustered lighting
+  gains spot lights + a WebGL2 fallback (#34978), which could retire our own
+  `DelveTiledLighting`.
+- **Measured on r186.1** (headless, perf-horde, WebGPU): all three of our
+  naming/geometry patches are STILL NEEDED. `stable-buffer-names` off →
+  171 pipelines vs 92 (r185: 169 vs 90), so r186's deterministic binding
+  labels (#34069) don't cover skinned/instanced `NodeBuffer_<id>`.
+  `stable-shader-names` and `stale-vertex-buffers` change no count on this
+  floor (they guard other cases). Boot time and pipeline counts otherwise
+  unchanged vs r185 — r186.1 is a maintenance upgrade, not a speed-up.
 - Not fixed upstream, patches stay: render-bundle pass order; per-object
   default uniform group (the CLAUDE.md rule stays).
-- Breaking changes to absorb: CubeUV atlas → cube render targets (#34585),
-  pixel-ratio handling in viewports (#34333, #34460), animation-loop start
-  (#35278, #35279), `PCFSoftShadowMap` removed (#33987).
 
 ## Phase 3 — debt
 
@@ -175,6 +194,10 @@ foundations → back to building the game.
 ---
 
 ## Closed
+
+- 2026-11-21 Phase 2 (part): three r185.1 → r186.1 + @types/three 0.186.
+  Real GPU: renders correctly, 60 fps cap, 0 GPU errors, 0 in-play compiles.
+  Headless both backends pass; 154/154 test files; canaries 14/14.
 
 - 2026-11-21 Phase 1 (part): `tests/three-patch-canaries.test.ts` fails when a
   three upgrade removes any internal the five renderer patches or
