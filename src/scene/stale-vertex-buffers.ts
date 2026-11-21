@@ -43,7 +43,7 @@ import type { DelveRenderer } from './create-renderer';
 // behind, and `getVertexBuffers()` rebuilds both from scratch.
 //
 // Instance-patched on the backend, never three's prototypes (same shape as
-// bundle-pass-order.ts / stable-buffer-names.ts). `?stalevb=0` disables it.
+// bundle-pass-order.ts). `?stalevb=0` disables it.
 //
 // REMOVE ON A THREE BUMP IF `setGeometry` learns to null `vertexBuffers`
 // (mrdoob/three.js — RenderObject.setGeometry + onGeometryDispose).

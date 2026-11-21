@@ -108,34 +108,50 @@ foundations → back to building the game.
   iOS 26 WKWebView (developers report yes, Apple doesn't document it)
   `[uncertain]`.
 
-## Phase 2 — three.js (r185.1 → r186.1 done; r187 blocked)
+## Phase 2 — three.js (r185.1 → r187: done)
 
-- **r187 renders a BLACK WORLD on WebGPU** (real GPU, Windows Chrome,
-  2026-11-21): HUD draws, scene doesn't, even with post-processing off
-  (`setSceneOnly`) and bundles off. 11 validation errors during the warm, all
-  `[Texture "depth"|"output"] usage (TextureBinding|RenderAttachment) includes
-  writable usage and another usage in the same synchronization scope` on a
-  70×43 pass tagged `warming=1`; none after reveal. Headless: frame capture
-  hangs; `backend-boot` fails, as it should. r186.1 is clean on the same box.
-  Suspects from the r187 notes, untested: viewport/pixel-ratio
-  (#34333, #34460), depth-only render targets (#34782), animation-loop start
-  (#35278, #35279), CubeUV → cube RTs (#34585). `[uncertain]` — next step is to
-  bisect three's commits between r186 and r187.
-- r187 gains we'd want once it works, from release notes `[unverified]`:
-  parallel pipeline compile in `compileAsync` (#34816) for the descent warm;
-  shadow maps re-render only when `needsUpdate` (#34794); fewer scene matrix
-  updates (#35203); point-light shadow seam fix (#35267); clustered lighting
-  gains spot lights + a WebGL2 fallback (#34978), which could retire our own
-  `DelveTiledLighting`.
-- **Measured on r186.1** (headless, perf-horde, WebGPU): all three of our
-  naming/geometry patches are STILL NEEDED. `stable-buffer-names` off →
-  171 pipelines vs 92 (r185: 169 vs 90), so r186's deterministic binding
-  labels (#34069) don't cover skinned/instanced `NodeBuffer_<id>`.
-  `stable-shader-names` and `stale-vertex-buffers` change no count on this
-  floor (they guard other cases). Boot time and pipeline counts otherwise
-  unchanged vs r185 — r186.1 is a maintenance upgrade, not a speed-up.
-- Not fixed upstream, patches stay: render-bundle pass order; per-object
-  default uniform group (the CLAUDE.md rule stays).
+What r187 changed for us, measured 2026-11-21 (headless unless noted; times
+are software rendering, only compare like-for-like):
+- **Our clustered-lighting subclass is gone; the stock addon does its job.**
+  r187 made the cluster grid uniforms (no literals in WGSL) and refits it per
+  render. 4 render-scale changes mid-play on a real GPU: 0 lighting
+  recompiles. (The one compile seen was an unwarmed particle material — see
+  below.)
+- **`stable-buffer-names` deleted.** r187 names uniform buffers by bind-group
+  position; the patch measured as a no-op (perf-horde: 79 pipelines on or
+  off, vs 92/171 on r186).
+- **Fewer pipelines, faster warm.** WebGPU perf-horde 90 → 79 pipelines,
+  reveal ~16.4 → ~15 s; spawn 117 → 96-99. WebGL2 warms 159 → 60-64
+  pipelines, reveal ~35 → ~20 s, renders the same room. 0 in-play compiles
+  on both. `[unverified]` on a phone.
+- Real GPU (Windows Chrome, r187 confirmed via `window.__THREE__`): renders
+  correctly, ~59 fps at the 60 cap, 99 pipelines, 0 GPU errors.
+
+How it went, so nobody repeats it:
+- r187 first rendered a BLACK world. Bisected three (10 steps) to #34930
+  "ClusteredLightsNode: Improve dispose() and code structure", which renamed
+  every internal our subclass overrode; our `this.create()` threw in
+  `updateBefore`. The patch canaries missed it because they didn't cover the
+  addon — they do now.
+- Twice on the way, r187 looked fixed when it wasn't: vite's pre-bundle cache
+  lives in `<worktree>/.vite` (vite.config.ts `cacheDir`), keyed on the
+  lockfile, so swapping `node_modules/three` by hand served the cached r186.
+  `backend-boot` now fails when the page's `window.__THREE__` differs from the
+  installed three. **After changing three: `rm -rf .vite`.**
+
+Still open:
+- `stable-shader-names` and `stale-vertex-buffers` still install on r187 and
+  change no count on our test floors; they guard other cases. Re-measure on
+  the next bump. Render-bundle pass order still needs its patch.
+- r187's clustered node has a WebGL2 path (#34978) — could retire
+  `DelveTiledLighting` on WebGL2. Untested. `[parked]`
+- **Particle (`points`) material not covered by the warm**: one in-play
+  compile, verdict NOT-WARMED (`auto:points|t,b2,nd`, additive point-list).
+  Small hitch the first time those particles appear. Likely predates r187.
+  `[unverified]` which effect.
+- r187 gains not yet measured where they'd matter (phone): parallel
+  `compileAsync` (#34816), shadow re-render only on `needsUpdate` (#34794),
+  fewer matrix updates (#35203). Needs the phone recording.
 
 ## Phase 3 — debt
 
@@ -195,9 +211,9 @@ foundations → back to building the game.
 
 ## Closed
 
-- 2026-11-21 Phase 2 (part): three r185.1 → r186.1 + @types/three 0.186.
-  Real GPU: renders correctly, 60 fps cap, 0 GPU errors, 0 in-play compiles.
-  Headless both backends pass; 154/154 test files; canaries 14/14.
+- 2026-11-21 Phase 2: three r185.1 → r186.1 → r187 (+ @types/three 0.187).
+  Clustered-lighting subclass and stable-buffer-names deleted (upstream
+  fixes). 154/154 test files; canaries 15/15; backend-boot both backends.
 
 - 2026-11-21 Phase 1 (part): `tests/three-patch-canaries.test.ts` fails when a
   three upgrade removes any internal the five renderer patches or

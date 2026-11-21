@@ -32,7 +32,7 @@
 // nothing about a phone.
 
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PNG } from 'pngjs';
 import { launchHeadless, installWebGPUShims, paintHeadlessFrame, chromiumPath, CHROMIUM_CANDIDATES } from './headless-browser';
@@ -78,6 +78,9 @@ if (!chromiumPath()) {
 }
 
 const repoRoot = dirname(new URL(import.meta.url).pathname).replace(/\/scripts$/, '');
+// "0.187.0" → "187", the form three writes to window.__THREE__ (its REVISION).
+const installedThree = String(JSON.parse(readFileSync(`${repoRoot}/node_modules/three/package.json`, 'utf8')).version)
+  .split('.')[1];
 const port = 5180 + Math.floor(Math.random() * 100);
 const vite = spawn('node_modules/.bin/vite', ['--port', String(port), '--strictPort', '--host', '127.0.0.1'],
   { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
@@ -112,7 +115,6 @@ function meanLuma(png: Buffer): number {
 // WebGPU-only by design.
 const PATCHES: { name: string; line: string; backends: Backend[] }[] = [
   { name: 'bundle-pass-order', line: '[bundle-pass-order] mid-pass bundle flush installed', backends: ['webgpu'] },
-  { name: 'stable-buffer-names', line: '[stable-buffer-names] shape-derived uniform-buffer names installed', backends: ['webgpu'] },
   { name: 'stable-shader-names', line: '[stable-shader-names] per-group uniform / per-stage variable names installed', backends: ['webgpu'] },
   { name: 'stale-vertex-buffers', line: '[stale-vertex-buffers] geometry-swap cache repair installed', backends: ['webgpu', 'webgl2'] },
   { name: 'material-attribution', line: '[material-attribution] unnamed materials will be auto-named', backends: ['webgpu', 'webgl2'] },
@@ -163,6 +165,18 @@ async function check(backend: Backend): Promise<Result> {
 
     // The backend we got, from create-renderer's own report. Same module instance
     // as the app: vite serves one URL per module.
+    // The three the page actually LOADED vs the one installed. Vite serves
+    // pre-bundled deps from <worktree>/.vite (vite.config.ts cacheDir) keyed on
+    // the lockfile, so swapping three without the lockfile changing serves the
+    // OLD build. On 2026-11-21 that made r187 look fixed twice when it was r186
+    // from the cache. A mismatch makes every other number here meaningless.
+    step('checking three revision');
+    const loaded = await withTimeout(page.evaluate('window.__THREE__ || null'), 'three revision') as string | null;
+    notes.push(`three r${loaded}`);
+    if (loaded !== installedThree) {
+      problems.push(`page loaded three r${loaded} but node_modules has r${installedThree} — stale vite cache? rm -rf .vite`);
+    }
+
     step('reading backend');
     const active = await withTimeout(page.evaluate(`import('/brainstorm/src/scene/create-renderer.ts')
       .then(function (m) { return m.activeGraphicsBackend(); })

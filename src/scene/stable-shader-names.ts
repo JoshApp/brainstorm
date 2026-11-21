@@ -49,8 +49,9 @@ import type { DelveRenderer } from './create-renderer';
 // index. The rename changes shader text and nothing else. `?stableshader=0`
 // A/Bs it.
 //
-// Instance-patched on the backend, chained after stable-buffer-names (each
-// wraps the builder's methods and only rewrites the names it recognises).
+// Instance-patched on the backend. (It used to chain after stable-buffer-names,
+// deleted 2026-11-21 when r187 fixed buffer naming upstream; this one still
+// installs on r187 — re-measure it on the next three bump.)
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

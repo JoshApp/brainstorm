@@ -5,7 +5,6 @@ import { isDesktopLike } from '../controls/platform';
 import { DelveClusteredLighting } from './clustered-lighting';
 import { installWebGPUCompileGuard } from '../debug/webgpu-compile-guard';
 import { installBundlePassOrderFix } from './bundle-pass-order';
-import { installStableBufferNames } from './stable-buffer-names';
 import { installStableShaderNames } from './stable-shader-names';
 import { installStaleVertexBufferFix } from './stale-vertex-buffers';
 import { installMaterialAttribution } from './material-attribution';
@@ -144,12 +143,11 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<DelveRe
     }
   }
 
-  // r185 names each shader's uniform BUFFER after a global node counter, so two
-  // otherwise-identical shaders emit byte-different WGSL and compile as separate
-  // pipelines — every SkinnedMesh instance minting its own vertex shader at
-  // spawn. Must be installed BEFORE the first node build (i.e. before anything
-  // renders or compiles). See stable-buffer-names.ts.
-  installStableBufferNames(renderer);
+  // (stable-buffer-names.ts lived here until 2026-11-21: r185/r186 named each
+  // shader's uniform BUFFER after a global node counter, so every SkinnedMesh
+  // minted its own vertex shader — 171 vs 92 pipelines on perf-horde. r187 names
+  // them by bind-group position (WGSLNodeBuilder._getBindGroup), and the patch
+  // measured as a no-op there — 79 pipelines on or off — so it was deleted.)
   // Same disease, second organ: ordinary uniforms + variables are numbered by a
   // BUILDER-global counter, so a fragment shader's identifiers shift by however
   // many the vertex stage claimed — one fragment program per vertex layout it

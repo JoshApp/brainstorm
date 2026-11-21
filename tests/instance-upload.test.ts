@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { InstancedBufferAttribute } from 'three';
 import WebGPUAttributeUtils from 'three/src/renderers/webgpu/utils/WebGPUAttributeUtils.js';
+import Backend from 'three/src/renderers/common/Backend.js';
 import { uploadActiveInstances } from '../src/scene/instance-upload';
 
 // Exercise the installed renderer's actual range-to-writeBuffer conversion,
@@ -13,6 +14,10 @@ for (const itemSize of [2, 3]) {
     const state = { buffer: gpu, _itemSize: itemSize, _paddedItemSize: padded ? 4 : undefined };
     const utils = new WebGPUAttributeUtils({
       get: () => state,
+      // r187 resolves interleaved attributes through the backend first
+      // (#34690). Delegate to three's own implementation, not a copy of it.
+      getBufferAttribute: (a: unknown) => (Backend.prototype as unknown as { getBufferAttribute(a: unknown): unknown })
+        .getBufferAttribute.call(null, a),
       device: { queue: { writeBuffer(dest: Float32Array, offset: number, data: Float32Array, start = 0, count = data.length) {
         dest.set(data.subarray(start, start + count), offset / 4);
         uploadedBytes += count * 4;
