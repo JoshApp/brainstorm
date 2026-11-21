@@ -75,7 +75,10 @@ process.on('exit', stopVite);
 const up = await new Promise<boolean>((resolve) => {
   const t0 = Date.now();
   const iv = setInterval(() => {
-    if (/Local:\s+http:\/\/.+:\d+/.test(viteOut)) { clearInterval(iv); resolve(true); }
+    // Strip ANSI colour first: GitHub Actions forces colour, which puts escape
+    // codes between "Local" and ":" and the URL never matches.
+    // eslint-disable-next-line no-control-regex
+    if (/Local:\s+http:\/\/.+:\d+/.test(viteOut.replace(/\x1b\[[0-9;]*m/g, ''))) { clearInterval(iv); resolve(true); }
     else if (Date.now() - t0 > 30_000) { clearInterval(iv); resolve(false); }
   }, 100);
 });
