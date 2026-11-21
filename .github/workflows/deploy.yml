@@ -91,6 +91,23 @@ jobs:
           PATCH_BEFORE: ${{ github.event.before }}
           PATCH_AFTER: ${{ github.sha }}
 
+  # Boots a real floor on BOTH graphics backends in headless Chrome
+  # (scripts/backend-boot.ts): WebGL2 is the path for Steam Deck, Exynos phones,
+  # iPhones before iOS 26 and any refused adapter, and nothing else exercises
+  # it. Runs beside build, NOT in deploy's `needs` — a new headless-GPU job has
+  # to prove it doesn't flake before it is allowed to stop a deploy. A red X
+  # here still means look. (docs/OPEN-ITEMS.md: promote to blocking.)
+  backend-boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run backend-boot
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

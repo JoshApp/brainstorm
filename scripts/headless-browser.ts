@@ -42,6 +42,9 @@ export const CHROMIUM_CANDIDATES = [
   `${process.env.HOME}/.cache/ms-playwright/chromium-1194/chrome-linux/chrome`,
   `${process.env.HOME}/.cache/ms-playwright/chromium-1161/chrome-linux/chrome`,
   `${process.env.HOME}/.cache/ms-playwright/chromium-1148/chrome-linux/chrome`,
+  // A system Chrome — present on the dev box when no Playwright download is.
+  // Last, so a pinned Playwright Chromium always wins when there is one.
+  '/usr/bin/google-chrome',
 ];
 
 /** The pre-installed Chromium, or undefined to let Playwright resolve its own. */
