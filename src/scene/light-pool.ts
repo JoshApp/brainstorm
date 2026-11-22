@@ -291,6 +291,7 @@ export function unregisterLight(id: string): void {
 /** Clear all NON-persistent sources. Called at the start of buildLevel. */
 export function clearLightPool(): void {
   visById.clear();
+  bakedWriter = null;   // the next floor's bake installs its own
   for (const [id, src] of sources) {
     if (!src.persistent) sources.delete(id);
   }
@@ -349,6 +350,27 @@ export function setEnvLightMuls(strength: number, range: number): void {
 // player's calibrated visibility floor; torches/signals don't.
 let wickFillMul = 1;
 export function setWickFillMul(v: number): void { wickFillMul = v; }
+/** The torch-range setting's multiplier (the light bake sizes reach with it). */
+export function getEnvRangeMul(): number { return envRangeMul; }
+
+// ── BAKED LIGHTS (scene/baked-light.ts, ?bake=1) ──────────────────────────────
+// A baked source never takes a PointLight slot. Selection still runs on it —
+// the gate horizon and the fill switch decide whether it may burn at all, as
+// for any light — but the frustum test does not apply (it costs nothing off
+// screen), nor does the line-of-sight dim (the bake's walls ARE its line of
+// sight). What survives is written to the writer: position (with the flame
+// wobble), range, colour × intensity (flicker, mood tint, arena boost, the gate
+// fade, the strength setting), decay.
+export interface BakedLightWriter {
+  /** Start of a frame: every slot goes dark until written, so a baked light
+   *  that was unregistered mid-floor stops shining instead of freezing lit. */
+  begin(): void;
+  has(id: string): boolean;
+  write(id: string, x: number, y: number, z: number, cutoff: number,
+        r: number, g: number, b: number, decay: number): void;
+}
+let bakedWriter: BakedLightWriter | null = null;
+export function setBakedLightWriter(w: BakedLightWriter | null): void { bakedWriter = w; }
 const LOS_DIM = 0.3;          // blocked sources glow at this fraction
 const LOS_SORT_PENALTY = 90;  // dist²-space penalty: blocked ≈ 9.5m farther
 const LOW_PRIORITY_PENALTY = 40;
@@ -514,7 +536,9 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   if (DEV) { lightRows = []; rowById.clear(); }
   tally.refusedFill = tally.refusedGates = tally.refusedOffScreen = tally.live = tally.bound = 0;
   if (DEV) culledIds.length = 0;
+  bakedWriter?.begin();
   for (const src of sources.values()) {
+    if (bakedWriter && bakedWriter.has(src.id)) { tickBakedSource(src, dt, nowMs); continue; }
     // ── PHASE 1: MAY IT BURN AT ALL? ───────────────────────────────────────
     const sel = selectLight(src);
     if (sel.refused) {
@@ -638,6 +662,32 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     if (!boundNow.has(id)) visById.delete(id);
   }
   boundNow.clear();
+}
+
+/** One baked source's frame: the same selection, easing and live intensity a
+ *  bound slot gets, written to the bake's arrays instead of a PointLight. */
+function tickBakedSource(src: LightSource, dt: number, nowMs: number): void {
+  const sel = selectLight(src);
+  const burns = sel.refused === '' || sel.refused === 'offscreen';
+  const target = burns ? 1 : 0;
+  const prev = visById.get(src.id) ?? 0;
+  const vis = prev + (target - prev) * (1 - Math.exp(-dt * (target > prev ? 9 : 5)));
+  visById.set(src.id, vis);
+  boundNow.add(src.id);   // keep its easing state across frames (see the prune below)
+  const t = nowMs * 0.001;
+  const ph = src.position.x * 1.7 + src.position.z * 2.3;
+  const jx = (Math.sin(t * 5.3 + ph) + Math.sin(t * 2.1 + ph * 1.7) * 0.8) * FLAME_WOBBLE;
+  const jy = Math.sin(t * 6.7 + ph * 0.7) * FLAME_WOBBLE * 0.5;
+  const jz = (Math.cos(t * 4.9 + ph * 1.3) + Math.cos(t * 2.7 + ph * 0.5) * 0.8) * FLAME_WOBBLE;
+  const intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis
+    * envStrengthMul * (src.priority === 'low' ? wickFillMul : 1);
+  if (src.getColor) src.getColor(tmpColor); else tmpColor.setHex(src.color);
+  bakedWriter!.write(
+    src.id, src.position.x + jx, src.position.y + jy, src.position.z + jz,
+    src.distance * envRangeMul,
+    tmpColor.r * intensity, tmpColor.g * intensity, tmpColor.b * intensity, src.decay,
+  );
+  if (DEV) note(src, burns ? '' : sel.refused as LightMapRow['why'], sel.gates);
 }
 
 /** Record one source's outcome for the map. Last write wins, which is what we want: the

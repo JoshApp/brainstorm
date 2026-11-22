@@ -147,6 +147,7 @@ import { triggerAttack } from './controls/attack-input';
 import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setShadowMode, setEnvLightMuls, tickLightPool } from './scene/light-pool';
+import { installBakedLighting } from './scene/baked-light';
 import { applyAmbientWick, applyDaylight, startAmbientLight, stopAmbientLight } from './settings/ambient-light';
 import { warmThumbnailRig, requestThumbnail } from './ui/item-thumbnail';
 import { setAdaptiveWallClockFallback } from './scene/adaptive-resolution';
@@ -367,6 +368,9 @@ if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 // toggle is handled in the onSettingsChanged subscription. WebGPU uses a
 // lighting-model patch (no shared shader chunk under the node renderer).
 installBandedLightingWebGPU(getSettings().bandedLighting);
+// ?bake=1 — static lights through baked wall visibility (scene/baked-light.ts).
+// Changes every lit shader, so it is installed here, before any compile.
+installBakedLighting();
 // ?lean=1 — compile the LEAN lighting model from boot (no live-recompile uncertainty)
 // for a clean A/B of the per-light BRDF cost.
 if (new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);

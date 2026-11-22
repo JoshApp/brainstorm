@@ -58,6 +58,7 @@ import { setInputOverride } from '../controls/input';
 import { interpSync } from '../engine/render-interp';
 import { getUpdateStatus, applyUpdate } from '../pwa-update';
 import { getSettings } from '../settings/settings';
+import { bakeFloorLights } from '../scene/baked-light';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -243,6 +244,9 @@ export function tickPendingLoad() {
   // Build the new level into the same scene.
   tagPerfEvent(`level-load:${id}`);   // perf timeline (no-op unless the dashcam rolls)
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
+  // ?bake=1: bake every static light this floor registered against its walls
+  // (scene/baked-light.ts). No-op otherwise.
+  bakeFloorLights(level.walkable.listWalls());
   setActiveLevel(level);
   // A shout carries down a corridor, not through a wall. Installed here because
   // the alert module must not know about levels — same seam as every other

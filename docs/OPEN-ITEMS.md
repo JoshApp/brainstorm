@@ -259,6 +259,41 @@ Candidates, none built:
   Three.js", one via `require("three")`). Harmless for the traces so far;
   source of the `require` not found. `[unverified]`
 
+## Baked torchlight (`?bake=1`, built 2026-11-22, opt-in)
+
+Static environment lights (torches, sconces, braziers, candle stacks, room
+fills) lit through a baked top-down wall-VISIBILITY texture instead of live
+PointLight slots. `scene/light-bake.ts` (pure bake, `tests/light-bake.test.ts`),
+`scene/baked-light.ts` (textures, uniform arrays, the shader hook),
+`scene/light-pool.ts` (`tickBakedSource`: the same selection, gate fade,
+flicker, mood tint, strength setting and flame wobble, written to the bake's
+arrays). The shader runs three's own `directPointLight` per channel through
+the material's `direct()`, so falloff, banding and specular match a live light.
+
+Verified (headless, 2026-11-22):
+- Real floors, depths 1-12 (`npx tsx scripts/light-bake-stats.ts`): 19-31
+  static lights; 4 channels bake 85-95%, the rest stay live; bake 25-50 ms on
+  desktop; textures ~350 KB each.
+- Both backends boot with it (backend-boot `--url-extra=bake=1`): no shader or
+  validation errors, no compile gaps. The `archway` scenario renders near-
+  identical with and without it (luma 91.9 vs 91.7 WebGPU, 32.4 vs 34.2 WebGL2);
+  `__lightBakeScale(0)` darkens it, so the baked light is what is on screen.
+- Live point lights bound on a spawn view: 4 → 1 (the lamp).
+
+Not verified / known limits:
+- **Whether it is cheaper on a phone.** `[unverified]` — the bake trades the
+  clustered pass + its per-fragment loop for 2 texture samples + up to 4 light
+  evaluations on every lit fragment. Headless software rendering can't say
+  which is cheaper. Needs a phone recording with and without `?bake=1`. `[josh]`
+- **How it looks on a phone.** Walls now stop torch light (a live point light
+  passed through them, dimmed to 30% by the director), so rooms behind a wall
+  from a torch get darker. `[josh]` judge.
+- The torch-RANGE setting is read at bake time; changing it mid-floor keeps the
+  old reach until the next floor.
+- Occlusion is 2D: a floor slab between levels doesn't stop light.
+- Lights registered after the bake (a boss bonfire, revealed chests) are live.
+- `CHANNELS = 4`; 8 would bake every light measured, at 2 more texture samples.
+
 ## Phase 4 — platform foundations (before any store)
 
 - No gamepad; `isDesktopLike()` false on any touch device, so a Deck or touch
