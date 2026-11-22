@@ -311,507 +311,11 @@ export function update(self: EnemyCtx, dt: number, playerPos: THREE.Vector3, wal
   // instant the riposte finished it — this is the parry-kill deadlock fix.
   if (!self.fsm.alive) return;
 
-  switch (self.fsm.state) {
-    case 'dormant': {
-      // No perception, no movement, no idle scan, no vocalisation.
-      // Only check is "did the boss-bar engagement flip on?" — the
-      // fog-wall cross trigger flips it, and that's our wake
-      // signal. We jump straight to chasing so the bar appearing,
-      // the boss intro, and the boss starting to hunt all land on
-      // the SAME frame the player crosses the threshold.
-      if (isBossEngaged()) {
-        self.fsm.state = 'chasing';
-        self.fsm.phaseTimer = 0;
-      }
-      break;
-    }
-    case 'staggered': {
-      // Poise broken — reel in place, can't act. A DIZZY TUMBLE: recoil back,
-      // then wobble + spin around the model's own axis like a cartoon
-      // character seeing stars (eased out as it recovers), eyes dimmed, the
-      // stun-star ring orbiting overhead. The openWhenStaggered weak points
-      // are exposed this whole window. The free-hit the player earned.
-      // The beat is advanced once per frame by action.tick (above); read its
-      // elapsed time to drive the dizzy → settle arc.
-      const elapsed = self.actionFsm.staggerElapsed();
-      // Dizzy for the first ~1.5s (spin + drunken lean), then SETTLE into a
-      // slumped, head-down stun with a gentle sway for the rest of the long
-      // window — reads "down for a beat", not spinning forever.
-      const wob = Math.max(0, 1 - elapsed / 1.5);
-      applyTilt(self, -0.45 - 0.25 * wob);                                  // stays slumped back
-      self.built.group.rotation.y = Math.sin(elapsed * 15) * 0.4 * wob;    // dizzy spin
-      self.built.group.rotation.z = Math.sin(elapsed * 11) * 0.18 * wob + Math.sin(elapsed * 2.2) * 0.06;
-      self.applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
-      self.built.group.position.y = 0;
-      // Placed above the model's ACTUAL top, not a guessed height — a tall
-      // body (stoneguard) otherwise buries the stars in its chest.
-      if (!self.pres.stunStars) self.pres.stunStars = createStunStars(self.container, crownHeight(self) + 0.4);
-      if (!self.actionFsm.isStaggered()) {
-        applyTilt(self, 0);
-        self.built.group.rotation.y = 0;
-        self.built.group.rotation.z = 0;
-        setStaggerVuln(self, false);   // close the exposed weak point
-        // If the blow that broke it came from BEHIND, fear was imposed during
-        // the reel and cashes in here: it comes out of the stagger running,
-        // not swinging. That handoff is the whole poise→panic→backstab loop.
-        if (self.poise.fearTimer > 0) breakMorale(self);
-        else { self.fsm.state = 'chasing'; self.fsm.phaseTimer = 0; }
-      }
-      break;
-    }
-    case 'fleeing': {
-      // Nerve broke — ROUT away from the player, then COWER at a safe remove (a
-      // free kill), then re-engage ONCE (brokenOnce stops a second flee). The
-      // head-track keeps it glancing back over its shoulder as it runs.
-      self.fsm.phaseTimer += dt;
-      const M = CONFIG.ENEMY_AI.MORALE;
-      if (self.poise.cowerTimer > 0) {
-        // COWERING — hunched, defenceless. Bolt again if the player closes back
-        // in; otherwise hold until nerve returns.
-        self.poise.cowerTimer -= dt;
-        if (distance < M.FLEE_SAFE_DIST * 0.6) {
-          self.poise.cowerTimer = 0;   // player chased it down → bolt
-        } else {
-          applyTilt(self, -0.5);            // hunched down/back
-          self.eyePresenter.applySearch();  // eyes dim — cowed, not glaring
-          self.built.group.position.y = 0;
-          if (self.poise.cowerTimer <= 0) {
-            // Nerve returns when the cower runs out — UNLESS fear is still on
-            // it, in which case no amount of hiding is enough. Refresh the
-            // cower rather than letting it lapse, so it stays hunched instead
-            // of twitching back into a one-frame rout every 2.6s.
-            if (self.poise.fearTimer > 0) self.poise.cowerTimer = M.COWER_DURATION;
-            else { applyTilt(self, 0); self.fsm.state = 'chasing'; self.fsm.phaseTimer = 0; }
-          }
-          break;
-        }
-      }
-      // ROUT — run directly away from the player, panicked + fast.
-      const dxr = self.container.position.x - playerPos.x, dzr = self.container.position.z - playerPos.z;
-      const l = Math.hypot(dxr, dzr) || 1;
-      const bx = self.container.position.x, bz = self.container.position.z;
-      moveTowards(self, self.container.position.x + (dxr / l) * 3.0, self.container.position.z + (dzr / l) * 3.0,
-                  moveSpeed * M.FLEE_SPEED_MUL, dt, walkable, nav);
-      faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, playerPos, dt);
-      self.eyePresenter.applySearch();
-      applyTilt(self, 0);
-      self.built.group.position.y = 0;
-      // Reached safety → cower. Cornered (can't open the gap after a few
-      // seconds of running the walls) → cower anyway, a trapped coward.
-      if (distance >= M.FLEE_SAFE_DIST || self.fsm.phaseTimer > 3.0) self.poise.cowerTimer = M.COWER_DURATION;
-      break;
-    }
-    case 'idle': {
-      // Dormant boss (king behind its fog gate): hold dead STILL — no
-      // gaze scan, no alerts. It's asleep, looming, until you commit.
-      // (The constant left-right idle scan reads as a twitchy giant.)
-      if (dormant) {
-        self.applyIdleEyes();
-        applyTilt(self, 0);
-        self.built.group.position.y = 0;
-        break;
-      }
-      // ── AMBIENT WANDER (non-hostile vermin) ────────────────────────────
-      // A maggot never hunts; instead of standing frozen it crawls slowly
-      // between random spots near its spawn, wriggling as it goes — living
-      // atmosphere. Paused between crawls with an in-place squirm.
-      if (!self.hostileToPlayer) {
-        if (!self.idle.homeSet) { self.idle.homeX = self.container.position.x; self.idle.homeZ = self.container.position.z; self.idle.homeSet = true; }
-        const wt = gameNow() / 1000;   // game clock: live = performance.now(), replay = stepped
-        self.applyIdleEyes();
-        applyTilt(self, 0);
-        if (self.idle.wanderPause > 0) {
-          self.idle.wanderPause -= dt;
-          self.container.rotation.y += Math.sin(wt * 3.0 + self.wrigglePhase) * dt * 0.5;   // idle squirm
-          self.built.group.position.y = Math.abs(Math.sin(wt * 2.4 + self.wrigglePhase)) * 0.006;
-          break;
-        }
-        if (!self.idle.wanderActive) {
-          const a = gameRng() * Math.PI * 2;
-          const r = 0.4 + gameRng() * 1.2;
-          self.idle.wanderX = self.idle.homeX + Math.cos(a) * r;
-          self.idle.wanderZ = self.idle.homeZ + Math.sin(a) * r;
-          self.idle.wanderActive = true; self.idle.wanderTimer = 0;
-        }
-        self.idle.wanderTimer += dt;
-        const wdx = self.idle.wanderX - self.container.position.x, wdz = self.idle.wanderZ - self.container.position.z;
-        if (Math.hypot(wdx, wdz) < 0.14 || self.idle.wanderTimer > 3) {
-          self.idle.wanderActive = false;
-          self.idle.wanderPause = 0.7 + gameRng() * 1.6;   // rest + wriggle between crawls
-          self.built.group.position.y = 0;
-          break;
-        }
-        moveTowards(self, self.idle.wanderX, self.idle.wanderZ, moveSpeed, dt, walkable, nav);
-        // Ease yaw toward travel + a side-to-side wriggle (the grub crawl).
-        const targetYaw = Math.atan2(wdx, wdz) + Math.PI;
-        let dyw = targetYaw - self.container.rotation.y;
-        while (dyw > Math.PI) dyw -= Math.PI * 2; while (dyw < -Math.PI) dyw += Math.PI * 2;
-        self.container.rotation.y += dyw * Math.min(1, dt * 2.5) + Math.sin(wt * 8 + self.wrigglePhase) * dt * 0.9;
-        self.built.group.position.y = Math.abs(Math.sin(wt * 9 + self.wrigglePhase)) * 0.008;
-        break;
-      }
-      // Shared aggro pickup — if a fellow mob has broadcast an alert
-      // and we're inside its radius, join the fight. Sets lastSeenPos
-      // to the alert location so 'searching' / 'chasing' have a
-      // direction to head even if we don't currently have LOS.
-      const alert = self.hostileToPlayer ? sampleAlert(self.container.position.x, self.container.position.z) : null;
-      if (alert) {
-        self.aware.aggroed = true;
-        self.lastSeenPos.set(alert.x, 0, alert.z);
-        self.fsm.state = 'alerted';
-        self.fsm.phaseTimer = 0;
-        playEnemyWindup(audioSizeFor(self.spec), self.container.position);
-        break;
-      }
-      // Slow scan around home yaw. Pick a new target angle every
-      // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
-      // a watching player can tell at a glance "this one hasn't seen me yet."
-      self.idle.scanTimer += dt;
-      if (self.idle.scanTimer >= self.idle.scanInterval) {
-        self.idle.scanTimer = 0;
-        self.idle.scanInterval = IDLE_SCAN_INTERVAL_MIN + gameRng() * IDLE_SCAN_INTERVAL_JITTER;
-        if (gameRng() < IDLE_SCAN_HOLD_CHANCE) {
-          // Pause: keep watching the current direction for a beat.
-          self.idle.scanTargetYaw = self.container.rotation.y;
-        } else {
-          // Gentle random-walk with a HOME-PULL: step a little from where we're
-          // looking, but bias 35% back toward home each step so the gaze settles
-          // looking forward instead of pinging between the arc edges (the old
-          // left-right metronome). Clamped to ±arc as a hard backstop.
-          const stepped = self.idle.scanTargetYaw
-            + (gameRng() * 2 - 1) * IDLE_SCAN_STEP
-            - (self.idle.scanTargetYaw - self.idle.homeYaw) * 0.35;
-          self.idle.scanTargetYaw = Math.max(self.idle.homeYaw - IDLE_SCAN_HALF_ARC,
-                                   Math.min(self.idle.homeYaw + IDLE_SCAN_HALF_ARC, stepped));
-        }
-      }
-      // Ease container yaw toward the scan target — slow, so a gaze shift drifts
-      // with weight instead of snapping. Wrap delta to nearest π.
-      let delta = self.idle.scanTargetYaw - self.container.rotation.y;
-      while (delta >  Math.PI) delta -= Math.PI * 2;
-      while (delta < -Math.PI) delta += Math.PI * 2;
-      self.container.rotation.y += delta * Math.min(1, dt * 0.6);
-      self.applyIdleEyes();
-      applyTilt(self, 0);
-      self.built.group.position.y = 0;
-      break;
-    }
-
-    case 'alerted': {
-      // Brief "I see you" pause. Eyes flare bright, body rears back
-      // slightly, then commits to chase. Face player during this so the
-      // moment reads — the model snaps from scan-pose to confront-pose.
-      self.fsm.phaseTimer += dt;
-      const t = Math.min(1, self.fsm.phaseTimer / ALERTED_DURATION);
-      faceTarget(self, playerPos, dt);
-      self.setEyeFlare(t);
-      applyTilt(self, -0.15 * t);   // slight rear-back (negative tilt)
-      self.built.group.position.y = 0;
-      if (self.fsm.phaseTimer >= ALERTED_DURATION) {
-        self.fsm.state = 'chasing';
-        self.fsm.phaseTimer = 0;
-      }
-      break;
-    }
-
-    case 'searching': {
-      // Walk toward last known position. If we get close to it without
-      // re-acquiring (canSeePlayer handles that above by resetting
-      // state to chasing on re-acquire), wait a beat, then return home.
-      self.fsm.phaseTimer += dt;
-      const dxs = self.lastSeenPos.x - self.container.position.x;
-      const dzs = self.lastSeenPos.z - self.container.position.z;
-      const distToLast = Math.hypot(dxs, dzs);
-      // Face the search direction.
-      faceTarget(self, self.lastSeenPos, dt);
-      if (distToLast > 0.4) {
-        // Wary search — slower than chase (0.7x). Pathfinds around
-        // obstacles, same as chasing.
-        moveTowards(self, self.lastSeenPos.x, self.lastSeenPos.z, moveSpeed * 0.7, dt, walkable, nav);
-      }
-      // Search times out either by phaseTimer or by re-acquiring (above).
-      if (self.fsm.phaseTimer >= SEARCH_DURATION) {
-        self.fsm.state = 'returning';
-        self.fsm.phaseTimer = 0;
-      }
-      // Dimmer eye flare during search — alert but not committed.
-      self.eyePresenter.applySearch();
-      applyTilt(self, 0);
-      self.built.group.position.y = 0;
-      break;
-    }
-
-    case 'returning': {
-      // Returning home also picks up alerts — if combat reignites
-      // before we've reached our post, turn back around.
-      const returnAlert = self.hostileToPlayer ? sampleAlert(self.container.position.x, self.container.position.z) : null;
-      if (returnAlert) {
-        self.aware.aggroed = true;
-        self.lastSeenPos.set(returnAlert.x, 0, returnAlert.z);
-        self.fsm.state = 'chasing';
-        self.fsm.phaseTimer = 0;
-        break;
-      }
-      // Walk back to spawn post. On arrival, snap to home yaw and idle.
-      const dxr = self.homePos.x - self.container.position.x;
-      const dzr = self.homePos.z - self.container.position.z;
-      const distHome = Math.hypot(dxr, dzr);
-      if (distHome < 0.25) {
-        self.fsm.state = 'idle';
-        // Reset scan so it picks a fresh target next idle tick.
-        self.idle.scanTimer = self.idle.scanInterval;
-        self.idle.scanTargetYaw = self.idle.homeYaw;
-        break;
-      }
-      // Walk back to spawn at 0.6x speed, routing around obstacles.
-      moveTowards(self, self.homePos.x, self.homePos.z, moveSpeed * 0.6, dt, walkable, nav);
-      // Face direction of travel — use the home delta direction so
-      // facing is stable even if the path waypoint pulls slightly
-      // sideways.
-      tmpDir.set(self.homePos.x - self.container.position.x, 0, self.homePos.z - self.container.position.z);
-      if (tmpDir.lengthSq() > 1e-6) tmpDir.normalize();
-      faceXZ(self, self.container.position.x + tmpDir.x, self.container.position.z + tmpDir.z);
-      self.applyIdleEyes();
-      applyTilt(self, 0);
-      self.built.group.position.y = 0;
-      break;
-    }
-
-    case 'chasing': {
-      // ATTACK FIRST: if a ready ability's band contains us, commit to
-      // it — regardless of being a kiter or "too close." This is the
-      // fix for kiters never attacking: the flee branch used to run
-      // first, so an acolyte (which the faster player can always stay
-      // close to) fled forever and never cast. Now it shoots whenever
-      // it can; the cooldown between shots is its window to reposition.
-      // Gate the commit on a pack ATTACK TOKEN — only ATTACK_TOKENS mobs may
-      // be mid-attack at once. A mob that wants to attack but can't get a
-      // token falls through to movement below: it holds the ring and prowls,
-      // waiting its turn (the pack takes turns lunging instead of all swinging
-      // at once). Bosses + lone mobs are unaffected (a token is always free).
-      // ── Intent decision (Enemy AI V2) ─────────────────────────────
-      // Warm the mood toward the personality's target while engaged, then
-      // re-pick the intent on the slow decision tick (commitment, not jitter).
-      // Bosses skip this and keep the old always-commit pressure.
-      if (self.useIntent) {
-        const I = CONFIG.ENEMY_AI.INTENT;
-        const warmTarget = I.MOOD_TARGET_BASE + self.personality.boldness * I.MOOD_TARGET_BOLD;
-        self.intent.aggression += (warmTarget - self.intent.aggression) * Math.min(1, I.MOOD_WARM_RATE * dt);
-        // Time since this mob last COMMITTED an attack. Reset at the commit
-        // below (not when `press` is merely chosen — a press that never gets
-        // an ability or a pack token has not fed the mob, and resetting there
-        // would let it starve-loop while still doing nothing).
-        self.intent.sinceCommit += dt;
-        self.intent.decisionTimer -= dt;
-        if (self.intent.decisionTimer <= 0) {
-          self.intent.decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
-          const ent = getEntity(self.entityId);
-          const hpFrac = ent?.hp && self.bossPhases.maxHp > 0 ? ent.hp.current / self.bossPhases.maxHp : 1;
-          self.intent.currentIntent = selectIntent({
-            distance, reach: self.spec.strikeRange, commitDistance: self.commitDistance,
-            aggression: self.intent.aggression, personality: self.personality,
-            canAttack: selectAbility(self, distance) !== null,
-            hpFrac, sinceCommit: self.intent.sinceCommit, rng: gameRng,
-          });
-        }
-      }
-
-      const ability = selectAbility(self, distance);
-      // Attacks are HELD unless an aggressive intent (press) releases one —
-      // that's what makes the fight breathe. Bosses always release.
-      const mayRelease = !self.useIntent || self.intent.currentIntent.releaseAttack;
-      if (ability && self.actionFsm.canAct() && mayRelease && requestToken(self.entityId)) {
-        self.combat.currentAbility = ability;
-        self.combat.meleeHitLanded = false;   // fresh strike — parryable until it connects
-        self.fsm.state = 'winding';
-        self.fsm.phaseTimer = 0;
-        self.rollWindupTime();
-        // A bomb arming gets the FUSE instead of the generic windup bark: a
-        // rising whine held for the exact length of this mob's windup, so the
-        // pitch climb tells you how long you have. Josh's ask was that the
-        // thing about to blow says so diegetically — no meter, no icon; the
-        // sound, the swelling body, and the ring on the floor are the UI.
-        if (armedBlastAction(self)) playFuse(self.container.position, self.combat.currentWindupTime);
-        else playEnemyWindup(audioSizeFor(self.spec), self.container.position);
-        // Snapshot the committed target (the 'lockedTarget' anchor) +
-        // raise the spatial telegraph the instant the windup begins, so
-        // the player has the full windup to step off the marker.
-        setupAbilityTelegraph(self, ability, playerPos);
-        // Committing spends aggression → a lull before the next burst.
-        if (self.useIntent) self.intent.aggression = Math.max(0, self.intent.aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
-        self.intent.sinceCommit = 0;   // fed — the starvation pressure resets
-      } else {
-        // No ability available (out of band, or on cooldown).
-        const pref = self.spec.preferredRange ?? 0;
-        // Ranged mobs only fight from a CLEAR sightline (DOOM's ranged demons
-        // hold an open angle rather than firing into cover). A blocked kiter
-        // repositions to round the obstacle instead of holding behind a wall.
-        const kiterCanShoot = pref > 0
-          && walkable.hasLineOfSight(self.container.position.x, self.container.position.z, playerPos.x, playerPos.z);
-        if (self.combat.plantTimer > 0) {
-          // PLANTED — it just fired and is watching what you do about it.
-          faceTarget(self, playerPos, dt);
-        } else if (kiterCanShoot && distance < pref) {
-          // KITER too close — back away to reopen the gap (the
-          // reposition window between shots). Aim ~2m directly away;
-          // moveTowards pathfinds + clamps against walls. Cornered, it
-          // can't retreat (your reward for running it down).
-          const dx = self.container.position.x - playerPos.x;
-          const dz = self.container.position.z - playerPos.z;
-          const len = Math.hypot(dx, dz) || 1;
-          moveTowards(self, 
-            self.container.position.x + (dx / len) * 2.0,
-            self.container.position.z + (dz / len) * 2.0,
-            moveSpeed, dt, walkable, nav,
-          );
-          faceXZ(self, playerPos.x, playerPos.z);   // ranged: keep the player in its sights as it backs off
-        } else if (kiterCanShoot && distance <= self.commitDistance) {
-          // KITER waiting out its cooldown while comfortably in range +
-          // sighted — HOLD position (just keep facing the player). Without this
-          // it would creep toward you between shots, which looked wrong.
-          faceTarget(self, playerPos, dt);
-        } else if (pref > 0 && !kiterCanShoot) {
-          // RANGED, shot BLOCKED — advance to round the obstacle and regain a
-          // sightline (moveTowards pathfinds around walls); once it can see you
-          // again it drops back to hold + fire. Faces its actual travel.
-          const bx = self.container.position.x, bz = self.container.position.z;
-          moveTowards(self, playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
-          faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, playerPos, dt);
-        } else if (self.useIntent && self.intent.currentIntent.moveMode === 'hold') {
-          // WATCH — the lull, but COILED not frozen: periodically feint a lunge
-          // (dart in, snap back) so it reads as circling for an opening. Between
-          // feints it holds + faces the player (the head already tracks).
-          if (!tickFeint(self, dt, playerPos, walkable, nav)) faceMovement(self, 0, 0, playerPos, dt);
-        } else if (distance > 0.1) {
-          // CLOSE / CIRCLE / press — move to the PACK ring slot (surrounds the
-          // player; speed scales with the intent — press rushes, circle prowls),
-          // then face the mob's ACTUAL travel this frame. Charging in → it faces
-          // you; prowling the ring → it faces along its arc (circles, showing its
-          // flank) rather than crab-walking sideways; blocked/arrived → it faces
-          // you, poised. The windup's aim-ramp snaps the final aim on the strike.
-          const spd = self.useIntent ? self.intent.currentIntent.speedMul : 1;
-          const ringTarget = packMoveTarget(self.entityId, playerPos, packScratch());
-          const tx = ringTarget ? ringTarget.x : playerPos.x;
-          const tz = ringTarget ? ringTarget.z : playerPos.z;
-          const bx = self.container.position.x, bz = self.container.position.z;
-          moveTowards(self, tx, tz, moveSpeed * spd, dt, walkable, nav);
-          faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, playerPos, dt);
-        } else {
-          faceMovement(self, 0, 0, playerPos, dt);   // on top of the player — face them
-        }
-      }
-      self.setEyeFlare(0);
-      applyTilt(self, 0);
-      self.built.group.position.y = 0;
-      break;
-    }
-
-    case 'winding': {
-      if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; break; }
-      self.fsm.phaseTimer += actionDt;
-      tickAbilityMotion(self, dt, walkable);
-      const t = Math.min(1, self.fsm.phaseTimer / self.combat.currentWindupTime);
-      applyTelegraph(self, self.combat.currentAbility.pose, 'windup', t);
-      if (self.combat.aoeTelegraph) self.combat.aoeTelegraph.setProgress(t);
-      if (self.combat.lashTendril) self.combat.lashTendril.setProgress(t);   // tentacle reaches out over the windup
-      // Melee creep — close at half-speed during windup so a stationary
-      // player still gets clipped (a backpedalling player out-runs it).
-      // Charges DON'T creep: the dash strike is the approach.
-      // A primed BLAST creeps too, and at full speed: once it's armed it is
-      // committed, and a bomb that stops walking the moment it lights is a
-      // bomb you beat by taking one step back.
-      const reach = creepReach(self.combat.currentAbility);
-      if (wantsCreep(self.combat.currentAbility) && reach !== null && distance > reach) {
-        moveTowards(self, playerPos.x, playerPos.z, moveSpeed * creepSpeedMul(self.combat.currentAbility), dt, walkable, nav);
-      }
-      // Drag a self-anchored danger ring along with the body.
-      if (self.combat.aoeTelegraph && self.combat.aoeTelegraphFollowsSelf) {
-        self.combat.aoeTelegraph.moveTo(self.container.position.x, self.container.position.z);
-      }
-      // The core runs hot as the fuse burns (the body's swell is the other
-      // half of the tell — it lives in tickLashDeform, which owns scale).
-      if (armedBlastAction(self)) self.setEyeFlare(Math.min(1, 0.35 + 0.65 * t));
-      if (self.fsm.phaseTimer >= self.combat.currentWindupTime) {
-        self.fsm.state = 'striking';
-        self.fsm.phaseTimer = 0;
-        playEnemyStrike(audioSizeFor(self.spec), self.container.position);  // the attack RELEASE bark
-        // Arm the timeline: clear per-step latches + events, capture the
-        // leap takeoff point.
-        self.combat.stepStarted = self.combat.currentAbility.steps.map(() => false);
-        self.combat.stepDone = self.combat.currentAbility.steps.map(() => false);
-        self.stepEvents.clear();
-        self.leapStart.copy(self.container.position);
-      }
-      break;
-    }
-
-    case 'striking': {
-      if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; break; }
-      self.fsm.phaseTimer += actionDt;
-      tickAbilityMotion(self, dt, walkable);
-      // Run the timeline: fire each step once its trigger is met, then
-      // keep ticking it until its action latches done. Per-step state,
-      // so steps never interfere with each other.
-      const steps = self.combat.currentAbility.steps;
-      for (let i = 0; i < steps.length; i++) {
-        if (self.combat.stepDone[i]) continue;
-        if (!self.combat.stepStarted[i]) {
-          if (!triggerMet(self, steps[i].trigger, self.fsm.phaseTimer)) continue;
-          // MELEE CONTACT timing — a melee blow lands when the swing reaches
-          // the struck pose (CONTACT_FRAC into the strike), not on strike-frame
-          // 0. This is what connects the damage to the visible swing and lets a
-          // dodge read against the swing, not the windup. Other action kinds
-          // (projectile / aoe / dash / leap) fire on their authored `at`.
-          if (steps[i].action.kind === 'melee'
-              && self.fsm.phaseTimer < self.combat.currentAbility.strike * CONFIG.MOB_STRIKE_CONTACT_FRAC) continue;
-          self.combat.stepStarted[i] = true;
-        }
-        const done = runAction(self, steps[i].action, self.combat.currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
-        if (done) self.combat.stepDone[i] = true;
-        // A deflected melee strike calls triggerStagger() inside runAction,
-        // which NULLS currentAbility and flips to 'staggered' mid-loop. Bail
-        // immediately — the rest of this case dereferences currentAbility
-        // (.pose / .strike) and would crash (the parry-freeze bug).
-        if (!self.combat.currentAbility) break;
-      }
-      if (!self.combat.currentAbility) break;
-      applyTelegraph(self, self.combat.currentAbility.pose, 'strike',
-        self.combat.currentAbility.strike > 0 ? Math.min(1, self.fsm.phaseTimer / self.combat.currentAbility.strike) : 1);
-      if (self.combat.lashTendril) self.combat.lashTendril.snap();            // tentacle snaps out + flares on the strike
-      if (self.fsm.phaseTimer >= self.combat.currentAbility.strike) {
-        self.fsm.state = 'recovering';
-        self.fsm.phaseTimer = 0;
-        // Safety: snap any in-air leap Y back to ground if the touchdown
-        // didn't catch the final frame (dt overshoot), so the enemy
-        // can't end up floating at the arc peak.
-        self.container.position.y = groundYAt(self.container.position.x, self.container.position.z);
-      }
-      break;
-    }
-
-    case 'recovering': {
-      if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; break; }
-      self.fsm.phaseTimer += actionDt;
-      tickAbilityMotion(self, dt, walkable);
-      const t = Math.min(1, self.fsm.phaseTimer / self.combat.currentAbility.recover);
-      applyTelegraph(self, self.combat.currentAbility.pose, 'recover', t);
-      if (self.combat.lashTendril) self.combat.lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
-      if (self.fsm.phaseTimer >= self.combat.currentAbility.recover) {
-        // Hold the ground it just shot from (see plantTimer).
-        if (self.combat.currentAbility.steps.some((st) => st.action.kind === 'projectile')) {
-          self.combat.plantTimer = CONFIG.ENEMY_AI.RANGED_PLANT_S;
-        }
-        // ±18% jitter so packs drift out of sync over the fight.
-        self.cooldowns.set(self.combat.currentAbility.id, (self.combat.currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
-        self.combat.currentAbility = null;
-        clearAoeTelegraph(self);   // safety — normally disposed at strike
-        clearLashTendril(self);
-        self.fsm.state = 'chasing';
-        self.fsm.phaseTimer = 0;
-      }
-      break;
-    }
-  }
+  // ── The state machine: one handler per state (STATE_HANDLERS, below) ──
+  frame.dt = dt; frame.actionDt = actionDt; frame.playerPos = playerPos;
+  frame.distance = distance; frame.moveSpeed = moveSpeed; frame.dormant = dormant;
+  frame.walkable = walkable; frame.nav = nav;
+  STATE_HANDLERS[self.fsm.state](self, frame);
 
   // ── Reactive-defense threat flash ────────────────────────────────
   // Flash during the lead-up to a reachable CONTACT strike: the last
@@ -916,5 +420,538 @@ export function update(self: EnemyCtx, dt: number, playerPos: THREE.Vector3, wal
     const showSkull = self.isFeared() && self.fsm.state !== 'staggered';
     if (showSkull && !self.pres.fearSkull) self.pres.fearSkull = createFearSkull(self.container, crownHeight(self) + 0.20);
     self.pres.fearSkull?.tick(dt, showSkull);
+  }
+}
+
+/** What a state handler reads of this frame: update()'s inputs and the values
+ *  it derives before dispatching. ONE object, refilled per call — every enemy
+ *  updates every frame, so a fresh object each time would be steady garbage.
+ *  Safe because handlers run synchronously and never re-enter update(). */
+interface BrainFrame {
+  dt: number;
+  distance: number;
+  playerPos: THREE.Vector3;
+  moveSpeed: number;
+  walkable: WalkableRegion;
+  nav: NavGrid | undefined;
+  dormant: boolean;
+  actionDt: number;
+}
+const frame: BrainFrame = {
+  dt: undefined!,
+  distance: undefined!,
+  playerPos: undefined!,
+  moveSpeed: undefined!,
+  walkable: undefined!,
+  nav: undefined!,
+  dormant: undefined!,
+  actionDt: undefined!,
+};
+
+/** One handler per AI state. A state's handler runs once per frame while the
+ *  enemy is in it; changing `self.fsm.state` takes effect next frame. */
+const STATE_HANDLERS: Record<EnemyState, (self: EnemyCtx, f: BrainFrame) => void> = {
+  dormant: tickDormant,
+  staggered: tickStaggered,
+  fleeing: tickFleeing,
+  idle: tickIdle,
+  alerted: tickAlerted,
+  searching: tickSearching,
+  returning: tickReturning,
+  chasing: tickChasing,
+  winding: tickWinding,
+  striking: tickStriking,
+  recovering: tickRecovering,
+};
+
+function tickDormant(self: EnemyCtx, f: BrainFrame): void {
+  // No perception, no movement, no idle scan, no vocalisation.
+  // Only check is "did the boss-bar engagement flip on?" — the
+  // fog-wall cross trigger flips it, and that's our wake
+  // signal. We jump straight to chasing so the bar appearing,
+  // the boss intro, and the boss starting to hunt all land on
+  // the SAME frame the player crosses the threshold.
+  if (isBossEngaged()) {
+    self.fsm.state = 'chasing';
+    self.fsm.phaseTimer = 0;
+  }
+}
+
+function tickStaggered(self: EnemyCtx, f: BrainFrame): void {
+  // Poise broken — reel in place, can't act. A DIZZY TUMBLE: recoil back,
+  // then wobble + spin around the model's own axis like a cartoon
+  // character seeing stars (eased out as it recovers), eyes dimmed, the
+  // stun-star ring orbiting overhead. The openWhenStaggered weak points
+  // are exposed this whole window. The free-hit the player earned.
+  // The beat is advanced once per frame by action.tick (above); read its
+  // elapsed time to drive the dizzy → settle arc.
+  const elapsed = self.actionFsm.staggerElapsed();
+  // Dizzy for the first ~1.5s (spin + drunken lean), then SETTLE into a
+  // slumped, head-down stun with a gentle sway for the rest of the long
+  // window — reads "down for a beat", not spinning forever.
+  const wob = Math.max(0, 1 - elapsed / 1.5);
+  applyTilt(self, -0.45 - 0.25 * wob);                                  // stays slumped back
+  self.built.group.rotation.y = Math.sin(elapsed * 15) * 0.4 * wob;    // dizzy spin
+  self.built.group.rotation.z = Math.sin(elapsed * 11) * 0.18 * wob + Math.sin(elapsed * 2.2) * 0.06;
+  self.applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
+  self.built.group.position.y = 0;
+  // Placed above the model's ACTUAL top, not a guessed height — a tall
+  // body (stoneguard) otherwise buries the stars in its chest.
+  if (!self.pres.stunStars) self.pres.stunStars = createStunStars(self.container, crownHeight(self) + 0.4);
+  if (!self.actionFsm.isStaggered()) {
+    applyTilt(self, 0);
+    self.built.group.rotation.y = 0;
+    self.built.group.rotation.z = 0;
+    setStaggerVuln(self, false);   // close the exposed weak point
+    // If the blow that broke it came from BEHIND, fear was imposed during
+    // the reel and cashes in here: it comes out of the stagger running,
+    // not swinging. That handoff is the whole poise→panic→backstab loop.
+    if (self.poise.fearTimer > 0) breakMorale(self);
+    else { self.fsm.state = 'chasing'; self.fsm.phaseTimer = 0; }
+  }
+}
+
+function tickFleeing(self: EnemyCtx, f: BrainFrame): void {
+  // Nerve broke — ROUT away from the player, then COWER at a safe remove (a
+  // free kill), then re-engage ONCE (brokenOnce stops a second flee). The
+  // head-track keeps it glancing back over its shoulder as it runs.
+  self.fsm.phaseTimer += f.dt;
+  const M = CONFIG.ENEMY_AI.MORALE;
+  if (self.poise.cowerTimer > 0) {
+    // COWERING — hunched, defenceless. Bolt again if the player closes back
+    // in; otherwise hold until nerve returns.
+    self.poise.cowerTimer -= f.dt;
+    if (f.distance < M.FLEE_SAFE_DIST * 0.6) {
+      self.poise.cowerTimer = 0;   // player chased it down → bolt
+    } else {
+      applyTilt(self, -0.5);            // hunched down/back
+      self.eyePresenter.applySearch();  // eyes dim — cowed, not glaring
+      self.built.group.position.y = 0;
+      if (self.poise.cowerTimer <= 0) {
+        // Nerve returns when the cower runs out — UNLESS fear is still on
+        // it, in which case no amount of hiding is enough. Refresh the
+        // cower rather than letting it lapse, so it stays hunched instead
+        // of twitching back into a one-frame rout every 2.6s.
+        if (self.poise.fearTimer > 0) self.poise.cowerTimer = M.COWER_DURATION;
+        else { applyTilt(self, 0); self.fsm.state = 'chasing'; self.fsm.phaseTimer = 0; }
+      }
+      return;
+    }
+  }
+  // ROUT — run directly away from the player, panicked + fast.
+  const dxr = self.container.position.x - f.playerPos.x, dzr = self.container.position.z - f.playerPos.z;
+  const l = Math.hypot(dxr, dzr) || 1;
+  const bx = self.container.position.x, bz = self.container.position.z;
+  moveTowards(self, self.container.position.x + (dxr / l) * 3.0, self.container.position.z + (dzr / l) * 3.0,
+              f.moveSpeed * M.FLEE_SPEED_MUL, f.dt, f.walkable, f.nav);
+  faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, f.playerPos, f.dt);
+  self.eyePresenter.applySearch();
+  applyTilt(self, 0);
+  self.built.group.position.y = 0;
+  // Reached safety → cower. Cornered (can't open the gap after a few
+  // seconds of running the walls) → cower anyway, a trapped coward.
+  if (f.distance >= M.FLEE_SAFE_DIST || self.fsm.phaseTimer > 3.0) self.poise.cowerTimer = M.COWER_DURATION;
+}
+
+function tickIdle(self: EnemyCtx, f: BrainFrame): void {
+  // Dormant boss (king behind its fog gate): hold dead STILL — no
+  // gaze scan, no alerts. It's asleep, looming, until you commit.
+  // (The constant left-right idle scan reads as a twitchy giant.)
+  if (f.dormant) {
+    self.applyIdleEyes();
+    applyTilt(self, 0);
+    self.built.group.position.y = 0;
+    return;
+  }
+  // ── AMBIENT WANDER (non-hostile vermin) ────────────────────────────
+  // A maggot never hunts; instead of standing frozen it crawls slowly
+  // between random spots near its spawn, wriggling as it goes — living
+  // atmosphere. Paused between crawls with an in-place squirm.
+  if (!self.hostileToPlayer) {
+    if (!self.idle.homeSet) { self.idle.homeX = self.container.position.x; self.idle.homeZ = self.container.position.z; self.idle.homeSet = true; }
+    const wt = gameNow() / 1000;   // game clock: live = performance.now(), replay = stepped
+    self.applyIdleEyes();
+    applyTilt(self, 0);
+    if (self.idle.wanderPause > 0) {
+      self.idle.wanderPause -= f.dt;
+      self.container.rotation.y += Math.sin(wt * 3.0 + self.wrigglePhase) * f.dt * 0.5;   // idle squirm
+      self.built.group.position.y = Math.abs(Math.sin(wt * 2.4 + self.wrigglePhase)) * 0.006;
+      return;
+    }
+    if (!self.idle.wanderActive) {
+      const a = gameRng() * Math.PI * 2;
+      const r = 0.4 + gameRng() * 1.2;
+      self.idle.wanderX = self.idle.homeX + Math.cos(a) * r;
+      self.idle.wanderZ = self.idle.homeZ + Math.sin(a) * r;
+      self.idle.wanderActive = true; self.idle.wanderTimer = 0;
+    }
+    self.idle.wanderTimer += f.dt;
+    const wdx = self.idle.wanderX - self.container.position.x, wdz = self.idle.wanderZ - self.container.position.z;
+    if (Math.hypot(wdx, wdz) < 0.14 || self.idle.wanderTimer > 3) {
+      self.idle.wanderActive = false;
+      self.idle.wanderPause = 0.7 + gameRng() * 1.6;   // rest + wriggle between crawls
+      self.built.group.position.y = 0;
+      return;
+    }
+    moveTowards(self, self.idle.wanderX, self.idle.wanderZ, f.moveSpeed, f.dt, f.walkable, f.nav);
+    // Ease yaw toward travel + a side-to-side wriggle (the grub crawl).
+    const targetYaw = Math.atan2(wdx, wdz) + Math.PI;
+    let dyw = targetYaw - self.container.rotation.y;
+    while (dyw > Math.PI) dyw -= Math.PI * 2; while (dyw < -Math.PI) dyw += Math.PI * 2;
+    self.container.rotation.y += dyw * Math.min(1, f.dt * 2.5) + Math.sin(wt * 8 + self.wrigglePhase) * f.dt * 0.9;
+    self.built.group.position.y = Math.abs(Math.sin(wt * 9 + self.wrigglePhase)) * 0.008;
+    return;
+  }
+  // Shared aggro pickup — if a fellow mob has broadcast an alert
+  // and we're inside its radius, join the fight. Sets lastSeenPos
+  // to the alert location so 'searching' / 'chasing' have a
+  // direction to head even if we don't currently have LOS.
+  const alert = self.hostileToPlayer ? sampleAlert(self.container.position.x, self.container.position.z) : null;
+  if (alert) {
+    self.aware.aggroed = true;
+    self.lastSeenPos.set(alert.x, 0, alert.z);
+    self.fsm.state = 'alerted';
+    self.fsm.phaseTimer = 0;
+    playEnemyWindup(audioSizeFor(self.spec), self.container.position);
+    return;
+  }
+  // Slow scan around home yaw. Pick a new target angle every
+  // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
+  // a watching player can tell at a glance "this one hasn't seen me yet."
+  self.idle.scanTimer += f.dt;
+  if (self.idle.scanTimer >= self.idle.scanInterval) {
+    self.idle.scanTimer = 0;
+    self.idle.scanInterval = IDLE_SCAN_INTERVAL_MIN + gameRng() * IDLE_SCAN_INTERVAL_JITTER;
+    if (gameRng() < IDLE_SCAN_HOLD_CHANCE) {
+      // Pause: keep watching the current direction for a beat.
+      self.idle.scanTargetYaw = self.container.rotation.y;
+    } else {
+      // Gentle random-walk with a HOME-PULL: step a little from where we're
+      // looking, but bias 35% back toward home each step so the gaze settles
+      // looking forward instead of pinging between the arc edges (the old
+      // left-right metronome). Clamped to ±arc as a hard backstop.
+      const stepped = self.idle.scanTargetYaw
+        + (gameRng() * 2 - 1) * IDLE_SCAN_STEP
+        - (self.idle.scanTargetYaw - self.idle.homeYaw) * 0.35;
+      self.idle.scanTargetYaw = Math.max(self.idle.homeYaw - IDLE_SCAN_HALF_ARC,
+                               Math.min(self.idle.homeYaw + IDLE_SCAN_HALF_ARC, stepped));
+    }
+  }
+  // Ease container yaw toward the scan target — slow, so a gaze shift drifts
+  // with weight instead of snapping. Wrap delta to nearest π.
+  let delta = self.idle.scanTargetYaw - self.container.rotation.y;
+  while (delta >  Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  self.container.rotation.y += delta * Math.min(1, f.dt * 0.6);
+  self.applyIdleEyes();
+  applyTilt(self, 0);
+  self.built.group.position.y = 0;
+}
+
+function tickAlerted(self: EnemyCtx, f: BrainFrame): void {
+  // Brief "I see you" pause. Eyes flare bright, body rears back
+  // slightly, then commits to chase. Face player during this so the
+  // moment reads — the model snaps from scan-pose to confront-pose.
+  self.fsm.phaseTimer += f.dt;
+  const t = Math.min(1, self.fsm.phaseTimer / ALERTED_DURATION);
+  faceTarget(self, f.playerPos, f.dt);
+  self.setEyeFlare(t);
+  applyTilt(self, -0.15 * t);   // slight rear-back (negative tilt)
+  self.built.group.position.y = 0;
+  if (self.fsm.phaseTimer >= ALERTED_DURATION) {
+    self.fsm.state = 'chasing';
+    self.fsm.phaseTimer = 0;
+  }
+}
+
+function tickSearching(self: EnemyCtx, f: BrainFrame): void {
+  // Walk toward last known position. If we get close to it without
+  // re-acquiring (canSeePlayer handles that above by resetting
+  // state to chasing on re-acquire), wait a beat, then return home.
+  self.fsm.phaseTimer += f.dt;
+  const dxs = self.lastSeenPos.x - self.container.position.x;
+  const dzs = self.lastSeenPos.z - self.container.position.z;
+  const distToLast = Math.hypot(dxs, dzs);
+  // Face the search direction.
+  faceTarget(self, self.lastSeenPos, f.dt);
+  if (distToLast > 0.4) {
+    // Wary search — slower than chase (0.7x). Pathfinds around
+    // obstacles, same as chasing.
+    moveTowards(self, self.lastSeenPos.x, self.lastSeenPos.z, f.moveSpeed * 0.7, f.dt, f.walkable, f.nav);
+  }
+  // Search times out either by phaseTimer or by re-acquiring (above).
+  if (self.fsm.phaseTimer >= SEARCH_DURATION) {
+    self.fsm.state = 'returning';
+    self.fsm.phaseTimer = 0;
+  }
+  // Dimmer eye flare during search — alert but not committed.
+  self.eyePresenter.applySearch();
+  applyTilt(self, 0);
+  self.built.group.position.y = 0;
+}
+
+function tickReturning(self: EnemyCtx, f: BrainFrame): void {
+  // Returning home also picks up alerts — if combat reignites
+  // before we've reached our post, turn back around.
+  const returnAlert = self.hostileToPlayer ? sampleAlert(self.container.position.x, self.container.position.z) : null;
+  if (returnAlert) {
+    self.aware.aggroed = true;
+    self.lastSeenPos.set(returnAlert.x, 0, returnAlert.z);
+    self.fsm.state = 'chasing';
+    self.fsm.phaseTimer = 0;
+    return;
+  }
+  // Walk back to spawn post. On arrival, snap to home yaw and idle.
+  const dxr = self.homePos.x - self.container.position.x;
+  const dzr = self.homePos.z - self.container.position.z;
+  const distHome = Math.hypot(dxr, dzr);
+  if (distHome < 0.25) {
+    self.fsm.state = 'idle';
+    // Reset scan so it picks a fresh target next idle tick.
+    self.idle.scanTimer = self.idle.scanInterval;
+    self.idle.scanTargetYaw = self.idle.homeYaw;
+    return;
+  }
+  // Walk back to spawn at 0.6x speed, routing around obstacles.
+  moveTowards(self, self.homePos.x, self.homePos.z, f.moveSpeed * 0.6, f.dt, f.walkable, f.nav);
+  // Face direction of travel — use the home delta direction so
+  // facing is stable even if the path waypoint pulls slightly
+  // sideways.
+  tmpDir.set(self.homePos.x - self.container.position.x, 0, self.homePos.z - self.container.position.z);
+  if (tmpDir.lengthSq() > 1e-6) tmpDir.normalize();
+  faceXZ(self, self.container.position.x + tmpDir.x, self.container.position.z + tmpDir.z);
+  self.applyIdleEyes();
+  applyTilt(self, 0);
+  self.built.group.position.y = 0;
+}
+
+function tickChasing(self: EnemyCtx, f: BrainFrame): void {
+  // ATTACK FIRST: if a ready ability's band contains us, commit to
+  // it — regardless of being a kiter or "too close." This is the
+  // fix for kiters never attacking: the flee branch used to run
+  // first, so an acolyte (which the faster player can always stay
+  // close to) fled forever and never cast. Now it shoots whenever
+  // it can; the cooldown between shots is its window to reposition.
+  // Gate the commit on a pack ATTACK TOKEN — only ATTACK_TOKENS mobs may
+  // be mid-attack at once. A mob that wants to attack but can't get a
+  // token falls through to movement below: it holds the ring and prowls,
+  // waiting its turn (the pack takes turns lunging instead of all swinging
+  // at once). Bosses + lone mobs are unaffected (a token is always free).
+  // ── Intent decision (Enemy AI V2) ─────────────────────────────
+  // Warm the mood toward the personality's target while engaged, then
+  // re-pick the intent on the slow decision tick (commitment, not jitter).
+  // Bosses skip this and keep the old always-commit pressure.
+  if (self.useIntent) {
+    const I = CONFIG.ENEMY_AI.INTENT;
+    const warmTarget = I.MOOD_TARGET_BASE + self.personality.boldness * I.MOOD_TARGET_BOLD;
+    self.intent.aggression += (warmTarget - self.intent.aggression) * Math.min(1, I.MOOD_WARM_RATE * f.dt);
+    // Time since this mob last COMMITTED an attack. Reset at the commit
+    // below (not when `press` is merely chosen — a press that never gets
+    // an ability or a pack token has not fed the mob, and resetting there
+    // would let it starve-loop while still doing nothing).
+    self.intent.sinceCommit += f.dt;
+    self.intent.decisionTimer -= f.dt;
+    if (self.intent.decisionTimer <= 0) {
+      self.intent.decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
+      const ent = getEntity(self.entityId);
+      const hpFrac = ent?.hp && self.bossPhases.maxHp > 0 ? ent.hp.current / self.bossPhases.maxHp : 1;
+      self.intent.currentIntent = selectIntent({
+        distance: f.distance, reach: self.spec.strikeRange, commitDistance: self.commitDistance,
+        aggression: self.intent.aggression, personality: self.personality,
+        canAttack: selectAbility(self, f.distance) !== null,
+        hpFrac, sinceCommit: self.intent.sinceCommit, rng: gameRng,
+      });
+    }
+  }
+
+  const ability = selectAbility(self, f.distance);
+  // Attacks are HELD unless an aggressive intent (press) releases one —
+  // that's what makes the fight breathe. Bosses always release.
+  const mayRelease = !self.useIntent || self.intent.currentIntent.releaseAttack;
+  if (ability && self.actionFsm.canAct() && mayRelease && requestToken(self.entityId)) {
+    self.combat.currentAbility = ability;
+    self.combat.meleeHitLanded = false;   // fresh strike — parryable until it connects
+    self.fsm.state = 'winding';
+    self.fsm.phaseTimer = 0;
+    self.rollWindupTime();
+    // A bomb arming gets the FUSE instead of the generic windup bark: a
+    // rising whine held for the exact length of this mob's windup, so the
+    // pitch climb tells you how long you have. Josh's ask was that the
+    // thing about to blow says so diegetically — no meter, no icon; the
+    // sound, the swelling body, and the ring on the floor are the UI.
+    if (armedBlastAction(self)) playFuse(self.container.position, self.combat.currentWindupTime);
+    else playEnemyWindup(audioSizeFor(self.spec), self.container.position);
+    // Snapshot the committed target (the 'lockedTarget' anchor) +
+    // raise the spatial telegraph the instant the windup begins, so
+    // the player has the full windup to step off the marker.
+    setupAbilityTelegraph(self, ability, f.playerPos);
+    // Committing spends aggression → a lull before the next burst.
+    if (self.useIntent) self.intent.aggression = Math.max(0, self.intent.aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
+    self.intent.sinceCommit = 0;   // fed — the starvation pressure resets
+  } else {
+    // No ability available (out of band, or on cooldown).
+    const pref = self.spec.preferredRange ?? 0;
+    // Ranged mobs only fight from a CLEAR sightline (DOOM's ranged demons
+    // hold an open angle rather than firing into cover). A blocked kiter
+    // repositions to round the obstacle instead of holding behind a wall.
+    const kiterCanShoot = pref > 0
+      && f.walkable.hasLineOfSight(self.container.position.x, self.container.position.z, f.playerPos.x, f.playerPos.z);
+    if (self.combat.plantTimer > 0) {
+      // PLANTED — it just fired and is watching what you do about it.
+      faceTarget(self, f.playerPos, f.dt);
+    } else if (kiterCanShoot && f.distance < pref) {
+      // KITER too close — back away to reopen the gap (the
+      // reposition window between shots). Aim ~2m directly away;
+      // moveTowards pathfinds + clamps against walls. Cornered, it
+      // can't retreat (your reward for running it down).
+      const dx = self.container.position.x - f.playerPos.x;
+      const dz = self.container.position.z - f.playerPos.z;
+      const len = Math.hypot(dx, dz) || 1;
+      moveTowards(self, 
+        self.container.position.x + (dx / len) * 2.0,
+        self.container.position.z + (dz / len) * 2.0,
+        f.moveSpeed, f.dt, f.walkable, f.nav,
+      );
+      faceXZ(self, f.playerPos.x, f.playerPos.z);   // ranged: keep the player in its sights as it backs off
+    } else if (kiterCanShoot && f.distance <= self.commitDistance) {
+      // KITER waiting out its cooldown while comfortably in range +
+      // sighted — HOLD position (just keep facing the player). Without this
+      // it would creep toward you between shots, which looked wrong.
+      faceTarget(self, f.playerPos, f.dt);
+    } else if (pref > 0 && !kiterCanShoot) {
+      // RANGED, shot BLOCKED — advance to round the obstacle and regain a
+      // sightline (moveTowards pathfinds around walls); once it can see you
+      // again it drops back to hold + fire. Faces its actual travel.
+      const bx = self.container.position.x, bz = self.container.position.z;
+      moveTowards(self, f.playerPos.x, f.playerPos.z, f.moveSpeed, f.dt, f.walkable, f.nav);
+      faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, f.playerPos, f.dt);
+    } else if (self.useIntent && self.intent.currentIntent.moveMode === 'hold') {
+      // WATCH — the lull, but COILED not frozen: periodically feint a lunge
+      // (dart in, snap back) so it reads as circling for an opening. Between
+      // feints it holds + faces the player (the head already tracks).
+      if (!tickFeint(self, f.dt, f.playerPos, f.walkable, f.nav)) faceMovement(self, 0, 0, f.playerPos, f.dt);
+    } else if (f.distance > 0.1) {
+      // CLOSE / CIRCLE / press — move to the PACK ring slot (surrounds the
+      // player; speed scales with the intent — press rushes, circle prowls),
+      // then face the mob's ACTUAL travel this frame. Charging in → it faces
+      // you; prowling the ring → it faces along its arc (circles, showing its
+      // flank) rather than crab-walking sideways; blocked/arrived → it faces
+      // you, poised. The windup's aim-ramp snaps the final aim on the strike.
+      const spd = self.useIntent ? self.intent.currentIntent.speedMul : 1;
+      const ringTarget = packMoveTarget(self.entityId, f.playerPos, packScratch());
+      const tx = ringTarget ? ringTarget.x : f.playerPos.x;
+      const tz = ringTarget ? ringTarget.z : f.playerPos.z;
+      const bx = self.container.position.x, bz = self.container.position.z;
+      moveTowards(self, tx, tz, f.moveSpeed * spd, f.dt, f.walkable, f.nav);
+      faceMovement(self, self.container.position.x - bx, self.container.position.z - bz, f.playerPos, f.dt);
+    } else {
+      faceMovement(self, 0, 0, f.playerPos, f.dt);   // on top of the player — face them
+    }
+  }
+  self.setEyeFlare(0);
+  applyTilt(self, 0);
+  self.built.group.position.y = 0;
+}
+
+function tickWinding(self: EnemyCtx, f: BrainFrame): void {
+  if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; return; }
+  self.fsm.phaseTimer += f.actionDt;
+  tickAbilityMotion(self, f.dt, f.walkable);
+  const t = Math.min(1, self.fsm.phaseTimer / self.combat.currentWindupTime);
+  applyTelegraph(self, self.combat.currentAbility.pose, 'windup', t);
+  if (self.combat.aoeTelegraph) self.combat.aoeTelegraph.setProgress(t);
+  if (self.combat.lashTendril) self.combat.lashTendril.setProgress(t);   // tentacle reaches out over the windup
+  // Melee creep — close at half-speed during windup so a stationary
+  // player still gets clipped (a backpedalling player out-runs it).
+  // Charges DON'T creep: the dash strike is the approach.
+  // A primed BLAST creeps too, and at full speed: once it's armed it is
+  // committed, and a bomb that stops walking the moment it lights is a
+  // bomb you beat by taking one step back.
+  const reach = creepReach(self.combat.currentAbility);
+  if (wantsCreep(self.combat.currentAbility) && reach !== null && f.distance > reach) {
+    moveTowards(self, f.playerPos.x, f.playerPos.z, f.moveSpeed * creepSpeedMul(self.combat.currentAbility), f.dt, f.walkable, f.nav);
+  }
+  // Drag a self-anchored danger ring along with the body.
+  if (self.combat.aoeTelegraph && self.combat.aoeTelegraphFollowsSelf) {
+    self.combat.aoeTelegraph.moveTo(self.container.position.x, self.container.position.z);
+  }
+  // The core runs hot as the fuse burns (the body's swell is the other
+  // half of the tell — it lives in tickLashDeform, which owns scale).
+  if (armedBlastAction(self)) self.setEyeFlare(Math.min(1, 0.35 + 0.65 * t));
+  if (self.fsm.phaseTimer >= self.combat.currentWindupTime) {
+    self.fsm.state = 'striking';
+    self.fsm.phaseTimer = 0;
+    playEnemyStrike(audioSizeFor(self.spec), self.container.position);  // the attack RELEASE bark
+    // Arm the timeline: clear per-step latches + events, capture the
+    // leap takeoff point.
+    self.combat.stepStarted = self.combat.currentAbility.steps.map(() => false);
+    self.combat.stepDone = self.combat.currentAbility.steps.map(() => false);
+    self.stepEvents.clear();
+    self.leapStart.copy(self.container.position);
+  }
+}
+
+function tickStriking(self: EnemyCtx, f: BrainFrame): void {
+  if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; return; }
+  self.fsm.phaseTimer += f.actionDt;
+  tickAbilityMotion(self, f.dt, f.walkable);
+  // Run the timeline: fire each step once its trigger is met, then
+  // keep ticking it until its action latches done. Per-step state,
+  // so steps never interfere with each other.
+  const steps = self.combat.currentAbility.steps;
+  for (let i = 0; i < steps.length; i++) {
+    if (self.combat.stepDone[i]) continue;
+    if (!self.combat.stepStarted[i]) {
+      if (!triggerMet(self, steps[i].trigger, self.fsm.phaseTimer)) continue;
+      // MELEE CONTACT timing — a melee blow lands when the swing reaches
+      // the struck pose (CONTACT_FRAC into the strike), not on strike-frame
+      // 0. This is what connects the damage to the visible swing and lets a
+      // dodge read against the swing, not the windup. Other action kinds
+      // (projectile / aoe / dash / leap) fire on their authored `at`.
+      if (steps[i].action.kind === 'melee'
+          && self.fsm.phaseTimer < self.combat.currentAbility.strike * CONFIG.MOB_STRIKE_CONTACT_FRAC) continue;
+      self.combat.stepStarted[i] = true;
+    }
+    const done = runAction(self, steps[i].action, self.combat.currentAbility, steps[i].id, f.playerPos, f.distance, f.dt, f.walkable, f.nav);
+    if (done) self.combat.stepDone[i] = true;
+    // A deflected melee strike calls triggerStagger() inside runAction,
+    // which NULLS currentAbility and flips to 'staggered' mid-loop. Bail
+    // immediately — the rest of this case dereferences currentAbility
+    // (.pose / .strike) and would crash (the parry-freeze bug).
+    if (!self.combat.currentAbility) break;
+  }
+  if (!self.combat.currentAbility) return;
+  applyTelegraph(self, self.combat.currentAbility.pose, 'strike',
+    self.combat.currentAbility.strike > 0 ? Math.min(1, self.fsm.phaseTimer / self.combat.currentAbility.strike) : 1);
+  if (self.combat.lashTendril) self.combat.lashTendril.snap();            // tentacle snaps out + flares on the strike
+  if (self.fsm.phaseTimer >= self.combat.currentAbility.strike) {
+    self.fsm.state = 'recovering';
+    self.fsm.phaseTimer = 0;
+    // Safety: snap any in-air leap Y back to ground if the touchdown
+    // didn't catch the final frame (dt overshoot), so the enemy
+    // can't end up floating at the arc peak.
+    self.container.position.y = groundYAt(self.container.position.x, self.container.position.z);
+  }
+}
+
+function tickRecovering(self: EnemyCtx, f: BrainFrame): void {
+  if (!self.combat.currentAbility) { self.fsm.state = 'chasing'; return; }
+  self.fsm.phaseTimer += f.actionDt;
+  tickAbilityMotion(self, f.dt, f.walkable);
+  const t = Math.min(1, self.fsm.phaseTimer / self.combat.currentAbility.recover);
+  applyTelegraph(self, self.combat.currentAbility.pose, 'recover', t);
+  if (self.combat.lashTendril) self.combat.lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
+  if (self.fsm.phaseTimer >= self.combat.currentAbility.recover) {
+    // Hold the ground it just shot from (see plantTimer).
+    if (self.combat.currentAbility.steps.some((st) => st.action.kind === 'projectile')) {
+      self.combat.plantTimer = CONFIG.ENEMY_AI.RANGED_PLANT_S;
+    }
+    // ±18% jitter so packs drift out of sync over the fight.
+    self.cooldowns.set(self.combat.currentAbility.id, (self.combat.currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
+    self.combat.currentAbility = null;
+    clearAoeTelegraph(self);   // safety — normally disposed at strike
+    clearLashTendril(self);
+    self.fsm.state = 'chasing';
+    self.fsm.phaseTimer = 0;
   }
 }
