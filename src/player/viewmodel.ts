@@ -13,7 +13,7 @@ import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-fr
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
-import { mergeRigidViewmodel } from './viewmodel-merge';
+import { mergeRigidViewmodel, mergeWeaponViewmodel, type WeaponGlow } from './viewmodel-merge';
 import { WristAim } from '../anim/wrist-solver';
 import { FOREARM_EXIT_DESIRED } from '../content/hand';
 import { buildModel } from '../ecs/build-model';
@@ -393,6 +393,8 @@ export function createWeaponViewmodel(
     baseIntensity: number;
   };
   const flashMats: FlashMat[] = [];
+  /** The merged weapon's live emissive (gleam + charged glow), when it merged. */
+  let weaponGlow: WeaponGlow | null = null;
   let gleaming = false;
 
   // CHARGED-STRIKE GLOW state. setSwingCharge() records the next swing's
@@ -446,7 +448,9 @@ export function createWeaponViewmodel(
         m.needsUpdate = true;
         applyViewmodelDepthWebGPU(m);   // WebGPU: write own depth (no pre-pass) so parts self-occlude
         const em = (m as THREE.MeshStandardMaterial).emissive;
-        if (gleamCollect && em && typeof em.getHex === 'function') {
+        // A baked weapon material takes its emissive from the vertices; its gleam
+        // and glow ride the WeaponGlow uniforms instead (see the gleam below).
+        if (gleamCollect && em && typeof em.getHex === 'function' && !m.userData.weaponBaked) {
           const mat = m as THREE.MeshStandardMaterial;
           flashMats.push({ mat, base: em.getHex(), baseIntensity: mat.emissiveIntensity ?? 1 });
         }
@@ -459,6 +463,7 @@ export function createWeaponViewmodel(
     currentWeaponSpec = spec;
     unmount();
     flashMats.length = 0;
+    weaponGlow = null;
     gleaming = false;
     heldInit = false;   // new weapon snaps to its own pose, doesn't ease from the old
 
@@ -485,6 +490,10 @@ export function createWeaponViewmodel(
       // below so the gleam's flashMats collect from the materials that
       // actually draw (the merge keeps one representative instance per look).
       if (!composed.weapon.parts.has('chain0')) {
+        // Colour baked into the vertices, so every bakeable part is one draw
+        // (viewmodel-merge.ts mergeWeaponViewmodel); whatever can't bake still
+        // merges by material signature as before.
+        weaponGlow = mergeWeaponViewmodel(composed.weapon.group);
         mergeRigidViewmodel(composed.weapon.group, null, 'weapon-merged');
       }
       applyViewmodelRender(composed.weapon.group, 999, true);
@@ -862,6 +871,7 @@ export function createWeaponViewmodel(
         if (wantGleam) f.mat.emissive.setHex(0xdfefff);
         else f.mat.emissive.setHex(f.base);
       }
+      weaponGlow?.setGleam(wantGleam);
     }
     // CHARGED-STRIKE GLOW — amplify each flashMat's emissive intensity in
     // proportion to the captured charge during STRIKE ONLY. The glow ramps
@@ -884,9 +894,11 @@ export function createWeaponViewmodel(
       if (chargedGlow > 0.0005) {
         const intensityMul = 1 + chargedGlow * CHARGED_GLOW_MAX;
         for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity * intensityMul;
+        weaponGlow?.setGlowMul(intensityMul);
         emissiveElevated = true;
       } else if (emissiveElevated) {
         for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity;
+        weaponGlow?.setGlowMul(1);
         emissiveElevated = false;
         chargedGlow = 0;
       }

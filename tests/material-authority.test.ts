@@ -62,12 +62,11 @@ const AUTHORITY = [
  *  own uniforms per object. These still cost a pipeline, but sharing them would
  *  be wrong, not merely different. Add with a reason or don't add. */
 const ANIMATED_EXEMPT: string[] = [
-  // scene/threshold-veil.ts — one veil per doorway, and its OPACITY IS THE MECHANISM:
-  // each lifts independently by how near the player is to that particular opening. A
-  // pooled material hands back one shared instance, so sharing would not be a different
-  // look, it would be every doorway on the floor lifting together the moment you
-  // approached any one of them. They all share the one texture, which is where the real
-  // cost would have been.
+  // scene/threshold-veil.ts — ONE material per floor since 2026-11-22: every veil is an
+  // instance of one InstancedMesh, each doorway's opacity a per-instance attribute (each
+  // still lifts independently by the player's distance to it). The node material reads
+  // that attribute through an opacityNode, which no registry kind expresses, so it is
+  // built here, once.
   'src/scene/threshold-veil.ts',
 ];
 

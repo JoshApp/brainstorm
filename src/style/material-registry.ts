@@ -53,6 +53,31 @@ function shared<T extends THREE.Material>(cache: Map<string, T>, make: () => T, 
   return m;
 }
 
+/** WEAPON-BAKED — the held weapon's merged surface (player/viewmodel-merge.ts
+ *  mergeWeaponViewmodel). One instance per shading FAMILY key, for the life of
+ *  the session: colour, emissive and surface scalars ride the weapon's vertices,
+ *  so every weapon of a family is the same material and the same pipeline, and a
+ *  weapon swap reuses both. `install` adds the family's node graph (the vertex
+ *  reads + the gleam/glow uniforms) the one time the family is first built. */
+const weaponBaked = new Map<string, THREE.MeshStandardMaterial>();
+export function weaponBakedSurface(
+  key: string,
+  o: { flatShading: boolean; fog: boolean },
+  install: (m: THREE.MeshStandardMaterial) => void,
+): THREE.MeshStandardMaterial {
+  let m = weaponBaked.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color: 0xffffff, vertexColors: true, roughness: 1, metalness: 0,
+      flatShading: o.flatShading, fog: o.fog,
+    });
+    m.name = `kind:weapon-baked:${key}`;
+    install(m);
+    weaponBaked.set(key, m);
+  }
+  return m;
+}
+
 /** Shared, structurally-deduplicated MeshStandardMaterial — call instead of
  *  `new THREE.MeshStandardMaterial` for any STATIC surface (decor, static interactables) so the
  *  game's recurring-material set stays closed and warmable. See docs/PIPELINE-BUDGET.md. */

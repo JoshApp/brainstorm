@@ -247,13 +247,13 @@ const bakedMats = new Map<string, THREE.MeshStandardMaterial>();
 // detail joins the FAMILY KEY: props that want dressed stone batch together into
 // a dressed-stone batch, props that want grain into a grain one, everything else
 // stays exactly as it was. One extra draw per detail kind in use, not per prop.
-function bakeFamilyKey(m: THREE.MeshStandardMaterial): string {
+export function bakeFamilyKey(m: THREE.MeshStandardMaterial): string {
   const d = surfaceDetailNameOf(m);
   return `${m.flatShading ? 'f' : 's'}|${(m as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog'}`
     + (d ? `|d:${d}` : '');
 }
 
-function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
+export function isBakeable(mat: THREE.Material): mat is THREE.MeshStandardMaterial {
   const m = mat as THREE.MeshStandardMaterial;
   return (m as THREE.MeshStandardMaterial).isMeshStandardMaterial === true
     && !m.map && !m.transparent && (m.alphaTest ?? 0) === 0
@@ -324,7 +324,7 @@ function bakedMaterial(src: THREE.MeshStandardMaterial): THREE.MeshStandardMater
 /** A colour-attributed variant of `geo` (cloned — geometry may be POOLED and
  *  shared by props of other colours; never mutate the original). Cached per
  *  (geometry, colour) within one floor build. */
-function coloredVariant(
+export function coloredVariant(
   cache: Map<string, THREE.BufferGeometry>,
   geo: THREE.BufferGeometry,
   src: THREE.MeshStandardMaterial,
