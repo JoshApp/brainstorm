@@ -16,8 +16,9 @@ import { emit, on } from '../broadcast/event-bus';
 // encounters (see level/arena-waves.ts) supply a Behavior; nothing here knows
 // about waves or bosses.
 //
-// Migration status: the arena is the first user. boss-encounter.ts / room-clear
-// / fog-gate are intended to fold in next (each becomes a Behavior).
+// Users (2026-11-22): arena gauntlets and room-clear gates (level/builder.ts),
+// the boss fight (mobs/boss-encounter.ts, which the fog gate and the boss bar
+// bind to) and gate offerings (interactables/gate-offering.ts).
 
 export type EncounterState = 'dormant' | 'active' | 'complete';
 

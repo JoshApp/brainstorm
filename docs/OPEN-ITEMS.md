@@ -245,9 +245,10 @@ Candidates, none built:
   main.ts; the prod bundle has none of it (main chunk 387,188 → 384,607 B).
 - `menu-shell` adopted by 7 of 12 screens; three HUD styles kept as parallel
   widgets.
-- Docs drift: CLAUDE.md (9 equipment slots vs 4 in code; "three art styles";
-  "no 3D model files" vs three `.glb`; light-pool description),
-  WEBGPU-MIGRATION.md (still describes the spike), encounter registry header.
+- ~~Docs drift~~ DONE 2026-11-22: CLAUDE.md's equipment (4 slots + relics +
+  cards), art-style and light-pool lines corrected, pillar 6's GLB exception
+  recorded under it; WEBGPU-MIGRATION.md marked done; the encounter registry
+  header lists its real users.
 - 26 of 92 scripts referenced nowhere; 10 overlapping `perf-*` scripts.
 - Leftover branches with unique commits: `wip/ai-voice-layer`,
   `claude/forcewebgl-gate`, `worktree-viewmodel-v3` (2 mob-AI commits),

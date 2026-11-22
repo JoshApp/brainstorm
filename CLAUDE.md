@@ -10,6 +10,7 @@ A grimdark first-person dungeon crawler for mobile browser. Async multiplayer in
 4. **Solo descent, async multiplayer.** Players play alone but encounter traces of others — bloodstains, messages, corpses, phantom NPCs.
 5. **Delve structure, not extraction.** Players descend, going deeper is the progression. They will eventually die. Meta-progression carries forward.
 6. **Code-generated visuals.** No 3D model files, no texture pipelines. Geometry composed from Three.js primitives. Style emerges from lighting, shaders, and palette.
+   *Recorded exception (decided 2026-08-20):* the first-person bone hands and the lantern are scanned GLB models with textures (`public/models/`, `src/content/scanned-hand.ts`, `scanned-lantern.ts`); `?bonearm=0` restores the authored primitive hands.
 7. **LLM-authored, in layers.** This game is *designed and built* by a layered LLM system — an orchestrating design layer, a coding layer, a content/items layer, a narration layer (see **Authoring Model**) — not a hand-built game with LLM text bolted on. Whether an LLM also acts at *runtime* (live, mid-run, on the player's device), and how far into mechanics it may reach there, is deliberately **left open** for now.
 
 ## Authoring Model — a layered LLM system
@@ -67,14 +68,14 @@ If you're reading this to figure out where to start, read this section first —
 - Destructible vases drop loot (`src/level/destructibles.ts`, `src/content/vase.ts`)
 
 ### Player progression
-- Equipment slots (weapon, armor, helmet, amulet, gloves, boots, offhand, two rings) — `src/player/equipment.ts`
+- Equipment: four slots — weapon, offhand, two vestments (`src/player/equipment.ts`) — plus uncapped relics in the reliquary (`src/player/reliquary.ts`, `docs/RELICS.md`) and tarot cards (`src/content/cards.ts`)
 - Affixes + passives + relics + buffs, all composing through one stat pipeline (`src/combat/modifiers.ts`, `src/ecs/buffs.ts`)
 - Inventory grid, consumables bar, stash chest (`src/ui/inventory-panel.ts`, `src/ui/stash-screen.ts`)
 - Per-run state + meta progression (codex, deepest depth, achievements) persisted to `localStorage` (`src/state/`)
 
 ### Atmosphere & rendering
-- Three swappable art styles: PS1 / flat-shaded / procedural stone (`src/style/`)
-- Slot-based light pool with LOS culling (`src/scene/light-pool.ts`) — prevents Three.js shader recompiles on light-count change
+- One look, tuned through `src/style/` (banded lighting, surface detail, stone grid); `src/style/look-presets.ts` holds comparison presets for A/B, not shipped alternatives
+- Light director (`src/scene/light-pool.ts`): decides each frame which registered lights burn (gate horizon, frustum) and binds them to a fixed set of PointLight slots, lit by clustered (WebGPU) / tiled (WebGL2) light loops. Opt-in baked torch visibility: `?bake=1` (`src/scene/baked-light.ts`; measured not cheaper on a phone, see docs/OPEN-ITEMS.md)
 - Torchlight flicker, handheld lamp, candle/bonfire flame stacks, god rays anchoring content
 - Drifting motes, XP wisps, gold coins (`src/effects/`)
 - Web Audio synth for ambient bed + impacts (`src/audio/sfx.ts`)

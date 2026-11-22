@@ -1,5 +1,10 @@
 # WebGPU / TSL migration (the `webgpu` branch)
 
+> **STATUS (2026-11-22): DONE and on `main`.** WebGPURenderer is the default
+> renderer (WebGL2 is its fallback backend, `?webgpu=0` forces it); three is at
+> r187. What follows is the migration's plan and log as it happened — history,
+> not the current state. Current open items live in `docs/OPEN-ITEMS.md`.
+
 Living plan + log for moving DELVE's renderer from the classic WebGLRenderer
 (GLSL) to Three's unified **WebGPURenderer + TSL**. Isolated spike branch; `main`
 is untouched. No rush — correctness over speed; breaking the branch is fine.
