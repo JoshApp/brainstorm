@@ -128,7 +128,6 @@ import { addItemSilently, getAllItems } from './player/inventory';
 import { getReliquary } from './player/reliquary';
 import { setOwnedItemsProvider } from './content/loot';
 import { get as getEntity } from './ecs/world';
-import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { initAiGizmos } from './debug/ai-gizmos';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
@@ -483,11 +482,14 @@ initDeath(camera);
 initWeaponDrop(scene);
 
 // --- Scenario (URL param ?scenario=...) ---
-// DEV-only. In a production build `import.meta.env.DEV` is the literal
-// `false`, so this resolves to `null`, every `scenario` branch below goes
-// dead, and the bundler tree-shakes the entire debug/scenarios module (and
-// its fixed-seed test levels) out of the live site.
-const scenario = import.meta.env.DEV ? getScenarioFromUrl() : null;
+// DEV-only, and DYNAMICALLY imported. In a production build
+// `import.meta.env.DEV` is the literal `false`, so the import itself folds
+// away. A static import did not: scenarios.ts builds its table at module level
+// by CALLING scenario factories (polyRoomScenario(...)), which the bundler
+// cannot prove pure, so those calls and everything they reach shipped to
+// players (a `godMode: true` debug level was in the 2026-11-22 live bundle).
+const scenarios = import.meta.env.DEV ? await import('./debug/scenarios') : null;
+const scenario = scenarios ? scenarios.getScenarioFromUrl() : null;
 
 // --- Player entity (HP + buffs + passives live in the world) ---
 // Spawn BEFORE buildLevel so enemies can already query player state during init.
@@ -782,7 +784,7 @@ initLevelLoader({
       level.spec.id === 'tutorial' || level.spec.id.startsWith('safe-');
     // Scenarios skip the wake — frozen/posed worlds never tick the
     // lids open (black screen), and a debug jump isn't an arrival.
-    if (!import.meta.env.DEV || !getScenarioFromUrl()) beginArrival({ full: slept });
+    if (!import.meta.env.DEV || !scenarios?.getScenarioFromUrl()) beginArrival({ full: slept });
     initChasmPresence(level.spec.voids);
     lastLevelId = level.spec.id;
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
@@ -794,7 +796,7 @@ initLevelLoader({
     // which have no scenario so they used to trip it — should meet on every
     // floor. Still self-gates on calibrateHintSeen, and it's always in Settings.
     if (
-      (!import.meta.env.DEV || !getScenarioFromUrl()) &&
+      (!import.meta.env.DEV || !scenarios?.getScenarioFromUrl()) &&
       level.spec.id === 'tutorial'
     ) {
       maybeShowCalibrateHint();
@@ -1833,7 +1835,7 @@ if (handleDebugScreenFlags()) {
   hideBootLoading();   // scenarios bypass the title — clear the veil right away
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
-  applyScenario(scenario, { level: currentLevel, weapon, camera });
+  scenarios!.applyScenario(scenario, { level: currentLevel, weapon, camera });
   if (scenario.inspect) {
     // All the studio-preview presentation (PSX bypass, lighting rig, backdrop,
     // subject auto-framing) lives in src/debug/inspect-mode.ts. getLevelRoot is

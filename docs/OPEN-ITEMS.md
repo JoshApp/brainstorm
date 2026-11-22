@@ -238,8 +238,11 @@ Candidates, none built:
   `palette-design`, `floor-manifest`, `anim/apply.ts`. **Sort parked dressing
   (comes back via `level/dressing.ts`) from truly dead before deleting.**
   `[uncertain]` — which are parked is Josh's strip, not yet cross-checked.
-- `debug/scenarios.ts` (3,196 lines) ships in the prod main chunk: statically
-  imported by `main.ts`, side-effectful top level. Dynamic-import it under DEV.
+- ~~`debug/scenarios.ts` ships in the prod main chunk~~ DONE 2026-11-22. Most of
+  it was already tree-shaken; what shipped was the module-level factory calls
+  (`polyRoomScenario(...)` building the table) and what they reach — a
+  `godMode: true` debug level among them. Now a DEV-only dynamic import in
+  main.ts; the prod bundle has none of it (main chunk 387,188 → 384,607 B).
 - `menu-shell` adopted by 7 of 12 screens; three HUD styles kept as parallel
   widgets.
 - Docs drift: CLAUDE.md (9 equipment slots vs 4 in code; "three art styles";
