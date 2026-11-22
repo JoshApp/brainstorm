@@ -39,7 +39,12 @@ import { getAllInteractables } from '../interactables/system';
 // ever needs `bundle.needsUpdate` — if you ever bundle something mutable,
 // bump `needsUpdate = true` on change.
 
-/** Default ON (?bundles=0 kill switch). Three strikes on the way here —
+/** Default ON (?bundles=0 kill switch). SUPERSEDED IN PRACTICE (2026-11-22):
+ *  static-batch.ts runs first and folds the static world into floor-wide
+ *  BatchedMeshes, so a spawn floor bundles 1 group of 1 mesh. Those batches
+ *  can't be bundled usefully: the room culler and three's per-instance
+ *  frustum cull change their draw lists every frame. The matrix freeze below
+ *  is what this module still earns. Three strikes on the way here —
  *  history, so nobody re-runs the same loops:
  *
  *  1. r184 (2026-07-04): validation storm blamed on bundle recording — the

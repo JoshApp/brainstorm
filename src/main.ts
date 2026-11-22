@@ -577,10 +577,12 @@ initLevelLoader({
     // too), BEFORE the freeze + room culler.
     batchStaticWorld(currentLevel);
     // Matrix-FREEZE the static world (walls/props never move; the per-frame
-    // updateMatrixWorld math measured ~6-8% of phone CPU). Also hosts the
-    // DEV-parked ?bundles=1 render-bundle experiment (currently broken at the
-    // Three level — see render-bundles.ts verdict). Must run BEFORE the room
-    // culler reads root children.
+    // updateMatrixWorld math measured ~6-8% of phone CPU). Also hosts render
+    // bundles (default ON, ?bundles=0 off) — which have little left to bundle:
+    // batchStaticWorld above already folds the static world into floor-wide
+    // BatchedMeshes, whose per-frame instance visibility a recorded bundle
+    // could not replay anyway (2026-11-22: 1 bundle, 1 mesh on a spawn floor).
+    // Must run BEFORE the room culler reads root children.
     bundleStaticLevelContent(currentLevel);
     // PRE-WARM the floor's shaders NOW, behind the level-transition fade, while
     // every room is still visible (the portal culler hasn't run yet, so this

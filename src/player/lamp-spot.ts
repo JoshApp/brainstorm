@@ -3,7 +3,7 @@ import { CONFIG } from '../config';
 import { getLampIntensity, getLampWorldPos } from './handheld-lamp';
 import { getShadowMode } from '../scene/light-pool';
 
-// LAMP SPOT-SHADOW (?lampspot=1) — the lamp's shadow is the dearest thing in the
+// LAMP SPOT-SHADOW (default ON; ?lampspot=0 restores the cube) — the lamp's shadow is the dearest thing in the
 // frame: a PointLight casts a CUBE shadow, so the scene renders 6× per frame to
 // build it. Split the lamp: a dim omni PointLight (light-pool, shadowless fill)
 // + a forward SpotLight that carries the rest AND casts the shadow as a single

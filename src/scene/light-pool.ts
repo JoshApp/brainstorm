@@ -188,7 +188,7 @@ export function getShadowMode(): ShadowMode {
   return shadowMode;
 }
 
-// Spot-shadow split (?lampspot=1): the lamp's cube-shadow point light yields its
+// Spot-shadow split (default ON, main.ts LAMP_SPOT; ?lampspot=0 = cube): the lamp's cube-shadow point light yields its
 // shadow to a single-map forward SpotLight (6 passes → 1) and dims to a fill.
 let lampSpotActive = false;
 const LAMP_OMNI_SHARE = 0.4;   // omni point's share of the lamp light when the spot is on

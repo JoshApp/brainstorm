@@ -73,7 +73,7 @@ export interface FrameLoopDeps {
   syncRoomCuller: () => void;
   /** Lazily-assigned harness tick (null when ?harness is off). */
   getHarnessTick: () => ((realDt: number, worldRunning: boolean) => void) | null;
-  /** True when the lamp spot-shadow split (?lampspot=1) is active. */
+  /** True when the lamp spot-shadow split (default ON; ?lampspot=0 turns it off) is active. */
   lampSpotEnabled: boolean;
 }
 
