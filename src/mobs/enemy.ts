@@ -358,12 +358,24 @@ export function createEnemy(
     onSummon?: (gate: NonNullable<EnemySpec['summonGate']>, atPos: THREE.Vector3) => Enemy[];
   },
 ): Enemy {
-  tagPerfEvent(`spawn:${spec.id}`);   // perf timeline (no-op unless the dashcam rolls)
-  // Container: world position + yaw to face player.
-  // SUMMONED — set by the spawner after construction (see the `summoned`
-  // accessor on the returned Enemy). Lives in the closure so the death handler
-  // reads the CURRENT value rather than a copy captured at build time.
-  let summoned = false;
+  tagPerfEvent(`spawn:${spec.id}`);
+  // ── fsm: The state machine: which state, how long in it, alive or not.
+  const fsm: {
+    summoned: boolean;
+    state: EnemyState;
+    phaseTimer: number;
+    alive: boolean;
+  } = {
+    // Container: world position + yaw to face player.
+    // SUMMONED — set by the spawner after construction (see the `summoned`
+    // accessor on the returned Enemy). Lives in the closure so the death handler
+    // reads the CURRENT value rather than a copy captured at build time.
+    summoned: false,
+    state: options?.dormant ? 'dormant' : 'idle',
+    phaseTimer: 0,
+    alive: true,
+  };
+
   const container = new THREE.Group();
   container.position.copy(position);
   // Last seen player position — the death spray throws away from it.
@@ -429,12 +441,47 @@ export function createEnemy(
   function setStaggerVuln(on: boolean): void {
     for (const z of hurtbox.zones) if (z.openWhenStaggered) z.enabled = on;
   }
-  // "Seeing stars" stun ring — lazily built the first time this mob is staggered
-  // (most never are), parented to the container above the head.
-  let stunStars: StunStars | null = null;
-  // Fear skull — same lazy story as the stun ring: most creatures never break,
-  // so it is built the first time this one is frightened and not before.
-  let fearSkull: FearSkull | null = null;
+  // ── pres: Presentation bookkeeping: overhead cues, clip edges, threat flash, body deforms, the entrance.
+  const pres: {
+    stunStars: StunStars | null;
+    fearSkull: FearSkull | null;
+    prevAnimState: EnemyState | null;
+    prevAnimAbilityId: string | null;
+    prevAnimPhaseIndex: number;
+    threatOn: boolean;
+    threatDeflectable: boolean;
+    lashStretch: number;
+    castSwell: number;
+    gelTime: number;
+    fuseBeatPhase: number;
+    entranceTimer: number;
+    entranceImpactDone: boolean;
+  } = {
+    // "Seeing stars" stun ring — lazily built the first time this mob is staggered
+    // (most never are), parented to the container above the head.
+    stunStars: null,
+    // Fear skull — same lazy story as the stun ring: most creatures never break,
+    // so it is built the first time this one is frightened and not before.
+    fearSkull: null,
+    prevAnimState: null,
+    prevAnimAbilityId: null,
+    prevAnimPhaseIndex: -1,
+    threatOn: false,
+    threatDeflectable: false,
+    // Lash deform — eased 0..1 body elongation toward the player during a
+    // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
+    lashStretch: 0,
+    /** Cast wind-up inflation — see tickLashDeform. */
+    castSwell: 0,
+    // clock for the gelatinous (ooze) squash jiggle
+    gelTime: 0,
+    // accelerating pulse clock for an armed blast
+    fuseBeatPhase: 0,
+    // -1 = inactive; counts up while dropping
+    entranceTimer: -1,
+    entranceImpactDone: false,
+  };
+
 
   /** Local Y of the creature's actual crown, from its bounding box. Guessing a
    *  height buries an overhead cue in a tall body (the stoneguard); measured
@@ -491,9 +538,6 @@ export function createEnemy(
   const clipAnimator = animBundle
     ? new Animator(built.slots, animBundle.joints)
     : null;
-  let prevAnimState: EnemyState | null = null;
-  let prevAnimAbilityId: string | null = null;
-  let prevAnimPhaseIndex = -1;
   // Visual presentation controllers — the eye-flare windup telegraph and the
   // hit/core-glow flash. Both own their material refs internally (see
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
@@ -512,16 +556,14 @@ export function createEnemy(
   // count only on edges, so a mid-windup death/stagger can't leak the count.
   const THREAT_DEFLECT_COLOR = new THREE.Color(CONFIG.DEFLECT.FLASH_COLOR);
   const THREAT_UNBLOCK_COLOR = new THREE.Color(CONFIG.DEFLECT.UNBLOCK_COLOR);
-  let threatOn = false;
-  let threatDeflectable = false;
   function reconcileThreat(on: boolean, deflectable: boolean): void {
-    if (on === threatOn && deflectable === threatDeflectable) return;
-    const wasPushing = threatOn && threatDeflectable;
+    if (on === pres.threatOn && deflectable === pres.threatDeflectable) return;
+    const wasPushing = pres.threatOn && pres.threatDeflectable;
     const willPush = on && deflectable;
     if (wasPushing && !willPush) popDeflectOpportunity();
     if (!wasPushing && willPush) pushDeflectOpportunity();
-    threatOn = on;
-    threatDeflectable = deflectable;
+    pres.threatOn = on;
+    pres.threatDeflectable = deflectable;
     eyePresenter.setThreatFlash(on ? (deflectable ? THREAT_DEFLECT_COLOR : THREAT_UNBLOCK_COLOR) : null);
   }
 
@@ -540,17 +582,17 @@ export function createEnemy(
       // reconcileThreat wouldn't run to clear it. Same leak the death path guards.
       leaving: () => reconcileThreat(false, false),
       entered: (next) => {
-        abilities = resolveAbilities(spec, next.abilities, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
+        combat.abilities = resolveAbilities(spec, next.abilities, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
         const ent = getEntity(entityId);
         if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
         // Per-phase poise: a phase can become UNSTUNNABLE (high poise) or flimsier.
         // Refill the pool on entry regardless — a new phase is a fresh stagger bar.
-        if (next.poise !== undefined) poiseMax = next.poise;
-        poiseLeft = poiseMax;
+        if (next.poise !== undefined) poise.poiseMax = next.poise;
+        poise.poiseLeft = poise.poiseMax;
         clearAoeTelegraph();
         clearLashTendril();
-        state = 'chasing';
-        phaseTimer = 0;
+        fsm.state = 'chasing';
+        fsm.phaseTimer = 0;
       },
     },
   );
@@ -576,41 +618,50 @@ export function createEnemy(
   // so death — drops, kill event, dissolve, removal — resolves no matter
   // the source. takeDamage is a hoisted function declaration below.
   registerDamageSink(entityId, takeDamage);
+  // ── poise: Poise (the stagger pool) and morale (rout, cower, fear).
+  const poise: {
+    poiseMax: number;
+    poiseLeft: number;
+    poiseRegenCd: number;
+    falterCd: number;
+    brokenOnce: boolean;
+    cowerTimer: number;
+    fearTimer: number;
+    fearCd: number;
+  } = {
+    // ── Poise / stagger ────────────────────────────────────────────────
+    // A hidden pool the player's heavy/Might-scaled hits chip at; break it
+    // and the enemy is STAGGERED (its action cancelled, a free-hit + EXECUTE
+    // window). Pool resets on break and regenerates after a grace window so
+    // chip pressure must be SUSTAINED. Default scales a bit above HP so a
+    // stagger weapon earns the break over ~2-3 committed hits (a charged heavy
+    // halves that); tanks set an explicit higher `poise`. Bosses get a much
+    // larger pool (rarely staggered unless spec-tuned).
+    // A phase may override poise (a very high value = effectively unstunnable);
+    // phase[0]'s override wins at spawn, else the spec/default. `let` so a phase
+    // transition can raise or lower it.
+    poiseMax: phases?.[0].poise ?? spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4))),
+    poiseLeft: 0,
+    // grace countdown before the pool refills
+    poiseRegenCd: 0,
+    // cooldown after a FALTER so heavy hits can't chain-lock a windup forever
+    falterCd: 0,
+    // Morale: a creature's nerve can BREAK (low HP roll, weighted by how bold it
+    // is; or its leader falling) → it routs + cowers ('fleeing'). Breaks at most
+    // once per life (a re-engaged coward then fights on), so no perma-flee flicker.
+    brokenOnce: false,
+    // >0 while cowering at the end of a rout
+    cowerTimer: 0,
+    // FEAR — the same rout, but IMPOSED rather than rolled. While `fearTimer > 0`
+    // the creature will not re-engage no matter how long it has cowered; it is
+    // simply too frightened to turn around. `fearCd` is the anti-permalock cooldown
+    // (CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER) that keeps break→panic→break from
+    // removing the fight entirely. See applyFear.
+    fearTimer: 0,
+    fearCd: 0,
+  };
+  poise.poiseLeft = poise.poiseMax;
 
-  // Lash deform — eased 0..1 body elongation toward the player during a
-  // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
-  let lashStretch = 0;
-  /** Cast wind-up inflation — see tickLashDeform. */
-  let castSwell = 0;
-  /** PLANT — seconds a ranged mob must hold its ground after loosing a shot.
-   *  A kiter used to drop straight from `recovering` into its retreat, so it was
-   *  already backpedalling while its own bolt was still in the air: from the
-   *  player's side that reads as "it shoots at random while running away," which
-   *  is exactly the report. Standing in the shot it just took makes the attack a
-   *  discrete, committed act you can punish. */
-  let plantTimer = 0;
-  let gelTime = 0;   // clock for the gelatinous (ooze) squash jiggle
-  let fuseBeatPhase = 0;   // accelerating pulse clock for an armed blast
-
-  let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
-  let phaseTimer = 0;
-  let aliveLocal = true;
-
-  // ── Poise / stagger ────────────────────────────────────────────────
-  // A hidden pool the player's heavy/Might-scaled hits chip at; break it
-  // and the enemy is STAGGERED (its action cancelled, a free-hit + EXECUTE
-  // window). Pool resets on break and regenerates after a grace window so
-  // chip pressure must be SUSTAINED. Default scales a bit above HP so a
-  // stagger weapon earns the break over ~2-3 committed hits (a charged heavy
-  // halves that); tanks set an explicit higher `poise`. Bosses get a much
-  // larger pool (rarely staggered unless spec-tuned).
-  // A phase may override poise (a very high value = effectively unstunnable);
-  // phase[0]'s override wins at spawn, else the spec/default. `let` so a phase
-  // transition can raise or lower it.
-  let poiseMax = phases?.[0].poise ?? spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
-  let poiseLeft = poiseMax;
-  let poiseRegenCd = 0;     // grace countdown before the pool refills
-  let falterCd = 0;         // cooldown after a FALTER so heavy hits can't chain-lock a windup forever
   // Action-layer authority — owns the interrupt beats (stagger + parry
   // flinch-lock) and the cancel table. The mob mirror of the player FSM;
   // see enemy-action.ts. The big EnemyState machine below still drives
@@ -622,18 +673,7 @@ export function createEnemy(
   // floor on wake with an impact quake — timed inside the engage grace.
   const isCeilingDrop = spec.entrance === 'ceiling-drop';
   const DROP_HEIGHT = 4.5;        // metres above the floor it waits / falls from
-  const ENTRANCE_DUR = 0.55;      // seconds the drop takes
-  let entranceTimer = -1;         // -1 = inactive; counts up while dropping
-  let entranceImpactDone = false;
-  // ── Strike-phase timeline state ────────────────────────────────────
-  // Per-step latches for the ability currently striking: stepStarted[i]
-  // flips once step i's trigger fires; stepDone[i] once its action fully
-  // resolves (an instant hit, a melee landing, a dash contacting, a leap
-  // landing). stepEvents collects events ('jump:land') that later steps'
-  // triggers wait on. All reset at strike start. Per-step, never shared —
-  // so two steps can't latch each other off (the old shared-flag bug).
-  let stepStarted: boolean[] = [];
-  let stepDone: boolean[] = [];
+  const ENTRANCE_DUR = 0.55;
   const stepEvents = new Set<string>();
 
   // ── Abilities ──────────────────────────────────────────────────────
@@ -642,30 +682,91 @@ export function createEnemy(
   // Without this, giving every melee attack a default step-in would have quietly
   // taught the floor-anchored plant to stroll toward you.
   const stepInCfg = spec.moveSpeed > 0 ? CONFIG.ENEMY_AI.STEP_IN : undefined;
+  // ── combat: The ability runner: the kit, the cast in progress, its steps and telegraphs.
+  const combat: {
+    plantTimer: number;
+    stepStarted: boolean[];
+    stepDone: boolean[];
+    abilities: Ability[];
+    currentAbility: Ability | null;
+    meleeHitLanded: boolean;
+    aoeTelegraph: AoeTelegraph | null;
+    lashTendril: LashTendril | null;
+    aoeTelegraphFollowsSelf: boolean;
+    auraInsideTime: number;
+    auraDamageTimer: number;
+    currentWindupTime: number;
+    blastSpent: boolean;
+  } = {
+    /** PLANT — seconds a ranged mob must hold its ground after loosing a shot.
+     *  A kiter used to drop straight from `recovering` into its retreat, so it was
+     *  already backpedalling while its own bolt was still in the air: from the
+     *  player's side that reads as "it shoots at random while running away," which
+     *  is exactly the report. Standing in the shot it just took makes the attack a
+     *  discrete, committed act you can punish. */
+    plantTimer: 0,
+    // ── Strike-phase timeline state ────────────────────────────────────
+    // Per-step latches for the ability currently striking: stepStarted[i]
+    // flips once step i's trigger fires; stepDone[i] once its action fully
+    // resolves (an instant hit, a melee landing, a dash contacting, a leap
+    // landing). stepEvents collects events ('jump:land') that later steps'
+    // triggers wait on. All reset at strike start. Per-step, never shared —
+    // so two steps can't latch each other off (the old shared-flag bug).
+    stepStarted: [],
+    stepDone: [],
+    // The attack runner is fully ability-driven. Enemies without an
+    // explicit `abilities` list get one default ability synthesized from
+    // their legacy fields (see resolveAbilities). `currentAbility` is the
+    // one being executed across winding/striking/recovering; `cooldowns`
+    // tracks per-ability lockout so a charge can't fire every second.
+    abilities: resolveAbilities(spec, phases ? bossPhases.initialAbilities : undefined, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC),
+    currentAbility: null,
+    // Set the instant a melee step CONNECTS (deals damage). Once a strike has
+    // landed, it's spent — the threat flash drops and a late tap can no longer
+    // "parry" a blow you already ate. Reset when a new ability commits (winding).
+    meleeHitLanded: false,
+    // AoE telegraph state — the ground marker shown during an aoe ability's
+    // windup, and the world point it's locked to (resolved at strike).
+    aoeTelegraph: null,
+    // The lash tentacle — spawned for a 'lash' telegraph, reaches out over
+    // the windup, snaps on strike, retracts + disposes on recover.
+    lashTendril: null,
+    // True when the live telegraph is anchored to THIS mob rather than to a
+    // ground spot — it must be dragged along each windup frame (see the winding
+    // state), otherwise a creeping caster leaves its own danger ring behind.
+    aoeTelegraphFollowsSelf: false,
+    // Inside-aura state — how long the player has been inside us +
+    // when the next dot tick is due. Resets to 0 when player leaves.
+    auraInsideTime: 0,
+    auraDamageTimer: 0,
+    // Per-cycle randomized windup duration so multiple enemies attacking in
+    // unison de-synchronize over time (otherwise stacked mobs all strike on
+    // the exact same frame and the player has no rhythm to read).
+    currentWindupTime: 0,
+    /** Run one ability action this frame. Returns true when the action is
+     *  DONE (no more per-frame work): an instant hit resolves once; a melee
+     *  keeps trying until it lands or the strike ends; dash/leap run their
+     *  whole motion. Each action owns its own resolution — nothing is shared
+     *  between steps (that sharing is what broke the old leap). */
+    // ── Detonation ────────────────────────────────────────────────────
+    // A blast can be delivered two ways — the timeline firing it on schedule, or
+    // the caster being killed while ARMED (see armedBlastAction). Both funnel
+    // here so they can't drift apart, and `blastSpent` guarantees a bomb goes off
+    // exactly once: without it, selfDestruct → takeDamage → the death hook → a
+    // second blast → selfDestruct again is an obvious infinite recursion.
+    blastSpent: false,
+  };
+  combat.currentWindupTime = combat.abilities[0].windup;
 
-  // The attack runner is fully ability-driven. Enemies without an
-  // explicit `abilities` list get one default ability synthesized from
-  // their legacy fields (see resolveAbilities). `currentAbility` is the
-  // one being executed across winding/striking/recovering; `cooldowns`
-  // tracks per-ability lockout so a charge can't fire every second.
-  let abilities = resolveAbilities(spec, phases ? bossPhases.initialAbilities : undefined, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
   // Commit distance — the farthest range at which ANY ability triggers.
   // Beyond this the enemy just chases to close. Equals attackRange for a
   // pure melee mob, the cast range for a shooter.
-  const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
-  let currentAbility: Ability | null = null;
-  // Set the instant a melee step CONNECTS (deals damage). Once a strike has
-  // landed, it's spent — the threat flash drops and a late tap can no longer
-  // "parry" a blow you already ate. Reset when a new ability commits (winding).
-  let meleeHitLanded = false;
+  const commitDistance = combat.abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
   const cooldowns = new Map<string, number>();
   // Stagger each ability's FIRST use by a small random delay so a pack
   // spawned together (the king's split princes) doesn't cast in unison.
   // Deterministic via the run-seeded rng.
-  for (const ab of abilities) cooldowns.set(ab.id, gameRng() * 0.9);
-  // AoE telegraph state — the ground marker shown during an aoe ability's
-  // windup, and the world point it's locked to (resolved at strike).
-  let aoeTelegraph: AoeTelegraph | null = null;
+  for (const ab of combat.abilities) cooldowns.set(ab.id, gameRng() * 0.9);
   // The locked landing/impact point — the 'lockedTarget' anchor. Snapshot
   // of the player's position when the windup begins (an aoe resolves on
   // it, a leap arcs onto it).
@@ -673,27 +774,31 @@ export function createEnemy(
   // The 'landing' anchor — where the last leap touched down, for a
   // follow-up step (a puddle) to build on.
   const landing = new THREE.Vector3();
-  // The lash tentacle — spawned for a 'lash' telegraph, reaches out over
-  // the windup, snaps on strike, retracts + disposes on recover.
-  let lashTendril: LashTendril | null = null;
-  // True when the live telegraph is anchored to THIS mob rather than to a
-  // ground spot — it must be dragged along each windup frame (see the winding
-  // state), otherwise a creeping caster leaves its own danger ring behind.
-  let aoeTelegraphFollowsSelf = false;
   function clearAoeTelegraph() {
-    if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
-    aoeTelegraphFollowsSelf = false;
+    if (combat.aoeTelegraph) { combat.aoeTelegraph.dispose(); combat.aoeTelegraph = null; }
+    combat.aoeTelegraphFollowsSelf = false;
   }
   function clearLashTendril() {
-    if (lashTendril) { lashTendril.dispose(); lashTendril = null; }
+    if (combat.lashTendril) { combat.lashTendril.dispose(); combat.lashTendril = null; }
   }
+  // ── aware: Perception: aggro, dormancy, line of sight.
+  const aware: {
+    aggroed: boolean;
+    dormant: boolean;
+    wasDormant: boolean;
+    timeSinceLOS: number;
+  } = {
+    // Perception state. lastSeenPos tracks the last known XZ of the player
+    // for searching. Updated each frame the enemy currently has LOS.
+    aggroed: false,
+    // mirrored to the public `dormant` getter
+    dormant: false,
+    // edge-detect the wake to grant an engage grace
+    wasDormant: false,
+    // seconds since enemy last had LOS to player
+    timeSinceLOS: 0,
+  };
 
-  // Perception state. lastSeenPos tracks the last known XZ of the player
-  // for searching. Updated each frame the enemy currently has LOS.
-  let aggroed = false;
-  let dormantLocal = false;   // mirrored to the public `dormant` getter
-  let wasDormant = false;     // edge-detect the wake to grant an engage grace
-  let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
 
   // ── Intent layer (Enemy AI V2 — docs/ENEMY-AI-V2.md) ────────────────
@@ -704,70 +809,100 @@ export function createEnemy(
   // pack has a coward and a berserker. BOSSES OPT OUT (useIntent=false) — they
   // keep constant pressure, so their carefully tuned fights are untouched.
   const personality = rollPersonality(gameRng, spec.disposition);
-  let aggression = CONFIG.ENEMY_AI.INTENT.MOOD_TARGET_BASE + personality.boldness * 0.2;
-  let decisionTimer = gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN;   // desync the first decision
-  let currentIntent: IntentChoice = { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false };
-  /** Seconds since this mob last committed an attack — drives the intent
-   *  starvation pressure (see selectIntent). Only ticks while engaged. */
-  let sinceCommit = 0;
-  const useIntent = !spec.isBoss && !spec.miniboss;   // set-piece foes keep tuned pressure
-  // Feint (telegraph-the-wait): while HOLDING the ring, fake a lunge now and then
-  // so a waiting mob reads as coiled, not frozen. `feintCd` counts down between
-  // feints; `feintT` runs a feint (-1 = idle).
-  let feintCd = CONFIG.ENEMY_AI.INTENT.FEINT_MIN + gameRng() * CONFIG.ENEMY_AI.INTENT.FEINT_JITTER;
-  let feintT = -1;
-  // Morale: a creature's nerve can BREAK (low HP roll, weighted by how bold it
-  // is; or its leader falling) → it routs + cowers ('fleeing'). Breaks at most
-  // once per life (a re-engaged coward then fights on), so no perma-flee flicker.
-  let brokenOnce = false;
-  let cowerTimer = 0;   // >0 while cowering at the end of a rout
-  // FEAR — the same rout, but IMPOSED rather than rolled. While `fearTimer > 0`
-  // the creature will not re-engage no matter how long it has cowered; it is
-  // simply too frightened to turn around. `fearCd` is the anti-permalock cooldown
-  // (CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER) that keeps break→panic→break from
-  // removing the fight entirely. See applyFear.
-  let fearTimer = 0;
-  let fearCd = 0;
+  // ── intent: Enemy AI V2 intent layer: mood, the current choice, feints.
+  const intent: {
+    aggression: number;
+    decisionTimer: number;
+    currentIntent: IntentChoice;
+    sinceCommit: number;
+    feintCd: number;
+    feintT: number;
+  } = {
+    aggression: CONFIG.ENEMY_AI.INTENT.MOOD_TARGET_BASE + personality.boldness * 0.2,
+    // desync the first decision
+    decisionTimer: gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN,
+    currentIntent: { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false },
+    /** Seconds since this mob last committed an attack — drives the intent
+     *  starvation pressure (see selectIntent). Only ticks while engaged. */
+    sinceCommit: 0,
+    // Feint (telegraph-the-wait): while HOLDING the ring, fake a lunge now and then
+    // so a waiting mob reads as coiled, not frozen. `feintCd` counts down between
+    // feints; `feintT` runs a feint (-1 = idle).
+    feintCd: CONFIG.ENEMY_AI.INTENT.FEINT_MIN + gameRng() * CONFIG.ENEMY_AI.INTENT.FEINT_JITTER,
+    feintT: -1,
+  };
+
+  const useIntent = !spec.isBoss && !spec.miniboss;
   /** True while the creature is visibly panicked — drives the skull + backstab. */
-  const isFeared = (): boolean => fearTimer > 0 || state === 'fleeing';
+  const isFeared = (): boolean => poise.fearTimer > 0 || fsm.state === 'fleeing';
 
   // Join the pack coordinator so a crowd of chasers rings the player instead of
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
   // this frame; reach = strike range (the ring radius). Left on teardown via
   // disposeEnemy. The ring is for MELEE; ranged kiters keep their own standoff.
   joinPack(entityId, container.position, spec.strikeRange,
-    () => aliveLocal && (state === 'chasing' || state === 'winding' || state === 'striking' || state === 'recovering'),
-    () => state === 'winding' || state === 'striking' || state === 'recovering');
-  // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
-  // way the level placed us. Set after initial faceWorld() in builder.ts —
-  // for now, read whatever rotation is on the container right now.
-  let homeYaw = 0;                   // filled in on first idle-tick
-  let homeYawSet = false;
-  // Ambient WANDER (non-hostile vermin — maggots): a slow crawl between random
-  // nearby points with a grub wriggle, so they read as ALIVE, not props. Home is
-  // the spawn spot; the crawl stays within a small radius of it.
-  let homeX = 0, homeZ = 0, homeSet = false;
-  let wanderX = 0, wanderZ = 0, wanderActive = false, wanderPause = 0, wanderTimer = 0;
+    () => fsm.alive && (fsm.state === 'chasing' || fsm.state === 'winding' || fsm.state === 'striking' || fsm.state === 'recovering'),
+    () => fsm.state === 'winding' || fsm.state === 'striking' || fsm.state === 'recovering');
+  // ── idle: Calm behaviour: home post, vermin wander, idle scan.
+  const idle: {
+    homeYaw: number;
+    homeYawSet: boolean;
+    homeX: number;
+    homeZ: number;
+    homeSet: boolean;
+    wanderX: number;
+    wanderZ: number;
+    wanderActive: boolean;
+    wanderPause: number;
+    wanderTimer: number;
+    scanTimer: number;
+    scanInterval: number;
+    scanTargetYaw: number;
+  } = {
+    // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
+    // way the level placed us. Set after initial faceWorld() in builder.ts —
+    // for now, read whatever rotation is on the container right now.
+    // filled in on first idle-tick
+    homeYaw: 0,
+    homeYawSet: false,
+    // Ambient WANDER (non-hostile vermin — maggots): a slow crawl between random
+    // nearby points with a grub wriggle, so they read as ALIVE, not props. Home is
+    // the spawn spot; the crawl stays within a small radius of it.
+    homeX: 0,
+    homeZ: 0,
+    homeSet: false,
+    wanderX: 0,
+    wanderZ: 0,
+    wanderActive: false,
+    wanderPause: 0,
+    wanderTimer: 0,
+    // Idle scan yaw target — rotates in place to feel watchful.
+    // pick a new target immediately
+    scanTimer: IDLE_SCAN_INTERVAL_MIN,
+    scanInterval: IDLE_SCAN_INTERVAL_MIN,
+    scanTargetYaw: 0,
+  };
+
   const wrigglePhase = gameRng() * Math.PI * 2;
-  // Inside-aura state — how long the player has been inside us +
-  // when the next dot tick is due. Resets to 0 when player leaves.
-  let auraInsideTime = 0;
-  let auraDamageTimer = 0;
   // Leap takeoff point, captured at strike start — a leap action arcs
   // from here to the locked landing zone. (Its once-only touchdown is
   // latched by the step's stepDone, like every other action.)
   const leapStart = new THREE.Vector3();
-  // Idle scan yaw target — rotates in place to feel watchful.
-  let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
-  let scanInterval = IDLE_SCAN_INTERVAL_MIN;
-  let scanTargetYaw = 0;
 
   // Vocalisation — positional idle/aware sound so the player hears the mob
   // before they see it. Staggered first utterance so a roomful doesn't fire
   // in unison; the global throttle in sfx caps overlap.
   const vocalArch = vocalArchetypeFor(spec);
-  let vocalTimer = 2 + gameRng() * 8;
-  let strideAccum = gameRng() * 0.4;   // footstep cadence accumulator (m); jittered so a pack doesn't step in lockstep
+  // ── audio: Vocal and footstep cadence (seeded from gameRng at spawn).
+  const audio: {
+    vocalTimer: number;
+    strideAccum: number;
+  } = {
+    vocalTimer: 2 + gameRng() * 8,
+    // footstep cadence accumulator (m); jittered so a pack doesn't step in lockstep
+    strideAccum: gameRng() * 0.4,
+  };
+
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
 
@@ -791,26 +926,45 @@ export function createEnemy(
   // Apply idle eyes immediately so unseen enemies don't pop with full-bright
   // eyes on the very first frame (before update runs even once).
   applyIdleEyes();
-  // Per-cycle randomized windup duration so multiple enemies attacking in
-  // unison de-synchronize over time (otherwise stacked mobs all strike on
-  // the exact same frame and the player has no rhythm to read).
-  let currentWindupTime = abilities[0].windup;
   function rollWindupTime() {
-    const base = currentAbility?.windup ?? abilities[0].windup;
-    currentWindupTime = base * (0.78 + gameRng() * 0.44);  // ±22%
+    const base = combat.currentAbility?.windup ?? combat.abilities[0].windup;
+    combat.currentWindupTime = base * (0.78 + gameRng() * 0.44);  // ±22%
   }
   rollWindupTime();
 
   // Charge-recoil speed (the dash's contact knockback). The impulse itself is
   // owned + integrated by the body animator (bodyAnim.applyKnockback / tick).
   const KNOCKBACK_CHARGE = 4.5;
+  // ── loco: Locomotion: the cached route, stuck detection, smoothed facing.
+  const loco: {
+    path: Waypoint[];
+    pathTime: number;
+    stuckT: number;
+    smoothVelX: number;
+    smoothVelZ: number;
+    dbgFaceX: number;
+    dbgFaceZ: number;
+  } = {
+    // Pathfinding state — cached waypoints to the current target. Refreshed
+    // every PATH_REFRESH seconds while LOS to the target is blocked. Phasing
+    // mobs (wraith) skip pathfinding entirely; they steer through props.
+    path: [],
+    pathTime: 0,
+    // time spent pinned against geometry (drives the sidestep)
+    stuckT: 0,
+    // Smoothed velocity for movement-facing. Face where the mob is ACTUALLY moving
+    // (real per-frame displacement, low-passed), so a chaser turns to RUN where it
+    // goes instead of crab-walking / moonwalking with its body facing elsewhere.
+    // When it's essentially stationary (watching, blocked, arrived) it faces the
+    // player instead. The smoothing + the min-speed gate filter the per-frame noise
+    // from pack separation + pathfinding that made facing a raw target jitter.
+    smoothVelX: 0,
+    smoothVelZ: 0,
+    dbgFaceX: 0,
+    // DEV: the point faceTarget last aimed at (blue gizmo)
+    dbgFaceZ: 0,
+  };
 
-  // Pathfinding state — cached waypoints to the current target. Refreshed
-  // every PATH_REFRESH seconds while LOS to the target is blocked. Phasing
-  // mobs (wraith) skip pathfinding entirely; they steer through props.
-  let path: Waypoint[] = [];
-  let pathTime = 0;
-  let stuckT = 0;   // time spent pinned against geometry (drives the sidestep)
   const PATH_REFRESH = 0.5;
   const WAYPOINT_REACHED_SQ = 0.35 * 0.35;
 
@@ -835,17 +989,17 @@ export function createEnemy(
    *  Goes through walkable.clampMoveInto like every other root writer, or mobs
    *  would step through walls. */
   function tickAbilityMotion(dt: number, walkable: WalkableRegion): void {
-    const m = currentAbility?.motion;
-    if (!m || !currentAbility) return;
-    const total = currentWindupTime + currentAbility.strike + currentAbility.recover;
+    const m = combat.currentAbility?.motion;
+    if (!m || !combat.currentAbility) return;
+    const total = combat.currentWindupTime + combat.currentAbility.strike + combat.currentAbility.recover;
     if (total <= 0) return;
 
     // Elapsed across the WHOLE window, so from/to read as one timeline rather
     // than per-phase fractions the author would have to convert by hand.
     const elapsed =
-      state === 'winding'    ? phaseTimer
-      : state === 'striking' ? currentWindupTime + phaseTimer
-      : state === 'recovering' ? currentWindupTime + currentAbility.strike + phaseTimer
+      fsm.state === 'winding'    ? fsm.phaseTimer
+      : fsm.state === 'striking' ? combat.currentWindupTime + fsm.phaseTimer
+      : fsm.state === 'recovering' ? combat.currentWindupTime + combat.currentAbility.strike + fsm.phaseTimer
       : -1;
     if (elapsed < 0) return;
 
@@ -895,31 +1049,31 @@ export function createEnemy(
       if (!directLOS) {
         // Invalidate the cached path if the target drifted significantly
         // from where we last planned to (player moved across the room).
-        if (path.length > 0) {
-          const last = path[path.length - 1];
+        if (loco.path.length > 0) {
+          const last = loco.path[loco.path.length - 1];
           const tdx = targetX - last.x;
           const tdz = targetZ - last.z;
           if (tdx * tdx + tdz * tdz > 2.25) {
-            path.length = 0;
-            pathTime = 0;
+            loco.path.length = 0;
+            loco.pathTime = 0;
           }
         }
-        pathTime += dt;
-        if (pathTime >= PATH_REFRESH || path.length === 0) {
+        loco.pathTime += dt;
+        if (loco.pathTime >= PATH_REFRESH || loco.path.length === 0) {
           // Radius-aware: a wide body (collisionRadius past the grid's
           // full-clearance tier) treats narrow-doorway cells as walls
           // instead of wedging into a gap it can't physically fit.
-          path = nav.findPath(container.position.x, container.position.z, targetX, targetZ,
+          loco.path = nav.findPath(container.position.x, container.position.z, targetX, targetZ,
             { radius: spec.collisionRadius });
-          pathTime = 0;
+          loco.pathTime = 0;
         }
         // Walk the waypoint queue, popping any we've already reached.
-        while (path.length > 0) {
-          const wp = path[0];
+        while (loco.path.length > 0) {
+          const wp = loco.path[0];
           const dwx = wp.x - container.position.x;
           const dwz = wp.z - container.position.z;
           if (dwx * dwx + dwz * dwz < WAYPOINT_REACHED_SQ) {
-            path.shift();
+            loco.path.shift();
           } else {
             mx = wp.x;
             mz = wp.z;
@@ -928,8 +1082,8 @@ export function createEnemy(
         }
       } else {
         // We can see the target — drop any stale path so we beeline.
-        pathTime = 0;
-        path.length = 0;
+        loco.pathTime = 0;
+        loco.path.length = 0;
       }
     }
 
@@ -956,8 +1110,8 @@ export function createEnemy(
     // while genuinely pinned.
     const fwdMoved = Math.hypot(resolved.x - cx, resolved.z - cz);
     if (fwdMoved < step * 0.3) {
-      stuckT += dt;
-      if (stuckT > NAV_STUCK_TIME) {
+      loco.stuckT += dt;
+      if (loco.stuckT > NAV_STUCK_TIME) {
         const px = -dz * inv, pz = dx * inv;   // unit perpendicular to the target dir
         const left = walkable.clampMoveInto(tmpClampLeft, cx, cz, cx + px * step, cz + pz * step, spec.collisionRadius, clampOpts);
         const right = walkable.clampMoveInto(tmpClampRight, cx, cz, cx - px * step, cz - pz * step, spec.collisionRadius, clampOpts);
@@ -967,7 +1121,7 @@ export function createEnemy(
         if (Math.max(lMov, rMov) > step * 0.3) resolved = best;   // a side is open — slide
       }
     } else {
-      stuckT = 0;
+      loco.stuckT = 0;
     }
     // Footstep foley — accumulate the distance ACTUALLY moved (post-clamp, so
     // a mob pinned against a wall goes silent) and tick a locomotion sound
@@ -976,10 +1130,10 @@ export function createEnemy(
     if (vocalArch && spec.presence !== 'spectral') {
       const mdx = resolved.x - container.position.x;
       const mdz = resolved.z - container.position.z;
-      strideAccum += Math.sqrt(mdx * mdx + mdz * mdz);
+      audio.strideAccum += Math.sqrt(mdx * mdx + mdz * mdz);
       const stride = 0.42 + spec.collisionRadius * 0.9;
-      if (strideAccum >= stride) {
-        strideAccum = 0;
+      if (audio.strideAccum >= stride) {
+        audio.strideAccum = 0;
         playEnemyFootstep(vocalArch, container.position);
       }
     }
@@ -1007,7 +1161,7 @@ export function createEnemy(
    * Returns the actual amount applied (caller can use for damage numbers).
    */
   function takeDamage(event: DamageEvent): number {
-    if (!aliveLocal) return 0;
+    if (!fsm.alive) return 0;
     // Buried/emerging mobs can't be hit — the creature itself is
     // underground or mid-burst, not yet a valid target. Routes
     // through here normally; we short-circuit before HP changes.
@@ -1053,7 +1207,7 @@ export function createEnemy(
     // the body — "it felt that", so damage reads on a thinking thing, not a sponge.
     // Committed states (winding/striking) keep their telegraph clean — only a
     // FALTER (a heavy hit) interrupts those; a staggered mob is already reeling.
-    if (entity.hp.current > 0 && state !== 'winding' && state !== 'striking' && state !== 'staggered') {
+    if (entity.hp.current > 0 && fsm.state !== 'winding' && fsm.state !== 'striking' && fsm.state !== 'staggered') {
       bodyAnim.twitch();
     }
     // Pained cry when it survives the blow — the creature's voice on top of
@@ -1065,26 +1219,26 @@ export function createEnemy(
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
     // jump straight to chasing (skip the alerted hesitation — being hit
     // IS the wake-up).
-    aggroed = true;
-    timeSinceLOS = 0;
+    aware.aggroed = true;
+    aware.timeSinceLOS = 0;
     // Taking a hit cools the mood — the mob recoils and re-sizes-you-up before
     // its next burst (the intent layer reads `aggression`). Survivors only.
     if (entity.hp.current > 0) {
-      aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_HURT_DROP);
+      intent.aggression = Math.max(0, intent.aggression - CONFIG.ENEMY_AI.INTENT.MOOD_HURT_DROP);
       // MORALE — crossing the low-HP line can BREAK the nerve: cowards rout,
       // berserkers fight on. Once per life; never a boss / already-broken / reeling
       // mob. (Bosses opt out of the intent layer, so `useIntent` gates it.)
       const M = CONFIG.ENEMY_AI.MORALE;
-      if (useIntent && !brokenOnce && state !== 'fleeing' && state !== 'staggered'
+      if (useIntent && !poise.brokenOnce && fsm.state !== 'fleeing' && fsm.state !== 'staggered'
           && entity.hp.current <= bossPhases.maxHp * M.BREAK_HP
           && gameRngChance((1 - personality.boldness) * M.BREAK_CHANCE)) {
         breakMorale();
       }
     }
-    if (hostileToPlayer && state !== 'fleeing'
-        && (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning')) {
-      state = 'chasing';
-      phaseTimer = 0;
+    if (hostileToPlayer && fsm.state !== 'fleeing'
+        && (fsm.state === 'idle' || fsm.state === 'alerted' || fsm.state === 'searching' || fsm.state === 'returning')) {
+      fsm.state = 'chasing';
+      fsm.phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
       // Multi-phase: if there's a next phase, transition INSTEAD of dying —
@@ -1111,7 +1265,7 @@ export function createEnemy(
       // animation — the dissolve uniform + soul wisps run via the
       // dying-branch in update(). Final scene.remove happens when the
       // death sequence ends (mobs/enemy-death.ts).
-      aliveLocal = false;
+      fsm.alive = false;
       // SUBSTRATE payoff hook (docs/BUILD-ECONOMY.md): fire status-death payoffs
       // while the dying enemy's buffs are STILL LIVE (before destroyEntity below).
       // A bleeding kill chains bleed to neighbours + feeds the blood-drinker.
@@ -1152,7 +1306,7 @@ export function createEnemy(
       // SUMMONED mobs pay nothing — not an item, not a coin. A spawner you can
       // stand next to is an infinite income tap otherwise, and the reward for a
       // summoned fight belongs to the encounter, once, when it resolves.
-      if (!spec.isBoss && !spec.miniboss && !summoned) {
+      if (!spec.isBoss && !spec.miniboss && !fsm.summoned) {
         const bundle = rollDropTable(spec.dropTable ?? 'enemy', getCurrentDepth(), gameRng);
         const N = bundle.items.length;
         bundle.items.forEach((item, i) => {
@@ -1178,8 +1332,8 @@ export function createEnemy(
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
       // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
-      stunStars?.dispose(); stunStars = null;
-      fearSkull?.dispose(); fearSkull = null;
+      pres.stunStars?.dispose(); pres.stunStars = null;
+      pres.fearSkull?.dispose(); pres.fearSkull = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id, victimBuffs });
       // Death soaks the floor: a big pool under the corpse plus a
@@ -1222,12 +1376,12 @@ export function createEnemy(
   // cone on a heavy melee hit, with the attacker's already-resolved
   // stagger power (weapon weight × Might × charge — see attack.ts).
   function applyStaggerDamage(amount: number): boolean {
-    if (!aliveLocal || !burrow.surfaced || amount <= 0) return false;
+    if (!fsm.alive || !burrow.surfaced || amount <= 0) return false;
     if (!actionFsm.canBeStaggered()) return false;     // already reeling
     if (bossPhases.phaseInvulnerable) return false;     // boss phase-entry invuln
-    poiseLeft -= amount;
-    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
-    if (poiseLeft <= 0) { triggerStagger(); return true; }
+    poise.poiseLeft -= amount;
+    poise.poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    if (poise.poiseLeft <= 0) { triggerStagger(); return true; }
     // FALTER — the middle rung of the ladder. A heavy-enough single hit
     // (charged / hammer / a countered or deflect-empowered blow — light taps fall
     // under the threshold) that lands WHILE the enemy is committed to an attack
@@ -1237,25 +1391,25 @@ export function createEnemy(
     // and a cooldown stops you chain-faltering a windup forever. Reuses the
     // existing flinch-lock beat + parry-recoil stumble — no new interrupt system.
     if (amount >= CONFIG.POISE.FALTER_THRESHOLD
-        && (state === 'winding' || state === 'striking')
-        && falterCd <= 0) {
-      falterCd = CONFIG.POISE.FALTER_CD;
-      currentAbility = null;
+        && (fsm.state === 'winding' || fsm.state === 'striking')
+        && poise.falterCd <= 0) {
+      poise.falterCd = CONFIG.POISE.FALTER_CD;
+      combat.currentAbility = null;
       clearAoeTelegraph();
       clearLashTendril();
       reconcileThreat(false, false);   // its threat flash is spent — the attack died
       setEyeFlare(0);
       actionFsm.enterFlinchLock(CONFIG.POISE.FALTER_LOCK_S);
       bodyAnim.flinch(CONFIG.POISE.FALTER_FLINCH);   // a visible backward stumble
-      state = 'chasing';
-      phaseTimer = 0;
+      fsm.state = 'chasing';
+      fsm.phaseTimer = 0;
     }
     return false;
   }
 
   function triggerStagger(): void {
     // Cancel whatever it was doing — the wind-up/strike is INTERRUPTED.
-    currentAbility = null;
+    combat.currentAbility = null;
     clearAoeTelegraph();
     clearLashTendril();
     setEyeFlare(0);
@@ -1264,12 +1418,12 @@ export function createEnemy(
     // WORD so the poise-break reads as a decisive beat, not just a stumble.
     coreReactor.hit();
     flashCombatWord('BROKEN', BREAK_RED);
-    state = 'staggered';
+    fsm.state = 'staggered';
     actionFsm.enterStagger(CONFIG.POISE.STAGGER_DURATION);
-    phaseTimer = 0;
-    poiseLeft = poiseMax;          // reset — must be broken again
-    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
-    aggroed = true;                // a staggered mob is very much aware of you
+    fsm.phaseTimer = 0;
+    poise.poiseLeft = poise.poiseMax;          // reset — must be broken again
+    poise.poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    aware.aggroed = true;                // a staggered mob is very much aware of you
     setStaggerVuln(true);          // expose any openWhenStaggered weak points
     // (Audio: the breaking hit's own hurt cry — via takeDamage — covers
     // the moment. A dedicated heavier "stagger" SFX is future polish.)
@@ -1293,16 +1447,16 @@ export function createEnemy(
   // comes out feared: same timer, same skull, same DREAD stack in the debuff
   // read, same slow, and one buff id for the fear archetype to key on.
   function breakMorale(durationS = CONFIG.ENEMY_AI.FEAR.BREAK_DURATION): void {
-    brokenOnce = true;
-    currentAbility = null;
+    poise.brokenOnce = true;
+    combat.currentAbility = null;
     clearAoeTelegraph();
     clearLashTendril();
     reconcileThreat(false, false);   // its threat flash is spent
     setEyeFlare(0);
-    cowerTimer = 0;
-    state = 'fleeing';
-    phaseTimer = 0;
-    fearTimer = Math.max(fearTimer, durationS);
+    poise.cowerTimer = 0;
+    fsm.state = 'fleeing';
+    fsm.phaseTimer = 0;
+    poise.fearTimer = Math.max(poise.fearTimer, durationS);
     // The visible, inspectable half of the state. Rides the same duration as the
     // timer so the icon and the behaviour can't disagree.
     const ent = getEntity(entityId);
@@ -1320,17 +1474,17 @@ export function createEnemy(
   // tuned pressure curve and being frightened off is not part of it), and any
   // creature still inside its post-fear immunity.
   function applyFear(seconds: number): boolean {
-    if (!aliveLocal || seconds <= 0) return false;
+    if (!fsm.alive || seconds <= 0) return false;
     if (spec.isBoss || spec.miniboss) return false;
-    if (fearCd > 0) return false;
+    if (poise.fearCd > 0) return false;
     // A creature already reeling from the break can't start RUNNING yet — it
     // routs the moment the stagger lets go (see the 'staggered' exit) — but the
     // fear itself lands now, timer and debuff both, so the handoff out of the
     // stagger has something to read.
-    if (state !== 'staggered' && state !== 'fleeing') {
+    if (fsm.state !== 'staggered' && fsm.state !== 'fleeing') {
       breakMorale(seconds);
     } else {
-      fearTimer = Math.max(fearTimer, seconds);
+      poise.fearTimer = Math.max(poise.fearTimer, seconds);
       const ent = getEntity(entityId);
       if (ent) applyBuff(ent, 'dread', seconds, entityId);
     }
@@ -1371,7 +1525,7 @@ export function createEnemy(
     // (which also pops the deflect opportunity). If it finishes the mob, stop
     // here — the poise/flinch below would act on a corpse.
     takeDamage({ source: 'player', target: entityId, base: getCurrentWeapon().damage, type: 'physical' });
-    if (!aliveLocal) return;
+    if (!fsm.alive) return;
     // On-riposte verb (e.g. a serrated blade bleeds the foe it just parried).
     fireCombatVerb(getCurrentWeapon().onRiposte, entityId, 'enemy');
     // Chunk poise — by the WEAPON's authored parry poise (a heavy guard-breaker
@@ -1387,7 +1541,7 @@ export function createEnemy(
       // A clean parry that didn't break poise — "TURNED". (A parry that DID
       // break shows the bigger "BROKEN" from triggerStagger instead.)
       flashCombatWord('TURNED', CLASH_GOLD);
-      currentAbility = null;
+      combat.currentAbility = null;
       clearAoeTelegraph();
       clearLashTendril();
       coreReactor.hit();     // white body flash — the parried recoil
@@ -1397,8 +1551,8 @@ export function createEnemy(
       bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK * knockMul);
       bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
       actionFsm.enterFlinchLock(CONFIG.DEFLECT.FLINCH_LOCK_S);
-      state = 'chasing';
-      phaseTimer = 0;
+      fsm.state = 'chasing';
+      fsm.phaseTimer = 0;
     }
   }
 
@@ -1438,13 +1592,13 @@ export function createEnemy(
   }
 
   function faceTarget(target: THREE.Vector3, dt: number) {
-    _dbgFaceX = target.x; _dbgFaceZ = target.z;   // DEV gizmo: what it's TRYING to face this frame
+    loco.dbgFaceX = target.x; loco.dbgFaceZ = target.z;   // DEV gizmo: what it's TRYING to face this frame
     const dx = target.x - container.position.x;
     const dz = target.z - container.position.z;
     if (dx * dx + dz * dz < 1e-8) return;
     // Committed to a swing → LOCK facing entirely (the strike goes where it
     // aimed; circle out of the arc to whiff it).
-    if (state === 'striking' || state === 'recovering') return;
+    if (fsm.state === 'striking' || fsm.state === 'recovering') return;
 
     // THE moonwalk fix: force a clean PURE-YAW orientation. lookAt (used by
     // spawn faceWorld + kiter steering) represents a "-Z toward a target in the
@@ -1462,8 +1616,8 @@ export function createEnemy(
     //   • CHASING / alerted / searching: the steady TURN_RATE — tracks a
     //     circling player smoothly, converging to the correct toward-you heading.
     let rate: number;
-    if (state === 'winding') {
-      const prog = currentWindupTime > 0 ? Math.min(1, phaseTimer / currentWindupTime) : 1;
+    if (fsm.state === 'winding') {
+      const prog = combat.currentWindupTime > 0 ? Math.min(1, fsm.phaseTimer / combat.currentWindupTime) : 1;
       rate = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog);
     } else {
       rate = CONFIG.ENEMY_AI.TURN_RATE;
@@ -1472,23 +1626,14 @@ export function createEnemy(
     const maxStep = rate * dt;
     container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
   }
-
-  // Smoothed velocity for movement-facing. Face where the mob is ACTUALLY moving
-  // (real per-frame displacement, low-passed), so a chaser turns to RUN where it
-  // goes instead of crab-walking / moonwalking with its body facing elsewhere.
-  // When it's essentially stationary (watching, blocked, arrived) it faces the
-  // player instead. The smoothing + the min-speed gate filter the per-frame noise
-  // from pack separation + pathfinding that made facing a raw target jitter.
-  let smoothVelX = 0, smoothVelZ = 0;
-  let _dbgFaceX = 0, _dbgFaceZ = 0;   // DEV: the point faceTarget last aimed at (blue gizmo)
   const _faceMove = new THREE.Vector3();
   function faceMovement(dispX: number, dispZ: number, playerPos: THREE.Vector3, dt: number) {
     if (dt > 0) {
       const a = 1 - Math.exp(-dt / 0.12);   // ~0.12s heading smoothing
-      smoothVelX += (dispX / dt - smoothVelX) * a;
-      smoothVelZ += (dispZ / dt - smoothVelZ) * a;
+      loco.smoothVelX += (dispX / dt - loco.smoothVelX) * a;
+      loco.smoothVelZ += (dispZ / dt - loco.smoothVelZ) * a;
     }
-    const speed = Math.hypot(smoothVelX, smoothVelZ);
+    const speed = Math.hypot(loco.smoothVelX, loco.smoothVelZ);
     // Smooth BLEND between "face the player" (stationary) and "face travel"
     // (moving) — a hard speed threshold would flip-flop the facing frame to frame
     // right at the cutoff (jitter). w ramps 0→1 across a band around FACE_MOVE_MIN.
@@ -1498,7 +1643,7 @@ export function createEnemy(
     if (w <= 0) { faceTarget(playerPos, dt); return; }
     let px = playerPos.x - container.position.x, pz = playerPos.z - container.position.z;
     const pl = Math.hypot(px, pz) || 1; px /= pl; pz /= pl;
-    const vx = smoothVelX / (speed || 1), vz = smoothVelZ / (speed || 1);
+    const vx = loco.smoothVelX / (speed || 1), vz = loco.smoothVelZ / (speed || 1);
     _faceMove.set(
       container.position.x + px * (1 - w) + vx * w,
       0,
@@ -1514,22 +1659,22 @@ export function createEnemy(
   // while a feint is actively driving movement (so the caller skips its hold).
   function tickFeint(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid): boolean {
     const F = CONFIG.ENEMY_AI.INTENT;
-    if (feintT < 0) {
-      feintCd -= dt;
-      if (feintCd > 0) return false;
-      feintT = 0;   // start a feint
+    if (intent.feintT < 0) {
+      intent.feintCd -= dt;
+      if (intent.feintCd > 0) return false;
+      intent.feintT = 0;   // start a feint
     }
-    feintT += dt;
-    if (feintT <= F.FEINT_IN) {
+    intent.feintT += dt;
+    if (intent.feintT <= F.FEINT_IN) {
       moveTowards(playerPos.x, playerPos.z, F.FEINT_SPEED, dt, walkable, nav);   // dart IN
-    } else if (feintT <= F.FEINT_IN + F.FEINT_OUT) {
+    } else if (intent.feintT <= F.FEINT_IN + F.FEINT_OUT) {
       const dx = container.position.x - playerPos.x, dz = container.position.z - playerPos.z;
       const l = Math.hypot(dx, dz) || 1;
       moveTowards(container.position.x + (dx / l) * 1.5, container.position.z + (dz / l) * 1.5,
                   F.FEINT_SPEED * 0.85, dt, walkable, nav);   // snap BACK
     } else {
-      feintT = -1;   // done — arm the next one
-      feintCd = F.FEINT_MIN + gameRng() * F.FEINT_JITTER;
+      intent.feintT = -1;   // done — arm the next one
+      intent.feintCd = F.FEINT_MIN + gameRng() * F.FEINT_JITTER;
       return false;
     }
     faceTarget(playerPos, dt);   // square up to the player through the whole fake-out
@@ -1562,7 +1707,7 @@ export function createEnemy(
   /** Pick the highest-priority ready ability whose range band contains
    *  `distance`. null if none is ready/in-band (caller then steers). */
   function selectAbility(distance: number): Ability | null {
-    for (const ab of abilities) {
+    for (const ab of combat.abilities) {
       if ((cooldowns.get(ab.id) ?? 0) > 0) continue;
       const min = ab.minRange ?? 0;
       if (distance >= min && distance <= ab.maxRange) return ab;
@@ -1619,26 +1764,13 @@ export function createEnemy(
     return ELEMENTS[element ?? 'physical'].damageType;
   }
 
-  /** Run one ability action this frame. Returns true when the action is
-   *  DONE (no more per-frame work): an instant hit resolves once; a melee
-   *  keeps trying until it lands or the strike ends; dash/leap run their
-   *  whole motion. Each action owns its own resolution — nothing is shared
-   *  between steps (that sharing is what broke the old leap). */
-  // ── Detonation ────────────────────────────────────────────────────
-  // A blast can be delivered two ways — the timeline firing it on schedule, or
-  // the caster being killed while ARMED (see armedBlastAction). Both funnel
-  // here so they can't drift apart, and `blastSpent` guarantees a bomb goes off
-  // exactly once: without it, selfDestruct → takeDamage → the death hook → a
-  // second blast → selfDestruct again is an obvious infinite recursion.
-  let blastSpent = false;
-
   function fireBlast(
     action: Extract<AbilityAction, { kind: 'blast' }>,
     at: { x: number; z: number },
     playerPos: THREE.Vector3,
   ): void {
-    if (blastSpent) return;
-    blastSpent = true;
+    if (combat.blastSpent) return;
+    combat.blastSpent = true;
     clearAoeTelegraph();
     radialBlast(scene, {
       x: at.x, y: groundYAt(at.x, at.z), z: at.z,
@@ -1660,7 +1792,7 @@ export function createEnemy(
     // this an ENVIRONMENTAL death, so a mob that blew itself up doesn't hand
     // the player kill credit for a fight they didn't win. It still runs the
     // full death path (drops, room-clear count, dissolve).
-    if (action.selfDestruct && aliveLocal) {
+    if (action.selfDestruct && fsm.alive) {
       takeDamage({ source: null, target: entityId, base: 9999, type: 'physical' });
     }
   }
@@ -1670,9 +1802,9 @@ export function createEnemy(
    *  still set it off: that is what makes "back off, or kill it early" a real
    *  decision instead of a gotcha for correctly killing the thing. */
   function armedBlastAction(): Extract<AbilityAction, { kind: 'blast' }> | null {
-    if (blastSpent || !currentAbility) return null;
-    if (state !== 'winding' && state !== 'striking') return null;
-    for (const step of currentAbility.steps) {
+    if (combat.blastSpent || !combat.currentAbility) return null;
+    if (fsm.state !== 'winding' && fsm.state !== 'striking') return null;
+    for (const step of combat.currentAbility.steps) {
       if (step.action.kind === 'blast') return step.action;
     }
     return null;
@@ -1698,7 +1830,7 @@ export function createEnemy(
           // strike is deflected, NOT dealt — so no hit ever slips through while
           // a parry is open (a longer-reach step, a late damage frame, a tap
           // that lands a frame after onset all funnel through here).
-          if (currentAbility && isDeflectable(currentAbility) && isParryActive()
+          if (combat.currentAbility && isDeflectable(combat.currentAbility) && isParryActive()
               && playerFacingThis(playerPos)) {
             resolveParry(playerPos);
             return true;          // strike consumed — NO damage
@@ -1714,7 +1846,7 @@ export function createEnemy(
           }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
-          meleeHitLanded = true;  // the blow connected — strike is spent, no late parry
+          combat.meleeHitLanded = true;  // the blow connected — strike is spent, no late parry
           return true;            // hit — done
         }
         // NEAR-MISS perfect dodge — the blade released right at your edge but
@@ -1787,7 +1919,7 @@ export function createEnemy(
           // different code path that never consulted it. So an ability tagged
           // deflectable would flash white — promising a counter — and then hit
           // you through the parry anyway. Now the promise is kept.
-          if (currentAbility && isDeflectable(currentAbility) && isParryActive()
+          if (combat.currentAbility && isDeflectable(combat.currentAbility) && isParryActive()
               && playerFacingThis(playerPos)) {
             resolveParry(playerPos,
               CONFIG.DEFLECT.CHARGE_POISE_MUL, CONFIG.DEFLECT.CHARGE_KNOCKBACK_MUL);
@@ -1799,7 +1931,7 @@ export function createEnemy(
           }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
-          meleeHitLanded = true;  // connected — no late parry can still turn it
+          combat.meleeHitLanded = true;  // connected — no late parry can still turn it
           bodyAnim.applyKnockback(
             container.position.x - playerPos.x,
             container.position.z - playerPos.z,
@@ -1831,7 +1963,7 @@ export function createEnemy(
         // so the king touches down exactly on the marker. Self-contained;
         // never shares state, so it runs the whole strike.
         const strike = ability.strike > 0 ? ability.strike : 1;
-        const t = Math.min(1, phaseTimer / strike);
+        const t = Math.min(1, fsm.phaseTimer / strike);
         const dest = resolveAnchor(action.toward, playerPos);
         // Cap the travel to maxDistance from takeoff (a small chase hop),
         // else the arc covers the full gap in one leap.
@@ -1935,10 +2067,10 @@ export function createEnemy(
         const o = a.origin === 'self'
           ? { x: container.position.x, z: container.position.z }
           : { x: aoeTarget.x, z: aoeTarget.z };
-        aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
+        combat.aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
         // A self-anchored ring on a mob that CREEPS during its windup has to
         // follow it, or the painted radius and the real one part company.
-        aoeTelegraphFollowsSelf = a.origin === 'self';
+        combat.aoeTelegraphFollowsSelf = a.origin === 'self';
         return;
       }
       // Only a COMMITTED leap (onto the locked target) telegraphs a
@@ -1958,7 +2090,7 @@ export function createEnemy(
             container.position.z + dir.z * minD,
           );
         }
-        aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, a.landingRadius);
+        combat.aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, a.landingRadius);
         return;
       }
     }
@@ -1969,7 +2101,7 @@ export function createEnemy(
       const melee = ability.steps.find((st) => st.action.kind === 'melee')?.action;
       const reach = melee && melee.kind === 'melee' ? melee.reach : 3.0;
       clearLashTendril();
-      lashTendril = spawnLashTendril(container, aimHeightResolved, reach, 0xa8ff44);
+      combat.lashTendril = spawnLashTendril(container, aimHeightResolved, reach, 0xa8ff44);
     }
   }
 
@@ -2025,20 +2157,20 @@ export function createEnemy(
   // mid-attack). Agitated when hunting; calm + sparse at post.
   function tickVocalisation(dt: number, distToPlayer: number) {
     if (!vocalArch) return;
-    vocalTimer -= dt;
-    if (vocalTimer > 0) return;
-    const agitated = state === 'chasing' || state === 'searching';
-    const canVocalize = state === 'idle' || state === 'returning' || agitated;
+    audio.vocalTimer -= dt;
+    if (audio.vocalTimer > 0) return;
+    const agitated = fsm.state === 'chasing' || fsm.state === 'searching';
+    const canVocalize = fsm.state === 'idle' || fsm.state === 'returning' || agitated;
     if (canVocalize) {
       playEnemyVocal(vocalArch, container.position, agitated);
       // Cadence: hunting = frequent; idle FAR = sparse (silence-first dread);
       // idle NEAR the player = a "stir" so a lurking mob reliably announces
       // itself as you approach (hear-before-see), without chattering room-wide.
-      if (agitated) vocalTimer = 2.5 + gameRng() * 3;
-      else if (distToPlayer < VOCAL_STIR_RANGE) vocalTimer = 3 + gameRng() * 3;
-      else vocalTimer = 6 + gameRng() * 8;
+      if (agitated) audio.vocalTimer = 2.5 + gameRng() * 3;
+      else if (distToPlayer < VOCAL_STIR_RANGE) audio.vocalTimer = 3 + gameRng() * 3;
+      else audio.vocalTimer = 6 + gameRng() * 8;
     } else {
-      vocalTimer = 1.5;   // mid-attack — retry shortly
+      audio.vocalTimer = 1.5;   // mid-attack — retry shortly
     }
   }
 
@@ -2058,7 +2190,7 @@ export function createEnemy(
       const r = container.userData.reveal;
       eyePresenter.setVeilBoost(1 + VEIL_EYE_BOOST * (1 - (typeof r === 'number' ? r : 0)));
     }
-    if (!aliveLocal) {
+    if (!fsm.alive) {
       // Dying branch — run the death animation; everything else (AI,
       // perception, movement) is gated off.
       if (death.dying) death.tick(dt);
@@ -2078,10 +2210,10 @@ export function createEnemy(
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
-    if (!homeYawSet) {
-      homeYaw = container.rotation.y;
-      scanTargetYaw = homeYaw;
-      homeYawSet = true;
+    if (!idle.homeYawSet) {
+      idle.homeYaw = container.rotation.y;
+      idle.scanTargetYaw = idle.homeYaw;
+      idle.homeYawSet = true;
     }
 
     // Vocalisation — hear it before you see it. (see tickVocalisation)
@@ -2100,17 +2232,17 @@ export function createEnemy(
         if (spec.aura.slowFactor !== undefined && spec.aura.slowFactor !== 1.0) {
           setPlayerInAura(spec.aura.slowFactor);
         }
-        auraInsideTime += dt;
-        if (auraInsideTime >= spec.aura.gracePeriod) {
-          auraDamageTimer += dt;
-          if (auraDamageTimer >= spec.aura.dotInterval) {
-            auraDamageTimer -= spec.aura.dotInterval;
+        combat.auraInsideTime += dt;
+        if (combat.auraInsideTime >= spec.aura.gracePeriod) {
+          combat.auraDamageTimer += dt;
+          if (combat.auraDamageTimer >= spec.aura.dotInterval) {
+            combat.auraDamageTimer -= spec.aura.dotInterval;
             damagePlayer(spec.aura.dotDamage, entityId, spec.damageType ?? 'magic');
           }
         }
       } else {
-        auraInsideTime = 0;
-        auraDamageTimer = 0;
+        combat.auraInsideTime = 0;
+        combat.auraDamageTimer = 0;
       }
     }
 
@@ -2121,24 +2253,24 @@ export function createEnemy(
     // Gated on the fog wall existing so a fog-less boss can't deadlock
     // (it would never engage without the cross trigger).
     const dormant = !!spec.dormantUntilEngaged && levelHasFogWall() && !isBossEncounterEngaged();
-    if (wasDormant && !dormant) {
+    if (aware.wasDormant && !dormant) {
       // Just woke (player committed at the fog gate). A grace beat before
       // the first assault so the player can orient coming out of the
       // walk-in — the boss closes the distance but holds fire. Push every
       // ability onto a short cooldown (only lengthens, never shortens an
       // already-staggered one).
-      for (const ab of abilities) {
+      for (const ab of combat.abilities) {
         cooldowns.set(ab.id, Math.max(cooldowns.get(ab.id) ?? 0, ENGAGE_GRACE));
       }
       // Ceiling-drop entrance: reveal + start the plummet (the impact quake
       // fires when it lands, below). Plays inside the grace window.
-      if (isCeilingDrop) { built.group.visible = true; entranceTimer = 0; }
+      if (isCeilingDrop) { built.group.visible = true; pres.entranceTimer = 0; }
     }
-    wasDormant = dormant;
-    dormantLocal = dormant;
+    aware.wasDormant = dormant;
+    aware.dormant = dormant;
     if (dormant) {
-      aggroed = false;
-      if (state !== 'idle') { state = 'idle'; phaseTimer = 0; }
+      aware.aggroed = false;
+      if (fsm.state !== 'idle') { fsm.state = 'idle'; fsm.phaseTimer = 0; }
       // Ceiling-drop bosses hide above the arena until the cross — the blob
       // shadow on the floor is the only tell of where they'll land.
       if (isCeilingDrop) built.group.visible = false;
@@ -2151,13 +2283,13 @@ export function createEnemy(
     // we drop aggro).
     const seesPlayer = hostileToPlayer && !dormant && canSeePlayer(playerPos, walkable);
     if (seesPlayer) {
-      timeSinceLOS = 0;
+      aware.timeSinceLOS = 0;
       lastSeenPos.copy(playerPos);
-      if (!aggroed) {
-        aggroed = true;
-        if (state === 'idle' || state === 'returning') {
-          state = 'alerted';
-          phaseTimer = 0;
+      if (!aware.aggroed) {
+        aware.aggroed = true;
+        if (fsm.state === 'idle' || fsm.state === 'returning') {
+          fsm.state = 'alerted';
+          fsm.phaseTimer = 0;
           playEnemyWindup(audioSizeFor(spec), container.position);  // "I see you" growl
         }
       }
@@ -2165,16 +2297,16 @@ export function createEnemy(
       // idle mobs join the fight. Overwriting each frame is fine;
       // it's the same player, the alert just keeps refreshing.
       raiseAlert(playerPos.x, playerPos.z);
-    } else if (aggroed) {
-      timeSinceLOS += dt;
+    } else if (aware.aggroed) {
+      aware.timeSinceLOS += dt;
       // Drop aggro only when we've lost sight long enough AND we're not
       // mid-attack. Mid-attack we let the swing finish first.
       const attackingStates: ReadonlyArray<EnemyState> = ['winding', 'striking', 'recovering'];
-      if (timeSinceLOS >= loseSightTime && !attackingStates.includes(state)) {
-        aggroed = false;
-        if (state === 'chasing') {
-          state = 'searching';
-          phaseTimer = 0;
+      if (aware.timeSinceLOS >= loseSightTime && !attackingStates.includes(fsm.state)) {
+        aware.aggroed = false;
+        if (fsm.state === 'chasing') {
+          fsm.state = 'searching';
+          fsm.phaseTimer = 0;
         }
       }
     }
@@ -2200,20 +2332,20 @@ export function createEnemy(
     // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
     // pool is already reset for the next break).
     actionFsm.tick(dt);   // advance interrupt beats (stagger + parry flinch-lock)
-    if (falterCd > 0) falterCd = Math.max(0, falterCd - dt);
-    if (plantTimer > 0) plantTimer = Math.max(0, plantTimer - dt);
+    if (poise.falterCd > 0) poise.falterCd = Math.max(0, poise.falterCd - dt);
+    if (combat.plantTimer > 0) combat.plantTimer = Math.max(0, combat.plantTimer - dt);
     // FEAR burns down whatever the creature is doing (including reeling), and
     // the moment it runs out the immunity starts — so nerve returns exactly
     // once per scare and can't be re-broken on the same breath.
-    if (fearTimer > 0) {
-      fearTimer = Math.max(0, fearTimer - dt);
-      if (fearTimer === 0) fearCd = CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER;
-    } else if (fearCd > 0) {
-      fearCd = Math.max(0, fearCd - dt);
+    if (poise.fearTimer > 0) {
+      poise.fearTimer = Math.max(0, poise.fearTimer - dt);
+      if (poise.fearTimer === 0) poise.fearCd = CONFIG.ENEMY_AI.FEAR.IMMUNE_AFTER;
+    } else if (poise.fearCd > 0) {
+      poise.fearCd = Math.max(0, poise.fearCd - dt);
     }
-    if (state !== 'staggered') {
-      if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
-      else if (poiseLeft < poiseMax) {
+    if (fsm.state !== 'staggered') {
+      if (poise.poiseRegenCd > 0) poise.poiseRegenCd = Math.max(0, poise.poiseRegenCd - dt);
+      else if (poise.poiseLeft < poise.poiseMax) {
         // HP-SCALED recovery (the two-gauge coupling): a healthy enemy shrugs
         // posture off fast, so you can't just chip-and-deflect it to a break at
         // full HP; as its HP drops the recovery slows toward a floor, so posture
@@ -2222,7 +2354,7 @@ export function createEnemy(
         const ent = getEntity(entityId);
         const hpFrac = ent?.hp && bossPhases.maxHp > 0 ? ent.hp.current / bossPhases.maxHp : 1;
         const recoverMul = Math.max(CONFIG.POISE.RECOVER_HP_FLOOR, hpFrac * hpFrac);
-        poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * recoverMul * dt);
+        poise.poiseLeft = Math.min(poise.poiseMax, poise.poiseLeft + CONFIG.POISE.REGEN_RATE * recoverMul * dt);
       }
     }
 
@@ -2230,8 +2362,8 @@ export function createEnemy(
     // player; a staggered enemy is reeling and doesn't track you; and CHASING
     // faces its direction of TRAVEL (handled in its own case below) so a prowling
     // mob circles instead of crab-walking sideways while staring at you.
-    if (state !== 'idle' && state !== 'returning' && state !== 'staggered'
-        && state !== 'chasing' && state !== 'fleeing') {
+    if (fsm.state !== 'idle' && fsm.state !== 'returning' && fsm.state !== 'staggered'
+        && fsm.state !== 'chasing' && fsm.state !== 'fleeing') {
       faceTarget(playerPos, dt);
     }
 
@@ -2251,10 +2383,10 @@ export function createEnemy(
     // band would let you turn a charge aside from six metres away, on its first
     // striking frame, before it had gone anywhere. A charge is parried WHEN IT
     // ARRIVES — the dash action's own contact check does it, at contactReach.
-    if (currentAbility && state === 'striking' && !meleeHitLanded
-        && isParryActive() && isDeflectable(currentAbility) && playerFacingThis(playerPos)) {
-      const pReach = firstMeleeReach(currentAbility);
-      const pArc = meleeArcOf(currentAbility);
+    if (combat.currentAbility && fsm.state === 'striking' && !combat.meleeHitLanded
+        && isParryActive() && isDeflectable(combat.currentAbility) && playerFacingThis(playerPos)) {
+      const pReach = firstMeleeReach(combat.currentAbility);
+      const pArc = meleeArcOf(combat.currentAbility);
       // Same arc as the damage and the flash. Without it you could turn aside —
       // and collect the riposte for — a swing that was never going to reach you.
       if (pReach !== null && distance <= pReach + 1.2
@@ -2272,9 +2404,9 @@ export function createEnemy(
     // the global deflect count. A leaked count leaves deflectOpportunityActive()
     // stuck true, so left-click dead-routes to a no-op deflect forever. Bail the
     // instant the riposte finished it — this is the parry-kill deadlock fix.
-    if (!aliveLocal) return;
+    if (!fsm.alive) return;
 
-    switch (state) {
+    switch (fsm.state) {
       case 'dormant': {
         // No perception, no movement, no idle scan, no vocalisation.
         // Only check is "did the boss-bar engagement flip on?" — the
@@ -2283,8 +2415,8 @@ export function createEnemy(
         // the boss intro, and the boss starting to hunt all land on
         // the SAME frame the player crosses the threshold.
         if (isBossEngaged()) {
-          state = 'chasing';
-          phaseTimer = 0;
+          fsm.state = 'chasing';
+          fsm.phaseTimer = 0;
         }
         break;
       }
@@ -2308,7 +2440,7 @@ export function createEnemy(
         built.group.position.y = 0;
         // Placed above the model's ACTUAL top, not a guessed height — a tall
         // body (stoneguard) otherwise buries the stars in its chest.
-        if (!stunStars) stunStars = createStunStars(container, crownHeight() + 0.4);
+        if (!pres.stunStars) pres.stunStars = createStunStars(container, crownHeight() + 0.4);
         if (!actionFsm.isStaggered()) {
           applyTilt(0);
           built.group.rotation.y = 0;
@@ -2317,8 +2449,8 @@ export function createEnemy(
           // If the blow that broke it came from BEHIND, fear was imposed during
           // the reel and cashes in here: it comes out of the stagger running,
           // not swinging. That handoff is the whole poise→panic→backstab loop.
-          if (fearTimer > 0) breakMorale();
-          else { state = 'chasing'; phaseTimer = 0; }
+          if (poise.fearTimer > 0) breakMorale();
+          else { fsm.state = 'chasing'; fsm.phaseTimer = 0; }
         }
         break;
       }
@@ -2326,25 +2458,25 @@ export function createEnemy(
         // Nerve broke — ROUT away from the player, then COWER at a safe remove (a
         // free kill), then re-engage ONCE (brokenOnce stops a second flee). The
         // head-track keeps it glancing back over its shoulder as it runs.
-        phaseTimer += dt;
+        fsm.phaseTimer += dt;
         const M = CONFIG.ENEMY_AI.MORALE;
-        if (cowerTimer > 0) {
+        if (poise.cowerTimer > 0) {
           // COWERING — hunched, defenceless. Bolt again if the player closes back
           // in; otherwise hold until nerve returns.
-          cowerTimer -= dt;
+          poise.cowerTimer -= dt;
           if (distance < M.FLEE_SAFE_DIST * 0.6) {
-            cowerTimer = 0;   // player chased it down → bolt
+            poise.cowerTimer = 0;   // player chased it down → bolt
           } else {
             applyTilt(-0.5);            // hunched down/back
             eyePresenter.applySearch();  // eyes dim — cowed, not glaring
             built.group.position.y = 0;
-            if (cowerTimer <= 0) {
+            if (poise.cowerTimer <= 0) {
               // Nerve returns when the cower runs out — UNLESS fear is still on
               // it, in which case no amount of hiding is enough. Refresh the
               // cower rather than letting it lapse, so it stays hunched instead
               // of twitching back into a one-frame rout every 2.6s.
-              if (fearTimer > 0) cowerTimer = M.COWER_DURATION;
-              else { applyTilt(0); state = 'chasing'; phaseTimer = 0; }
+              if (poise.fearTimer > 0) poise.cowerTimer = M.COWER_DURATION;
+              else { applyTilt(0); fsm.state = 'chasing'; fsm.phaseTimer = 0; }
             }
             break;
           }
@@ -2361,7 +2493,7 @@ export function createEnemy(
         built.group.position.y = 0;
         // Reached safety → cower. Cornered (can't open the gap after a few
         // seconds of running the walls) → cower anyway, a trapped coward.
-        if (distance >= M.FLEE_SAFE_DIST || phaseTimer > 3.0) cowerTimer = M.COWER_DURATION;
+        if (distance >= M.FLEE_SAFE_DIST || fsm.phaseTimer > 3.0) poise.cowerTimer = M.COWER_DURATION;
         break;
       }
       case 'idle': {
@@ -2379,32 +2511,32 @@ export function createEnemy(
         // between random spots near its spawn, wriggling as it goes — living
         // atmosphere. Paused between crawls with an in-place squirm.
         if (!hostileToPlayer) {
-          if (!homeSet) { homeX = container.position.x; homeZ = container.position.z; homeSet = true; }
+          if (!idle.homeSet) { idle.homeX = container.position.x; idle.homeZ = container.position.z; idle.homeSet = true; }
           const wt = gameNow() / 1000;   // game clock: live = performance.now(), replay = stepped
           applyIdleEyes();
           applyTilt(0);
-          if (wanderPause > 0) {
-            wanderPause -= dt;
+          if (idle.wanderPause > 0) {
+            idle.wanderPause -= dt;
             container.rotation.y += Math.sin(wt * 3.0 + wrigglePhase) * dt * 0.5;   // idle squirm
             built.group.position.y = Math.abs(Math.sin(wt * 2.4 + wrigglePhase)) * 0.006;
             break;
           }
-          if (!wanderActive) {
+          if (!idle.wanderActive) {
             const a = gameRng() * Math.PI * 2;
             const r = 0.4 + gameRng() * 1.2;
-            wanderX = homeX + Math.cos(a) * r;
-            wanderZ = homeZ + Math.sin(a) * r;
-            wanderActive = true; wanderTimer = 0;
+            idle.wanderX = idle.homeX + Math.cos(a) * r;
+            idle.wanderZ = idle.homeZ + Math.sin(a) * r;
+            idle.wanderActive = true; idle.wanderTimer = 0;
           }
-          wanderTimer += dt;
-          const wdx = wanderX - container.position.x, wdz = wanderZ - container.position.z;
-          if (Math.hypot(wdx, wdz) < 0.14 || wanderTimer > 3) {
-            wanderActive = false;
-            wanderPause = 0.7 + gameRng() * 1.6;   // rest + wriggle between crawls
+          idle.wanderTimer += dt;
+          const wdx = idle.wanderX - container.position.x, wdz = idle.wanderZ - container.position.z;
+          if (Math.hypot(wdx, wdz) < 0.14 || idle.wanderTimer > 3) {
+            idle.wanderActive = false;
+            idle.wanderPause = 0.7 + gameRng() * 1.6;   // rest + wriggle between crawls
             built.group.position.y = 0;
             break;
           }
-          moveTowards(wanderX, wanderZ, moveSpeed, dt, walkable, nav);
+          moveTowards(idle.wanderX, idle.wanderZ, moveSpeed, dt, walkable, nav);
           // Ease yaw toward travel + a side-to-side wriggle (the grub crawl).
           const targetYaw = Math.atan2(wdx, wdz) + Math.PI;
           let dyw = targetYaw - container.rotation.y;
@@ -2419,38 +2551,38 @@ export function createEnemy(
         // direction to head even if we don't currently have LOS.
         const alert = hostileToPlayer ? sampleAlert(container.position.x, container.position.z) : null;
         if (alert) {
-          aggroed = true;
+          aware.aggroed = true;
           lastSeenPos.set(alert.x, 0, alert.z);
-          state = 'alerted';
-          phaseTimer = 0;
+          fsm.state = 'alerted';
+          fsm.phaseTimer = 0;
           playEnemyWindup(audioSizeFor(spec), container.position);
           break;
         }
         // Slow scan around home yaw. Pick a new target angle every
         // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
         // a watching player can tell at a glance "this one hasn't seen me yet."
-        scanTimer += dt;
-        if (scanTimer >= scanInterval) {
-          scanTimer = 0;
-          scanInterval = IDLE_SCAN_INTERVAL_MIN + gameRng() * IDLE_SCAN_INTERVAL_JITTER;
+        idle.scanTimer += dt;
+        if (idle.scanTimer >= idle.scanInterval) {
+          idle.scanTimer = 0;
+          idle.scanInterval = IDLE_SCAN_INTERVAL_MIN + gameRng() * IDLE_SCAN_INTERVAL_JITTER;
           if (gameRng() < IDLE_SCAN_HOLD_CHANCE) {
             // Pause: keep watching the current direction for a beat.
-            scanTargetYaw = container.rotation.y;
+            idle.scanTargetYaw = container.rotation.y;
           } else {
             // Gentle random-walk with a HOME-PULL: step a little from where we're
             // looking, but bias 35% back toward home each step so the gaze settles
             // looking forward instead of pinging between the arc edges (the old
             // left-right metronome). Clamped to ±arc as a hard backstop.
-            const stepped = scanTargetYaw
+            const stepped = idle.scanTargetYaw
               + (gameRng() * 2 - 1) * IDLE_SCAN_STEP
-              - (scanTargetYaw - homeYaw) * 0.35;
-            scanTargetYaw = Math.max(homeYaw - IDLE_SCAN_HALF_ARC,
-                                     Math.min(homeYaw + IDLE_SCAN_HALF_ARC, stepped));
+              - (idle.scanTargetYaw - idle.homeYaw) * 0.35;
+            idle.scanTargetYaw = Math.max(idle.homeYaw - IDLE_SCAN_HALF_ARC,
+                                     Math.min(idle.homeYaw + IDLE_SCAN_HALF_ARC, stepped));
           }
         }
         // Ease container yaw toward the scan target — slow, so a gaze shift drifts
         // with weight instead of snapping. Wrap delta to nearest π.
-        let delta = scanTargetYaw - container.rotation.y;
+        let delta = idle.scanTargetYaw - container.rotation.y;
         while (delta >  Math.PI) delta -= Math.PI * 2;
         while (delta < -Math.PI) delta += Math.PI * 2;
         container.rotation.y += delta * Math.min(1, dt * 0.6);
@@ -2464,15 +2596,15 @@ export function createEnemy(
         // Brief "I see you" pause. Eyes flare bright, body rears back
         // slightly, then commits to chase. Face player during this so the
         // moment reads — the model snaps from scan-pose to confront-pose.
-        phaseTimer += dt;
-        const t = Math.min(1, phaseTimer / ALERTED_DURATION);
+        fsm.phaseTimer += dt;
+        const t = Math.min(1, fsm.phaseTimer / ALERTED_DURATION);
         faceTarget(playerPos, dt);
         setEyeFlare(t);
         applyTilt(-0.15 * t);   // slight rear-back (negative tilt)
         built.group.position.y = 0;
-        if (phaseTimer >= ALERTED_DURATION) {
-          state = 'chasing';
-          phaseTimer = 0;
+        if (fsm.phaseTimer >= ALERTED_DURATION) {
+          fsm.state = 'chasing';
+          fsm.phaseTimer = 0;
         }
         break;
       }
@@ -2481,7 +2613,7 @@ export function createEnemy(
         // Walk toward last known position. If we get close to it without
         // re-acquiring (canSeePlayer handles that above by resetting
         // state to chasing on re-acquire), wait a beat, then return home.
-        phaseTimer += dt;
+        fsm.phaseTimer += dt;
         const dxs = lastSeenPos.x - container.position.x;
         const dzs = lastSeenPos.z - container.position.z;
         const distToLast = Math.hypot(dxs, dzs);
@@ -2493,9 +2625,9 @@ export function createEnemy(
           moveTowards(lastSeenPos.x, lastSeenPos.z, moveSpeed * 0.7, dt, walkable, nav);
         }
         // Search times out either by phaseTimer or by re-acquiring (above).
-        if (phaseTimer >= SEARCH_DURATION) {
-          state = 'returning';
-          phaseTimer = 0;
+        if (fsm.phaseTimer >= SEARCH_DURATION) {
+          fsm.state = 'returning';
+          fsm.phaseTimer = 0;
         }
         // Dimmer eye flare during search — alert but not committed.
         eyePresenter.applySearch();
@@ -2509,10 +2641,10 @@ export function createEnemy(
         // before we've reached our post, turn back around.
         const returnAlert = hostileToPlayer ? sampleAlert(container.position.x, container.position.z) : null;
         if (returnAlert) {
-          aggroed = true;
+          aware.aggroed = true;
           lastSeenPos.set(returnAlert.x, 0, returnAlert.z);
-          state = 'chasing';
-          phaseTimer = 0;
+          fsm.state = 'chasing';
+          fsm.phaseTimer = 0;
           break;
         }
         // Walk back to spawn post. On arrival, snap to home yaw and idle.
@@ -2520,10 +2652,10 @@ export function createEnemy(
         const dzr = homePos.z - container.position.z;
         const distHome = Math.hypot(dxr, dzr);
         if (distHome < 0.25) {
-          state = 'idle';
+          fsm.state = 'idle';
           // Reset scan so it picks a fresh target next idle tick.
-          scanTimer = scanInterval;
-          scanTargetYaw = homeYaw;
+          idle.scanTimer = idle.scanInterval;
+          idle.scanTargetYaw = idle.homeYaw;
           break;
         }
         // Walk back to spawn at 0.6x speed, routing around obstacles.
@@ -2559,22 +2691,22 @@ export function createEnemy(
         if (useIntent) {
           const I = CONFIG.ENEMY_AI.INTENT;
           const warmTarget = I.MOOD_TARGET_BASE + personality.boldness * I.MOOD_TARGET_BOLD;
-          aggression += (warmTarget - aggression) * Math.min(1, I.MOOD_WARM_RATE * dt);
+          intent.aggression += (warmTarget - intent.aggression) * Math.min(1, I.MOOD_WARM_RATE * dt);
           // Time since this mob last COMMITTED an attack. Reset at the commit
           // below (not when `press` is merely chosen — a press that never gets
           // an ability or a pack token has not fed the mob, and resetting there
           // would let it starve-loop while still doing nothing).
-          sinceCommit += dt;
-          decisionTimer -= dt;
-          if (decisionTimer <= 0) {
-            decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
+          intent.sinceCommit += dt;
+          intent.decisionTimer -= dt;
+          if (intent.decisionTimer <= 0) {
+            intent.decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
             const ent = getEntity(entityId);
             const hpFrac = ent?.hp && bossPhases.maxHp > 0 ? ent.hp.current / bossPhases.maxHp : 1;
-            currentIntent = selectIntent({
+            intent.currentIntent = selectIntent({
               distance, reach: spec.strikeRange, commitDistance,
-              aggression, personality,
+              aggression: intent.aggression, personality,
               canAttack: selectAbility(distance) !== null,
-              hpFrac, sinceCommit, rng: gameRng,
+              hpFrac, sinceCommit: intent.sinceCommit, rng: gameRng,
             });
           }
         }
@@ -2582,27 +2714,27 @@ export function createEnemy(
         const ability = selectAbility(distance);
         // Attacks are HELD unless an aggressive intent (press) releases one —
         // that's what makes the fight breathe. Bosses always release.
-        const mayRelease = !useIntent || currentIntent.releaseAttack;
+        const mayRelease = !useIntent || intent.currentIntent.releaseAttack;
         if (ability && actionFsm.canAct() && mayRelease && requestToken(entityId)) {
-          currentAbility = ability;
-          meleeHitLanded = false;   // fresh strike — parryable until it connects
-          state = 'winding';
-          phaseTimer = 0;
+          combat.currentAbility = ability;
+          combat.meleeHitLanded = false;   // fresh strike — parryable until it connects
+          fsm.state = 'winding';
+          fsm.phaseTimer = 0;
           rollWindupTime();
           // A bomb arming gets the FUSE instead of the generic windup bark: a
           // rising whine held for the exact length of this mob's windup, so the
           // pitch climb tells you how long you have. Josh's ask was that the
           // thing about to blow says so diegetically — no meter, no icon; the
           // sound, the swelling body, and the ring on the floor are the UI.
-          if (armedBlastAction()) playFuse(container.position, currentWindupTime);
+          if (armedBlastAction()) playFuse(container.position, combat.currentWindupTime);
           else playEnemyWindup(audioSizeFor(spec), container.position);
           // Snapshot the committed target (the 'lockedTarget' anchor) +
           // raise the spatial telegraph the instant the windup begins, so
           // the player has the full windup to step off the marker.
           setupAbilityTelegraph(ability, playerPos);
           // Committing spends aggression → a lull before the next burst.
-          if (useIntent) aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
-          sinceCommit = 0;   // fed — the starvation pressure resets
+          if (useIntent) intent.aggression = Math.max(0, intent.aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
+          intent.sinceCommit = 0;   // fed — the starvation pressure resets
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;
@@ -2611,7 +2743,7 @@ export function createEnemy(
           // repositions to round the obstacle instead of holding behind a wall.
           const kiterCanShoot = pref > 0
             && walkable.hasLineOfSight(container.position.x, container.position.z, playerPos.x, playerPos.z);
-          if (plantTimer > 0) {
+          if (combat.plantTimer > 0) {
             // PLANTED — it just fired and is watching what you do about it.
             faceTarget(playerPos, dt);
           } else if (kiterCanShoot && distance < pref) {
@@ -2640,7 +2772,7 @@ export function createEnemy(
             const bx = container.position.x, bz = container.position.z;
             moveTowards(playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
             faceMovement(container.position.x - bx, container.position.z - bz, playerPos, dt);
-          } else if (useIntent && currentIntent.moveMode === 'hold') {
+          } else if (useIntent && intent.currentIntent.moveMode === 'hold') {
             // WATCH — the lull, but COILED not frozen: periodically feint a lunge
             // (dart in, snap back) so it reads as circling for an opening. Between
             // feints it holds + faces the player (the head already tracks).
@@ -2652,7 +2784,7 @@ export function createEnemy(
             // you; prowling the ring → it faces along its arc (circles, showing its
             // flank) rather than crab-walking sideways; blocked/arrived → it faces
             // you, poised. The windup's aim-ramp snaps the final aim on the strike.
-            const spd = useIntent ? currentIntent.speedMul : 1;
+            const spd = useIntent ? intent.currentIntent.speedMul : 1;
             const ringTarget = packMoveTarget(entityId, playerPos, packScratch());
             const tx = ringTarget ? ringTarget.x : playerPos.x;
             const tz = ringTarget ? ringTarget.z : playerPos.z;
@@ -2670,38 +2802,38 @@ export function createEnemy(
       }
 
       case 'winding': {
-        if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += actionDt;
+        if (!combat.currentAbility) { fsm.state = 'chasing'; break; }
+        fsm.phaseTimer += actionDt;
         tickAbilityMotion(dt, walkable);
-        const t = Math.min(1, phaseTimer / currentWindupTime);
-        applyTelegraph(currentAbility.pose, 'windup', t);
-        if (aoeTelegraph) aoeTelegraph.setProgress(t);
-        if (lashTendril) lashTendril.setProgress(t);   // tentacle reaches out over the windup
+        const t = Math.min(1, fsm.phaseTimer / combat.currentWindupTime);
+        applyTelegraph(combat.currentAbility.pose, 'windup', t);
+        if (combat.aoeTelegraph) combat.aoeTelegraph.setProgress(t);
+        if (combat.lashTendril) combat.lashTendril.setProgress(t);   // tentacle reaches out over the windup
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
         // A primed BLAST creeps too, and at full speed: once it's armed it is
         // committed, and a bomb that stops walking the moment it lights is a
         // bomb you beat by taking one step back.
-        const reach = creepReach(currentAbility);
-        if (wantsCreep(currentAbility) && reach !== null && distance > reach) {
-          moveTowards(playerPos.x, playerPos.z, moveSpeed * creepSpeedMul(currentAbility), dt, walkable, nav);
+        const reach = creepReach(combat.currentAbility);
+        if (wantsCreep(combat.currentAbility) && reach !== null && distance > reach) {
+          moveTowards(playerPos.x, playerPos.z, moveSpeed * creepSpeedMul(combat.currentAbility), dt, walkable, nav);
         }
         // Drag a self-anchored danger ring along with the body.
-        if (aoeTelegraph && aoeTelegraphFollowsSelf) {
-          aoeTelegraph.moveTo(container.position.x, container.position.z);
+        if (combat.aoeTelegraph && combat.aoeTelegraphFollowsSelf) {
+          combat.aoeTelegraph.moveTo(container.position.x, container.position.z);
         }
         // The core runs hot as the fuse burns (the body's swell is the other
         // half of the tell — it lives in tickLashDeform, which owns scale).
         if (armedBlastAction()) setEyeFlare(Math.min(1, 0.35 + 0.65 * t));
-        if (phaseTimer >= currentWindupTime) {
-          state = 'striking';
-          phaseTimer = 0;
+        if (fsm.phaseTimer >= combat.currentWindupTime) {
+          fsm.state = 'striking';
+          fsm.phaseTimer = 0;
           playEnemyStrike(audioSizeFor(spec), container.position);  // the attack RELEASE bark
           // Arm the timeline: clear per-step latches + events, capture the
           // leap takeoff point.
-          stepStarted = currentAbility.steps.map(() => false);
-          stepDone = currentAbility.steps.map(() => false);
+          combat.stepStarted = combat.currentAbility.steps.map(() => false);
+          combat.stepDone = combat.currentAbility.steps.map(() => false);
           stepEvents.clear();
           leapStart.copy(container.position);
         }
@@ -2709,41 +2841,41 @@ export function createEnemy(
       }
 
       case 'striking': {
-        if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += actionDt;
+        if (!combat.currentAbility) { fsm.state = 'chasing'; break; }
+        fsm.phaseTimer += actionDt;
         tickAbilityMotion(dt, walkable);
         // Run the timeline: fire each step once its trigger is met, then
         // keep ticking it until its action latches done. Per-step state,
         // so steps never interfere with each other.
-        const steps = currentAbility.steps;
+        const steps = combat.currentAbility.steps;
         for (let i = 0; i < steps.length; i++) {
-          if (stepDone[i]) continue;
-          if (!stepStarted[i]) {
-            if (!triggerMet(steps[i].trigger, phaseTimer)) continue;
+          if (combat.stepDone[i]) continue;
+          if (!combat.stepStarted[i]) {
+            if (!triggerMet(steps[i].trigger, fsm.phaseTimer)) continue;
             // MELEE CONTACT timing — a melee blow lands when the swing reaches
             // the struck pose (CONTACT_FRAC into the strike), not on strike-frame
             // 0. This is what connects the damage to the visible swing and lets a
             // dodge read against the swing, not the windup. Other action kinds
             // (projectile / aoe / dash / leap) fire on their authored `at`.
             if (steps[i].action.kind === 'melee'
-                && phaseTimer < currentAbility.strike * CONFIG.MOB_STRIKE_CONTACT_FRAC) continue;
-            stepStarted[i] = true;
+                && fsm.phaseTimer < combat.currentAbility.strike * CONFIG.MOB_STRIKE_CONTACT_FRAC) continue;
+            combat.stepStarted[i] = true;
           }
-          const done = runAction(steps[i].action, currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
-          if (done) stepDone[i] = true;
+          const done = runAction(steps[i].action, combat.currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
+          if (done) combat.stepDone[i] = true;
           // A deflected melee strike calls triggerStagger() inside runAction,
           // which NULLS currentAbility and flips to 'staggered' mid-loop. Bail
           // immediately — the rest of this case dereferences currentAbility
           // (.pose / .strike) and would crash (the parry-freeze bug).
-          if (!currentAbility) break;
+          if (!combat.currentAbility) break;
         }
-        if (!currentAbility) break;
-        applyTelegraph(currentAbility.pose, 'strike',
-          currentAbility.strike > 0 ? Math.min(1, phaseTimer / currentAbility.strike) : 1);
-        if (lashTendril) lashTendril.snap();            // tentacle snaps out + flares on the strike
-        if (phaseTimer >= currentAbility.strike) {
-          state = 'recovering';
-          phaseTimer = 0;
+        if (!combat.currentAbility) break;
+        applyTelegraph(combat.currentAbility.pose, 'strike',
+          combat.currentAbility.strike > 0 ? Math.min(1, fsm.phaseTimer / combat.currentAbility.strike) : 1);
+        if (combat.lashTendril) combat.lashTendril.snap();            // tentacle snaps out + flares on the strike
+        if (fsm.phaseTimer >= combat.currentAbility.strike) {
+          fsm.state = 'recovering';
+          fsm.phaseTimer = 0;
           // Safety: snap any in-air leap Y back to ground if the touchdown
           // didn't catch the final frame (dt overshoot), so the enemy
           // can't end up floating at the arc peak.
@@ -2753,24 +2885,24 @@ export function createEnemy(
       }
 
       case 'recovering': {
-        if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += actionDt;
+        if (!combat.currentAbility) { fsm.state = 'chasing'; break; }
+        fsm.phaseTimer += actionDt;
         tickAbilityMotion(dt, walkable);
-        const t = Math.min(1, phaseTimer / currentAbility.recover);
-        applyTelegraph(currentAbility.pose, 'recover', t);
-        if (lashTendril) lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
-        if (phaseTimer >= currentAbility.recover) {
+        const t = Math.min(1, fsm.phaseTimer / combat.currentAbility.recover);
+        applyTelegraph(combat.currentAbility.pose, 'recover', t);
+        if (combat.lashTendril) combat.lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
+        if (fsm.phaseTimer >= combat.currentAbility.recover) {
           // Hold the ground it just shot from (see plantTimer).
-          if (currentAbility.steps.some((st) => st.action.kind === 'projectile')) {
-            plantTimer = CONFIG.ENEMY_AI.RANGED_PLANT_S;
+          if (combat.currentAbility.steps.some((st) => st.action.kind === 'projectile')) {
+            combat.plantTimer = CONFIG.ENEMY_AI.RANGED_PLANT_S;
           }
           // ±18% jitter so packs drift out of sync over the fight.
-          cooldowns.set(currentAbility.id, (currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
-          currentAbility = null;
+          cooldowns.set(combat.currentAbility.id, (combat.currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
+          combat.currentAbility = null;
           clearAoeTelegraph();   // safety — normally disposed at strike
           clearLashTendril();
-          state = 'chasing';
-          phaseTimer = 0;
+          fsm.state = 'chasing';
+          fsm.phaseTimer = 0;
         }
         break;
       }
@@ -2786,7 +2918,7 @@ export function createEnemy(
     // the commit range, because a dash brings itself to you and flashing at
     // contact distance would leave no time to answer.
     {
-      const mReach = currentAbility ? threatReach(currentAbility) : null;
+      const mReach = combat.currentAbility ? threatReach(combat.currentAbility) : null;
       const lead = CONFIG.DEFLECT.FLASH_LEAD_S;
       // aliveLocal guard: a mob killed by its own riposte mid-update (the
       // runAction safety-net parry path reaches here with currentAbility still
@@ -2796,11 +2928,11 @@ export function createEnemy(
       // player who circles out of the wedge watches the flash go dark. That's
       // the game saying "you're clear now", and it's how the arc gets learned
       // without a tutorial.
-      const mArc = currentAbility ? meleeArcOf(currentAbility) : null;
-      const opener = currentAbility?.steps[0]?.action;
+      const mArc = combat.currentAbility ? meleeArcOf(combat.currentAbility) : null;
+      const opener = combat.currentAbility?.steps[0]?.action;
       let wantFlash = false;
-      if (aliveLocal && currentAbility && !meleeHitLanded) {
-        if (opener?.kind === 'dash' && state === 'striking') {
+      if (fsm.alive && combat.currentAbility && !combat.meleeHitLanded) {
+        if (opener?.kind === 'dash' && fsm.state === 'striking') {
           // A CHARGE is told by TIME-TO-CONTACT, not by phase or distance band.
           // A dash closes at its own speed from anywhere in its commit range, so
           // a phase-based tell gives wildly different warning depending on where
@@ -2816,11 +2948,11 @@ export function createEnemy(
         } else if (mReach !== null) {
           wantFlash = distance <= mReach + 1.2
             && (mArc === null || withinArc(playerPos, mArc))
-            && (state === 'striking'
-                || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
+            && (fsm.state === 'striking'
+                || (fsm.state === 'winding' && fsm.phaseTimer >= combat.currentWindupTime - lead));
         }
       }
-      reconcileThreat(wantFlash, wantFlash && isDeflectable(currentAbility!));
+      reconcileThreat(wantFlash, wantFlash && isDeflectable(combat.currentAbility!));
     }
 
     // ── Post-AI animation/audio overlays ─────────────────────────────
@@ -2839,12 +2971,12 @@ export function createEnemy(
     if (isCeilingDrop) {
       if (dormant) {
         built.group.position.y = DROP_HEIGHT;
-      } else if (entranceTimer >= 0 && entranceTimer < ENTRANCE_DUR) {
-        entranceTimer += dt;
-        const t = Math.min(1, entranceTimer / ENTRANCE_DUR);
+      } else if (pres.entranceTimer >= 0 && pres.entranceTimer < ENTRANCE_DUR) {
+        pres.entranceTimer += dt;
+        const t = Math.min(1, pres.entranceTimer / ENTRANCE_DUR);
         built.group.position.y = DROP_HEIGHT * (1 - t * t);   // ease-in fall
-        if (t >= 1 && !entranceImpactDone) {
-          entranceImpactDone = true;
+        if (t >= 1 && !pres.entranceImpactDone) {
+          pres.entranceImpactDone = true;
           kickShake(0.6, 0.5);   // the slam
         }
       }
@@ -2854,7 +2986,7 @@ export function createEnemy(
     // watching you while the body faces its movement (DOOM-style — see enemy-animation).
     const _pYaw = Math.atan2(playerPos.x - container.position.x, playerPos.z - container.position.z) + Math.PI;
     const yawToPlayer = Math.atan2(Math.sin(_pYaw - container.rotation.y), Math.cos(_pYaw - container.rotation.y));
-    bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning', yawToPlayer);
+    bodyAnim.tickHeadCrane(dt, distance, aware.aggroed && fsm.state !== 'returning', yawToPlayer);
     bodyAnim.tickKnockback(dt, walkable);
     bodyAnim.tickLocomotion(dt);
     bodyAnim.tickPresence(dt);
@@ -2864,21 +2996,21 @@ export function createEnemy(
     // Pose-system mobs rest their telegraph arms when NOT mid-attack (clip-mobs
     // self-rest via their base clip). Without this a biped's shoulders freeze
     // mid-swing on a stagger/interrupt. Attack phases set the pose themselves.
-    if (!usesClipAttacks && state !== 'winding' && state !== 'striking' && state !== 'recovering') {
+    if (!usesClipAttacks && fsm.state !== 'winding' && fsm.state !== 'striking' && fsm.state !== 'recovering') {
       restTelegraphPose(telegraphNodes);
     }
     // Stun-star ring — orbits while staggered, fades out after (so it lingers a
     // beat as the mob shakes it off). No-op until the first stagger builds it.
-    stunStars?.tick(dt, state === 'staggered');
+    pres.stunStars?.tick(dt, fsm.state === 'staggered');
     // FEAR skull — hangs over anything whose nerve has broken, whether the game
     // frightened it (the low-HP morale roll) or the player did (a poise break
     // from behind). Suppressed while STAGGERED so the two overhead cues never
     // stack on one head; the skull takes over the instant the reel ends, which
     // is also the instant the mob turns and runs.
     {
-      const showSkull = isFeared() && state !== 'staggered';
-      if (showSkull && !fearSkull) fearSkull = createFearSkull(container, crownHeight() + 0.20);
-      fearSkull?.tick(dt, showSkull);
+      const showSkull = isFeared() && fsm.state !== 'staggered';
+      if (showSkull && !pres.fearSkull) pres.fearSkull = createFearSkull(container, crownHeight() + 0.20);
+      pres.fearSkull?.tick(dt, showSkull);
     }
   }
 
@@ -2893,7 +3025,7 @@ export function createEnemy(
     const phase = bossPhases.current;
     const useCrawl = phase?.useCrawlAnimation && bundle.crawl;
     const movingState =
-      state === 'chasing' || state === 'searching' || state === 'returning';
+      fsm.state === 'chasing' || fsm.state === 'searching' || fsm.state === 'returning';
     const baseClip = movingState
       ? (useCrawl ? bundle.crawl! : bundle.walk)
       : bundle.idle;
@@ -2901,16 +3033,16 @@ export function createEnemy(
     // Fire an override on the WINDUP edge — exactly once per ability cast.
     // We watch for (state, ability) tuple changes; entering 'winding' with
     // a different ability than last time = new cast.
-    const inWindup = state === 'winding' && currentAbility;
-    const abId = inWindup ? currentAbility!.id : null;
+    const inWindup = fsm.state === 'winding' && combat.currentAbility;
+    const abId = inWindup ? combat.currentAbility!.id : null;
     const transitioned =
-      prevAnimState !== state ||
-      prevAnimAbilityId !== abId ||
-      prevAnimPhaseIndex !== bossPhases.index;
+      pres.prevAnimState !== fsm.state ||
+      pres.prevAnimAbilityId !== abId ||
+      pres.prevAnimPhaseIndex !== bossPhases.index;
     if (transitioned && inWindup && abId) {
       const clip = bundle.abilities[abId];
-      if (clip && currentAbility) {
-        const total = currentWindupTime + currentAbility.strike + currentAbility.recover;
+      if (clip && combat.currentAbility) {
+        const total = combat.currentWindupTime + combat.currentAbility.strike + combat.currentAbility.recover;
         // ONE CLOCK: tell the animator where the damage actually lands so it can
         // warp clip time onto it. Uses the LIVE (jittered) windup, so a telegraph
         // rolled 22% long still lands its visual hit on its real one.
@@ -2919,11 +3051,11 @@ export function createEnemy(
         // when it physically reaches you — there's no time to align to, and
         // warping toward a made-up one would move the animation away from the
         // truth rather than toward it. Those play unwarped.
-        const opener = currentAbility.steps[0]?.action;
+        const opener = combat.currentAbility.steps[0]?.action;
         const timedContact = opener?.kind === 'melee';
         const mech = timedContact
           ? mechanicalContactFrac(
-              currentWindupTime, currentAbility.strike, currentAbility.recover,
+              combat.currentWindupTime, combat.currentAbility.strike, combat.currentAbility.recover,
               CONFIG.MOB_STRIKE_CONTACT_FRAC,
             )
           : null;
@@ -2931,12 +3063,12 @@ export function createEnemy(
       }
     }
     // Stagger drops any in-flight override so the reel reads.
-    if (state === 'staggered' && prevAnimState !== 'staggered') {
+    if (fsm.state === 'staggered' && pres.prevAnimState !== 'staggered') {
       clipAnimator.cancelOverride();
     }
-    prevAnimState = state;
-    prevAnimAbilityId = abId;
-    prevAnimPhaseIndex = bossPhases.index;
+    pres.prevAnimState = fsm.state;
+    pres.prevAnimAbilityId = abId;
+    pres.prevAnimPhaseIndex = bossPhases.index;
     clipAnimator.update(dt);
   }
 
@@ -2946,36 +3078,36 @@ export function createEnemy(
   // back to base scale whenever not lashing. Scale is otherwise untouched
   // by the animation layers (which use position/rotation), so it's free.
   function tickLashDeform(dt: number) {
-    const lashing = currentAbility?.pose === 'lash';
+    const lashing = combat.currentAbility?.pose === 'lash';
     // A CAST reads on a limbless body too: the thing INFLATES as it charges the
     // shot and empties as it fires. Same writer as the lash (this function owns
     // built.group.scale), opposite sign — a lash reaches toward you, a spit
     // gathers into itself first.
-    const casting = currentAbility?.pose === 'cast';
+    const casting = combat.currentAbility?.pose === 'cast';
     let target = 0;
     let ease = dt * 9;
     let swell = 0;
-    if (lashing && state === 'winding') {
-      target = 0.5 * Math.min(1, phaseTimer / currentWindupTime);   // rear up slowly
-    } else if (lashing && state === 'striking') {
+    if (lashing && fsm.state === 'winding') {
+      target = 0.5 * Math.min(1, fsm.phaseTimer / combat.currentWindupTime);   // rear up slowly
+    } else if (lashing && fsm.state === 'striking') {
       target = 1.0;                                                  // snap forward
       ease = dt * 26;
-    } else if (casting && state === 'winding') {
-      swell = 0.30 * Math.min(1, phaseTimer / currentWindupTime);
-    } else if (casting && state === 'striking') {
+    } else if (casting && fsm.state === 'winding') {
+      swell = 0.30 * Math.min(1, fsm.phaseTimer / combat.currentWindupTime);
+    } else if (casting && fsm.state === 'striking') {
       swell = -0.16;                                                 // empties as it fires
     }
-    castSwell += (swell - castSwell) * Math.min(1, dt * (swell < castSwell ? 24 : 8));
-    lashStretch += (target - lashStretch) * Math.min(1, ease);
-    if (target === 0 && lashStretch < 0.002) lashStretch = 0;
+    pres.castSwell += (swell - pres.castSwell) * Math.min(1, dt * (swell < pres.castSwell ? 24 : 8));
+    pres.lashStretch += (target - pres.lashStretch) * Math.min(1, ease);
+    if (target === 0 && pres.lashStretch < 0.002) pres.lashStretch = 0;
     // GELATINOUS jiggle (blobs/oozes) — a continuous squash-and-stretch about
     // the resting volume so the jelly reads alive even standing still. Lives
     // here because tickLashDeform OWNS built.group.scale (a presence overlay
     // would be clobbered by this writer). Volume-ish: squash Y, bulge X/Z.
     let gx = 1, gy = 1, gz = 1;
     if (spec.presence === 'gelatinous') {
-      gelTime += dt;
-      const w = Math.sin(gelTime * 3.2) * 0.1;
+      pres.gelTime += dt;
+      const w = Math.sin(pres.gelTime * 3.2) * 0.1;
       gy = 1 - w; gx = 1 + w * 0.5; gz = 1 + w * 0.5;
     }
     // THE FUSE, made visible. An armed blast inflates as it primes, with a
@@ -2985,30 +3117,30 @@ export function createEnemy(
     // writer rather than easing through castSwell, because the whole point is
     // a hard pulse that smoothing would flatten.
     let fuse = 1;
-    if (state === 'winding' && armedBlastAction()) {
-      const ft = Math.min(1, currentWindupTime > 0 ? phaseTimer / currentWindupTime : 1);
-      fuseBeatPhase += dt * (CONFIG.FUSE.BEAT_HZ_START + CONFIG.FUSE.BEAT_HZ_RAMP * ft);
+    if (fsm.state === 'winding' && armedBlastAction()) {
+      const ft = Math.min(1, combat.currentWindupTime > 0 ? fsm.phaseTimer / combat.currentWindupTime : 1);
+      pres.fuseBeatPhase += dt * (CONFIG.FUSE.BEAT_HZ_START + CONFIG.FUSE.BEAT_HZ_RAMP * ft);
       fuse = (1 + CONFIG.FUSE.SWELL * ft * ft)                    // slow start, late bloom
-           * (1 + CONFIG.FUSE.BEAT * ft * Math.sin(fuseBeatPhase));
+           * (1 + CONFIG.FUSE.BEAT * ft * Math.sin(pres.fuseBeatPhase));
     } else {
-      fuseBeatPhase = 0;
+      pres.fuseBeatPhase = 0;
     }
     // Elongate along local Z (forward/back, the player axis since the
     // container faces the player); squash X/Y a touch.
-    const sw = (1 + castSwell) * fuse;
+    const sw = (1 + pres.castSwell) * fuse;
     built.group.scale.set(
-      groupBaseScale.x * gx * sw * (1 - 0.12 * lashStretch),
-      groupBaseScale.y * gy * sw * (1 - 0.16 * lashStretch),
-      groupBaseScale.z * gz * sw * (1 + 0.55 * lashStretch),
+      groupBaseScale.x * gx * sw * (1 - 0.12 * pres.lashStretch),
+      groupBaseScale.y * gy * sw * (1 - 0.16 * pres.lashStretch),
+      groupBaseScale.z * gz * sw * (1 + 0.55 * pres.lashStretch),
     );
   }
 
   function setDebugState(s: EnemyState, t: number) {
-    state = s;
-    phaseTimer = t;
+    fsm.state = s;
+    fsm.phaseTimer = t;
     // Clear the timeline latches (debug poses don't run a real cast).
-    stepStarted = [];
-    stepDone = [];
+    combat.stepStarted = [];
+    combat.stepDone = [];
     stepEvents.clear();
     switch (s) {
       case 'chasing':
@@ -3072,8 +3204,8 @@ export function createEnemy(
     // Backed by the closure flag above so the death handler (which closes over
     // it) sees what the spawner set. Set AFTER construction — createEnemy has no
     // summon context of its own. See builder.spawnInto's `summoned` option.
-    get summoned() { return summoned; },
-    set summoned(v: boolean) { summoned = v; },
+    get summoned() { return fsm.summoned; },
+    set summoned(v: boolean) { fsm.summoned = v; },
     isBoss: !!spec.isBoss,
     miniboss: !!spec.miniboss,
     bossName: spec.bossName ?? spec.name,
@@ -3092,9 +3224,9 @@ export function createEnemy(
     hitRadius: spec.hitRadius ?? 0,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
-    get debugPath() { return path; },   // DEV nav overlay — the live cached route
+    get debugPath() { return loco.path; },   // DEV nav overlay — the live cached route
     get dormant() {
-      return dormantLocal;
+      return aware.dormant;
     },
     // Phase-aware: a multi-phase boss's max HP is the CURRENT phase's
     // pool (16 in P1, 12 in P2 for the Marrow Sovereign), not the
@@ -3106,7 +3238,7 @@ export function createEnemy(
       return bossPhases.maxHp;
     },
     get alive() {
-      return aliveLocal;
+      return fsm.alive;
     },
     get dying() {
       return death.dying;
@@ -3116,7 +3248,7 @@ export function createEnemy(
       return e?.hp?.current ?? 0;
     },
     get aiState() {
-      return state;
+      return fsm.state;
     },
     /** DEBUG: current body yaw (container.rotation.y) for facing readouts. */
     get yaw() {
@@ -3130,8 +3262,8 @@ export function createEnemy(
       reconcileThreat(false, false);
     },
     releaseOverheadCues() {
-      stunStars?.dispose(); stunStars = null;
-      fearSkull?.dispose(); fearSkull = null;
+      pres.stunStars?.dispose(); pres.stunStars = null;
+      pres.fearSkull?.dispose(); pres.fearSkull = null;
     },
     applyFear,
     /** Body FORWARD is (−sin yaw, −cos yaw) — Three's −Z forward turned by the
@@ -3150,31 +3282,31 @@ export function createEnemy(
     // a dormant one waiting behind its fog gate would otherwise eat a free
     // opener for the crime of standing still.
     get openToBackstab() {
-      if (!aliveLocal || dormantLocal || spec.isBoss || spec.miniboss) return false;
+      if (!fsm.alive || aware.dormant || spec.isBoss || spec.miniboss) return false;
       // Ambient vermin are never open: a maggot is PERMANENTLY unaware, so
       // without this every crawling thing on the floor is a free BACKSTAB beat
       // and the word stops meaning anything. Sneaking up on something that was
       // never going to fight you is not an achievement.
       if (!hostileToPlayer) return false;
-      return !aggroed || isFeared();
+      return !aware.aggroed || isFeared();
     },
     // Finisher window: ONLY a poise-broken (STAGGERED) enemy is executable.
     // The old low-HP "chip execute" path is gone — execution is now purely the
     // reward for breaking poise, which is what makes the stagger game matter.
     // A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
     get executable() {
-      if (!aliveLocal || bossPhases.phaseInvulnerable || bossPhases.summonInvulnerable) return false;
-      return state === 'staggered';
+      if (!fsm.alive || bossPhases.phaseInvulnerable || bossPhases.summonInvulnerable) return false;
+      return fsm.state === 'staggered';
     },
     aiDebug(): AiDebug {
       return {
-        kind: spec.id, state, intent: currentIntent.intent, moveMode: currentIntent.moveMode,
-        release: currentIntent.releaseAttack, yaw: container.rotation.y,
-        faceX: _dbgFaceX, faceZ: _dbgFaceZ,
-        poise: poiseMax > 0 ? Math.max(0, poiseLeft / poiseMax) : 1, aggression,
+        kind: spec.id, state: fsm.state, intent: intent.currentIntent.intent, moveMode: intent.currentIntent.moveMode,
+        release: intent.currentIntent.releaseAttack, yaw: container.rotation.y,
+        faceX: loco.dbgFaceX, faceZ: loco.dbgFaceZ,
+        poise: poise.poiseMax > 0 ? Math.max(0, poise.poiseLeft / poise.poiseMax) : 1, aggression: intent.aggression,
         boldness: personality.boldness, patience: personality.patience,
-        feint: feintT >= 0, decisionIn: decisionTimer, cower: cowerTimer, broke: brokenOnce,
-        fear: fearTimer, openToBackstab: !hostileToPlayer ? false : (!aggroed || isFeared()),
+        feint: intent.feintT >= 0, decisionIn: intent.decisionTimer, cower: poise.cowerTimer, broke: poise.brokenOnce,
+        fear: poise.fearTimer, openToBackstab: !hostileToPlayer ? false : (!aware.aggroed || isFeared()),
       };
     },
     takeDamage,
