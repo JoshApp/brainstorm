@@ -23,7 +23,7 @@ const { createEnemy } = await import('../src/mobs/enemy');
 const { ENEMIES } = await import('../src/content/enemies');
 const { WalkableRegion: Walkable } = await import('../src/level/walkable');
 const { NavGrid: Nav } = await import('../src/level/nav-grid');
-const { seedRng } = await import('../src/engine/rng');
+const { seedRng, gameRng } = await import('../src/engine/rng');
 const { getPlayerHp } = await import('../src/player/health');
 const { setDeterministicClock, resetGameClock, advanceGameClock } = await import('../src/engine/game-clock');
 const { spawn: spawnEntity, clear: clearWorld } = await import('../src/ecs/world');
@@ -129,15 +129,17 @@ export function traceSpec(id: string): string[] {
   // Summoned adds are real enemies, ticked alongside their summoner.
   const adds: Enemy[] = [];
   const e: Enemy = createEnemy(scene, new THREE.Vector3(0, 0, -2), spec, undefined, {
+    // Mirrors builder.ts makeOnSummon: ONE add per call, flung out from the
+    // parent in a gameRng direction.
     onSummon: (gate, at) => {
-      const spawned: Enemy[] = [];
-      for (let k = 0; k < gate.count; k++) {
-        const a = (k / gate.count) * Math.PI * 2;
-        const pos = new THREE.Vector3(at.x + Math.cos(a) * gate.radius, 0, at.z + Math.sin(a) * gate.radius);
-        spawned.push(createEnemy(scene, pos, ENEMIES[gate.enemyId]));
-      }
-      adds.push(...spawned);
-      return spawned;
+      const r = gate.radius ?? 1.6;
+      const angle = gameRng() * Math.PI * 2;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const child = createEnemy(scene, new THREE.Vector3(at.x + cos * r, 0, at.z + sin * r), ENEMIES[gate.enemyId]);
+      child.summoned = true;
+      child.applyKnockback(cos, sin, 5.0);
+      adds.push(child);
+      return [child];
     },
   });
   const p = new THREE.Vector3();
@@ -163,11 +165,18 @@ export function traceSpec(id: string): string[] {
     if (e.alive) {
       if (i === 450) e.applyStaggerDamage(1000);                              // 7.5 s: poise break
       if (i === 480) e.takeDamage({ source: null, target: e.entityId, base: 1, type: 'magic', dot: true, tint: 0xff0000 });
+      // 9.25-10.9 s: three ranged blows of a fifth of the pool each, wherever
+      // the enemy stands, so a boss is worn through its summon thresholds
+      // and part breaks before the killing blow (which skips both). 50 ticks
+      // apart: past a summon spit's 0.8 s invulnerability.
+      if (i === 555 || i === 605 || i === 655) {
+        e.takeDamage({ source: 'player', target: e.entityId, base: Math.max(1, Math.ceil(e.maxHp / 5)), type: 'magic' });
+      }
       if (i === 630) e.applyKnockback(0, -1, 4);                              // 10.5 s
       if (i === 660) e.applyFear(1.5);                                        // 11 s
-      // 11.5 s: whatever is still standing dies, so every death style
+      // 11.8 s: whatever is still standing dies, so every death style
       // (collapse / crumble / fade, severs, essence) plays out in the trace.
-      if (i === 690) e.takeDamage({ source: 'player', target: e.entityId, base: 100_000, type: 'physical', hitZoneId: 'head', severSide: 'L' });
+      if (i === 710) e.takeDamage({ source: 'player', target: e.entityId, base: 100_000, type: 'physical', hitZoneId: 'head', severSide: 'L' });
     }
     // From 8 s the player strikes every 0.8 s while in reach, for a sixth of
     // the enemy's pool (phases, splits, death, gore).

@@ -42,6 +42,7 @@ import {
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createEnemyDeath, DEFAULT_SEVERABLE } from './enemy-death';
+import { createBossPhases } from './boss-phases';
 import { buildSkinnedCreature } from './creature-skinned';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
@@ -558,10 +559,33 @@ export function createEnemy(
   // World entity (HP + buffs). For multi-phase bosses, HP starts at
   // phase[0].hp; phase transitions refill to the next phase's HP.
   // (entityId was generated above, before the instancing acquire.)
-  let phaseIndex = 0;
+  // Phases + summon gate (mobs/boss-phases.ts). The enemy side of a phase
+  // change — abilities, HP, poise, AI state — comes back through the hooks.
   const phases = spec.phases ?? null;
-  const initialHp = phases ? phases[0].hp : spec.hp;
-  const initialAbilities = phases ? phases[0].abilities : (spec.abilities ?? []);
+  const bossPhases = createBossPhases(
+    { spec, built, container, creature: creatureRef, skinned: skinnedCreature, coreReactor, tiltPart, onSummon: options?.onSummon },
+    {
+      // Pop any OPEN deflect opportunity the dying-into-next-phase ability held —
+      // a phase transition fires from takeDamage and RETURNS before the death-path
+      // pop, and the phase-fall then early-returns from update() for a beat, so
+      // reconcileThreat wouldn't run to clear it. Same leak the death path guards.
+      leaving: () => reconcileThreat(false, false),
+      entered: (next) => {
+        abilities = resolveAbilities(spec, next.abilities, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
+        const ent = getEntity(entityId);
+        if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
+        // Per-phase poise: a phase can become UNSTUNNABLE (high poise) or flimsier.
+        // Refill the pool on entry regardless — a new phase is a fresh stagger bar.
+        if (next.poise !== undefined) poiseMax = next.poise;
+        poiseLeft = poiseMax;
+        clearAoeTelegraph();
+        clearLashTendril();
+        state = 'chasing';
+        phaseTimer = 0;
+      },
+    },
+  );
+  const initialHp = bossPhases.initialHp;
   spawnEntity({
     id: entityId,
     kind: 'enemy',
@@ -569,137 +593,8 @@ export function createEnemy(
     buffs: [],
     passives: [],
   });
-  // Per-phase mutable state (so we can reassign on transition).
-  let currentMaxHp = initialHp;
-  let currentAbilities = initialAbilities;
 
-  // SUMMON GATE — the boss's mid-fight split (spec.summonGate). Fires once when
-  // HP first drops to/below atHpFrac: the boss spits its brood (onSummon) and is
-  // untouchable ONLY for a brief invuln window covering the spit itself
-  // (summonInvulnTimer, ticked down in update) — like a phase transition. The
-  // instant the window closes it's vulnerable again, even with the brood still
-  // alive. See the summonGate doc in enemy-types.ts.
-  const summonGate = spec.summonGate ?? null;
-  const onSummon = options?.onSummon;
-  let summonsFired = 0;   // adds spat so far — one per HP threshold
-  let summonInvulnTimer = 0;
-  // Per-phase partBreaks: tracks which thresholds have fired so we
-  // don't re-hide parts every tick. Reset on phase entry.
-  let firedPartBreaks = new Set<number>();
-  let phaseInvulnTimer = 0;
-  // Phase-transition COLLAPSE animation (the skeleton's downed fall). While
-  // active the boss is inert (no AI) AND invulnerable, and the rig EASES to
-  // the new phase's crawl pose instead of snapping there — so the transition
-  // reads as a fall, not a teleport. Set up on transition, advanced in tick.
-  let phaseFallActive = false;
-  let phaseFallElapsed = 0;
-  let phaseFallDuration = 0;
-  let phaseFallNode: THREE.Object3D | null = null;
-  let phaseFallFromY = 0, phaseFallToY = 0;
-  let phaseFallFromPitch = 0, phaseFallToPitch = 0;
 
-  // Helper used by phase transitions + intra-phase part-break thresholds
-  // to hide named model parts. A single logical part (a whole leg) is
-  // authored as MANY primitives sharing one `name`, but built.parts is a
-  // Map (one entry per name) — so we traverse the live tree and hide EVERY
-  // object with a matching name, not just the one the map kept. Without
-  // this, "hide the legs" only dropped a single foot bone. Unknown names
-  // are silent no-ops.
-  function hidePartsByName(names: readonly string[]): void {
-    const want = new Set(names);
-    // Creature path: names are JOINTs — hide the joint subtree + its zones
-    // (the clean part-break). Legacy path: traverse + hide meshes by name.
-    if (creatureRef) {
-      for (const n of names) {
-        creatureRef.setJointVisible(n, false);
-        skinnedCreature.severBone(n);   // collapse the limb out of the skinned mesh
-      }
-    }
-    built.group.traverse((o) => {
-      if (o.name && want.has(o.name)) o.visible = false;
-    });
-  }
-
-  // Advance the boss to its NEXT phase. Shared by the kill-triggered
-  // transition (combat) and the debug phase-jump (observation tooling).
-  // `animate`: true plays the collapse over the invuln window (the real
-  // fight); false snaps straight to the settled pose (clean phase snaps).
-  function enterNextPhase(animate: boolean): void {
-    if (!phases || phaseIndex + 1 >= phases.length) return;
-    // Pop any OPEN deflect opportunity the dying-into-next-phase ability held —
-    // a phase transition fires from takeDamage and RETURNS before the death-path
-    // pop, and the phase-fall then early-returns from update() for a beat, so
-    // reconcileThreat wouldn't run to clear it. Same leak the death path guards.
-    reconcileThreat(false, false);
-    const next = phases[phaseIndex + 1];
-    phaseIndex++;
-    currentMaxHp = next.hp;
-    currentAbilities = next.abilities;
-    abilities = resolveAbilities(spec, currentAbilities, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
-    const ent = getEntity(entityId);
-    if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
-    // Per-phase poise: a phase can become UNSTUNNABLE (high poise) or flimsier.
-    // Refill the pool on entry regardless — a new phase is a fresh stagger bar.
-    if (next.poise !== undefined) poiseMax = next.poise;
-    poiseLeft = poiseMax;
-    firedPartBreaks = new Set();
-    phaseInvulnTimer = animate ? (next.invulnEntryTime ?? 0) : 0;
-    if (next.hideParts) hidePartsByName(next.hideParts);
-    if (next.rigYOffset !== undefined || next.rigPitch !== undefined) {
-      // Lower / tilt the RIG node (not built.group): the per-frame pose bob
-      // OWNS built.group.position.y and would clobber an offset there. The
-      // rig's position.y is bob-safe; pitch goes on built.group (also safe).
-      const node = tiltPart ?? built.group;
-      if (animate) {
-        phaseFallNode = node;
-        phaseFallFromY = node.position.y;
-        phaseFallToY = node.position.y + (next.rigYOffset ?? 0);
-        phaseFallFromPitch = built.group.rotation.x;
-        phaseFallToPitch = next.rigPitch ?? built.group.rotation.x;
-        phaseFallElapsed = 0;
-        // Fall across the invuln window so he's untouchable + inert as he
-        // drops, then rises as the crawler. Floor at 0.4s for readability.
-        phaseFallDuration = Math.max(0.4, next.invulnEntryTime ?? 0.8);
-        phaseFallActive = true;
-      } else {
-        // Instant settle — snap the model to the new phase's crawl pose.
-        node.position.y += next.rigYOffset ?? 0;
-        if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
-        phaseFallActive = false;
-      }
-    }
-    clearAoeTelegraph();
-    clearLashTendril();
-    state = 'chasing';
-    phaseTimer = 0;
-  }
-
-  // ── SUMMON GATE — the boss spits ONE add per HP threshold, briefly untouchable ──
-  // Thresholds step down evenly from atHpFrac (count=3, atHpFrac=0.75 → 0.75, 0.5,
-  // 0.25). The Nth-add threshold: atHpFrac * (count - summonsFired) / count. Each
-  // spit raises a SHORT invuln window (a clang window); update() ticks it down and
-  // the boss is open again the instant it closes, brood alive or not.
-  function nextSummonThreshold(): number {
-    if (!summonGate) return -1;
-    return summonGate.atHpFrac * (summonGate.count - summonsFired) / summonGate.count;
-  }
-  function fireSummonGate(): void {
-    if (!summonGate || summonsFired >= summonGate.count) return;
-    const spawned = onSummon ? onSummon(summonGate, container.position.clone()) : [];
-    if (spawned.length === 0) return;   // nothing spawned — no split beat, stay vulnerable
-    summonsFired++;
-    summonInvulnTimer = summonGate.invulnTime ?? 0.9;
-    coreReactor.hit();                                   // a bright flare as it splits
-    playEnemyWindup('medium', container.position);       // a summoning roar
-    playSurfaceHit('metal', container.position);         // the split rings out
-    kickShake(0.26, 0.45);
-  }
-  // Split-window hit feedback: the blow glances off mid-spit. A metallic clang +
-  // a whisper of shake, but NO core flare / wound-cry (those read as "I hurt it").
-  function summonHitReact(): void {
-    playSurfaceHit('metal', container.position);
-    kickShake(0.06, 0.12);
-  }
 
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
@@ -784,7 +679,7 @@ export function createEnemy(
   // their legacy fields (see resolveAbilities). `currentAbility` is the
   // one being executed across winding/striking/recovering; `cooldowns`
   // tracks per-ability lockout so a charge can't fire every second.
-  let abilities = resolveAbilities(spec, phases ? currentAbilities : undefined, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
+  let abilities = resolveAbilities(spec, phases ? bossPhases.initialAbilities : undefined, stepInCfg, CONFIG.MOB_STRIKE_CONTACT_FRAC);
   // Commit distance — the farthest range at which ANY ability triggers.
   // Beyond this the enemy just chases to close. Equals attackRange for a
   // pure melee mob, the cast range for a shooter.
@@ -1150,11 +1045,11 @@ export function createEnemy(
     if (burrowState !== 'surfaced') return 0;
     // Multi-phase boss: invuln window on phase entry (e.g. the
     // skeleton's downed-and-rising animation).
-    if (phases && phaseInvulnTimer > 0) return 0;
+    if (bossPhases.phaseInvulnerable) return 0;
     // SUMMON-GATE split window: untouchable for the brief spit only. The blow
     // clangs off (no wound, no wound-cry); the window closes a beat later and the
     // boss is open again whether or not its brood still lives.
-    if (summonInvulnTimer > 0) { summonHitReact(); return 0; }
+    if (bossPhases.summonInvulnerable) { bossPhases.summonHitReact(); return 0; }
     const entity = getEntity(entityId);
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
@@ -1163,10 +1058,7 @@ export function createEnemy(
     // threshold, spat one at a time as the boss is worn down). `while` so a big
     // hit that vaults two thresholds still owes both adds; never on a killing blow
     // (the lowest threshold is well above 0).
-    while (summonGate && summonsFired < summonGate.count && entity.hp.current > 0
-        && entity.hp.current <= currentMaxHp * nextSummonThreshold()) {
-      fireSummonGate();
-    }
+    bossPhases.fireCrossedSummons(entity.hp.current);
     // DEV training arena: floor HP at 1 so the sparring partner never dies —
     // hit flash, poise/stagger, and aggro all still fire above. Inert in prod
     // (the flag's setter ANDs with DEV).
@@ -1186,18 +1078,7 @@ export function createEnemy(
       });
     }
     // Phase part-break thresholds — fire at-most-once per threshold.
-    if (phases) {
-      const phase = phases[phaseIndex];
-      if (phase.partBreaks) {
-        for (let i = 0; i < phase.partBreaks.length; i++) {
-          if (firedPartBreaks.has(i)) continue;
-          if (entity.hp.current <= phase.partBreaks[i].atHp) {
-            firedPartBreaks.add(i);
-            hidePartsByName(phase.partBreaks[i].hideParts);
-          }
-        }
-      }
-    }
+    bossPhases.breakCrossedParts(entity.hp.current);
     coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
     // Light rung of the hit ladder: a surviving hit that isn't mid-commit twitches
     // the body — "it felt that", so damage reads on a thinking thing, not a sponge.
@@ -1226,7 +1107,7 @@ export function createEnemy(
       // mob. (Bosses opt out of the intent layer, so `useIntent` gates it.)
       const M = CONFIG.ENEMY_AI.MORALE;
       if (useIntent && !brokenOnce && state !== 'fleeing' && state !== 'staggered'
-          && entity.hp.current <= currentMaxHp * M.BREAK_HP
+          && entity.hp.current <= bossPhases.maxHp * M.BREAK_HP
           && gameRngChance((1 - personality.boldness) * M.BREAK_CHANCE)) {
         breakMorale();
       }
@@ -1238,9 +1119,9 @@ export function createEnemy(
     }
     if (entity.hp.current <= 0) {
       // Multi-phase: if there's a next phase, transition INSTEAD of dying —
-      // animated collapse over the invuln window (see enterNextPhase).
-      if (phases && phaseIndex + 1 < phases.length) {
-        enterNextPhase(true);
+      // animated collapse over the invuln window (mobs/boss-phases.ts).
+      if (bossPhases.hasNextPhase()) {
+        bossPhases.enterNext(true);
         return result.applied;
       }
       // Killed while ARMED — the bomb still goes off. Fired BEFORE aliveLocal
@@ -1374,7 +1255,7 @@ export function createEnemy(
   function applyStaggerDamage(amount: number): boolean {
     if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return false;
     if (!actionFsm.canBeStaggered()) return false;     // already reeling
-    if (phases && phaseInvulnTimer > 0) return false;   // boss phase-entry invuln
+    if (bossPhases.phaseInvulnerable) return false;     // boss phase-entry invuln
     poiseLeft -= amount;
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
     if (poiseLeft <= 0) { triggerStagger(); return true; }
@@ -2258,34 +2139,9 @@ export function createEnemy(
     // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
     coreReactor.tick(dt);
 
-    // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
-    if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
-
-    // Summon-gate split window: tick the brief invuln down; when it closes the
-    // core flares open to signal "vulnerable again". The boss keeps fighting
-    // throughout — the window only blocks damage, not AI.
-    if (summonInvulnTimer > 0) {
-      summonInvulnTimer = Math.max(0, summonInvulnTimer - dt);
-      if (summonInvulnTimer === 0) coreReactor.hit();
-    }
-
-    // Phase-transition collapse — ease the body into the crawl pose while
-    // he's down. He's INERT here (early return skips all AI/movement/
-    // abilities) and already invulnerable (phaseInvulnTimer gate above), so
-    // the fall plays out untouched, then normal AI resumes as the crawler.
-    if (phaseFallActive && phaseFallNode) {
-      phaseFallElapsed += dt;
-      const t = phaseFallDuration > 0 ? Math.min(1, phaseFallElapsed / phaseFallDuration) : 1;
-      const e = t * t;   // ease-IN: knees buckle slow, then he drops fast
-      phaseFallNode.position.y = phaseFallFromY + (phaseFallToY - phaseFallFromY) * e;
-      built.group.rotation.x = phaseFallFromPitch + (phaseFallToPitch - phaseFallFromPitch) * e;
-      if (t >= 1) {
-        phaseFallNode.position.y = phaseFallToY;
-        built.group.rotation.x = phaseFallToPitch;
-        phaseFallActive = false;
-      }
-      return;
-    }
+    // Phase-entry invuln + summon-gate windows tick down; while a phase
+    // collapse plays the boss is INERT (and invulnerable) — skip all AI.
+    if (bossPhases.tick(dt)) return;
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
@@ -2431,7 +2287,7 @@ export function createEnemy(
         // damage STICKS on a wounded foe. This teaches "whittle its health, THEN
         // break and execute" with no tutorial — the FromSoft coupling.
         const ent = getEntity(entityId);
-        const hpFrac = ent?.hp && currentMaxHp > 0 ? ent.hp.current / currentMaxHp : 1;
+        const hpFrac = ent?.hp && bossPhases.maxHp > 0 ? ent.hp.current / bossPhases.maxHp : 1;
         const recoverMul = Math.max(CONFIG.POISE.RECOVER_HP_FLOOR, hpFrac * hpFrac);
         poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * recoverMul * dt);
       }
@@ -2780,7 +2636,7 @@ export function createEnemy(
           if (decisionTimer <= 0) {
             decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
             const ent = getEntity(entityId);
-            const hpFrac = ent?.hp && currentMaxHp > 0 ? ent.hp.current / currentMaxHp : 1;
+            const hpFrac = ent?.hp && bossPhases.maxHp > 0 ? ent.hp.current / bossPhases.maxHp : 1;
             currentIntent = selectIntent({
               distance, reach: spec.strikeRange, commitDistance,
               aggression, personality,
@@ -3101,7 +2957,7 @@ export function createEnemy(
     if (!clipAnimator || !animBundle) return;
     const bundle = animBundle;
     // Decide base layer from state + phase.
-    const phase = phases ? phases[phaseIndex] : null;
+    const phase = bossPhases.current;
     const useCrawl = phase?.useCrawlAnimation && bundle.crawl;
     const movingState =
       state === 'chasing' || state === 'searching' || state === 'returning';
@@ -3117,7 +2973,7 @@ export function createEnemy(
     const transitioned =
       prevAnimState !== state ||
       prevAnimAbilityId !== abId ||
-      prevAnimPhaseIndex !== phaseIndex;
+      prevAnimPhaseIndex !== bossPhases.index;
     if (transitioned && inWindup && abId) {
       const clip = bundle.abilities[abId];
       if (clip && currentAbility) {
@@ -3147,7 +3003,7 @@ export function createEnemy(
     }
     prevAnimState = state;
     prevAnimAbilityId = abId;
-    prevAnimPhaseIndex = phaseIndex;
+    prevAnimPhaseIndex = bossPhases.index;
     clipAnimator.update(dt);
   }
 
@@ -3256,20 +3112,15 @@ export function createEnemy(
   }
 
   function setDebugBossPhase(index: number) {
-    if (!phases) return;
-    // Step instantly up to the target phase (settled poses, no animation).
-    while (phaseIndex < index && phaseIndex + 1 < phases.length) {
-      enterNextPhase(false);
-    }
-    phaseInvulnTimer = 0;   // a posed phase shouldn't be mid-invuln
+    bossPhases.debugJumpTo(index);
   }
 
   function debugAdvanceBossPhase() {
-    enterNextPhase(true);   // animated collapse, as if just killed
+    bossPhases.enterNext(true);   // animated collapse, as if just killed
   }
 
   function bossPhaseInfo() {
-    return { index: phaseIndex, count: phases ? phases.length : 1 };
+    return { index: bossPhases.index, count: bossPhases.count };
   }
 
   function faceWorld(x: number, z: number) {
@@ -3319,7 +3170,7 @@ export function createEnemy(
     // the fill, so without this getter the bar would render at 1600%
     // fullness in P1 and look pinned to full until the boss dies.
     get maxHp() {
-      return currentMaxHp;
+      return bossPhases.maxHp;
     },
     get alive() {
       return aliveLocal;
@@ -3379,7 +3230,7 @@ export function createEnemy(
     // reward for breaking poise, which is what makes the stagger game matter.
     // A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
     get executable() {
-      if (!aliveLocal || phaseInvulnTimer > 0 || summonInvulnTimer > 0) return false;
+      if (!aliveLocal || bossPhases.phaseInvulnerable || bossPhases.summonInvulnerable) return false;
       return state === 'staggered';
     },
     aiDebug(): AiDebug {
