@@ -43,6 +43,7 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createEnemyDeath, DEFAULT_SEVERABLE } from './enemy-death';
 import { createBossPhases } from './boss-phases';
+import { createEnemyBurrow } from './enemy-burrow';
 import { buildSkinnedCreature } from './creature-skinned';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
@@ -452,41 +453,9 @@ export function createEnemy(
 
   scene.add(container);
 
-  // ── Burrowed (floor ambush) state ────────────────────────────────
-  // Mobs with spec.burrowed start BURIED: the built model sits 1.2m
-  // below floor (invisible) and a small dirt-mound mesh marks the
-  // spot above. When the player walks within triggerDistance, the
-  // model rises smoothly to y=0 and the mound shrinks away;
-  // afterward the mob is a normal melee predator. While buried or
-  // emerging the mob is invulnerable and inert (perception + AI +
-  // takeDamage all early-return).
-  type BurrowState = 'buried' | 'emerging' | 'surfaced';
-  let burrowState: BurrowState = spec.burrowed ? 'buried' : 'surfaced';
-  let burrowTimer = 0;
-  const BURROW_DEPTH = -1.6;
-  let burrowMound: THREE.Group | null = null;
-  if (burrowState === 'buried') {
-    // Drop the creature below the floor.
-    built.group.position.y = BURROW_DEPTH;
-    // Build a small dirt-mound tell at the spawn spot. Three short
-    // jittered cones clustered together so it reads as disturbed
-    // earth, not a perfect dome. Earth-brown matte; faint emissive
-    // so it's just a hair visible against the dark floor in
-    // gameplay lighting.
-    burrowMound = new THREE.Group();
-    const moundMat = new THREE.MeshStandardMaterial({
-      color: 0x2a1f14, roughness: 1.0,
-      emissive: 0x0a0604, emissiveIntensity: 0.5,
-      flatShading: true,
-    });
-    for (const off of [[0, 0, 0], [0.10, 0, 0.08], [-0.08, 0, 0.05], [0.02, 0, -0.10]] as const) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.08, 6), moundMat);
-      cone.position.set(off[0], 0.04, off[2]);
-      cone.rotation.y = Math.random() * Math.PI;
-      burrowMound.add(cone);
-    }
-    container.add(burrowMound);
-  }
+  // Burrowed floor ambush (mobs/enemy-burrow.ts): buried + inert until the
+  // player comes near, then it bursts out.
+  const burrow = createEnemyBurrow(spec, built, container, blob);
 
   // Look up the animation targets by name. tiltPart can be either a named
   // part OR a slot (slots are pure anchors useful when an enemy has a 'rig'
@@ -1042,7 +1011,7 @@ export function createEnemy(
     // Buried/emerging mobs can't be hit — the creature itself is
     // underground or mid-burst, not yet a valid target. Routes
     // through here normally; we short-circuit before HP changes.
-    if (burrowState !== 'surfaced') return 0;
+    if (!burrow.surfaced) return 0;
     // Multi-phase boss: invuln window on phase entry (e.g. the
     // skeleton's downed-and-rising animation).
     if (bossPhases.phaseInvulnerable) return 0;
@@ -1253,7 +1222,7 @@ export function createEnemy(
   // cone on a heavy melee hit, with the attacker's already-resolved
   // stagger power (weapon weight × Might × charge — see attack.ts).
   function applyStaggerDamage(amount: number): boolean {
-    if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return false;
+    if (!aliveLocal || !burrow.surfaced || amount <= 0) return false;
     if (!actionFsm.canBeStaggered()) return false;     // already reeling
     if (bossPhases.phaseInvulnerable) return false;     // boss phase-entry invuln
     poiseLeft -= amount;
@@ -2097,44 +2066,8 @@ export function createEnemy(
     }
 
     // ── Burrowed (pre-emerge gate) ─────────────────────────────────
-    // While buried, the mob is inert: no perception, no AI, no
-    // damage. The ONLY thing it watches is the player's distance to
-    // the burrow spot. When close enough, flip to emerging.
-    if (burrowState === 'buried') {
-      const dx = playerPos.x - container.position.x;
-      const dz = playerPos.z - container.position.z;
-      const dist2 = dx * dx + dz * dz;
-      const trigger = spec.burrowed!.triggerDistance;
-      if (dist2 < trigger * trigger) {
-        burrowState = 'emerging';
-        burrowTimer = 0;
-      }
-      return;
-    }
-    if (burrowState === 'emerging') {
-      // Ease-out rise from BURROW_DEPTH to 0, plus a quick mound-
-      // shrink so the dirt visibly bursts apart. emergeTime is short
-      // (~0.4s) so the motion reads as an ambush, not a slow elevator.
-      burrowTimer += dt;
-      const emergeTime = spec.burrowed!.emergeTime;
-      const t = Math.min(1, burrowTimer / emergeTime);
-      const ease = 1 - (1 - t) * (1 - t);
-      built.group.position.y = BURROW_DEPTH * (1 - ease);
-      if (burrowMound) {
-        const s = Math.max(0, 1 - t * 1.4);
-        burrowMound.scale.setScalar(s);
-        if (s <= 0) {
-          container.remove(burrowMound);
-          burrowMound = null;
-        }
-      }
-      if (t >= 1) {
-        burrowState = 'surfaced';
-        built.group.position.y = 0;
-        blob.visible = true;   // grounded now — reveal the contact shadow
-      }
-      return;
-    }
+    // While buried or emerging the mob is inert: no perception, no AI.
+    if (burrow.tick(dt, playerPos)) return;
 
     // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
     coreReactor.tick(dt);
