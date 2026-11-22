@@ -4,6 +4,7 @@ import { applyShadowRole } from '../scene/shadow-role';
 import { chainRun } from '../content/chain-links';
 import { stdMat } from '../style/material-registry';
 import { buildRng } from '../engine/rng';
+import { createBatchedFlameMesh, isFlameMeshBatchingEnabled } from '../scene/flame-mesh-batch';
 
 // ── CHANDELIER — the ceiling light class ─────────────────────────────
 //
@@ -56,10 +57,22 @@ export function spawnChandelier(
     const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, h, 6), wax);
     stub.position.set(sx, ringY + 0.02 + h / 2, sz);
     group.add(stub);
-    const fl = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), flame);
-    fl.position.set(sx, ringY + 0.05 + h, sz);
-    fl.name = 'flame';
-    group.add(fl);
+    // The candle flame joins the floor's one flame-blob batch (scene/flame-mesh-batch.ts),
+    // like every flame built through buildModel: one draw for all of them instead of a
+    // mesh each. Built by hand here, these used to miss it — 4 draws per chandelier,
+    // and the static-world merge skips anything named 'flame' (flames flicker).
+    if (isFlameMeshBatchingEnabled()) {
+      const handle = createBatchedFlameMesh({
+        radius: 0.028, stretch: [1, 1, 1], emissive: flameColor, emissiveIntensity: 2.2,
+      });
+      handle.obj.position.set(sx, ringY + 0.05 + h, sz);
+      group.add(handle.obj);
+    } else {
+      const fl = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), flame);
+      fl.position.set(sx, ringY + 0.05 + h, sz);
+      fl.name = 'flame';
+      group.add(fl);
+    }
   }
 
   // Three chains to the ceiling, splayed; one centre drop.
