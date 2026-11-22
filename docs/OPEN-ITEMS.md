@@ -203,6 +203,22 @@ Candidates, none built:
     timings, knockback, burrow depth are all caught. NOT covered: audio-only
     constants (vocal stir range), and anything the trace never reaches (a
     spec that never dies — marrow-sovereign's later phases, the wraith).
+  - **Split progress:** 3,716 → 3,191 lines. Out so far, each its own
+    subsystem owning its state (the `enemy-presentation.ts` shape):
+    `enemy-death.ts` (kill blow → empty floor), `boss-phases.ts` (phases,
+    part breaks, summon gate; enemy-side effects via two hooks),
+    `enemy-burrow.ts`. Each step re-checked against a golden recorded on the
+    step before it.
+  - **What's left needs one design step first.** The ability runner
+    (`runAction` ~240 lines), perception, movement and the 11-state FSM in
+    `update` all read and write the same ~60 closure variables (state,
+    phaseTimer, currentAbility, cooldowns, path, intent…). They can't leave
+    as owned-state subsystems the way the three above did. Next: an explicit
+    `EnemyBody` (the shared fields + the few cross-cutting verbs: moveTowards,
+    faceTarget, setState) that createEnemy builds and the runner / perception
+    / FSM handlers take as their one argument. Then the plan's `Record<
+    EnemyState, handler>` table and the boss-vs-mob controller. Poise and fear
+    stay with the FSM (stagger and rout ARE state transitions).
   - Found doing it: the maggot's idle squirm read `performance.now()` and
     turned its body, so its sight cone depended on the wall clock. Now
     `gameNow()` (identical live, stepped in replay).
