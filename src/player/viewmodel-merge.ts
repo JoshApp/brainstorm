@@ -44,10 +44,11 @@ export function mergeRigidViewmodel(group: THREE.Object3D, exclude?: THREE.Objec
     const m = o as THREE.Mesh;
     if (m.isMesh && m.geometry && !Array.isArray(m.material)) {
       const mat = m.material as THREE.Material;
-      // TEXTURED parts stay loose — the merge strips everything but
-      // position+normal, which would break their uv mapping (e.g. the corpse's
-      // blood-pool decal). One or two meshes per model; not worth the risk.
-      if ((mat as THREE.MeshStandardMaterial).map) { for (const c of o.children) collect(c); return; }
+      // TEXTURED parts merge only with parts sampling the SAME texture (the
+      // texture is in the signature): the merge keeps uv now, so a shared map
+      // survives it. This is what folds the scanned bone hand (30 parts on one
+      // atlas, content/texture-atlas.ts) into one draw. A part with a texture
+      // of its own (the corpse's blood-pool decal) is a bucket of one: untouched.
       // TRANSPARENT parts stay loose too — merging them changes sort order
       // against whatever they overlay (lamp glass over its flame, glow gems).
       if (mat.transparent) { for (const c of o.children) collect(c); return; }
@@ -105,5 +106,5 @@ function matSig(mat: THREE.Material): string {
   const m = mat as THREE.MeshStandardMaterial;
   const col = m.color ? m.color.getHexString() : '------';
   const emi = m.emissive ? m.emissive.getHexString() : '------';
-  return `${mat.type}|${col}|${emi}|${(m.roughness ?? 0).toFixed(2)}|${(m.metalness ?? 0).toFixed(2)}|${(m.emissiveIntensity ?? 0).toFixed(2)}|${mat.transparent ? 't' : 'o'}`;
+  return `${mat.type}|${col}|${emi}|${(m.roughness ?? 0).toFixed(2)}|${(m.metalness ?? 0).toFixed(2)}|${(m.emissiveIntensity ?? 0).toFixed(2)}|${mat.transparent ? 't' : 'o'}|${m.map ? m.map.uuid : '-'}`;
 }

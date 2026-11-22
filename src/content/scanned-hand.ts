@@ -35,6 +35,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { atlasModelTextures } from './texture-atlas';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import { HAND_RIGHT } from '../content/hand';
 import type { ModelSpec } from '../ecs/model-types';
@@ -79,6 +80,9 @@ export function preloadBoneHand(): Promise<void> {
       `${import.meta.env.BASE_URL}models/bone-hand-${side}.glb`,
       (gltf) => {
         source[side] = gltf.scene;
+        // 30 parts × their own texture → one atlas + one material, so the
+        // viewmodel merge folds the hand into a single draw (texture-atlas.ts).
+        atlasModelTextures(gltf.scene, `bone-hand-${side}`);
         gltf.scene.updateMatrixWorld(true);
         const missing = SLOT_NAMES.filter((n) => !gltf.scene.getObjectByName(n));
         if (missing.length) {
