@@ -219,6 +219,11 @@ Candidates, none built:
     layer.
   - Largest pieces now: `tickChasing` (~130 lines), `runAction` (~240, one
     case per action kind, already a dispatch). Fine as they are.
+  - Cost measured: the golden harness (enemy CPU only, 24 specs, 15 s each)
+    takes 468-472 ms before the split, 481-492 ms after, alternating runs:
+    ~3-4%, consistent with state read through `self.` instead of closure
+    slots. Hundredths of a millisecond per frame in play. Desktop CPU, not
+    a phone. `[unverified]` on a phone.
   - Found doing it: the maggot's idle squirm read `performance.now()` and
     turned its body, so its sight cone depended on the wall clock. Now
     `gameNow()` (identical live, stepped in replay).
