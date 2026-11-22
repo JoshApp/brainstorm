@@ -119,6 +119,8 @@ audit line-anchored. **The event-factory we just shipped is the template** for t
 dispatch-table pattern used in 2a/2c.
 
 ### 2a. `mobs/enemy.ts` (3,076) — the keystone  *(impact: high, effort: L, risk: med)*
+**DONE 2026-11-22** — see docs/OPEN-ITEMS.md (Phase 3) and mobs/enemy-ctx.ts. The
+boss-vs-mob controller was deliberately not built (reason there).
 One `createEnemy` closure holds ~40 nested fns + a 745-line `update` FSM. Extract:
 `enemy-damage.ts` (takeDamage + stagger/morale/parry), `enemy-ability-runner.ts`
 (`runAction`/`selectAbility`/telegraph — already a subsystem, just inlined),

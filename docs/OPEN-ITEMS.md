@@ -192,9 +192,9 @@ Candidates, none built:
 
 ## Phase 3 — debt
 
-- `createEnemy` ~3,365 lines in one function (`mobs/enemy.ts`); `buildLevel`
-  ~2,255 + `buildRoomShell` 755 (`level/builder.ts`). CONSOLIDATION-PLAN 2a/2b
-  stalled while both grew.
+- ~~`createEnemy` ~3,365 lines in one function~~ (done, below); `buildLevel`
+  ~2,255 + `buildRoomShell` 755 (`level/builder.ts`) — CONSOLIDATION-PLAN 2b,
+  still open.
   - **Net under the enemy split (2026-11-22):** `tests/enemy-golden.test.ts`
     drives all 24 enemy specs through one scripted fight (fog-gate wake,
     summons, parries, stagger, DoT, knockback, fear, a killing blow) and
@@ -203,22 +203,22 @@ Candidates, none built:
     timings, knockback, burrow depth are all caught. NOT covered: audio-only
     constants (vocal stir range), and anything the trace never reaches (a
     spec that never dies — marrow-sovereign's later phases, the wraith).
-  - **Split progress:** 3,716 → 3,191 lines. Out so far, each its own
-    subsystem owning its state (the `enemy-presentation.ts` shape):
-    `enemy-death.ts` (kill blow → empty floor), `boss-phases.ts` (phases,
-    part breaks, summon gate; enemy-side effects via two hooks),
-    `enemy-burrow.ts`. Each step re-checked against a golden recorded on the
-    step before it.
-  - **What's left needs one design step first.** The ability runner
-    (`runAction` ~240 lines), perception, movement and the 11-state FSM in
-    `update` all read and write the same ~60 closure variables (state,
-    phaseTimer, currentAbility, cooldowns, path, intent…). They can't leave
-    as owned-state subsystems the way the three above did. Next: an explicit
-    `EnemyBody` (the shared fields + the few cross-cutting verbs: moveTowards,
-    faceTarget, setState) that createEnemy builds and the runner / perception
-    / FSM handlers take as their one argument. Then the plan's `Record<
-    EnemyState, handler>` table and the boss-vs-mob controller. Poise and fear
-    stay with the FSM (stagger and rout ARE state transitions).
+  - **`createEnemy` split: DONE (2026-11-22).** 3,716 → 1,023 lines; what
+    remains is construction (the parts, the nine state groups with their
+    docs) and the public `Enemy` API. The behaviour lives in subsystems over
+    one `self: EnemyCtx` — `mobs/enemy-ctx.ts` maps them and states the rule
+    for new state. Owned-state subsystems: `enemy-death`, `boss-phases`,
+    `enemy-burrow`. Functions over `self`: `enemy-brain` (update; the 11
+    states are a `Record<EnemyState, handler>`), `enemy-abilities`,
+    `enemy-damage`, `enemy-locomotion`, `enemy-perception`, `enemy-overlays`.
+    Every step was a pure move checked against the golden.
+  - **Not done, on purpose:** the plan's boss-vs-mob controller. `useIntent`
+    is six one-line gates (five in `tickChasing`), each commented; a strategy
+    object would make each an indirect call and add a boss variant to keep in
+    step, for no gain in clarity. Revisit if bosses grow their own decision
+    layer.
+  - Largest pieces now: `tickChasing` (~130 lines), `runAction` (~240, one
+    case per action kind, already a dispatch). Fine as they are.
   - Found doing it: the maggot's idle squirm read `performance.now()` and
     turned its body, so its sight cone depended on the wall clock. Now
     `gameNow()` (identical live, stepped in replay).
