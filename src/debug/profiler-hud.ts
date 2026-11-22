@@ -183,7 +183,12 @@ function refresh(): void {
     `lights ${last.lightsActive}/${last.lightsRegistered}\n` +
     `heap ${heapMB}MB${last.gc ? ' · GC' : ''}`;
 
-  const rows = [...emaMs.entries()].filter(([, ms]) => ms > 0.01).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  // `encN·*` rows are COUNTS (encode calls this frame, debug/encode-breakdown.ts)
+  // riding the ms-valued systems map. Ranked with the durations they sat on top
+  // as "88 ms" and read as the slowest systems in the game; shown apart instead.
+  const rows = [...emaMs.entries()].filter(([n, ms]) => ms > 0.01 && !n.startsWith('encN·'))
+    .sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const counts = [...emaMs.entries()].filter(([n]) => n.startsWith('encN·'));
   const max = rows.length ? rows[0][1] : 1;
   let html = '<div style="opacity:.5;letter-spacing:.04em;margin-bottom:2px">SYSTEMS ms</div>';
   for (const [name, ms] of rows) {
@@ -195,6 +200,9 @@ function refresh(): void {
       `<span style="color:${c};width:30px;text-align:right">${ms.toFixed(2)}</span>` +
       `<span style="width:${barW}px;height:6px;background:${c};border-radius:1px;opacity:.7"></span>` +
       `</div>`;
+  }
+  if (counts.length) {
+    html += `<div style="opacity:.5;margin-top:3px">encodes/frame: ${counts.map(([n, c]) => `${n.slice(5)} ${c.toFixed(0)}`).join(' · ')}</div>`;
   }
   sysEl.innerHTML = html;
 }

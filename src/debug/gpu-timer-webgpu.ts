@@ -26,8 +26,14 @@ export function tickWebGPUTimestamps(renderer: unknown): void {
     r.resolveTimestampsAsync('render').catch(() => null),
     r.resolveTimestampsAsync('compute').catch(() => null),
   ]).then(([rm, cm]) => {
-    if (typeof rm === 'number' && Number.isFinite(rm)) { renderMs = rm; supported = true; }
-    if (typeof cm === 'number' && Number.isFinite(cm)) computeMs = cm;
+    // A frame's GPU time is milliseconds, never seconds. Android WebGL2 timer
+    // queries (EXT_disjoint_timer_query) can come back WRAPPED — 2^64 minus a
+    // little, 1.8e13 ms in two phone recordings of 2026-11-22 — and a finite
+    // garbage value read as "supported" poisoned the HUD and every recording.
+    // Out of range = no timer, honestly null.
+    const plausible = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1000;
+    if (plausible(rm)) { renderMs = rm; supported = true; }
+    if (plausible(cm)) computeMs = cm;
     inFlight = false;
   }, () => { inFlight = false; });
 }

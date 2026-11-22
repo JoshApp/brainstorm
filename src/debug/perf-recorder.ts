@@ -104,6 +104,9 @@ export interface Recording {
     /** Build SHA — ties a phone recording to the exact deploy (the 2026-07-04
      *  recordings couldn't tell us whether the fixes were even on the device). */
     build?: string;
+    /** The page's query string (?bake=1, ?lean=1, ...): an A/B recording has to
+     *  say which side it is. Two phone recordings of 2026-11-22 could not. */
+    url?: string;
     ua: string;
     dpr: number;
     viewport: [number, number];
@@ -397,6 +400,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
   return {
     meta: {
       startedAt: new Date().toISOString(),
+      url: typeof location !== 'undefined' ? location.search : undefined,
       durationMs: frames.length ? frames[frames.length - 1].t : 0,
       frameCount: frames.length,
       targetMs: TARGET_MS,

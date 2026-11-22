@@ -33,6 +33,7 @@ console.log(`\nPERF ANALYSIS · ${file.split('/').pop()}  (${F.length} frames, $
 console.log(hr('SETTINGS'));
 console.log(`  device DPR ${r.meta?.dpr}  ·  EFFECTIVE pixelRatio ${r.meta?.pixelRatio ?? '?'}  ·  viewport ${JSON.stringify(r.meta?.viewport)}`);
 if (r.meta?.graphics) console.log('  ' + Object.entries(r.meta.graphics).map(([k, v]) => `${k}=${v}`).join('  '));
+console.log(`  url ${r.meta?.url ?? '(not recorded — before 2026-11-22)'}`);
 
 console.log(hr('FRAME TIME (trust this — GPU-pass ms over-reports)'));
 console.log(`  dt   median ${f1(mdDt)}ms (${(1000 / mdDt).toFixed(0)}fps)  ·  p95 ${f1(pct(dt, 0.95))}  ·  max ${f1(Math.max(...dt))}`);
@@ -44,8 +45,13 @@ const gpuSum = gph.reduce((s, nm, i) => s + med(col((x) => x.gph?.[i] ?? 0)), 0)
 if (gpuSum > mdDt * 1.25) console.log(`  ⚠ pass-sum ${f1(gpuSum)}ms ≫ dt ${f1(mdDt)}ms → GPU timer inflates; use relative share, not absolutes.`);
 
 console.log(hr('CPU SYSTEMS (median ms)'));
-for (const [n, v] of sn.map((n, i) => [n, med(col((x) => x.sys?.[i] ?? 0))]).filter((x) => x[1] > 0.5).sort((a, b) => b[1] - a[1]).slice(0, 8))
+// encN·* rows are encode-call COUNTS on the ms map (debug/encode-breakdown.ts):
+// listed apart, never ranked as durations.
+const sysMed = sn.map((n, i) => [n, med(col((x) => x.sys?.[i] ?? 0))]);
+for (const [n, v] of sysMed.filter((x) => x[1] > 0.5 && !x[0].startsWith('encN·')).sort((a, b) => b[1] - a[1]).slice(0, 8))
   console.log(`  ${n.padEnd(20)} ${f1(v)}`);
+const encCounts = sysMed.filter((x) => x[0].startsWith('encN·'));
+if (encCounts.length) console.log(`  (encode calls/frame, a count: ${encCounts.map(([n, v]) => `${n.slice(5)} ${v}`).join(' · ')})`);
 
 console.log(hr('DRAWS / GEOMETRY / LEAK CHECK'));
 console.log(`  draws  median ${med(draws)}  max ${Math.max(...draws)}`);
