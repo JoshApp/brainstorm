@@ -34,6 +34,7 @@ import { withWarmLock } from './content/warm-lock';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
 import { absorbWarmPipelines, installPipelineCensusHook } from './debug/pipeline-census';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
+import { installDrawCensus } from './debug/draw-census';
 import { installEncodeBreakdown } from './debug/encode-breakdown';
 import { installUploadCounter } from './debug/upload-counter';
 import type { DelveRenderer } from './scene/create-renderer';
@@ -416,6 +417,8 @@ setOwnedItemsProvider(() => {
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
+// DEV: `await __drawCensus()` names every draw of one frame, by pass (debug/draw-census.ts).
+if (import.meta.env.DEV) installDrawCensus(renderer, camera);
 // The fog, the camera's far plane and the room culler all have to agree about
 // how far you can see, so ONE module owns that number and tells them when it
 // moves. See scene/sight-distance.ts — and scripts/_room-scale.ts, the

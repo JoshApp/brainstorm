@@ -40,15 +40,21 @@
 // a plane across it; and its alpha falls off at the rim, so it meets the jambs as shadow
 // instead of as an edge. A 3.6m gallery opening is the case that tests both.
 import * as THREE from 'three';
-import { veilSurface } from '../style/material-registry';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { texture as tslTexture, attribute } from 'three/tsl';
+import { disposeGpu } from './gpu-dispose';
 import { DEV } from '../debug/dev';
 import { WALL_T } from '../level/poly-shell-plan';
 import { veilKnobs } from '../debug/tuning-veil';
 import { VEIL_ORDER, SIGNAL_ORDER } from './signal-layer';
 
 interface Veil {
-  mesh: THREE.Mesh;
-  mat: THREE.MeshBasicMaterial;
+  /** Its instance in the floor's one veil batch (see VEIL BATCH below). */
+  index: number;
+  rotY: number;
+  /** The instance matrix when shown; a zero-scale matrix stands in while hidden. */
+  shown: THREE.Matrix4;
+  visible: boolean;
   /** World position of the opening's middle — what proximity is measured to. */
   x: number;
   z: number;
@@ -109,6 +115,72 @@ function veilTexture(): THREE.Texture {
   return tex;
 }
 
+// ── VEIL BATCH: every veil on the floor is ONE draw ─────────────────────────
+//
+// A veil was a quad with a material of its own, only so it could carry its own
+// opacity — 14 draws on a spawn room (debug/draw-census.ts, 2026-11-22), the
+// largest single item in the frame. Now: one InstancedMesh per floor, a unit
+// quad scaled per instance, each instance's alpha in a per-instance attribute
+// the one material reads. A veil too thin to see is a zero-scale matrix, so it
+// costs no fill.
+//
+// The material is veilSurface's, as a node material: NO DEPTH WRITE (the veil
+// darkens what is already drawn; writing depth would occlude the motes and the
+// threshold haze meant to drift through the same doorway) and NO FOG (the veil
+// IS the darkness — fogging it would fade the thing doing the fading).
+const VEIL_CAPACITY = 64;
+let batch: {
+  mesh: THREE.InstancedMesh;
+  alpha: THREE.InstancedBufferAttribute;
+  parent: THREE.Object3D;
+} | null = null;
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+
+function veilMaterial(): THREE.Material {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const m: any = new (MeshBasicNodeMaterial as any)({
+    color: 0x000000,
+    transparent: true,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+    depthTest: true,
+    fog: false,
+    side: THREE.DoubleSide,
+  });
+  // A flat quad never overlaps itself, so the back-then-front double pass three gives a
+  // transparent DoubleSide material buys nothing here: one pass, one draw.
+  m.forceSinglePass = true;
+  // RGB black; alpha = the rim falloff × this veil's own alpha.
+  m.opacityNode = (tslTexture as any)(veilTexture()).a.mul((attribute as any)('aVeil', 'float'));
+  m.name = 'kind:veil';
+  return m;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+function ensureBatch(parent: THREE.Object3D): NonNullable<typeof batch> {
+  if (batch) {
+    // One floor, one root, one batch; clearThresholdVeils() runs on every level load. A
+    // second parent while a batch is alive would orphan every veil already in it.
+    if (batch.parent !== parent) throw new Error('threshold-veil: veils on two parents in one floor');
+    if (batch.mesh.count >= VEIL_CAPACITY) throw new Error(`threshold-veil: more than ${VEIL_CAPACITY} veils on one floor`);
+    return batch;
+  }
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const alpha = new THREE.InstancedBufferAttribute(new Float32Array(VEIL_CAPACITY), 1);
+  alpha.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('aVeil', alpha);
+  const mesh = new THREE.InstancedMesh(geo, veilMaterial(), VEIL_CAPACITY);
+  mesh.count = 0;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled = false;   // spans the floor; its parts are 4-vertex quads
+  // Below SIGNAL_ORDER, which is the whole point — see scene/signal-layer.ts.
+  mesh.renderOrder = VEIL_ORDER;
+  mesh.name = 'threshold-veil';
+  parent.add(mesh);
+  batch = { mesh, alpha, parent };
+  return batch;
+}
+
 /**
  * Hang a veil in one opening.
  *
@@ -129,25 +201,24 @@ export function spawnThresholdVeil(scene: THREE.Object3D, o: {
   b: string;
 }): void {
   const { mid, normal, rotY, width, height, floorY } = o;
-  // Veil kind: NO DEPTH WRITE. The veil darkens what is already drawn; writing depth would
-  // make it occlude anything sorted after it, including the motes and the threshold haze
-  // that are supposed to drift through the same doorway. And NO FOG: the veil IS the
-  // darkness — fogging it would fade the thing doing the fading.
-  const mat = veilSurface({ map: veilTexture(), opacity: 0 });
-  // OVERSIZED, slightly. The aperture is exactly `width` × `height`, and a quad cut to
-  // exactly that leaves a hairline of un-veiled opening at the jambs where the falloff has
-  // already reached zero. The rim fade means the extra is invisible.
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width * 1.12, height * 1.08), mat);
   const x = mid[0] + normal[0] * (WALL_T / 2);
   const z = mid[1] + normal[1] * (WALL_T / 2);
   const y = floorY + height / 2;
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  // Below SIGNAL_ORDER, which is the whole point — see scene/signal-layer.ts.
-  mesh.renderOrder = VEIL_ORDER;
-  mesh.name = 'threshold-veil';
-  scene.add(mesh);
-  const veil: Veil = { mesh, mat, x, z, y, a: o.a, b: o.b, alpha: 0, warm: false };
+  const b = ensureBatch(scene);
+  const index = b.mesh.count++;
+  // OVERSIZED, slightly. The aperture is exactly `width` × `height`, and a quad cut to
+  // exactly that leaves a hairline of un-veiled opening at the jambs where the falloff has
+  // already reached zero. The rim fade means the extra is invisible.
+  const shown = new THREE.Matrix4().compose(
+    new THREE.Vector3(x, y, z),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)),
+    new THREE.Vector3(width * 1.12, height * 1.08, 1),
+  );
+  b.mesh.setMatrixAt(index, ZERO);   // opacity 0 until its first tick
+  b.alpha.setX(index, 0);
+  b.mesh.instanceMatrix.needsUpdate = true;
+  b.alpha.needsUpdate = true;
+  const veil: Veil = { index, rotY, shown, visible: false, x, z, y, a: o.a, b: o.b, alpha: 0, warm: false };
   veils.push(veil);
   // Last one wins if two openings somehow share a pair; they cannot today, and a wrong
   // answer here fails toward MORE drawing, which is the safe direction.
@@ -188,6 +259,12 @@ export function tickThresholdVeils(playerPos: THREE.Vector3, dt: number): void {
   const through = veilKnobs.signalThrough() > 0.5;
   const openTau = Math.max(0.001, veilKnobs.openTime());
   const closeTau = Math.max(0.001, veilKnobs.closeTime());
+  if (!batch) return;
+  const b = batch;
+  let moved = false;
+  // Above the signal layer means the veil eats it too — the pre-split behaviour, kept as
+  // a live A/B rather than as a memory of what it used to look like.
+  b.mesh.renderOrder = through ? VEIL_ORDER : SIGNAL_ORDER + 5;
   for (const v of veils) {
     const dx = playerPos.x - v.x, dy = playerPos.y - v.y, dz = playerPos.z - v.z;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -205,15 +282,18 @@ export function tickThresholdVeils(playerPos: THREE.Vector3, dt: number): void {
     const a = v.warm ? v.alpha + (target - v.alpha) * k : target;
     v.warm = true;
     v.alpha = a;
-    v.mat.opacity = a;
-    // Above the signal layer means the veil eats it too — the pre-split behaviour, kept as
-    // a live A/B rather than as a memory of what it used to look like.
-    v.mesh.renderOrder = through ? VEIL_ORDER : SIGNAL_ORDER + 5;
-    // A fully-lifted veil is not drawn at all. A hundred transparent quads at alpha 0 are
-    // a hundred draws that do nothing, and the ones you are standing among are exactly
-    // the ones that are lifted.
-    v.mesh.visible = a > 0.004;
+    b.alpha.setX(v.index, a);
+    // A fully-lifted veil is not drawn at all: a zero-scale instance, so its quad costs no
+    // fill — and the ones you are standing among are exactly the ones that are lifted.
+    const show = a > 0.004;
+    if (show !== v.visible) {
+      v.visible = show;
+      b.mesh.setMatrixAt(v.index, show ? v.shown : ZERO);
+      moved = true;
+    }
   }
+  b.alpha.needsUpdate = true;
+  if (moved) b.mesh.instanceMatrix.needsUpdate = true;
 }
 
 /**
@@ -242,7 +322,7 @@ export interface VeilMapRow {
 export function debugVeilMap(): VeilMapRow[] {
   if (!DEV) return [];
   return veils.map((v) => ({
-    x: v.x, z: v.z, rotY: v.mesh.rotation.y,
+    x: v.x, z: v.z, rotY: v.rotY,
     alpha: v.alpha, a: v.a, b: v.b, warm: v.warm,
   }));
 }
@@ -273,10 +353,12 @@ if (DEV && typeof window !== 'undefined') {
 
 /** Drop every veil — called on level load, like the drafts. */
 export function clearThresholdVeils(): void {
-  for (const v of veils) {
-    v.mesh.removeFromParent();
-    v.mesh.geometry.dispose();
-    v.mat.dispose();
+  if (batch) {
+    batch.mesh.removeFromParent();
+    // A frame may still be in flight with it (fire-and-forget renderAsync): free it once
+    // the queue drains, not now (scene/gpu-dispose.ts).
+    disposeGpu(batch.mesh.geometry, batch.mesh.material as THREE.Material, batch.mesh);
+    batch = null;
   }
   veils.length = 0;
   byPair.clear();
