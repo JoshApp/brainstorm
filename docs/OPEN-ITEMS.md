@@ -280,11 +280,18 @@ Verified (headless, 2026-11-22):
   `__lightBakeScale(0)` darkens it, so the baked light is what is on screen.
 - Live point lights bound on a spawn view: 4 → 1 (the lamp).
 
-Not verified / known limits:
-- **Whether it is cheaper on a phone.** `[unverified]` — the bake trades the
-  clustered pass + its per-fragment loop for 2 texture samples + up to 4 light
-  evaluations on every lit fragment. Headless software rendering can't say
-  which is cheaper. Needs a phone recording with and without `?bake=1`. `[josh]`
+**Measured on Josh's phone (WebGPU, 2026-11-22): it is NOT cheaper.** Matched
+pair, same view (22,141 tris both): GPU 8.06 ms without → 8.72 ms with (+8%,
+p95 8.72 → 9.57); CPU 10.3 → 10.5 ms; late frames 8% → 12%; uploads 48 → 111 a
+frame (the per-light uniform arrays, since cut from 2×96 to 1×64 vec4). The
+director already lights only the few torches past an open threshold, so the
+clustered path was cheap; the bake adds 2 texture reads + up to 4 channel
+checks (including lights currently off) to every lit fragment. An earlier
+"−11% GPU" compared two different views — retracted. Keep it OFF by default.
+What it still offers is a LOOK: walls stop torchlight. Only worth more work
+if that look is wanted; then skip channels whose light is off first.
+
+Known limits:
 - **How it looks on a phone.** Walls now stop torch light (a live point light
   passed through them, dimmed to 30% by the director), so rooms behind a wall
   from a torch get darker. `[josh]` judge.

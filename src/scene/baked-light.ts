@@ -41,8 +41,13 @@ import { bakeLightVisibility, type LightBake, type BakeLight, type BakeWall } fr
 import { forEachLight, setBakedLightWriter, getEnvRangeMul } from './light-pool';
 import { disposeGpu } from './gpu-dispose';
 
-/** Live arrays' capacity: the most static lights one floor may bake. */
-export const BAKE_MAX_SLOTS = 96;
+/** Live array capacity: the most static lights one floor may bake. A floor
+ *  with more keeps the rest live (as for lights the channels can't fit).
+ *  Sized to real floors (19-31 static lights, depths 1-12): the array is a
+ *  uniform BUFFER three re-uploads every time a pass binds it (CLAUDE.md, TSL
+ *  uniforms) — at 96 slots × two arrays a phone recording paid ~20 KB and ~17
+ *  extra uploads a frame for it (2026-11-22). */
+export const BAKE_MAX_SLOTS = 32;
 const CHANNELS = 4;
 
 let requested: boolean | null = null;
@@ -81,13 +86,14 @@ let idNode: any = null;
 const uOrigin = (uniform as any)(new THREE.Vector2(0, 0)).setGroup(frameGroup);
 const uInvSize = (uniform as any)(new THREE.Vector2(1, 1)).setGroup(frameGroup);
 const uHalfCell = (uniform as any)(0.125).setGroup(frameGroup);
-// Per baked light: (x, y, z, cutoff) and (r·I, g·I, b·I, decay). World space;
-// the shader moves the position into view space itself, so the values never
-// depend on when in the frame the camera pose was read.
-const pos: THREE.Vector4[] = Array.from({ length: BAKE_MAX_SLOTS }, () => new THREE.Vector4());
-const col: THREE.Vector4[] = Array.from({ length: BAKE_MAX_SLOTS }, () => new THREE.Vector4());
-const posArr = (uniformArray as any)(pos, 'vec4').setGroup(frameGroup);
-const colArr = (uniformArray as any)(col, 'vec4').setGroup(frameGroup);
+// Per baked light, interleaved in ONE array (one buffer, one upload per bind):
+// [2i] = (x, y, z, cutoff), [2i+1] = (r·I, g·I, b·I, decay). World space; the
+// shader moves the position into view space itself, so the values never depend
+// on when in the frame the camera pose was read.
+const lightData: THREE.Vector4[] = Array.from({ length: BAKE_MAX_SLOTS * 2 }, () => new THREE.Vector4());
+const pos = (i: number): THREE.Vector4 => lightData[i * 2];
+const col = (i: number): THREE.Vector4 => lightData[i * 2 + 1];
+const lightArr = (uniformArray as any)(lightData, 'vec4').setGroup(frameGroup);
 
 function ensureTextures(): void {
   if (visTex) return;
@@ -124,9 +130,9 @@ export function installBakedLighting(): void {
       for (const comp of ['x', 'y', 'z', 'w'] as const) {
         const slot: any = (int as any)(ids[comp].mul(255).add(0.5)).toVar();
         (If as any)(slot.greaterThan((int as any)(0)), () => {
-          const i: any = slot.sub((int as any)(1));
-          const P: any = posArr.element(i);
-          const C: any = colArr.element(i);
+          const i: any = slot.sub((int as any)(1)).mul((int as any)(2));
+          const P: any = lightArr.element(i);
+          const C: any = lightArr.element(i.add((int as any)(1)));
           const lightPosView: any = (cameraViewMatrix as any).mul((vec4 as any)(P.xyz, (float as any)(1))).xyz;
           const { lightDirection, lightColor } = (directPointLight as any)({
             color: C.rgb.mul(vis[comp]),
@@ -186,17 +192,17 @@ export function bakeFloorLights(walls: readonly BakeWall[]): LightBake | null {
   uOrigin.value.set(bake.originX, bake.originZ);
   uInvSize.value.set(1 / (bake.w * bake.cell), 1 / (bake.h * bake.cell));
   uHalfCell.value = bake.cell * 0.5;
-  for (let i = 0; i < BAKE_MAX_SLOTS; i++) { pos[i].set(0, -1000, 0, 1); col[i].set(0, 0, 0, 2); }
+  for (let i = 0; i < BAKE_MAX_SLOTS; i++) { pos(i).set(0, -1000, 0, 1); col(i).set(0, 0, 0, 2); }
 
   const slots = bake.slotOf.size;
   setBakedLightWriter({
-    begin: () => { for (let i = 0; i < slots; i++) col[i].set(0, 0, 0, col[i].w); },
+    begin: () => { for (let i = 0; i < slots; i++) { const c = col(i); c.set(0, 0, 0, c.w); } },
     has: (id) => bake.slotOf.has(id),
     write: (id, x, y, z, cutoff, r, g, b, decay) => {
       const s = bake.slotOf.get(id);
       if (s === undefined) return;
-      pos[s - 1].set(x, y, z, cutoff);
-      col[s - 1].set(r * devScale, g * devScale, b * devScale, decay);
+      pos(s - 1).set(x, y, z, cutoff);
+      col(s - 1).set(r * devScale, g * devScale, b * devScale, decay);
     },
   });
   return bake;
@@ -213,8 +219,8 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
     ...current.stats, live: current.live,
     grid: `${current.w}x${current.h} @ ${current.cell}m`,
     slots: [...current.slotOf.entries()].slice(0, 6).map(([id, s]) => ({
-      id, ch: current!.channelOf.get(id), pos: pos[s - 1].toArray().map((v) => +v.toFixed(2)),
-      col: col[s - 1].toArray().map((v) => +v.toFixed(2)),
+      id, ch: current!.channelOf.get(id), pos: pos(s - 1).toArray().map((v) => +v.toFixed(2)),
+      col: col(s - 1).toArray().map((v) => +v.toFixed(2)),
     })),
   };
 }
