@@ -194,7 +194,8 @@ async function check(backend: Backend): Promise<Result> {
 
     if (evalAfterReveal) {
       const out = await page.evaluate(evalAfterReveal).catch((e: Error) => `eval failed: ${e.message}`);
-      notes.push(`eval → ${JSON.stringify(out)?.slice(0, 120)}`);
+      // EVAL_CHARS=N widens the echoed result (default 120) for census-sized answers.
+      notes.push(`eval → ${JSON.stringify(out)?.slice(0, Number(process.env.EVAL_CHARS ?? 120))}`);
       await page.waitForTimeout(1_000);   // let a pipeline rebuild land
     }
     if (wantCpu) {
