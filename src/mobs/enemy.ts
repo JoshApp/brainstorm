@@ -77,6 +77,7 @@ import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
 import { createFearSkull, type FearSkull } from './fear-skull';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
+import { gameNow } from '../engine/game-clock';
 import { isArrivalGrace } from '../player/arrival';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -2900,7 +2901,7 @@ export function createEnemy(
         // atmosphere. Paused between crawls with an in-place squirm.
         if (!hostileToPlayer) {
           if (!homeSet) { homeX = container.position.x; homeZ = container.position.z; homeSet = true; }
-          const wt = performance.now() / 1000;
+          const wt = gameNow() / 1000;   // game clock: live = performance.now(), replay = stepped
           applyIdleEyes();
           applyTilt(0);
           if (wanderPause > 0) {

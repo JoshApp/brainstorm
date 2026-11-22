@@ -6,8 +6,12 @@
 //
 // IMPORT THIS FIRST, before any game module, in a Node entry point.
 //
-//   import './headless/dom-stub'; // must precede the game imports below
-//   const { buildLevel } = await import('../level/builder');
+//   import <this file>;   // must precede the game imports below
+//   const { buildLevel } = await import(<level/builder>);
+//
+// (Written without quotes on purpose: scripts/test-impact.ts reads imports with
+// a regex, and a quoted example here that doesn't resolve from this folder
+// marks every test that reaches this file as depending on everything.)
 //
 // It only installs itself when there's no real document (i.e. in Node) — a
 // no-op in the browser.
@@ -47,8 +51,14 @@ if (typeof (globalThis as { document?: unknown }).document === 'undefined') {
         });
         if (k === 'classList') return { add: noop, remove: noop, toggle: noop, contains: () => false };
         if (k === 'getContext') return () => ctx2d;
+        // Web Animations (combat words, pops): a handle that never plays.
+        if (k === 'animate') return () => ({ finished: new Promise(noop), cancel: noop, finish: noop, onfinish: null, addEventListener: noop });
         if (k === 'getBoundingClientRect') return () => ({ x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 });
         if (k === 'width' || k === 'height' || k === 'clientWidth' || k === 'clientHeight') return 800;
+        // three r187's Texture reads `image.depth > 1` (isArrayTexture). Coercing
+        // the proxy to a number finds no callable valueOf/toPrimitive and throws.
+        if (k === 'depth') return 1;
+        if (typeof k === 'symbol') return undefined;
         // Layout reads (offsetHeight, scrollTop, …) — numbers so UI math headless
         // doesn't crash on the Proxy. 0 is fine; nothing is actually laid out.
         if (typeof k === 'string' && /^(offset|scroll)(Width|Height|Top|Left)$/.test(k)) return 0;

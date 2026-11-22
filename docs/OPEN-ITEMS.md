@@ -195,6 +195,17 @@ Candidates, none built:
 - `createEnemy` ~3,365 lines in one function (`mobs/enemy.ts`); `buildLevel`
   ~2,255 + `buildRoomShell` 755 (`level/builder.ts`). CONSOLIDATION-PLAN 2a/2b
   stalled while both grew.
+  - **Net under the enemy split (2026-11-22):** `tests/enemy-golden.test.ts`
+    drives all 24 enemy specs through one scripted fight (fog-gate wake,
+    summons, parries, stagger, DoT, knockback, fear, a killing blow) and
+    compares 150 samples each to `tests/golden/enemy-trace.txt`. Same hash on
+    Node 20 (CI) and 23. Mutation-checked: engage grace, death and crumble
+    timings, knockback, burrow depth are all caught. NOT covered: audio-only
+    constants (vocal stir range), and anything the trace never reaches (a
+    spec that never dies — marrow-sovereign's later phases, the wraith).
+  - Found doing it: the maggot's idle squirm read `performance.now()` and
+    turned its body, so its sight cone depended on the wall clock. Now
+    `gameNow()` (identical live, stepped in replay).
 - `main.ts` 2,192 lines, 181 imports → an explicit `boot()`.
 - Vestigial attributes (Might/Finesse/Lore/Grit always 0, still displayed and
   read by combat: `character.ts`, `attribute-defs.ts`, `modifiers.ts:289`,
@@ -218,6 +229,14 @@ Candidates, none built:
   `claude/forcewebgl-gate`, `worktree-viewmodel-v3` (2 mob-AI commits),
   `claude/alpha-name-entry`, `claude/create-brainstorm-repo-KjJds`;
   `brainstorm-harness-v1` has uncommitted work from May. `[josh]` keep or drop.
+
+- **`npm run replay-node` was broken from the r187 upgrade until 2026-11-22.**
+  r187's `Texture` reads `image.depth > 1`; the DOM stub's proxy canvas could
+  not be coerced to a number. Fixed in `headless/dom-stub.ts`. Nothing ran it,
+  so nothing noticed: it is not in CI. Worth adding to CI.
+- Under tsx, game code loads two copies of three ("Multiple instances of
+  Three.js", one via `require("three")`). Harmless for the traces so far;
+  source of the `require` not found. `[unverified]`
 
 ## Phase 4 — platform foundations (before any store)
 
