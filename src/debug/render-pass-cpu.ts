@@ -55,14 +55,55 @@ export function installRenderPassCpu(renderer: DelveRenderer): void {
   if (!backend?.beginRender || !backend.finishRender) return;
   installed = true;
 
+  // THE SCENE WALK IS ITS OWN ROW ('render·walk'). Each render() walks the scene
+  // graph and builds + sorts its render list BEFORE it opens its pass, so that
+  // work landed in whichever pass was open at the time — for the main scene,
+  // the canvas pass. A 2026-11-22 phone recording read 'render·canvas 1.2 ms',
+  // which looked like an expensive final pass; measured on a real GPU the
+  // final quad is microseconds and most of it was the main scene's walk. The
+  // walk (three r187: drawingPipeline.project, outermost call) is reported on
+  // its own and subtracted from the pass it happened inside.
+  const dp = (renderer as unknown as { drawingPipeline?: { project?: (...a: unknown[]) => unknown } }).drawingPipeline;
+  if (dp?.project) {
+    const origProject = dp.project.bind(dp);
+    let depth = 0;
+    dp.project = (...a: unknown[]) => {
+      if (depth > 0 || !passCpuWanted()) return origProject(...a);
+      depth++;
+      const t0 = performance.now();
+      try { return origProject(...a); } finally {
+        depth--;
+        const ms = performance.now() - t0;
+        reportPassCpu('render·walk', ms);
+        const open = stack[stack.length - 1];
+        if (open) open.childMs += ms;
+      }
+    };
+  }
   const origBegin = backend.beginRender.bind(backend);
   const origFinish = backend.finishRender.bind(backend);
+  // The CANVAS pass's own begin and finish are reported apart as well
+  // ('render·canvas·begin' / '·finish'): its self time is not one quad's draw —
+  // beginning it acquires the swap-chain texture and finishing it closes and
+  // submits the frame, and a phone recording (2026-11-22) put 1.2 ms there with
+  // no way to say which. Each is a sub-row OF render·canvas, not added to it.
   backend.beginRender = (ctx: RenderContextLike) => {
-    if (passCpuWanted()) stack.push({ ctx, label: classify(ctx), start: performance.now(), childMs: 0 });
-    return origBegin(ctx);
+    if (!passCpuWanted()) return origBegin(ctx);
+    const label = classify(ctx);
+    stack.push({ ctx, label, start: performance.now(), childMs: 0 });
+    if (label !== 'render·canvas') return origBegin(ctx);
+    const t0 = performance.now();
+    const r = origBegin(ctx);
+    reportPassCpu('render·canvas·begin', performance.now() - t0);
+    return r;
   };
   backend.finishRender = (ctx: RenderContextLike) => {
+    const top0 = stack[stack.length - 1];
+    const t0 = performance.now();
     const r = origFinish(ctx);
+    if (top0 && top0.ctx === ctx && top0.label === 'render·canvas') {
+      reportPassCpu('render·canvas·finish', performance.now() - t0);
+    }
     // Brackets are LIFO (nested function calls); if arming mid-frame left the
     // stack unbalanced, drop silently until it re-syncs next frame.
     const top = stack[stack.length - 1];

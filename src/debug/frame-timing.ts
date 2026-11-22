@@ -267,3 +267,28 @@ export function frameEnd(): void {
   lastEnd = now;
   for (const l of listeners) l(sample);
 }
+
+// DEV: `await __sysMedians(4)` — median of every system row (render·canvas,
+// render·canvas·begin, …) and of dt/cpu over the next N seconds. The console's
+// way to measure one pass without saving and analysing a recording.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __sysMedians?: (s?: number) => Promise<Record<string, number>> }).__sysMedians =
+    (seconds = 4) => new Promise((resolve) => {
+      const rows = new Map<string, number[]>();
+      const push = (k: string, v: number): void => { const a = rows.get(k); if (a) a.push(v); else rows.set(k, [v]); };
+      const l: FrameListener = (s) => {
+        push('dt', s.dt); push('cpu', s.cpuMs);
+        for (const [k, v] of s.systems) push(k, v);
+      };
+      addFrameListener(l);
+      setTimeout(() => {
+        removeFrameListener(l);
+        const out: Record<string, number> = {};
+        for (const [k, a] of rows) {
+          const sorted = a.slice().sort((x, y) => x - y);
+          out[k] = +sorted[Math.floor(sorted.length / 2)].toFixed(3);
+        }
+        resolve(out);
+      }, seconds * 1000);
+    });
+}
