@@ -227,7 +227,14 @@ Candidates, none built:
   - Found doing it: the maggot's idle squirm read `performance.now()` and
     turned its body, so its sight cone depended on the wall clock. Now
     `gameNow()` (identical live, stepped in replay).
-- `main.ts` 2,192 lines, 181 imports → an explicit `boot()`.
+- `main.ts` 2,206 lines → an explicit `boot()`. DECIDED 2026-11-22: split AS
+  TOUCHED by the platform work, not big-bang. Cross-section state is small
+  (renderer, scene, camera, weapon, combat; mutable currentLevel — duplicate
+  of level/active-level.ts — roomCuller, two harness hooks), but the "Input"
+  section (338 lines) is a grab bag (touch input, HUD buttons, audio settings,
+  network, telemetry, crash context, PWA) and "Run start" is 745 lines. Order:
+  input wiring out with gamepad support; settings wiring out with the store
+  settings; run start / level lifecycle after.
 - Vestigial attributes (Might/Finesse/Lore/Grit always 0, still displayed and
   read by combat: `character.ts`, `attribute-defs.ts`, `modifiers.ts:289`,
   `ecs/buffs.ts`).
