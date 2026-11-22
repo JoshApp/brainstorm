@@ -148,10 +148,15 @@ export function raiseFlaskForWarm(camera: THREE.Camera): { restore(): void } {
   ensureBuilt(camera);
   if (!group) return { restore() { /* build failed — nothing to restore */ } };
   const g = group;
-  const prevVisible = g.visible;
   g.visible = true;
   g.position.copy(RAISED_POS);
-  return { restore() { g.visible = prevVisible; g.position.copy(HIDDEN_POS); } };
+  // Restore to HIDDEN, not to whatever visibility the raise found: two warm
+  // passes overlapping (each awaits a render) handed the second restore the
+  // first raise's `true`, and the rig came out of the descent drawn at its
+  // stowed pose until its tick next ran (seen headless 2026-11-22: a second
+  // hand drawn for the first seconds of a floor). Outside a drink the rig is
+  // always hidden, and nobody drinks behind the descent cover.
+  return { restore() { g.visible = false; g.position.copy(HIDDEN_POS); } };
 }
 
 /** World position of the flask hand's wrist while the rig is up — the
