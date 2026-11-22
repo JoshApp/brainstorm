@@ -188,6 +188,16 @@ export const CONFIG = {
     FOV_FOLLOW: 4.5,
   },
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
+  // === GAMEPAD (controls/input-gamepad.ts; mapping in controls/gamepad-bindings.ts) ===
+  GAMEPAD: {
+    STICK_DEADZONE: 0.18,      // radial; below this a stick reads as centred
+    TRIGGER_THRESHOLD: 0.35,   // analogue trigger counts as pressed past this
+    // Right-stick look, in the same "pixels" mouse/touch look feeds the camera
+    // (× lookSensitivity rad/px): 750 px/s ≈ 3 rad/s ≈ 170°/s at full tilt.
+    LOOK_SPEED_X: 750,
+    LOOK_SPEED_Y: 480,
+    LOOK_CURVE: 2.0,           // response exponent: fine aim near centre, fast at the edge
+  },
   JOYSTICK_DEADZONE: 0.1,
 
   // === STAMINA ===

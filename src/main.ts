@@ -34,6 +34,7 @@ import { withWarmLock } from './content/warm-lock';
 import { canSkipRosterWarm, markRosterWarmed, noteCoveredWarmPoint } from './content/warm-cache';
 import { absorbWarmPipelines, installPipelineCensusHook } from './debug/pipeline-census';
 import { installRenderPassCpu } from './debug/render-pass-cpu';
+import { setWeaponSwapHandler, triggerWeaponSwap } from './controls/weapon-swap-input';
 import { installDrawCensus } from './debug/draw-census';
 import { installEncodeBreakdown } from './debug/encode-breakdown';
 import { installUploadCounter } from './debug/upload-counter';
@@ -1183,10 +1184,13 @@ initHudEdit();
 // alongside the flask (same HUD lifecycle) so it survives the screen-manager
 // setup. Gated on NOT mid-swing so a swap can't interrupt a committed attack; the
 // equipment listener swaps the viewmodel + combat weapon for free on notify().
-createWeaponSwapChip(() => {
+// One swap verb for every device: the HUD chip, the swap key, the gamepad's Y
+// (controls/weapon-swap-input.ts).
+setWeaponSwapHandler(() => {
   if (weapon.isSwinging) return;         // finish the swing first
   if (swapWeapons()) { playEquipClick(); pulseWeaponSwapChip(); }
 });
+createWeaponSwapChip(triggerWeaponSwap);
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
 createSettingsMenu();

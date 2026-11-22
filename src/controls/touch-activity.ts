@@ -1,3 +1,4 @@
+import { noteTouchActivity } from './active-device';
 // Touch-activity beacon — lets the desktop input scheme ignore the
 // "compatibility" mouse events a touch device synthesizes after every tap
 // (mousedown / mouseup / click, ~300–500ms later). Both schemes run at once
@@ -11,6 +12,7 @@ let lastTouchMs = -Infinity;
 /** Call from the touch scheme on touchstart / touchend. */
 export function markTouchActivity(): void {
   lastTouchMs = performance.now();
+  noteTouchActivity();
 }
 
 /** True if a touch happened within `windowMs` — i.e. an incoming mouse event

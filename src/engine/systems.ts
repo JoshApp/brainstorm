@@ -15,6 +15,7 @@ import { tickArrivalThreshold, endArrivalThreshold } from '../player/arrival';
 import { tickLampHand } from '../player/lamp-hand';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { tickFlaskDrink } from '../player/flask-drink';
+import { pollGamepad } from '../controls/input-gamepad';
 import { tickFlaskViewmodel } from '../player/flask-viewmodel';
 import { tickFlaskDrinkUi } from '../controls/consumable-bar';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
@@ -174,6 +175,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'swing-agency', kind: 'sim', phase: 'unpaused', tick() {
       updateSwingAgency(weapon.getPhase(), getCurrentWeapon().commitment, weapon.getPhaseProgress());
     } },
+    // Gamepad: one poll a frame, paused or not — a menu opened from the pad must
+    // be closable from the pad (controls/input-gamepad.ts). Before input-camera,
+    // which reads this frame's poll.
+    { name: 'gamepad-poll', phase: 'always', tick() { pollGamepad(); } },
     // Look/move input + camera. While dying, control input is dropped so
     // nothing downstream (camera, bob) reads stale joystick values.
     { name: 'input-camera', kind: 'sim', phase: 'unpaused', tick(ctx) {

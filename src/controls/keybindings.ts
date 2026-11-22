@@ -23,6 +23,8 @@ export type BindableAction =
   | 'inventory'
   | 'quickUse'
   | 'character'
+  | 'rite'
+  | 'swapWeapon'
   | 'menu';
 
 /** Display order for the settings UI — verbs grouped move / fight / ui. */
@@ -36,6 +38,8 @@ export const BINDABLE_ACTIONS: { id: BindableAction; label: string }[] = [
   { id: 'inventory',   label: 'INVENTORY' },
   { id: 'quickUse',    label: 'QUICK USE' },
   { id: 'character',   label: 'CHARACTER' },
+  { id: 'rite',        label: 'RITE' },
+  { id: 'swapWeapon',  label: 'SWAP WEAPON' },
   { id: 'menu',        label: 'MENU / BACK' },
 ];
 
@@ -54,6 +58,8 @@ const DEFAULTS: Record<BindableAction, string> = {
   inventory:   'KeyI',
   quickUse:    'KeyQ',
   character:   'KeyC',
+  rite:        'KeyR',
+  swapWeapon:  'KeyF',
   menu:        'Escape',
 };
 

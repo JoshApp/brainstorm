@@ -37,6 +37,9 @@ import { toggleInventoryPanel } from '../ui/inventory-panel';
 import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
 import { dismissTopScreen, confirmTopScreen, isAnyScreenOpen, setReacquireFocusHandler } from '../ui/screen-manager';
 import { isDesktopLike } from './platform';
+import { noteKeyboardMouseActivity } from './active-device';
+import { triggerWeaponSwap } from './weapon-swap-input';
+import { tryActivateRite } from '../combat/rites';
 import { openSettings } from '../ui/settings-menu';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 import { LEFT_ZONE_FRACTION } from './input-touch';
@@ -96,6 +99,7 @@ export const desktopScheme: InputScheme = {
       // keyboard — don't let game verbs steal 'E', WASD, digits, etc.
       if (isTextEntryMode()) return;
       if (!e.repeat) codesDown.add(e.code);
+      noteKeyboardMouseActivity();
 
       // Prompt ADVANCE/CONFIRM — a modal prompt (note card, transition card)
       // that registered onConfirm takes Space / Enter / the interact key to
@@ -148,6 +152,16 @@ export const desktopScheme: InputScheme = {
         if (action === 'inventory') {
           e.preventDefault();
           toggleInventoryPanel();
+          return;
+        }
+        if (action === 'rite') {
+          e.preventDefault();
+          tryActivateRite();
+          return;
+        }
+        if (action === 'swapWeapon') {
+          e.preventDefault();
+          triggerWeaponSwap();
           return;
         }
         if (action === 'quickUse') {

@@ -9,11 +9,15 @@
 import { isSprinting as dodgeButtonHeld } from './dodge-button';
 
 let desktopHeld = false;
+let gamepadHeld = false;
 
 /** Polled by the desktop input each frame from the Shift key. */
 export function setDesktopRunHeld(v: boolean): void { desktopHeld = v; }
+/** Set by the gamepad scheme: B held past the tap window (same rule as the
+ *  phone's dodge button — a tap dodges, a hold runs). */
+export function setGamepadRunHeld(v: boolean): void { gamepadHeld = v; }
 
 /** Is the player asking to run, on whatever they're holding? */
 export function isRunHeld(): boolean {
-  return desktopHeld || dodgeButtonHeld();
+  return desktopHeld || gamepadHeld || dodgeButtonHeld();
 }

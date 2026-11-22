@@ -32,7 +32,7 @@ import { isHudEditActive } from '../debug/hud-edit';
 /** Held longer than this and the press is a SPRINT, not a dodge. Short enough
  *  that a panic-tap never accidentally runs, long enough that a deliberate hold
  *  never accidentally dodges. */
-const HOLD_TO_RUN_MS = 180;
+export const HOLD_TO_RUN_MS = 180;
 
 let btn: HTMLButtonElement | null = null;
 let pressedAt = 0;

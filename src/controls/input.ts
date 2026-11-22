@@ -10,13 +10,14 @@
 
 import { touchScheme } from './input-touch';
 import { desktopScheme } from './input-desktop';
+import { gamepadScheme } from './input-gamepad';
 import type { InputScheme, InputState, InputOptions, InputTick } from './input-types';
 
 export type { InputState, InputOptions };
 // Back-compat alias for the previous name.
 export type TouchInputOptions = InputOptions;
 
-const ALL_SCHEMES: InputScheme[] = [touchScheme, desktopScheme];
+const ALL_SCHEMES: InputScheme[] = [touchScheme, desktopScheme, gamepadScheme];
 
 // Optional override that REPLACES the per-frame scheme ticks. Set by the
 // AI-playable harness so its synthetic moveX/moveY values aren't fought

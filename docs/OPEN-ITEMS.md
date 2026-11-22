@@ -34,8 +34,8 @@ foundations → back to building the game.
   (`settings-menu.ts:579`, `debug/lux-button.ts:13`). Kept on purpose for phone
   debugging. `[josh]` — before a store release these go behind a release-build
   flag; decide when.
-- **Desktop has no key for rite or weapon swap**; their DOM buttons cannot be
-  clicked while the mouse is pointer-locked. `[unverified]`
+- ~~Desktop has no key for rite or weapon swap~~ FIXED 2026-11-22: R and F
+  (rebindable), through the same entry points as the HUD and the gamepad.
 - **Leaderboard is trivially fakeable**: `reportDeath` accepts any depth
   (`server/spacetimedb/src/index.ts:130-153`). Every client subscribes to the
   whole `death` and `identity` tables (`src/net/delve-net.ts:119`).
@@ -314,8 +314,17 @@ Known limits:
 
 ## Phase 4 — platform foundations (before any store)
 
-- No gamepad; `isDesktopLike()` false on any touch device, so a Deck or touch
-  laptop gets the phone HUD and no mouse-look. `[unverified]` on real hardware.
+- ~~No gamepad~~ IN PLAY 2026-11-22 (controls/input-gamepad.ts, mapping in
+  gamepad-bindings.ts, tuning CONFIG.GAMEPAD): Souls layout — sticks move/look,
+  RT attack (hold charges), B tap dodge / hold run, A interact, X quick use,
+  Y weapon swap, LB rite, Start menu, View inventory, D-pad slots 1-4; in a
+  menu A confirms, B / Start back. Verified in Windows Chrome with a scripted
+  pad (move, look, swing, dodge, run, swap, rite, menu round trip); D-pad slots
+  and A-on-an-object not exercised. `[unverified]` with a physical controller.
+  Still open: D-pad focus navigation INSIDE menus (A/B only today); the HUD
+  following the active device (controls/active-device.ts exists, nothing reads
+  it yet) — `isDesktopLike()` is still false on any touch device, so a Deck or
+  touch laptop gets the phone HUD; parry has no button (design parked).
 - Saves: local only, no export/import, no cloud meta-save.
 - Settings for stores: shake/haptics/flash toggles, invert-Y, FOV, SFX volume,
   text size, strings table for localisation.
