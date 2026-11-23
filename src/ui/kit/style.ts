@@ -138,6 +138,29 @@ export function injectKitStyles(): void {
       box-shadow: 0 0 6px rgba(255, 140, 50, .5); transition: width .3s ease; }
     .lk-row.is-focused .lk-ember { border-color: rgba(255, 170, 80, .55); }
 
+    /* READING VIEW (kit/reading.ts): rows | the scorched slab that explains the chosen one. */
+    .lk-reading { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+    .lk-reading-rows { display: flex; flex-direction: column; min-width: 0; }
+    .lk-reading-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; text-transform: uppercase; }
+    .lk-reading-head:first-child { margin-top: 0; }
+    .lk-reading-count { font: 600 10px/1 system-ui, sans-serif; letter-spacing: .12em; color: rgba(170, 135, 100, .7); }
+    .lk-reading-row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; min-height: 44px; box-sizing: border-box;
+      padding: 10px 12px 10px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .lk-reading-row .lk-k { font: 19px/1.25 'EB Garamond', 'Iowan Old Style', serif; color: rgba(214, 186, 150, .78); min-width: 0; }
+    .lk-reading-row .lk-v { font: 600 15px/1.2 'EB Garamond', 'Iowan Old Style', serif; letter-spacing: .02em; white-space: nowrap; }
+    .lk-reading-row.faint .lk-k { font-style: italic; color: rgba(140, 115, 90, .5); }
+    .lk-reading-row.chosen::before { opacity: 1; }
+    .lk-reading-row.chosen { background: linear-gradient(90deg, rgba(255, 176, 96, .17) 0%, rgba(255, 176, 96, .06) 55%, rgba(255, 176, 96, 0) 100%); }
+    .lk-reading-row.chosen .lk-v { color: #ffd9a6; text-shadow: 0 0 10px rgba(255, 176, 96, .65); }
+    .lk-reading-row.chosen .lk-k { color: #f3dcb6; }
+    .lk-reading-slab { position: sticky; top: 0; padding: 18px 20px 20px; min-height: 180px; }
+    .lk-rd-kind { font: 600 10px/1.2 system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; color: rgba(200, 160, 110, .8); margin-bottom: 6px; }
+    .lk-rd-title { font: 600 18px/1.2 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .06em; text-transform: uppercase; color: #f3dcb6; }
+    .lk-rd-rule { height: 1px; margin: 12px 0 14px; background: linear-gradient(90deg, rgba(140, 80, 40, .9), rgba(255, 150, 60, .6) 50%, rgba(140, 80, 40, 0)); }
+    .lk-rd-text { font: italic 17px/1.45 'EB Garamond', 'Iowan Old Style', serif; color: #ead2b4; }
+    .lk-rd-note { margin-top: 12px; font: 14px/1.4 'EB Garamond', 'Iowan Old Style', serif; color: rgba(190, 158, 122, .72); }
+    @media (max-width: 560px) { .lk-reading { grid-template-columns: 1fr; } .lk-reading-slab { position: static; order: -1; min-height: 0; } }
+
     /* WORLD TAGS: what hangs over a thing in the dungeon. No box: a name over a
        rule bearing the domain's mark (the depth title's grammar), on a feathered
        pool of dark so it reads over any floor, hung on a thread of light down to

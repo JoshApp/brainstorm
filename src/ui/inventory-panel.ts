@@ -11,7 +11,7 @@ import { buildCharacterContent } from './character-screen';
 import { buildCodexContent } from './codex-screen';
 import { FONT_UI } from './hud';
 import { TEXT_PRIMARY, TEXT_DIM, type Selection, type InventoryCtx } from './inventory-shared';
-import { buildStatsColumn } from './inventory-stats';
+import { getEquipped } from '../player/equipment';
 import { buildEquippedSlots, buildRiteSlot, buildRelicLink } from './inventory-doll';
 import { buildBagColumn } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
@@ -299,6 +299,13 @@ function renderReliquary() {
 // resting state is two roomy zones. Acting clears the selection and it folds away.
 function buildColumns(): HTMLDivElement {
   const grid = document.createElement('div');
+  // The slab is always there (the Lamplight draft): with nothing chosen it
+  // tells the weapon in your hand, so the satchel never opens onto an empty
+  // third of the screen and a touch player reads something without a tap.
+  if (selection === null) {
+    const held = getEquipped('weapon');
+    if (held) selection = { kind: 'slot', slotId: 'weapon', item: held };
+  }
   const showDetails = selection !== null;
   Object.assign(grid.style, {
     display: 'grid',
@@ -320,9 +327,10 @@ function buildColumns(): HTMLDivElement {
   // LEFT — the CHARACTER column: equipped slots, stats, rite, reliquary link.
   const character = document.createElement('div');
   Object.assign(character.style, { display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '0' } as Partial<CSSStyleDeclaration>);
+  // Health, damage, reach and the rest live on the CHARACTER tab now, each
+  // explained; a second, unexplained copy here was noise.
   character.append(
     buildEquippedSlots(ctx),
-    buildStatsColumn(),
     buildRiteSlot(ctx),
     buildRelicLink(ctx),
   );

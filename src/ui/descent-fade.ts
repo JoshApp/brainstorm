@@ -180,6 +180,9 @@ export function fadeIn(): void {
 // loading mark so it reads as a deliberate descent rather than a frozen hang.
 
 let pulseTimer = 0;
+let revealGen = 0;
+/** True between a reveal's start and its finish. */
+let pendingReveal = false;
 let safetyTimer = 0;
 /** The title the next reveal will raise, known before the wait so the loading
  *  view can already say it. Set by revealWhenReady's `card`. */
@@ -279,7 +282,9 @@ export function revealWhenReady(
   const plain = suppressNextMark;
   suppressNextMark = false;
   pendingCard = card ? { title: card.title, subtitle: card.subtitle ?? '' } : null;
+  pendingReveal = true;
   const finish = (): void => {
+    pendingReveal = false;
     window.clearTimeout(pulseTimer);
     window.clearTimeout(safetyTimer);
     hideLoadingMark();
@@ -300,7 +305,13 @@ export function revealWhenReady(
   cover.style.opacity = '1';
   // Only show the mark for noticeable waits — and never when this transition
   // isn't a descent (see suppressNextLoadingMark).
-  if (!plain) pulseTimer = window.setTimeout(showLoadingMark, 320);
+  // Only the NEWEST reveal may raise the loading view. Two reveals can overlap
+  // (a scenario or resume reloads under one cover); the older one's timer used
+  // to survive the newer one's clear and raise the view AFTER the reveal, where
+  // it stayed over the world (seen 2026-11-23 behind the satchel).
+  const gen = ++revealGen;
+  window.clearTimeout(pulseTimer);
+  if (!plain) pulseTimer = window.setTimeout(() => { if (gen === revealGen && pendingReveal) showLoadingMark(); }, 320);
   // Strand-guard WATCHDOG (see descentWorkHeartbeat): reveal only after 15s of
   // NO warm activity — heartbeats and the live warmingUp flag both count as
   // alive. A legit long first-descent warm holds the black to completion; a
@@ -365,7 +376,13 @@ export function suppressNextLoadingMark(): void { suppressNextMark = true; }
  *  born onto the black, then it auto-fades a moment after the world
  *  is revealed. Pass an empty subtitle for unnamed depths. */
 export function showDescentTitle(title: string, subtitle: string = '') {
-  if (suppressNext) { suppressNext = false; return; }
+  if (suppressNext) {
+    suppressNext = false;
+    // The loading view may already be saying this title: take it down with
+    // the black instead of leaving it over the world.
+    if (screen) { screen.classList.remove('loading'); screen.style.transition = 'opacity 320ms ease-out'; screen.style.opacity = '0'; }
+    return;
+  }
   const card = ensureTitleCard();
   card.classList.remove('loading');
   if (titleEl) { titleEl.textContent = title; titleEl.style.display = ''; }

@@ -680,6 +680,19 @@ export function weaponScalingSummary(spec: WeaponStats): string {
   return parts.join(' · ');
 }
 
+/** What mastery of a weapon class gives at `points`, after caps: the same
+ *  numbers resolveWeaponStats folds in (fractions; crit is flat), for the
+ *  character sheet to say what the strikes have bought. Only the stats the
+ *  class's profile improves are present. */
+export function proficiencyGains(cls: WeaponClass, points: number): Partial<Record<keyof ProficiencyProfile, number>> {
+  const profile = PROFICIENCY_PROFILE_BY_CLASS[cls];
+  const out: Partial<Record<keyof ProficiencyProfile, number>> = {};
+  for (const k of Object.keys(profile) as Array<keyof ProficiencyProfile>) {
+    out[k] = profBonus(points, profile[k], k === 'crit' ? PROFICIENCY_CRIT_CAP : PROFICIENCY_CAP_PCT);
+  }
+  return out;
+}
+
 /** Clamp a per-point proficiency bonus at its cap. */
 function profBonus(points: number, perPoint: number | undefined, cap = PROFICIENCY_CAP_PCT): number {
   if (!perPoint) return 0;

@@ -2,49 +2,93 @@
 // across all their runs. Opens from the title screen. Three sections:
 // what you have SLAIN, what you have HELD, what you have READ.
 //
-// Tone: in-world voice. "What you remember." Undiscovered entries
-// (things you've heard of but not seen) show as muted "???" so the
-// player has a "gotta see them all" target — the meta-progression hook.
+// Tone: in-world voice. "What you remember." What is not yet met is one faint
+// count per section ("14 not yet met") beside the section's tally, so the
+// player still has a "gotta see them all" target — the meta-progression hook —
+// without a wall of question marks.
 
 import { isScreenOpen } from './screen-manager';
 import { createSheet, type Sheet } from './menu-shell';
 import { getMeta } from '../state/meta-state';
-import { ITEMS, RARITY_COLORS, type Rarity } from '../content/items';
+import { ITEMS } from '../content/items';
 import { ENEMIES } from '../content/enemies';
-import { FONT_DISPLAY } from './theme';
+import { isIncluded } from '../content/content-status';
+import { itemFraming } from './item-framing';
+import { buildReadingView, type ReadingRow, type ReadingSection } from './kit/reading';
 
 const SCREEN_ID = 'codex';
 
 let sheet: Sheet | null = null;
 
-/** The codex body (lifetime stats line + Slain/Held/Read sections),
- *  reusable as a tab in the unified game menu as well as the standalone
- *  title-screen sheet. */
+const cap = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
+
+/** One faint row standing for everything in a section not yet met: a count,
+ *  not a wall of question marks. */
+function unknownRow(key: string, n: number, what: string, text: string): ReadingRow {
+  return { key, label: `${n} ${what}`, value: '', faint: true, title: 'Not yet', text };
+}
+
+/** The codex (Lamplight): what you have SLAIN, HELD and READ across every
+ *  descent, as a reading view — the entry chosen is told in the slab. Only
+ *  content that is in the game counts toward the totals. Reusable as the
+ *  satchel's CODEX tab and the title-screen sheet. */
 export function buildCodexContent(): HTMLDivElement {
   const meta = getMeta();
   const wrap = document.createElement('div');
-  Object.assign(wrap.style, {
-    fontFamily: FONT_DISPLAY,
-    color: 'rgba(220, 180, 140, 0.92)',
-  } as Partial<CSSStyleDeclaration>);
 
-  // Lifetime stats line.
   const sub = document.createElement('div');
+  sub.className = 'lk-reading-count';
   sub.textContent = `${meta.runsAttempted} descent${meta.runsAttempted === 1 ? '' : 's'}  ·  ${meta.totalKills} slain  ·  deepest ${meta.deepestDepth}`;
-  Object.assign(sub.style, {
-    fontSize: '11px',
-    letterSpacing: '0.18em',
-    color: 'rgba(180, 140, 100, 0.6)',
-    fontFamily: 'system-ui, sans-serif',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    marginBottom: '16px',
-  } as Partial<CSSStyleDeclaration>);
+  Object.assign(sub.style, { textAlign: 'center', marginBottom: '14px' } as Partial<CSSStyleDeclaration>);
   wrap.appendChild(sub);
 
-  wrap.appendChild(buildEnemiesSection(meta.enemiesSlain));
-  wrap.appendChild(buildItemsSection(meta.itemsFound));
-  wrap.appendChild(buildNotesSection(meta.notesRead));
+  const sections: ReadingSection[] = [];
+
+  // SLAIN
+  const enemies = Object.values(ENEMIES).filter((e) => isIncluded(e));
+  const slain = enemies.filter((e) => meta.enemiesSlain.includes(e.id));
+  const slainRows: ReadingRow[] = slain.map((e) => ({
+    key: `enemy:${e.id}`,
+    label: cap(e.bossName ?? e.name),
+    value: e.isBoss ? 'Boss' : e.miniboss ? 'Elder' : '',
+    kind: e.isBoss ? 'A master of a floor' : e.miniboss ? 'Older than the rest' : 'Of the deep',
+    text: `It takes ${e.hp} wound${e.hp === 1 ? '' : 's'} to put down, and it strikes for ${e.attackDamage}.`,
+  }));
+  const unmet = enemies.length - slain.length;
+  if (unmet > 0) slainRows.push(unknownRow('enemy:unknown', unmet, 'not yet met', 'Something below you has not shown itself yet. It will.'));
+  sections.push({ heading: 'Slain', count: `${slain.length} / ${enemies.length}`, rows: slainRows });
+
+  // HELD
+  const items = Object.values(ITEMS).filter((it) => isIncluded(it));
+  const held = items.filter((it) => meta.itemsFound.includes(it.id));
+  const heldRows: ReadingRow[] = held.map((it) => {
+    const f = itemFraming(it);
+    const rarity = it.rarity ?? 'mundane';
+    return {
+      key: `item:${it.id}`,
+      label: it.name,
+      value: cap(it.kind),
+      kind: `${cap(rarity)} · ${cap(it.kind)}${f && rarity !== 'cursed' ? ` · ${f.label}` : ''}`,
+      text: it.flavor ?? 'It says nothing about itself.',
+    };
+  });
+  const unheld = items.length - held.length;
+  if (unheld > 0) heldRows.push(unknownRow('item:unknown', unheld, 'never held', 'Names you have not learned yet. Most of them are deeper.'));
+  sections.push({ heading: 'Held', count: `${held.length} / ${items.length}`, rows: heldRows });
+
+  // READ
+  const notes = meta.notesRead;
+  const readRows: ReadingRow[] = notes.map((n, i) => ({
+    key: `note:${i}`,
+    label: n.length > 34 ? `${n.slice(0, 34).trimEnd()}…` : n,
+    value: '',
+    title: 'A note',
+    text: `"${n}${n.length >= 60 ? '…' : ''}"`,
+  }));
+  if (readRows.length === 0) readRows.push({ key: 'note:none', label: 'No voices, yet.', value: '', faint: true, title: 'Read', text: 'The dead leave notes. You have not stopped to read one.' });
+  sections.push({ heading: 'Read', count: `${notes.length}`, rows: readRows });
+
+  wrap.appendChild(buildReadingView(sections));
   return wrap;
 }
 
@@ -60,159 +104,4 @@ export function showCodex() {
   sheet = s;
   s.body.appendChild(buildCodexContent());
   s.open();
-}
-
-// ── Sections ────────────────────────────────────────────────────────
-
-function sectionHeader(label: string, knownCount: number, totalCount: number): HTMLElement {
-  const h = document.createElement('div');
-  h.className = 'lk-head';
-  Object.assign(h.style, {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    marginTop: '18px', textTransform: 'uppercase',
-  } as Partial<CSSStyleDeclaration>);
-  const l = document.createElement('span');
-  l.textContent = label;
-  const c = document.createElement('span');
-  c.textContent = `${knownCount} / ${totalCount}`;
-  Object.assign(c.style, {
-    fontFamily: 'system-ui, sans-serif', fontSize: '10px', letterSpacing: '0.12em',
-    color: 'rgba(170, 135, 100, 0.7)',
-  } as Partial<CSSStyleDeclaration>);
-  h.append(l, c);
-  return h;
-}
-
-function buildEnemiesSection(slainIds: readonly string[]): HTMLElement {
-  const wrap = document.createElement('div');
-  const allEnemies = Object.values(ENEMIES);
-  wrap.appendChild(sectionHeader('Slain', slainIds.length, allEnemies.length));
-
-  const grid = document.createElement('div');
-  Object.assign(grid.style, {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: '6px',
-  });
-  for (const e of allEnemies) {
-    const seen = slainIds.includes(e.id);
-    grid.appendChild(makeEntry(
-      seen ? e.name : '???',
-      seen ? `hp ${e.hp}` : 'something below',
-      seen ? 0xb09070 : 0x504030,
-      seen,
-    ));
-  }
-  wrap.appendChild(grid);
-  return wrap;
-}
-
-function buildItemsSection(foundIds: readonly string[]): HTMLElement {
-  const wrap = document.createElement('div');
-  const allItems = Object.values(ITEMS);
-  wrap.appendChild(sectionHeader('Held', foundIds.length, allItems.length));
-
-  const grid = document.createElement('div');
-  Object.assign(grid.style, {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: '8px',
-  });
-  for (const it of allItems) {
-    const seen = foundIds.includes(it.id);
-    const rarity: Rarity = it.rarity ?? 'mundane';
-    grid.appendChild(makeEntry(
-      seen ? it.name : '???',
-      seen ? (it.flavor ?? '') : 'a name not yet learned',
-      seen ? RARITY_COLORS[rarity] : 0x504030,
-      seen,
-    ));
-  }
-  wrap.appendChild(grid);
-  return wrap;
-}
-
-function buildNotesSection(notes: readonly string[]): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.appendChild(sectionHeader('Read', notes.length, notes.length));  // open-ended
-
-  if (notes.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = 'no voices, yet.';
-    Object.assign(empty.style, {
-      fontStyle: 'italic',
-      fontSize: '13px',
-      color: 'rgba(150, 120, 90, 0.55)',
-      textAlign: 'center',
-      padding: '10px 0',
-    });
-    wrap.appendChild(empty);
-    return wrap;
-  }
-
-  const list = document.createElement('div');
-  Object.assign(list.style, {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-  });
-  for (const n of notes) {
-    const item = document.createElement('div');
-    item.textContent = `"${n}${n.length >= 60 ? '…' : ''}"`;
-    item.className = 'lk-row';
-    item.dataset.focus = '';
-    Object.assign(item.style, {
-      fontStyle: 'italic',
-      fontSize: '14px',
-      color: 'rgba(214, 184, 146, 0.85)',
-      padding: '6px 10px 6px 14px',
-      background: 'rgba(24, 16, 11, 0.55)',
-      borderLeft: '1px solid rgba(170, 130, 80, 0.45)',
-      lineHeight: '1.4',
-    });
-    list.appendChild(item);
-  }
-  wrap.appendChild(list);
-  return wrap;
-}
-
-// An entry: quiet until chosen (Lamplight). What you have met carries its
-// rarity as a thin mark at its edge and can be walked to with keys or a pad;
-// the chosen one lights from its edge like the character rows. What you have
-// not met stays a faint question.
-function makeEntry(title: string, sub: string, accent: number, seen: boolean): HTMLElement {
-  const el = document.createElement('div');
-  const accentRgb = `rgb(${(accent >> 16) & 0xff}, ${(accent >> 8) & 0xff}, ${accent & 0xff})`;
-  el.className = 'lk-row';
-  if (seen) { el.dataset.focus = ''; el.dataset.fkey = `codex:${title}`; }
-  Object.assign(el.style, {
-    padding: '8px 10px 8px 14px',
-    background: seen ? 'rgba(24, 16, 11, 0.55)' : 'transparent',
-    borderBottom: '0',
-    borderLeft: `1px solid ${seen ? accentRgb : 'rgba(80, 60, 40, 0.25)'}`,
-    opacity: seen ? '1' : '0.45',
-  } as Partial<CSSStyleDeclaration>);
-  const t = document.createElement('div');
-  t.textContent = title;
-  t.className = 'lk-k';
-  Object.assign(t.style, {
-    fontSize: '14px',
-    letterSpacing: '0.02em',
-    color: seen ? 'rgba(236, 206, 166, 0.9)' : 'rgba(140, 120, 100, 0.7)',
-    marginBottom: '2px',
-    fontFamily: FONT_DISPLAY,
-    fontStyle: seen ? 'normal' : 'italic',
-  } as Partial<CSSStyleDeclaration>);
-  el.appendChild(t);
-  const s = document.createElement('div');
-  s.textContent = sub;
-  Object.assign(s.style, {
-    fontSize: '13px',
-    color: 'rgba(175, 145, 115, 0.7)',
-    fontFamily: FONT_DISPLAY,
-    fontStyle: 'italic',
-    lineHeight: '1.3',
-  } as Partial<CSSStyleDeclaration>);
-  el.appendChild(s);
-  return el;
 }

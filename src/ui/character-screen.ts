@@ -1,165 +1,121 @@
 import { isScreenOpen } from './screen-manager';
 import { createSheet, type Sheet } from './menu-shell';
-import {
-  getCharacter,
-  onCharacterChanged,
-  type AttributeKind,
-  type ProficiencyKind,
-} from '../state/character';
+import { getCharacter, onCharacterChanged, proficiencyTier, loreAfflictionDurationMul, loreAfflictionPotencyMul } from '../state/character';
 import { getRunState } from '../state/run-state';
-import { ATTR_DEFS } from './attribute-defs';
-import { FONT_TITLE, FONT_DISPLAY } from './theme';
+import { getMeta } from '../state/meta-state';
+import { getPlayerSnapshot } from '../state/player-stats';
+import { getPlayerHp } from '../player/health';
+import { getEmber, onEmberChanged } from '../player/ember';
+import { getEquipped } from '../player/equipment';
+import { getCurrentWeapon } from '../player/current-weapon';
+import { proficiencyGains } from '../content/weapon-classes';
+import { buildReadingView, type ReadingRow } from './kit/reading';
 
-// CHARACTER screen — the "who is this delver becoming" page.
+// CHARACTER — what you are, this descent (Lamplight, 2026-11-23).
 //
-// Opens from the tome pillar (STUDY), desktop 'C' key, + the settings
-// menu. This is REVIEW ONLY: the book reflects your build, it never
-// changes it. Raising attributes happens at a bonfire (REST → the
-// level-up menu, ui/levelup-menu.ts) — the fire grows you, the book
-// remembers you. Unspent points show here as a nudge toward the fire.
+// The draft's pattern: a few rows, the chosen one explained in the scorched
+// slab. Only what the game USES is here. The old sheet listed four attributes
+// and eleven proficiencies; nothing grants attribute points any more (Might,
+// Finesse and Grit sat at 0 for ever), and only weapon-class proficiency
+// changes a number. Lore stays (reading notes raises it and it strengthens
+// what you inflict); the weapon you hold shows its mastery. Review only: the
+// book reflects the build, it never changes it.
 
 const SCREEN_ID = 'character';
-
-interface AttributeRow {
-  kind: AttributeKind;
-  label: string;
-  effect: string;
-  valueEl: HTMLDivElement;
-}
-
-interface ProficiencyRow {
-  kind: ProficiencyKind;
-  label: string;
-  fillEl: HTMLElement;
-  valueEl: HTMLDivElement;
-}
-
-const PROF_GROUPS: Array<{ heading: string; rows: Array<{ kind: ProficiencyKind; label: string }> }> = [
-  {
-    heading: 'COMBAT',
-    rows: [
-      { kind: 'sword',  label: 'sword'  },
-      { kind: 'dagger', label: 'dagger' },
-      { kind: 'hammer', label: 'hammer' },
-    ],
-  },
-  {
-    heading: 'DEFENSIVE',
-    rows: [
-      { kind: 'block',     label: 'block'     },
-      { kind: 'toughness', label: 'toughness' },
-    ],
-  },
-  {
-    heading: 'UTILITY',
-    rows: [
-      { kind: 'alchemy',   label: 'alchemy'   },
-      { kind: 'tinkering', label: 'tinkering' },
-      { kind: 'greed',     label: 'greed'     },
-      { kind: 'profanity', label: 'profanity' },
-      { kind: 'survival',  label: 'survival'  },
-    ],
-  },
-  {
-    heading: 'META',
-    rows: [
-      { kind: 'descent', label: 'descent' },
-    ],
-  },
-];
-
 let sheet: Sheet | null = null;
-let summaryEl: HTMLDivElement | null = null;
-let unspentLabel: HTMLSpanElement | null = null;
-let attrRows: AttributeRow[] = [];
-let profRows: ProficiencyRow[] = [];
 
-// Empirical cap for proficiency bar fill — bars saturate at this
-// value so a 100-hit sword run doesn't make a 5-greed run look empty
-// by comparison.
-const PROF_BAR_MAX = 50;
+const pct = (f: number): string => `${Math.round(f * 100)}%`;
 
-/** Build the character body (summary + attributes | proficiencies) into
- *  a div, wire the reactive refresh, and return it + a dispose hook.
- *  Reusable as a tab in the unified game menu and by the standalone
- *  sheet below. */
+const GAIN_WORDS: Record<string, string> = {
+  speed: 'faster', damage: 'harder', stagger: 'more stagger', crit: 'crit chance',
+  comboWindow: 'looser combos', reach: 'more reach',
+};
+
+function characterRows(): ReadingRow[] {
+  const snap = getPlayerSnapshot();
+  const c = getCharacter();
+  const run = getRunState();
+  const meta = getMeta();
+  const rows: ReadingRow[] = [];
+
+  rows.push({
+    key: 'health', label: 'Health', value: `${getPlayerHp()} / ${snap.maxHp}`,
+    text: 'What the dark must take before you fall. The flask and the fountains give it back; the deals ask for it.',
+  });
+  const ember = getEmber();
+  if (ember > 0) {
+    rows.push({
+      key: 'ember', label: 'Ember', value: `${ember}`,
+      text: 'Borrowed life over your own. Blows spend it first, and some bargains take it as their price.',
+      note: 'It stays until something takes it, and dies with the run.',
+    });
+  }
+
+  const weapon = getEquipped('weapon');
+  const dmgNote = snap.damageMultiplier !== 1 || snap.weaponDamageBonus > 0
+    ? `${snap.weaponBaseDamage.toFixed(1)} from the weapon${snap.weaponDamageBonus > 0 ? `, +${snap.weaponDamageBonus} from what you carry` : ''}${snap.damageMultiplier !== 1 ? `, ×${snap.damageMultiplier.toFixed(2)}` : ''}.`
+    : undefined;
+  rows.push({
+    key: 'damage', label: 'Damage', value: snap.weaponDamage.toFixed(1),
+    kind: weapon ? weapon.name : 'Bare hands',
+    text: 'What one ordinary blow does, before a critical strike or a finisher.',
+    note: dmgNote,
+  });
+  rows.push({
+    key: 'reach', label: 'Reach', value: `${snap.weaponReach.toFixed(1)} m`,
+    text: 'How far the weapon in your hand can find a body.',
+  });
+  if (snap.physicalArmor > 0 || snap.magicArmor > 0) {
+    rows.push({
+      key: 'armour', label: 'Armour', value: `${snap.physicalArmor} · ${snap.magicArmor}`,
+      text: 'Steel against steel, and something against the rest. Each point turns part of a blow aside.',
+      note: `${snap.physicalArmor} against blows, ${snap.magicArmor} against sorcery.`,
+    });
+  }
+
+  // Mastery of the weapon in hand: use sharpens it.
+  const cls = getCurrentWeapon().class ?? 'fist';
+  const pts = c.proficiencies[cls] ?? 0;
+  const tier = proficiencyTier(pts);
+  const gains = Object.entries(proficiencyGains(cls, pts))
+    .filter(([, v]) => (v ?? 0) > 0.0005)
+    .map(([k, v]) => `+${pct(v ?? 0)} ${GAIN_WORDS[k] ?? k}`);
+  const clsName = cls === 'fist' ? 'bare hands' : cls.replace('-', ' ');
+  rows.push({
+    key: 'mastery', label: 'Mastery', value: tier.name,
+    kind: clsName,
+    text: `Every blow landed with the ${clsName} teaches the hand. It grows quicker, surer or heavier as it learns.`,
+    note: (gains.length ? `So far: ${gains.join(', ')}. ` : 'Nothing learned yet. ')
+      + (tier.nextAt === null ? 'It has nothing left to teach.' : `${pts} of ${tier.nextAt} toward the next.`),
+  });
+
+  // Lore: reading the notes of the dead.
+  const lore = c.attributes.lore;
+  if (lore > 0) {
+    rows.push({
+      key: 'lore', label: 'Lore', value: `${lore}`,
+      text: 'Every note of the dead you read stays with you. What you inflict lasts longer and bites harder for it.',
+      note: `Afflictions last ${pct(loreAfflictionDurationMul() - 1)} longer and strike ${pct(loreAfflictionPotencyMul() - 1)} harder.`,
+    });
+  }
+
+  rows.push({
+    key: 'descent', label: 'This descent', value: `Depth ${run?.depth ?? 0}`,
+    text: `${run?.kills ?? 0} slain, ${run?.gold ?? 0} gold, ${run?.itemsFound.length ?? 0} things found.`,
+    note: `The deepest anyone with your name has gone: Depth ${meta.deepestDepth}.`,
+  });
+  return rows;
+}
+
+/** The character body as a reading view, rebuilt when what it shows changes.
+ *  Reusable as the satchel's CHARACTER tab and the standalone sheet. */
 export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => void } {
   const el = document.createElement('div');
-  Object.assign(el.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
-
-  // ── Summary ───────────────────────────────────────────────────────
-  summaryEl = document.createElement('div');
-  Object.assign(summaryEl.style, {
-    fontStyle: 'italic',
-    fontFamily: FONT_DISPLAY,
-    fontSize: '15px',
-    color: 'rgba(200, 160, 120, 0.8)',
-    textAlign: 'center',
-    marginBottom: '4px',
-  } as Partial<CSSStyleDeclaration>);
-  el.appendChild(summaryEl);
-
-  // ── Two columns: attributes | proficiencies ───────────────────────
-  // flex-wrap means they sit side-by-side when there's width (landscape)
-  // and stack when there isn't — responsive with no JS breakpoint (the
-  // old window.innerWidth check fired once and never re-evaluated).
-  const cols = document.createElement('div');
-  Object.assign(cols.style, {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '14px 28px',
-  } as Partial<CSSStyleDeclaration>);
-
-  const colHeader = (text: string): HTMLDivElement => {
-    const h = document.createElement('div');
-    h.textContent = text;
-    h.className = 'lk-head';
-    return h;
-  };
-
-  // Left column — attributes.
-  const attrCol = document.createElement('div');
-  Object.assign(attrCol.style, { flex: '1 1 260px', minWidth: '240px' } as Partial<CSSStyleDeclaration>);
-  const attrHeader = colHeader('');
-  Object.assign(attrHeader.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } as Partial<CSSStyleDeclaration>);
-  const attrTitle = document.createElement('span');
-  attrTitle.textContent = 'ATTRIBUTES';
-  const unspentSpan = document.createElement('span');
-  unspentSpan.style.color = 'rgba(255, 220, 130, 0.90)';
-  attrHeader.append(attrTitle, unspentSpan);
-  attrCol.appendChild(attrHeader);
-  unspentLabel = unspentSpan;
-  attrRows = ATTR_DEFS.map((def) => buildAttributeRow(def, attrCol));
-  cols.appendChild(attrCol);
-
-  // Right column — proficiencies, grouped.
-  const profCol = document.createElement('div');
-  Object.assign(profCol.style, { flex: '1 1 260px', minWidth: '240px' } as Partial<CSSStyleDeclaration>);
-  profCol.appendChild(colHeader('PROFICIENCIES'));
-  profRows = [];
-  for (const group of PROF_GROUPS) {
-    const groupHeading = document.createElement('div');
-    groupHeading.textContent = group.heading;
-    groupHeading.className = 'lk-subhead';
-    profCol.appendChild(groupHeading);
-    for (const row of group.rows) profRows.push(buildProficiencyRow(row, profCol));
-  }
-  cols.appendChild(profCol);
-  el.appendChild(cols);
-
-  const unsub = onCharacterChanged(rebuild);
-  rebuild();
-  return {
-    el,
-    dispose() {
-      unsub();
-      // Drop refs so a stale rebuild (shouldn't fire post-dispose) no-ops.
-      summaryEl = null;
-      unspentLabel = null;
-      attrRows = [];
-      profRows = [];
-    },
-  };
+  const render = (): void => { el.replaceChildren(buildReadingView([{ rows: characterRows() }])); };
+  render();
+  const offChar = onCharacterChanged(render);
+  const offEmber = onEmberChanged(render);
+  return { el, dispose() { offChar(); offEmber(); } };
 }
 
 export function openCharacterScreen(): void {
@@ -187,134 +143,4 @@ export function closeCharacterScreen(): void {
 
 export function isCharacterScreenOpen(): boolean {
   return isScreenOpen(SCREEN_ID);
-}
-
-// Rows are choosable (data-focus) so keys and a controller can walk them, and
-// the chosen row lights, value included (Josh, the Lamplight concept). Nothing
-// happens on confirm: these are things to read, not buttons.
-function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): AttributeRow {
-  const row = document.createElement('div');
-  row.className = 'lk-row';
-  row.dataset.focus = '';
-  row.dataset.fkey = `attr:${def.kind}`;
-  Object.assign(row.style, {
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto',
-    alignItems: 'baseline',
-    gap: '12px',
-  } as Partial<CSSStyleDeclaration>);
-
-  const label = document.createElement('div');
-  label.textContent = def.label;
-  label.className = 'lk-k';
-  Object.assign(label.style, {
-    fontFamily: FONT_TITLE,
-    fontSize: '13px',
-    fontWeight: '600',
-    letterSpacing: '0.16em',
-    color: 'rgba(236, 206, 166, 0.88)',
-    minWidth: '88px',
-  } as Partial<CSSStyleDeclaration>);
-  row.appendChild(label);
-
-  const effect = document.createElement('div');
-  effect.textContent = def.effect;
-  Object.assign(effect.style, {
-    fontFamily: FONT_DISPLAY,
-    fontSize: '14px',
-    fontStyle: 'italic',
-    color: 'rgba(190, 155, 120, 0.78)',
-  } as Partial<CSSStyleDeclaration>);
-  row.appendChild(effect);
-
-  const value = document.createElement('div');
-  value.textContent = '0';
-  value.className = 'lk-v';
-  Object.assign(value.style, {
-    fontFamily: FONT_TITLE,
-    fontSize: '17px',
-    fontWeight: '600',
-    minWidth: '24px',
-    textAlign: 'right',
-  } as Partial<CSSStyleDeclaration>);
-  row.appendChild(value);
-
-  parent.appendChild(row);
-  return { kind: def.kind, label: def.label, effect: def.effect, valueEl: value };
-}
-
-function buildProficiencyRow(def: { kind: ProficiencyKind; label: string }, parent: HTMLElement): ProficiencyRow {
-  const row = document.createElement('div');
-  row.className = 'lk-row';
-  row.dataset.focus = '';
-  row.dataset.fkey = `prof:${def.kind}`;
-  Object.assign(row.style, {
-    display: 'grid',
-    gridTemplateColumns: '90px 1fr 34px',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '5px 10px 5px 14px',
-    borderBottom: '0',
-  } as Partial<CSSStyleDeclaration>);
-
-  const label = document.createElement('div');
-  label.textContent = def.label;
-  label.className = 'lk-k';
-  Object.assign(label.style, {
-    fontFamily: FONT_DISPLAY,
-    fontSize: '14px',
-    fontStyle: 'italic',
-    color: 'rgba(220, 186, 146, 0.82)',
-  } as Partial<CSSStyleDeclaration>);
-  row.appendChild(label);
-
-  // The level as an ember bar.
-  const track = document.createElement('div');
-  track.className = 'lk-ember';
-  const fill = document.createElement('i');
-  track.appendChild(fill);
-  row.appendChild(track);
-
-  const value = document.createElement('div');
-  value.textContent = '0';
-  value.className = 'lk-v';
-  Object.assign(value.style, {
-    fontFamily: FONT_TITLE,
-    fontSize: '13px',
-    fontWeight: '600',
-    textAlign: 'right',
-  } as Partial<CSSStyleDeclaration>);
-  row.appendChild(value);
-
-  parent.appendChild(row);
-  return { kind: def.kind, label: def.label, fillEl: fill, valueEl: value };
-}
-
-function rebuild(): void {
-  if (!summaryEl || !unspentLabel) return;
-  const c = getCharacter();
-  const run = getRunState();
-
-  // Summary line.
-  const depth = run?.depth ?? 0;
-  const kills = run?.kills ?? 0;
-  const gold = run?.gold ?? 0;
-  const itemsFound = run?.itemsFound.length ?? 0;
-  summaryEl.textContent = `floor ${depth} · ${kills} slain · ${gold}g · ${itemsFound} found`;
-
-  // Stat distribution is cut — fires deal CARDS, not attribute points (the
-  // tarot Spread is the build). No "unspent points" nudge; the old text told
-  // the player to rest-to-spend, which no longer does anything.
-  unspentLabel.textContent = '';
-  for (const row of attrRows) {
-    row.valueEl.textContent = String(c.attributes[row.kind]);
-  }
-
-  // Proficiencies.
-  for (const row of profRows) {
-    const v = c.proficiencies[row.kind];
-    row.valueEl.textContent = String(v);
-    const pct = Math.min(100, (v / PROF_BAR_MAX) * 100);
-    row.fillEl.style.width = `${pct}%`;
-  }
 }

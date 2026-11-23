@@ -431,9 +431,14 @@ function buildWeaponStats(item: ItemSpec): HTMLDivElement[] {
   out.push(statRow(ranged ? 'Range' : 'Reach', baseReach, r.reach - baseReach, (n) => `${trimNum(n)}m`));
 
   // Which attribute powers this weapon (playtest: scaling wasn't explained).
-  const scaleRow = detailLine(`Scales ${weaponScalingSummary(w)}`, /*dim*/ true);
-  scaleRow.style.marginTop = '2px';
-  out.push(scaleRow);
+  // Only Lore can still rise (reading notes); nothing grants Might or Finesse
+  // any more, so "Scales with Might B" promised a growth that never comes.
+  const scaling = weaponScalingSummary(w);
+  if (/Lore/.test(scaling)) {
+    const scaleRow = detailLine(`Scales ${scaling}`, /*dim*/ true);
+    scaleRow.style.marginTop = '2px';
+    out.push(scaleRow);
+  }
 
   out.push(buildTierBar(cls));
   return out;
