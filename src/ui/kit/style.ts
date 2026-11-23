@@ -65,6 +65,28 @@ export function injectKitStyles(): void {
     .lk-ash { animation: lk-ashin .8s .25s ease-out both; }
     @keyframes lk-ashin { from { opacity: 0; transform: translateY(4px); } }
     @media (prefers-reduced-motion: reduce) { .lk-detail::before, .lk-burn, .lk-ash { animation: none; } }
+
+    /* An offering on a deal screen: lit from its glyph's side in its stake's colour. */
+    .lk-offer {
+      --stake: 188, 198, 205;
+      display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 14px; align-items: center;
+      width: 100%; min-height: 56px; padding: 8px 14px; margin: 0 0 8px; box-sizing: border-box; text-align: left;
+      background: rgba(12, 8, 5, .55); border: 1px solid rgba(var(--stake), .28); border-radius: 2px;
+      cursor: pointer; color: #e6c8aa; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+      transition: background .25s, border-color .2s, box-shadow .2s;
+    }
+    .lk-offer-glyph { grid-row: span 2; width: 32px; height: 32px; object-fit: contain; filter: drop-shadow(0 0 5px rgba(var(--stake), .45)); }
+    .lk-offer-label { font: 600 13px/1.25 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .16em; min-width: 0; }
+    .lk-offer-note { grid-column: 2; font: italic 14px/1.35 'EB Garamond', 'Iowan Old Style', serif; color: #a08264; min-width: 0; }
+    .lk-offer:hover, .lk-sheet .lk-offer.is-focused {
+      outline: none; box-shadow: 0 0 24px rgba(var(--stake), .14);
+      border-color: rgba(var(--stake), .7);
+      background: radial-gradient(130% 160% at 0% 50%, rgba(var(--stake), .24) 0%, rgba(var(--stake), .07) 45%, rgba(var(--stake), 0) 75%), rgba(12, 8, 5, .55);
+    }
+    .lk-offer.armed { border-color: rgba(var(--stake), .95); background: radial-gradient(130% 160% at 0% 50%, rgba(var(--stake), .34) 0%, rgba(var(--stake), .1) 50%, rgba(var(--stake), 0) 80%), rgba(12, 8, 5, .6); }
+    .lk-offer.armed .lk-offer-note { color: rgb(var(--stake)); font-style: normal; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    .lk-offer:disabled { cursor: default; filter: grayscale(.85) brightness(.7); opacity: .6; box-shadow: none; }
+    .lk-offer:disabled .lk-offer-label { text-decoration: line-through rgba(160, 130, 100, .5); }
   `;
   document.head.appendChild(st);
   // The charred-edge filter the slab's border is drawn through.

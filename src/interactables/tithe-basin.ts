@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import { generateEntityId, get } from '../ecs/world';
 import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
-import { createSheet, menuButton } from '../ui/menu-shell';
+import { createSheet } from '../ui/menu-shell';
+import { makeOffering } from '../ui/kit/offering';
+import glyphBlood from '../assets/ui/ritual/blood.webp?url';
+import glyphCoin from '../assets/ui/ritual/coin.webp?url';
+import glyphBlade from '../assets/ui/ritual/blade.webp?url';
 import { getGold, spendGold } from '../state/run-state';
 import { damagePlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { CONFIG } from '../config';
@@ -231,8 +235,9 @@ export function spawnTitheBasin(
     const sheet = createSheet({ id: `tithe-${id}`, title: 'THE BASIN WAITS' });
     const note = document.createElement('div');
     Object.assign(note.style, {
-      color: '#8a93a3', fontSize: '12px', fontStyle: 'italic',
-      padding: '4px 2px 12px', lineHeight: '1.5',
+      color: 'rgba(241, 220, 194, 0.92)', fontSize: '16px', fontStyle: 'italic',
+      fontFamily: "'EB Garamond', 'Iowan Old Style', serif",
+      padding: '2px 2px 12px', lineHeight: '1.45',
     } as Partial<CSSStyleDeclaration>);
     note.textContent = 'Place something of yours in the hollow. What returns is not your decision.';
     sheet.body.appendChild(note);
@@ -240,22 +245,29 @@ export function spawnTitheBasin(
     const goldPrice = Math.round((GOLD_TITHE_BASE * (1 + (depth - 1) * 0.10)) / 5) * 5;
     const weapon = getEquipped('weapon');
 
-    const row = (label: string, sub: string, enabled: boolean, act: () => void) => {
-      const btn = menuButton(label, () => { sheet.close(); act(); });
-      btn.disabled = !enabled;
-      if (!enabled) btn.style.opacity = '0.35';
-      const subEl = document.createElement('div');
-      Object.assign(subEl.style, { color: '#6b727c', fontSize: '11px', margin: '2px 0 10px 2px' } as Partial<CSSStyleDeclaration>);
-      subEl.textContent = sub;
-      sheet.body.append(btn, subEl);
+    // Each offering is lit in its stake's colour; the first press arms it, the
+    // second gives (ui/kit/offering.ts).
+    const STAKE = { blood: { glyph: glyphBlood, rgb: '197, 64, 47' }, gold: { glyph: glyphCoin, rgb: '201, 162, 60' }, weapon: { glyph: glyphBlade, rgb: '188, 198, 205' } };
+    // What the basin says when you cannot pay.
+    const INERT = {
+      blood: 'You have too little left to give.',
+      gold: `You carry ${getGold()}. It is not enough.`,
+      weapon: 'Your hands are already empty.',
+    };
+    const row = (stake: keyof typeof STAKE, label: string, sub: string, enabled: boolean, act: () => void) => {
+      const st = STAKE[stake];
+      sheet.body.append(makeOffering({
+        label, note: sub, inertNote: INERT[stake], glyph: st.glyph, stake: st.rgb, enabled,
+        onGive: () => { sheet.close(); act(); },
+      }));
     };
 
-    row(`BLOOD · ${bloodTitheHp()} HP`, 'The dungeon respects blood.', getPlayerHp() > bloodTitheHp(), () => {
+    row('blood', `BLOOD · ${bloodTitheHp()} HP`, 'The dungeon respects blood.', getPlayerHp() > bloodTitheHp(), () => {
       spawnBloodBurst(scene, pos.x, pos.y + 0.9, pos.z);
       damagePlayer(bloodTitheHp(), null, 'physical', false, 'the hungry basin');
       resolveTithe('blood', { hp: bloodTitheHp() });
     });
-    row(`GOLD · ${goldPrice}`, 'The basin has no use for coin. Probably.', getGold() >= goldPrice, () => {
+    row('gold', `GOLD · ${goldPrice}`, 'The basin has no use for coin. Probably.', getGold() >= goldPrice, () => {
       spendGold(goldPrice);
       resolveTithe('gold', { gold: goldPrice });
     });
@@ -264,6 +276,7 @@ export function spawnTitheBasin(
     // per-run usage (player/weapon-usage), so the offering means what it costs.
     const honored = !!weapon && getWeaponHits(weapon.id) >= MAIN_WEAPON_MIN_HITS;
     row(
+      'weapon',
       weapon ? `YOUR WEAPON · ${weapon.name}` : 'YOUR WEAPON',
       weapon
         ? (honored
