@@ -258,6 +258,30 @@ function buildHeart(i: number): HeartSvg {
   fill.setAttribute('clip-path', `url(#${clipId})`);
   el.appendChild(fill);
 
+  // A faint light on the upper lobe of the blood, so a full heart reads as
+  // something with depth rather than a flat red stamp (Lamplight).
+  const shine = document.createElementNS(svgNs, 'ellipse');
+  shine.setAttribute('cx', '8');
+  shine.setAttribute('cy', '8');
+  shine.setAttribute('rx', '3.2');
+  shine.setAttribute('ry', '2');
+  shine.setAttribute('transform', 'rotate(-30 8 8)');
+  shine.setAttribute('fill', 'rgba(255, 220, 200, 0.16)');
+  shine.setAttribute('clip-path', `url(#${clipId})`);
+  el.appendChild(shine);
+
+  // The gold hairline over EVERY heart, full or empty: the edge the stamina
+  // segments share, so hearts and stamina read as one carved set. Under the
+  // red fill it used to vanish on a full heart.
+  const edge = document.createElementNS(svgNs, 'path');
+  edge.setAttribute('d', HEART_PATH);
+  edge.setAttribute('fill', 'none');
+  edge.setAttribute('stroke', 'rgba(196, 152, 88, 0.6)');
+  edge.setAttribute('stroke-width', '1');
+  edge.setAttribute('stroke-linejoin', 'round');
+  edge.setAttribute('clip-path', `url(#${frameClipId})`);
+  el.appendChild(edge);
+
   return { el, clip, frameClip, frame, fill };
 }
 
