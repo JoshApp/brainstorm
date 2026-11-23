@@ -140,6 +140,9 @@ function openPanel(tab?: TabId, layer?: ScreenLayer) {
   // falls back to CONTROLS when there's no live run (title screen). A caller may
   // name a tab instead; the UI bench does, so a specific tab can be snapped.
   activeTab = tab ?? 'run';
+  // From the title there is no run to quit or abandon (the title's own NEW
+  // DESCENT warns and abandons): the RUN tab is left out there.
+  fromTitle = layer === 'title';
   buildPanelContents();
   panel.style.display = 'flex';
   panelOpen = true;
@@ -169,6 +172,7 @@ type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system' | 'debug';
 // CONTROLS on the title screen where RUN doesn't exist yet. Within a single
 // open, the field tracks whichever tab the player switched to.
 let activeTab: TabId = 'run';
+let fromTitle = false;
 
 function buildPanelContents() {
   if (!panel) return;
@@ -237,7 +241,7 @@ export function buildSettingsBody(container: HTMLElement, scrollContent: boolean
   // the most-reached affordances (CHARACTER, QUIT TO MENU, etc.) land
   // under the thumb the moment settings open.
   const tabs: Array<{ id: TabId; label: string }> = [];
-  if (runActions) tabs.push({ id: 'run', label: 'RUN' });
+  if (runActions && !fromTitle) tabs.push({ id: 'run', label: 'RUN' });
   tabs.push(
     { id: 'controls', label: 'CONTROLS' },
     { id: 'audio',    label: 'AUDIO' },
@@ -256,8 +260,8 @@ export function buildSettingsBody(container: HTMLElement, scrollContent: boolean
     display: 'flex',
     gap: '4px',
     borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
-    paddingBottom: '6px',
     flexShrink: '0',
+    overflowX: 'auto',
   } as Partial<CSSStyleDeclaration>);
   container.appendChild(tabBar);
 
@@ -281,10 +285,7 @@ export function buildSettingsBody(container: HTMLElement, scrollContent: boolean
     activeTab = id;
     // Refresh the bar's active-state styling.
     for (const child of Array.from(tabBar.children) as HTMLElement[]) {
-      const isActive = child.dataset.tabId === id;
-      child.style.background = isActive ? 'rgba(80, 50, 30, 0.85)' : 'transparent';
-      child.style.color = isActive ? 'rgba(255, 220, 170, 0.98)' : 'rgba(200, 170, 130, 0.65)';
-      child.style.borderBottom = isActive ? '2px solid rgba(255, 200, 130, 0.85)' : '2px solid transparent';
+      child.classList.toggle('on', child.dataset.tabId === id);
     }
     content.replaceChildren();
     for (const el of TAB_BUILDERS[id]()) content.appendChild(el);
@@ -293,25 +294,9 @@ export function buildSettingsBody(container: HTMLElement, scrollContent: boolean
     const btn = document.createElement('button');
     btn.textContent = t.label;
     btn.dataset.tabId = t.id;
-    Object.assign(btn.style, {
-      flex: '1 1 0',          // equal share of the row → all six fit, none clip
-      minWidth: '0',
-      minHeight: '42px',
-      padding: '8px 6px',
-      border: 'none',
-      background: 'transparent',
-      color: 'rgba(200, 170, 130, 0.65)',
-      fontFamily: 'inherit',
-      fontSize: '10px',
-      fontWeight: '600',
-      letterSpacing: '0.06em',
-      whiteSpace: 'nowrap',
-      textAlign: 'center',
-      cursor: 'pointer',
-      borderBottom: '2px solid transparent',
-      touchAction: 'manipulation',
-      transition: 'background 0.12s ease, color 0.12s ease',
-    } as Partial<CSSStyleDeclaration>);
+    // Lamplight tabs, the satchel's grammar: carved caps, the chosen one lit
+    // with an ember underline, no filled box.
+    btn.className = 'lk-tab';
     btn.addEventListener('click', () => renderTab(t.id));
     tabBar.appendChild(btn);
   }
@@ -419,6 +404,7 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
         { id: 'auto', label: 'AUTO' },
         { id: 'webgl2', label: 'WEBGL2' },
       ],
+      rowCycles: false,
       get: () => getSettings().graphicsBackend,
       set: (v) => {
         if (v === getSettings().graphicsBackend) return;
@@ -846,23 +832,6 @@ function buildRunTab(): HTMLElement[] {
   if (!runActions) return [];
   const out: HTMLElement[] = [];
 
-// CHARACTER — view attributes + proficiencies + spend points (at
-  // safe rooms). Top of the tab so it's easy to reach from touch.
-  out.push(makeRunButton({
-    label: 'CHARACTER',
-    description: 'View attributes + proficiencies. Spend points at safe rooms.',
-    destructive: false,
-    icon: 'character',
-    onClick: () => {
-      // Route to the CHARACTER TAB of the unified menu rather than a
-      // separate sheet (no stacked overlay). closePanel() is a no-op when
-      // settings is the in-menu ⚙ tab, and closes the standalone panel
-      // when reached via Esc. Lazy import avoids a static cycle
-      // (inventory-panel imports settings for the ⚙ tab content).
-      closePanel();
-      import('./inventory-panel').then(({ openCharacterTab }) => openCharacterTab());
-    },
-  }));
   out.push(makeRunButton({
     label: 'REPORT A BUG',
     description: 'Send the keepers a screenshot of this exact moment, your run details, and a note.',
@@ -1084,6 +1053,7 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
   if (opts.description) {
     const desc = document.createElement('div');
     desc.textContent = opts.description;
+    desc.className = 'lk-desc';
     Object.assign(desc.style, {
       fontSize: '11px',
       color: 'rgba(160, 130, 100, 0.7)',
@@ -1093,9 +1063,6 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
   }
   return row;
 }
-
-const WICK_LIT = '<svg viewBox="0 0 22 26" width="24" height="28" aria-label="on"><circle cx="11" cy="9" r="7.5" fill="rgba(255,150,50,.18)"/><rect x="8" y="14" width="6" height="11" rx="1" fill="#d8c9a8"/><path d="M11 14 v-2" stroke="#2a1a10" stroke-width="1"/><path d="M11 3 C14 7 14.5 9 11 12.5 C7.5 9 8 7 11 3 Z" fill="#ffb347"/><path d="M11 6.5 C12.3 8.5 12.3 9.6 11 11 C9.7 9.6 9.7 8.5 11 6.5 Z" fill="#fff2c8"/></svg>';
-const WICK_OUT = '<svg viewBox="0 0 22 26" width="24" height="28" aria-label="off"><rect x="8" y="14" width="6" height="11" rx="1" fill="#8c7f68"/><path d="M11 14 v-2" stroke="#2a1a10" stroke-width="1"/><path d="M11 12 q-2 -2 0 -4 q2 -2 0 -4" fill="none" stroke="rgba(170,160,150,.5)" stroke-width="1"/></svg>';
 
 interface ToggleOpts {
   label: string;
@@ -1104,60 +1071,16 @@ interface ToggleOpts {
   set: (v: boolean) => void;
 }
 
+/** On / off is a choice of two words, the chosen one lit (Lamplight; the
+ *  candle wick read as decoration, not as a state, 2026-11-23). */
 function makeToggle(opts: ToggleOpts): HTMLDivElement {
-  const row = document.createElement('div');
-  Object.assign(row.style, {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-    cursor: 'pointer',
-  } as Partial<CSSStyleDeclaration>);
-
-  const top = document.createElement('div');
-  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as Partial<CSSStyleDeclaration>);
-
-  const label = document.createElement('span');
-  label.textContent = opts.label;
-  Object.assign(label.style, {
-    fontSize: '11px',
-    fontWeight: '500',
-    letterSpacing: '0.18em',
-    color: 'rgba(220, 180, 140, 0.9)',
-  } as Partial<CSSStyleDeclaration>);
-
-  // Lamplight: on and off is a wick, lit or a curl of smoke.
-  const switchEl = document.createElement('div');
-  switchEl.className = 'lk-wick';
-  const paintWick = (on: boolean): void => { switchEl.innerHTML = on ? WICK_LIT : WICK_OUT; };
-  paintWick(opts.get());
-  row.dataset.focus = '';
-  row.dataset.fkey = `toggle:${opts.label}`;
-  (row as HTMLElement & { _adjust?: (d: number) => void })._adjust = (d) => {
-    const want = d > 0;
-    if (want !== opts.get()) { opts.set(want); paintWick(want); }
-  };
-
-  top.append(label, switchEl);
-  row.appendChild(top);
-
-  if (opts.description) {
-    const desc = document.createElement('div');
-    desc.textContent = opts.description;
-    Object.assign(desc.style, {
-      fontSize: '11px',
-      color: 'rgba(160, 130, 100, 0.7)',
-      fontStyle: 'italic',
-    } as Partial<CSSStyleDeclaration>);
-    row.appendChild(desc);
-  }
-
-  row.addEventListener('click', () => {
-    const newVal = !opts.get();
-    opts.set(newVal);
-    paintWick(newVal);
+  return makeSelect<'off' | 'on'>({
+    label: opts.label,
+    description: opts.description,
+    options: [{ id: 'off', label: 'OFF' }, { id: 'on', label: 'ON' }],
+    get: () => (opts.get() ? 'on' : 'off'),
+    set: (v) => opts.set(v === 'on'),
   });
-
-  return row;
 }
 
 interface SelectOpts<T extends string> {
@@ -1166,13 +1089,21 @@ interface SelectOpts<T extends string> {
   options: ReadonlyArray<{ id: T; label: string }>;
   get: () => T;
   set: (v: T) => void;
+  /** False when changing it is heavy (a reload): then only the words pick,
+   *  not a tap anywhere on the row. Default true. */
+  rowCycles?: boolean;
 }
 
-/** A labelled dropdown. Used for the touch control-scheme picker — a
- *  one-option seam today, but the UI is ready for more. */
+/** A choice among a few named settings: the words in a row, the chosen one
+ *  lit with an ember mark under it, the rest dim. A tap or click picks one;
+ *  Left / Right on keys or a pad step through them (the focus kit's _adjust),
+ *  so no native <select> a controller can't open. */
 function makeSelect<T extends string>(opts: SelectOpts<T>): HTMLDivElement {
+  injectKitStyles();
   const row = document.createElement('div');
   Object.assign(row.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
+  row.dataset.focus = '';
+  row.dataset.fkey = `choice:${opts.label}`;
 
   const top = document.createElement('div');
   Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } as Partial<CSSStyleDeclaration>);
@@ -1184,27 +1115,43 @@ function makeSelect<T extends string>(opts: SelectOpts<T>): HTMLDivElement {
     color: 'rgba(220, 180, 140, 0.9)',
   } as Partial<CSSStyleDeclaration>);
 
-  const select = document.createElement('select');
-  Object.assign(select.style, {
-    background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
-    borderRadius: '3px', color: 'rgba(230, 200, 170, 0.95)',
-    fontFamily: 'inherit', fontSize: '11px', padding: '5px 8px', cursor: 'pointer',
-  } as Partial<CSSStyleDeclaration>);
-  for (const o of opts.options) {
-    const optEl = document.createElement('option');
-    optEl.value = o.id;
-    optEl.textContent = o.label;
-    select.appendChild(optEl);
-  }
-  select.value = opts.get();
-  select.addEventListener('change', () => opts.set(select.value as T));
+  const choice = document.createElement('div');
+  choice.className = 'lk-choice';
+  const words = opts.options.map((o) => {
+    const w = document.createElement('span');
+    // "Hero — lamp only" shows as HERO: the description says the rest.
+    w.textContent = o.label.split(' — ')[0].toUpperCase();
+    w.title = o.label;
+    w.addEventListener('click', (e) => { e.stopPropagation(); pick(o.id); });
+    choice.appendChild(w);
+    return w;
+  });
+  const paint = (): void => {
+    const cur = opts.get();
+    opts.options.forEach((o, i) => words[i].classList.toggle('on', o.id === cur));
+  };
+  const pick = (id: T): void => { if (id !== opts.get()) opts.set(id); paint(); };
+  (row as HTMLElement & { _adjust?: (d: number) => void })._adjust = (d) => {
+    const i = opts.options.findIndex((o) => o.id === opts.get());
+    const j = Math.max(0, Math.min(opts.options.length - 1, i + (d > 0 ? 1 : -1)));
+    pick(opts.options[j].id);
+  };
+  paint();
+  // A tap anywhere else on the row steps to the next choice (wrapping), so a
+  // two-word on/off is one big target for a thumb.
+  if (opts.rowCycles !== false) row.style.cursor = 'pointer';
+  if (opts.rowCycles !== false) row.addEventListener('click', () => {
+    const i = opts.options.findIndex((o) => o.id === opts.get());
+    pick(opts.options[(i + 1) % opts.options.length].id);
+  });
 
-  top.append(label, select);
+  top.append(label, choice);
   row.appendChild(top);
 
   if (opts.description) {
     const desc = document.createElement('div');
     desc.textContent = opts.description;
+    desc.className = 'lk-desc';
     Object.assign(desc.style, {
       fontSize: '11px', color: 'rgba(160, 130, 100, 0.7)', fontStyle: 'italic',
     } as Partial<CSSStyleDeclaration>);

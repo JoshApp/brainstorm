@@ -150,6 +150,7 @@ function injectStyles(): void {
       content: ''; position: absolute; right: -2px; top: 50%; width: 3px; height: 3px; transform: translateY(-50%) rotate(45deg); background: #5e4834;
     }
     #start-screen .ts-link.is-focused { color: #f0cd9c; }
+    #start-screen .ts-link.more { color: #6e5844; }
     #start-screen .ts-link .badge {
       min-width: 16px; height: 16px; line-height: 16px; padding: 0 4px; border-radius: 8px; box-sizing: border-box;
       background: rgba(200, 80, 50, .9); color: #ffe2c8; font: 700 10px/16px system-ui, sans-serif; letter-spacing: 0; text-align: center;
@@ -269,25 +270,38 @@ export function showStartScreen(opts: StartScreenOptions) {
   foot.className = 'ts-foot';
   const link = (label: string, act: () => void, badge = 0): void => { foot.appendChild(makeLink(label, act, badge)); };
 
-  if (opts.onTutorial) link('TUTORIAL', () => { hide(); opts.onTutorial!(); });
+  // What a player reaches for from the title, and nothing else (the Lamplight
+  // draft): the rest folds behind MORE and opens in place.
   const stash = getStash();
   if (stash.length > 0) link('STASH', () => showStash(), stash.length);
   if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) link('CODEX', () => showCodex());
   // STANDINGS — the deepest-descent leaderboard; fills in as others fall.
   link('STANDINGS', () => showLeaderboard());
   link('SETTINGS', () => openSettings(undefined, { layer: 'title' }));
+  // COMMUNITY — hidden until COMMUNITY_URL is set (src/links.ts).
+  if (hasCommunityLink()) link(COMMUNITY_LABEL, () => openCommunityLink());
+
+  const more: Array<[string, () => void]> = [];
+  if (opts.onTutorial) more.push(['TUTORIAL', () => { hide(); opts.onTutorial!(); }]);
+  // DISPATCHES — the patch log.
+  more.push(['DISPATCHES', () => showPatchlog()]);
   // CLAIM YOUR NAME — link an account so this delver's server identity survives
   // a lost device (docs/ALPHA-AND-BACKEND.md). Not a meta-save: that lives in
   // localStorage only.
-  link('CLAIM YOUR NAME', () => { void startAccountUpgrade(); });
-  // DISPATCHES — the patch log.
-  link('DISPATCHES', () => showPatchlog());
-  // COMMUNITY — hidden until COMMUNITY_URL is set (src/links.ts).
-  if (hasCommunityLink()) link(COMMUNITY_LABEL, () => openCommunityLink());
+  more.push(['CLAIM YOUR NAME', () => { void startAccountUpgrade(); }]);
   // Testing tools — DEVELOPER MODE only.
   const devMode = getSettings().developerMode;
-  if (devMode && opts.onTestChambers) link('TEST', () => { hide(); opts.onTestChambers!(); });
-  if (devMode && opts.onProvingGrounds) link('PROVING', () => { hide(); opts.onProvingGrounds!(); });
+  if (devMode && opts.onTestChambers) more.push(['TEST', () => { hide(); opts.onTestChambers!(); }]);
+  if (devMode && opts.onProvingGrounds) more.push(['PROVING', () => { hide(); opts.onProvingGrounds!(); }]);
+  const moreBtn = makeLink('MORE', () => {
+    const at = [...foot.children].indexOf(moreBtn);
+    moreBtn.remove();
+    const added = more.map(([label, act]) => makeLink(label, act, 0));
+    added.forEach((b, i) => foot.insertBefore(b, foot.children[at + i] ?? null));
+    if (added[0]) scope?.setFocus(added[0]);
+  }, 0);
+  moreBtn.classList.add('more');
+  foot.appendChild(moreBtn);
   col.appendChild(foot);
 
   document.body.appendChild(r);

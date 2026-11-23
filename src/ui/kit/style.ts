@@ -96,7 +96,24 @@ export function injectKitStyles(): void {
     .lk-notches i { flex: 1; height: 14px; transform: skewX(-12deg); background: rgba(14, 8, 8, .8); border: 1px solid rgba(180, 140, 80, .35); }
     .lk-notches i.on { background: linear-gradient(#ffd27a, #e07020); border-color: rgba(255, 170, 80, .6); box-shadow: 0 0 6px rgba(255, 140, 50, .4); }
     .lk-notches i.tip { animation: lk-breathe 1.7s ease-in-out infinite; box-shadow: 0 0 10px rgba(255, 150, 50, .9); }
-    .lk-wick { line-height: 0; filter: drop-shadow(0 0 4px rgba(255, 140, 50, .25)); }
+    /* Tabs, the satchel's grammar: carved caps, the chosen one lit, an ember underline. */
+    .lk-tab { flex: 0 0 auto; min-height: 42px; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
+      font: 600 11px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .16em; color: rgba(200, 165, 125, .6); cursor: pointer;
+      white-space: nowrap; touch-action: manipulation; transition: color .15s, border-color .15s; }
+    .lk-tab:hover { color: rgba(236, 200, 150, .85); }
+    .lk-tab.on { color: #ffd9a6; border-bottom-color: rgba(255, 176, 96, .85); text-shadow: 0 0 10px rgba(255, 176, 96, .45); }
+    /* A setting's explanation: with keys or a pad, one line until the row is chosen;
+       on touch (nothing is ever chosen) it stays whole. */
+    html:not([data-input="touch"]) .lk-sheet .lk-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+    html:not([data-input="touch"]) .lk-sheet :is(.is-focused, :has(> .is-focused)) > .lk-desc { -webkit-line-clamp: unset; }
+    /* A choice of a few words (settings): the chosen one lit, an ember mark under it. */
+    .lk-choice { display: flex; gap: 2px; flex-shrink: 0; }
+    .lk-choice span { position: relative; padding: 6px 9px 8px; cursor: pointer; font: 600 11px/1 'Cinzel', 'Iowan Old Style', serif;
+      letter-spacing: .16em; color: rgba(170, 135, 100, .5); transition: color .18s, text-shadow .2s; -webkit-tap-highlight-color: transparent; }
+    .lk-choice span:hover { color: rgba(220, 180, 140, .8); }
+    .lk-choice span.on { color: #ffd9a6; text-shadow: 0 0 10px rgba(255, 176, 96, .6); }
+    .lk-choice span.on::after { content: ''; position: absolute; left: 50%; bottom: 1px; width: 5px; height: 5px; margin-left: -3px;
+      transform: rotate(45deg); background: #ffb060; box-shadow: 0 0 6px rgba(255, 150, 50, .9); }
     .lk-offer:disabled .lk-offer-label { text-decoration: line-through rgba(160, 130, 100, .5); }
 
     /* A ROW in a reading list (character, codex): chosen, it lights from its
