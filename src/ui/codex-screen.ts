@@ -35,6 +35,7 @@ function unknownRow(key: string, n: number, what: string, text: string): Reading
 export function buildCodexContent(): HTMLDivElement {
   const meta = getMeta();
   const wrap = document.createElement('div');
+  wrap.className = 'lk-fill';
 
   const sub = document.createElement('div');
   sub.className = 'lk-reading-count';
@@ -98,6 +99,7 @@ export function showCodex() {
     id: SCREEN_ID,
     title: 'WHAT YOU REMEMBER',
     width: 720,
+    height: 560,   // fixed: choosing an entry never resizes the frame
     layer: 'title',   // above the start screen (also 'title'; later stacks on top)
     onClose() { sheet = null; },
   });

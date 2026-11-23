@@ -165,6 +165,10 @@ function open(tab: Tab) {
   const s = createSheet({
     id: 'inventory',
     width: 940,                 // GEAR's four columns want room (clamps on mobile)
+    // One fixed frame for every tab: the lists scroll inside their own panes
+    // and the description slab keeps its size, so choosing an item or a tab
+    // never resizes the menu (Josh: "for a game ui it should be more stable").
+    height: 620,
     onClose: teardown,
   });
   sheet = s;
@@ -306,13 +310,15 @@ function buildColumns(): HTMLDivElement {
     const held = getEquipped('weapon');
     if (held) selection = { kind: 'slot', slotId: 'weapon', item: held };
   }
-  const showDetails = selection !== null;
+  // Always three panes at fixed proportions, each filling the frame's height
+  // and scrolling on its own: the layout never reflows on a choice.
   Object.assign(grid.style, {
     display: 'grid',
-    // Resting: CHARACTER | BAG. Selected: CHARACTER | BAG | DETAILS (widest).
-    gridTemplateColumns: showDetails ? '0.92fr 1fr 1.3fr' : '0.92fr 1.25fr',
+    gridTemplateColumns: 'minmax(0, 0.92fr) minmax(0, 1fr) minmax(0, 1.3fr)',
+    gridTemplateRows: 'minmax(0, 1fr)',
     gap: '12px',
-    alignItems: 'start',
+    alignItems: 'stretch',
+    flex: '1 1 auto',
     minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
 
@@ -335,8 +341,10 @@ function buildColumns(): HTMLDivElement {
     buildRelicLink(ctx),
   );
 
-  grid.appendChild(character);
-  grid.appendChild(buildBagColumn(ctx));
-  if (showDetails) grid.appendChild(buildDetailsColumn(ctx));
+  const bag = buildBagColumn(ctx);
+  for (const pane of [character, bag]) { pane.style.overflowY = 'auto'; pane.style.minHeight = '0'; }
+  const details = buildDetailsColumn(ctx);
+  details.style.minHeight = '0';
+  grid.append(character, bag, details);
   return grid;
 }

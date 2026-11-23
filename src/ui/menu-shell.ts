@@ -37,6 +37,11 @@ export interface SheetOptions {
    *  Default 520 — comfortable single-column. Wide panels (inventory) pass
    *  more. */
   width?: number;
+  /** A FIXED height in px (clamped to the viewport like the width). Without
+   *  it the sheet is as tall as its content, up to the viewport; a game menu
+   *  whose tabs show different things should pass one so the frame does not
+   *  jump as you move between them (Josh, 2026-11-23). */
+  height?: number;
   /** Screen-manager layer. Default 'panel'. */
   layer?: ScreenLayer;
   /** Extra policy overrides merged into the screen-manager handle. */
@@ -104,6 +109,10 @@ export function createSheet(opts: SheetOptions): Sheet {
   // sheet is ALWAYS bounded and never runs off a short landscape screen.
   root.style.maxHeight = '92vh';
   root.style.maxHeight = `calc(100dvh - ${EDGE * 2}px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))`;
+  if (opts.height) {
+    root.style.height = `min(${opts.height}px, 92vh)`;
+    root.style.height = `min(${opts.height}px, calc(100dvh - ${EDGE * 2}px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)))`;
+  }
 
   // ── Header ───────────────────────────────────────────────────────────
   const header = document.createElement('div');

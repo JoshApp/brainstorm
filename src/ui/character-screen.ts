@@ -111,6 +111,7 @@ function characterRows(): ReadingRow[] {
  *  Reusable as the satchel's CHARACTER tab and the standalone sheet. */
 export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => void } {
   const el = document.createElement('div');
+  el.className = 'lk-fill';
   const render = (): void => { el.replaceChildren(buildReadingView([{ rows: characterRows() }])); };
   render();
   const offChar = onCharacterChanged(render);
@@ -125,6 +126,7 @@ export function openCharacterScreen(): void {
     id: SCREEN_ID,
     title: 'CHARACTER',
     width: 720,
+    height: 560,   // fixed: choosing an entry never resizes the frame
     layer: 'modal',
     policy: { hidesHud: true },
     onClose() {
