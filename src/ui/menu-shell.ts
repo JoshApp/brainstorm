@@ -168,6 +168,14 @@ export function createSheet(opts: SheetOptions): Sheet {
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); close(); });
 
   header.append(titleEl, closeBtn);
+  // THE TORCH (Lamplight draft, "Light: Torch"): a warm light that moves to
+  // whatever you are choosing, keys, pad, mouse or a tap. It sits behind the
+  // sheet's content (header, body and footer are lifted above it) and only
+  // ever lights; it never hides anything. The flicker is a slow breathe.
+  const torch = document.createElement('div');
+  torch.className = 'lk-torch';
+  root.appendChild(torch);
+  header.style.position = 'relative'; header.style.zIndex = '1';
   root.appendChild(header);
 
   // ── Body (scroll region) ─────────────────────────────────────────────
@@ -183,6 +191,7 @@ export function createSheet(opts: SheetOptions): Sheet {
     flexDirection: 'column',
     gap: '8px',
   } as Partial<CSSStyleDeclaration>);
+  body.style.position = 'relative'; body.style.zIndex = '1';
   root.appendChild(body);
 
   // ── Footer (fixed actions) ───────────────────────────────────────────
@@ -195,7 +204,24 @@ export function createSheet(opts: SheetOptions): Sheet {
     padding: '11px 14px',
     borderTop: `1px solid ${THEME.rule}`,
   } as Partial<CSSStyleDeclaration>);
+  footer.style.position = 'relative'; footer.style.zIndex = '1';
   root.appendChild(footer);
+
+  let torchOn: HTMLElement | null = null;
+  const placeTorch = (el: HTMLElement | null): void => {
+    torchOn = el;
+    if (!el || !el.isConnected) { torch.style.opacity = '0'; return; }
+    const rr = root.getBoundingClientRect(), er = el.getBoundingClientRect();
+    torch.style.transform = `translate(${er.left - rr.left + er.width / 2}px, ${er.top - rr.top + er.height / 2}px)`;
+    torch.style.opacity = '1';
+  };
+  // A tap lights what it lands on (touch never moves focus).
+  root.addEventListener('pointerdown', (e) => {
+    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-focus], button');
+    if (el && root.contains(el)) placeTorch(el);
+  });
+  // The light follows its element when the pane under it scrolls.
+  body.addEventListener('scroll', () => { if (torchOn) placeTorch(torchOn); }, { passive: true });
 
   // Carved corner ticks — appended LAST so they paint over the bands. The
   // signature "chiselled slab" mark that ties every menu together.
@@ -214,6 +240,7 @@ export function createSheet(opts: SheetOptions): Sheet {
     document.body.appendChild(root);
     footer.style.display = footer.childElementCount > 0 ? 'flex' : 'none';
     scope = createFocusScope(root, {
+      onFocus: (el) => placeTorch(el),
       initial: null,
       selector: '[data-focus], button:not([disabled]), [style*="cursor: pointer"]',
       isActive: () => topScreenId() === opts.id,

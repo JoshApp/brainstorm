@@ -246,10 +246,8 @@ export async function maybeApplyUpdateSilently(): Promise<boolean> {
 function showUpdateScreen() {
   const veil = document.getElementById('boot-loading');
   const sub = veil?.querySelector('.boot-sub') as HTMLElement | null;
-  const bar = veil?.querySelector('.boot-bar') as HTMLElement | null;
   if (veil && !veil.classList.contains('boot-hide') && sub) {
     sub.textContent = 'reforging';   // the deep is being rewritten — i.e. updating
-    if (bar) bar.classList.add('on');
     return;
   }
   const toast = document.createElement('div');

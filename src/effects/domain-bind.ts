@@ -5,6 +5,7 @@ import { DOMAIN_VISUAL } from '../art/domains';
 import { getTexture } from '../style/procedural-textures';
 import { flashDomainGlow } from '../ui/vignette';
 import { disposeGpu } from '../scene/gpu-dispose';
+import { domainVisual } from '../ui/domain-icons';
 
 // BINDING WITH A DOMAIN — the shared "this marks you" beat.
 //
@@ -32,31 +33,31 @@ export function initDomainBind(camera: THREE.PerspectiveCamera): void {
   cameraRef = camera;
 }
 
-// The domain sigil rasterised to a canvas texture (drawn WHITE; the sprite's
-// material colour tints it to the domain under additive blending). Cached per
+// The domain's CARVED MARK (the Lamplight art the HUD and menus use,
+// src/assets/ui/domains) rasterised to a canvas texture, drawn as-is: the
+// sprite shows the carving in its own colours rather than a white flat glyph
+// tinted (the old one read as a different, older symbol set). Cached per
 // domain — one raster, reused for every bind of that domain.
 const sigilCache = new Map<DomainId, THREE.CanvasTexture>();
 function sigilTexture(domain: DomainId): THREE.CanvasTexture | null {
   if (typeof document === 'undefined') return null;
   const cached = sigilCache.get(domain);
   if (cached) return cached;
+  const url = domainVisual(domain).art;
+  if (!url) return null;
   const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   sigilCache.set(domain, tex);
-  const inner = DOMAIN_VISUAL[domain]?.svg ?? '';
-  // White fill/stroke so the sprite colour is the only tint; the domain glyphs
-  // use currentColor for their strokes, so set color too.
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" color="#ffffff" fill="#ffffff" stroke="#ffffff">${inner}</svg>`;
   const img = new Image();
   img.onload = () => {
     const g = canvas.getContext('2d');
     if (g) { g.clearRect(0, 0, size, size); g.drawImage(img, 0, 0, size, size); tex.needsUpdate = true; }
   };
   img.onerror = () => { /* ring + flood still carry the beat */ };
-  img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  img.src = url;
   return tex;
 }
 
@@ -93,7 +94,11 @@ export function bindToDomain(
 
   // The domain sigil — a tinted glyph sprite that blooms then is pulled in.
   const sigilTex = sigilTexture(domain);
-  const sigilMat = overlaySprite({ map: sigilTex ?? getTexture('fire-wisp'), color, opacity: 0 });
+  // Normal blending, untinted: the carved mark shows its own colours and its
+  // dark outline (additive would drop the outline and wash it to a blob).
+  const sigilMat = sigilTex
+    ? overlaySprite({ map: sigilTex, opacity: 0, additive: false })
+    : overlaySprite({ map: getTexture('fire-wisp'), color, opacity: 0 });
   const sigil = new THREE.Sprite(sigilMat);
   sigil.scale.set(0.2, 0.2, 0.2);
   sigil.renderOrder = 9991;

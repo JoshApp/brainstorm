@@ -25,6 +25,15 @@ export function injectKitStyles(): void {
     .lk-pad { border-radius: 999px; background: radial-gradient(circle at 50% 35%, #3b291b, #150e09); }
     .lk-a { border-color: rgba(127, 191, 106, .75); color: #cfe6b8; }
     .lk-b { border-color: rgba(208, 98, 79, .75); color: #f0c0b0; }
+    .lk-x { border-color: rgba(98, 140, 208, .75); color: #c0d0f0; }
+    .lk-y { border-color: rgba(210, 180, 80, .75); color: #f0e0a8; }
+    /* A HUD control's button, tucked onto its rim (kit/prompts.ts attachHudPrompt). */
+    .lk-hudkey { position: absolute; z-index: 3; pointer-events: none; min-width: 19px; height: 19px; padding: 0 5px; font-size: 10px;
+      box-shadow: inset 0 1px 0 rgba(255, 220, 170, .14), 0 1px 0 #000, 0 0 0 2px rgba(8, 5, 3, .85); }
+    .lk-hudkey[data-corner="br"] { right: -5px; bottom: -5px; }
+    .lk-hudkey[data-corner="bl"] { left: -5px; bottom: -5px; }
+    .lk-hudkey[data-corner="tr"] { right: -5px; top: -5px; }
+    .lk-hudkey[data-corner="tl"] { left: -5px; top: -5px; }
 
     /* The torch on whatever keys or a controller have chosen in a sheet. On touch
        nothing is drawn: the finger is the selection. */
@@ -164,6 +173,18 @@ export function injectKitStyles(): void {
     .lk-rd-text { font: italic 17px/1.45 'EB Garamond', 'Iowan Old Style', serif; color: #ead2b4; }
     .lk-rd-note { margin-top: 12px; font: 14px/1.4 'EB Garamond', 'Iowan Old Style', serif; color: rgba(190, 158, 122, .72); }
     @media (max-width: 560px) { .lk-reading { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .lk-reading-slab { order: -1; height: 150px; } }
+
+    /* THE TORCH in a sheet (menu-shell.ts): a warm pool behind the content that
+       travels to the chosen thing and breathes. Its centre is placed by
+       transform; the margins centre the pool on that point. */
+    .lk-torch { position: absolute; left: 0; top: 0; width: 420px; height: 240px; margin: -120px 0 0 -210px; z-index: 0;
+      pointer-events: none; opacity: 0; border-radius: 50%;
+      background: radial-gradient(closest-side, rgba(255, 168, 88, .17), rgba(255, 140, 60, .07) 55%, rgba(255, 140, 60, 0));
+      transition: transform .38s cubic-bezier(.3, .7, .2, 1), opacity .3s; }
+    .lk-torch::after { content: ''; position: absolute; inset: 22%; border-radius: 50%;
+      background: radial-gradient(closest-side, rgba(255, 190, 110, .10), rgba(255, 190, 110, 0)); animation: lk-flicker 2.3s ease-in-out infinite; }
+    @keyframes lk-flicker { 0%, 100% { opacity: .7; transform: scale(1); } 37% { opacity: 1; transform: scale(1.06); } 61% { opacity: .82; transform: scale(.97); } }
+    @media (prefers-reduced-motion: reduce) { .lk-torch { transition: opacity .3s; } .lk-torch::after { animation: none; } }
 
     /* WORLD TAGS: what hangs over a thing in the dungeon. No box: a name over a
        rule bearing the domain's mark (the depth title's grammar), on a feathered

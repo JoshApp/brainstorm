@@ -3,6 +3,7 @@ import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
 import { DESCENT_LINES } from '../content/descent-lines';
 import { FONT_TITLE, FONT_DISPLAY } from './theme';
 import { injectGameFonts } from './fonts';
+import LOGO_SKULL from '../assets/ui/logo-skull.webp?url';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
 // frame — without a transition the camera angle and surroundings
@@ -37,7 +38,9 @@ let lineEl: HTMLDivElement | null = null;
 let pctEl: HTMLDivElement | null = null;
 let lastLine = -1;
 
-const SKULL_SVG = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M6 1 a5 5 0 0 1 5 5 v1.6 a2.4 2.4 0 0 1 -2.4 2.4 h-5.2 a2.4 2.4 0 0 1 -2.4 -2.4 v-1.6 a5 5 0 0 1 5 -5 z" fill="currentColor"/><circle cx="4" cy="6.4" r="1.1" fill="#0b0705"/><circle cx="8" cy="6.4" r="1.1" fill="#0b0705"/></svg>`;
+// The skull plate cut from the logo itself (scripts/logo-parts.py),
+// so the descent rule wears the same carving as the title.
+const SKULL_IMG = `<img src="${LOGO_SKULL}" alt="" draggable="false">`;
 
 function injectScreenStyles(): void {
   if (document.getElementById('descent-screen-style')) return;
@@ -55,14 +58,14 @@ function injectScreenStyles(): void {
       padding: 0 24px; transition: opacity 320ms ease-out; }
     #descent-title .ds-title { font: 600 clamp(22px, 4.6vw, 40px)/1.1 ${FONT_TITLE}; letter-spacing: .34em; text-indent: .34em;
       color: #e6cfa4; text-shadow: 0 0 18px rgba(255, 150, 60, .18), 0 2px 0 #000; }
-    #descent-title .ds-rule { position: relative; width: min(340px, 64vw); height: 18px; margin: 12px 0 10px; color: #6e5634; }
-    #descent-title .ds-rule::before, #descent-title .ds-rule::after { content: ''; position: absolute; top: 50%; height: 1px;
-      width: calc(50% - 16px); background: rgba(138, 111, 62, .55); }
+    #descent-title .ds-rule { position: relative; width: min(340px, 64vw); height: 30px; margin: 8px 0 6px; }
+    #descent-title .ds-rule::before, #descent-title .ds-rule::after { content: ''; position: absolute; top: 9px; height: 1px;
+      width: calc(50% - 20px); background: rgba(138, 111, 62, .55); }
     #descent-title .ds-rule::before { left: 0; } #descent-title .ds-rule::after { right: 0; }
-    #descent-title .ds-rule svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); transition: color .4s, filter .4s; }
-    #descent-title .ds-rule.lit { color: #ffb35c; }
-    #descent-title .ds-rule.lit svg { filter: drop-shadow(0 0 5px rgba(255, 150, 50, .9)); }
-    #descent-title .ds-burn { position: absolute; left: 0; top: 50%; height: 1px; width: 0; transform: translateY(-50%);
+    #descent-title .ds-rule img { position: absolute; left: 50%; top: 0; width: 28px; height: auto; transform: translateX(-50%); z-index: 2;
+      filter: brightness(.8) drop-shadow(0 1px 2px #000); transition: filter .5s; }
+    #descent-title .ds-rule.lit img { filter: brightness(1.25) drop-shadow(0 0 6px rgba(255, 150, 50, .85)); }
+    #descent-title .ds-burn { position: absolute; left: 0; top: 9px; height: 1px; width: 0; transform: translateY(-50%);
       background: linear-gradient(90deg, rgba(160, 70, 20, .5), #ff9a40); box-shadow: 0 0 6px rgba(255, 140, 50, .8);
       transition: width 280ms ease-out, opacity 300ms; opacity: 0; }
     #descent-title .ds-burn::after { content: ''; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%;
@@ -88,7 +91,7 @@ function ensureTitleCard(): HTMLDivElement {
   screen = document.createElement('div');
   screen.id = 'descent-title';
   titleEl = document.createElement('div'); titleEl.className = 'ds-title';
-  ruleEl = document.createElement('div'); ruleEl.className = 'ds-rule'; ruleEl.innerHTML = SKULL_SVG;
+  ruleEl = document.createElement('div'); ruleEl.className = 'ds-rule'; ruleEl.innerHTML = SKULL_IMG;
   burnEl = document.createElement('div'); burnEl.className = 'ds-burn'; ruleEl.appendChild(burnEl);
   subtitleEl = document.createElement('div'); subtitleEl.className = 'ds-name';
   lineEl = document.createElement('div'); lineEl.className = 'ds-line';

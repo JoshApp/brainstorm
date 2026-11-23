@@ -4,16 +4,13 @@
 // PWA-update reload; a safety timer guarantees it never strands if some path
 // forgets to clear it.
 
-/** Drive the veil's warmup progress bar (#boot-loading .boot-bar), 0..1 — fed
- *  by the roster warm's onProgress while pipelines compile. Reveals the bar on
- *  first call so fast/cached boots never flash it. */
+/** Light the logo's skull bar to `t`, 0..1 — fed by the boot's progress
+ *  (ui/boot-progress.ts) across every boot phase. */
 export function setBootProgress(t: number): void {
   bootVeilHeartbeat();
-  const bar = document.querySelector('#boot-loading .boot-bar') as HTMLElement | null;
-  const fill = document.querySelector('#boot-loading .boot-bar-fill') as HTMLElement | null;
-  if (!bar || !fill) return;
-  bar.classList.add('on');
-  fill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
+  // The logo's own skull bar lights up to this fraction (index.html, --p).
+  const veil = document.getElementById('boot-loading');
+  veil?.style.setProperty('--p', String(Math.max(0, Math.min(1, t))));
 }
 
 /** Fade out + remove the veil. Idempotent. */

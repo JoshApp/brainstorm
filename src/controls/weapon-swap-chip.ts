@@ -1,5 +1,6 @@
 import { getSidearm, onEquipmentChanged } from '../player/equipment';
 import { getItemThumbnail, itemImageUrl } from '../ui/item-thumbnail';
+import { attachHudPrompt } from '../ui/kit/prompts';
 
 // WEAPON-SWAP CHIP — the one-thumb loadout control (task #96).
 //
@@ -80,6 +81,7 @@ export function createWeaponSwapChip(onSwap: () => void): void {
   el.addEventListener('mouseup', up);
   el.addEventListener('mouseleave', cancel);
 
+  attachHudPrompt(el, { key: 'swapWeapon', pad: 'swapWeapon', corner: 'tl' });
   document.body.appendChild(el);
 
   // Keep the icon + visibility in sync with the sheathed weapon.

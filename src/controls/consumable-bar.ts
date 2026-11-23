@@ -13,6 +13,7 @@ import { playHealSlurp, playBuffApply, playDenied, playFlaskUncork } from '../au
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { FONT_UI } from '../ui/hud';
 import { isDesktopLike } from './platform';
+import { attachHudPrompt } from '../ui/kit/prompts';
 import { hexCss, hexRgba } from '../style/color-utils';
 
 // Consumable hotbar — left-thumb cluster, above the joystick zone.
@@ -285,15 +286,10 @@ function ensureFlaskButton(): void {
   } as Partial<CSSStyleDeclaration>);
   el.appendChild(pips);
 
-  if (isDesktopLike()) {
-    const badge = document.createElement('div');
-    badge.textContent = '1';   // flask is always slot 1
-    Object.assign(badge.style, {
-      position: 'absolute', top: '1px', left: '4px', fontFamily: FONT_UI,
-      fontSize: '9px', fontWeight: '700', color: 'rgba(190, 150, 110, 0.75)', pointerEvents: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    el.appendChild(badge);
-  }
+  // The flask's button on keyboard / pad, tucked onto its rim (the bound
+  // quick-use key, X on a pad); nothing on touch, where the thumb is the
+  // button. Replaces the old faint '1' badge.
+  attachHudPrompt(el, { key: 'quickUse', pad: 'quickUse', corner: 'br' });
 
   // Fire-on-release (a graze during a joystick drag can't waste a charge).
   let pressed = false;

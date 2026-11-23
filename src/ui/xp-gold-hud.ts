@@ -1,5 +1,6 @@
 import { on } from '../broadcast/event-bus';
 import coinUrl from '../assets/ui/hud/coin.webp?url';
+import { isDesktopLike } from '../controls/platform';
 import { xpStore, goldStore, type XpState } from '../state/hud-stores';
 import { LEVELS_ENABLED } from '../state/leveling';
 import { getCount } from '../player/inventory';
@@ -21,7 +22,11 @@ import { projectToScreen, flyToHud } from './fly-to-hud';
 //   └──────────────────────────────────────────────────────────────┘
 
 // The carved skull coin (Lamplight art pass, src/assets/ui/hud/coin.webp).
-const SVG_COIN = `<img src="${coinUrl}" alt="" style="width:20px;height:20px;object-fit:contain;display:inline-block;vertical-align:-5px;margin-right:6px;filter:drop-shadow(0 0 4px rgba(255,190,80,0.35))">`;
+// On a PC screen (far from the eye, lots of pixels) the purse reads larger;
+// on a phone it keeps its thumb-sized footprint (Josh, 2026-11-23).
+const BIG_PURSE = typeof window !== 'undefined' && isDesktopLike();
+const COIN_PX = BIG_PURSE ? 30 : 20;
+const SVG_COIN = `<img src="${coinUrl}" alt="" style="width:${COIN_PX}px;height:${COIN_PX}px;object-fit:contain;display:inline-block;vertical-align:${BIG_PURSE ? -8 : -5}px;margin-right:${BIG_PURSE ? 8 : 6}px;filter:drop-shadow(0 0 4px rgba(255,190,80,0.35))">`;
 
 // Small brass key glyph — matches the coin's inline-icon style. Shown beside
 // the gold count when the player is carrying skeleton keys.
@@ -72,7 +77,7 @@ export function createXpGoldHud(): void {
     // with a 16px gap so the gold doesn't overlap the bag icon.
     top: 'calc(72px + env(safe-area-inset-top, 0px))',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '14px',
+    fontSize: BIG_PURSE ? '19px' : '14px',
     fontWeight: '600',
     letterSpacing: '0.10em',
     color: 'rgba(255, 210, 110, 0.9)',
@@ -107,9 +112,9 @@ export function createXpGoldHud(): void {
   Object.assign(goldTickEl.style, {
     position: 'fixed',
     right: 'calc(16px + env(safe-area-inset-right, 0px))',
-    top: 'calc(94px + env(safe-area-inset-top, 0px))',
+    top: `calc(${BIG_PURSE ? 104 : 94}px + env(safe-area-inset-top, 0px))`,
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '13px',
+    fontSize: BIG_PURSE ? '15px' : '13px',
     fontWeight: '700',
     letterSpacing: '0.08em',
     color: 'rgba(255, 224, 150, 0.95)',

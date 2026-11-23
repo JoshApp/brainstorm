@@ -12,6 +12,7 @@ import { buildCodexContent } from './codex-screen';
 import { FONT_UI } from './hud';
 import { TEXT_PRIMARY, TEXT_DIM, type Selection, type InventoryCtx } from './inventory-shared';
 import { getEquipped } from '../player/equipment';
+import { attachHudPrompt } from './kit/prompts';
 import { buildEquippedSlots, buildRiteSlot, buildRelicLink } from './inventory-doll';
 import { buildBagColumn } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
@@ -78,31 +79,9 @@ export function createInventoryPanel() {
     e.stopPropagation();
     toggle();
   });
-  // Keyboard hint badge — only shown on pure desktop. Tiny letter in
-  // the corner of the satchel icon so players who have a keyboard
-  // discover the I shortcut without polluting the touch HUD.
-  Promise.all([
-    import('../controls/platform'),
-    import('../controls/keybindings'),
-  ]).then(([{ isDesktopLike }, { getBinding, labelForCode, onBindingsChanged }]) => {
-    if (!isDesktopLike() || !openButton) return;
-    const hint = document.createElement('div');
-    hint.textContent = labelForCode(getBinding('inventory'));
-    // Keep the badge in sync if the player rebinds inventory.
-    onBindingsChanged(() => { hint.textContent = labelForCode(getBinding('inventory')); });
-    Object.assign(hint.style, {
-      position: 'absolute',
-      bottom: '2px',
-      right: '4px',
-      fontFamily: FONT_UI,
-      fontSize: '9px',
-      fontWeight: '700',
-      letterSpacing: '0.05em',
-      color: 'rgba(180, 130, 90, 0.7)',
-      pointerEvents: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    openButton.appendChild(hint);
-  });
+  // The satchel's button on keyboard / pad, tucked onto its rim (the bound
+  // inventory key, View on a pad); nothing on touch.
+  attachHudPrompt(openButton, { key: 'inventory', pad: 'inventory', corner: 'bl' });
   document.body.appendChild(openButton);
 
   // A live GEAR tab refreshes when its data changes; other tabs don't care.

@@ -189,7 +189,6 @@ import { bootPhase, reportBootTimeline } from './debug/boot-timeline';
 import { beginBootProgress, enterBootPhase, bootPhaseProgress, endBootProgress } from './ui/boot-progress';
 import { initFrameLoop, startFrameLoop, isFixedStepLoop } from './engine/frame-loop';
 import { installDevHooks } from './debug/dev-hooks';
-import { mountLuxButtonIfEnabled } from './debug/lux-button';
 import { initProfilerWiring, applyProfilerEnabled } from './debug/profiler-wiring';
 import { applyFakeStateFlags, handleDebugScreenFlags } from './debug/boot-url-screens';
 import { reapplyViewKnobs } from './debug/tuning-view';
@@ -1342,7 +1341,6 @@ setShadowMode(getSettings().shadows);
 // persisted values now; onSettingsChanged re-applies on change. Owned by
 // scene/video-settings.ts.
 applyVideoSettings();
-mountLuxButtonIfEnabled();
 initPickupLightPool(scene);
 // (The projectile pool + type registry are built by bootstrapSimWorld above,
 // alongside the light pool they depend on — so the headless replay runner gets

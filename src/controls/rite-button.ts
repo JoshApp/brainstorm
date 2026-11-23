@@ -6,6 +6,7 @@
 import { getHunger, getEquippedRite } from '../state/run-state';
 import { RITES } from '../content/rites';
 import { tryActivateRite } from '../combat/rites';
+import { attachHudPrompt } from '../ui/kit/prompts';
 
 let btn: HTMLButtonElement | null = null;
 let label: HTMLSpanElement | null = null;
@@ -32,6 +33,7 @@ export function createRiteButton(): void {
   // Fire on tap; tryActivateRite no-ops if Hunger is short, so a tap is never wasted.
   const fire = (ev: Event) => { ev.preventDefault(); tryActivateRite(); };
   btn.addEventListener('click', fire);
+  attachHudPrompt(btn, { key: 'rite', pad: 'rite', corner: 'tl' });
   document.body.appendChild(btn);
 }
 

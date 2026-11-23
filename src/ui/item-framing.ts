@@ -21,7 +21,9 @@ export function itemFraming(item: ItemSpec): DomainVisual | null {
 }
 
 export interface DomainFrameOpts {
-  /** Watermark glyph in the corner (the big faint domain sigil). Default true. */
+  /** Watermark glyph in the corner (the big faint domain sigil). Default FALSE:
+   *  on a tile that already shows the item and its carved mark, a third,
+   *  older glyph behind them read as overloaded (Josh, 2026-11-23). */
   watermark?: boolean;
   /** Strength multiplier for wash/glow (0.6 subtle, 1 normal, 1.4 loud). Default 1. */
   intensity?: number;
@@ -66,7 +68,7 @@ export function applyDomainFrame(card: HTMLElement, f: DomainVisual, opts: Domai
 
   // Big faint domain sigil watermarked into the lower-right — the "inside
   // appearance" the item takes on from its domain.
-  if (opts.watermark !== false) {
+  if (opts.watermark === true) {
     const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     mark.setAttribute('viewBox', '0 0 24 24');
     Object.assign(mark.style, {

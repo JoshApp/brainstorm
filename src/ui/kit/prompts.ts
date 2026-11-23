@@ -9,6 +9,9 @@
 
 import { activeDevice, onActiveDeviceChange, type InputDevice } from '../../controls/active-device';
 import { isDesktopLike } from '../../controls/platform';
+import { PAD, DEFAULT_PAD_BINDINGS, type GamepadAction } from '../../controls/gamepad-bindings';
+import { getBinding, labelForCode, onBindingsChanged, type BindableAction } from '../../controls/keybindings';
+import { injectKitStyles } from './style';
 
 export type PromptIntent = 'confirm' | 'back' | 'tabPrev' | 'tabNext' | 'hold';
 
@@ -39,4 +42,57 @@ export function bindPrompts(root: HTMLElement): () => void {
   };
   fill(promptDevice());
   return onActiveDeviceChange(fill);
+}
+
+// ── HUD action prompts ───────────────────────────────────────────────────────
+// The button for a HUD control, tucked onto its rim the way console games do
+// (a small carved keycap at a corner, overlapping the edge, never a label
+// floating beside it). Keyboard shows the bound key and follows rebinds; a
+// pad shows the bound face/shoulder button; touch shows nothing, because the
+// thumb presses the control itself.
+
+const PAD_GLYPH: Record<number, { t: string; cls: string }> = {
+  [PAD.A]: { t: 'A', cls: 'lk-pad lk-a' }, [PAD.B]: { t: 'B', cls: 'lk-pad lk-b' },
+  [PAD.X]: { t: 'X', cls: 'lk-pad lk-x' }, [PAD.Y]: { t: 'Y', cls: 'lk-pad lk-y' },
+  [PAD.LB]: { t: 'LB', cls: 'lk-key' }, [PAD.RB]: { t: 'RB', cls: 'lk-key' },
+  [PAD.LT]: { t: 'LT', cls: 'lk-key' }, [PAD.RT]: { t: 'RT', cls: 'lk-key' },
+  [PAD.VIEW]: { t: '⧉', cls: 'lk-key' }, [PAD.START]: { t: '≡', cls: 'lk-key' },
+  [PAD.DPAD_UP]: { t: '↑', cls: 'lk-key' }, [PAD.DPAD_RIGHT]: { t: '→', cls: 'lk-key' },
+  [PAD.DPAD_DOWN]: { t: '↓', cls: 'lk-key' }, [PAD.DPAD_LEFT]: { t: '←', cls: 'lk-key' },
+};
+
+export interface HudPromptOpts {
+  key?: BindableAction;
+  pad?: GamepadAction;
+  /** Which corner of the host the cap sits on. Default bottom-right. */
+  corner?: 'br' | 'bl' | 'tr' | 'tl';
+}
+
+/** Tuck a device-following button glyph onto `host` (which must be a
+ *  positioned element). Returns an unbinder. */
+export function attachHudPrompt(host: HTMLElement, opts: HudPromptOpts): () => void {
+  injectKitStyles();
+  const cap = document.createElement('kbd');
+  cap.className = 'lk-hudkey';
+  cap.dataset.corner = opts.corner ?? 'br';
+  host.appendChild(cap);
+  const fill = (): void => {
+    const d = promptDevice();
+    if (d === 'gamepad' && opts.pad) {
+      const g = PAD_GLYPH[DEFAULT_PAD_BINDINGS[opts.pad]];
+      cap.className = `lk-hudkey ${g?.cls ?? 'lk-key'}`;
+      cap.textContent = g?.t ?? '';
+      cap.style.display = g ? '' : 'none';
+    } else if (d === 'keyboard-mouse' && opts.key) {
+      cap.className = 'lk-hudkey lk-key';
+      cap.textContent = labelForCode(getBinding(opts.key));
+      cap.style.display = '';
+    } else {
+      cap.style.display = 'none';
+    }
+  };
+  fill();
+  const offDevice = onActiveDeviceChange(fill);
+  const offBind = onBindingsChanged(fill);
+  return () => { offDevice(); offBind(); cap.remove(); };
 }
