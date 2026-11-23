@@ -3,8 +3,11 @@ import { cachedCanvasRect } from './canvas-rect';
 import type { Interactable } from '../interactables/types';
 import { iconKindFromLabel, iconSvg } from './interact-icons';
 import { worldToScreen } from './hud';
-import { isDesktopLike } from '../controls/platform';
 import { getBinding, labelForCode, onBindingsChanged } from '../controls/keybindings';
+import { onActiveDeviceChange } from '../controls/active-device';
+import { promptDevice } from './kit/prompts';
+import { injectKitStyles } from './kit/style';
+import { FONT_TITLE } from './theme';
 
 // Prompt colour by KIND — mirrors the transaction grammar so the prompt agrees
 // with the altar's own glow (content/transactions.ts: bargain=violet/cursed,
@@ -142,36 +145,36 @@ export function ensureInteractLabel(): void {
     gap: '6px',
   } as Partial<CSSStyleDeclaration>);
 
-  if (isDesktopLike()) {
-    keycapEl = document.createElement('div');
-    Object.assign(keycapEl.style, {
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: '16px',
-      height: '16px',
-      padding: '0 4px',
-      border: '1px solid rgba(255, 200, 130, 0.6)',
-      borderRadius: '3px',
-      background: 'rgba(255, 200, 130, 0.12)',
-      // Subtle inset shadow reads as a physical key cap.
-      boxShadow: 'inset 0 -1px 0 rgba(0,0,0,0.4)',
-      fontSize: '10px',
-      fontWeight: '700',
-      letterSpacing: '0.04em',
-      lineHeight: '1',
-    } as Partial<CSSStyleDeclaration>);
-    const refreshKeycap = () => {
-      if (keycapEl) keycapEl.textContent = labelForCode(getBinding('interact'));
-    };
-    refreshKeycap();
-    onBindingsChanged(refreshKeycap);  // follow a rebind of 'interact'
-    actionRow.appendChild(keycapEl);
-  }
+  // The button that takes this, in the glyph of the device in your hands
+  // (Lamplight): the bound key on a keyboard, A on a controller, nothing on
+  // touch (the prompt itself is the button). Follows device changes and rebinds,
+  // so a Deck picked up mid-floor shows A without a reload.
+  injectKitStyles();
+  keycapEl = document.createElement('div');
+  const refreshKeycap = (): void => {
+    if (!keycapEl) return;
+    const d = promptDevice();
+    if (d === 'gamepad') {
+      keycapEl.className = 'lk-pad lk-a';
+      keycapEl.textContent = 'A';
+      keycapEl.style.display = '';
+    } else if (d === 'keyboard-mouse') {
+      keycapEl.className = 'lk-key';
+      keycapEl.textContent = labelForCode(getBinding('interact'));
+      keycapEl.style.display = '';
+    } else {
+      keycapEl.style.display = 'none';
+    }
+  };
+  refreshKeycap();
+  onBindingsChanged(refreshKeycap);
+  onActiveDeviceChange(refreshKeycap);
+  actionRow.appendChild(keycapEl);
 
   textEl = document.createElement('div');
   Object.assign(textEl.style, {
-    fontSize: '10px',
+    fontFamily: FONT_TITLE,
+    fontSize: '11px',
     lineHeight: '1',
   });
   actionRow.appendChild(textEl);
