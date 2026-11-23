@@ -28,8 +28,12 @@ export interface FocusScopeOptions {
   onFocus?: (el: HTMLElement) => void;
   /** Called on confirm (Enter, Space, controller A). Default: el.click(). */
   onConfirm?: (el: HTMLElement) => void;
-  /** Where focus starts. Default: the first focusable. */
+  /** Where focus starts. Default: the first focusable. Pass null to start
+   *  with nothing focused (a sheet: so an Enter or A pressed as it opens
+   *  cannot click anything until the player has moved). */
   initial?: HTMLElement | null;
+  /** What counts as choosable. Default '[data-focus]'. */
+  selector?: string;
   /** False while another screen sits over this one: the scope then ignores
    *  keys and controller input (so Enter in the codex can't fire CONTINUE). */
   isActive?: () => boolean;
@@ -48,8 +52,14 @@ export interface FocusScope {
 const stack: FocusScope[] = [];
 const activeOf = new WeakMap<FocusScope, () => boolean>();
 
-function focusables(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('[data-focus]')].filter((el) => el.offsetParent !== null);
+function focusables(root: HTMLElement, selector = '[data-focus]'): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(selector)].filter((el) => el.offsetParent !== null);
+}
+
+/** A stable name for an element, so focus survives a re-render that rebuilds
+ *  the DOM (the satchel redraws its columns on every change). */
+function keyOf(el: HTMLElement): string {
+  return el.dataset.fkey ?? (el.textContent ?? '').trim().slice(0, 48);
 }
 
 /** The element nearest `from` in direction (dx, dy), or null. */
@@ -71,6 +81,8 @@ export function nearestInDirection(from: HTMLElement, candidates: HTMLElement[],
 
 export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}): FocusScope {
   let focused: HTMLElement | null = null;
+  let focusedKey: string | null = null;
+  const list = (): HTMLElement[] => focusables(root, opts.selector);
 
   const scope: FocusScope = {
     root,
@@ -79,16 +91,17 @@ export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}
       if (el === focused) return;
       focused?.classList.remove('is-focused');
       focused = el;
+      focusedKey = el ? keyOf(el) : null;
       if (el) {
         el.classList.add('is-focused');
         opts.onFocus?.(el);
       }
     },
     move(dx, dy) {
-      const list = focusables(root);
-      if (!focused || !focused.isConnected) { scope.setFocus(list[0] ?? null); return !!list[0]; }
-      const next = nearestInDirection(focused, list, dx, dy);
-      if (next) scope.setFocus(next);
+      const all = list();
+      if (!focused || !focused.isConnected) { scope.setFocus(all[0] ?? null); reveal(all[0]); return !!all[0]; }
+      const next = nearestInDirection(focused, all, dx, dy);
+      if (next) { scope.setFocus(next); reveal(next); }
       return !!next;
     },
     confirm() {
@@ -97,6 +110,7 @@ export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}
       else focused.click();
     },
     destroy() {
+      observer.disconnect();
       root.removeEventListener('pointermove', onPointerMove);
       const i = stack.indexOf(scope);
       if (i >= 0) stack.splice(i, 1);
@@ -110,10 +124,31 @@ export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}
   }
   root.addEventListener('pointermove', onPointerMove);
 
+  // A redraw replaces the focused element: find its successor by key.
+  let pending = false;
+  const observer = new MutationObserver(() => {
+    if (pending || !focused || focused.isConnected) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      if (!focused || focused.isConnected) return;
+      const key = focusedKey;
+      const again = key ? list().find((el) => keyOf(el) === key) ?? null : null;
+      focused = null;
+      if (again) { scope.setFocus(again); focusedKey = key; }
+    });
+  });
+  observer.observe(root, { childList: true, subtree: true });
+
   stack.push(scope);
   activeOf.set(scope, opts.isActive ?? (() => true));
-  scope.setFocus(opts.initial ?? focusables(root)[0] ?? null);
+  scope.setFocus(opts.initial === undefined ? list()[0] ?? null : opts.initial);
   return scope;
+}
+
+/** Keep a focused element visible inside a scrolling body. */
+function reveal(el: HTMLElement | undefined): void {
+  el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 }
 
 /** The newest live scope, or null if it is covered by another screen. Never

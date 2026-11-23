@@ -20,6 +20,8 @@ import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from
 import { getDomain } from '../content/domains';
 import { getCharacter, proficiencyTier } from '../state/character';
 import { hexCss } from '../style/color-utils';
+import { FONT_TITLE, FONT_DISPLAY } from './theme';
+import { injectKitStyles } from './kit/style';
 import {
   CARD_BG, TEXT_PRIMARY, TEXT_DIM, TEXT_FAINT, sectionLabel,
   type Selection, type InventoryCtx,
@@ -38,15 +40,17 @@ export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   col.appendChild(sectionLabel('DETAILS'));
 
+  // The scorched slab (docs/UI-SYSTEM.md, Lamplight): a charred edge with a
+  // live ember line, and its own warm reading light so the text is always
+  // bright enough to read. The look lives in ui/kit/style.ts (.lk-detail).
+  injectKitStyles();
   const card = document.createElement('div');
+  card.className = 'lk-detail';
   Object.assign(card.style, {
     flex: '1',
     minHeight: '0',
-    background: CARD_BG,
-    border: '1px solid rgba(120, 90, 60, 0.4)',
-    borderRadius: '3px',
-    padding: '8px 10px',
-    display: 'flex', flexDirection: 'column', gap: '6px',
+    padding: '12px 14px',
+    display: 'flex', flexDirection: 'column', gap: '7px',
     overflowY: 'auto',
   } as Partial<CSSStyleDeclaration>);
 
@@ -169,10 +173,11 @@ export function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
 
   const name = document.createElement('div');
   name.textContent = item.name;
+  name.className = 'lk-burn';
   Object.assign(name.style, {
-    fontSize: '13px', color: rarityHex,
-    fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic',
-    fontWeight: '500', lineHeight: '1.2',
+    fontSize: '16px', color: rarityHex,
+    fontFamily: FONT_TITLE, fontWeight: '600', letterSpacing: '0.03em', lineHeight: '1.2',
+    textShadow: '0 0 12px rgba(255, 168, 88, 0.25)',
   } as Partial<CSSStyleDeclaration>);
 
   wrap.append(meta, name);
@@ -184,11 +189,14 @@ export function buildFlavorLine(item: ItemSpec): HTMLDivElement | null {
   if (!item.flavor) return null;
   const flavor = document.createElement('div');
   flavor.textContent = item.flavor;
+  flavor.className = 'lk-ash';
   Object.assign(flavor.style, {
-    fontSize: '11px', color: TEXT_DIM, fontStyle: 'italic',
-    fontFamily: 'Georgia, "Times New Roman", serif',
-    lineHeight: '1.3',
-    borderTop: '1px solid rgba(120, 90, 60, 0.3)', paddingTop: '4px',
+    fontSize: '14px', color: 'rgba(234, 210, 180, 0.95)', fontStyle: 'italic',
+    fontFamily: FONT_DISPLAY,
+    lineHeight: '1.35',
+    paddingBottom: '8px',
+    backgroundImage: 'linear-gradient(90deg, rgba(140, 80, 40, 0), rgba(140, 80, 40, 0.75) 18%, rgba(140, 80, 40, 0.75) 82%, rgba(140, 80, 40, 0))',
+    backgroundSize: '100% 1px', backgroundRepeat: 'no-repeat', backgroundPosition: 'bottom',
   } as Partial<CSSStyleDeclaration>);
   return flavor;
 }

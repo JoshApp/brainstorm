@@ -1,6 +1,16 @@
 import type { DomainId } from '../content/domains';
 import { getDomain } from '../content/domains';
 import { hexCss } from '../style/color-utils';
+import art_blood from '../assets/ui/domains/blood.webp?url';
+import art_bone from '../assets/ui/domains/bone.webp?url';
+import art_rot from '../assets/ui/domains/rot.webp?url';
+import art_ash from '../assets/ui/domains/ash.webp?url';
+import art_dawn from '../assets/ui/domains/dawn.webp?url';
+import art_grace from '../assets/ui/domains/grace.webp?url';
+import art_valor from '../assets/ui/domains/valor.webp?url';
+import art_greed from '../assets/ui/domains/greed.webp?url';
+import art_forbidden from '../assets/ui/domains/forbidden.webp?url';
+import art_cursed from '../assets/ui/domains/cursed.webp?url';
 
 // DOMAIN VISUAL LANGUAGE — one icon + one colour per domain, plus CURSED as its
 // own identity (the chaos mark). Item cards, previews, and pickups draw from
@@ -17,7 +27,17 @@ export interface DomainVisual {
   /** The packed 0xRRGGBB int behind `color`, for alpha tints (frames/glows). */
   hex: number;
   label: string;
+  /** The carved, drawn mark (docs/UI-SYSTEM.md, Lamplight). When present it is
+   *  what domainIconEl shows; `path` stays as the fallback and for tinting. */
+  art?: string;
 }
+
+// The carved marks, drawn for the Lamplight pass (cut-outs from the ChatGPT
+// sheet, 64 px webp). Bone, rot and grace read weakest at 13 px.
+const ART: Record<DomainId, string> = {
+  blood: art_blood, bone: art_bone, rot: art_rot, ash: art_ash, dawn: art_dawn,
+  grace: art_grace, valor: art_valor, greed: art_greed, forbidden: art_forbidden,
+};
 
 // ── glyphs (single 24-viewBox, filled) ─────────────────────────────────────
 const DROPLET = '<path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/>';                                   // blood
@@ -46,7 +66,7 @@ const GLYPH: Record<DomainId, string> = {
 /** The icon + colour + label for a domain. */
 export function domainVisual(id: DomainId): DomainVisual {
   const d = getDomain(id);
-  return { path: GLYPH[id], color: hexCss(d.register.color), hex: d.register.color, label: d.name };
+  return { path: GLYPH[id], color: hexCss(d.register.color), hex: d.register.color, label: d.name, art: ART[id] };
 }
 
 /** CURSED — its own identity (the chaos): a violet chaos-star. Cursed items are
@@ -57,10 +77,26 @@ export const CURSED_VISUAL: DomainVisual = {
   color: hexCss(0xc05bd6),
   hex: 0xc05bd6,
   label: 'Cursed',
+  art: art_cursed,
 };
 
-/** Build a small inline <svg> for a domain/cursed glyph, tinted to its colour. */
-export function domainIconEl(v: DomainVisual, px = 12): SVGSVGElement {
+/** A small inline mark for a domain / cursed: the carved art when there is
+ *  one, else the tinted <svg> glyph. Callers only append it. */
+export function domainIconEl(v: DomainVisual, px = 12): HTMLImageElement | SVGSVGElement {
+  if (v.art) {
+    const img = document.createElement('img');
+    img.src = v.art;
+    img.alt = v.label;
+    img.draggable = false;
+    // The carved marks carry an outline, so they need a touch more room than
+    // the bare glyph to read at the same nominal size.
+    const size = Math.round(px * 1.3);
+    Object.assign(img.style, {
+      width: `${size}px`, height: `${size}px`, objectFit: 'contain',
+      flexShrink: '0', display: 'inline-block', verticalAlign: '-3px',
+    } as Partial<CSSStyleDeclaration>);
+    return img;
+  }
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('width', String(px));

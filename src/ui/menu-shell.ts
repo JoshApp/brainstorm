@@ -1,4 +1,6 @@
-import { openScreen, closeScreen, type ScreenLayer, type ScreenPolicy } from './screen-manager';
+import { openScreen, closeScreen, topScreenId, type ScreenLayer, type ScreenPolicy } from './screen-manager';
+import { createFocusScope, type FocusScope } from './kit/focus';
+import { injectKitStyles } from './kit/style';
 import { THEME, FONT_DISPLAY, FONT_UI, applyCarvedFrame, injectThemeKeyframes } from './theme';
 
 // ── Menu shell — the ONE mobile-first sheet every panel-style menu uses ──
@@ -190,14 +192,29 @@ export function createSheet(opts: SheetOptions): Sheet {
   // signature "chiselled slab" mark that ties every menu together.
   applyCarvedFrame(root);
 
+  // Every sheet is navigable by keys and controller (ui/kit/focus.ts). Nothing
+  // is focused at open, so an Enter / A pressed as the sheet appears can't
+  // click anything; the first arrow or D-pad press lands on the first control.
+  // Choosable = buttons plus the legacy clickable tiles (they mark themselves
+  // with cursor: pointer), until each screen tags its own with data-focus.
+  let scope: FocusScope | null = null;
+
   function open(): void {
+    injectKitStyles();
+    root.classList.add('lk-sheet');
     document.body.appendChild(root);
     footer.style.display = footer.childElementCount > 0 ? 'flex' : 'none';
+    scope = createFocusScope(root, {
+      initial: null,
+      selector: '[data-focus], button:not([disabled]), [style*="cursor: pointer"]',
+      isActive: () => topScreenId() === opts.id,
+    });
     openScreen({
       id: opts.id,
       root,
       policy: { layer: opts.layer ?? 'panel', ...opts.policy },
       onDismissRequest: close,
+      onConfirm: () => { scope?.confirm(); },
       // A run transition may not be declined: same teardown, but the manager
       // calls it rather than asking. Without this the manager would only pull
       // `root`, leaving `closed` false and onClose unfired — so the next open()
@@ -209,6 +226,8 @@ export function createSheet(opts: SheetOptions): Sheet {
   function close(): void {
     if (closed) return;
     closed = true;
+    scope?.destroy();
+    scope = null;
     opts.onClose?.();
     root.remove();
     closeScreen(opts.id);
