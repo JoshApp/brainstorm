@@ -159,8 +159,8 @@ function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
   Object.assign(cell.style, {
     position: 'relative',
     width: `${PLATE_W}px`, height: `${PLATE_H}px`, borderRadius: '4px',
-    border: `1px solid ${rarityHex}`,
-    boxShadow: `0 0 6px ${rarityHex}44`,
+    border: `1px solid ${rarityHex}66`,   // quiet rarity edge (Lamplight)
+    boxShadow: 'none',
     background: 'linear-gradient(180deg, rgba(30,20,14,0.85), rgba(14,9,6,0.9))',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden', cursor: 'pointer',

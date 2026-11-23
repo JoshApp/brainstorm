@@ -109,8 +109,8 @@ function buildSlotTile(def: SlotDef, item: ItemSpec | null, ctx: InventoryCtx): 
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
     padding: '7px 4px 5px', borderRadius: '4px', cursor: 'pointer',
     background: filled ? CARD_BG : 'rgba(20, 14, 10, 0.45)',
-    border: selected ? `2px solid ${ACCENT}` : filled ? `1.5px solid ${rarityHex}` : EMPTY_BORDER,
-    boxShadow: selected ? `0 0 12px ${ACCENT}` : filled ? `0 0 7px ${rarityHex}44` : 'none',
+    border: selected ? `2px solid ${ACCENT}` : filled ? `1px solid ${rarityHex}66` : EMPTY_BORDER,
+    boxShadow: selected ? `0 0 12px ${ACCENT}` : 'none',
     touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
   } as Partial<CSSStyleDeclaration>);
 

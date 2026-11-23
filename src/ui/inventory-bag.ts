@@ -69,14 +69,16 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
     position: 'relative',
     padding: '5px 7px',
     background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
-    border: selected ? `2px solid ${ACCENT}` : `1.5px solid ${rarityHex}`,
+    // Lamplight: rarity is a quiet edge, not a neon outline; only the chosen
+    // cell is lit (ChatGPT's review: the glowing outlines read generic).
+    border: selected ? `2px solid ${ACCENT}` : `1px solid ${rarityHex}66`,
     borderRadius: '3px',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
     gap: '7px',
     alignItems: 'center',
     cursor: 'pointer',
-    boxShadow: selected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}33`,
+    boxShadow: selected ? `0 0 12px ${ACCENT}` : 'none',
     minHeight: '46px',
   } as Partial<CSSStyleDeclaration>);
 
