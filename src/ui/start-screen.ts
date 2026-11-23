@@ -275,7 +275,7 @@ export function showStartScreen(opts: StartScreenOptions) {
   if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) link('CODEX', () => showCodex());
   // STANDINGS — the deepest-descent leaderboard; fills in as others fall.
   link('STANDINGS', () => showLeaderboard());
-  link('SETTINGS', () => openSettings());
+  link('SETTINGS', () => openSettings(undefined, { layer: 'title' }));
   // CLAIM YOUR NAME — link an account so this delver's server identity survives
   // a lost device (docs/ALPHA-AND-BACKEND.md). Not a meta-save: that lives in
   // localStorage only.

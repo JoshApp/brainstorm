@@ -1,3 +1,5 @@
+import { createFocusScope, type FocusScope } from './kit/focus';
+import { injectKitStyles } from './kit/style';
 import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES, FRAME_CAPS, DAYLIGHT_PRESETS, nearestDaylightPreset, type FrameCap, type DaylightPresetId } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
 import { THEME, FONT_DISPLAY, applyCarvedFrame } from './theme';
@@ -12,7 +14,7 @@ const HUD_STYLE_OPTIONS: { id: HudStyleId; label: string }[] =
   }));
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
-import { openScreen, closeScreen } from './screen-manager';
+import { openScreen, closeScreen, topScreenId, type ScreenLayer } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 import { isDesktopLike } from '../controls/platform';
 import { openWickRitual } from './wick-ritual';
@@ -116,14 +118,23 @@ export function createSettingsMenu() {
 
 /** Public API — called by other UI (e.g. the inventory header gear)
  *  to open the settings panel. Idempotent. */
-export function openSettings(tab?: TabId) { openPanel(tab); }
+/** `layer: 'title'` when opened from the title screen, so the panel sits
+ *  above the title's own scrim instead of under it. */
+export function openSettings(tab?: TabId, opts: { layer?: ScreenLayer } = {}) { openPanel(tab, opts.layer); }
 export function closeSettings() { closePanel(); }
 export function toggleSettings() {
   if (panelOpen) closePanel(); else openPanel();
 }
 
-function openPanel(tab?: TabId) {
+// Keys / controller focus for the standalone panel (sheets get theirs from
+// menu-shell): nothing focused at open, the torch mark on what you move to.
+let panelScope: FocusScope | null = null;
+const FOCUSABLE = '[data-focus], button:not([disabled]), select, [style*="cursor: pointer"]';
+
+function openPanel(tab?: TabId, layer?: ScreenLayer) {
   if (!panel) return;
+  injectKitStyles();
+  panel.classList.add('lk-sheet');
   // Always open focused on RUN — the most-reached mid-game affordances
   // (CHARACTER, QUIT, etc.) land under the thumb every time. buildPanelContents
   // falls back to CONTROLS when there's no live run (title screen). A caller may
@@ -132,10 +143,14 @@ function openPanel(tab?: TabId) {
   buildPanelContents();
   panel.style.display = 'flex';
   panelOpen = true;
+  panelScope?.destroy();
+  panelScope = createFocusScope(panel, { initial: null, selector: FOCUSABLE, isActive: () => topScreenId() === 'settings' });
   openScreen({
     id: 'settings',
     root: panel,
     onDismissRequest: () => { if (panelOpen) closePanel(); },
+    onConfirm: () => { panelScope?.confirm(); },
+    policy: layer ? { layer } : undefined,
   });
 }
 
@@ -143,6 +158,8 @@ function closePanel() {
   if (!panel) return;
   panel.style.display = 'none';
   panelOpen = false;
+  panelScope?.destroy();
+  panelScope = null;
   closeScreen('settings');
 }
 
@@ -1030,24 +1047,40 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
 
   labelRow.append(label, valueLabel);
 
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = String(opts.min);
-  slider.max = String(opts.max);
-  slider.step = String(opts.step);
-  slider.value = String(opts.get());
-  Object.assign(slider.style, {
-    width: '100%',
-    accentColor: 'rgba(255, 160, 80, 0.9)',
-    cursor: 'pointer',
-  } as Partial<CSSStyleDeclaration>);
-  slider.addEventListener('input', () => {
-    const v = parseFloat(slider.value);
-    opts.set(v);
+  // Lamplight: a level is a row of notches that burn, not a browser slider.
+  // Tap or drag along it; left / right on keys or a controller step it.
+  const NOTCHES = 10;
+  const bar = document.createElement('div');
+  bar.className = 'lk-notches';
+  bar.dataset.focus = '';
+  bar.dataset.fkey = `slider:${opts.label}`;
+  const notchEls: HTMLElement[] = [];
+  for (let i = 0; i < NOTCHES; i++) { const n = document.createElement('i'); bar.appendChild(n); notchEls.push(n); }
+  const snap = (v: number): number => {
+    const stepped = Math.round((v - opts.min) / opts.step) * opts.step + opts.min;
+    return Math.max(opts.min, Math.min(opts.max, +stepped.toFixed(6)));
+  };
+  const paint = (v: number): void => {
+    const frac = (v - opts.min) / (opts.max - opts.min || 1);
+    const lit = Math.round(frac * NOTCHES);
+    notchEls.forEach((n, i) => { n.classList.toggle('on', i < lit); n.classList.toggle('tip', i === lit - 1); });
     valueLabel.textContent = opts.format ? opts.format(v) : String(v);
-  });
+  };
+  const setValue = (v: number): void => { const s2 = snap(v); opts.set(s2); paint(s2); };
+  const fromX = (clientX: number): void => {
+    const r = bar.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    setValue(opts.min + f * (opts.max - opts.min));
+  };
+  bar.addEventListener('pointerdown', (e) => { e.preventDefault(); bar.setPointerCapture(e.pointerId); fromX(e.clientX); });
+  bar.addEventListener('pointermove', (e) => { if (bar.hasPointerCapture(e.pointerId)) fromX(e.clientX); });
+  (bar as HTMLElement & { _adjust?: (d: number) => void })._adjust = (d) => {
+    const unit = Math.max(opts.step, (opts.max - opts.min) / NOTCHES);
+    setValue(opts.get() + d * unit);
+  };
+  paint(opts.get());
 
-  row.append(labelRow, slider);
+  row.append(labelRow, bar);
   if (opts.description) {
     const desc = document.createElement('div');
     desc.textContent = opts.description;
@@ -1060,6 +1093,9 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
   }
   return row;
 }
+
+const WICK_LIT = '<svg viewBox="0 0 22 26" width="24" height="28" aria-label="on"><circle cx="11" cy="9" r="7.5" fill="rgba(255,150,50,.18)"/><rect x="8" y="14" width="6" height="11" rx="1" fill="#d8c9a8"/><path d="M11 14 v-2" stroke="#2a1a10" stroke-width="1"/><path d="M11 3 C14 7 14.5 9 11 12.5 C7.5 9 8 7 11 3 Z" fill="#ffb347"/><path d="M11 6.5 C12.3 8.5 12.3 9.6 11 11 C9.7 9.6 9.7 8.5 11 6.5 Z" fill="#fff2c8"/></svg>';
+const WICK_OUT = '<svg viewBox="0 0 22 26" width="24" height="28" aria-label="off"><rect x="8" y="14" width="6" height="11" rx="1" fill="#8c7f68"/><path d="M11 14 v-2" stroke="#2a1a10" stroke-width="1"/><path d="M11 12 q-2 -2 0 -4 q2 -2 0 -4" fill="none" stroke="rgba(170,160,150,.5)" stroke-width="1"/></svg>';
 
 interface ToggleOpts {
   label: string;
@@ -1089,27 +1125,17 @@ function makeToggle(opts: ToggleOpts): HTMLDivElement {
     color: 'rgba(220, 180, 140, 0.9)',
   } as Partial<CSSStyleDeclaration>);
 
+  // Lamplight: on and off is a wick, lit or a curl of smoke.
   const switchEl = document.createElement('div');
-  Object.assign(switchEl.style, {
-    width: '36px',
-    height: '20px',
-    borderRadius: '10px',
-    background: opts.get() ? 'rgba(255, 160, 80, 0.6)' : 'rgba(60, 40, 30, 0.6)',
-    position: 'relative',
-    transition: 'background 0.15s',
-  } as Partial<CSSStyleDeclaration>);
-  const knob = document.createElement('div');
-  Object.assign(knob.style, {
-    position: 'absolute',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    background: 'rgba(240, 220, 200, 0.95)',
-    top: '2px',
-    left: opts.get() ? '18px' : '2px',
-    transition: 'left 0.15s',
-  } as Partial<CSSStyleDeclaration>);
-  switchEl.appendChild(knob);
+  switchEl.className = 'lk-wick';
+  const paintWick = (on: boolean): void => { switchEl.innerHTML = on ? WICK_LIT : WICK_OUT; };
+  paintWick(opts.get());
+  row.dataset.focus = '';
+  row.dataset.fkey = `toggle:${opts.label}`;
+  (row as HTMLElement & { _adjust?: (d: number) => void })._adjust = (d) => {
+    const want = d > 0;
+    if (want !== opts.get()) { opts.set(want); paintWick(want); }
+  };
 
   top.append(label, switchEl);
   row.appendChild(top);
@@ -1128,8 +1154,7 @@ function makeToggle(opts: ToggleOpts): HTMLDivElement {
   row.addEventListener('click', () => {
     const newVal = !opts.get();
     opts.set(newVal);
-    switchEl.style.background = newVal ? 'rgba(255, 160, 80, 0.6)' : 'rgba(60, 40, 30, 0.6)';
-    knob.style.left = newVal ? '18px' : '2px';
+    paintWick(newVal);
   });
 
   return row;

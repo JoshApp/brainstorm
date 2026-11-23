@@ -14,6 +14,8 @@
 //     `onConfirm: () => scope.confirm()` on its openScreen handle. Handling
 //     Enter here as well fired the confirm twice (2026-11-23: one Enter armed
 //     NEW DESCENT and the second, phantom one abandoned the run).
+//   - value controls: an element with an `_adjust(d)` function takes left /
+//     right itself (settings sliders, wicks, steppers) instead of moving focus.
 //   - controller: input-gamepad calls navTopFocus while a menu owns the frame;
 //     A reaches the same onConfirm through confirmTopScreen()
 //
@@ -98,6 +100,9 @@ export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}
       }
     },
     move(dx, dy) {
+      // A value control (a slider, a wick, a stepper) takes left / right itself.
+      const adj = (focused as (HTMLElement & { _adjust?: (d: number) => void }) | null)?._adjust;
+      if (dx !== 0 && dy === 0 && adj && focused?.isConnected) { adj(dx); return true; }
       const all = list();
       if (!focused || !focused.isConnected) { scope.setFocus(all[0] ?? null); reveal(all[0]); return !!all[0]; }
       const next = nearestInDirection(focused, all, dx, dy);

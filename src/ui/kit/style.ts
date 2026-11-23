@@ -86,6 +86,17 @@ export function injectKitStyles(): void {
     .lk-offer.armed { border-color: rgba(var(--stake), .95); background: radial-gradient(130% 160% at 0% 50%, rgba(var(--stake), .34) 0%, rgba(var(--stake), .1) 50%, rgba(var(--stake), 0) 80%), rgba(12, 8, 5, .6); }
     .lk-offer.armed .lk-offer-note { color: rgb(var(--stake)); font-style: normal; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
     .lk-offer:disabled { cursor: default; filter: grayscale(.85) brightness(.7); opacity: .6; box-shadow: none; }
+    /* Dark, thin scrollbars inside menus: the bright browser default broke the dark. */
+    .lk-sheet, .lk-sheet * { scrollbar-width: thin; scrollbar-color: rgba(150, 105, 65, .55) rgba(12, 8, 5, .6); }
+    .lk-sheet ::-webkit-scrollbar { width: 8px; height: 8px; }
+    .lk-sheet ::-webkit-scrollbar-track { background: rgba(12, 8, 5, .6); }
+    .lk-sheet ::-webkit-scrollbar-thumb { background: rgba(150, 105, 65, .55); border-radius: 4px; }
+    /* Settings levels: notches that burn, the last one flickering. */
+    .lk-notches { display: flex; gap: 4px; padding: 6px 2px; cursor: pointer; touch-action: none; }
+    .lk-notches i { flex: 1; height: 14px; transform: skewX(-12deg); background: rgba(14, 8, 8, .8); border: 1px solid rgba(180, 140, 80, .35); }
+    .lk-notches i.on { background: linear-gradient(#ffd27a, #e07020); border-color: rgba(255, 170, 80, .6); box-shadow: 0 0 6px rgba(255, 140, 50, .4); }
+    .lk-notches i.tip { animation: lk-breathe 1.7s ease-in-out infinite; box-shadow: 0 0 10px rgba(255, 150, 50, .9); }
+    .lk-wick { line-height: 0; filter: drop-shadow(0 0 4px rgba(255, 140, 50, .25)); }
     .lk-offer:disabled .lk-offer-label { text-decoration: line-through rgba(160, 130, 100, .5); }
   `;
   document.head.appendChild(st);
