@@ -99,6 +99,28 @@ export function injectKitStyles(): void {
     .lk-wick { line-height: 0; filter: drop-shadow(0 0 4px rgba(255, 140, 50, .25)); }
     .lk-offer:disabled .lk-offer-label { text-decoration: line-through rgba(160, 130, 100, .5); }
 
+    /* A ROW in a reading list (character, codex): chosen, it lights from its
+       left edge like a page held to the lamp, and its value glows. */
+    .lk-row { position: relative; padding: 9px 10px 9px 14px; border-bottom: 1px solid rgba(120, 90, 60, .16);
+      transition: background .25s, color .18s; font-variant-numeric: tabular-nums; }
+    .lk-row::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: rgb(255, 176, 96);
+      box-shadow: 0 0 8px rgba(255, 176, 96, .8); opacity: 0; transition: opacity .18s; }
+    html .lk-sheet .lk-row.is-focused { outline: none; box-shadow: none;
+      background: linear-gradient(90deg, rgba(255, 176, 96, .17) 0%, rgba(255, 176, 96, .06) 55%, rgba(255, 176, 96, 0) 100%); }
+    .lk-row.is-focused::before { opacity: 1; }
+    .lk-row .lk-v { color: rgba(236, 200, 150, .62); transition: color .18s, text-shadow .25s; }
+    .lk-row.is-focused .lk-v { color: #ffd9a6; text-shadow: 0 0 10px rgba(255, 176, 96, .65); }
+    .lk-row.is-focused .lk-k { color: #f3dcb6; }
+    .lk-head { font: 600 11px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .3em; color: #c9a57c;
+      padding-bottom: 8px; margin-bottom: 6px; background: linear-gradient(90deg, rgba(140, 80, 40, .85), rgba(140, 80, 40, .2) 80%, rgba(140, 80, 40, 0))
+      bottom / 100% 1px no-repeat; }
+    .lk-subhead { font: 600 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: .26em; color: rgba(180, 130, 90, .6); margin: 14px 0 4px 14px; }
+    /* An ember bar: a level that burns, the tip brightest. */
+    .lk-ember { height: 6px; background: rgba(14, 8, 6, .85); border: 1px solid rgba(180, 140, 80, .25); transform: skewX(-12deg); overflow: hidden; }
+    .lk-ember > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7a3510, #e07020 70%, #ffd27a);
+      box-shadow: 0 0 6px rgba(255, 140, 50, .5); transition: width .3s ease; }
+    .lk-row.is-focused .lk-ember { border-color: rgba(255, 170, 80, .55); }
+
     /* WORLD TAGS: what hangs over a thing in the dungeon. No box: a name over a
        rule bearing the domain's mark (the depth title's grammar), on a feathered
        pool of dark so it reads over any floor, hung on a thread of light down to

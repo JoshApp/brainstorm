@@ -64,21 +64,33 @@ function keyOf(el: HTMLElement): string {
   return el.dataset.fkey ?? (el.textContent ?? '').trim().slice(0, 48);
 }
 
-/** The element nearest `from` in direction (dx, dy), or null. */
+/** The element nearest `from` in direction (dx, dy), or null.
+ *
+ *  Prefers elements wholly past `from`'s edge in that direction: a wide row
+ *  pressed Right goes to the column beside it, not to a tab a few pixels to
+ *  the right of its centre far above (2026-11-23, the character tab). Only
+ *  when nothing lies past the edge does it fall back to centre-to-centre. */
 export function nearestInDirection(from: HTMLElement, candidates: HTMLElement[], dx: number, dy: number): HTMLElement | null {
   const a = from.getBoundingClientRect();
   const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
-  let best: HTMLElement | null = null, bestScore = Infinity;
-  for (const el of candidates) {
-    if (el === from) continue;
-    const b = el.getBoundingClientRect();
-    const bx = b.left + b.width / 2, by = b.top + b.height / 2;
-    const along = (bx - ax) * dx + (by - ay) * dy;
-    if (along <= 4) continue;
-    const score = along + Math.abs((bx - ax) * dy - (by - ay) * dx) * 2.2;
-    if (score < bestScore) { bestScore = score; best = el; }
-  }
-  return best;
+  const pastEdge = (b: DOMRect): boolean =>
+    dx > 0 ? b.left >= a.right - 2 : dx < 0 ? b.right <= a.left + 2
+      : dy > 0 ? b.top >= a.bottom - 2 : b.bottom <= a.top + 2;
+  const pick = (strict: boolean): HTMLElement | null => {
+    let best: HTMLElement | null = null, bestScore = Infinity;
+    for (const el of candidates) {
+      if (el === from) continue;
+      const b = el.getBoundingClientRect();
+      if (strict && !pastEdge(b)) continue;
+      const bx = b.left + b.width / 2, by = b.top + b.height / 2;
+      const along = (bx - ax) * dx + (by - ay) * dy;
+      if (along <= 4) continue;
+      const score = along + Math.abs((bx - ax) * dy - (by - ay) * dx) * 2.2;
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  };
+  return pick(true) ?? pick(false);
 }
 
 export function createFocusScope(root: HTMLElement, opts: FocusScopeOptions = {}): FocusScope {

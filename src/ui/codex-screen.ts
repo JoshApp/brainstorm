@@ -11,6 +11,7 @@ import { createSheet, type Sheet } from './menu-shell';
 import { getMeta } from '../state/meta-state';
 import { ITEMS, RARITY_COLORS, type Rarity } from '../content/items';
 import { ENEMIES } from '../content/enemies';
+import { FONT_DISPLAY } from './theme';
 
 const SCREEN_ID = 'codex';
 
@@ -23,7 +24,7 @@ export function buildCodexContent(): HTMLDivElement {
   const meta = getMeta();
   const wrap = document.createElement('div');
   Object.assign(wrap.style, {
-    fontFamily: '"Iowan Old Style", "Palatino", serif',
+    fontFamily: FONT_DISPLAY,
     color: 'rgba(220, 180, 140, 0.92)',
   } as Partial<CSSStyleDeclaration>);
 
@@ -65,34 +66,20 @@ export function showCodex() {
 
 function sectionHeader(label: string, knownCount: number, totalCount: number): HTMLElement {
   const h = document.createElement('div');
+  h.className = 'lk-head';
   Object.assign(h.style, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: '14px',
-    marginBottom: '8px',
-    borderBottom: '1px solid rgba(170, 130, 80, 0.25)',
-    paddingBottom: '4px',
-    fontFamily: 'system-ui, sans-serif',
-  });
-  const l = document.createElement('div');
+    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+    marginTop: '18px', textTransform: 'uppercase',
+  } as Partial<CSSStyleDeclaration>);
+  const l = document.createElement('span');
   l.textContent = label;
-  Object.assign(l.style, {
-    fontSize: '13px',
-    fontWeight: '600',
-    letterSpacing: '0.22em',
-    textTransform: 'uppercase',
-    color: 'rgba(220, 170, 110, 0.85)',
-  });
-  const c = document.createElement('div');
+  const c = document.createElement('span');
   c.textContent = `${knownCount} / ${totalCount}`;
   Object.assign(c.style, {
-    fontSize: '11px',
-    color: 'rgba(160, 130, 100, 0.65)',
-    letterSpacing: '0.1em',
-  });
-  h.appendChild(l);
-  h.appendChild(c);
+    fontFamily: 'system-ui, sans-serif', fontSize: '10px', letterSpacing: '0.12em',
+    color: 'rgba(170, 135, 100, 0.7)',
+  } as Partial<CSSStyleDeclaration>);
+  h.append(l, c);
   return h;
 }
 
@@ -105,7 +92,7 @@ function buildEnemiesSection(slainIds: readonly string[]): HTMLElement {
   Object.assign(grid.style, {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: '8px',
+    gap: '6px',
   });
   for (const e of allEnemies) {
     const seen = slainIds.includes(e.id);
@@ -172,13 +159,15 @@ function buildNotesSection(notes: readonly string[]): HTMLElement {
   for (const n of notes) {
     const item = document.createElement('div');
     item.textContent = `"${n}${n.length >= 60 ? '…' : ''}"`;
+    item.className = 'lk-row';
+    item.dataset.focus = '';
     Object.assign(item.style, {
       fontStyle: 'italic',
-      fontSize: '12px',
-      color: 'rgba(200, 170, 130, 0.78)',
-      padding: '6px 10px',
-      background: 'rgba(40, 28, 18, 0.4)',
-      borderLeft: '2px solid rgba(170, 130, 80, 0.35)',
+      fontSize: '14px',
+      color: 'rgba(214, 184, 146, 0.85)',
+      padding: '6px 10px 6px 14px',
+      background: 'rgba(24, 16, 11, 0.55)',
+      borderLeft: '1px solid rgba(170, 130, 80, 0.45)',
       lineHeight: '1.4',
     });
     list.appendChild(item);
@@ -187,38 +176,43 @@ function buildNotesSection(notes: readonly string[]): HTMLElement {
   return wrap;
 }
 
+// An entry: quiet until chosen (Lamplight). What you have met carries its
+// rarity as a thin mark at its edge and can be walked to with keys or a pad;
+// the chosen one lights from its edge like the character rows. What you have
+// not met stays a faint question.
 function makeEntry(title: string, sub: string, accent: number, seen: boolean): HTMLElement {
   const el = document.createElement('div');
   const accentRgb = `rgb(${(accent >> 16) & 0xff}, ${(accent >> 8) & 0xff}, ${accent & 0xff})`;
+  el.className = 'lk-row';
+  if (seen) { el.dataset.focus = ''; el.dataset.fkey = `codex:${title}`; }
   Object.assign(el.style, {
-    padding: '8px 10px',
-    background: seen ? 'rgba(30, 22, 16, 0.55)' : 'rgba(20, 15, 10, 0.35)',
-    border: `1px solid ${seen ? accentRgb : 'rgba(80, 60, 40, 0.25)'}`,
-    borderRadius: '2px',
-    opacity: seen ? '1' : '0.5',
-  });
+    padding: '8px 10px 8px 14px',
+    background: seen ? 'rgba(24, 16, 11, 0.55)' : 'transparent',
+    borderBottom: '0',
+    borderLeft: `1px solid ${seen ? accentRgb : 'rgba(80, 60, 40, 0.25)'}`,
+    opacity: seen ? '1' : '0.45',
+  } as Partial<CSSStyleDeclaration>);
   const t = document.createElement('div');
   t.textContent = title;
+  t.className = 'lk-k';
   Object.assign(t.style, {
-    fontSize: '12px',
-    fontWeight: '600',
-    letterSpacing: '0.04em',
-    color: seen ? accentRgb : 'rgba(140, 120, 100, 0.7)',
+    fontSize: '14px',
+    letterSpacing: '0.02em',
+    color: seen ? 'rgba(236, 206, 166, 0.9)' : 'rgba(140, 120, 100, 0.7)',
     marginBottom: '2px',
-    fontFamily: '"Iowan Old Style", "Palatino", serif',
+    fontFamily: FONT_DISPLAY,
     fontStyle: seen ? 'normal' : 'italic',
-  });
+  } as Partial<CSSStyleDeclaration>);
   el.appendChild(t);
   const s = document.createElement('div');
   s.textContent = sub;
   Object.assign(s.style, {
-    fontSize: '10px',
-    letterSpacing: '0.06em',
-    color: 'rgba(170, 140, 110, 0.55)',
-    fontFamily: 'system-ui, sans-serif',
+    fontSize: '13px',
+    color: 'rgba(175, 145, 115, 0.7)',
+    fontFamily: FONT_DISPLAY,
     fontStyle: 'italic',
     lineHeight: '1.3',
-  });
+  } as Partial<CSSStyleDeclaration>);
   el.appendChild(s);
   return el;
 }

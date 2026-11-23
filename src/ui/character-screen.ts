@@ -8,6 +8,7 @@ import {
 } from '../state/character';
 import { getRunState } from '../state/run-state';
 import { ATTR_DEFS } from './attribute-defs';
+import { FONT_TITLE, FONT_DISPLAY } from './theme';
 
 // CHARACTER screen — the "who is this delver becoming" page.
 //
@@ -29,7 +30,7 @@ interface AttributeRow {
 interface ProficiencyRow {
   kind: ProficiencyKind;
   label: string;
-  fillEl: HTMLDivElement;
+  fillEl: HTMLElement;
   valueEl: HTMLDivElement;
 }
 
@@ -90,8 +91,9 @@ export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => vo
   summaryEl = document.createElement('div');
   Object.assign(summaryEl.style, {
     fontStyle: 'italic',
-    fontSize: '13px',
-    color: 'rgba(180, 140, 110, 0.72)',
+    fontFamily: FONT_DISPLAY,
+    fontSize: '15px',
+    color: 'rgba(200, 160, 120, 0.8)',
     textAlign: 'center',
     marginBottom: '4px',
   } as Partial<CSSStyleDeclaration>);
@@ -111,12 +113,7 @@ export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => vo
   const colHeader = (text: string): HTMLDivElement => {
     const h = document.createElement('div');
     h.textContent = text;
-    Object.assign(h.style, {
-      fontSize: '11px', letterSpacing: '0.30em',
-      color: 'rgba(220, 180, 140, 0.65)',
-      borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
-      paddingBottom: '6px', marginBottom: '10px',
-    } as Partial<CSSStyleDeclaration>);
+    h.className = 'lk-head';
     return h;
   };
 
@@ -143,11 +140,7 @@ export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => vo
   for (const group of PROF_GROUPS) {
     const groupHeading = document.createElement('div');
     groupHeading.textContent = group.heading;
-    Object.assign(groupHeading.style, {
-      fontSize: '10px', letterSpacing: '0.25em',
-      color: 'rgba(180, 130, 90, 0.55)',
-      marginTop: '14px', marginBottom: '6px',
-    } as Partial<CSSStyleDeclaration>);
+    groupHeading.className = 'lk-subhead';
     profCol.appendChild(groupHeading);
     for (const row of group.rows) profRows.push(buildProficiencyRow(row, profCol));
   }
@@ -196,25 +189,30 @@ export function isCharacterScreenOpen(): boolean {
   return isScreenOpen(SCREEN_ID);
 }
 
+// Rows are choosable (data-focus) so keys and a controller can walk them, and
+// the chosen row lights, value included (Josh, the Lamplight concept). Nothing
+// happens on confirm: these are things to read, not buttons.
 function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): AttributeRow {
   const row = document.createElement('div');
+  row.className = 'lk-row';
+  row.dataset.focus = '';
+  row.dataset.fkey = `attr:${def.kind}`;
   Object.assign(row.style, {
     display: 'grid',
     gridTemplateColumns: 'auto 1fr auto',
     alignItems: 'baseline',
     gap: '12px',
-    padding: '10px 0',
-    borderBottom: '1px solid rgba(120, 90, 60, 0.15)',
   } as Partial<CSSStyleDeclaration>);
 
   const label = document.createElement('div');
   label.textContent = def.label;
+  label.className = 'lk-k';
   Object.assign(label.style, {
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: FONT_TITLE,
     fontSize: '13px',
     fontWeight: '600',
-    letterSpacing: '0.20em',
-    color: 'rgba(255, 220, 180, 0.92)',
+    letterSpacing: '0.16em',
+    color: 'rgba(236, 206, 166, 0.88)',
     minWidth: '88px',
   } as Partial<CSSStyleDeclaration>);
   row.appendChild(label);
@@ -222,19 +220,20 @@ function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): 
   const effect = document.createElement('div');
   effect.textContent = def.effect;
   Object.assign(effect.style, {
-    fontSize: '12px',
+    fontFamily: FONT_DISPLAY,
+    fontSize: '14px',
     fontStyle: 'italic',
-    color: 'rgba(180, 140, 110, 0.70)',
+    color: 'rgba(190, 155, 120, 0.78)',
   } as Partial<CSSStyleDeclaration>);
   row.appendChild(effect);
 
   const value = document.createElement('div');
   value.textContent = '0';
+  value.className = 'lk-v';
   Object.assign(value.style, {
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '16px',
-    fontWeight: '700',
-    color: 'rgba(220, 180, 140, 0.95)',
+    fontFamily: FONT_TITLE,
+    fontSize: '17px',
+    fontWeight: '600',
     minWidth: '24px',
     textAlign: 'right',
   } as Partial<CSSStyleDeclaration>);
@@ -246,48 +245,43 @@ function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): 
 
 function buildProficiencyRow(def: { kind: ProficiencyKind; label: string }, parent: HTMLElement): ProficiencyRow {
   const row = document.createElement('div');
+  row.className = 'lk-row';
+  row.dataset.focus = '';
+  row.dataset.fkey = `prof:${def.kind}`;
   Object.assign(row.style, {
     display: 'grid',
-    gridTemplateColumns: '90px 1fr 40px',
+    gridTemplateColumns: '90px 1fr 34px',
     alignItems: 'center',
     gap: '10px',
-    padding: '4px 0',
+    padding: '5px 10px 5px 14px',
+    borderBottom: '0',
   } as Partial<CSSStyleDeclaration>);
 
   const label = document.createElement('div');
   label.textContent = def.label;
+  label.className = 'lk-k';
   Object.assign(label.style, {
-    fontSize: '13px',
+    fontFamily: FONT_DISPLAY,
+    fontSize: '14px',
     fontStyle: 'italic',
-    color: 'rgba(220, 180, 140, 0.78)',
+    color: 'rgba(220, 186, 146, 0.82)',
   } as Partial<CSSStyleDeclaration>);
   row.appendChild(label);
 
-  // Bar track + fill.
+  // The level as an ember bar.
   const track = document.createElement('div');
-  Object.assign(track.style, {
-    height: '6px',
-    background: 'rgba(40, 28, 18, 0.85)',
-    borderRadius: '2px',
-    overflow: 'hidden',
-  } as Partial<CSSStyleDeclaration>);
-  const fill = document.createElement('div');
-  Object.assign(fill.style, {
-    height: '100%',
-    width: '0%',
-    background: 'linear-gradient(to right, rgba(180, 130, 90, 0.95), rgba(255, 200, 130, 0.95))',
-    transition: 'width 0.2s ease',
-  } as Partial<CSSStyleDeclaration>);
+  track.className = 'lk-ember';
+  const fill = document.createElement('i');
   track.appendChild(fill);
   row.appendChild(track);
 
   const value = document.createElement('div');
   value.textContent = '0';
+  value.className = 'lk-v';
   Object.assign(value.style, {
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
+    fontFamily: FONT_TITLE,
+    fontSize: '13px',
     fontWeight: '600',
-    color: 'rgba(220, 180, 140, 0.85)',
     textAlign: 'right',
   } as Partial<CSSStyleDeclaration>);
   row.appendChild(value);
