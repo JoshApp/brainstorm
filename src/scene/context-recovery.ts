@@ -189,14 +189,18 @@ function showReload(): void {
   btn.textContent = 'DESCEND AGAIN';
   Object.assign(btn.style, {
     marginTop: '4px',
-    padding: '11px 26px',
+    // Lamplight: a carved verb, not a pill (kept inline: a crash or a lost GPU
+    // must not depend on the UI kit loading).
+    padding: '10px 22px',
     minHeight: '44px',
-    borderRadius: '30px',
-    border: '1px solid rgba(255, 190, 120, 0.55)',
-    background: 'linear-gradient(180deg, rgba(80, 42, 22, 0.85), rgba(50, 24, 10, 0.85))',
-    color: 'rgba(255, 230, 200, 0.98)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '14px',
+    borderRadius: '0',
+    border: '0',
+    borderBottom: '1px solid rgba(255, 176, 96, 0.75)',
+    background: 'radial-gradient(60% 120% at 50% 50%, rgba(255, 168, 80, 0.16), rgba(255, 168, 80, 0) 100%)',
+    color: '#ffdcaa',
+    textShadow: '0 1px 0 #000, 0 0 16px rgba(255, 176, 96, 0.5)',
+    fontFamily: "'Cinzel', 'Iowan Old Style', serif",
+    fontSize: '18px',
     fontWeight: '600',
     letterSpacing: '0.22em',
     cursor: 'pointer',

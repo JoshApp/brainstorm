@@ -126,16 +126,18 @@ function makeButton(label: string, primary: boolean): HTMLButtonElement {
   const b = document.createElement('button');
   b.textContent = label;
   Object.assign(b.style, {
-    padding: '11px 26px',
+    // Lamplight: carved verbs, not pills; the primary one lit (kept inline so
+    // the crash screen never depends on the UI kit).
+    padding: '10px 20px',
     minHeight: '44px',
-    borderRadius: '30px',
-    border: primary ? '1px solid rgba(255, 190, 120, 0.55)' : '1px solid rgba(150, 110, 70, 0.4)',
-    background: primary
-      ? 'linear-gradient(180deg, rgba(80, 42, 22, 0.85), rgba(50, 24, 10, 0.85))'
-      : 'transparent',
-    color: primary ? 'rgba(255, 230, 200, 0.98)' : 'rgba(200, 165, 130, 0.8)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '14px',
+    borderRadius: '0',
+    border: '0',
+    borderBottom: primary ? '1px solid rgba(255, 176, 96, 0.75)' : '1px solid rgba(150, 110, 70, 0.35)',
+    background: primary ? 'radial-gradient(60% 120% at 50% 50%, rgba(255, 168, 80, 0.16), rgba(255, 168, 80, 0) 100%)' : 'transparent',
+    color: primary ? '#ffdcaa' : '#a88c6c',
+    textShadow: primary ? '0 1px 0 #000, 0 0 16px rgba(255, 176, 96, 0.5)' : '0 1px 0 #000',
+    fontFamily: "'Cinzel', 'Iowan Old Style', serif",
+    fontSize: primary ? '17px' : '13px',
     fontWeight: '600',
     letterSpacing: '0.22em',
     cursor: 'pointer',
