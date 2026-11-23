@@ -38,6 +38,7 @@ import { setGamepadRunHeld } from './run-input';
 import { HOLD_TO_RUN_MS } from './dodge-button';
 import { dismissHint } from './hint-overlay';
 import { noteGamepadActivity } from './active-device';
+import { navTopFocus } from '../ui/kit/focus';
 
 /** The first connected pad reporting the standard layout, or null. */
 function firstPad(): Gamepad | null {
@@ -92,10 +93,31 @@ export function pollGamepad(): void {
     pendingPressed.clear();
     pendingReleased.clear();
     for (const a of frame.pressed) log(`menu:${a}`);
+    menuNav(frame);
     if (frame.pressed.has('interact')) confirmTopScreen();
     if (frame.pressed.has('dodge') || frame.pressed.has('menu')) dismissTopScreen();
     if (frame.pressed.has('inventory')) toggleInventoryPanel();
   }
+}
+
+// Menu navigation: the D-pad steps the focused element (ui/kit/focus.ts); the
+// left stick steps it too, with a held repeat, the way console menus scroll.
+const MENU_NAV: Array<[GamepadAction, number, number]> = [
+  ['slot1', 0, -1], ['slot2', 1, 0], ['slot3', 0, 1], ['slot4', -1, 0],
+];
+let stickDir = '';
+let stickNext = 0;
+function menuNav(f: PadFrame): void {
+  for (const [a, dx, dy] of MENU_NAV) if (f.pressed.has(a)) navTopFocus(dx, dy);
+  let dx = 0, dy = 0;
+  if (Math.abs(f.moveX) > 0.55 || Math.abs(f.moveY) > 0.55) {
+    if (Math.abs(f.moveX) > Math.abs(f.moveY)) dx = Math.sign(f.moveX); else dy = Math.sign(f.moveY);
+  }
+  const key = dx || dy ? `${dx},${dy}` : '';
+  if (!key) { stickDir = ''; return; }
+  const now = performance.now();
+  if (key !== stickDir) { stickDir = key; stickNext = now + 320; navTopFocus(dx, dy); }
+  else if (now >= stickNext) { stickNext = now + 120; navTopFocus(dx, dy); }
 }
 
 export const gamepadScheme: InputScheme = {

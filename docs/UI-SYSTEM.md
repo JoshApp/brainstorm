@@ -9,6 +9,39 @@
 > 2026-06-18: spec drafted. Exemplars already live: the **fate draw**
 > (`card-reading.ts`, a Deep full-bleed screen) and the **HUD**.
 
+## The Lamplight direction (decided 2026-11-23, supersedes §1's two grounds)
+
+Worked out with Josh (and ChatGPT for drawn art) in a live concept page:
+https://claude.ai/artifact/KfWa41HGTQJiDQJ7Rnbg6Z. What was decided:
+
+- **One ground, the Deep.** No ink-on-parchment Page anywhere. Reading surfaces
+  (item detail, codex) carry their own warm, flickering reading light instead.
+- **The torch is the selection.** What you are choosing is lit by torch light
+  (warm amber); what you are reading stays fully lit. Nothing you need goes dim.
+- **One input model.** Touch, mouse, keyboard and controller move one focus
+  (`ui/kit/focus.ts`) and confirm through the screen manager's `onConfirm`.
+  Every choice wears the button that takes it, in the glyph of the device in
+  your hands (`ui/kit/prompts.ts`, following `controls/active-device.ts`).
+- **Logo:** the lantern-under-the-arch pixel logo, "v3 warm"
+  (`src/assets/ui/delve-logo.webp`). Its lantern is the title screen's light
+  source. App icon: the arch and lantern alone, full-bleed.
+- **Title:** left layout on one line (logo edge, tagline, verbs, footer); verbs
+  carved, CONTINUE carries only its depth; NEW DESCENT warns only when focused
+  and needs a second press to abandon; everything else in a quiet footer.
+- **HUD, quiet until needed:** hearts (code-drawn, kept as they are) and depth
+  always; stamina, gold and status only while they move; prompts ride on the
+  object. Status effects: carved symbols, harmful in an iron diamond, helpful
+  in a bronze ring, stacks as a number, time as a burning line.
+- **Item preview:** scorched slab (charred edge, ember line, sparks in the
+  domain's colour, name burns in). Item art comes through one seam with a
+  fallback: real art, else a carved placeholder of the item's shape.
+- **Art:** ChatGPT draws (domain marks, status symbols, satchel, coin, ritual
+  glyphs); hearts and stamina stay code. True pixel grids are NOT required.
+
+Build order: title (done 2026-11-23) → satchel (art seam, preview, domain
+marks) → quiet HUD (status row, coin, satchel mark, device-following controls)
+→ world tags → deals (basin) → settings.
+
 ## 0. The one rule
 
 **One responsive UI, mobile-first, scaled UP to PC.** Design to the harder

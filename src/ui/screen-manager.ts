@@ -200,6 +200,14 @@ export function msSinceLastScreenClose(): number {
   return performance.now() - lastClosedAt;
 }
 
+/** The most recently opened screen's id, or null. A focus scope uses it to stay
+ *  quiet while another screen (a stash, the codex) is open over its own. */
+export function topScreenId(): string | null {
+  let id: string | null = null;
+  for (const k of openScreens.keys()) id = k;
+  return id;
+}
+
 export function isScreenOpen(id: string): boolean {
   return openScreens.has(id);
 }
