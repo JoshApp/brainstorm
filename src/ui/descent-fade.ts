@@ -1,5 +1,8 @@
 import { FAST_BOOT } from '../debug/fast-boot';
 import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
+import { DESCENT_LINES } from '../content/descent-lines';
+import { FONT_TITLE, FONT_DISPLAY } from './theme';
+import { injectGameFonts } from './fonts';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
 // frame — without a transition the camera angle and surroundings
@@ -17,9 +20,92 @@ import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
 
 
 let overlay: HTMLDivElement | null = null;
-let titleCard: HTMLDivElement | null = null;
+
+// ── THE DESCENT SCREEN (Lamplight) ──────────────────────────────────────────
+// One element is both the loading view and the arrival title, so the two read
+// as one beat: while the floor is made it says where you are going (DEPTH N
+// over the HUD's skull rule, the floor's name), an ember burns along that rule
+// as the work completes, and the deep says one line (content/descent-lines.ts).
+// At the reveal the line and the burning go, and the title holds over the
+// world a moment before it fades, where it already was.
+let screen: HTMLDivElement | null = null;
 let titleEl: HTMLDivElement | null = null;
 let subtitleEl: HTMLDivElement | null = null;
+let ruleEl: HTMLDivElement | null = null;
+let burnEl: HTMLDivElement | null = null;
+let lineEl: HTMLDivElement | null = null;
+let pctEl: HTMLDivElement | null = null;
+let lastLine = -1;
+
+const SKULL_SVG = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M6 1 a5 5 0 0 1 5 5 v1.6 a2.4 2.4 0 0 1 -2.4 2.4 h-5.2 a2.4 2.4 0 0 1 -2.4 -2.4 v-1.6 a5 5 0 0 1 5 -5 z" fill="currentColor"/><circle cx="4" cy="6.4" r="1.1" fill="#0b0705"/><circle cx="8" cy="6.4" r="1.1" fill="#0b0705"/></svg>`;
+
+function injectScreenStyles(): void {
+  if (document.getElementById('descent-screen-style')) return;
+  // The first descent can come before any screen registered the faces (a
+  // scenario, a resume): register them here, and ask for the two this screen
+  // speaks in so they arrive while the black is still up.
+  injectGameFonts();
+  void document.fonts?.load(`600 32px ${FONT_TITLE}`).catch(() => {});
+  void document.fonts?.load(`italic 16px ${FONT_DISPLAY}`).catch(() => {});
+  const st = document.createElement('style');
+  st.id = 'descent-screen-style';
+  st.textContent = `
+    #descent-title { position: fixed; inset: 0; z-index: 51; pointer-events: none; opacity: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+      padding: 0 24px; transition: opacity 320ms ease-out; }
+    #descent-title .ds-title { font: 600 clamp(22px, 4.6vw, 40px)/1.1 ${FONT_TITLE}; letter-spacing: .34em; text-indent: .34em;
+      color: #e6cfa4; text-shadow: 0 0 18px rgba(255, 150, 60, .18), 0 2px 0 #000; }
+    #descent-title .ds-rule { position: relative; width: min(340px, 64vw); height: 18px; margin: 12px 0 10px; color: #6e5634; }
+    #descent-title .ds-rule::before, #descent-title .ds-rule::after { content: ''; position: absolute; top: 50%; height: 1px;
+      width: calc(50% - 16px); background: rgba(138, 111, 62, .55); }
+    #descent-title .ds-rule::before { left: 0; } #descent-title .ds-rule::after { right: 0; }
+    #descent-title .ds-rule svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); transition: color .4s, filter .4s; }
+    #descent-title .ds-rule.lit { color: #ffb35c; }
+    #descent-title .ds-rule.lit svg { filter: drop-shadow(0 0 5px rgba(255, 150, 50, .9)); }
+    #descent-title .ds-burn { position: absolute; left: 0; top: 50%; height: 1px; width: 0; transform: translateY(-50%);
+      background: linear-gradient(90deg, rgba(160, 70, 20, .5), #ff9a40); box-shadow: 0 0 6px rgba(255, 140, 50, .8);
+      transition: width 280ms ease-out, opacity 300ms; opacity: 0; }
+    #descent-title .ds-burn::after { content: ''; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%;
+      background: radial-gradient(circle, #fff1c8 0%, #ffae50 45%, rgba(255, 120, 40, 0) 75%);
+      box-shadow: 0 0 10px 3px rgba(255, 140, 50, .55); animation: ds-flicker 1.3s ease-in-out infinite; }
+    @keyframes ds-flicker { 50% { opacity: .65; transform: scale(.85); } }
+    #descent-title.loading .ds-burn { opacity: 1; }
+    #descent-title .ds-name { font: italic clamp(14px, 2.5vw, 20px)/1.3 ${FONT_DISPLAY}; letter-spacing: .04em; color: rgba(222, 192, 152, .82); }
+    #descent-title .ds-line { margin-top: clamp(18px, 5vh, 40px); max-width: 34ch; font: italic clamp(13px, 2.1vw, 16px)/1.45 ${FONT_DISPLAY};
+      color: rgba(190, 158, 122, .62); opacity: 0; transition: opacity 600ms ease-out; }
+    #descent-title.loading .ds-line { opacity: 1; }
+    #descent-title .ds-pct { margin-top: 10px; font: 600 10px/1 system-ui, sans-serif; letter-spacing: .3em; color: rgba(170, 130, 90, .5);
+      opacity: 0; transition: opacity 300ms; }
+    #descent-title.loading .ds-pct.on { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) { #descent-title .ds-burn::after { animation: none; } }
+  `;
+  document.head.appendChild(st);
+}
+
+function ensureTitleCard(): HTMLDivElement {
+  if (screen) return screen;
+  injectScreenStyles();
+  screen = document.createElement('div');
+  screen.id = 'descent-title';
+  titleEl = document.createElement('div'); titleEl.className = 'ds-title';
+  ruleEl = document.createElement('div'); ruleEl.className = 'ds-rule'; ruleEl.innerHTML = SKULL_SVG;
+  burnEl = document.createElement('div'); burnEl.className = 'ds-burn'; ruleEl.appendChild(burnEl);
+  subtitleEl = document.createElement('div'); subtitleEl.className = 'ds-name';
+  lineEl = document.createElement('div'); lineEl.className = 'ds-line';
+  pctEl = document.createElement('div'); pctEl.className = 'ds-pct';
+  screen.append(titleEl, ruleEl, subtitleEl, lineEl, pctEl);
+  document.body.appendChild(screen);
+  return screen;
+}
+
+/** A line the deep says, never the same twice running. */
+function pickLine(): string {
+  if (DESCENT_LINES.length === 0) return '';
+  let i = Math.floor(Math.random() * DESCENT_LINES.length);
+  if (i === lastLine && DESCENT_LINES.length > 1) i = (i + 1) % DESCENT_LINES.length;
+  lastLine = i;
+  return DESCENT_LINES[i];
+}
 
 function ensureOverlay(): HTMLDivElement {
   if (overlay) return overlay;
@@ -38,49 +124,6 @@ function ensureOverlay(): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(overlay);
   return overlay;
-}
-
-function ensureTitleCard(): HTMLDivElement {
-  if (titleCard) return titleCard;
-  titleCard = document.createElement('div');
-  titleCard.id = 'descent-title';
-  Object.assign(titleCard.style, {
-    position: 'fixed',
-    inset: '0',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-    opacity: '0',
-    zIndex: '51',           // sits ABOVE the black overlay
-    color: '#d8c8a8',
-    fontFamily: 'Georgia, "Times New Roman", serif',
-    textAlign: 'center',
-    letterSpacing: '0.12em',
-    textShadow: '0 0 12px rgba(0,0,0,0.9)',
-    transition: 'opacity 320ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-
-  titleEl = document.createElement('div');
-  Object.assign(titleEl.style, {
-    fontSize: 'clamp(28px, 7vw, 56px)',
-    fontWeight: '300',
-    margin: '0 0 0.4em 0',
-  } as Partial<CSSStyleDeclaration>);
-
-  subtitleEl = document.createElement('div');
-  Object.assign(subtitleEl.style, {
-    fontSize: 'clamp(13px, 2.4vw, 18px)',
-    fontStyle: 'italic',
-    opacity: '0.7',
-    letterSpacing: '0.18em',
-  } as Partial<CSSStyleDeclaration>);
-
-  titleCard.appendChild(titleEl);
-  titleCard.appendChild(subtitleEl);
-  document.body.appendChild(titleCard);
-  return titleCard;
 }
 
 // TRUE from the start of a descent fade-out (or a reveal raising the black) until the
@@ -136,86 +179,26 @@ export function fadeIn(): void {
 // prewarm promise resolves, and if that wait runs long we show a quiet, stable
 // loading mark so it reads as a deliberate descent rather than a frozen hang.
 
-let loadingMark: HTMLDivElement | null = null;
 let pulseTimer = 0;
 let safetyTimer = 0;
+/** The title the next reveal will raise, known before the wait so the loading
+ *  view can already say it. Set by revealWhenReady's `card`. */
+let pendingCard: { title: string; subtitle: string } | null = null;
 
-function ensureLoadingMark(): HTMLDivElement {
-  if (loadingMark) return loadingMark;
-  loadingMark = document.createElement('div');
-  loadingMark.id = 'descent-loading';
-  Object.assign(loadingMark.style, {
-    position: 'fixed',
-    left: '0', right: '0', bottom: '12%',
-    textAlign: 'center',
-    pointerEvents: 'none',
-    opacity: '0',
-    zIndex: '52',           // above the black + title
-    color: '#9a8a6a',
-    fontFamily: 'Georgia, "Times New Roman", serif',
-    fontStyle: 'italic',
-    fontSize: 'clamp(12px, 2vw, 16px)',
-    letterSpacing: '0.35em',
-    textTransform: 'lowercase',
-    transition: 'opacity 400ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  // Label in its own span so the progress % can update without nuking the ember child.
-  markLabel = document.createElement('span');
-  markLabel.textContent = 'descending';
-  loadingMark.appendChild(markLabel);
-  // The same breathing coal the boot veil carries, floating above the mark.
-  const ember = document.createElement('div');
-  ember.classList.add('ember-coal');
-  Object.assign(ember.style, {
-    position: 'fixed', left: '50%', bottom: 'calc(12% + 34px)',
-    transform: 'translateX(-50%)',
-    pointerEvents: 'none', zIndex: '52',
-  } as Partial<CSSStyleDeclaration>);
-  loadingMark.appendChild(ember);
-  document.body.appendChild(loadingMark);
-
-  // A thin amber progress line under the mark — a real fill (driven by the warmup
-  // batches), not a spinner: it reads as the dark slowly admitting you, in keeping
-  // with the unhurried tone. Hidden (scaleX 0) until setDescentProgress drives it.
-  progressBar = document.createElement('div');
-  Object.assign(progressBar.style, {
-    position: 'fixed', left: '50%', bottom: 'calc(12% - 14px)',
-    width: 'min(180px, 40vw)', height: '2px',
-    transform: 'translateX(-50%)',
-    pointerEvents: 'none', opacity: '0', zIndex: '52',
-    transition: 'opacity 400ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  const fill = document.createElement('div');
-  Object.assign(fill.style, {
-    height: '100%', width: '100%',
-    transformOrigin: 'left center', transform: 'scaleX(0)',
-    background: 'linear-gradient(90deg, rgba(255,150,80,0.15), rgba(255,150,80,0.7))',
-    transition: 'transform 280ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  progressBar.appendChild(fill);
-  progressFill = fill;
-  document.body.appendChild(progressBar);
-  return loadingMark;
-}
-
-let progressBar: HTMLDivElement | null = null;
-let progressFill: HTMLDivElement | null = null;
-let markLabel: HTMLSpanElement | null = null;
-
-/** Drive the descent loading bar, 0..1 (the warmup reports its batch progress).
- *  No-op until the loading mark exists — fast floors never show it. Progress is
- *  also the cover watchdog's heartbeat: a warm that reports is a warm that's
- *  alive, so the strand-guard must not reveal over it. */
+/** Drive the descent loading progress, 0..1 (the warmup reports its batch
+ *  progress): the ember burns along the rule. No-op until the loading view is
+ *  up — fast floors never show it. Progress is also the cover watchdog's
+ *  heartbeat: a warm that reports is a warm that's alive. */
 export function setDescentProgress(t: number): void {
   descentWorkHeartbeat();
-  if (!progressFill || !progressBar) return;
-  progressBar.style.opacity = '0.8';
+  if (!screen || !screen.classList.contains('loading') || !burnEl || !ruleEl || !pctEl) return;
   const c = Math.max(0, Math.min(1, t));
-  progressFill.style.transform = `scaleX(${c})`;
+  burnEl.style.width = `${c * 100}%`;
+  ruleEl.classList.toggle('lit', c >= 0.5);
   // A long warm (cold cache after an update) can hold this cover for a minute
-  // on a phone — a bare 2px bar read as "black screen, frozen" (2026-07-04
-  // report). Say where it is, plainly.
-  if (markLabel) markLabel.textContent = `descending · ${Math.round(c * 100)}%`;
+  // on a phone; a bare line read as "frozen" (2026-07-04 report). Say where it is.
+  pctEl.textContent = `${Math.round(c * 100)}%`;
+  pctEl.classList.add('on');
 }
 
 // ── Cover watchdog heartbeat ────────────────────────────────────────────────
@@ -244,25 +227,25 @@ if (typeof document !== 'undefined') {
 }
 
 function showLoadingMark(): void {
-  const el = ensureLoadingMark();
-  // Reset the bar + label for this descent (the element is reused across loads).
-  if (progressFill) { progressFill.style.transition = 'none'; progressFill.style.transform = 'scaleX(0)'; void progressFill.offsetWidth; progressFill.style.transition = 'transform 280ms ease-out'; }
-  if (markLabel) markLabel.textContent = 'descending';
-  el.style.opacity = '0.55';
-  // Slow breathe so it reads as alive, not a spinner — matches the dungeon's
-  // unhurried tone. Web Animations API, cancelled when we hide.
-  el.getAnimations().forEach((a) => a.cancel());
-  el.animate(
-    [{ opacity: 0.18 }, { opacity: 0.6 }, { opacity: 0.18 }],
-    { duration: 2200, iterations: Infinity, easing: 'ease-in-out' },
-  );
+  const el = ensureTitleCard();
+  if (titleEl) titleEl.textContent = pendingCard?.title ?? '';
+  if (subtitleEl) subtitleEl.textContent = pendingCard?.subtitle ?? '';
+  if (titleEl) titleEl.style.display = pendingCard ? '' : 'none';
+  if (subtitleEl) subtitleEl.style.display = pendingCard?.subtitle ? '' : 'none';
+  if (lineEl) lineEl.textContent = pickLine();
+  if (burnEl) { burnEl.style.transition = 'none'; burnEl.style.width = '0'; void burnEl.offsetWidth; burnEl.style.transition = ''; }
+  ruleEl?.classList.remove('lit');
+  if (pctEl) { pctEl.textContent = ''; pctEl.classList.remove('on'); }
+  el.classList.add('loading');
+  el.style.transition = 'opacity 400ms ease-out';
+  el.style.opacity = '1';
 }
 
 function hideLoadingMark(): void {
-  if (progressBar) progressBar.style.opacity = '0';
-  if (!loadingMark) return;
-  loadingMark.getAnimations().forEach((a) => a.cancel());
-  loadingMark.style.opacity = '0';
+  if (!screen) return;
+  screen.classList.remove('loading');
+  // No title to hold (a safe room): the whole view goes with the black.
+  if (!pendingCard) { screen.style.transition = 'opacity 320ms ease-out'; screen.style.opacity = '0'; }
 }
 
 /** Reveal the new level when `ready` resolves — or immediately if it's not a
@@ -284,17 +267,24 @@ export function holdCover(): void {
   cover.style.opacity = '1';
 }
 
-export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () => void): void {
+export function revealWhenReady(
+  ready?: Promise<unknown> | void,
+  onReveal?: () => void,
+  /** The title the reveal raises, so the loading view can say it while it waits. */
+  card?: { title: string; subtitle?: string },
+): void {
   // Consume the one-shot here, not in finish(): a reveal that returns early
   // (no promise) still has to clear it, or the flag survives to dress-down the
   // NEXT transition — which would be a real descent.
   const plain = suppressNextMark;
   suppressNextMark = false;
+  pendingCard = card ? { title: card.title, subtitle: card.subtitle ?? '' } : null;
   const finish = (): void => {
     window.clearTimeout(pulseTimer);
     window.clearTimeout(safetyTimer);
     hideLoadingMark();
     onReveal?.();
+    pendingCard = null;
     fadeIn();
   };
   if (!ready || typeof (ready as { then?: unknown }).then !== 'function') { finish(); return; }
@@ -377,9 +367,11 @@ export function suppressNextLoadingMark(): void { suppressNextMark = true; }
 export function showDescentTitle(title: string, subtitle: string = '') {
   if (suppressNext) { suppressNext = false; return; }
   const card = ensureTitleCard();
-  if (titleEl) titleEl.textContent = title;
-  if (subtitleEl) subtitleEl.textContent = subtitle;
-  // Snap to visible — no transition on the rise, only on the fall.
+  card.classList.remove('loading');
+  if (titleEl) { titleEl.textContent = title; titleEl.style.display = ''; }
+  if (subtitleEl) { subtitleEl.textContent = subtitle; subtitleEl.style.display = subtitle ? '' : 'none'; }
+  // Snap to visible (a no-op when the loading view already shows it) — no
+  // transition on the rise, only on the fall.
   card.style.transition = 'opacity 0ms';
   card.style.opacity = '1';
   // Hold a beat past the world fade-in, then fade out.

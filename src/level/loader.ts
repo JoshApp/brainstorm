@@ -348,9 +348,8 @@ export function tickPendingLoad() {
   // you will die with". Generated specs set displayName: undefined, so they are
   // unaffected.
   const floorName = spec.displayName ?? actForDepth(currentDepth).name;
-  revealWhenReady(prewarm, isSafeRoom ? undefined : () => {
-    showDescentTitle(`Depth ${currentDepth}`, floorName);
-  });
+  const card = isSafeRoom ? undefined : { title: `DEPTH ${currentDepth}`, subtitle: floorName };
+  revealWhenReady(prewarm, card ? () => showDescentTitle(card.title, card.subtitle) : undefined, card);
 }
 
 /**

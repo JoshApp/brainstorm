@@ -144,16 +144,29 @@
          from first paint at zero: the boot is never instant, so there is nothing
          to protect against flashing, and a bar that appears late is a bar the
          player catches already part-filled. */
+      /* The logo, its lantern breathing: a warm glow behind the arch. */
+      #boot-loading .boot-logo { position: relative; width: min(340px, 52vw); }
+      #boot-loading .boot-logo::before {
+        content: ''; position: absolute; left: 30%; top: -6%; width: 40%; height: 56%; /* centred on the lantern; no transform: the breathe animation owns it */
+        background: radial-gradient(closest-side, rgba(255, 170, 80, .28), rgba(255, 130, 50, 0));
+        animation: ember-breathe 2.6s ease-in-out infinite;
+      }
+      #boot-loading .boot-logo img { position: relative; display: block; width: 100%; height: auto; user-select: none; }
+      /* The rule under it, the HUD's skull rule, with the ember burning along it. */
       #boot-loading .boot-bar {
-        width: min(220px, 50vw); height: 2px; margin-top: 4px;
-        background: rgba(255, 150, 80, 0.1); overflow: hidden;
+        position: relative; width: min(300px, 50vw); height: 18px; margin-top: 2px; color: #6e5634;
         opacity: 0; transition: opacity 0.4s ease;
       }
+      #boot-loading .boot-bar::before, #boot-loading .boot-bar::after {
+        content: ''; position: absolute; top: 50%; height: 1px; width: calc(50% - 16px); background: rgba(138, 111, 62, .55);
+      }
+      #boot-loading .boot-bar::before { left: 0; } #boot-loading .boot-bar::after { right: 0; }
+      #boot-loading .boot-bar svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
       #boot-loading .boot-bar.on { opacity: 1; }
       #boot-loading .boot-bar-fill {
-        height: 100%; width: 100%;
-        transform: scaleX(0); transform-origin: left center;
-        background: linear-gradient(90deg, rgba(255, 150, 80, 0.25), rgba(255, 150, 80, 0.8));
+        position: absolute; left: 0; top: 50%; height: 1px; width: 100%; margin-top: -0.5px;
+        transform: scaleX(0); transform-origin: left center; z-index: 1;
+        background: linear-gradient(90deg, rgba(160, 70, 20, .5), #ff9a40); box-shadow: 0 0 6px rgba(255, 140, 50, .8);
         transition: transform 0.25s ease-out;
       }
     </style>
@@ -203,13 +216,16 @@
     <canvas id="scene"></canvas>
     <div id="rotate-warning">rotate your phone — descend in landscape</div>
     <div id="boot-loading">
-      <div class="boot-ember"></div>
-      <div class="boot-mark">DELVE</div>
-      <div class="boot-sub">descending</div>
+      <!-- Lamplight: the warm logo, its lantern breathing, over the HUD's skull
+           rule; the ember burns along the rule as the boot completes (the
+           descent screen speaks the same grammar, ui/descent-fade.ts). -->
+      <div class="boot-logo"><img src="/src/assets/ui/delve-logo.webp" alt="DELVE" draggable="false"></div>
       <!-- `on` from first paint: JS module evaluation is ~2s of real boot time that
            the player used to spend looking at a veil with no bar on it. The bar is
            part of the veil, not a thing that appears later. -->
-      <div class="boot-bar on"><div class="boot-bar-fill"></div></div>
+      <div class="boot-bar on"><div class="boot-bar-fill"></div><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M6 1 a5 5 0 0 1 5 5 v1.6 a2.4 2.4 0 0 1 -2.4 2.4 h-5.2 a2.4 2.4 0 0 1 -2.4 -2.4 v-1.6 a5 5 0 0 1 5 -5 z" fill="currentColor"/><circle cx="4" cy="6.4" r="1.1" fill="#0b0705"/><circle cx="8" cy="6.4" r="1.1" fill="#0b0705"/></svg></div>
+      <!-- Empty unless an update is applying: pwa-update.ts writes "reforging" here. -->
+      <div class="boot-sub"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
