@@ -1,6 +1,6 @@
 import { triggerDash } from './dash-input';
 import { getSettings } from '../settings/settings';
-import { isDesktopLike } from './platform';
+import { touchControlsWanted } from './active-device';
 import { isGameControlMode } from './input-mode';
 import { applyThumbRect, thumbRect } from './hud-layout';
 import { isHudEditActive } from '../debug/hud-edit';
@@ -26,8 +26,10 @@ import { isHudEditActive } from '../debug/hud-edit';
 //   SPRINT FOR FREE. DELVE has no sprint at all. Hold-to-run on the button
 //   already in your thumb costs no new control and no new screen real estate.
 //
-// DESKTOP GETS NOTHING. Keys are already bound and a HUD button on a machine
-// with a keyboard is clutter; `isDesktopLike` gates the whole thing.
+// KEYS AND PADS GET NOTHING. Keys and the pad are already bound and a HUD
+// button under them is clutter; `touchControlsWanted` (the device in your
+// hands right now, not what the device could do) gates the whole thing, so a
+// Steam Deck hides it while the pad is in use.
 
 /** Held longer than this and the press is a SPRINT, not a dodge. Short enough
  *  that a panic-tap never accidentally runs, long enough that a deliberate hold
@@ -115,7 +117,7 @@ export function createDodgeButton(): void {
 /** Per-frame: show/hide by setting, and promote a long press to a sprint. */
 export function tickDodgeButton(): void {
   if (!btn) return;
-  const on = !isDesktopLike() && getSettings().dashGesture === 'button';
+  const on = touchControlsWanted() && getSettings().dashGesture === 'button';
   btn.style.display = on ? 'flex' : 'none';
   if (!on) { holding = false; sprinting = false; return; }
   // Live geometry so the size slider (and the DEV drag mode) apply without a

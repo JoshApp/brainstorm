@@ -1,4 +1,4 @@
-import { isDesktopLike } from './platform';
+import { touchControlsWanted } from './active-device';
 import { isGameControlMode } from './input-mode';
 import { deflectOpportunityActive } from '../combat/reactive-defense';
 import { applyThumbRect, thumbRect } from './hud-layout';
@@ -93,7 +93,7 @@ export function createParryButton(): void {
 /** Per-frame: show on touch, and brighten while a deflectable strike is live. */
 export function tickParryButton(): void {
   if (!btn) return;
-  const on = !isDesktopLike();
+  const on = touchControlsWanted();
   btn.style.display = on ? 'flex' : 'none';
   if (!on) return;
   // Re-apply geometry each frame so the size slider (and the DEV drag mode)

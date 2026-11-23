@@ -6,6 +6,8 @@
 // gamepad is in hand. The HUD follows this module; render quality and pointer
 // lock stay on isDesktopLike.
 
+import { isDesktopLike } from './platform';
+
 export type InputDevice = 'touch' | 'keyboard-mouse' | 'gamepad';
 
 let active: InputDevice | null = null;
@@ -27,4 +29,12 @@ export function activeDevice(): InputDevice | null { return active; }
 export function onActiveDeviceChange(fn: (d: InputDevice) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/** Whether the on-screen thumb controls (dodge, parry) should show: on touch,
+ *  and on a touch-capable device before any input. A Steam Deck with the pad
+ *  in hand, or a touch laptop on its keyboard, hides them until a finger
+ *  lands on the glass again. */
+export function touchControlsWanted(): boolean {
+  return active === null ? !isDesktopLike() : active === 'touch';
 }
