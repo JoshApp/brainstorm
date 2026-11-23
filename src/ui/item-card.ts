@@ -16,13 +16,15 @@ export interface ItemCardOpts {
   affixes?: readonly AffixInstance[];
   /** Show a "replaces your equipped …" line for gear (the ground-swap decision). */
   compare?: boolean;
+  /** Draw the name + rarity header (default true). The world tag draws its own. */
+  header?: boolean;
 }
 
 export function buildItemCard(item: ItemSpec, opts: ItemCardOpts = {}): HTMLDivElement {
   const card = document.createElement('div');
   Object.assign(card.style, { display: 'flex', flexDirection: 'column', gap: '5px' } as Partial<CSSStyleDeclaration>);
 
-  card.appendChild(buildDetailsHeader(item));
+  if (opts.header !== false) card.appendChild(buildDetailsHeader(item));
   const flavor = buildFlavorLine(item);
   if (flavor) card.appendChild(flavor);
   for (const line of describeItem(item, opts.affixes ?? [])) card.appendChild(line);

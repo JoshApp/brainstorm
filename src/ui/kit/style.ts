@@ -98,6 +98,45 @@ export function injectKitStyles(): void {
     .lk-notches i.tip { animation: lk-breathe 1.7s ease-in-out infinite; box-shadow: 0 0 10px rgba(255, 150, 50, .9); }
     .lk-wick { line-height: 0; filter: drop-shadow(0 0 4px rgba(255, 140, 50, .25)); }
     .lk-offer:disabled .lk-offer-label { text-decoration: line-through rgba(160, 130, 100, .5); }
+
+    /* WORLD TAGS: what hangs over a thing in the dungeon. No box: a name over a
+       rule bearing the domain's mark (the depth title's grammar), on a feathered
+       pool of dark so it reads over any floor, hung on a thread of light down to
+       the thing itself. --tc is the thing's colour: its domain, or the stakes. */
+    .lk-wtag {
+      --tc: 200, 180, 150;
+      display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px;
+      padding: 8px 14px; border-radius: 18px;
+      background: rgba(7, 5, 3, .84); box-shadow: 0 0 22px 16px rgba(7, 5, 3, .84);
+      color: #ecd8bc; font: 13px/1.4 'EB Garamond', 'Iowan Old Style', serif;
+    }
+    .lk-wt-body { overflow: hidden; }
+    .lk-wt-cut { -webkit-mask-image: linear-gradient(#000 calc(100% - 34px), transparent); mask-image: linear-gradient(#000 calc(100% - 34px), transparent); }
+    .lk-wt-name { font: 600 13px/1.25 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .14em; text-transform: uppercase;
+      color: #f3dcb6; text-shadow: 0 0 8px rgba(0,0,0,.9), 0 0 14px rgba(var(--tc), .4); }
+    .lk-wt-rule { width: 120px; max-width: 70%; height: 16px; display: flex; align-items: center; gap: 7px; }
+    .lk-wt-rule::before, .lk-wt-rule::after { content: ''; flex: 1; height: 1px; background: rgba(var(--tc), .6); }
+    .lk-wt-rule img { width: 16px; height: 16px; object-fit: contain; filter: drop-shadow(0 0 4px rgba(var(--tc), .8)); }
+    .lk-wt-rule.plain { width: 70px; gap: 0; }
+    .lk-wt-kind { font: 600 10px/1.2 system-ui, -apple-system, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: rgba(var(--tc), .95); }
+    .lk-wt-body { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 4px; max-width: 300px; }
+    .lk-wt-body > * { max-width: 100%; }
+
+    /* The prompt: [button] icon VERB, the cost under it, and the thread. On
+       touch the verb is the button, so it wears an edge. */
+    .lk-wprompt { --tc: 255, 200, 140; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .lk-wverb { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 12px;
+      font: 600 11px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .22em; color: rgba(var(--tc), 1);
+      background: rgba(7, 5, 3, .72); box-shadow: 0 0 14px 8px rgba(7, 5, 3, .6); border: 1px solid transparent;
+      text-shadow: 0 1px 0 #000; }
+    .lk-wverb svg { width: 18px; height: 18px; }
+    html[data-input="touch"] .lk-wprompt:not(.sealed) .lk-wverb { border-color: rgba(var(--tc), .55); background: linear-gradient(rgba(var(--tc), .10), rgba(var(--tc), .10)), rgba(7, 5, 3, .72); }
+    .lk-wprompt.sealed .lk-wverb { color: rgba(180, 160, 140, .75); }
+    .lk-wcost { font: 700 11px/1 system-ui, -apple-system, sans-serif; letter-spacing: .04em; text-shadow: 0 1px 2px #000; }
+    .lk-wthread { position: absolute; left: 50%; top: 100%; width: 1px; height: 0; pointer-events: none;
+      background: linear-gradient(rgba(var(--tc), .75), rgba(var(--tc), .15)); }
+    .lk-wthread::after { content: ''; position: absolute; left: -3px; bottom: -4px; width: 7px; height: 7px; transform: rotate(45deg);
+      border: 1px solid rgba(var(--tc), .85); box-shadow: 0 0 6px rgba(var(--tc), .8); }
   `;
   document.head.appendChild(st);
   // The charred-edge filter the slab's border is drawn through.

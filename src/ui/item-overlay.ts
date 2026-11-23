@@ -19,9 +19,11 @@ import * as THREE from 'three';
 import { getInRangeInteractable } from '../interactables/system';
 import { interactPromptHeight, interactPromptBottomY } from './interact-label';
 import { buildItemCard } from './item-card';
-import { THEME } from './theme';
 import { isAnyScreenOpen } from './screen-manager';
-import { itemFraming, applyDomainFrame } from './item-framing';
+import { itemFraming } from './item-framing';
+import { injectKitStyles } from './kit/style';
+import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import { hexCss } from '../style/color-utils';
 import { worldToScreen } from './hud';
 import { cachedCanvasRect } from './canvas-rect';
 import type { Interactable } from '../interactables/types';
@@ -32,7 +34,8 @@ let shownId: string | null = null;
 function ensurePanel(): HTMLDivElement {
   if (panel) return panel;
   panel = document.createElement('div');
-  panel.classList.add('game-hud');
+  panel.classList.add('game-hud', 'lk-wtag');
+  injectKitStyles();
   Object.assign(panel.style, {
     position: 'fixed',
     // Anchored each frame above the TAKE prompt using a layout-free transform.
@@ -41,14 +44,8 @@ function ensurePanel(): HTMLDivElement {
     left: '0', top: '0',
     transform: 'translate(-50%, -100%)',
     maxWidth: 'min(320px, 80vw)', width: 'max-content',
-    padding: '9px 13px',
-    background: THEME.panel,
-    border: `1px solid ${THEME.ruleStrong}`,
-    borderRadius: '5px',
-    color: THEME.text, fontFamily: 'serif', fontSize: '12px', lineHeight: '1.4',
     zIndex: '35', pointerEvents: 'none', userSelect: 'none',
     opacity: '0', transition: 'opacity 0.12s ease',
-    boxShadow: '0 4px 18px rgba(0,0,0,0.6)',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(panel);
   return panel;
@@ -87,6 +84,10 @@ const PARKED_BOTTOM_FRAC = 0.52;
 const DEFAULT_LABEL_OFFSET_Y = 0.6;   // matches interact-label's VERTICAL_OFFSET_WORLD
 // Keep the card clear of the depth header (top) and inside the side margins.
 const TOP_MARGIN = 52;
+/** On a short screen the depth title sits at the left, clear of a centred card. */
+const TOP_MARGIN_SHORT = 10;
+/** The least a cut card keeps: name, rule, kind and a line of flavour. */
+const MIN_CARD_PX = 110;
 const SIDE_MARGIN = 8;
 
 const _tmp = new THREE.Vector3();
@@ -97,10 +98,6 @@ function anchorAbovePrompt(
   p: HTMLDivElement, focus: Interactable, camera: THREE.Camera, canvas: HTMLCanvasElement,
 ): void {
   const vw = window.innerWidth, vh = window.innerHeight;
-  // applyDomainFrame() sets position:relative on the panel (to anchor its
-  // watermark) — re-assert fixed so the card stays viewport-anchored, not in
-  // document flow. (Absolute watermark children still anchor to a fixed panel.)
-  p.style.position = 'fixed';
   // Same world point the TAKE prompt projects to (object pivot + label offset).
   const offsetY = focus.labelOffsetY ?? DEFAULT_LABEL_OFFSET_Y;
   _tmp.set(focus.position.x, focus.position.y + offsetY, focus.position.z);
@@ -131,27 +128,77 @@ function anchorAbovePrompt(
     anchorBottomY = promptBottom - promptH - STACK_GAP;
   }
 
+  // Never over the prompt: the card's foot stays above the prompt's head.
+  const shown = interactPromptHeight() > 0;
+  if (shown) anchorBottomY = Math.min(anchorBottomY, promptBottom - promptH - STACK_GAP);
+
+  // A short screen (a phone on its side) has less room above the prompt than
+  // a full card needs. The card is cut to the room there is and fades out at
+  // the cut, rather than being pushed down over the prompt: what it does
+  // first (name, kind, flavour, the first effects) stays; the rest is in the
+  // satchel once taken.
+  const top = vh < 500 ? TOP_MARGIN_SHORT : TOP_MARGIN;
+  const room = Math.max(MIN_CARD_PX, anchorBottomY - top);
+  const body = p.querySelector<HTMLElement>('.lk-wt-body');
+  if (body) {
+    const headH = p.offsetHeight - body.offsetHeight;
+    const bodyRoom = Math.max(MIN_CARD_PX - headH, room - headH);
+    body.style.maxHeight = `${Math.max(0, bodyRoom)}px`;
+    body.classList.toggle('lk-wt-cut', body.scrollHeight > bodyRoom + 1);
+  }
+
   // Clamp the card's real box on-screen.
   const cw = p.offsetWidth, ch = p.offsetHeight;
   const halfW = cw / 2;
   anchorX = Math.max(halfW + SIDE_MARGIN, Math.min(vw - halfW - SIDE_MARGIN, anchorX));
   // The card hangs upward (translate -100% Y), so its top = anchorBottomY - ch.
   // Keep that below the header; and never let its bottom slide off-screen.
-  if (anchorBottomY - ch < TOP_MARGIN) anchorBottomY = TOP_MARGIN + ch;
+  if (anchorBottomY - ch < top) anchorBottomY = top + ch;
   anchorBottomY = Math.min(anchorBottomY, vh - SIDE_MARGIN);
 
   p.style.transform = `translate(${anchorX}px, ${anchorBottomY}px) translate(-50%, -100%)`;
 }
 
-function hide(p: HTMLDivElement): void {
-  if (p.style.opacity !== '0') { p.style.opacity = '0'; shownId = null; }
+/** The world tag for an item (Lamplight): its name over a rule bearing its
+ *  domain's mark, what it is, then the card's body (flavour, what it does, what
+ *  it replaces) on the tag's pool of dark, so it reads over any floor. A plain
+ *  thing gets a plain rule and no colour: the absence is meaningful. */
+function buildTag(item: ItemSpec, affixes: Interactable['previewAffixes']): HTMLElement[] {
+  const f = itemFraming(item);
+  const p = ensurePanel();
+  p.style.setProperty('--tc', f ? hexTriplet(f.hex) : '200, 180, 150');
+
+  const name = document.createElement('div');
+  name.className = 'lk-wt-name lk-burn';
+  name.textContent = item.name;
+
+  const rule = document.createElement('div');
+  rule.className = f ? 'lk-wt-rule' : 'lk-wt-rule plain';
+  if (f?.art) {
+    const img = document.createElement('img');
+    img.src = f.art; img.alt = '';
+    rule.appendChild(img);
+  }
+
+  const rarity = item.rarity ?? 'mundane';
+  const kind = document.createElement('div');
+  kind.className = 'lk-wt-kind';
+  const r = document.createElement('span');
+  r.textContent = rarity;
+  r.style.color = hexCss(RARITY_COLORS[rarity]);
+  kind.append(r, ` · ${item.kind}${f && rarity !== 'cursed' ? ` · ${f.label}` : ''}`);
+
+  const body = buildItemCard(item, { affixes, compare: true, header: false });
+  body.classList.add('lk-wt-body');
+  return [name, rule, kind, body];
 }
 
-/** Restore the panel's neutral border/shadow before a (re-)frame — the domain
- *  frame overwrites these, so a plain (domainless) item must fall back to them. */
-function resetPanelChrome(p: HTMLDivElement): void {
-  p.style.border = `1px solid ${THEME.ruleStrong}`;
-  p.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)';
+function hexTriplet(hex: number): string {
+  return `${(hex >> 16) & 255}, ${(hex >> 8) & 255}, ${hex & 255}`;
+}
+
+function hide(p: HTMLDivElement): void {
+  if (p.style.opacity !== '0') { p.style.opacity = '0'; shownId = null; }
 }
 
 /** Per-frame: float the focused item's full card above it, or fade out. */
@@ -164,13 +211,7 @@ export function tickItemOverlay(camera: THREE.Camera, canvas: HTMLCanvasElement)
   // Rebuild only when the focused item changes (cheap steady state).
   if (shownId !== item.id) {
     shownId = item.id;
-    p.replaceChildren(buildItemCard(item, { affixes: focus?.previewAffixes, compare: true }));
-    // DRESS the preview in the item's domain — the frame/wash/watermark take the
-    // domain colour so a blood relic glows crimson before it's read. Reset the
-    // panel's default chrome first (replaceChildren cleared old decoration).
-    resetPanelChrome(p);
-    const f = itemFraming(item);
-    if (f) applyDomainFrame(p, f);
+    p.replaceChildren(...buildTag(item, focus?.previewAffixes));
   }
 
   // Ride above the TAKE prompt, clamped on-screen, then fade in.

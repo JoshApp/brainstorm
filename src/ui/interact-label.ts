@@ -7,18 +7,17 @@ import { getBinding, labelForCode, onBindingsChanged } from '../controls/keybind
 import { onActiveDeviceChange } from '../controls/active-device';
 import { promptDevice } from './kit/prompts';
 import { injectKitStyles } from './kit/style';
-import { FONT_TITLE } from './theme';
 
 // Prompt colour by KIND — mirrors the transaction grammar so the prompt agrees
 // with the altar's own glow (content/transactions.ts: bargain=violet/cursed,
 // trial=blood-red, unknown=pale moonlight). 'neutral' is the safe amber default;
 // 'sealed' is the muted locked-gray. The player reads the stakes at a glance.
-const PROMPT_TINTS: Record<string, { color: string; border: string; bg: string; keycapBg: string }> = {
-  neutral: { color: 'rgba(255, 220, 180, 0.95)', border: 'rgba(255, 200, 130, 0.40)', bg: 'rgba(20, 12, 8, 0.50)',  keycapBg: 'rgba(255, 200, 130, 0.12)' },
-  bargain: { color: 'rgba(214, 150, 232, 0.97)', border: 'rgba(180, 110, 210, 0.50)', bg: 'rgba(22, 10, 26, 0.55)', keycapBg: 'rgba(190, 120, 220, 0.14)' },
-  trial:   { color: 'rgba(255, 132, 110, 0.98)', border: 'rgba(230, 70, 50, 0.55)',   bg: 'rgba(28, 8, 6, 0.55)',   keycapBg: 'rgba(255, 90, 70, 0.14)' },
-  unknown: { color: 'rgba(184, 208, 228, 0.96)', border: 'rgba(150, 185, 215, 0.45)', bg: 'rgba(12, 16, 22, 0.52)', keycapBg: 'rgba(170, 200, 225, 0.12)' },
-  sealed:  { color: 'rgba(180, 160, 140, 0.70)', border: 'rgba(140, 130, 120, 0.35)', bg: 'rgba(20, 18, 16, 0.45)', keycapBg: 'rgba(160, 150, 140, 0.10)' },
+const PROMPT_TINTS: Record<string, string> = {
+  neutral: '255, 200, 140',
+  bargain: '200, 130, 225',
+  trial:   '240, 95, 75',
+  unknown: '165, 198, 225',
+  sealed:  '160, 150, 140',
 };
 
 // Floating interact label — projects an icon + label OVER the world
@@ -55,18 +54,37 @@ let iconEl: HTMLDivElement | null = null;
 let textEl: HTMLDivElement | null = null;
 let keycapEl: HTMLDivElement | null = null;  // desktop-only "E" badge
 let costEl: HTMLDivElement | null = null;     // numeric cost chip ("−4 ❤", "10 ◎")
+let threadEl: HTMLDivElement | null = null;   // the thread of light down to the thing
 let currentLabel: string | null = null;
 let currentCostKey: string | null = null;
 let shown = false;  // mirrors opacity 1/0 so we can toggle pointerEvents
 let tapHandler: (() => void) | null = null;
 
 const tmpVec = new THREE.Vector3();
+/** Where the thread ends on the thing: this far above its pivot, m. */
+const THREAD_FOOT_WORLD = 0.12;
+/** A thread longer than this is cut short: past it the prompt reads as
+ *  belonging to the thread, not the thing. */
+const THREAD_MAX_PX = 140;
 /** Keep the prompt this far from any screen edge. */
 const EDGE_MARGIN = 10;
+/** The lowest the prompt's foot may sit: above the hearts and stamina, which
+ *  own the bottom centre. A prompt clamped lower sat on top of them. */
+const BOTTOM_CLEAR = 64;
 /** Where the prompt's bottom actually ended up this frame, after clamping —
  *  read by the item card so it stacks on the REAL prompt rather than on where
  *  the prompt would have been if the viewport were infinite. */
 let lastBottomY = 0;
+
+let sealedNow = false;
+function refreshKeycap(): void {
+  if (!keycapEl) return;
+  const d = promptDevice();
+  if (sealedNow || d === 'touch') { keycapEl.style.display = 'none'; return; }
+  keycapEl.style.display = '';
+  if (d === 'gamepad') { keycapEl.className = 'lk-pad lk-a'; keycapEl.textContent = 'A'; }
+  else { keycapEl.className = 'lk-key'; keycapEl.textContent = labelForCode(getBinding('interact')); }
+}
 
 /** Register what happens when the floating prompt is tapped. main.ts wires
  *  this to "use the currently in-range interactable" (same gating + the
@@ -77,8 +95,9 @@ export function setInteractLabelTapHandler(fn: () => void): void {
 
 export function ensureInteractLabel(): void {
   if (labelEl) return;
+  injectKitStyles();
   labelEl = document.createElement('div');
-  labelEl.id = 'interact-label'; labelEl.classList.add('game-hud');
+  labelEl.id = 'interact-label'; labelEl.classList.add('game-hud', 'lk-wprompt');
   Object.assign(labelEl.style, {
     position: 'fixed',
     top: '0',
@@ -86,25 +105,6 @@ export function ensureInteractLabel(): void {
     transform: 'translate(-50%, -100%)',  // anchor below the label's
                                           // bottom-center so it floats
                                           // ABOVE the target point
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '2px',
-    // Roomy padding so the prompt is a comfortable thumb-sized tap target,
-    // not a pixel-thin strip.
-    padding: '9px 16px 10px',
-    background: 'rgba(20, 12, 8, 0.5)',
-    border: '1px solid rgba(255, 200, 130, 0.4)',
-    borderRadius: '4px',
-    backdropFilter: 'blur(2px)',
-    WebkitBackdropFilter: 'blur(2px)',
-    color: 'rgba(255, 220, 180, 0.95)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    fontWeight: '600',
-    letterSpacing: '0.22em',
-    textShadow: '0 1px 0 rgba(0,0,0,0.8)',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
     zIndex: '11',
     pointerEvents: 'none',  // toggled to 'auto' only while visible
     touchAction: 'manipulation',
@@ -125,75 +125,37 @@ export function ensureInteractLabel(): void {
   labelEl.addEventListener('pointerup', fire);
   labelEl.addEventListener('click', (e) => { e.stopPropagation(); });
 
-  iconEl = document.createElement('div');
-  Object.assign(iconEl.style, {
-    width: '22px',
-    height: '22px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  });
-  labelEl.appendChild(iconEl);
-
-  // Action row: [keycap] VERB. On touch the keycap is absent and the row
-  // is just the verb; on desktop the keycap leads so the prompt reads
-  // "<E> OPEN".
+  // The verb row (Lamplight): [button] icon VERB. The button is the glyph of
+  // the device in your hands: the bound key on a keyboard, A on a controller,
+  // nothing on touch (the verb itself is the button, and wears an edge). It
+  // follows device changes and rebinds, so a Deck picked up mid-floor shows A
+  // without a reload. Nothing is shown on SEALED: there is nothing to press.
   const actionRow = document.createElement('div');
-  Object.assign(actionRow.style, {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  } as Partial<CSSStyleDeclaration>);
-
-  // The button that takes this, in the glyph of the device in your hands
-  // (Lamplight): the bound key on a keyboard, A on a controller, nothing on
-  // touch (the prompt itself is the button). Follows device changes and rebinds,
-  // so a Deck picked up mid-floor shows A without a reload.
-  injectKitStyles();
+  actionRow.className = 'lk-wverb';
   keycapEl = document.createElement('div');
-  const refreshKeycap = (): void => {
-    if (!keycapEl) return;
-    const d = promptDevice();
-    if (d === 'gamepad') {
-      keycapEl.className = 'lk-pad lk-a';
-      keycapEl.textContent = 'A';
-      keycapEl.style.display = '';
-    } else if (d === 'keyboard-mouse') {
-      keycapEl.className = 'lk-key';
-      keycapEl.textContent = labelForCode(getBinding('interact'));
-      keycapEl.style.display = '';
-    } else {
-      keycapEl.style.display = 'none';
-    }
-  };
   refreshKeycap();
   onBindingsChanged(refreshKeycap);
   onActiveDeviceChange(refreshKeycap);
   actionRow.appendChild(keycapEl);
-
+  iconEl = document.createElement('div');
+  Object.assign(iconEl.style, { display: 'flex', alignItems: 'center', lineHeight: '0' });
+  actionRow.appendChild(iconEl);
   textEl = document.createElement('div');
-  Object.assign(textEl.style, {
-    fontFamily: FONT_TITLE,
-    fontSize: '11px',
-    lineHeight: '1',
-  });
   actionRow.appendChild(textEl);
-
   labelEl.appendChild(actionRow);
 
   // Cost chip — a second line under the verb stating the price (−4 ❤, 10 ◎,
   // give 🔑, peril). Hidden when the interactable is free. Reading the cost
   // BEFORE committing is the whole point (the old UI only hinted via colour).
   costEl = document.createElement('div');
-  Object.assign(costEl.style, {
-    fontSize: '11px',
-    fontWeight: '700',
-    letterSpacing: '0.03em',
-    lineHeight: '1',
-    marginTop: '3px',
-    display: 'none',
-  } as Partial<CSSStyleDeclaration>);
+  costEl.className = 'lk-wcost';
+  costEl.style.display = 'none';
   labelEl.appendChild(costEl);
+
+  // The thread of light from the prompt down to the thing itself.
+  threadEl = document.createElement('div');
+  threadEl.className = 'lk-wthread';
+  labelEl.appendChild(threadEl);
 
   document.body.appendChild(labelEl);
 }
@@ -242,33 +204,19 @@ export function updateInteractLabel(
     currentLabel = target.promptLabel;
     const kind = iconKindFromLabel(target.promptLabel);
     iconEl.innerHTML = iconSvg(kind);
-    const svg = iconEl.firstElementChild as SVGElement | null;
-    if (svg) {
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-    }
-    // Show the verb text under every icon, including TAKE — the hand
+    // Show the verb text beside every icon, including TAKE — the hand
     // icon reads on its own but Josh prefers the explicit label so the
     // action stays diegetic-but-readable.
     textEl.textContent = target.promptLabel.toUpperCase();
-    textEl.style.display = 'block';
     // Colour the prompt by its KIND so the player reads the stakes before
     // committing — a cursed bargain or a blood trial mustn't look like a plain
     // TAKE. SEALED stays its own muted gray (derived from the label, not a
     // kind). See Interactable.promptKind + the transaction grammar.
-    const sealed = target.promptLabel.toUpperCase() === 'SEALED';
-    const tintKind = sealed ? 'sealed' : (target.promptKind ?? 'neutral');
-    const tint = PROMPT_TINTS[tintKind] ?? PROMPT_TINTS.neutral;
-    labelEl.style.color = tint.color;
-    labelEl.style.borderColor = tint.border;
-    labelEl.style.background = tint.bg;
-    // The keycap promises a key DOES something — hide it on SEALED (the
-    // bound key won't open a locked door), show + tint it to match otherwise.
-    if (keycapEl) {
-      keycapEl.style.display = sealed ? 'none' : 'inline-flex';
-      keycapEl.style.borderColor = tint.border;
-      keycapEl.style.background = tint.keycapBg;
-    }
+    sealedNow = target.promptLabel.toUpperCase() === 'SEALED';
+    const tintKind = sealedNow ? 'sealed' : (target.promptKind ?? 'neutral');
+    labelEl.style.setProperty('--tc', PROMPT_TINTS[tintKind] ?? PROMPT_TINTS.neutral);
+    labelEl.classList.toggle('sealed', sealedNow);
+    refreshKeycap();
   }
 
   // Project the target's world position to screen-space NDC. Use the
@@ -295,12 +243,24 @@ export function updateInteractLabel(
   const h = labelEl.offsetHeight || 0;
   const w = labelEl.offsetWidth || 0;
   const vw = window.innerWidth, vh = window.innerHeight;
-  const y = Math.max(h + EDGE_MARGIN, Math.min(vh - EDGE_MARGIN, p.y));
+  const y = Math.max(h + EDGE_MARGIN, Math.min(vh - BOTTOM_CLEAR, p.y));
   const x = Math.max(w / 2 + EDGE_MARGIN, Math.min(vw - w / 2 - EDGE_MARGIN, p.x));
   lastBottomY = y;
   // Keep layout at (0,0); the item overlay reads this prompt's height next.
   // Changing left/top here forced a synchronous layout on that read each frame.
   labelEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  // The thread: from the prompt's foot down to the thing (just above its pivot),
+  // drawn only when the thing is below the prompt and the prompt hasn't been
+  // pushed sideways by the edge clamp.
+  if (threadEl) {
+    tmpVec.set(target.position.x, target.position.y + THREAD_FOOT_WORLD, target.position.z);
+    const foot = worldToScreen(tmpVec, camera, cachedCanvasRect(canvas));
+    // A foot below the screen still gets its thread, run to the edge.
+    const len = Math.min(foot.y, vh) - y;
+    const ok = !foot.behind && Math.abs(foot.x - x) < 6 && len > 10;
+    threadEl.style.height = ok ? `${Math.min(len, THREAD_MAX_PX) - 4}px` : '0';
+    threadEl.style.display = ok ? '' : 'none';
+  }
   if (!shown) {
     shown = true;
     labelEl.style.opacity = '1';
