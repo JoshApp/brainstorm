@@ -1,4 +1,5 @@
 import { on } from '../broadcast/event-bus';
+import coinUrl from '../assets/ui/hud/coin.webp?url';
 import { xpStore, goldStore, type XpState } from '../state/hud-stores';
 import { LEVELS_ENABLED } from '../state/leveling';
 import { getCount } from '../player/inventory';
@@ -19,7 +20,8 @@ import { projectToScreen, flyToHud } from './fly-to-hud';
 //   │ └──────────────────────────────────────────────────────────┘ │
 //   └──────────────────────────────────────────────────────────────┘
 
-const SVG_COIN = `<svg width="14" height="14" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:5px;"><circle cx="8" cy="8" r="6.5" fill="rgba(200,140,40,0.95)" stroke="rgba(255,200,90,0.95)" stroke-width="1"/><circle cx="8" cy="8" r="3.5" fill="none" stroke="rgba(255,220,140,0.7)" stroke-width="1"/></svg>`;
+// The carved skull coin (Lamplight art pass, src/assets/ui/hud/coin.webp).
+const SVG_COIN = `<img src="${coinUrl}" alt="" style="width:20px;height:20px;object-fit:contain;display:inline-block;vertical-align:-5px;margin-right:6px;filter:drop-shadow(0 0 4px rgba(255,190,80,0.35))">`;
 
 // Small brass key glyph — matches the coin's inline-icon style. Shown beside
 // the gold count when the player is carrying skeleton keys.

@@ -1,4 +1,5 @@
 import { onEquipmentChanged } from '../player/equipment';
+import satchelUrl from '../assets/ui/hud/satchel.webp?url';
 import { onInventoryChanged } from '../player/inventory';
 import { onPlayerStatsChanged } from '../state/player-stats';
 import { ITEMS } from '../content/items';
@@ -50,30 +51,10 @@ export function createInventoryPanel() {
   // ARC over the body, which read as a padlock SHACKLE ("feature locked"). A
   // dominant flap + side straps is unmistakably a bag. Same leather/gold palette
   // as the Minimal hearts (filled dark leather, hairline gold edge, gold buckle).
-  openButton.innerHTML = `
-    <svg viewBox="0 0 24 24" width="22" height="22"
-         style="display:block;margin:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.85));">
-      <!-- Carry straps — split to the sides (NOT a centred shackle arc) -->
-      <path d="M5.2 10 Q3.8 7.6 4.6 5.4" fill="none"
-            stroke="rgba(150, 100, 60, 0.9)" stroke-width="1.2" stroke-linecap="round" />
-      <path d="M18.8 10 Q20.2 7.6 19.4 5.4" fill="none"
-            stroke="rgba(150, 100, 60, 0.9)" stroke-width="1.2" stroke-linecap="round" />
-      <!-- Body — wider than tall, rounded base -->
-      <path d="M4.5 10.5 L19.5 10.5 L19.5 18 Q19.5 20.5 17 20.5 L7 20.5 Q4.5 20.5 4.5 18 Z"
-            fill="rgba(40, 26, 18, 0.92)"
-            stroke="rgba(200, 150, 80, 0.5)" stroke-width="1.1" stroke-linejoin="round" />
-      <!-- Flap folding over the front, dipping to a point in the middle -->
-      <path d="M3.8 8 Q3.8 6.9 5 6.9 L19 6.9 Q20.2 6.9 20.2 8 L20.2 11.6 Q20.2 12.6 19.4 13 L12 15 L4.6 13 Q3.8 12.6 3.8 11.6 Z"
-            fill="rgba(52, 34, 22, 0.95)"
-            stroke="rgba(200, 150, 80, 0.6)" stroke-width="1.1" stroke-linejoin="round" />
-      <!-- Buckle strap from flap down to the body -->
-      <rect x="10.9" y="12.6" width="2.2" height="4" rx="0.4"
-            fill="rgba(34, 22, 15, 0.95)" stroke="rgba(200, 150, 80, 0.35)" stroke-width="0.5" />
-      <!-- Buckle — gold accent, the hot spot -->
-      <rect x="10.4" y="14" width="3.2" height="2.2" rx="0.4"
-            fill="rgba(230, 180, 90, 0.95)" stroke="rgba(80, 50, 20, 0.85)" stroke-width="0.4" />
-    </svg>
-  `;
+  // The satchel mark (Lamplight art pass): a slumped leather bag with an iron
+  // buckle, drawn by ChatGPT and keyed; it reads as "your things" at thumb size.
+  openButton.innerHTML = `<img src="${satchelUrl}" alt="" draggable="false"
+    style="display:block;width:30px;height:30px;margin:auto;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.85));">`;
   Object.assign(openButton.style, {
     position: 'fixed',
     top: 'calc(16px + env(safe-area-inset-top, 0px))',
@@ -81,8 +62,9 @@ export function createInventoryPanel() {
     width: '40px',
     height: '40px',
     borderRadius: '50%',
-    border: '1px solid rgba(180, 130, 90, 0.5)',
-    background: 'rgba(20, 14, 10, 0.75)',
+    border: '1px solid rgba(180, 130, 80, 0.55)',
+    background: 'radial-gradient(circle at 50% 45%, rgba(40, 26, 16, 0.92), rgba(10, 6, 4, 0.85))',
+    boxShadow: '0 0 14px rgba(255, 140, 50, 0.16), inset 0 -3px 8px rgba(0, 0, 0, 0.6)',
     color: TEXT_PRIMARY,
     padding: '0',
     cursor: 'pointer',

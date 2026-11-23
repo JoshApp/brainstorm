@@ -1,6 +1,18 @@
 import { get } from '../ecs/world';
 import { BUFFS } from '../content/buffs';
 import { FONT_UI } from './hud';
+import st_bleed from '../assets/ui/status/bleed.webp?url';
+import st_burn from '../assets/ui/status/burn.webp?url';
+import st_poison from '../assets/ui/status/poison.webp?url';
+import st_chill from '../assets/ui/status/chill.webp?url';
+import st_sunder from '../assets/ui/status/sunder.webp?url';
+import st_dread from '../assets/ui/status/dread.webp?url';
+import st_cursed from '../assets/ui/status/cursed.webp?url';
+import st_berserk from '../assets/ui/status/berserk.webp?url';
+import st_bloodrush from '../assets/ui/status/bloodrush.webp?url';
+import st_bloodthirst from '../assets/ui/status/bloodthirst.webp?url';
+import st_ironhide from '../assets/ui/status/ironhide.webp?url';
+import st_regen_pulse from '../assets/ui/status/regen-pulse.webp?url';
 
 // ── WHAT IS ON YOU RIGHT NOW ─────────────────────────────────────────────────
 //
@@ -35,6 +47,28 @@ import { FONT_UI } from './hud';
 // appears once, above the row, when a status lands or refreshes — and fades.
 // The dungeon tells you what it did to you, once, and then expects you to know.
 
+// ── THE CARVED SYMBOLS (Lamplight, 2026-11-23) ────────────────────────────────
+//
+// A status with drawn art shows it instead of the coloured square: harmful
+// statuses sit in an iron diamond, helpful ones in a bronze ring, so good and bad
+// read apart before the symbol is identified (the job the top/bottom edge did).
+// The drain becomes a line burning down under the symbol, the count a numeral at
+// its corner. A status without art keeps the old chip.
+const STATUS_ART: Record<string, string> = {
+  'bleed': st_bleed,
+  'burn': st_burn,
+  'poison': st_poison,
+  'chill': st_chill,
+  'sunder': st_sunder,
+  'dread': st_dread,
+  'cursed': st_cursed,
+  'berserk': st_berserk,
+  'bloodrush': st_bloodrush,
+  'bloodthirst': st_bloodthirst,
+  'ironhide': st_ironhide,
+  'regen-pulse': st_regen_pulse,
+};
+
 interface BuffChip {
   root: HTMLDivElement;
   /** Drains downward as the buff expires. */
@@ -46,6 +80,8 @@ interface BuffChip {
   lastStacks: number;
   /** Last width written, so a steady state costs no DOM writes. */
   lastPct: number;
+  /** Carved-art chip: the drain is a horizontal line, not a fill. */
+  art: boolean;
 }
 
 let container: HTMLDivElement | null = null;
@@ -134,7 +170,7 @@ export function updateBuffBar() {
 
     let chip = chips.get(active.specId);
     if (!chip) {
-      chip = createChip(color, spec.harmful === true);
+      chip = createChip(color, spec.harmful === true, STATUS_ART[active.specId]);
       container.appendChild(chip.root);
       chip.initialDuration = active.remaining;
       chips.set(active.specId, chip);
@@ -154,7 +190,8 @@ export function updateBuffBar() {
       : 0;
     const pct = Math.round(frac * 100);
     if (pct !== chip.lastPct) {
-      chip.drain.style.height = `${pct}%`;
+      if (chip.art) chip.drain.style.width = `${pct}%`;
+      else chip.drain.style.height = `${pct}%`;
       chip.lastPct = pct;
     }
 
@@ -169,7 +206,8 @@ export function updateBuffBar() {
       chip.count.style.display = many ? 'flex' : 'none';
       // A compounding status gets a hotter rim, so the chip reads as WORSE
       // before you have read the numeral off it.
-      chip.root.style.boxShadow = many
+      if (chip.art) chip.root.style.filter = many ? `drop-shadow(0 0 ${3 + Math.min(active.stacks, 5)}px ${hex(color)})` : 'none';
+      else chip.root.style.boxShadow = many
         ? `0 0 ${6 + Math.min(active.stacks, 5) * 2}px ${hex(color)}aa`
         : `0 0 6px ${hex(color)}44`;
     }
@@ -192,7 +230,43 @@ function flashRefresh(chip: BuffChip, color: number) {
   void color;
 }
 
-function createChip(color: number, harmful: boolean): BuffChip {
+function createArtChip(color: number, art: string): BuffChip {
+  const c = hex(color);
+  const root = document.createElement('div');
+  Object.assign(root.style, {
+    position: 'relative', width: `${ART_SIZE}px`, height: `${ART_SIZE + 5}px`, flexShrink: '0',
+  } as Partial<CSSStyleDeclaration>);
+  const img = document.createElement('img');
+  img.src = art;
+  img.alt = '';
+  Object.assign(img.style, {
+    display: 'block', width: `${ART_SIZE}px`, height: `${ART_SIZE}px`, objectFit: 'contain',
+    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.85))',
+  } as Partial<CSSStyleDeclaration>);
+  // Time left: a line under the symbol, burning down from the right.
+  const track = document.createElement('div');
+  Object.assign(track.style, {
+    position: 'absolute', left: '20%', right: '20%', bottom: '0', height: '2px', background: 'rgba(0,0,0,0.6)',
+  } as Partial<CSSStyleDeclaration>);
+  const drain = document.createElement('div');
+  Object.assign(drain.style, {
+    height: '100%', width: '100%', background: c, boxShadow: `0 0 4px ${c}`, transition: 'width 0.12s linear',
+  } as Partial<CSSStyleDeclaration>);
+  track.appendChild(drain);
+  const count = document.createElement('div');
+  Object.assign(count.style, {
+    position: 'absolute', right: '-3px', bottom: '3px', display: 'none',
+    fontFamily: FONT_UI, fontSize: '13px', fontWeight: '800', color: '#f3dcb6',
+    textShadow: '0 0 3px #000, 0 1px 0 #000, 0 -1px 0 #000', letterSpacing: '0',
+  } as Partial<CSSStyleDeclaration>);
+  root.append(img, track, count);
+  return { root, drain, count, initialDuration: 1, lastRemaining: 1, lastStacks: -1, lastPct: -1, art: true };
+}
+
+const ART_SIZE = 34;
+
+function createChip(color: number, harmful: boolean, art?: string): BuffChip {
+  if (art) return createArtChip(color, art);
   const c = hex(color);
   const root = document.createElement('div');
   Object.assign(root.style, {
@@ -247,6 +321,6 @@ function createChip(color: number, harmful: boolean): BuffChip {
   root.append(drain, count);
   return {
     root, drain, count,
-    initialDuration: 1, lastRemaining: 1, lastStacks: -1, lastPct: -1,
+    initialDuration: 1, lastRemaining: 1, lastStacks: -1, lastPct: -1, art: false,
   };
 }
