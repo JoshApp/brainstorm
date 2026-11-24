@@ -169,6 +169,12 @@
         background: radial-gradient(circle, rgba(255, 241, 200, .95) 0%, rgba(255, 174, 80, .6) 40%, rgba(255, 120, 40, 0) 72%);
         transition: left 0.25s ease-out; animation: ember-breathe 1.3s ease-in-out infinite;
       }
+      /* A PC monitor: the mark at 340px sat small in the middle of a big black
+         screen (Josh, 2026-11-24: "this screen can probably be a bit bigger"). */
+      @media (hover: hover) and (pointer: fine) {
+        #boot-loading .boot-logo { width: min(580px, 46vw); }
+        #boot-loading .boot-tip { width: 20px; height: 20px; margin: -10px 0 0 -10px; }
+      }
     </style>
     <script>
       // ── Stale-shell self-heal ───────────────────────────────────────────────
