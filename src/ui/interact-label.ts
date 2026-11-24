@@ -72,10 +72,36 @@ const EDGE_MARGIN = 10;
 /** The lowest the prompt's foot may sit: above the hearts and stamina, which
  *  own the bottom centre. A prompt clamped lower sat on top of them. */
 const BOTTOM_CLEAR = 64;
+/** The same floor, for the card that stacks on the prompt. */
+export const PROMPT_FLOOR = BOTTOM_CLEAR;
 /** Where the prompt's bottom actually ended up this frame, after clamping —
  *  read by the item card so it stacks on the REAL prompt rather than on where
  *  the prompt would have been if the viewport were infinite. */
 let lastBottomY = 0;
+
+// THE STACK. The prompt can carry a companion: the item's card. The two are
+// one thing hung on the object, and they move as one, so the card is never
+// shrunk to fit the room left above the prompt and never pushed onto it (Josh,
+// 2026-11-24: "weird how it shrinks and then is partially hiding and how it
+// can overlap the take"). The stack hangs ABOVE the thing (card, prompt,
+// thread down); when the thing is high on screen and there's no room above,
+// it hangs BELOW it instead (thread up, prompt, card). Only when neither side
+// holds it does it clamp, and then it covers the thing, never itself.
+/** Height of the companion card plus its gap, px; 0 when there is none. Set
+ *  by the item overlay each frame (read here one frame late; a new card waits
+ *  out that frame unseen). */
+let companionH = 0;
+export function setPromptCompanionHeight(px: number): void { companionH = px; }
+export type StackSide = 'above' | 'below';
+let side: StackSide = 'above';
+/** Back to above only with this much room to spare, so a bobbing camera at the
+ *  threshold doesn't flip the stack back and forth. */
+const SIDE_HYSTERESIS = 28;
+/** Below the thing, the prompt's top sits this far under its pivot. */
+const BELOW_GAP = 18;
+/** The stack's top stays under the depth header (or the screen's edge, on a
+ *  short screen where the header sits at the left). */
+export function stackTopMargin(): number { return window.innerHeight < 500 ? 10 : 52; }
 
 let sealedNow = false;
 function refreshKeycap(): void {
@@ -244,7 +270,25 @@ export function updateInteractLabel(
   const h = labelEl.offsetHeight || 0;
   const w = labelEl.offsetWidth || 0;
   const vw = window.innerWidth, vh = window.innerHeight;
-  const y = Math.max(h + EDGE_MARGIN, Math.min(vh - BOTTOM_CLEAR, p.y));
+  const topM = companionH > 0 ? stackTopMargin() : EDGE_MARGIN;
+  const floorY = vh - BOTTOM_CLEAR;
+  // Above: the prompt's foot at the anchor, the card on top of it.
+  const aboveY = Math.min(floorY, p.y);
+  const aboveRoom = aboveY - h - companionH - topM;
+  // Below: the prompt's head just under the thing's pivot, the card under it.
+  tmpVec.set(target.position.x, target.position.y, target.position.z);
+  const base = worldToScreen(tmpVec, camera, cachedCanvasRect(canvas));
+  const belowY = Math.max(topM, base.y + BELOW_GAP) + h;
+  const belowRoom = floorY - belowY - companionH;
+  if (companionH <= 0) side = 'above';
+  else if (side === 'above' && aboveRoom < 0 && belowRoom >= 0) side = 'below';
+  else if (side === 'below' && (aboveRoom >= SIDE_HYSTERESIS || belowRoom < 0)) side = 'above';
+  // Above, clamped whole on screen: the stack's head under the top margin and
+  // its foot over the hearts. When it holds nowhere it slides down over the
+  // thing rather than over itself.
+  const y = side === 'below'
+    ? Math.min(floorY - companionH, belowY)
+    : Math.max(h + companionH + topM, Math.min(floorY, p.y));
   const x = Math.max(w / 2 + EDGE_MARGIN, Math.min(vw - w / 2 - EDGE_MARGIN, p.x));
   lastBottomY = y;
   // Keep layout at (0,0); the item overlay reads this prompt's height next.
@@ -261,9 +305,14 @@ export function updateInteractLabel(
     tmpVec.set(target.position.x, target.position.y + THREAD_FOOT_WORLD, target.position.z);
     const foot = worldToScreen(tmpVec, camera, cachedCanvasRect(canvas));
     const fx = foot.x, fy = Math.min(foot.y, vh);   // a foot below the screen: run to the edge
-    const dx = fx - x, dy = fy - y;
+    // Hung above, the thread leaves the prompt's foot downward; hung below, it
+    // leaves the prompt's head upward. Either way it ends on the thing.
+    const below = side === 'below';
+    threadEl.style.top = below ? '0' : '100%';
+    const sy = below ? y - h : y;
+    const dx = fx - x, dy = fy - sy;
     const len = Math.hypot(dx, dy);
-    const ok = !foot.behind && dy > 6 && len > 12;
+    const ok = !foot.behind && (below ? dy < -6 : dy > 6) && len > 12;
     const want = ok ? Math.min(len, THREAD_MAX_PX) - 4 : 0;
     threadLen += (want - threadLen) * 0.35;           // ease, so a jitter of the projection never flickers
     threadEl.style.height = `${threadLen.toFixed(1)}px`;
@@ -302,10 +351,14 @@ export function interactPromptBottomY(): number {
   return labelEl && shown ? lastBottomY : 0;
 }
 
+/** Which side of the thing the stack hangs on this frame. */
+export function interactStackSide(): StackSide { return side; }
+
 /** Hide + make the (now stale-positioned) label inert to taps. */
 function hide(): void {
   if (!labelEl || !shown) return;
   shown = false;
+  side = 'above';
   threadLen = 0;   // the next prompt's thread grows in from its foot
   labelEl.style.opacity = '0';
   labelEl.style.pointerEvents = 'none';
