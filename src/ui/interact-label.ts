@@ -94,9 +94,16 @@ let companionH = 0;
 export function setPromptCompanionHeight(px: number): void { companionH = px; }
 export type StackSide = 'above' | 'below';
 let side: StackSide = 'above';
-/** Back to above only with this much room to spare, so a bobbing camera at the
- *  threshold doesn't flip the stack back and forth. */
-const SIDE_HYSTERESIS = 28;
+/** The side is chosen ONCE, when the card first stands on the prompt, and
+ *  kept for as long as that thing is in focus: past that, the stack slides
+ *  (clamped whole on screen) rather than flips. A per-frame choice, even with
+ *  hysteresis, flipped as the head bobbed and the thing hovered (Josh,
+ *  2026-11-24: "make it so the item pickup doesn't randomly flip"). */
+let sideFor: string | null = null;
+/** Focus lost and found again on the same thing within this long (a step
+ *  out of range and back) keeps the side it had. */
+const SIDE_MEMORY_MS = 2000;
+let sideLostAt = -Infinity;
 /** Below the thing, the prompt's top sits this far under its pivot. */
 const BELOW_GAP = 18;
 /** The stack's top stays under the depth header (or the screen's edge, on a
@@ -280,9 +287,13 @@ export function updateInteractLabel(
   const base = worldToScreen(tmpVec, camera, cachedCanvasRect(canvas));
   const belowY = Math.max(topM, base.y + BELOW_GAP) + h;
   const belowRoom = floorY - belowY - companionH;
-  if (companionH <= 0) side = 'above';
-  else if (side === 'above' && aboveRoom < 0 && belowRoom >= 0) side = 'below';
-  else if (side === 'below' && (aboveRoom >= SIDE_HYSTERESIS || belowRoom < 0)) side = 'above';
+  const stale = sideFor !== target.id
+    || (sideLostAt > -Infinity && performance.now() - sideLostAt > SIDE_MEMORY_MS);
+  if (companionH > 0) {
+    // Above when it fits there; below only when above doesn't and below does.
+    if (stale) { side = aboveRoom < 0 && belowRoom >= 0 ? 'below' : 'above'; sideFor = target.id; }
+    sideLostAt = -Infinity;
+  } else if (stale) side = 'above';
   // Above, clamped whole on screen: the stack's head under the top margin and
   // its foot over the hearts. When it holds nowhere it slides down over the
   // thing rather than over itself.
@@ -358,7 +369,7 @@ export function interactStackSide(): StackSide { return side; }
 function hide(): void {
   if (!labelEl || !shown) return;
   shown = false;
-  side = 'above';
+  sideLostAt = performance.now();   // side kept a moment, in case it comes back
   threadLen = 0;   // the next prompt's thread grows in from its foot
   labelEl.style.opacity = '0';
   labelEl.style.pointerEvents = 'none';
