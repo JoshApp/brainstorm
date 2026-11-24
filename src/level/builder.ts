@@ -205,6 +205,43 @@ function outerRingOf(poly: ReadonlyArray<readonly [number, number]>): ReadonlyAr
   return r;
 }
 
+/** Does this rect's floor fall along its ramp axis? The same test the shell makes
+ *  (buildRoomShell, ELEVATION), for callers that need to know before building. */
+function rectIsSloped(room: RoomSpec): boolean {
+  const { rect } = room;
+  const alongX = room.rampAlongX ?? (rect.w >= rect.d);
+  const e0 = alongX ? groundYAt(rect.x - rect.w / 2 + 0.05, rect.z) : groundYAt(rect.x, rect.z - rect.d / 2 + 0.05);
+  const e1 = alongX ? groundYAt(rect.x + rect.w / 2 - 0.05, rect.z) : groundYAt(rect.x, rect.z + rect.d / 2 - 0.05);
+  return Math.abs(e1 - e0) > 1e-3;
+}
+
+/**
+ * A corridor leg's floor and ceiling plate: its rect, cut back to meet each landing
+ * of its own link exactly. The rect laps into the landing (level/link.ts, JOINT_LAP)
+ * so the walk and the walls can never part at the joint; the plates have no such
+ * need, and two coplanar plates over the same 5cm z-fought.
+ */
+function legPlate(r: RoomSpec, corridors: readonly RoomSpec[]): { x: number; z: number; w: number; d: number } {
+  if (r.landing || !r.linkId) return r.rect;
+  let x0 = r.rect.x - r.rect.w / 2, x1 = r.rect.x + r.rect.w / 2;
+  let z0 = r.rect.z - r.rect.d / 2, z1 = r.rect.z + r.rect.d / 2;
+  const alongX = r.alongX ?? r.rampAlongX ?? (r.rect.w >= r.rect.d);
+  for (const l of corridors) {
+    if (!l.landing || l.linkId !== r.linkId) continue;
+    const lx0 = l.rect.x - l.rect.w / 2, lx1 = l.rect.x + l.rect.w / 2;
+    const lz0 = l.rect.z - l.rect.d / 2, lz1 = l.rect.z + l.rect.d / 2;
+    if (lx1 <= x0 || lx0 >= x1 || lz1 <= z0 || lz0 >= z1) continue;   // not touching
+    if (alongX) {
+      if (lx0 > x0 && lx0 < x1 && lx1 >= x1) x1 = lx0;        // landing at the high end
+      else if (lx1 < x1 && lx1 > x0 && lx0 <= x0) x0 = lx1;   // at the low end
+    } else {
+      if (lz0 > z0 && lz0 < z1 && lz1 >= z1) z1 = lz0;
+      else if (lz1 < z1 && lz1 > z0 && lz0 <= z0) z0 = lz1;
+    }
+  }
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 };
+}
+
 function buildRoomShell(
   scene: THREE.Object3D,
   room: RoomSpec,
@@ -227,6 +264,11 @@ function buildRoomShell(
    * rule keep using the full rect, because the overlap is what makes them work.
    */
   plate: { w: number; d: number; x: number; z: number } = room.rect,
+  /** This rect is the level LANDING of a link whose legs are stairs: it is laid
+   *  in the stair's cobbles, not the room floor's slabs, so the turn reads as
+   *  part of the flight it sits in (Josh, 2026-11-24: "the corner of corridors
+   *  doesn't use the smaller stone texture"). */
+  stairLanding = false,
 ) {
   const { rect, height: H } = room;
   const W = rect.w;
@@ -314,7 +356,7 @@ function buildRoomShell(
   // the visual is cut stone treads following the linear grade; the eye
   // and collision glide the smooth line underneath (groundYAt).
   const floorGeo: THREE.BufferGeometry = sloped
-    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M, alongX, room.stair)
+    ? (makeSteppedRampGeometry(plate, groundYAt, CONFIG.STAIR_RISER_M, alongX, room.stair)
         ?? makeJitteredPlane(PW, PD, { flat: true }))
     : allFloorHoles.length > 0
       ? makeFloorWithHoles(PW, PD, allFloorHoles)
@@ -372,7 +414,10 @@ function buildRoomShell(
     // so the unwrap has to be written after it or it is discarded unread.
     bakeStairUnwrapUV(floorGeo, alongX);
   }
-  const floor = new THREE.Mesh(floorGeo, sloped ? materials.stair : materials.floor);
+  // A flat stair landing takes the stair material too. Its plate is untagged, so the
+  // stair projection lays it in world XZ (style/surface-detail.ts), at the flight's
+  // cobble size.
+  const floor = new THREE.Mesh(floorGeo, sloped || stairLanding ? materials.stair : materials.floor);
   if (!sloped) {
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(PX, elev, PZ);
@@ -731,6 +776,10 @@ function buildRoomShell(
   // leave a 25cm pocket either side of every doorway that a body could slide into.
   // So this is subtracted from the GEOMETRY and not from the collision.
   const otherBands = otherPolys.map(outerRingOf);
+  // The landings of this rect's own link, when this rect is one of its legs.
+  const ownLandings = !room.landing && room.linkId
+    ? allRects.filter((o) => o !== room && o.landing && o.linkId === room.linkId)
+    : [];
 
   const edgePlans = wallEdges.map((we) => {
     const insideRooms = insidePolyRanges(we, otherPolys);
@@ -743,6 +792,19 @@ function buildRoomShell(
     const buried: Array<{ start: number; end: number }> = [];
     for (const m of insidePolyRanges(we, otherBands)) {
       for (const s of subtractRanges(m.start, m.end, insideRooms)) buried.push(s);
+    }
+    // A LEG LAPS INTO ITS LANDING (level/link.ts, JOINT_LAP) so the joint can never
+    // open a hairline of void. Underfoot the plates are trimmed back to meet exactly;
+    // here the lap is buried: the landing draws that stretch of wall, the leg keeps
+    // it as collision. Both drew it, coplanar, and it shimmered (Josh, 2026-11-24:
+    // "the corner stone is overlapping both corridor floor and walls just a tad").
+    for (const l of ownLandings) {
+      const lx0 = l.rect.x - l.rect.w / 2, lx1 = l.rect.x + l.rect.w / 2;
+      const lz0 = l.rect.z - l.rect.d / 2, lz1 = l.rect.z + l.rect.d / 2;
+      const [p0, p1, a0, a1] = we.perpAxis === 'z' ? [lz0, lz1, lx0, lx1] : [lx0, lx1, lz0, lz1];
+      if (we.perpCoord < p0 - 1e-3 || we.perpCoord > p1 + 1e-3) continue;
+      const start = Math.max(we.wallStart, a0), end = Math.min(we.wallEnd, a1);
+      if (end - start > 1e-4) buried.push({ start, end });
     }
     return { we, openings, buried };
   });
@@ -1498,6 +1560,10 @@ export function buildLevel(
   // on into the room with its rect (corridor-trim.ts). Both lookups are hoisted
   // here because the shell loop below needs them per rect.
   const isCorridor = new Set(spec.corridors);
+  // Links whose legs are stairs: their landings are laid in the stair's cobbles.
+  const stairLinks = new Set(spec.corridors
+    .filter((c) => !c.landing && c.linkId && rectIsSloped(c))
+    .map((c) => c.linkId!));
   const roomPolys = spec.rooms.map((r) => r.poly).filter((p): p is NonNullable<typeof p> => !!p && p.length >= 3);
   // ── THE THRESHOLD BONFIRE ──────────────────────────────────────────
   // Every floor begins at a fire: the player wakes seated beside it
@@ -1818,8 +1884,9 @@ export function buildLevel(
         // plates that should be the corners are too small so the corridor floor has void
         // gaps."* Measured: 0.40m off every plate, including 0.40m off every landing
         // SQUARE, which turns a 1.55m corner into 1.15m with 0.20m of void on each side.
-        const plate = r.rect;
-        buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles, plate);
+        const plate = legPlate(r, spec.corridors);
+        buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles, plate,
+          !!r.landing && !!r.linkId && stairLinks.has(r.linkId));
       }
     }
   }
