@@ -363,19 +363,17 @@ const INSCATTER_STRENGTH = 0.06, INSCATTER_START_M = 8, INSCATTER_END_M = 30;   
 // the same lo-fi crunch: chromatic aberration, dither, hard colour quantize,
 // scanlines, amber tint. All but CA are pure ALU in the final fullscreen pass;
 // CA adds 2 scene-texture taps. Matches the WebGL literals.
-const CA_AMOUNT = 0.004;            // radial red/blue split (was reading as a bug above this)
+// Radial red/blue split. 0.004 read as digital damage more than a lens; the
+// LOOK TEST settled it at a third (Josh, 2026-11-24).
+const CA_AMOUNT = 0.004 * 0.3;
 
 // ── LOOK TEST switches for the final pass (style/look-lab.ts) ──
 // Read when the pass is built; a change rebuilds it. All off = the shipped look.
-// LOOK TEST switches as live uniforms (0 = off, 1 = on), so the look bench can
-// flip them in a frame (hold-to-compare, the split view) with no pipeline
-// rebuild. One post quad reads them: no per-object cost.
-const uLookFringe: any = (uniform as any)(0);   // chromatic split at ~30%
-const uLookDither: any = (uniform as any)(0);   // the Bayer dither only in the darks; lit surfaces breathe
+// LOOK TEST switch as a live uniform (0 = off, 1 = on), so the look bench can
+// flip it in a frame (hold-to-compare, the split view) with no pipeline
+// rebuild. One post quad reads it: no per-object cost.
 const uLookLift: any = (uniform as any)(0);     // a faint charcoal pedestal just above black
-export function setWebGPULook(o: { softFringe: boolean; darkDither: boolean; shadowLift: boolean }): void {
-  uLookFringe.value = o.softFringe ? 1 : 0;
-  uLookDither.value = o.darkDither ? 1 : 0;
+export function setWebGPULook(o: { shadowLift: boolean }): void {
   uLookLift.value = o.shadowLift ? 1 : 0;
 }
 const QUANTIZE_LEVELS = 32.0;       // hard PSX colour steps
@@ -724,7 +722,7 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // Done on the raw scene (pre-expose/bloom) exactly as the WebGL path did it.
   const tex: any = GBUF ? (scenePass as any).getTextureNode('output') : (scenePass as any).getTextureNode();
   const suv: any = screenUV as any;
-  const caOff: any = suv.sub(0.5).mul((mix as any)((float as any)(CA_AMOUNT), (float as any)(CA_AMOUNT * 0.3), uLookFringe));
+  const caOff: any = suv.sub(0.5).mul(CA_AMOUNT);
   let sceneCA: any = (vec3 as any)(
     tex.sample(suv.add(caOff)).r,
     tex.sample(suv).g,
@@ -980,10 +978,11 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // never quite drowns (phone in daylight). Before the dither + quantize, so the
   // lifted darks get their own levels. Neutral: it lifts, it does not tint.
   disp = disp.mul(_float(1.0).sub(uLookLift.mul(0.012))).add(uLookLift.mul(0.012));
-  // LOOK TEST: dither only where it does its job, the dark-to-light transitions;
-  // fade it out over the lit mid-tones so big lit stone stops looking corroded.
+  // Dither only where it does its job, the dark-to-light transitions; it fades
+  // out over the lit mid-tones so big lit stone stops looking corroded (the
+  // LOOK TEST's LESS SPECKLE, kept 2026-11-24).
   const ditherAmp: any = _float(1.0 / 24.0).mul(_float(1.0).sub(
-    uLookDither.mul((smoothstep as any)(_float(0.18), _float(0.42), (luminance as any)(disp)))));
+    (smoothstep as any)(_float(0.18), _float(0.42), (luminance as any)(disp))));
   disp = disp.add(bayer.sub(0.5).mul(ditherAmp));                              // dither in gamma space
   disp = disp.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));  // quantize
   col = disp.max(_float(0.0)).pow(_float(2.2));                               // gamma → linear

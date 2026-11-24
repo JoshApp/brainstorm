@@ -361,30 +361,6 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
     // ── LOOK TEST (style/look-lab.ts) — all off = the look as it ships. ──
     makeLookHeading(),
     makeToggle({
-      label: 'TEST · SOFT FRINGE',
-      description: 'The red and blue fringe around edges at about a third. It read as digital damage more than as a lens.',
-      get: () => getSettings().lookSoftFringe,
-      set: (v) => updateSettings({ lookSoftFringe: v }),
-    }),
-    makeToggle({
-      label: 'TEST · LESS SPECKLE',
-      description: 'The fine checker pattern only where light fades to dark, and the edges of the light steps less scattered, so lit stone stops looking corroded.',
-      get: () => getSettings().lookDarkDither,
-      set: (v) => updateSettings({ lookDarkDither: v }),
-    }),
-    makeToggle({
-      label: 'TEST · NEUTRAL STONE',
-      description: 'The stone loses its own warmth, so the amber is the fire\'s and a coloured torch reads as a different light.',
-      get: () => getSettings().lookNeutralStone,
-      set: (v) => updateSettings({ lookNeutralStone: v }),
-    }),
-    makeToggle({
-      label: 'TEST · DRY FLOOR',
-      description: 'Most of the wet sheen on the flagstones gone; the floor answers light more quietly than the walls.',
-      get: () => getSettings().lookDryFloor,
-      set: (v) => updateSettings({ lookDryFloor: v }),
-    }),
-    makeToggle({
       label: 'TEST · SHADOW LIFT',
       description: 'A faint charcoal just above black, so what is at arm\'s reach never quite drowns. For a phone in daylight.',
       get: () => getSettings().lookShadowLift,

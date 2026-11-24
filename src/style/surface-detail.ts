@@ -36,7 +36,7 @@ const POM_FADE_FAR = 7.0;
 // rebuild and no reload. Each `tuneUniform` call is also its own registration:
 // it appears in the in-game panel under its group with no UI code anywhere.
 const uStoneHue = tuneUniform({
-  id: 'stonehue', group: 'Stone', label: 'Stone hue spread', min: 0, max: 2, value: 0.27,
+  id: 'stonehue', group: 'Stone', label: 'Stone hue spread', min: 0, max: 2, value: 0.08,   // 0.27 until the LOOK TEST's neutral stone (2026-11-24)
   hint: 'how far apart different stones\u2019 colours sit',
 });
 const uStoneWear = tuneUniform({
@@ -253,11 +253,11 @@ const uQuoin = tuneUniform({
 // hot core stays clean and readable and it is the faint outer rings — the ones
 // that actually read as a bullseye — that break up.
 const uBandWarp = tuneUniform({
-  id: 'bandwarp', group: 'Light', label: 'Band break-up', min: 0, max: 1.5, value: 0.495,
+  id: 'bandwarp', group: 'Light', label: 'Band break-up', min: 0, max: 1.5, value: 0.2,   // 0.495 until LESS SPECKLE (2026-11-24)
   hint: 'breaks the rings a close light draws into stone-sized arcs; 0 = perfect circles',
 });
 const uBandWarpNoise = tuneUniform({
-  id: 'bandwarpn', group: 'Light', label: 'Break-up within a stone', min: 0, max: 1.5, value: 0.45,
+  id: 'bandwarpn', group: 'Light', label: 'Break-up within a stone', min: 0, max: 1.5, value: 0.15,   // 0.45 until LESS SPECKLE
   hint: 'wander inside a big slab, so the break-up is not only at the joints',
 });
 
@@ -408,7 +408,7 @@ const mortarDirt = jointUniformPair('mortardirt', 'Dirt depth', 0, 1, 0.295, 0.6
 // Warmth stays a scalar pair feeding two colour uniforms — the shader wants a
 // vec3 and you want to drag one number, so the conversion happens here.
 const mortarWarmW = tuneNumber({
-  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: 0.4,
+  id: 'mortarwarmw', group: 'Wall', label: 'Joint warmth', min: -1, max: 1, value: -0.12,   // 0.4 until neutral stone
   apply: 'live', hint: 'cold ash <-> warm lime and sand',
 });
 const mortarWarmF = tuneNumber({
@@ -465,7 +465,7 @@ onKnobChange((k) => {
 // the floor ids are in Josh's saved set and in every URL he has sent today, and
 // a tidier naming scheme is not worth silently invalidating those.
 const wallWarm = tuneNumber({
-  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: -0.09,
+  id: 'wallwarm', group: 'Wall', label: 'Stone warmth', min: -1, max: 1, value: -0.62,   // -0.09 until neutral stone: the amber is the fire's
   apply: 'live', hint: 'cold grey <-> warm sandstone; the floor has its own',
 });
 const wallBright = tuneNumber({
