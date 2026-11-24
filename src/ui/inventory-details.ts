@@ -276,6 +276,15 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
     return kept;
   }
 
+  // A key is spent by a lock, not worn: no button, just what it is for.
+  if (sel.kind === 'bag' && sel.item.kind === 'key') {
+    const note = document.createElement('div');
+    note.className = 'lk-d-note';
+    note.textContent = 'Spent at a lock. Each one opens a single thing.';
+    Object.assign(note.style, { marginTop: 'auto', textAlign: 'right' } as Partial<CSSStyleDeclaration>);
+    return note;
+  }
+
   const btn = document.createElement('button');
   let label: string;
   let onClick: () => void;
@@ -442,6 +451,9 @@ export function describeItem(
         lines.push(detailLine(formatSetBonus(b), /*dim*/ have < b.pieces));
       }
     }
+  }
+  if (item.kind === 'key' && lines.length === 0) {
+    lines.push(detailLine('Opens one locked cage or chest, then is gone.'));
   }
   if (lines.length === 0) {
     lines.push(detailLine('No effects.', /*dim*/ true));

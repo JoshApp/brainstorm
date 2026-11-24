@@ -59,6 +59,7 @@ export function buildReliquaryContent(ctx: InventoryCtx): HTMLDivElement {
     gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)',
     gridTemplateRows: 'minmax(0, 1fr)',
     gap: '18px', alignItems: 'stretch', flex: '1 1 auto', minHeight: '0',
+    padding: '2px 10px 8px 0',   // clear of the sheet's corner brackets
   } as Partial<CSSStyleDeclaration>);
   grid.append(buildCollectionPane(ctx), buildDetailsColumn(ctx));
   return grid;

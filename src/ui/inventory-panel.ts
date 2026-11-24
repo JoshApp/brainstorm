@@ -301,6 +301,9 @@ function buildColumns(): HTMLDivElement {
     alignItems: 'stretch',
     flex: '1 1 auto',
     minHeight: '0',
+    // Room inside the frame: the sheet's corner brackets sat on the slab's
+    // charred edge (Josh, 2026-11-24: "the right side is hidden behind").
+    padding: '2px 10px 8px 0',
   } as Partial<CSSStyleDeclaration>);
 
   // The selection state lives here; panes read it + request changes through

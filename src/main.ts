@@ -172,6 +172,7 @@ import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
 import { createHealthHearts } from './ui/health-hearts';
 import { createStaminaArc } from './ui/stamina-arc';
+import { applyPcHudScale } from './ui/hud-scale';
 import { createXpSigil } from './ui/xp-sigil';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
@@ -1392,6 +1393,8 @@ createHpBar();
 createStaminaBar();
 createHealthHearts();
 createStaminaArc();
+// PC: the edge-anchored HUD reads slightly larger (ui/hud-scale.ts).
+applyPcHudScale();
 // XP/levels disabled (#102) — skip the level sigil (the bottom-right number)
 // entirely so there's no dead level indicator while it's off.
 if (LEVELS_ENABLED) createXpSigil();

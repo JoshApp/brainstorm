@@ -22,15 +22,15 @@ import { projectToScreen, flyToHud } from './fly-to-hud';
 //   └──────────────────────────────────────────────────────────────┘
 
 // The carved skull coin (Lamplight art pass, src/assets/ui/hud/coin.webp).
-// On a PC screen (far from the eye, lots of pixels) the purse reads larger;
-// on a phone it keeps its thumb-sized footprint (Josh, 2026-11-23).
+// On a PC the purse reads a touch larger than the rest of the HUD, which is
+// itself zoomed there (ui/hud-scale.ts); on a phone it keeps its size.
 const BIG_PURSE = typeof window !== 'undefined' && isDesktopLike();
-const COIN_PX = BIG_PURSE ? 30 : 20;
-const SVG_COIN = `<img src="${coinUrl}" alt="" style="width:${COIN_PX}px;height:${COIN_PX}px;object-fit:contain;display:inline-block;vertical-align:${BIG_PURSE ? -8 : -5}px;margin-right:${BIG_PURSE ? 8 : 6}px;filter:drop-shadow(0 0 4px rgba(255,190,80,0.35))">`;
+const COIN_PX = BIG_PURSE ? 23 : 20;
+const SVG_COIN = `<img src="${coinUrl}" alt="" style="width:${COIN_PX}px;height:${COIN_PX}px;object-fit:contain;display:inline-block;vertical-align:${BIG_PURSE ? -6 : -5}px;margin-right:6px;filter:drop-shadow(0 0 4px rgba(255,190,80,0.35))">`;
 
 // Small brass key glyph — matches the coin's inline-icon style. Shown beside
 // the gold count when the player is carrying skeleton keys.
-const SVG_KEY = `<svg width="13" height="13" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:4px;"><circle cx="5" cy="6" r="3.2" fill="none" stroke="rgba(210,180,110,0.95)" stroke-width="1.6"/><path d="M7.3 7.6 L13 13 M11 11 l1.6 -1.6 M12.4 12.4 l1.2 -1.2" stroke="rgba(210,180,110,0.95)" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
+const SVG_KEY = `<svg width="19" height="19" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-4px;margin-right:5px;filter:drop-shadow(0 0 3px rgba(210,180,110,0.35))"><circle cx="5" cy="6" r="3.2" fill="none" stroke="rgba(210,180,110,0.95)" stroke-width="1.6"/><path d="M7.3 7.6 L13 13 M11 11 l1.6 -1.6 M12.4 12.4 l1.2 -1.2" stroke="rgba(210,180,110,0.95)" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
 
 let goldContainer: HTMLDivElement | null = null;
 let goldEl: HTMLDivElement | null = null;
@@ -77,7 +77,7 @@ export function createXpGoldHud(): void {
     // with a 16px gap so the gold doesn't overlap the bag icon.
     top: 'calc(72px + env(safe-area-inset-top, 0px))',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: BIG_PURSE ? '19px' : '14px',
+    fontSize: BIG_PURSE ? '16px' : '14px',
     fontWeight: '600',
     letterSpacing: '0.10em',
     color: 'rgba(255, 210, 110, 0.9)',
@@ -109,12 +109,13 @@ export function createXpGoldHud(): void {
 
   // Floating "+N" gold tick — sits just under the gold counter, rises + fades.
   goldTickEl = document.createElement('div');
+  goldTickEl.id = 'gold-tick';
   Object.assign(goldTickEl.style, {
     position: 'fixed',
     right: 'calc(16px + env(safe-area-inset-right, 0px))',
-    top: `calc(${BIG_PURSE ? 104 : 94}px + env(safe-area-inset-top, 0px))`,
+    top: 'calc(94px + env(safe-area-inset-top, 0px))',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: BIG_PURSE ? '15px' : '13px',
+    fontSize: '13px',
     fontWeight: '700',
     letterSpacing: '0.08em',
     color: 'rgba(255, 224, 150, 0.95)',

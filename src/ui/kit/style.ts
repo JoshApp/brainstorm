@@ -151,7 +151,7 @@ export function injectKitStyles(): void {
     /* Fills its frame: the rows scroll in their pane, the slab keeps the full
        height whatever it says, so choosing a row never resizes anything. */
     .lk-reading { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-      gap: 18px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+      gap: 18px; align-items: stretch; flex: 1 1 auto; min-height: 0; padding: 2px 10px 8px 0; }
     .lk-fill { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
     .lk-reading-rows { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 4px; }
     .lk-reading-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; text-transform: uppercase; }
