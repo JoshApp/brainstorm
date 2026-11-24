@@ -3,7 +3,7 @@ import { attribute as tslAttribute } from 'three/tsl';
 import type { LiveLevel } from '../level/builder';
 import { getAllInteractables } from '../interactables/system';
 import { deferGpuDispose } from '../style/render-webgpu';
-import { surfaceDetailNameOf, installNamedSurfaceDetail } from '../style/surface-detail';
+import { surfaceDetailNameOf, installNamedSurfaceDetail, surfaceDetailKeyOf } from '../style/surface-detail';
 import { rectOf, tagOrigin } from './provenance';
 
 // ── STATIC-WORLD BATCHING (BatchedMesh) ──────────────────────────────────────
@@ -86,6 +86,10 @@ function matSig(mat: THREE.Material): string {
     m.flatShading ? 'fs' : '-',
     (mat as THREE.Material & { fog?: boolean }).fog === false ? 'nofog' : 'fog',
     mat.side,
+    // The SHADER, which none of the values above can see: a batch draws with its
+    // first member's material, so two materials that differ only in their surface
+    // detail must never share one. See surfaceDetailKeyOf.
+    surfaceDetailKeyOf(mat),
   ].join('|');
 }
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { DelveRenderer } from '../scene/create-renderer';
 import {
   BRICK_W, COURSE_H, FLAG_CELL, FLAG_PERIOD, stoneHash,
-  stoneAt, setStoneVariation, setStoneSizes, COURSES_PER_TILE, BLOCKS_PER_TILE,
+  stoneAt, setStoneVariation, setStoneSizes, COURSES_PER_TILE, BLOCKS_PER_TILE, WALL_TILE,
 } from './stone-grid';
 import { tuneNumber, onRebake } from '../debug/tuning';
 import { DEV } from '../debug/dev';
@@ -30,7 +30,9 @@ export type SurfaceKind = 'wall' | 'floor' | 'ceiling' | 'dressed' | 'grain';
 // pattern tiles seamlessly: walls = 4 bricks x 8 courses, floor = 5x5 flagstone
 // cells, ceiling = 3x3 coffer panels, dressed = 3x4 ashlar blocks, grain = fine.
 export const SURFACE_TILE: Record<SurfaceKind, [number, number]> = {
-  wall: [4.6, 4.8],
+  // From the stone grid, not restated: room walls close their perimeter coordinate
+  // on a whole number of these (level/wall-unwrap.ts), so the two must be one number.
+  wall: [WALL_TILE[0], WALL_TILE[1]],
   floor: [5.25, 5.25],
   ceiling: [4.8, 4.8],
   dressed: [4.8, 3.2],
@@ -1724,6 +1726,10 @@ export function bakeSurfaceTexture(_renderer: DelveRenderer, kind: SurfaceKind):
   // sole (WebGPU) path generates the SAME patterns on the CPU (bakeSurfaceCPU) —
   // faithful, one-time, no GL/readback.
   const tex = bakeSurfaceCPU(kind);
+  // The size this pattern was DRAWN at. A material may tile it smaller (the stair
+  // does), and the relief has to shrink with the stones or a 12cm cobble is given
+  // a 10cm-deep joint — see stoneScale in surface-detail.ts.
+  tex.userData.nativeTile = SURFACE_TILE[kind];
   live.set(kind, tex);
   return tex;
 }

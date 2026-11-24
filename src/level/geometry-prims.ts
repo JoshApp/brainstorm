@@ -4,6 +4,7 @@ import { CONFIG } from '../config';
 import { buildRng } from '../engine/rng';
 import { reinstallSurfaceDetail } from '../style/surface-detail';
 import { dressing } from './dressing';
+import { MASONRY_UV_TAG } from '../style/stone-grid';
 
 // Pure procedural-geometry factories for level assembly. Extracted from
 // builder.ts — these take plain dimensions and return THREE geometry/material
@@ -641,21 +642,43 @@ export function makeCeilingShaftGeometry(
 // wrote a UV that was discarded a few lines later, which is a fine way to spend an afternoon
 // wondering why a shader change did nothing. It runs last, and derives its own origin from the
 // finished geometry so it cannot disagree with what is actually there.
+//
+// ── IN A FIXED WORLD FRAME, AND MONOTONE WHICHEVER WAY THE FLIGHT FALLS ─────────
+//
+// Two things the first bake got wrong, both measured off the baked numbers:
+//
+//   · It wrote (across, along), so a flight running along X came out with U on world Z
+//     and V on world X while one running along Z had them the other way round — and the
+//     shader cannot tell which corridor a tread belongs to, its normal is +Y either way.
+//     POM marched sideways on every X-running tread. Now U is ALWAYS the world-X
+//     coordinate and V the world-Z one, and the drop is added to whichever is the run.
+//   · It added the drop unconditionally, which is only monotone if the flight descends
+//     toward +axis. One that descends toward −axis climbs as travel grows, so the drop
+//     SHRANK going up each riser and the coordinate folded back on itself — every riser a
+//     mirror of the tread below it. The sign of the drop follows the fall now.
+//
+// Tagged with MASONRY_UV_TAG so the shader can tell a baked flight from the stairwell's
+// plain boxes, which share the material.
 export function bakeStairUnwrapUV(geo: THREE.BufferGeometry, alongX: boolean): void {
   const pos = geo.getAttribute('position');
   if (!pos) return;
-  let lo = Infinity;
-  let topY = -Infinity;
+  let lo = Infinity, hi = -Infinity;
+  let topY = -Infinity, topAt = 0;
   for (let i = 0; i < pos.count; i++) {
-    lo = Math.min(lo, alongX ? pos.getX(i) : pos.getZ(i));
-    topY = Math.max(topY, pos.getY(i));
+    const t = alongX ? pos.getX(i) : pos.getZ(i);
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+    if (pos.getY(i) > topY) { topY = pos.getY(i); topAt = t; }
   }
   if (!Number.isFinite(lo) || !Number.isFinite(topY)) return;
+  // The high end is where the top surface is. Falling toward +axis → the drop grows
+  // with travel; toward −axis → it shrinks, and is subtracted so the sum still climbs.
+  const fall = topAt <= (lo + hi) / 2 ? 1 : -1;
   const uv = new Float32Array(pos.count * 2);
   for (let i = 0; i < pos.count; i++) {
-    const travel = (alongX ? pos.getX(i) : pos.getZ(i)) - lo;
-    uv[i * 2] = alongX ? pos.getZ(i) : pos.getX(i);      // across the run
-    uv[i * 2 + 1] = travel + (topY - pos.getY(i));        // along it, over tread AND riser
+    const x = pos.getX(i), z = pos.getZ(i);
+    const unwrap = (alongX ? x : z) - lo + fall * (topY - pos.getY(i));
+    uv[i * 2] = alongX ? unwrap : x;
+    uv[i * 2 + 1] = MASONRY_UV_TAG + (alongX ? z : unwrap);
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }

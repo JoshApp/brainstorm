@@ -16,6 +16,7 @@ import { wallCutsFor } from './portals';
 import { describeWalls } from './wall-surfaces';
 import { buildPolyDressing } from './poly-dressing';
 import { makeCoursedWall, wallWear, tintAsFlagstones } from './wall-courses';
+import { unwrapRing, tagWallFace, type RingUnwrap } from './wall-unwrap';
 // Aliased: this file already has a local `dressing` (the trim geometry).
 import { dressing as dressingOn } from './dressing';
 
@@ -245,6 +246,10 @@ export function buildPolyRoomShell(
       return l > best.len ? { i, len: l } : best;
     }, { i: -1, len: 0 }).i
     : -1;
+  // ONE COORDINATE AROUND THE ROOM (level/wall-unwrap.ts): every span, heads over
+  // doorways included, reads its stone from the same ring, so a block that reaches
+  // a corner on one wall carries on round it onto the next.
+  const unwrap = unwrapRing(poly);
   const pieces: THREE.BufferGeometry[] = [];
   for (let i = 0; i < spans.length; i++) {
     const s = spans[i];
@@ -265,7 +270,7 @@ export function buildPolyRoomShell(
     // So the head is closed by the thing behind it, and caps nothing.
     pieces.push(...spanGeometry(
       s, elev + s.y0, s.y1 - s.y0, wallWear(shellWear, wearRand), wearRand,
-      i === collapseSpan, false,
+      i === collapseSpan, false, { poly, unwrap },
     ));
     // THE thing that makes the room solid — and the thing that makes a doorway
     // real, since a span with no segment is a span the player can cross. The
@@ -488,6 +493,8 @@ function spanGeometry(
   /** Cap the UNDERSIDE too. A wall stands on the floor and needs none; a lintel
    *  stands over a doorway and shows its belly to anyone walking through. */
   capBottom = false,
+  /** The room's ring, so the face can be laid on the coordinate that runs round it. */
+  ring?: { poly: Poly; unwrap: RingUnwrap },
 ): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
   const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
@@ -508,6 +515,15 @@ function spanGeometry(
   const m = new THREE.Matrix4().makeRotationY(Math.atan2(ix, iz));
   m.setPosition((s.a[0] + s.b[0]) / 2, baseY + H / 2, (s.a[1] + s.b[1]) / 2);
   face.applyMatrix4(m);
+  if (ring) {
+    // Measured from the EDGE's start vertex, not the span's: a span is a piece of an
+    // edge that a doorway cut, and the ring's arc lengths are kept per edge.
+    const e0 = ring.poly[s.edge];
+    const e1 = ring.poly[(s.edge + 1) % ring.poly.length];
+    const el = Math.hypot(e1[0] - e0[0], e1[1] - e0[1]) || 1;
+    const dir = [(e1[0] - e0[0]) / el, (e1[1] - e0[1]) / el] as const;
+    tagWallFace(face, ring.unwrap, s.edge, e0, dir, [ix, iz]);
+  }
   out.push(face);
 
   const lo = baseY, hi = baseY + H;

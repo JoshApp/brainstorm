@@ -4,6 +4,7 @@ import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, u
 
 import { tuneUniform, tuneNumber, onKnobChange } from '../debug/tuning';
 import { cornerFieldNode } from '../scene/corner-field';
+import { MASONRY_UV_TAG } from './stone-grid';
 
 // ── POM TUNING ───────────────────────────────────────────────────────────────
 // Read ONCE at module load, not per material: the step count is unrolled into
@@ -620,9 +621,22 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // every angle, no branch, and it collapses to the old behaviour (up to a
   // mirror) on axis-aligned walls, which is why the tuned look survives it.
   //
-  // Corners still change phase, and they SHOULD — real masonry interlocks at a
-  // corner rather than flowing through it. What they no longer do is change
-  // scale.
+  // ── …AND THE PHASE COMES FROM THE RING, WHEN THE BUILDER KNOWS IT ──────────
+  // This paragraph used to end: *"Corners still change phase, and they SHOULD —
+  // real masonry interlocks at a corner rather than flowing through it."* Josh:
+  // *"in some places the texture is still misaligned over corners."* A joint that
+  // jumps at every corner does not read as interlocking, it reads as wallpaper
+  // that was hung in strips — and two rounds of hiding the jump (the corner field
+  // below, quoin blocks since removed) never took the jump away.
+  //
+  // `position · along` gives every wall its own origin, and no per-wall origin can
+  // fix that: a ring of corners only closes if its offsets are solved together.
+  // The room builders now do exactly that — arc length round the outline, baked
+  // into the uv (level/wall-unwrap.ts, tagged with MASONRY_UV_TAG) — so a tagged
+  // face reads U straight off it and the stone carries on round the corner. The
+  // direction still comes from the normal, and the bake runs the same way, so POM
+  // and the relief frame below are unchanged. Untagged surfaces (props, framing,
+  // a doorway's jamb) keep `position · along`, exactly as before.
   let sU: any, sV: any;      // metre-space projected coords
   let axisU: any, axisV: any; // and the WORLD directions they run along
   if (cfg.proj === 'wall') {
@@ -639,45 +653,28 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // texture."*
     //
     // The frame above is chosen from the NORMAL alone, and a band's top strip
-    // has a normal of ±Y, which says nothing about the wall under it. So the
-    // strip fell back to the ground plane (U = world X) while the wall face used
-    // whichever axis it runs along. On a N/S wall that happens to be world X too
-    // and the joints DO carry over the arris; on a W/E wall the wall runs along
-    // Z and the strip's pattern comes out at ninety degrees to it. Two of the
-    // four walls in every room lined up and two did not, which is why it reads
-    // as the top "doing its own thing" rather than as a consistent choice.
+    // has a normal of ±Y, which says nothing about the wall under it. No amount
+    // of shader cleverness fixes that — the information is not in the fragment.
+    // The builder HAS it (see closeStep in level/builder.ts), so it bakes the
+    // strip's coordinates into the uv with the same tag the wall faces use: U is
+    // the ring coordinate of the face it caps, V the height that face had at the
+    // arris, carried on into the strip, so the stone turns over the edge.
     //
-    // No amount of shader cleverness fixes that — the information is not in the
-    // fragment. The builder HAS it (see closeStep in level/builder.ts), so it
-    // now writes the along-wall axis into the strip's UV, which every wall
-    // geometry already carries, nothing else reads, and the merge already
-    // preserves. A sentinel OUTSIDE the [0,1] range a PlaneGeometry produces, so
-    // any surface that has NOT been tagged — props, framing, anything with real
-    // UVs — is unambiguously "no flag" and keeps the old behaviour.
+    // The strip's WORLD axes stay the ground pair: POM and the relief frame lean a
+    // little wrong on a strip whose wall runs along Z, on a few centimetres of
+    // stone. (Strips exist only on non-plain wall profiles, which no room uses.)
     const uvA: any = uvNode();
-    // Tag values are -1 and 2, so |t - 0.5| > 1 catches both and cannot catch a
-    // PlaneGeometry's own [0,1]. One test, no boolean-or needed.
-    const isTagged: any = uvA.x.sub(0.5).abs().greaterThan(1.0);
-    const swapAxes: any = uvA.x.greaterThan(1.5);
-    const flatU: any = (swapAxes as any).select(pos.z, pos.x);
-    // V comes from the BAKED value on a tagged strip — the height the face had
-    // at the arris, carried on into the wall — so the course continues instead
-    // of jumping to whatever the depth coordinate happened to land on.
-    const flatV: any = (isTagged as any).select(uvA.y, (swapAxes as any).select(pos.x, pos.z));
-    // Distance ALONG the wall, in metres, for a wall at any angle. On an
-    // axis-aligned wall this is ±pos.z / ±pos.x — the old expression, possibly
-    // mirrored — and on a chamfer it is the thing the old expression could not
-    // express.
-    sU = (flat as any).select(flatU, pos.dot(alongU));
+    const baked: any = uvA.y.greaterThan(MASONRY_UV_TAG / 2);
+    const flatU: any = (baked as any).select(uvA.x, pos.x);
+    const flatV: any = (baked as any).select(uvA.y.sub(MASONRY_UV_TAG), pos.z);
+    // Distance ALONG the wall, in metres, for a wall at any angle — from the
+    // room's ring where the builder baked it, from the wall's own origin where
+    // it did not. On an axis-aligned wall the fallback is ±pos.z / ±pos.x.
+    const wallU: any = (baked as any).select(uvA.x, pos.dot(alongU));
+    sU = (flat as any).select(flatU, wallU);
     sV = (flat as any).select(flatV, pos.y);
-    axisU = (flat as any).select(
-      (swapAxes as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(1, 0, 0)),
-      alongU,
-    );
-    axisV = (flat as any).select(
-      (swapAxes as any).select((vec3 as any)(1, 0, 0), (vec3 as any)(0, 0, 1)),
-      (vec3 as any)(0, 1, 0),
-    );
+    axisU = (flat as any).select((vec3 as any)(1, 0, 0), alongU);
+    axisV = (flat as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, 1, 0));
   } else if (cfg.proj === 'stair') {
     // ── UNWRAPPED: THE TREAD AND THE RISER ARE ONE SURFACE ───────────────────
     //
@@ -693,30 +690,63 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // the surface UNWRAPPED — what you would get by laying a tape measure along the walking line.
     // That cannot be derived from the normal (a tread's normal says nothing about which way the
     // flight runs), so the geometry bakes it: level/geometry-prims.ts writes metres into the UV,
-    // u across the run and v along it, continuous through every nose by construction.
+    // continuous through every nose by construction.
     //
     // The tread and the riser then carry the same stone, and it turns the corner because it is
     // the same coordinate on both — not because two projections were tuned to agree.
+    //
+    // ── …AND THE FRAME HAS TO MATCH THE BAKE ─────────────────────────────────
+    // Josh: *"stairs horizontal ground texture is just like a cut instead of the
+    // 3d-esque texture the top plane provides."* Mostly that was never this branch:
+    // the static batcher drew every flight with the FLOOR's shader (see
+    // surfaceDetailKeyOf), so the risers got the floor's XZ projection smeared down
+    // them. Once this branch actually ran, it had a bug of its own. POM marches
+    // along axisU/axisV and the relief tilts the normal along them, so they must be
+    // the world directions in which the baked U and V INCREASE. They were guessed —
+    // "a tread takes the world axes" — while the bake laid an X-running flight the
+    // other way round: U across the run on world Z, V along it on world X. Every
+    // tread of such a flight marched its parallax sideways and lit its stones as if
+    // turned ninety degrees. (Its risers' across-axis came out mirrored as well.)
+    //
+    // So the bake now lays a tread in a FIXED frame — U on world +X, V on world +Z,
+    // whichever way the flight runs — and the along-run coordinate picks up the
+    // drop on whichever of the two it is (geometry-prims.ts bakeStairUnwrapUV).
+    // Then the tread frame is a constant, and a riser's is read off its normal:
+    // it faces down the flight, so the axis it faces along is the one the unwrap
+    // runs DOWN it, and the other stays the horizontal world axis.
+    //
+    // UNBAKED stair geometry — the stairwell's pooled boxes (interactables/stairs.ts),
+    // whose uv is a BoxGeometry's 0..1 on every face — used to read that 0..1 as
+    // metres, so each face showed the same squashed metre of stone whatever its
+    // size. Untagged faces now take a world projection instead, like 'wall'.
     const uvS: any = uvNode();
-    sU = uvS.x;
-    sV = uvS.y;
-    // POM still needs WORLD directions to march along. Across the run is horizontal and shared by
-    // both faces; along it is the travel direction on a tread and straight down on a riser, which
-    // is the same `flat` test the wall branch uses.
+    const bakedS: any = uvS.y.greaterThan(MASONRY_UV_TAG / 2);
     const flatS: any = nrm.y.abs().greaterThanEqual((tslMax as any)(nrm.x.abs(), nrm.z.abs()));
-    // A RISER knows both of its axes from its own normal: it faces along the run, so the
-    // horizontal direction across its face is the across-run axis, and the unwrap runs straight
-    // down it.
     const hLenS: any = nrm.x.mul(nrm.x).add(nrm.z.mul(nrm.z)).sqrt().max(1e-4);
     const acrossS: any = (vec3 as any)(nrm.z.div(hLenS), 0, nrm.x.negate().div(hLenS));
-    // A TREAD does not — its normal is +Y and says nothing about which way the flight runs — so
-    // it takes the world axes. On a corridor running along Z that swaps the two, which shifts
-    // where PARALLAX pulls and nothing else: the UVs themselves are baked and stay exact, so the
-    // stone pattern is right either way and only the depth illusion leans the wrong way slightly.
-    // Worth it to keep this branch derivable from the fragment instead of needing per-corridor
-    // material state.
-    axisU = (flatS as any).select((vec3 as any)(1, 0, 0), acrossS);
-    axisV = (flatS as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, -1, 0));
+    // Riser of a flight running along X faces ±X; its U is the unwrap, running down
+    // the face (−Y when it faces +X, i.e. descends toward +X), its V is world Z.
+    // Running along Z, the roles swap. Exact on the axis-aligned boxes the bake
+    // lays; the test is only ever asked of a face that is plainly one or the other.
+    const runsX: any = nrm.x.abs().greaterThan(nrm.z.abs());
+    const sgnX: any = (nrm.x.greaterThanEqual(0) as any).select(float(1), float(-1));
+    const sgnZ: any = (nrm.z.greaterThanEqual(0) as any).select(float(1), float(-1));
+    const riserU: any = (runsX as any).select((vec3 as any)(0, sgnX.negate(), 0), (vec3 as any)(1, 0, 0));
+    const riserV: any = (runsX as any).select((vec3 as any)(0, 0, 1), (vec3 as any)(0, sgnZ.negate(), 0));
+    // Outer test on the FACE, inner on the TAG — the same shape as the wall branch.
+    // The other nesting (tag outside, face inside) drew nothing at all, and blending
+    // the two with mix() smeared the treads into stripes: on a tread `acrossS` is
+    // the up-normal's horizontal part over a 1e-4 floor — noise blown up to
+    // thousands — and any arithmetic that touches it carries the noise in. A select
+    // only ever picks, so the tread's arm never sees it.
+    const bakedU: any = uvS.x;
+    const bakedV: any = uvS.y.sub(MASONRY_UV_TAG);
+    sU = (flatS as any).select((bakedS as any).select(bakedU, pos.x), (bakedS as any).select(bakedU, pos.dot(acrossS)));
+    sV = (flatS as any).select((bakedS as any).select(bakedV, pos.z), (bakedS as any).select(bakedV, pos.y));
+    const treadU: any = (vec3 as any)(1, 0, 0);
+    const treadV: any = (vec3 as any)(0, 0, 1);
+    axisU = (flatS as any).select(treadU, (bakedS as any).select(riserU, acrossS));
+    axisV = (flatS as any).select(treadV, (bakedS as any).select(riserV, (vec3 as any)(0, 1, 0)));
   } else {
     sU = pos.x; sV = pos.z;
     axisU = (vec3 as any)(1, 0, 0);
@@ -731,6 +761,25 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (bounded + warmable). See surface-ao.ts for the same lesson on base colour.
   const uTile: any = (tslUniform as any)(new THREE.Vector2(cfg.tile[0], cfg.tile[1]));
   const uv: any = (vec2 as any)(sU.div(uTile.x), sV.div(uTile.y));
+  // ── DEPTH IS A PROPERTY OF THE STONE, SO IT SCALES WITH THE STONE ──────────
+  // POM depth and relief amplitude are both METRES — 0.10m of march, a normal
+  // tilted by metres of height per metre of run — tuned on the floor's 1.05m
+  // flags and the wall's 1.15m blocks, drawn at the size their texture was baked
+  // for. The stair draws the floor's texture at an eighth of that (materials.ts,
+  // STAIR_TILE) and kept the floor's metres: a 0.10m joint in a 0.13m cobble. The
+  // march crossed whole stones per step and the normals stood almost on edge — a
+  // flight rendered as glittering gravel rather than as cut stone. (It went unseen
+  // because the batcher was drawing stairs with the floor's shader; see
+  // surfaceDetailKeyOf.)
+  //
+  // So both scale by how much smaller than native this material draws its stone.
+  // 1 for every surface that draws at native size, which is all of them but the
+  // stair — nothing else moves. A uniform, not a literal, for the reason uTile is.
+  const native = (cfg.tex.userData as { nativeTile?: readonly [number, number] } | undefined)?.nativeTile;
+  const stoneScale = native
+    ? Math.min(1, Math.sqrt((cfg.tile[0] / native[0]) * (cfg.tile[1] / native[1])))
+    : 1;
+  const uStoneScale: any = (tslUniform as any)(stoneScale);
 
   // ── PARALLAX OCCLUSION MAPPING ─────────────────────────────────────────────
   // Josh: *"arent there ways to have more texture in the shader ... there must
@@ -778,7 +827,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     // which at that distance is indistinguishable anyway.
     const dist: any = (cameraPosition as any).sub(pos).length();
     const fade: any = float(1).sub((tslSmoothstep as any)(POM_FADE_NEAR, POM_FADE_FAR, dist));
-    const depthN: any = (uPomDepth as any).mul(fade);
+    const depthN: any = (uPomDepth as any).mul(fade).mul(uStoneScale);
     const uPer: any = tU.div(tN).mul(depthN).div(uTile.x);
     const vPer: any = tV.div(tN).mul(depthN).div(uTile.y);
     const stepUV: any = (vec2 as any)(uPer, vPer).mul(-1 / POM_STEPS);
@@ -1232,7 +1281,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // the lighting. Scaling the relief by the same term means that at the arris
   // both walls are smooth solid stone with no joint to disagree about, which is
   // exactly what a quoin is.
-  const amp: any = (uRelief as any).mul(cfg.relief).mul(float(1).sub(quoin.mul(0.9)));
+  const amp: any = (uRelief as any).mul(cfg.relief).mul(uStoneScale).mul(float(1).sub(quoin.mul(0.9)));
   // The tangent frame is FREE for the same reason POM's was: these UVs are
   // projected on world axes, so U and V *are* world axes — and they are the
   // ones already chosen above. This was the third site re-deciding for itself,
@@ -1421,6 +1470,29 @@ export function getSurfaceDetailEnabled(): boolean { return uDetailStrength.valu
 // userData and would choke on the Texture ref. A WeakMap lets the arched-ceiling
 // clone re-install from its base (see reinstallSurfaceDetail).
 const cfgMap = new WeakMap<THREE.Material, SurfaceTexConfig>();
+
+// ── WHICH SHADER A MATERIAL'S DETAIL IS, AS A KEY ───────────────────────────
+// For anything that groups materials by VALUE — the static world batcher keys a
+// batch on colour, roughness, flags, and then draws every member with the FIRST
+// member's material. Two materials can agree on every one of those values and
+// still run different detail shaders: the stair is a clone of the floor, so the
+// batcher put every flight of stairs in the floor's batch and drew it with the
+// floor's world-XZ projection. The stair projection — the unwrap, the riser that
+// carries the tread's stone over the nose — never ran in a batched build at all,
+// and the risers showed the floor's texture smeared down them like a saw cut.
+//
+// One id per CONFIG, not per material: the arched ceiling re-installs its base's
+// config onto a clone (reinstallSurfaceDetail), draws identically, and should
+// keep batching with it. '' for a material with no detail.
+const cfgIds = new WeakMap<SurfaceTexConfig, number>();
+let nextCfgId = 1;
+export function surfaceDetailKeyOf(material: THREE.Material): string {
+  const cfg = cfgMap.get(material);
+  if (!cfg) return '';
+  let id = cfgIds.get(cfg);
+  if (id === undefined) { id = nextCfgId++; cfgIds.set(cfg, id); }
+  return `sd${id}`;
+}
 
 // Named configs (registered at material-build time) so the ModelSpec material
 // compiler (build-model.ts) can opt a material into a detail by NAME — e.g. a

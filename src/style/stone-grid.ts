@@ -87,6 +87,26 @@ export const COURSES_PER_TILE = 8;
 export const BLOCKS_PER_TILE = 4;
 const TILE_H = COURSE_H * COURSES_PER_TILE;
 const TILE_W = BRICK_W * BLOCKS_PER_TILE;
+/** The wall texture's repeat, world metres, as [along the wall, up it]. The texture
+ *  is tiled on exactly this (surface-textures.ts SURFACE_TILE.wall), and a builder
+ *  that lays a coordinate around a room has to close its ring on a whole number of
+ *  these or the ring's last stone is a different width from its first. */
+export const WALL_TILE: readonly [number, number] = [TILE_W, TILE_H];
+
+// ── BAKED MASONRY COORDINATES ───────────────────────────────────────────────
+//
+// Some surfaces cannot get their stone coordinates from the fragment. A wall's
+// distance AROUND its room is a fact about the ring the wall belongs to, and a
+// stair's unwrapped walking line is a fact about the flight; the normal knows
+// neither. So the geometry bakes them into its uv, in metres, and marks that it
+// did by adding this to v.
+//
+// Why an OFFSET and not a flag value: both coordinates are needed, so there is
+// no spare channel to put a flag in. Every uv a PlaneGeometry, a BoxGeometry or
+// a ModelSpec primitive emits is within a few units of zero, so `v > TAG / 2`
+// cannot fire on anything that was not baked on purpose, and decoding is one
+// subtraction. Float32 at 1000 still resolves 0.06mm, far below a texel.
+export const MASONRY_UV_TAG = 1000;
 
 // ── AND SOME STONES SPAN TWO COURSES ────────────────────────────────────────
 // Josh: *"its boring if the walls are always as big as the strip. the most

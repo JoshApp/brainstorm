@@ -732,7 +732,7 @@ function buildRoomShell(
   // So this is subtracted from the GEOMETRY and not from the collision.
   const otherBands = otherPolys.map(outerRingOf);
 
-  for (const we of wallEdges) {
+  const edgePlans = wallEdges.map((we) => {
     const insideRooms = insidePolyRanges(we, otherPolys);
     const openings = [
       ...findOpenings(we, allRects, room),
@@ -744,6 +744,25 @@ function buildRoomShell(
     for (const m of insidePolyRanges(we, otherBands)) {
       for (const s of subtractRanges(m.start, m.end, insideRooms)) buried.push(s);
     }
+    return { we, openings, buried };
+  });
+  // ── ONE COORDINATE AROUND THE RECT (level/wall-unwrap.ts) ──────────────────
+  // The same ring the polygon shell lays its stone on, so a block that reaches a
+  // corner carries on round it. Walked N → E → S → W, which is the direction each
+  // wall's own along-axis runs (the shader reads it off the normal), so U grows
+  // the way the shader expects on all four. A corridor's open end is a stretch of
+  // ring with no stone on it at all, which is where the ring is allowed to close.
+  const ring = rectRing(rect);
+  const ringWalls = (['N', 'E', 'S', 'W'] as const).map((side) => edgePlans.find((p) => p.we.side === side)!);
+  let seamAt: number | undefined;
+  const probe = unwrapRing(ring.corners);
+  for (let e = 0; e < 4 && seamAt === undefined; e++) {
+    const gap = [...ringWalls[e].openings, ...ringWalls[e].buried][0];
+    if (gap) seamAt = probe.start[e] + ring.along(e, (gap.start + gap.end) / 2);
+  }
+  const unwrap = unwrapRing(ring.corners, seamAt);
+  for (const { we, openings, buried } of edgePlans) {
+    const edge = ring.edgeOf(we.side);
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
@@ -761,6 +780,7 @@ function buildRoomShell(
           // a cap, buried in the stone it stops against.
           Math.abs(vis.start - we.wallStart) < 1e-3,
           Math.abs(vis.end - we.wallEnd) < 1e-3,
+          { unwrap, edge, a: ring.corners[edge], dir: ring.dirs[edge], inward: ring.inwards[edge] },
         );
         if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, vis.start, vis.end);
       }
@@ -941,6 +961,41 @@ function buildRoomShell(
   }
 }
 
+/** Where a rect wall sits on its room's ring (see level/wall-unwrap.ts). */
+interface WallRing {
+  unwrap: RingUnwrap;
+  edge: number;
+  /** The edge's start corner, its unit direction and its room-side normal, world XZ. */
+  a: readonly [number, number];
+  dir: readonly [number, number];
+  inward: readonly [number, number];
+}
+
+/**
+ * A rect as a ring: corners NW → NE → SE → SW, so edge 0 is the N wall, 1 the E,
+ * 2 the S, 3 the W, and each edge runs the way that wall's along-axis does
+ * (cross(up, inward)), which is the direction the shader measures U in.
+ */
+function rectRing(rect: { x: number; z: number; w: number; d: number }) {
+  const x0 = rect.x - rect.w / 2, x1 = rect.x + rect.w / 2;
+  const z0 = rect.z - rect.d / 2, z1 = rect.z + rect.d / 2;
+  const corners: Array<readonly [number, number]> = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+  const dirs: Array<readonly [number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const inwards: Array<readonly [number, number]> = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+  const edgeOf = (side: 'N' | 'E' | 'S' | 'W'): number => ({ N: 0, E: 1, S: 2, W: 3 })[side];
+  /** Metres from edge `e`'s start corner to the point at running coordinate `c`
+   *  (world x for N/S walls, world z for E/W — what wallEdges calls start/end). */
+  const along = (e: number, c: number): number =>
+    e === 0 ? c - x0 : e === 1 ? c - z0 : e === 2 ? x1 - c : z1 - c;
+  return { corners, dirs, inwards, edgeOf, along };
+}
+
+/** Metres along a rect wall's ring edge at running coordinate `c`. */
+function rectAlong(r: WallRing, c: number): number {
+  // The edge's start corner and direction give it without knowing which side it is.
+  return r.dir[0] !== 0 ? (c - r.a[0]) * r.dir[0] : (c - r.a[1]) * r.dir[1];
+}
+
 // Bake one wall-segment plane into a WORLD-SPACE geometry (so a room's
 // segments can be merged into a single mesh — see buildRoomShell). Position
 // + facing depend on which edge it's on; the jittered-plane normal faces
@@ -973,8 +1028,16 @@ function bakeWallSegmentGeometry(
    *  oppositely: corners get an OVERLAP, openings get a RETURN face. */
   cornerAtStart: boolean = false,
   cornerAtEnd: boolean = false,
+  /** The room's ring coordinate (level/wall-unwrap.ts) and where this wall sits on
+   *  it. Without one nothing is tagged and the shader projects every face itself. */
+  ring?: WallRing,
 ): THREE.BufferGeometry | null {
   const segLen = segEnd - segStart;
+  // Lay a world-space face on the ring. Only the room-side face takes it — a
+  // return or a jamb is left on the shader's own projection.
+  const onRing = (geo: THREE.BufferGeometry): void => {
+    if (ring) tagWallFace(geo, ring.unwrap, ring.edge, ring.a, ring.dir, ring.inward);
+  };
   const segMid = (segStart + segEnd) / 2;
 
   // Yaw is chosen per side so the plane's +Z faces INTO the room. That's what
@@ -997,6 +1060,7 @@ function bakeWallSegmentGeometry(
     const geo = makeJitteredPlane(segLen, height, { wavy: true });
     geo.translate(0, height / 2, 0);
     geo.applyMatrix4(toWorld);
+    onRing(geo);
     if (out) out.wall.push(geo);
     return out ? null : geo;
   }
@@ -1054,9 +1118,11 @@ function bakeWallSegmentGeometry(
   // attribute — which matters, because adding one to a merge group is what
   // silently dropped every dressed band once already.
   //
-  // uv.x is a sentinel outside the [0,1] a PlaneGeometry emits, so anything
-  // untagged is unambiguously "no flag" rather than accidentally meaning
-  // something. uv.y is the V that continues from the face.
+  // The strip carries both coordinates now, in the same encoding the wall faces
+  // use (MASONRY_UV_TAG, style/stone-grid.ts): uv.x is the ring coordinate of the
+  // face it caps, so the joints carry over the arris, and uv.y is TAG plus the V
+  // that continues from the face. The tag sits far outside anything a
+  // PlaneGeometry emits, so an untagged surface still means "no flag".
   //
   // `refDepth` is the PROUD band's depth — the face this strip is an extension
   // of — and not the wall plane. A strip between two RECESSED bands (the field
@@ -1064,13 +1130,21 @@ function bakeWallSegmentGeometry(
   // strip 0.08 out while the other two were exact. Caught by checking the baked
   // numbers rather than by looking at it.
   const tagStrip = (geo: THREE.BufferGeometry, refDepth: number): void => {
-    const alongZ = we.side === 'W' || we.side === 'E';
+    if (!ring) return;
     const uvA = geo.attributes.uv as THREE.BufferAttribute;
     const pA = geo.attributes.position as THREE.BufferAttribute;
+    // U is the ring coordinate of the face this strip caps, at the same point along
+    // the wall — so the strip continues the face's stone over the arris. Local X is
+    // along the wall from the segment's middle; the ring wants metres from the
+    // edge's start vertex.
+    const midAlong = rectAlong(ring, segMid);
+    let lo = Infinity, hi = -Infinity;
+    for (let v = 0; v < uvA.count; v++) { lo = Math.min(lo, pA.getX(v)); hi = Math.max(hi, pA.getX(v)); }
+    const ref = midAlong + (lo + hi) / 2;
     for (let v = 0; v < uvA.count; v++) {
-      uvA.setX(v, alongZ ? 2 : -1);
+      uvA.setX(v, ringU(ring.unwrap, ring.edge, midAlong + pA.getX(v), ref));
       // Local frame: Y is height above the wall base, Z is depth into the room.
-      uvA.setY(v, baseY + pA.getY(v) + Math.abs(pA.getZ(v) - refDepth));
+      uvA.setY(v, MASONRY_UV_TAG + baseY + pA.getY(v) + Math.abs(pA.getZ(v) - refDepth));
     }
     uvA.needsUpdate = true;
   };
@@ -1162,6 +1236,7 @@ function bakeWallSegmentGeometry(
     });
     geo.translate(spanX, b.y0 + bh / 2, b.depth);
     geo.applyMatrix4(toWorld);
+    onRing(geo);
     (b.mat === 'dressed' ? out.dressed : out.wall).push(geo);
 
     closeEnds(b);
@@ -1329,6 +1404,8 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
+import { unwrapRing, tagWallFace, ringU, type RingUnwrap } from './wall-unwrap';
+import { MASONRY_UV_TAG } from '../style/stone-grid';
 import { insidePolyRanges, planPortals } from './portals';
 import { spawnThresholdVeil } from '../scene/threshold-veil';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
