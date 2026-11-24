@@ -150,6 +150,14 @@ export interface Settings {
    *  flames, hot rims). A few fullscreen passes of GPU fill; off is a real win
    *  on weak devices, at the cost of the soft glow. */
   bloom: boolean;
+  /** LOOK TEST (2026-11-24): five switches over the current look, all OFF by
+   *  default so the shipped look is untouched. Josh flips them on the phone
+   *  and keeps what convinces him; the losers get deleted. See style/look-lab.ts. */
+  lookSoftFringe: boolean;
+  lookDarkDither: boolean;
+  lookShadowLift: boolean;
+  lookNeutralStone: boolean;
+  lookDryFloor: boolean;
   /** Lean bloom (WebGPU) — replace the 5-mip bloom (~11 render targets) with a
    *  single low-res gaussian blur (~3). Fewer render-target switches = a tile-GPU
    *  bandwidth win on mobile; the subtle glow looks ~identical. No-op on WebGL. */
@@ -340,6 +348,11 @@ const DEFAULTS: Settings = {
                        // available + smooth as an opt-in — 60 just keeps phones cool.
 
   bloom: true,
+  lookSoftFringe: false,
+  lookDarkDither: false,
+  lookShadowLift: false,
+  lookNeutralStone: false,
+  lookDryFloor: false,
   leanBloom: true,   // cheaper 1-pass bloom (~identical look, mobile tile-bandwidth win)
   // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
   // the big win on enemy-heavy floors, where the frustum cone otherwise draws a

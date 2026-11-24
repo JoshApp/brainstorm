@@ -5,6 +5,7 @@ import { setPS1Scale, setBloomEnabled } from '../style/render-frame';
 import { setWebGPULeanBloom, setWebGPUGpuTimingWanted } from '../style/render-webgpu';
 import { setAdaptiveCeiling, setAdaptiveResolution } from './adaptive-resolution';
 import { profilerToolsWanted, type DelveRenderer } from './create-renderer';
+import { applyLookLab } from '../style/look-lab';
 
 // Video settings application — render scale (the adaptive ceiling + fixed value
 // when adaptive is off), adaptive resolution (phones only), bloom, and the DPR
@@ -41,6 +42,7 @@ export function applyVideoSettings(s: Settings = getSettings()): void {
   // setWebGPUGpuTimingWanted.
   setWebGPUGpuTimingWanted(adaptiveOn || profilerToolsWanted());
   scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
+  applyLookLab(s);      // the LOOK TEST switches (style/look-lab.ts)
 }
 
 // Effective DPR cap: desktop debug stays crisp at the CONFIG cap; mobile (the

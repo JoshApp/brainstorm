@@ -358,6 +358,38 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
   ],
 
   graphics: () => [
+    // ── LOOK TEST (style/look-lab.ts) — all off = the look as it ships. ──
+    makeLookHeading(),
+    makeToggle({
+      label: 'TEST · SOFT FRINGE',
+      description: 'The red and blue fringe around edges at about a third. It read as digital damage more than as a lens.',
+      get: () => getSettings().lookSoftFringe,
+      set: (v) => updateSettings({ lookSoftFringe: v }),
+    }),
+    makeToggle({
+      label: 'TEST · LESS SPECKLE',
+      description: 'The fine checker pattern only where light fades to dark, and the edges of the light steps less scattered, so lit stone stops looking corroded.',
+      get: () => getSettings().lookDarkDither,
+      set: (v) => updateSettings({ lookDarkDither: v }),
+    }),
+    makeToggle({
+      label: 'TEST · NEUTRAL STONE',
+      description: 'The stone loses its own warmth, so the amber is the fire\'s and a coloured torch reads as a different light.',
+      get: () => getSettings().lookNeutralStone,
+      set: (v) => updateSettings({ lookNeutralStone: v }),
+    }),
+    makeToggle({
+      label: 'TEST · DRY FLOOR',
+      description: 'Most of the wet sheen on the flagstones gone; the floor answers light more quietly than the walls.',
+      get: () => getSettings().lookDryFloor,
+      set: (v) => updateSettings({ lookDryFloor: v }),
+    }),
+    makeToggle({
+      label: 'TEST · SHADOW LIFT',
+      description: 'A faint charcoal just above black, so what is at arm\'s reach never quite drowns. For a phone in daylight.',
+      get: () => getSettings().lookShadowLift,
+      set: (v) => updateSettings({ lookShadowLift: v }),
+    }),
     makeSelect<HudStyleId>({
       label: 'HUD STYLE',
       description:
@@ -1062,6 +1094,21 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
     row.appendChild(desc);
   }
   return row;
+}
+
+/** The LOOK TEST group's heading: what the switches are, and that off is the shipped look. */
+function makeLookHeading(): HTMLDivElement {
+  const h = document.createElement('div');
+  Object.assign(h.style, { display: 'flex', flexDirection: 'column', gap: '4px', paddingBottom: '6px',
+    borderBottom: '1px solid rgba(180, 130, 90, 0.25)' } as Partial<CSSStyleDeclaration>);
+  const t = document.createElement('div');
+  t.textContent = 'LOOK TEST';
+  Object.assign(t.style, { font: "600 12px/1 'Cinzel', serif", letterSpacing: '0.22em', color: '#ffc88c' } as Partial<CSSStyleDeclaration>);
+  const d = document.createElement('div');
+  d.textContent = 'Experiments over the current look. All off is the game as it ships; switch each on and keep what you like.';
+  Object.assign(d.style, { fontSize: '11px', fontStyle: 'italic', color: 'rgba(160, 130, 100, 0.8)' } as Partial<CSSStyleDeclaration>);
+  h.append(t, d);
+  return h;
 }
 
 interface ToggleOpts {
