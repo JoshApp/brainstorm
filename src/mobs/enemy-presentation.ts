@@ -1,3 +1,4 @@
+import { gameNow } from '../engine/game-clock';
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
@@ -84,7 +85,9 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
   function setThreatFlash(c: THREE.Color | null) { threatColor = c; }
   function paintThreat() {
     // Pulse so it READS as "act now," not a static tint. ~6Hz throb.
-    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 1000 * 38);
+    // The game clock, not the wall clock: same as performance.now() in play, the sim's
+    // own accumulated time under replay, so a recorded fight replays the same flash.
+    const pulse = 0.7 + 0.3 * Math.sin(gameNow() / 1000 * 38);
     if (eyeMat) {
       eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 9 * pulse);
       eyeMat.emissive.copy(threatColor!);

@@ -189,7 +189,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // genuinely bright albedo, which is the entire reason the skeleton reads
         // from across a room. Ribs, shoulder caps and a jaw give this body the
         // high-frequency light/dark break a smooth capsule torso cannot have.
-        bone: { color: 0x9c9078, roughness: 0.75, flatShading: 'auto' },
+        // PAINTED (2026-11-24, Josh: "in a red room the bones are red out of
+        // dark, maybe we can play with that effect more"). Near-white, fully
+        // matte, chroma up: the bone makes no colour of its own and takes the
+        // ROOM's, pushed. Blood light gives red bone, sick light green bone; the
+        // white lamp washes it back to bone. Was 0x9c9078 at 0.75, no chroma;
+        // 1.7 turned amber light into wasp stripes.
+        bone: { color: 0xcdc5b4, roughness: 0.95, flatShading: 'auto', chroma: 1.35 },
         // Claws catch a HIGHLIGHT rather than sitting a shade paler than the
         // flesh — a specular glint survives a room that washes everything warm;
         // a slightly-lighter matte brown does not.
@@ -237,6 +243,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'box', joint: 'head', size: [0.20, 0.045, 0.10], pos: [0, 0.055, -0.10], rot: [-0.28, 0, 0], jitter: 0.008, mat: 'flesh' },
         { kind: 'sphere', joint: 'head', radius: 0.034, segments: [5, 4], pos: [-0.065, -0.005, -0.135], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.034, segments: [5, 4], pos: [0.065, -0.005, -0.135], mat: 'eyes' },
+        // EYES THROUGH THE DARK. Two glow sprites on the SIGNAL layer
+        // (scene/signal-layer.ts), so a veiled doorway still shows the gaze: you
+        // count the ghouls in a room you cannot see into by their eyes. The
+        // presentation drives them by name (windup flare, threat colour, death fade).
+        { name: 'eyeHaloL', kind: 'sprite', joint: 'head', pos: [-0.065, -0.005, -0.16], size: [0.13, 0.13], texture: 'fire-wisp', blending: 'additive', signal: true, color: 0xff5530 },
+        { name: 'eyeHaloR', kind: 'sprite', joint: 'head', pos: [0.065, -0.005, -0.16], size: [0.13, 0.13], texture: 'fire-wisp', blending: 'additive', signal: true, color: 0xff5530 },
         // A jaw the rot has stripped — the one bright note on the head, right
         // under the eyes, so the face reads as a face at four metres.
         { kind: 'box', joint: 'head', size: [0.13, 0.05, 0.09], pos: [0, -0.10, -0.10], jitter: 0.012, mat: 'bone' },

@@ -1179,6 +1179,42 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
   },
 
+  // GHOUL LAB — the bench for the creature look (2026-11-24, the enemy chapter).
+  // Three ghouls, three readings of the same body:
+  //   W  in BLOOD light — the painted bone should come up red out of the dark;
+  //   E  in plain AMBER — the baseline everyone fights in most rooms;
+  //   N  down a corridor, behind the doorway's VEIL — only the eyes should come
+  //      through (signal layer), the body lost to the dark.
+  // Frozen so they hold still for the look bench's split view (L, then V).
+  'ghoul-lab': {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'ghoul-lab', depth: 2, displayName: 'GHOUL LAB', fogColor: 0x000000,
+      // No threshold bonfire: its warm light from the middle drowned the torches' colour.
+      composerManagedFires: true,
+      startPos: { x: 0, z: 0.5, yaw: 0 },
+      rooms: [{ id: 'gl-room', rect: { x: 0, z: -4, w: 12, d: 10 }, height: 3.4 }],
+      corridors: [{ id: 'gl-cor', rect: { x: 0, z: -11.5, w: 1.6, d: 5 }, height: 3.0 }],
+      props: [],
+      torches: [
+        { x: -5.5, z: -2.5, height: 2.0, wall: 'W', colorTint: 0xff3020, intensityMul: 1.2 },
+        { x: -5.5, z: -5.5, height: 2.0, wall: 'W', colorTint: 0xff3020, intensityMul: 1.2 },
+        { x:  5.5, z: -2.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  5.5, z: -5.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+      ],
+      spawns: [
+        // Out past the lamp's reach (~6m), beside their torches, so what lights
+        // them is the ROOM, not the player.
+        { enemyId: 'ghoul', x: -4.3, z: -6.6, roomId: 'gl-room' },
+        { enemyId: 'ghoul', x: 4.3, z: -6.6, roomId: 'gl-room' },
+        { enemyId: 'ghoul', x: 0, z: -12.2, roomId: 'gl-cor' },
+      ],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.1 } },
+  },
+
   // SURFACE LAB — the room for working on WALLS and FLOORS, and nothing else.
   //
   // Built 2026-08-15 at Josh's request ("can you make a scenario for you"),

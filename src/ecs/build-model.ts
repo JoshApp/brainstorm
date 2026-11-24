@@ -790,6 +790,10 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       const baseW = part.size[0];
       const baseH = part.size[1];
       sprite.scale.set(baseW, baseH, 1);
+      // A SIGNAL sprite on the unbatched path (a creature's eye halo) is a marker too. Only
+      // the batched path marked it, so every creature's 'signal' eyes were veiled with their
+      // room — the eyes that are meant to be the one thing you see through a dark doorway.
+      if (part.signal === true) markAsSignal(sprite);
       // Optional cheap flicker — wobbles scale + Y position via a
       // sine wave on Date.now(). No external tick needed.
       if (part.flicker) {

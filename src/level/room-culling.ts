@@ -1063,7 +1063,18 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     for (const e of level.enemies) {
       const node = rectAt(nodes, e.group.position.x, e.group.position.z);
       const vis = !node || visible.has(node.id);
-      if (e.group.visible !== vis) e.group.visible = vis;
+      // EYES IN THE DARK. A creature with signal parts (eye halos) keeps its group
+      // drawn and drops only its BODY when its space is not rendered, so the eyes still
+      // come through a veiled doorway (Josh, 2026-11-24: "you see a glow of eyes through
+      // the veil"). The eyes answer to the signal layer's own gate and sight rule
+      // (scene/signal-layer.ts), not to this one.
+      const body = cullBodyOf(e.group);
+      if (!body) { if (e.group.visible !== vis) e.group.visible = vis; continue; }
+      if (!e.group.visible) e.group.visible = true;
+      for (const b of body) {
+        const want = vis ? b.mask : HIDDEN_LAYER_MASK;
+        if (b.o.layers.mask !== want) b.o.layers.mask = want;
+      }
     }
 
     // Runtime-spawned interactables — loot PICKUPS dropped during play. These
@@ -1368,4 +1379,29 @@ function parseRectId(src: string): string | null {
   const rest = src.slice(dot + 1).trim();
   const sp = rest.search(/\s/);
   return (sp < 0 ? rest : rest.slice(0, sp)) || null;
+}
+
+// ── A CREATURE'S BODY, FOR CULLING WITHOUT ITS EYES ─────────────────────────
+//
+// Hidden by LAYER, not by `visible`: dismemberment hides a severed part with `visible`,
+// and a culler that wrote `visible` back would regrow it. A layer no camera renders hides
+// the mesh from the view and from every shadow camera, and leaves `visible` to its owner.
+const HIDDEN_LAYER_MASK = 1 << 31;
+type BodyPart = { o: THREE.Object3D; mask: number };
+function cullBodyOf(group: THREE.Object3D): BodyPart[] | null {
+  const ud = group.userData as { cullBody?: BodyPart[] | null };
+  if (ud.cullBody !== undefined) return ud.cullBody;
+  let hasSignal = false;
+  group.traverse((o) => { if (isSignal(o)) hasSignal = true; });
+  if (!hasSignal) { ud.cullBody = null; return null; }
+  const body: BodyPart[] = [];
+  const walk = (o: THREE.Object3D): void => {
+    if (isSignal(o)) return;                       // the eyes, and anything under them
+    const r = o as THREE.Mesh & { isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
+    if (r.isMesh || r.isSprite || r.isPoints || r.isLine) body.push({ o, mask: o.layers.mask });
+    for (const c of o.children) walk(c);
+  };
+  walk(group);
+  ud.cullBody = body;
+  return body;
 }
