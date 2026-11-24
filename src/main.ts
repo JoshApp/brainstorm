@@ -78,6 +78,7 @@ import {
 } from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { registerFrameCapture, pixelsToPngDataURL } from './report/frame-capture';
+import { initLookBench } from './ui/look-bench';
 import { captureLookTarget } from './report/look-target';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -430,6 +431,13 @@ scene.add(camera); // required for the sword (camera child) to render
 // Bug-report frame capture: a fresh render then a canvas read (WebGPU buffers
 // aren't guaranteed to survive present), giving the report a clean game-view
 // screenshot + the camera pose. Registered once; read on demand by the report UI.
+// The look bench (L in play): flips the LOOK TEST switches and shows a split
+// view, shipped | yours, from two captures of the same frame. DEV or ?looklab=1.
+// Captured into a LINEAR target: the display pipeline already writes encoded
+// bytes, and an sRGB target encodes them again (measured 2026-11-24: mean 58
+// against the screen's ~17, a washed-out frame). Linear matches the screen.
+initLookBench(() => captureDisplayFrame(renderer, scene, camera,
+  Math.min(1920, Math.round(window.innerWidth * Math.min(window.devicePixelRatio || 1, 2))), THREE.LinearSRGBColorSpace));
 registerFrameCapture(async () => {
   let png: string | null = null;
   // captureDisplayFrame renders one frame through the REAL display pipeline into

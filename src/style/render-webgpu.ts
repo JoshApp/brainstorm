@@ -367,13 +367,16 @@ const CA_AMOUNT = 0.004;            // radial red/blue split (was reading as a b
 
 // ── LOOK TEST switches for the final pass (style/look-lab.ts) ──
 // Read when the pass is built; a change rebuilds it. All off = the shipped look.
-let lookSoftFringe = false;   // chromatic split at ~30%
-let lookDarkDither = false;   // the Bayer dither only in the darks; lit surfaces breathe
-let lookShadowLift = false;   // a faint charcoal pedestal just above black
+// LOOK TEST switches as live uniforms (0 = off, 1 = on), so the look bench can
+// flip them in a frame (hold-to-compare, the split view) with no pipeline
+// rebuild. One post quad reads them: no per-object cost.
+const uLookFringe: any = (uniform as any)(0);   // chromatic split at ~30%
+const uLookDither: any = (uniform as any)(0);   // the Bayer dither only in the darks; lit surfaces breathe
+const uLookLift: any = (uniform as any)(0);     // a faint charcoal pedestal just above black
 export function setWebGPULook(o: { softFringe: boolean; darkDither: boolean; shadowLift: boolean }): void {
-  if (o.softFringe === lookSoftFringe && o.darkDither === lookDarkDither && o.shadowLift === lookShadowLift) return;
-  lookSoftFringe = o.softFringe; lookDarkDither = o.darkDither; lookShadowLift = o.shadowLift;
-  rebuildWebGPUPipeline();
+  uLookFringe.value = o.softFringe ? 1 : 0;
+  uLookDither.value = o.darkDither ? 1 : 0;
+  uLookLift.value = o.shadowLift ? 1 : 0;
 }
 const QUANTIZE_LEVELS = 32.0;       // hard PSX colour steps
 const SCANLINE_DARKEN = 0.96;       // every other row
@@ -721,7 +724,7 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // Done on the raw scene (pre-expose/bloom) exactly as the WebGL path did it.
   const tex: any = GBUF ? (scenePass as any).getTextureNode('output') : (scenePass as any).getTextureNode();
   const suv: any = screenUV as any;
-  const caOff: any = suv.sub(0.5).mul(lookSoftFringe ? CA_AMOUNT * 0.3 : CA_AMOUNT);
+  const caOff: any = suv.sub(0.5).mul((mix as any)((float as any)(CA_AMOUNT), (float as any)(CA_AMOUNT * 0.3), uLookFringe));
   let sceneCA: any = (vec3 as any)(
     tex.sample(suv.add(caOff)).r,
     tex.sample(suv).g,
@@ -976,12 +979,11 @@ function ensurePipeline(renderer: DelveRenderer, scene: THREE.Scene, camera: THR
   // LOOK TEST: a charcoal pedestal just above black, so geometry at arm's reach
   // never quite drowns (phone in daylight). Before the dither + quantize, so the
   // lifted darks get their own levels. Neutral: it lifts, it does not tint.
-  if (lookShadowLift) disp = disp.mul(_float(1.0 - 0.012)).add(_float(0.012));
+  disp = disp.mul(_float(1.0).sub(uLookLift.mul(0.012))).add(uLookLift.mul(0.012));
   // LOOK TEST: dither only where it does its job, the dark-to-light transitions;
   // fade it out over the lit mid-tones so big lit stone stops looking corroded.
-  const ditherAmp: any = lookDarkDither
-    ? _float(1.0 / 24.0).mul(_float(1.0).sub((smoothstep as any)(_float(0.18), _float(0.42), (luminance as any)(disp))))
-    : _float(1.0 / 24.0);
+  const ditherAmp: any = _float(1.0 / 24.0).mul(_float(1.0).sub(
+    uLookDither.mul((smoothstep as any)(_float(0.18), _float(0.42), (luminance as any)(disp)))));
   disp = disp.add(bayer.sub(0.5).mul(ditherAmp));                              // dither in gamma space
   disp = disp.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));  // quantize
   col = disp.max(_float(0.0)).pow(_float(2.2));                               // gamma → linear
@@ -1215,12 +1217,13 @@ export function renderWebGPU(renderer: DelveRenderer, scene: THREE.Scene, camera
 let luxRT: THREE.RenderTarget | null = null;
 export async function captureDisplayFrame(
   renderer: DelveRenderer, scene: THREE.Scene, camera: THREE.Camera, width = 240,
+  colorSpace: string = THREE.SRGBColorSpace,
 ): Promise<{ data: Uint8Array; width: number; height: number } | null> {
   ensurePipeline(renderer, scene, camera);
   if (!pipeline) return null;
   const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
   const height = Math.max(1, Math.round(width * (buf.y / Math.max(1, buf.x))));
-  if (!luxRT || luxRT.width !== width || luxRT.height !== height) {
+  if (!luxRT || luxRT.width !== width || luxRT.height !== height || luxRT.texture.colorSpace !== colorSpace) {
     // Same rule as everything else that frees GPU memory here: the previous
     // capture's submit may still be in flight, and a synchronous dispose is
     // how you get "used in a submit while destroyed". Retire it instead.
@@ -1229,7 +1232,7 @@ export async function captureDisplayFrame(
     luxRT = new THREE.RenderTarget(width, height, { depthBuffer: false });
     // Display-referred bytes: the pipeline applies the sRGB output transform
     // when the target's texture asks for it (same as the canvas).
-    luxRT.texture.colorSpace = THREE.SRGBColorSpace;
+    luxRT.texture.colorSpace = colorSpace;
   }
   const prev = renderer.getRenderTarget();
   enterWarm();

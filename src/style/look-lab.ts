@@ -43,9 +43,35 @@ function drive(values: Record<string, number>, on: boolean): void {
   }
 }
 
-export function applyLookLab(s: Settings): void {
-  setWebGPULook({ softFringe: s.lookSoftFringe, darkDither: s.lookDarkDither, shadowLift: s.lookShadowLift });
-  drive(NEUTRAL_STONE, s.lookNeutralStone);
-  drive(DRY_FLOOR, s.lookDryFloor);
-  drive(CALM_BANDS, s.lookDarkDither);
+/** The five switches, as one value. */
+export interface LookFlags {
+  softFringe: boolean; darkDither: boolean; shadowLift: boolean; neutralStone: boolean; dryFloor: boolean;
 }
+
+export const LOOK_SWITCHES: ReadonlyArray<{ key: keyof LookFlags; setting: keyof Settings; name: string }> = [
+  { key: 'softFringe', setting: 'lookSoftFringe', name: 'SOFT FRINGE' },
+  { key: 'darkDither', setting: 'lookDarkDither', name: 'LESS SPECKLE' },
+  { key: 'neutralStone', setting: 'lookNeutralStone', name: 'NEUTRAL STONE' },
+  { key: 'dryFloor', setting: 'lookDryFloor', name: 'DRY FLOOR' },
+  { key: 'shadowLift', setting: 'lookShadowLift', name: 'SHADOW LIFT' },
+];
+
+export const SHIPPED_LOOK: LookFlags = { softFringe: false, darkDither: false, shadowLift: false, neutralStone: false, dryFloor: false };
+
+export function lookFromSettings(s: Settings): LookFlags {
+  return {
+    softFringe: s.lookSoftFringe, darkDither: s.lookDarkDither, shadowLift: s.lookShadowLift,
+    neutralStone: s.lookNeutralStone, dryFloor: s.lookDryFloor,
+  };
+}
+
+/** Put a look on screen now. Every switch is live (uniforms), so the bench can
+ *  flip between two looks inside a frame. */
+export function applyLook(f: LookFlags): void {
+  setWebGPULook({ softFringe: f.softFringe, darkDither: f.darkDither, shadowLift: f.shadowLift });
+  drive(NEUTRAL_STONE, f.neutralStone);
+  drive(DRY_FLOOR, f.dryFloor);
+  drive(CALM_BANDS, f.darkDither);
+}
+
+export function applyLookLab(s: Settings): void { applyLook(lookFromSettings(s)); }
