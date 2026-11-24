@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { track } from '../telemetry/telemetry';
 import { setPersistentVignette } from '../ui/vignette';
-import { showDeathOverlay } from '../ui/death-overlay';
+import { showDeathOverlay, hideDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
 import { registerSimReset } from '../engine/sim-state';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
@@ -246,4 +246,11 @@ registerSimReset(() => {
   dying = false;
   elapsed = 0;
   setGameMode('playing');
+  // And everything the death put ON SCREEN, which the reload used to clear too: the
+  // underlay + epitaph, the darkened vignette, and the camera's roll onto its side. The
+  // title's camera is never touched by the in-play look system (the world is paused
+  // under it), so a roll left here stayed for the whole menu.
+  hideDeathOverlay();
+  setPersistentVignette(0, 400);
+  if (camera) camera.rotation.z = 0;
 });

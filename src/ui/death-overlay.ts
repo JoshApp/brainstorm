@@ -101,3 +101,23 @@ export function showDeathOverlay(): string | undefined {
 
   return epitaph;
 }
+
+/**
+ * Take the death screen down: fade the underlay and the epitaph out, then remove them.
+ *
+ * Nothing used to, because every exit from a dead run reloaded the page and the reload
+ * did it. Once RISE AGAIN went back to the title without a reload, the underlay and the
+ * epitaph stayed on top of the menu for good (Josh, 2026-11-24: "death screen is like not
+ * fading and permanent"). Called from the death lifecycle's sim reset, which runs on every
+ * level load, the title's included.
+ */
+export function hideDeathOverlay(fadeMs = 600): void {
+  const els = [underlay, epitaphEl].filter((e): e is HTMLDivElement => !!e);
+  underlay = null;
+  epitaphEl = null;
+  for (const el of els) {
+    el.style.transition = `opacity ${fadeMs}ms ease-out`;
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), fadeMs + 50);
+  }
+}

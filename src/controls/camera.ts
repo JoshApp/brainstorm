@@ -114,6 +114,9 @@ export function applyCameraPose(camera: THREE.Camera): void {
   camera.rotation.order = 'YXZ';
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
+  // Level. Roll is only ever a transient (a stumble, the death fall), and a pose
+  // written from stored yaw + pitch should not inherit one.
+  camera.rotation.z = 0;
 }
 
 export function updateCamera(
