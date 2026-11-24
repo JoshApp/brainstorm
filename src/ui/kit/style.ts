@@ -284,8 +284,8 @@ export function injectKitStyles(): void {
     html[data-input="touch"] .lk-wprompt:not(.sealed) .lk-wverb { border-color: rgba(var(--tc), .55); background: linear-gradient(rgba(var(--tc), .10), rgba(var(--tc), .10)), rgba(7, 5, 3, .72); }
     .lk-wprompt.sealed .lk-wverb { color: rgba(180, 160, 140, .75); }
     .lk-wcost { font: 700 11px/1 system-ui, -apple-system, sans-serif; letter-spacing: .04em; text-shadow: 0 1px 2px #000; }
-    .lk-wthread { position: absolute; left: 50%; top: 100%; width: 1px; height: 0; pointer-events: none;
-      background: linear-gradient(rgba(var(--tc), .75), rgba(var(--tc), .15)); }
+    .lk-wthread { position: absolute; left: 50%; top: 100%; width: 1px; height: 0; pointer-events: none; transform-origin: 50% 0;
+      background: linear-gradient(rgba(var(--tc), .75), rgba(var(--tc), .15)); opacity: 0; transition: opacity .25s ease-out; }
     .lk-wthread::after { content: ''; position: absolute; left: -3px; bottom: -4px; width: 7px; height: 7px; transform: rotate(45deg);
       border: 1px solid rgba(var(--tc), .85); box-shadow: 0 0 6px rgba(var(--tc), .8); }
   `;

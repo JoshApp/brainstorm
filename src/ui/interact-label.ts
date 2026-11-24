@@ -66,6 +66,7 @@ const THREAD_FOOT_WORLD = 0.12;
 /** A thread longer than this is cut short: past it the prompt reads as
  *  belonging to the thread, not the thing. */
 const THREAD_MAX_PX = 140;
+let threadLen = 0;
 /** Keep the prompt this far from any screen edge. */
 const EDGE_MARGIN = 10;
 /** The lowest the prompt's foot may sit: above the hearts and stamina, which
@@ -253,13 +254,21 @@ export function updateInteractLabel(
   // drawn only when the thing is below the prompt and the prompt hasn't been
   // pushed sideways by the edge clamp.
   if (threadEl) {
+    // The thread runs from the prompt's foot to the thing at whatever angle
+    // the camera gives (it used to draw only when the two lined up
+    // vertically, so it blinked on and off as you moved: Josh, 2026-11-24).
+    // It fades rather than pops, and eases its length, so it reads steady.
     tmpVec.set(target.position.x, target.position.y + THREAD_FOOT_WORLD, target.position.z);
     const foot = worldToScreen(tmpVec, camera, cachedCanvasRect(canvas));
-    // A foot below the screen still gets its thread, run to the edge.
-    const len = Math.min(foot.y, vh) - y;
-    const ok = !foot.behind && Math.abs(foot.x - x) < 6 && len > 10;
-    threadEl.style.height = ok ? `${Math.min(len, THREAD_MAX_PX) - 4}px` : '0';
-    threadEl.style.display = ok ? '' : 'none';
+    const fx = foot.x, fy = Math.min(foot.y, vh);   // a foot below the screen: run to the edge
+    const dx = fx - x, dy = fy - y;
+    const len = Math.hypot(dx, dy);
+    const ok = !foot.behind && dy > 6 && len > 12;
+    const want = ok ? Math.min(len, THREAD_MAX_PX) - 4 : 0;
+    threadLen += (want - threadLen) * 0.35;           // ease, so a jitter of the projection never flickers
+    threadEl.style.height = `${threadLen.toFixed(1)}px`;
+    threadEl.style.transform = `rotate(${(-Math.atan2(dx, dy) * 180 / Math.PI).toFixed(2)}deg)`;
+    threadEl.style.opacity = ok ? '1' : '0';
   }
   if (!shown) {
     shown = true;
@@ -297,6 +306,7 @@ export function interactPromptBottomY(): number {
 function hide(): void {
   if (!labelEl || !shown) return;
   shown = false;
+  threadLen = 0;   // the next prompt's thread grows in from its foot
   labelEl.style.opacity = '0';
   labelEl.style.pointerEvents = 'none';
 }

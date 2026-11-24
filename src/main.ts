@@ -2038,6 +2038,10 @@ if (handleDebugScreenFlags()) {
         startRun('depth-1', 1);
         return;
       }
+      // Saves written before the fix in run-state-listeners carry the title's
+      // backdrop as their floor. Resume them on the floor their depth names
+      // (generated on demand) rather than in the menu's room.
+      if (s.floorId === 'title-vignette') s.floorId = `depth-${Math.max(1, s.depth)}`;
       adoptSave(s);
       // CONTINUE doesn't reset discoveries — it picks up where the
       // mid-run discovery tracking left off. (resetRunDiscoveries is

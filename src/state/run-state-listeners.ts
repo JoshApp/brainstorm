@@ -50,6 +50,12 @@ export function initRunStateListeners() {
       // would resume into a broken state. If the player closes the
       // tab here, next launch shows DESCEND for a clean fresh start.
       if (event.levelId === 'starter') return;
+      // The title's backdrop is not a floor. Quitting to the menu loads it as a
+      // level while the run still exists (app-restart.ts swaps in place rather
+      // than reloading), and saving here overwrote the run's floor with the
+      // backdrop: CONTINUE then dropped you into the menu's room (Josh,
+      // 2026-11-24: "I enter the main menu level instead of the depth").
+      if (event.levelId === 'title-vignette') return;
       // Same skip for test chambers — they're dev affordances and
       // shouldn't poison the real save with `test-arena` floor ids.
       if (event.levelId.startsWith('test-')) return;
