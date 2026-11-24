@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { resetThreshold, armThreshold, endThreshold, tickThreshold, inThreshold } from './arrival-threshold';
-import { isCoverUp } from '../ui/descent-fade';
+import { isCoverUp } from '../ui/cover-state';
 
 // ── FLOOR ARRIVAL — wake at the bonfire ──────────────────────────────
 //

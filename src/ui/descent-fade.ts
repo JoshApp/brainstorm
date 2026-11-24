@@ -3,6 +3,7 @@ import { waitForPresentedFrames, isWarmingUp } from '../style/render-webgpu';
 import { DESCENT_LINES } from '../content/descent-lines';
 import { FONT_TITLE, FONT_DISPLAY } from './theme';
 import { injectGameFonts } from './fonts';
+import { setCoverUp } from './cover-state';
 import LOGO_SKULL from '../assets/ui/logo-skull.webp?url';
 // Brief fade-to-black on descent. The level loader tears down the
 // active world synchronously and the new one pops in on the next
@@ -136,19 +137,13 @@ function ensureOverlay(): HTMLDivElement {
 let transitioning = false;
 export function isDescendTransition(): boolean { return transitioning; }
 
-// Is the black cover fully up (nothing of the world visible)? True from the
-// moment it is raised until the reveal starts fading it. The arrival wake
-// holds its eyelids shut while this is true, so the eyes open AS the floor
-// appears rather than under the black during a long warm.
-let coverUp = false;
-export function isCoverUp(): boolean { return coverUp; }
 
 /** Fade the screen to black. Returns a promise that resolves after
  *  the fade completes. The caller should run the level swap during
  *  the black, then call fadeIn. */
 export function fadeOut(): Promise<void> {
   transitioning = true;
-  coverUp = true;
+  setCoverUp(true);
   document.body.classList.add('descending');
   const el = ensureOverlay();
   return new Promise((resolve) => {
@@ -173,7 +168,7 @@ export function fadeIn(): void {
   // cannot land on the last covered warm frame — with nothing warming there is no such frame,
   // and waiting for two presents is a third of a second per descent.
   void (FAST_BOOT ? Promise.resolve() : waitForPresentedFrames(2, 1500)).then(() => {
-    coverUp = false;
+    setCoverUp(false);
     el.style.transition = FAST_BOOT ? 'opacity 0ms' : 'opacity 320ms ease-out';
     el.style.opacity = '0';
     window.setTimeout(() => {
@@ -276,7 +271,7 @@ function hideLoadingMark(): void {
  *  black instead of a frozen menu. revealWhenReady/fadeIn drop it as usual. */
 export function holdCover(): void {
   transitioning = true;
-  coverUp = true;
+  setCoverUp(true);
   document.body.classList.add('descending');   // covers own HUD visibility (index.html rule)
   const cover = ensureOverlay();
   cover.style.transition = 'opacity 0ms';
@@ -312,7 +307,7 @@ export function revealWhenReady(
   // loadInitialLevel with no fadeOut — so raise the black instantly here. fadeIn drops
   // it on reveal. (Idempotent: if already black, this is a no-op.)
   transitioning = true;   // gameplay stays paused until fadeIn fully recedes
-  coverUp = true;
+  setCoverUp(true);
   document.body.classList.add('descending');
   const cover = ensureOverlay();
   cover.style.transition = 'opacity 0ms';
