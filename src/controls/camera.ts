@@ -106,6 +106,16 @@ export function setCameraPitch(p: number) {
   pitch = p;
 }
 
+/** Write the stored yaw + pitch onto the camera NOW. The look system only
+ *  runs while the world is unpaused, and a new floor is mounted under the
+ *  paused descent cover: without this the camera kept the stairs' gaze until
+ *  the black had already lifted, then snapped (Josh, 2026-11-24). */
+export function applyCameraPose(camera: THREE.Camera): void {
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+}
+
 export function updateCamera(
   camera: THREE.PerspectiveCamera,
   input: InputState,

@@ -14,7 +14,7 @@ import { setLampSpotActive } from './scene/light-pool';
 const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') !== '0';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
-import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
+import { createFirstPersonCamera, setCameraYaw, setCameraPitch, applyCameraPose } from './controls/camera';
 import { bindSight } from './scene/sight-distance';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
@@ -81,7 +81,7 @@ import { registerFrameCapture, pixelsToPngDataURL } from './report/frame-capture
 import { captureLookTarget } from './report/look-target';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { beginArrival, suppressArrivalCeremony } from './player/arrival';
+import { beginArrival, suppressArrivalCeremony, suppressNextArrival } from './player/arrival';
 import { initChasmPresence } from './effects/chasm-presence';
 import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio, playEquipClick } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
@@ -173,6 +173,7 @@ import { createStaminaBar } from './ui/stamina-bar';
 import { createHealthHearts } from './ui/health-hearts';
 import { createStaminaArc } from './ui/stamina-arc';
 import { applyPcHudScale } from './ui/hud-scale';
+import { interpSync } from './engine/render-interp';
 import { createXpSigil } from './ui/xp-sigil';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
@@ -776,6 +777,11 @@ initLevelLoader({
     // explicit; it is a no-op at the default (pitch 0, viewmodel shown) and
     // dead-code-eliminated in production.
     if (import.meta.env.DEV) reapplyViewKnobs();
+    // Face the new floor BEFORE the black lifts, not after: write the pose
+    // straight onto the camera and drop the render interpolation's memory of
+    // the stairs, so the first revealed frame already looks the right way.
+    applyCameraPose(camera);
+    interpSync([camera]);
     // Wake seated at the threshold bonfire. FULL ceremony (heavy blink,
     // blur-to-focus) where the fiction says you slept: the run's first
     // floor, the tutorial, and the floor after a safe-room rest.
@@ -2067,7 +2073,11 @@ if (handleDebugScreenFlags()) {
   async function mountTitleScene() {
     bootVeilHeartbeat();
     LEVELS['title-vignette'] = TITLE_VIGNETTE;
-    suppressArrivalCeremony();
+    // No wake over the title's backdrop — for THIS load only. This used to be
+    // suppressArrivalCeremony(), which is session-wide (built for scenarios),
+    // so once the title had shown, no descent ever woke again: the eyes
+    // opening "stopped working at some point" (Josh, 2026-11-24).
+    suppressNextArrival();
     suppressNextDescentTitle();
     // You are LEAVING, not descending. This same swap serves abandon / quit /
     // death-continue, and dressing it as a descent — "descending" + a filling

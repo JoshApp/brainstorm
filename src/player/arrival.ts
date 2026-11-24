@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { resetThreshold, armThreshold, endThreshold, tickThreshold, inThreshold } from './arrival-threshold';
+import { isCoverUp } from '../ui/descent-fade';
 
 // ── FLOOR ARRIVAL — wake at the bonfire ──────────────────────────────
 //
@@ -66,7 +67,9 @@ function ensureLids(): void {
       height: '62vh',
       [top ? 'top' : 'bottom']: '0',
       background: '#000',
-      zIndex: '9996',
+      // Under the descent cover (50) and its DEPTH title (51), over the HUD:
+      // the title holds over the opening eyes instead of being shut out by them.
+      zIndex: '49',
       pointerEvents: 'none',
       // Soft, slightly curved inner edge — an eyelid, not a shutter.
       borderRadius: top ? '0 0 50% 50% / 0 0 9vh 9vh' : '50% 50% 0 0 / 9vh 9vh 0 0',
@@ -84,7 +87,7 @@ function ensureLids(): void {
   // world sharpens as the eyes finish opening.
   blurEl = document.createElement('div');
   Object.assign(blurEl.style, {
-    position: 'fixed', inset: '0', zIndex: '9995',
+    position: 'fixed', inset: '0', zIndex: '48',
     pointerEvents: 'none', display: 'none',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(blurEl);
@@ -112,6 +115,13 @@ function setLids(open: number): void {
 }
 
 let suppressed = false;
+let suppressOnce = false;
+let heldUnderCover = 0;
+const MAX_HOLD_S = 30;
+
+/** Skip the wake for the NEXT floor load only (the title's backdrop is not
+ *  an arrival). Unlike suppressArrivalCeremony this does not outlive it. */
+export function suppressNextArrival(): void { suppressOnce = true; }
 
 /** DEV (scenario boot path): skip the wake ceremony entirely, now and for
  *  every later floor load this session. Scenario previews + snap captures
@@ -129,12 +139,13 @@ export function suppressArrivalCeremony(): void {
 export function beginArrival(opts?: { full?: boolean }): void {
   // A new floor is a new threshold — and forgets what was done on the last one.
   resetThreshold();
-  if (suppressed) { t = -1; offset = 0; setLids(1); setFocus(1); return; }
+  if (suppressed || suppressOnce) { suppressOnce = false; t = -1; offset = 0; setLids(1); setFocus(1); return; }
   const full = opts?.full ?? false;
   duration = full ? DUR_FULL : DUR_QUICK;
   lidKeys = full ? LID_KEYS_FULL : LID_KEYS_QUICK;
   maxBlur = full ? 7 : 3.5;
   t = 0;
+  heldUnderCover = 0;
   offset = SIT_HEIGHT - CONFIG.PLAYER_HEIGHT;
   ensureLids();
   setLids(0);
@@ -146,6 +157,9 @@ export function beginArrival(opts?: { full?: boolean }): void {
  *  here would be stomped within the same frame. */
 export function tickArrival(_camera: THREE.Camera, dt: number): void {
   if (t < 0) return;
+  // Hold shut while the black cover is up: the wake is the reveal. Capped,
+  // so a cover that somehow never lifts can't keep the eyes shut for good.
+  if (isCoverUp() && heldUnderCover < MAX_HOLD_S) { heldUnderCover += dt; return; }
   t += dt;
   const k = Math.min(1, t / duration);
   // The stand starts once the eyes have first parted, easing in late.
