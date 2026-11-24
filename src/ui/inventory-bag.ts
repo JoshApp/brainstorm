@@ -1,177 +1,173 @@
 import { getAllItems, removeItem, addItemSilently } from '../player/inventory';
-import { equipFromInventory } from '../player/equipment';
+import { equipFromInventory, getEquipment, getSidearm, swapWeapons } from '../player/equipment';
+import { getReliquary } from '../player/reliquary';
+import { getEquippedRite, equipRite, getCarriedRites } from '../state/run-state';
+import { RITES } from '../content/rites';
+import { itemFraming } from './item-framing';
+import { injectKitStyles } from './kit/style';
 import { playEquipClick } from '../audio/sfx';
 import { ITEMS, RARITY_COLORS, type ItemSpec } from '../content/items';
 import { itemImageUrl } from './item-thumbnail';
-import { hexCss } from '../style/color-utils';
-import { CARD_BG, TEXT_DIM, TEXT_FAINT, ACCENT, sectionLabel, type InventoryCtx } from './inventory-shared';
+import { type InventoryCtx, type Selection } from './inventory-shared';
 import { isNewInView } from './item-new-flag';
-import { domainVisual, domainIconEl, CURSED_VISUAL } from './domain-icons';
 
-// BAG column — every unequipped item, one per row (icon + full name).
-// New pickups get a NEW badge and sort to the top. Tapping a cell selects
-// it (showing details + an EQUIP/USE action).
+// GEAR's left pane (Lamplight, the draft blended with the game): ONE grid of
+// square tiles, what you wear first (each with a wax seal), then everything in
+// the bag; the item's art large, its rarity or domain a quiet edge, the chosen
+// tile lit. Under the grid, the rite and the reliquary as two quiet rows.
+// Tap or confirm a tile to read it in the slab; double-tap gear to wear it.
 
-export function buildBagColumn(ctx: InventoryCtx): HTMLDivElement {
-  const col = document.createElement('div');
-  Object.assign(col.style, {
-    display: 'flex', flexDirection: 'column', gap: '6px',
-    minWidth: '0',
-  } as Partial<CSSStyleDeclaration>);
-
-  col.appendChild(sectionLabel('BAG'));
-
-  const grid = document.createElement('div');
-  Object.assign(grid.style, {
-    // Denser: a responsive grid — as many ~155px columns as fit (2 on a phone's
-    // bag width, 1 if it gets narrow), so twice the items are visible at once
-    // while each cell still shows a clear thumbnail + full name.
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
-    gap: '6px', alignContent: 'start',
-    overflowY: 'auto', maxHeight: '300px',
-    paddingRight: '4px',
+export function buildGearPane(ctx: InventoryCtx): HTMLDivElement {
+  injectKitStyles();
+  const pane = document.createElement('div');
+  Object.assign(pane.style, {
+    display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '0', minHeight: '0', overflowY: 'auto', paddingRight: '4px',
   } as Partial<CSSStyleDeclaration>);
 
   const items = getAllItems().filter((i) => i.count > 0);
-  // Just-picked-up items sort to the TOP so you see them first.
+  // Just-picked-up items sort to the front so you see them first.
   items.sort((a, b) => (isNewInView(b.id) ? 1 : 0) - (isNewInView(a.id) ? 1 : 0));
-  if (items.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = 'EMPTY';
-    Object.assign(empty.style, {
-      gridColumn: '1 / -1', padding: '14px', textAlign: 'center',
-      color: TEXT_FAINT, fontSize: '11px',
-      letterSpacing: '0.25em', fontStyle: 'italic',
-    } as Partial<CSSStyleDeclaration>);
-    grid.appendChild(empty);
-    col.appendChild(grid);
-    return col;
-  }
 
+  const head = document.createElement('div');
+  head.className = 'lk-head lk-reading-head';
+  const hl = document.createElement('span'); hl.textContent = 'Satchel';
+  const hc = document.createElement('span'); hc.className = 'lk-reading-count';
+  hc.textContent = `${items.reduce((n, i) => n + i.count, 0)} carried`;
+  head.append(hl, hc);
+  pane.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'lk-tilegrid';
+  const weapon = getEquipment().weapon;
+  if (weapon) grid.appendChild(buildTile(weapon, 1, ctx, { kind: 'slot', slotId: 'weapon', item: weapon }, 'WIELDED'));
+  const side = getSidearm();
+  if (side) grid.appendChild(buildTile(side, 1, ctx, null, 'SIDEARM'));
   for (const { id, count } of items) {
     const item = ITEMS[id];
     if (!item) continue;
-    grid.appendChild(buildBagCell(item, count, ctx));
+    grid.appendChild(buildTile(item, count, ctx, { kind: 'bag', item }));
   }
+  // A few empty tiles keep the grid's shape when the bag is light.
+  const filled = grid.childElementCount;
+  for (let i = filled; i < 10; i++) {
+    const e = document.createElement('div');
+    e.className = 'lk-tile empty';
+    grid.appendChild(e);
+  }
+  pane.appendChild(grid);
 
-  col.appendChild(grid);
-  return col;
+  pane.append(buildRiteRow(ctx), buildRelicRow(ctx));
+  return pane;
 }
 
-function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDivElement {
-  const selected = ctx.selection?.kind === 'bag' && ctx.selection.item.id === item.id;
+function buildTile(item: ItemSpec, count: number, ctx: InventoryCtx, sel: NonNullable<Selection> | null, tag?: string): HTMLDivElement {
   const rarity = item.rarity ?? 'mundane';
-  const rarityHex = hexCss(RARITY_COLORS[rarity]);
-
-  const isNew = isNewInView(item.id);
-  const cell = document.createElement('div');
-  Object.assign(cell.style, {
-    position: 'relative',
-    padding: '5px 7px',
-    background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
-    // Lamplight: rarity is a quiet edge, not a neon outline; only the chosen
-    // cell is lit (ChatGPT's review: the glowing outlines read generic).
-    border: selected ? `2px solid ${ACCENT}` : `1px solid ${rarityHex}66`,
-    borderRadius: '3px',
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr',
-    gap: '7px',
-    alignItems: 'center',
-    cursor: 'pointer',
-    boxShadow: selected ? `0 0 12px ${ACCENT}` : 'none',
-    minHeight: '46px',
-  } as Partial<CSSStyleDeclaration>);
-
-  // Thumbnail on the left. relics use their baked 2.5D art (itemImageUrl); gear
-  // the 128px procedural render — both stay crisp at 42px.
+  const f = itemFraming(item);
+  const rc = f ? f.hex : RARITY_COLORS[rarity];
+  const chosen = !!sel && ctx.selection?.kind === sel.kind && ctx.selection.item.id === item.id;
+  const tile = document.createElement('div');
+  tile.className = `lk-tile${sel?.kind === 'slot' || !sel ? ' worn' : ''}${chosen ? ' chosen' : ''}`;
+  tile.style.setProperty('--rc', `${(rc >> 16) & 255}, ${(rc >> 8) & 255}, ${rc & 255}`);
+  tile.title = item.name;
+  tile.dataset.focus = '';
+  tile.dataset.fkey = `tile:${sel?.kind ?? 'side'}:${item.id}`;
   const img = document.createElement('img');
   img.src = itemImageUrl(item);
-  Object.assign(img.style, {
-    width: '42px', height: '42px',
-    objectFit: 'contain',
-    flexShrink: '0', pointerEvents: 'none',
-  } as Partial<CSSStyleDeclaration>);
-  cell.appendChild(img);
-
-  // NEW badge — top-right, only for items picked up since last bag view.
-  if (isNew) {
-    const badge = document.createElement('div');
-    badge.textContent = 'NEW';
-    Object.assign(badge.style, {
-      position: 'absolute', top: '-5px', right: '3px',
-      padding: '1px 5px', borderRadius: '7px',
-      background: 'rgba(255, 150, 70, 0.95)', color: 'rgba(20, 8, 4, 0.95)',
-      fontSize: '8px', fontWeight: '700', letterSpacing: '0.08em',
-      pointerEvents: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    cell.appendChild(badge);
+  img.alt = '';
+  tile.appendChild(img);
+  if (count > 1) {
+    const n = document.createElement('span'); n.className = 'lk-tile-n'; n.textContent = `×${count}`;
+    tile.appendChild(n);
+  }
+  if (tag) {
+    const t = document.createElement('span'); t.className = 'lk-tile-tag'; t.textContent = tag;
+    tile.appendChild(t);
+  }
+  if (sel?.kind === 'bag' && isNewInView(item.id)) {
+    const nb = document.createElement('span'); nb.className = 'lk-tile-new'; nb.textContent = 'NEW';
+    tile.appendChild(nb);
   }
 
-  // Text block on the right.
-  const text = document.createElement('div');
-  Object.assign(text.style, {
-    display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden',
-  } as Partial<CSSStyleDeclaration>);
-
-  const top = document.createElement('div');
-  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between' } as Partial<CSSStyleDeclaration>);
-
-  const name = document.createElement('div');
-  name.textContent = item.name;   // full name — the wide 1-per-row cell has room
-  Object.assign(name.style, {
-    fontSize: '11px', color: rarityHex, fontWeight: '500',
-    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-  } as Partial<CSSStyleDeclaration>);
-
-  const cnt = document.createElement('div');
-  cnt.textContent = count > 1 ? `×${count}` : '';
-  Object.assign(cnt.style, {
-    fontSize: '10px', color: TEXT_DIM, fontFamily: 'monospace', flexShrink: '0',
-  } as Partial<CSSStyleDeclaration>);
-  top.append(name, cnt);
-
-  // Kind + domain — the visual language reads at a glance in the list too: a
-  // domain icon (or the cursed chaos-mark) leads the kind, tinted to its colour.
-  const kindLabel = document.createElement('div');
-  Object.assign(kindLabel.style, {
-    display: 'flex', alignItems: 'center', gap: '4px',
-    fontSize: '9px', letterSpacing: '0.2em', color: TEXT_DIM,
-  } as Partial<CSSStyleDeclaration>);
-  if (rarity === 'cursed') {
-    kindLabel.appendChild(domainIconEl(CURSED_VISUAL, 10));
-  } else if (item.domain) {
-    kindLabel.appendChild(domainIconEl(domainVisual(item.domain), 10));
-  }
-  const kindText = document.createElement('span');
-  kindText.textContent = item.domain && rarity !== 'cursed'
-    ? `${item.kind.toUpperCase()} · ${domainVisual(item.domain).label.toUpperCase()}`
-    : rarity === 'cursed'
-    ? `${item.kind.toUpperCase()} · CURSED`
-    : item.kind.toUpperCase();
-  kindLabel.appendChild(kindText);
-
-  text.append(top, kindLabel);
-  cell.appendChild(text);
-
-  cell.addEventListener('click', (e) => {
+  tile.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Toggle: re-tapping the selected item folds the details pane away (back to
-    // the roomy 3-column resting state).
-    ctx.select(selected ? null : { kind: 'bag', item });
+    if (!sel) { swapWeapons(); ctx.select(null); return; }   // the sidearm: draw it
+    ctx.select(sel);
   });
+  // Double-click / double-tap = wear it (gear only), the EQUIP button's flow.
+  if (sel?.kind === 'bag') {
+    tile.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      if (item.kind === 'weapon' || item.kind === 'offhand' || item.kind === 'vestment') {
+        const previous = equipFromInventory(item);
+        removeItem(item.id);
+        if (previous) addItemSilently(previous.id);
+        playEquipClick();
+        ctx.select(null);
+      }
+    });
+  }
+  return tile;
+}
 
-  // Double-click / double-tap = equip (skips select → tap EQUIP). Gear only;
-  // consumables/keys/relics ignore it. Mirrors the EQUIP button's exact flow.
-  cell.addEventListener('dblclick', (e) => {
-    e.stopPropagation();
-    if (item.kind === 'weapon' || item.kind === 'offhand' || item.kind === 'vestment') {
-      const previous = equipFromInventory(item);
-      removeItem(item.id);
-      if (previous) addItemSilently(previous.id);
-      playEquipClick();
-      ctx.select(null);
+// The rite: one quiet row (what is armed); choosing it opens the rites you
+// carry as lit words to arm. Module-level so it survives the pane's rebuild.
+let riteOpen = false;
+
+function buildRiteRow(ctx: InventoryCtx): HTMLDivElement {
+  const wrap = document.createElement('div');
+  const armed = getEquippedRite();
+  const spec = armed ? RITES[armed] : undefined;
+  const row = document.createElement('div');
+  row.className = 'lk-row lk-reading-row';
+  row.dataset.focus = '';
+  row.dataset.fkey = 'row:rite';
+  const k = document.createElement('span'); k.className = 'lk-k'; k.textContent = 'Rite';
+  const v = document.createElement('span'); v.className = 'lk-v';
+  v.textContent = spec ? `${spec.name} · ${spec.hungerCost} hunger` : 'none';
+  row.append(k, v);
+  row.addEventListener('click', (e) => { e.stopPropagation(); riteOpen = !riteOpen; ctx.select(ctx.selection); });
+  wrap.appendChild(row);
+  if (riteOpen) {
+    const carried = getCarriedRites().map((id) => RITES[id]).filter(Boolean);
+    const words = document.createElement('div');
+    words.className = 'lk-choice';
+    Object.assign(words.style, { flexWrap: 'wrap', padding: '4px 0 2px 10px' } as Partial<CSSStyleDeclaration>);
+    if (!carried.length) {
+      const none = document.createElement('div');
+      none.className = 'lk-d-note';
+      none.textContent = 'You carry no rites. The deep keeps them.';
+      words.appendChild(none);
     }
-  });
+    for (const r of carried) {
+      const w = document.createElement('span');
+      w.textContent = r.name.toUpperCase();
+      w.title = r.fate;
+      if (r.id === armed) w.classList.add('on');
+      w.dataset.focus = '';
+      w.addEventListener('click', (e) => { e.stopPropagation(); equipRite(r.id === armed ? null : r.id); ctx.select(ctx.selection); });
+      words.appendChild(w);
+    }
+    wrap.appendChild(words);
+  }
+  if (spec) {
+    const fate = document.createElement('div');
+    fate.className = 'lk-d-note';
+    fate.textContent = spec.fate;
+    fate.style.padding = '2px 0 0 16px';
+    wrap.appendChild(fate);
+  }
+  return wrap;
+}
 
-  return cell;
+function buildRelicRow(ctx: InventoryCtx): HTMLDivElement {
+  const n = getReliquary().length;
+  const row = document.createElement('div');
+  row.className = 'lk-row lk-reading-row';
+  row.dataset.focus = '';
+  row.dataset.fkey = 'row:reliquary';
+  const k = document.createElement('span'); k.className = 'lk-k'; k.textContent = 'Reliquary';
+  const v = document.createElement('span'); v.className = 'lk-v'; v.textContent = n ? `${n} kept ›` : 'empty ›';
+  row.append(k, v);
+  row.addEventListener('click', (e) => { e.stopPropagation(); ctx.openReliquary?.(); });
+  return row;
 }

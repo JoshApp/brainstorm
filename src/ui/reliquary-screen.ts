@@ -1,77 +1,33 @@
 import { getReliquary } from '../player/reliquary';
 import { DOMAIN_IDS, getDomain, type DomainId } from '../content/domains';
-import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import { type ItemSpec } from '../content/items';
 import { itemImageUrl } from './item-thumbnail';
-import { hexCss } from '../style/color-utils';
 import { buildDetailsColumn } from './inventory-details';
-import { ACCENT, TEXT_DIM, TEXT_FAINT, sectionLabel, type InventoryCtx } from './inventory-shared';
-import { itemFraming, applyDomainFrame } from './item-framing';
+import { type InventoryCtx } from './inventory-shared';
+import { domainVisual } from './domain-icons';
+import { injectKitStyles } from './kit/style';
 
 // RELIQUARY tab — the oddities collection. Relics are the belongings of dead
 // delvers; they accrete UNCAPPED and all apply, so this screen is a ledger of
-// what you've become, not a loadout to manage. Stacks group by DOMAIN (the
-// nine abstracts, dark→light), each section headed in its register colour;
-// duplicates collapse into one cell with a ×N badge. Tapping a relic shows
-// its provenance in the shared details column — no actions, nothing to
+// what you've become, not a loadout to manage. Lamplight: the game's painted
+// relic art as square tiles flowing across the pane, grouped by DOMAIN under
+// the domain's carved mark and name (the draft's grammar), duplicates as one
+// tile with ×N; the chosen relic is read in the same slab as GEAR's. Nothing to
 // unequip: what is taken is not returned.
 
 type Stack = { spec: ItemSpec; count: number };
 
-export function buildReliquaryContent(ctx: InventoryCtx): HTMLDivElement {
-  const grid = document.createElement('div');
-  Object.assign(grid.style, {
-    display: 'grid',
-    gridTemplateColumns: '1.6fr 1fr',
-    gap: '10px',
-    alignItems: 'stretch',
-    minHeight: '0',
-  } as Partial<CSSStyleDeclaration>);
+const RANK: Record<string, number> = { fabled: 0, cursed: 1, rare: 2, uncommon: 3, mundane: 4 };
 
-  grid.appendChild(buildCollectionColumn(ctx));
-  grid.appendChild(buildDetailsColumn(ctx));
-  return grid;
-}
-
-function buildCollectionColumn(ctx: InventoryCtx): HTMLDivElement {
-  const col = document.createElement('div');
-  Object.assign(col.style, {
-    display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '0',
-  } as Partial<CSSStyleDeclaration>);
-
-  const entries = getReliquary();
-  col.appendChild(sectionLabel(`RELIQUARY${entries.length ? ` · ${entries.length}` : ''}`));
-
-  // The collector's epigraph — the premise, stated where the collection lives.
-  const epigraph = document.createElement('div');
-  epigraph.textContent = 'What you take becomes you.';
-  Object.assign(epigraph.style, {
-    fontSize: '10px', fontStyle: 'italic', color: TEXT_FAINT,
-    letterSpacing: '0.06em', marginTop: '-4px',
-  } as Partial<CSSStyleDeclaration>);
-  col.appendChild(epigraph);
-
-  if (entries.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = 'Nothing gathered. The dead keep their things — for now.';
-    Object.assign(empty.style, {
-      color: TEXT_DIM, fontSize: '11px', fontStyle: 'italic',
-      padding: '32px 8px', textAlign: 'center', margin: 'auto',
-    } as Partial<CSSStyleDeclaration>);
-    col.appendChild(empty);
-    return col;
-  }
-
-  // Collapse duplicates into stacks, keyed by spec id (relics stack — the
-  // second gorged tick is MORE gorged tick, not a separate belonging).
+/** Stacks grouped by domain in the canonical dark→light order (keepsakes
+ *  last), heaviest finds first within a domain. */
+function groupedStacks(): Array<[DomainId | 'keepsake', Stack[]]> {
   const stacks = new Map<string, Stack>();
-  for (const e of entries) {
+  for (const e of getReliquary()) {
     const s = stacks.get(e.spec.id);
     if (s) s.count += 1;
     else stacks.set(e.spec.id, { spec: e.spec, count: 1 });
   }
-
-  // Group stacks by domain, in the canonical dark→light order; anything
-  // without a domain gathers at the end as keepsakes.
   const byDomain = new Map<DomainId | 'keepsake', Stack[]>();
   for (const s of stacks.values()) {
     const key = s.spec.domain ?? 'keepsake';
@@ -79,128 +35,105 @@ function buildCollectionColumn(ctx: InventoryCtx): HTMLDivElement {
     if (list) list.push(s);
     else byDomain.set(key, [s]);
   }
-
-  const scroll = document.createElement('div');
-  Object.assign(scroll.style, {
-    display: 'flex', flexDirection: 'column', gap: '10px',
-    overflowY: 'auto', minHeight: '0', paddingRight: '2px',
-  } as Partial<CSSStyleDeclaration>);
-
-  const order: Array<DomainId | 'keepsake'> = [...DOMAIN_IDS, 'keepsake'];
-  for (const key of order) {
+  const out: Array<[DomainId | 'keepsake', Stack[]]> = [];
+  for (const key of [...DOMAIN_IDS, 'keepsake'] as Array<DomainId | 'keepsake'>) {
     const list = byDomain.get(key);
-    if (!list || list.length === 0) continue;
-    scroll.appendChild(buildDomainSection(key, list, ctx));
+    if (!list?.length) continue;
+    list.sort((a, b) =>
+      (RANK[a.spec.rarity ?? 'mundane'] - RANK[b.spec.rarity ?? 'mundane']) || a.spec.name.localeCompare(b.spec.name));
+    out.push([key, list]);
   }
-
-  col.appendChild(scroll);
-  return col;
+  return out;
 }
 
-function buildDomainSection(
-  key: DomainId | 'keepsake',
-  stacks: Stack[],
-  ctx: InventoryCtx,
-): HTMLDivElement {
-  const section = document.createElement('div');
-  Object.assign(section.style, {
-    display: 'flex', flexDirection: 'column', gap: '5px',
-  } as Partial<CSSStyleDeclaration>);
-
-  const pieces = stacks.reduce((n, s) => n + s.count, 0);
-  const name = key === 'keepsake' ? 'KEEPSAKES' : getDomain(key).name.toUpperCase();
-  const color = key === 'keepsake' ? TEXT_DIM : hexCss(getDomain(key).register.color);
-
-  const header = document.createElement('div');
-  Object.assign(header.style, {
-    display: 'flex', alignItems: 'baseline', gap: '6px',
-  } as Partial<CSSStyleDeclaration>);
-  const title = document.createElement('span');
-  title.textContent = name;
-  Object.assign(title.style, {
-    fontSize: '10px', fontWeight: '600', letterSpacing: '0.22em', color,
-  } as Partial<CSSStyleDeclaration>);
-  const count = document.createElement('span');
-  count.textContent = `· ${pieces}`;
-  Object.assign(count.style, {
-    fontSize: '9px', color: TEXT_FAINT, letterSpacing: '0.1em',
-  } as Partial<CSSStyleDeclaration>);
-  header.append(title, count);
-  section.appendChild(header);
-
-  const row = document.createElement('div');
-  Object.assign(row.style, {
-    display: 'flex', flexWrap: 'wrap', gap: '5px', alignContent: 'flex-start',
-  } as Partial<CSSStyleDeclaration>);
-  // Sort within a domain: heaviest finds first (cursed/fabled → mundane),
-  // stable by name inside a tier.
-  const RANK: Record<string, number> = { fabled: 0, cursed: 1, rare: 2, uncommon: 3, mundane: 4 };
-  stacks.sort((a, b) =>
-    (RANK[a.spec.rarity ?? 'mundane'] - RANK[b.spec.rarity ?? 'mundane']) ||
-    a.spec.name.localeCompare(b.spec.name));
-  for (const s of stacks) row.appendChild(buildRelicCell(s, ctx));
-  section.appendChild(row);
-  return section;
+/** The relic the tab opens on: the first one it shows. */
+export function firstRelicShown(): ItemSpec | null {
+  return groupedStacks()[0]?.[1][0]?.spec ?? null;
 }
 
-// A relic reads as a 2.5D PLATE — a portrait card dressed in its domain (framed
-// border + wash + the domain sigil watermarked behind the relic art). Assembled
-// from parts we already have (the item thumbnail + the domain frame), so relics
-// get a distinct collected-oddity identity now, with NO external art pipeline —
-// a promoted FLUX/2.5D sprite can later swap in for the thumbnail per relic.
-const PLATE_W = 54, PLATE_H = 68;
+export function buildReliquaryContent(ctx: InventoryCtx): HTMLDivElement {
+  injectKitStyles();
+  const grid = document.createElement('div');
+  Object.assign(grid.style, {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)',
+    gridTemplateRows: 'minmax(0, 1fr)',
+    gap: '18px', alignItems: 'stretch', flex: '1 1 auto', minHeight: '0',
+  } as Partial<CSSStyleDeclaration>);
+  grid.append(buildCollectionPane(ctx), buildDetailsColumn(ctx));
+  return grid;
+}
 
-function buildRelicCell(stack: Stack, ctx: InventoryCtx): HTMLDivElement {
+function buildCollectionPane(ctx: InventoryCtx): HTMLDivElement {
+  const pane = document.createElement('div');
+  Object.assign(pane.style, {
+    display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0', overflowY: 'auto', paddingRight: '4px',
+  } as Partial<CSSStyleDeclaration>);
+
+  const n = getReliquary().length;
+  const head = document.createElement('div');
+  head.className = 'lk-head lk-reading-head';
+  const hl = document.createElement('span'); hl.textContent = 'Reliquary';
+  const hc = document.createElement('span'); hc.className = 'lk-reading-count'; hc.textContent = n ? `${n} kept` : '';
+  head.append(hl, hc);
+  pane.appendChild(head);
+  const epigraph = document.createElement('div');
+  epigraph.className = 'lk-d-note';
+  epigraph.textContent = 'What you take becomes you.';
+  epigraph.style.margin = '-2px 0 12px';
+  pane.appendChild(epigraph);
+
+  const groups = groupedStacks();
+  if (!groups.length) {
+    const empty = document.createElement('div');
+    empty.className = 'lk-d-note';
+    empty.textContent = 'Nothing gathered. The dead keep their things, for now.';
+    Object.assign(empty.style, { margin: 'auto', textAlign: 'center' } as Partial<CSSStyleDeclaration>);
+    pane.appendChild(empty);
+    return pane;
+  }
+  for (const [key, stacks] of groups) {
+    const pieces = stacks.reduce((m, s) => m + s.count, 0);
+    const hex = key === 'keepsake' ? 0xa08264 : getDomain(key).register.color;
+    const dh = document.createElement('div');
+    dh.className = 'lk-domhead';
+    dh.style.setProperty('--rc', `${(hex >> 16) & 255}, ${(hex >> 8) & 255}, ${hex & 255}`);
+    if (key !== 'keepsake') {
+      const art = domainVisual(key).art;
+      if (art) { const img = document.createElement('img'); img.src = art; img.alt = ''; dh.appendChild(img); }
+    }
+    const nm = document.createElement('span'); nm.className = 'nm';
+    nm.textContent = key === 'keepsake' ? 'KEEPSAKES' : getDomain(key).name.toUpperCase();
+    const ct = document.createElement('span'); ct.className = 'ct'; ct.textContent = `${pieces}`;
+    dh.append(nm, ct);
+    pane.appendChild(dh);
+    const tiles = document.createElement('div');
+    tiles.className = 'lk-tilegrid';
+    for (const s of stacks) tiles.appendChild(buildRelicTile(s, hex, ctx));
+    pane.appendChild(tiles);
+  }
+  return pane;
+}
+
+function buildRelicTile(stack: Stack, domainHex: number, ctx: InventoryCtx): HTMLDivElement {
   const { spec, count } = stack;
-  const rarityHex = hexCss(RARITY_COLORS[spec.rarity ?? 'mundane']);
-  const isSelected = ctx.selection?.kind === 'relic' && ctx.selection.item.id === spec.id;
-
-  const cell = document.createElement('div');
-  Object.assign(cell.style, {
-    position: 'relative',
-    width: `${PLATE_W}px`, height: `${PLATE_H}px`, borderRadius: '4px',
-    border: `1px solid ${rarityHex}66`,   // quiet rarity edge (Lamplight)
-    boxShadow: 'none',
-    background: 'linear-gradient(180deg, rgba(30,20,14,0.85), rgba(14,9,6,0.9))',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden', cursor: 'pointer',
-    touchAction: 'manipulation',
-  } as Partial<CSSStyleDeclaration>);
-  cell.title = spec.name;
-
-  const thumb = document.createElement('img');
-  thumb.src = itemImageUrl(spec);
-  Object.assign(thumb.style, {
-    width: `${PLATE_W - 8}px`, height: `${PLATE_W - 8}px`,
-    objectFit: 'contain', imageRendering: 'pixelated', pointerEvents: 'none',
-  } as Partial<CSSStyleDeclaration>);
-  cell.appendChild(thumb);
-
+  const chosen = ctx.selection?.kind === 'relic' && ctx.selection.item.id === spec.id;
+  const tile = document.createElement('div');
+  tile.className = chosen ? 'lk-tile chosen' : 'lk-tile';
+  const rc = spec.rarity === 'cursed' ? 0xc05bd6 : domainHex;
+  tile.style.setProperty('--rc', `${(rc >> 16) & 255}, ${(rc >> 8) & 255}, ${rc & 255}`);
+  tile.title = spec.name;
+  tile.dataset.focus = '';
+  tile.dataset.fkey = `relic:${spec.id}`;
+  const img = document.createElement('img');
+  img.src = itemImageUrl(spec);
+  img.alt = '';
+  img.style.imageRendering = 'pixelated';
+  tile.appendChild(img);
   if (count > 1) {
-    const badge = document.createElement('div');
-    badge.textContent = `×${count}`;
-    Object.assign(badge.style, {
-      position: 'absolute', bottom: '1px', right: '3px', zIndex: '3',
-      fontSize: '9px', fontWeight: '700', color: '#f0d8c0',
-      textShadow: '0 1px 2px rgba(0,0,0,0.95)',
-      pointerEvents: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    cell.appendChild(badge);
+    const b = document.createElement('span'); b.className = 'lk-tile-n'; b.textContent = `×${count}`;
+    tile.appendChild(b);
   }
-
-  // Dress the plate in its domain — the sigil watermark clips inside the plate,
-  // sitting BEHIND the relic art (a small consecrated card). Selection overrides
-  // the frame with the ember accent so the picked plate still reads as chosen.
-  const framing = itemFraming(spec);
-  if (framing) applyDomainFrame(cell, framing, { intensity: 1.1 });
-  if (isSelected) {
-    cell.style.border = `2px solid ${ACCENT}`;
-    cell.style.boxShadow = `0 0 12px ${ACCENT}`;
-  }
-
-  cell.addEventListener('click', (e) => {
-    e.stopPropagation();
-    ctx.select(isSelected ? null : { kind: 'relic', item: spec });
-  });
-  return cell;
+  tile.addEventListener('click', (e) => { e.stopPropagation(); ctx.select({ kind: 'relic', item: spec }); });
+  return tile;
 }

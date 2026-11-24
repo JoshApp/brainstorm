@@ -13,10 +13,10 @@ import { FONT_UI } from './hud';
 import { TEXT_PRIMARY, TEXT_DIM, type Selection, type InventoryCtx } from './inventory-shared';
 import { getEquipped } from '../player/equipment';
 import { attachHudPrompt } from './kit/prompts';
-import { buildEquippedSlots, buildRiteSlot, buildRelicLink } from './inventory-doll';
-import { buildBagColumn } from './inventory-bag';
+
+import { buildGearPane } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
-import { buildReliquaryContent } from './reliquary-screen';
+import { buildReliquaryContent, firstRelicShown } from './reliquary-screen';
 import { onReliquaryChanged } from '../player/reliquary';
 
 // The unified in-game menu — one satchel button opens ONE sheet with a
@@ -266,6 +266,12 @@ function renderGear() {
 // ── RELIQUARY: the oddities collection (domain-grouped stacks | details) ──
 function renderReliquary() {
   if (!sheet) return;
+  // The reliquary reads a relic, never the sword GEAR left chosen: open on
+  // the first relic kept (in the order the reliquary shows them).
+  if (selection?.kind !== 'relic') {
+    const first = firstRelicShown();
+    selection = first ? { kind: 'relic', item: first } : null;
+  }
   const ctx: InventoryCtx = {
     selection,
     select(sel: Selection) { selection = sel; renderReliquary(); },
@@ -273,57 +279,37 @@ function renderReliquary() {
   sheet.body.replaceChildren(buildReliquaryContent(ctx));
 }
 
-// ── GEAR: CHARACTER column | BAG [ | DETAILS ] ────────────────────────
-// A cleaner two-zone hierarchy (the old four-column stats|doll|bag|details was
-// dense and the anatomical doll read as murk). LEFT is everything about YOU —
-// the equipped slot strip, your stats, the active rite, the reliquary link,
-// stacked top-to-bottom. RIGHT is the BAG (a denser grid of what you can equip).
-// DETAILS is REVEALED as a third pane only when something is selected, so the
-// resting state is two roomy zones. Acting clears the selection and it folds away.
+// ── GEAR: the tiles | the slab ────────────────────────────────────────
+// The Lamplight draft blended with the game: what you wear and what you carry
+// in one tile grid (inventory-bag.ts buildGearPane), the rite and reliquary as
+// rows beneath it, and the scorched slab reading the chosen thing.
 function buildColumns(): HTMLDivElement {
   const grid = document.createElement('div');
-  // The slab is always there (the Lamplight draft): with nothing chosen it
-  // tells the weapon in your hand, so the satchel never opens onto an empty
-  // third of the screen and a touch player reads something without a tap.
-  if (selection === null) {
+  // The slab is always there (the Lamplight draft): with nothing chosen (or a
+  // relic still chosen from the reliquary) it tells the weapon in your hand.
+  if (selection === null || selection.kind === 'relic') {
     const held = getEquipped('weapon');
-    if (held) selection = { kind: 'slot', slotId: 'weapon', item: held };
+    selection = held ? { kind: 'slot', slotId: 'weapon', item: held } : null;
   }
-  // Always three panes at fixed proportions, each filling the frame's height
-  // and scrolling on its own: the layout never reflows on a choice.
+  // Two panes, the draft's proportions: the tiles | the slab. Each fills the
+  // frame and scrolls on its own, so a choice never reflows the menu.
   Object.assign(grid.style, {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 0.92fr) minmax(0, 1fr) minmax(0, 1.3fr)',
+    gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)',
     gridTemplateRows: 'minmax(0, 1fr)',
-    gap: '12px',
+    gap: '18px',
     alignItems: 'stretch',
     flex: '1 1 auto',
     minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
 
-  // The selection state lives here; columns read it + request changes
-  // through ctx.select, which updates state and re-renders GEAR.
+  // The selection state lives here; panes read it + request changes through
+  // ctx.select, which updates state and re-renders GEAR.
   const ctx: InventoryCtx = {
     selection,
     select(sel: Selection) { selection = sel; renderGear(); },
     openReliquary() { selectTab('reliquary'); },
   };
-
-  // LEFT — the CHARACTER column: equipped slots, stats, rite, reliquary link.
-  const character = document.createElement('div');
-  Object.assign(character.style, { display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '0' } as Partial<CSSStyleDeclaration>);
-  // Health, damage, reach and the rest live on the CHARACTER tab now, each
-  // explained; a second, unexplained copy here was noise.
-  character.append(
-    buildEquippedSlots(ctx),
-    buildRiteSlot(ctx),
-    buildRelicLink(ctx),
-  );
-
-  const bag = buildBagColumn(ctx);
-  for (const pane of [character, bag]) { pane.style.overflowY = 'auto'; pane.style.minHeight = '0'; }
-  const details = buildDetailsColumn(ctx);
-  details.style.minHeight = '0';
-  grid.append(character, bag, details);
+  grid.append(buildGearPane(ctx), buildDetailsColumn(ctx));
   return grid;
 }

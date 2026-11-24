@@ -186,6 +186,70 @@ export function injectKitStyles(): void {
     @keyframes lk-flicker { 0%, 100% { opacity: .7; transform: scale(1); } 37% { opacity: 1; transform: scale(1.06); } 61% { opacity: .82; transform: scale(.97); } }
     @media (prefers-reduced-motion: reduce) { .lk-torch { transition: opacity .3s; } .lk-torch::after { animation: none; } }
 
+    /* ── SATCHEL TILES (GEAR + RELIQUARY, the Lamplight draft blended with the
+       game's art): square, dark, the art large; the rarity or domain colour is a
+       quiet edge (--rc); what you wear carries a wax seal; the chosen one is lit. */
+    .lk-tilegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; align-content: start; }
+    .lk-tile { --rc: 160, 130, 100; position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; cursor: pointer;
+      background: radial-gradient(80% 80% at 50% 40%, rgba(var(--rc), .10), rgba(12, 8, 5, .6) 70%), rgba(12, 8, 5, .55);
+      border: 1px solid rgba(var(--rc), .38); border-radius: 2px; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+      transition: border-color .2s, box-shadow .2s, background .2s; }
+    .lk-tile img { width: 78%; height: 78%; object-fit: contain; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.7)); }
+    .lk-tile.empty { cursor: default; border-style: dashed; border-color: rgba(120, 90, 60, .25); background: rgba(12, 8, 5, .3); }
+    .lk-tile.empty img, .lk-tile.empty svg { opacity: .35; }
+    .lk-tile .lk-tile-tag { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; pointer-events: none;
+      font: 600 8px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .16em; color: rgba(200, 165, 125, .7); text-shadow: 0 1px 2px #000; }
+    .lk-tile .lk-tile-n { position: absolute; right: 4px; bottom: 3px; font: 700 10px/1 system-ui, sans-serif; color: #f0d8c0; text-shadow: 0 1px 2px #000; pointer-events: none; }
+    .lk-tile .lk-tile-new { position: absolute; left: 3px; top: 3px; font: 700 8px/1 system-ui, sans-serif; letter-spacing: .08em; padding: 2px 4px;
+      border-radius: 2px; background: rgba(255, 150, 70, .95); color: #1a0a04; pointer-events: none; }
+    .lk-tile.worn::after { content: ''; position: absolute; right: -5px; top: -5px; width: 14px; height: 14px; border-radius: 50%; pointer-events: none;
+      background: radial-gradient(circle at 35% 35%, #e05a44, #8c1f16 70%); box-shadow: 0 1px 3px rgba(0,0,0,.8); }
+    .lk-tile.chosen, html:not([data-input="touch"]) .lk-sheet .lk-tile.is-focused { outline: none;
+      border-color: rgba(255, 176, 96, .75); box-shadow: 0 0 14px rgba(255, 150, 60, .28), inset 0 0 18px rgba(255, 176, 96, .14); }
+    .lk-domhead { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; padding-bottom: 6px;
+      background: linear-gradient(90deg, rgba(var(--rc), .55), rgba(var(--rc), .12) 70%, rgba(var(--rc), 0)) bottom / 100% 1px no-repeat; }
+    .lk-domhead:first-child { margin-top: 0; }
+    .lk-domhead img { width: 20px; height: 20px; object-fit: contain; filter: drop-shadow(0 0 4px rgba(var(--rc), .6)); }
+    .lk-domhead .nm { font: 600 12px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .22em; color: rgb(var(--rc)); }
+    .lk-domhead .ct { margin-left: auto; font: 600 10px/1 system-ui, sans-serif; letter-spacing: .12em; color: rgba(170, 135, 100, .7); }
+
+    /* ── The slab's contents (the draft's grammar) ── */
+    .lk-d-kind { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font: 600 11px/1.3 system-ui, sans-serif; letter-spacing: .14em;
+      text-transform: uppercase; color: #c9a882; }
+    .lk-d-kind img { width: 15px; height: 15px; object-fit: contain; vertical-align: -3px; }
+    .lk-d-kind .eq { margin-left: auto; color: #e0a860; letter-spacing: .16em; }
+    .lk-d-head { display: flex; align-items: center; gap: 12px; }
+    .lk-d-head img { width: 54px; height: 54px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 0 6px rgba(0,0,0,.8)); }
+    .lk-d-name { font: 600 20px/1.2 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .03em; color: #ffd6a3; text-wrap: balance;
+      text-shadow: 0 0 14px rgba(255, 168, 88, .3); }
+    .lk-d-rule { position: relative; height: 9px; margin: 2px 0; flex-shrink: 0; }
+    .lk-d-rule::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px;
+      background: linear-gradient(90deg, rgba(120, 70, 35, 0), rgba(140, 80, 40, .85) 18%, rgba(140, 80, 40, .85) 82%, rgba(120, 70, 35, 0)); }
+    .lk-d-rule::after { content: ''; position: absolute; left: 50%; top: 1px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg);
+      background: radial-gradient(circle, #ffe2a0, #ff7a1a 55%, #5a1a05); box-shadow: 0 0 9px rgba(255, 120, 30, .9); }
+    .lk-d-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font: 14px/1.4 system-ui, sans-serif; color: #f0dcc0; font-variant-numeric: tabular-nums; }
+    .lk-d-stats b { font-weight: 600; color: #ffe2b8; margin-right: 4px; }
+    .lk-d-stats b em { font-style: normal; color: #ffc882; font-weight: 600; margin-left: 2px; font-size: 12px; }
+    .lk-d-stats i { font-style: normal; color: #a88c6c; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    .lk-d-fx { display: flex; flex-direction: column; gap: 4px; }
+    .lk-d-fx > div { font: 14px/1.4 system-ui, sans-serif !important; color: #f0dcc0 !important; padding: 6px 10px; letter-spacing: .01em !important;
+      background: rgba(255, 168, 88, .07); border-left: 2px solid rgba(255, 168, 88, .45); }
+    .lk-d-fx > div.dim { background: none; border-left-color: transparent; padding: 1px 10px; color: #a88c6c !important; font-size: 12px !important; }
+    .lk-d-act { align-self: flex-end; margin-top: auto; min-height: 44px; padding: 0 20px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      font: 600 13px/1 'Cinzel', 'Iowan Old Style', serif; letter-spacing: .16em; color: #ffc88c; background: rgba(255, 150, 60, .08);
+      border: 1px solid rgba(255, 150, 60, .6); border-radius: 2px; touch-action: manipulation; }
+    .lk-d-act:hover, html:not([data-input="touch"]) .lk-sheet .lk-d-act.is-focused { background: rgb(52, 28, 13); box-shadow: 0 0 18px rgba(255, 140, 60, .25); outline: none; }
+    .lk-d-act.inert { color: rgba(180, 150, 120, .55); border-color: rgba(140, 110, 80, .3); background: none; cursor: default; }
+    .lk-d-note { font: italic 14px/1.4 'EB Garamond', 'Iowan Old Style', serif; color: rgba(190, 158, 122, .7); }
+    /* The action never scrolls out of reach: it rides the slab's bottom edge. */
+    .lk-d-act { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -10px 18px 6px rgba(12, 8, 5, .85); background-color: rgba(28, 16, 9, .96); }
+    @media (max-height: 480px) {
+      .lk-d-head img { width: 40px; height: 40px; }
+      .lk-d-name { font-size: 16px; }
+      .lk-d-stats { font-size: 13px; gap: 2px 12px; }
+      .lk-d-act { min-height: 40px; }
+    }
+
     /* WORLD TAGS: what hangs over a thing in the dungeon. No box: a name over a
        rule bearing the domain's mark (the depth title's grammar), on a feathered
        pool of dark so it reads over any floor, hung on a thread of light down to

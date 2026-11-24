@@ -35,93 +35,157 @@ import {
 export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
   const col = document.createElement('div');
   Object.assign(col.style, {
-    display: 'flex', flexDirection: 'column', gap: '6px',
-    minWidth: '0',
+    display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
-  col.appendChild(sectionLabel('DETAILS'));
 
-  // The scorched slab (docs/UI-SYSTEM.md, Lamplight): a charred edge with a
-  // live ember line, and its own warm reading light so the text is always
-  // bright enough to read. The look lives in ui/kit/style.ts (.lk-detail).
+  // The scorched slab (docs/UI-SYSTEM.md, Lamplight), filled in the draft's
+  // grammar: what it is (and that you wear it), its art and name burnt in,
+  // its flavour, an ember rule, the numbers in one line, what it does as lit
+  // bars, and the one thing you can do with it at the bottom right.
   injectKitStyles();
   const card = document.createElement('div');
   card.className = 'lk-detail';
   Object.assign(card.style, {
-    flex: '1',
-    minHeight: '0',
-    padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: '7px',
-    overflowY: 'auto',
+    flex: '1', minHeight: '0', padding: '16px 18px',
+    display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto',
   } as Partial<CSSStyleDeclaration>);
 
   const selection = ctx.selection;
   if (!selection) {
     const hint = document.createElement('div');
-    hint.textContent = 'TAP AN ITEM TO INSPECT';
-    Object.assign(hint.style, {
-      color: TEXT_FAINT, fontSize: '10px',
-      letterSpacing: '0.22em', textAlign: 'center',
-      padding: '40px 0', margin: 'auto',
-    } as Partial<CSSStyleDeclaration>);
+    hint.className = 'lk-d-note';
+    hint.textContent = 'Choose something to read it.';
+    Object.assign(hint.style, { margin: 'auto', textAlign: 'center' } as Partial<CSSStyleDeclaration>);
     card.appendChild(hint);
     col.appendChild(card);
     return col;
   }
 
   const item = selection.item;
+  const rarity = item.rarity ?? 'mundane';
 
-  // Top row: small thumbnail + name+meta side-by-side.
-  const top = document.createElement('div');
-  Object.assign(top.style, {
-    display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px',
-    alignItems: 'center',
-  } as Partial<CSSStyleDeclaration>);
+  // What it is: rarity in its colour · kind · the domain's carved mark and name.
+  const kind = document.createElement('div');
+  kind.className = 'lk-d-kind';
+  const r = document.createElement('span');
+  r.textContent = rarity;
+  r.style.color = rarity === 'cursed' ? CURSED_VISUAL.color : hexCss(RARITY_COLORS[rarity]);
+  kind.append(r, ` · ${item.kind}`);
+  if (item.domain && rarity !== 'cursed') {
+    const dv = domainVisual(item.domain);
+    kind.append(' · ', domainIconEl(dv, 12));
+    const d = document.createElement('span');
+    d.textContent = dv.label;
+    d.style.color = dv.color;
+    kind.appendChild(d);
+  }
+  if (selection.kind === 'slot') {
+    const eq = document.createElement('span');
+    eq.className = 'eq';
+    eq.textContent = 'worn';
+    kind.appendChild(eq);
+  }
+  card.appendChild(kind);
 
-  const thumb = document.createElement('div');
-  Object.assign(thumb.style, {
-    width: '50px', height: '50px',
-    background: 'rgba(20, 14, 10, 0.7)',
-    border: `1.5px solid ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}`,
-    borderRadius: '3px',
-    boxShadow: `0 0 8px ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}55`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: '0',
-  } as Partial<CSSStyleDeclaration>);
+  // Its art beside its name, the name burnt in.
+  const head = document.createElement('div');
+  head.className = 'lk-d-head';
   const img = document.createElement('img');
   img.src = itemImageUrl(item);
-  Object.assign(img.style, {
-    width: '100%', height: '100%',
-    objectFit: 'contain', imageRendering: 'pixelated',
-  } as Partial<CSSStyleDeclaration>);
-  thumb.appendChild(img);
+  img.alt = '';
+  const name = document.createElement('div');
+  name.className = 'lk-d-name lk-burn';
+  name.textContent = item.name;
+  head.append(img, name);
+  card.appendChild(head);
 
-  top.append(thumb, buildDetailsHeader(item));
-  card.appendChild(top);
+  if (item.flavor) {
+    const flavor = document.createElement('div');
+    flavor.className = 'lk-ash';
+    flavor.textContent = item.flavor;
+    Object.assign(flavor.style, {
+      font: `italic 17px/1.4 ${FONT_DISPLAY}`, color: '#f1dcc2',
+    } as Partial<CSSStyleDeclaration>);
+    card.appendChild(flavor);
+  }
+  const rule = document.createElement('div');
+  rule.className = 'lk-d-rule';
+  card.appendChild(rule);
 
-  const flavor = buildFlavorLine(item);
-  if (flavor) card.appendChild(flavor);
+  // A weapon's numbers in one line, then what the hand has learned of it.
+  if (item.weapon) {
+    card.appendChild(buildWeaponStatLine(item));
+    card.appendChild(buildTierBar(item.weapon.class ?? 'sword'));
+  }
 
+  // What it does, as lit bars.
+  const fx = document.createElement('div');
+  fx.className = 'lk-d-fx';
   // Rolled affixes are tracked per equipped slot (the bag doesn't carry
   // instance data in V1), so we can only show them for a 'slot' selection.
   const slotAffixes = selection.kind === 'slot' ? getSlotAffixes(selection.slotId) : [];
-  for (const line of describeItem(item, slotAffixes)) card.appendChild(line);
+  for (const line of describeItem(item, slotAffixes, { weaponStats: false })) {
+    // A bar needs no list dot; a weapon's numbers already say it does something.
+    const t = line.firstChild;
+    if (t && t.nodeType === Node.TEXT_NODE && t.textContent?.startsWith('· ')) t.textContent = t.textContent.slice(2);
+    if (item.weapon && line.textContent === 'No effects.') continue;
+    fx.appendChild(line);
+  }
+  if (fx.childElementCount) card.appendChild(fx);
 
-  // Spacer + action at the bottom. Pinning the button to the bottom of
-  // the column means it's always in the same place (predictable target).
-  const spacer = document.createElement('div');
-  spacer.style.flex = '1';
-  card.appendChild(spacer);
-
+  // The one thing you can do with it, bottom right: always the same place.
   card.appendChild(buildDetailsAction(selection, ctx));
 
-  // DRESS the details card in the item's domain — border + glow only (this card
-  // scrolls, so no absolute wash/watermark that would drift with the content).
+  // Its domain only tints the slab's edge; the slab keeps its own light.
   const framing = itemFraming(item);
-  if (framing) applyDomainFrame(card, framing, { chromeOnly: true });
+  if (framing) applyDomainFrame(card, framing, { chromeOnly: true, intensity: 0.6 });
 
   col.appendChild(card);
   return col;
 }
+
+/** A weapon's numbers in one line (the draft): value then name, with what
+ *  YOU bring over the item's base (mastery) as a gold +bonus. */
+function buildWeaponStatLine(item: ItemSpec): HTMLDivElement {
+  const w = item.weapon!;
+  const cls = w.class ?? 'sword';
+  const r = resolveWeaponStats(w);
+  const ranged = !!w.ranged;
+  const trim = (n: number): string => n.toFixed(1).replace(/\.0$/, '');
+  const line = document.createElement('div');
+  line.className = 'lk-d-stats';
+  const stat = (label: string, base: number, bonus: number, fmt: (n: number) => string): void => {
+    const s = document.createElement('span');
+    const b = document.createElement('b');
+    b.textContent = fmt(base);
+    if (bonus > 0.05) { const e = document.createElement('em'); e.textContent = `+${fmt(bonus)}`; b.appendChild(e); }
+    const i = document.createElement('i');
+    i.textContent = label;
+    s.append(b, i);
+    line.appendChild(s);
+  };
+  stat('damage', w.damage, r.damage - w.damage, trim);
+  const baseCrit = w.critChance ?? 0.05;
+  stat('crit', baseCrit * 100, (r.critChance - baseCrit) * 100, (n) => `${Math.round(n)}%`);
+  if (!ranged) {
+    const baseStagger = w.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
+    stat('stagger', baseStagger, r.staggerPower - baseStagger, trim);
+  }
+  const baseReach = w.reach ?? r.reach;
+  stat(ranged ? 'range' : 'reach', baseReach, r.reach - baseReach, (n) => `${trim(n)} m`);
+  // Only Lore can still rise (reading notes); nothing grants Might or Finesse
+  // any more, so "Scales with Might B" promised a growth that never comes.
+  const scaling = weaponScalingSummary(w);
+  if (/Lore/.test(scaling)) {
+    const sc = document.createElement('span');
+    const i = document.createElement('i');
+    i.textContent = `scales ${scaling}`;
+    sc.appendChild(i);
+    line.appendChild(sc);
+  }
+  return line;
+}
+
 
 export function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
   // Stacked vertical: rarity·kind meta on top, name underneath. Sits
@@ -206,11 +270,9 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
   // instead of offering a dead button.
   if (sel.kind === 'relic') {
     const kept = document.createElement('div');
-    kept.textContent = 'kept — what is taken is not returned';
-    Object.assign(kept.style, {
-      fontSize: '10px', fontStyle: 'italic', color: TEXT_FAINT,
-      textAlign: 'center', padding: '6px 0', letterSpacing: '0.05em',
-    } as Partial<CSSStyleDeclaration>);
+    kept.className = 'lk-d-note';
+    kept.textContent = 'Kept. What is taken is not returned.';
+    Object.assign(kept.style, { marginTop: 'auto', textAlign: 'right' } as Partial<CSSStyleDeclaration>);
     return kept;
   }
 
@@ -278,36 +340,34 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
   }
 
   btn.textContent = label;
-  Object.assign(btn.style, {
-    width: '100%',
-    padding: '12px 14px',
-    background: label === 'WEAPON LOCKED' ? 'rgba(60, 40, 20, 0.4)' : 'rgba(160, 90, 40, 0.85)',
-    border: label === 'WEAPON LOCKED' ? '1px solid rgba(120, 80, 50, 0.3)' : '1px solid rgba(255, 200, 120, 0.85)',
-    borderRadius: '3px',
-    color: 'rgba(255, 235, 210, 0.97)',
-    fontSize: '12px',
-    fontWeight: '700',
-    letterSpacing: '0.25em',
-    cursor: label === 'WEAPON LOCKED' ? 'default' : 'pointer',
-    opacity: label === 'WEAPON LOCKED' ? '0.5' : '1',
-    touchAction: 'manipulation',
-    boxShadow: label === 'WEAPON LOCKED' ? 'none' : '0 0 12px rgba(255, 160, 80, 0.4)',
-  } as Partial<CSSStyleDeclaration>);
-  if (label !== 'WEAPON LOCKED') {
+  btn.type = 'button';
+  const inert = label === 'WEAPON LOCKED';
+  btn.className = inert ? 'lk-d-act inert' : 'lk-d-act';
+  if (!inert) {
+    btn.dataset.focus = '';
+    btn.dataset.fkey = `act:${label}`;
     btn.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+  } else {
+    btn.disabled = true;
   }
   return btn;
 }
 
 // Turn an ItemSpec into a list of human-readable description lines.
-export function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): HTMLDivElement[] {
+export function describeItem(
+  item: ItemSpec,
+  affixes: readonly AffixInstance[] = [],
+  /** weaponStats: false when the caller draws the numbers itself (the satchel
+   *  slab's one-line stats); the verbs below still describe. */
+  opts: { weaponStats?: boolean } = {},
+): HTMLDivElement[] {
   const lines: HTMLDivElement[] = [];
 
   if (item.weapon) {
     // Resolved-vs-base stat rows: what YOU bring (proficiency + Might/
     // Finesse/Lore) is tinted gold over the item's white base — "this is
     // bigger because you're good with its class." Plus the class tier bar.
-    lines.push(...buildWeaponStats(item));
+    if (opts.weaponStats !== false) lines.push(...buildWeaponStats(item));
     if (item.weapon.onHit) lines.push(detailLine(formatOnHit(item.weapon.onHit)));
     // Reactive verbs + charged signature — so a duellist's blade that hastes
     // on a perfect dodge, or a hammer that fires force on a charged release,
@@ -467,39 +527,35 @@ function statRow(label: string, base: number, bonus: number, fmt: (n: number) =>
   return row;
 }
 
-/** Class proficiency tier line + progress bar (gold). */
+/** What the hand has learned of this class: tier, progress as an ember bar. */
 function buildTierBar(cls: WeaponClass): HTMLDivElement {
   const pts = getCharacter().proficiencies[cls];
   const tier = proficiencyTier(pts);
-  const clsName = cls.charAt(0).toUpperCase() + cls.slice(1);
+  const clsName = cls.charAt(0).toUpperCase() + cls.slice(1).replace('-', ' ');
 
   const wrap = document.createElement('div');
-  Object.assign(wrap.style, { marginTop: '6px' } as Partial<CSSStyleDeclaration>);
-
   const label = document.createElement('div');
   Object.assign(label.style, {
     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    fontSize: '11px', letterSpacing: '0.06em', marginBottom: '3px',
+    font: '11px/1.3 system-ui, sans-serif', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '5px',
   } as Partial<CSSStyleDeclaration>);
   const left = document.createElement('span');
-  left.innerHTML = `${clsName} · <span style="color:${MASTERY_GOLD};font-weight:700">${tier.name.toUpperCase()}</span>`;
-  left.style.color = TEXT_DIM;
+  left.style.color = '#a88c6c';
+  left.append(`${clsName} · `);
+  const t = document.createElement('span');
+  t.textContent = tier.name;
+  Object.assign(t.style, { color: MASTERY_GOLD, fontWeight: '700' } as Partial<CSSStyleDeclaration>);
+  left.appendChild(t);
   const right = document.createElement('span');
-  right.textContent = tier.nextAt === null ? 'mastered' : `${pts} → ${tier.nextAt}`;
+  right.textContent = tier.nextAt === null ? 'mastered' : `${pts} of ${tier.nextAt}`;
   right.style.color = TEXT_FAINT;
   label.append(left, right);
 
   const track = document.createElement('div');
-  Object.assign(track.style, {
-    height: '4px', background: 'rgba(40, 28, 18, 0.85)', borderRadius: '2px', overflow: 'hidden',
-  } as Partial<CSSStyleDeclaration>);
-  const fill = document.createElement('div');
-  Object.assign(fill.style, {
-    height: '100%', width: `${Math.round(tier.progress * 100)}%`,
-    background: 'linear-gradient(to right, rgba(180, 130, 90, 0.95), rgba(255, 200, 130, 0.95))',
-  } as Partial<CSSStyleDeclaration>);
+  track.className = 'lk-ember';
+  const fill = document.createElement('i');
+  fill.style.width = `${Math.round(tier.progress * 100)}%`;
   track.appendChild(fill);
-
   wrap.append(label, track);
   return wrap;
 }
@@ -507,6 +563,7 @@ function buildTierBar(cls: WeaponClass): HTMLDivElement {
 function detailLine(text: string, dim = false): HTMLDivElement {
   const el = document.createElement('div');
   el.textContent = '· ' + text;
+  if (dim) el.classList.add('dim');
   Object.assign(el.style, {
     fontSize: '12px',
     color: dim ? TEXT_DIM : TEXT_PRIMARY,
