@@ -891,14 +891,27 @@ function buildRoomShell(
     const wallH = H + (elevHi - elevLo);
     for (const g of [...wallGeos, ...trimGeos]) {
       const pos = g.getAttribute('position');
+      const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
       for (let i = 0; i < pos.count; i++) {
         const t = wallH > 1e-6 ? (pos.getY(i) - elevLo) / wallH : 0;
         const ground = groundYAt(pos.getX(i), pos.getZ(i));
-        pos.setY(i, ground - BURY + t * (H + BURY));
+        const y = ground - BURY + t * (H + BURY);
+        // The courses go with the vertex: V is world height on every other wall, and
+        // a sheared wall that kept its pre-shear V laid its courses at heights no
+        // neighbour shares, so they broke at every landing (Josh, 2026-11-24).
+        if (uv && uv.getY(i) > MASONRY_UV_TAG / 2) uv.setY(i, uv.getY(i) + (y - pos.getY(i)));
+        pos.setY(i, y);
       }
       pos.needsUpdate = true;
+      if (uv) uv.needsUpdate = true;
       g.computeVertexNormals();
     }
+  }
+  // A corridor's walls take their U from the whole path, not this rect's ring, so a
+  // leg's wall carries on into its landing's (level/wall-unwrap.ts, linkChainU).
+  if (room.link && room.link.legs.length > 0) {
+    const lateral = room.landing ? rect.w : ((room.alongX ?? alongX) ? rect.d : rect.w);
+    retagWallU([...wallGeos, ...trimGeos], linkChainU(room.link.legs, lateral / 2));
   }
   if (wallGeos.length > 0) {
     const merged = mergeGeometries(wallGeos, false);
@@ -1466,7 +1479,7 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 // Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
 // live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
-import { unwrapRing, tagWallFace, ringU, type RingUnwrap } from './wall-unwrap';
+import { unwrapRing, tagWallFace, ringU, linkChainU, retagWallU, type RingUnwrap } from './wall-unwrap';
 import { MASONRY_UV_TAG } from '../style/stone-grid';
 import { insidePolyRanges, planPortals } from './portals';
 import { spawnThresholdVeil } from '../scene/threshold-veil';

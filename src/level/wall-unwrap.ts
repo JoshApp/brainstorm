@@ -125,3 +125,78 @@ export function tagWallFace(
   }
   uv.needsUpdate = true;
 }
+
+// ── A CORRIDOR'S WALLS: ONE COORDINATE ALONG EACH SIDE ───────────────────────
+//
+// A corridor is several rects (legs and the landings at their turns), and each
+// rect unwrapped its walls on its OWN ring. Where a leg's wall carries straight
+// on into its landing's, the two rings disagree and every vertical joint jumps
+// at the seam (Josh, 2026-11-24: "a bit of a texture discontinuity there on the
+// walls"). The link knows the whole path, so each side of it is measured once:
+// the centreline offset by half the passage to the left and to the right, arc
+// length along that chain. Straight joins agree by construction and the turn
+// is walked round like a ring's corner.
+//
+// Same direction rule as the ring: U grows with travel when the room-side
+// normal is to the travel's right (cross(travel, inward) > 0). The right-hand
+// chain runs with the path, so it counts up; the left-hand one counts down.
+
+/** U at a world point on one of the link's walls. */
+export function linkChainU(legs: ReadonlyArray<{ from: V2; to: V2 }>, half: number): (x: number, z: number) => number {
+  const pts: V2[] = [legs[0].from, ...legs.map((l) => l.to)];
+  const dirs: V2[] = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const dx = pts[i + 1][0] - pts[i][0], dz = pts[i + 1][1] - pts[i][1];
+    const L = Math.hypot(dx, dz) || 1;
+    dirs.push([dx / L, dz / L]);
+  }
+  // Offset chains, mitred at each turn. left = (-dz, dx) of the travel.
+  const chain = (side: 1 | -1): V2[] => pts.map((p, i) => {
+    const d1 = dirs[Math.max(0, i - 1)], d2 = dirs[Math.min(dirs.length - 1, i)];
+    const l1: V2 = [-d1[1], d1[0]], l2: V2 = [-d2[1], d2[0]];
+    const k = half * side / (1 + l1[0] * l2[0] + l1[1] * l2[1]);
+    return [p[0] + (l1[0] + l2[0]) * k, p[1] + (l1[1] + l2[1]) * k] as V2;
+  });
+  const sides = ([1, -1] as const).map((side) => {
+    const c = chain(side);
+    const cum = [0];
+    for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + Math.hypot(c[i][0] - c[i - 1][0], c[i][1] - c[i - 1][1]));
+    return { side, c, cum };
+  });
+  return (x, z) => {
+    let best = Infinity, u = 0;
+    for (const { side, c, cum } of sides) {
+      for (let i = 0; i + 1 < c.length; i++) {
+        const ax = c[i][0], az = c[i][1];
+        const sx = c[i + 1][0] - ax, sz = c[i + 1][1] - az;
+        const L2 = sx * sx + sz * sz || 1;
+        let t = ((x - ax) * sx + (z - az) * sz) / L2;
+        // The ends of the path run on into their rooms; inner joints clamp.
+        if (i > 0) t = Math.max(0, t);
+        if (i + 2 < c.length) t = Math.min(1, t);
+        const px = ax + sx * t, pz = az + sz * t;
+        const dist = Math.hypot(x - px, z - pz);
+        if (dist < best - 1e-6) {
+          best = dist;
+          const arc = cum[i] + t * Math.sqrt(L2);
+          u = side === -1 ? arc : -arc;   // right-hand chain counts up
+        }
+      }
+    }
+    return u;
+  };
+}
+
+/** Re-tag the U of every masonry-tagged vertex from a chain (see linkChainU). */
+export function retagWallU(geos: readonly THREE.BufferGeometry[], uAt: (x: number, z: number) => number): void {
+  for (const g of geos) {
+    const pos = g.getAttribute('position');
+    const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
+    if (!pos || !uv) continue;
+    for (let i = 0; i < pos.count; i++) {
+      if (uv.getY(i) < MASONRY_UV_TAG / 2) continue;
+      uv.setX(i, uAt(pos.getX(i), pos.getZ(i)));
+    }
+    uv.needsUpdate = true;
+  }
+}
